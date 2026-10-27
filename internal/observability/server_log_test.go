@@ -1,4 +1,4 @@
-package app
+package observability
 
 import (
 	"log"
@@ -69,7 +69,7 @@ func TestServerLogWritesEachLineOnceWhenStdoutIsTheLogFile(t *testing.T) {
 		_ = stdout.Close()
 	})
 
-	closer := installPersistentServerLog(path)
+	closer := InstallPersistentServerLog(path)
 	if closer == nil {
 		t.Fatal("persistent server log not installed")
 	}

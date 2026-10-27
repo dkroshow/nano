@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/observability"
 	"io"
 	"io/fs"
 	"log"
@@ -169,7 +170,7 @@ type server struct {
 	// out-of-band refresh. Nil whenever usageLimits is.
 	usageLimitsPoller *usageLimitsPoller
 	hostMonitor       *hostMonitor
-	requests          requestTimes
+	requests          observability.RequestTimes
 	// relationshipMu serializes every mutation that can change or act on the
 	// current hosted-thread tree: child creation, assignment, close, and bulk
 	// close. Without it, a child could be created or moved after a bulk-close
@@ -232,7 +233,7 @@ type application struct {
 }
 
 func construct(config config.Config) *application {
-	serverLog := installPersistentServerLog(config.Paths.ServerLog)
+	serverLog := observability.InstallPersistentServerLog(config.Paths.ServerLog)
 
 	absCwd, err := filepath.Abs(config.WorkingDirectory)
 	if err != nil {
@@ -356,6 +357,7 @@ func construct(config config.Config) *application {
 		return result, err
 	})
 	s := &server{
+		requests:           observability.NewRequestTimes(time.Now),
 		dropLiveTextDeltas: liveTextDeltasDisabled(),
 		defaults: sessionDefaults{
 			cwd:              absCwd,

@@ -1,4 +1,4 @@
-package app
+package observability
 
 import (
 	"errors"
@@ -127,12 +127,12 @@ func (w *rotatingLogWriter) Close() error {
 	return err
 }
 
-// installPersistentServerLog keeps the standard logger's stdout behavior and
+// InstallPersistentServerLog keeps the standard logger's stdout behavior and
 // adds a bounded on-disk copy. It is deliberately best-effort: logging must
 // never prevent nano from starting when the user's log directory is not
 // writable. When stdout already is that file (the launchd job redirects it
 // there), the rotating writer is the only writer, so each line appears once.
-func installPersistentServerLog(path string) io.Closer {
+func InstallPersistentServerLog(path string) io.Closer {
 	writer, err := newRotatingLogWriter(path, serverLogMaxBytes)
 	if err != nil {
 		log.Printf("WARNING: persistent server log unavailable (%s): %v", path, err)

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/dkroshow/nano/internal/observability"
 	"runtime"
 	"slices"
 	"sync"
@@ -68,14 +69,14 @@ func (h *latencyHistogram) summary() latencySummary {
 		for bucket, n := range h.counts {
 			if seen += n; seen >= rank {
 				if bucket < len(ingestLatencyBounds) {
-					return milliseconds(min(ingestLatencyBounds[bucket], h.max))
+					return observability.Milliseconds(min(ingestLatencyBounds[bucket], h.max))
 				}
 				break
 			}
 		}
-		return milliseconds(h.max)
+		return observability.Milliseconds(h.max)
 	}
-	return latencySummary{Count: total, MedianMS: quantile(0.5), P95MS: quantile(0.95), MaxMS: milliseconds(h.max)}
+	return latencySummary{Count: total, MedianMS: quantile(0.5), P95MS: quantile(0.95), MaxMS: observability.Milliseconds(h.max)}
 }
 
 // ingestCounts are one provider's per-minute totals. Source records are
@@ -289,8 +290,8 @@ func newIngestReceipt(o *ingestOutcome) *ingestReceipt {
 		StartReadOffset: o.advance.startOffset, EndReadOffset: o.advance.endOffset,
 		CompleteOffset: o.advance.completeOffset, ObservedSize: o.size, Records: o.advance.records,
 		HintAt: o.take.since.UTC(), PrepareStartedAt: o.prepareStart.UTC(), PreparedAt: o.prepareEnd.UTC(), SavedAt: o.savedAt.UTC(),
-		QueueMS: milliseconds(o.prepareStart.Sub(o.take.since)), PrepareMS: milliseconds(o.prepareEnd.Sub(o.prepareStart)),
-		SaveMS: milliseconds(o.savedAt.Sub(o.prepareEnd)), saved: o.savedAt,
+		QueueMS: observability.Milliseconds(o.prepareStart.Sub(o.take.since)), PrepareMS: observability.Milliseconds(o.prepareEnd.Sub(o.prepareStart)),
+		SaveMS: observability.Milliseconds(o.savedAt.Sub(o.prepareEnd)), saved: o.savedAt,
 	}
 }
 
@@ -306,7 +307,7 @@ func (s *threadCatalogService) notePublication(change transcriptChange, since, s
 			continue
 		}
 		startedAt, finishedAt := started.UTC(), finished.UTC()
-		wait, run := milliseconds(started.Sub(receipt.saved)), milliseconds(finished.Sub(started))
+		wait, run := observability.Milliseconds(started.Sub(receipt.saved)), observability.Milliseconds(finished.Sub(started))
 		receipt.PublishStartedAt, receipt.PublishedAt, receipt.PublishWaitMS, receipt.PublishMS = &startedAt, &finishedAt, &wait, &run
 	}
 }
@@ -401,7 +402,7 @@ func (s *threadCatalogService) ingestStatus() ingestStatus {
 		dirty = append(dirty, pending{path: path, since: source.since, running: source.running, readAt: source.readAt.Load()})
 	}
 	if !s.recoveringSince.IsZero() {
-		ms := milliseconds(now.Sub(s.recoveringSince))
+		ms := observability.Milliseconds(now.Sub(s.recoveringSince))
 		status.ManualRefreshMS = &ms
 	}
 	status.ManualRefreshQueued = !s.recoveryAt.IsZero()
@@ -449,7 +450,7 @@ func (s *threadCatalogService) ingestStatus() ingestStatus {
 		}
 	}
 	if !oldest.IsZero() {
-		ms := milliseconds(now.Sub(oldest))
+		ms := observability.Milliseconds(now.Sub(oldest))
 		status.OldestPendingMS = &ms
 	}
 	status.PublicationBacklog, status.PublicationInFlight = s.transcriptChangeStatus()

@@ -276,7 +276,7 @@ func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
 	if !newest.IsZero() {
 		snapshot = map[string]any{"newestSnapshotAt": newest.UTC(), "stale": s.hostMonitor.now().Sub(newest) > monitorStaleAfter, "delivery": delivery}
 	}
-	requests, streams := s.requests.report()
+	requests, streams := s.requests.Report()
 	var ingest *ingestStatus
 	if catalog, ok := s.catalog.(*threadCatalogService); ok {
 		status := catalog.ingestStatus()

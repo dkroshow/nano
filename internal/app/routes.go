@@ -145,7 +145,7 @@ func applicationRoutes(s *server) []applicationRoute {
 	// operations and records; it does not define a second dispatch path.
 	routes = append(routes, hostedThreadRoutes(s, "/api/v1/agent-sessions")...)
 	for i := range routes {
-		routes[i].Handler = s.requests.timed(routes[i].Operation, routes[i].Handler)
+		routes[i].Handler = s.requests.Timed(routes[i].Operation, routes[i].Handler)
 	}
 	return routes
 }

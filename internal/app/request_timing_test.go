@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/observability"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,8 +17,8 @@ import (
 )
 
 type monitorRequests struct {
-	Requests    []requestMinute `json:"requests"`
-	StreamsOpen map[string]int  `json:"streamsOpen"`
+	Requests    []observability.RequestMinute `json:"requests"`
+	StreamsOpen map[string]int                `json:"streamsOpen"`
 }
 
 func readMonitorRequests(t *testing.T, url string) monitorRequests {
@@ -42,7 +43,7 @@ func timingServer(t *testing.T, at time.Time, extra func(s *server, mux *http.Se
 	clock.Store(at)
 	dir := t.TempDir()
 	s := &server{sessions: map[string]*session{}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
-	s.requests.now = func() time.Time { return clock.Load().(time.Time) }
+	s.requests = observability.NewRequestTimes(func() time.Time { return clock.Load().(time.Time) })
 	mux := http.NewServeMux()
 	mux.Handle("/", applicationHandler(s))
 	if extra != nil {
@@ -62,10 +63,10 @@ func timingServer(t *testing.T, at time.Time, extra func(s *server, mux *http.Se
 func TestMonitorServesEachRoutesCallsOnceTheirMinuteCloses(t *testing.T) {
 	at := time.Date(2026, 10, 1, 12, 0, 30, 0, time.UTC)
 	_, clock, url := timingServer(t, at, func(s *server, mux *http.ServeMux) {
-		mux.HandleFunc("GET /cached", s.requests.timed("test.cached", func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("GET /cached", s.requests.Timed("test.cached", func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotModified)
 		}))
-		mux.HandleFunc("GET /sized", s.requests.timed("test.sized", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("GET /sized", s.requests.Timed("test.sized", func(w http.ResponseWriter, r *http.Request) {
 			n, _ := strconv.Atoi(r.URL.Query().Get("n"))
 			_, _ = w.Write([]byte(strings.Repeat("x", n/2)))
 			_, _ = w.Write([]byte(strings.Repeat("x", n-n/2)))
@@ -126,7 +127,7 @@ func TestMonitorFilesASlowCallInTheMinuteItEnds(t *testing.T) {
 	at := time.Date(2026, 10, 1, 12, 0, 30, 0, time.UTC)
 	started, release := make(chan struct{}), make(chan struct{})
 	_, clock, url := timingServer(t, at, func(s *server, mux *http.ServeMux) {
-		mux.HandleFunc("GET /slow", s.requests.timed("test.slow", func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("GET /slow", s.requests.Timed("test.slow", func(w http.ResponseWriter, _ *http.Request) {
 			close(started)
 			<-release
 		}))
@@ -167,7 +168,7 @@ func TestMonitorCountsStreamsApartFromCalls(t *testing.T) {
 	at := time.Date(2026, 10, 1, 12, 0, 30, 0, time.UTC)
 	sendData, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	_, clock, url := timingServer(t, at, func(s *server, mux *http.ServeMux) {
-		stream := s.requests.timed("test.stream", func(w http.ResponseWriter, r *http.Request) {
+		stream := s.requests.Timed("test.stream", func(w http.ResponseWriter, r *http.Request) {
 			flusher, ok := w.(http.Flusher)
 			if !ok {
 				http.Error(w, "no flusher", http.StatusInternalServerError)
@@ -230,7 +231,7 @@ func TestMonitorCountsStreamsApartFromCalls(t *testing.T) {
 func TestMonitorCountsAPanickedCallAsA500(t *testing.T) {
 	at := time.Date(2026, 10, 1, 12, 0, 30, 0, time.UTC)
 	_, clock, url := timingServer(t, at, func(s *server, mux *http.ServeMux) {
-		mux.HandleFunc("GET /panics", s.requests.timed("test.panics", func(http.ResponseWriter, *http.Request) {
+		mux.HandleFunc("GET /panics", s.requests.Timed("test.panics", func(http.ResponseWriter, *http.Request) {
 			panic(http.ErrAbortHandler)
 		}))
 	})

@@ -1,4 +1,4 @@
-package app
+package observability
 
 import (
 	"cmp"
@@ -21,11 +21,17 @@ import (
 
 const requestMinutesKept = 10
 
-type requestTimes struct {
+// RequestTimes measures requests and streams, retaining bounded minute summaries.
+type RequestTimes struct {
 	now     func() time.Time // nil: time.Now
 	mu      sync.Mutex
 	minutes map[int64]map[string]*routeCalls // by Unix minute, then operation
 	streams map[string]int                   // streams open now, by operation
+}
+
+// NewRequestTimes creates a collector using the supplied clock. A nil clock uses time.Now.
+func NewRequestTimes(now func() time.Time) RequestTimes {
+	return RequestTimes{now: now}
 }
 
 type routeCalls struct {
@@ -38,13 +44,14 @@ type routeCalls struct {
 	streamsOpened  int
 }
 
-// requestMinute is one closed minute as /api/v1/monitor serves it.
-type requestMinute struct {
+// RequestMinute is one closed minute as /api/v1/monitor serves it.
+type RequestMinute struct {
 	Minute time.Time              `json:"minute"`
-	Routes map[string]routeMinute `json:"routes"`
+	Routes map[string]RouteMinute `json:"routes"`
 }
 
-type routeMinute struct {
+// RouteMinute summarizes one operation within a closed minute.
+type RouteMinute struct {
 	Calls       int     `json:"calls,omitempty"`
 	MedianMS    float64 `json:"medianMs,omitempty"`
 	MaxMS       float64 `json:"maxMs,omitempty"`
@@ -59,9 +66,9 @@ type routeMinute struct {
 	StreamsOpened        int            `json:"streamsOpened,omitempty"`
 }
 
-// timed wraps one route's handler. A text/event-stream answer counts as a
+// Timed wraps one route's handler. A text/event-stream answer counts as a
 // stream, open until the handler returns, and stays out of call times.
-func (t *requestTimes) timed(operation string, next http.HandlerFunc) http.HandlerFunc {
+func (t *RequestTimes) Timed(operation string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		began := t.clock()
 		tw := &timedWriter{ResponseWriter: w, times: t, operation: operation, began: began}
@@ -81,14 +88,14 @@ func (t *requestTimes) timed(operation string, next http.HandlerFunc) http.Handl
 	}
 }
 
-func (t *requestTimes) clock() time.Time {
+func (t *RequestTimes) clock() time.Time {
 	if t.now == nil {
 		return time.Now()
 	}
 	return t.now()
 }
 
-func (t *requestTimes) calls(operation string, at time.Time) *routeCalls {
+func (t *RequestTimes) calls(operation string, at time.Time) *routeCalls {
 	minute := at.Unix() / 60
 	if t.minutes == nil {
 		t.minutes, t.streams = map[int64]map[string]*routeCalls{}, map[string]int{}
@@ -111,7 +118,7 @@ func (t *requestTimes) calls(operation string, at time.Time) *routeCalls {
 	return calls
 }
 
-func (t *requestTimes) streamOpened(operation string) {
+func (t *RequestTimes) streamOpened(operation string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.calls(operation, t.clock()).streamsOpened++
@@ -119,7 +126,7 @@ func (t *requestTimes) streamOpened(operation string) {
 }
 
 // recordFirstData files a stream's time and bytes to its first data.
-func (t *requestTimes) recordFirstData(operation string, began time.Time, bytes int64) {
+func (t *RequestTimes) recordFirstData(operation string, began time.Time, bytes int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	at := t.clock()
@@ -128,7 +135,7 @@ func (t *requestTimes) recordFirstData(operation string, began time.Time, bytes 
 	calls.firstDataSizes = append(calls.firstDataSizes, bytes)
 }
 
-func (t *requestTimes) record(operation string, began time.Time, w *timedWriter) {
+func (t *RequestTimes) record(operation string, began time.Time, w *timedWriter) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	ended := t.clock()
@@ -152,24 +159,24 @@ func (t *requestTimes) record(operation string, began time.Time, w *timedWriter)
 	}
 }
 
-// report returns the closed minutes kept, oldest first, and the streams open.
+// Report returns the closed minutes kept, oldest first, and the streams open.
 // A median is the upper middle call of an even count.
-func (t *requestTimes) report() ([]requestMinute, map[string]int) {
+func (t *RequestTimes) Report() ([]RequestMinute, map[string]int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	current := t.clock().Unix() / 60
-	minutes := []requestMinute{}
+	minutes := []RequestMinute{}
 	for m, routes := range t.minutes {
 		if m >= current || m < current-requestMinutesKept {
 			continue
 		}
-		out := requestMinute{Minute: time.Unix(m*60, 0).UTC(), Routes: map[string]routeMinute{}}
+		out := RequestMinute{Minute: time.Unix(m*60, 0).UTC(), Routes: map[string]RouteMinute{}}
 		for operation, calls := range routes {
-			r := routeMinute{Calls: len(calls.took), StreamsOpened: calls.streamsOpened}
+			r := RouteMinute{Calls: len(calls.took), StreamsOpened: calls.streamsOpened}
 			if len(calls.took) > 0 {
 				took := slices.Clone(calls.took)
 				slices.Sort(took)
-				r.MedianMS, r.MaxMS = milliseconds(took[len(took)/2]), milliseconds(took[len(took)-1])
+				r.MedianMS, r.MaxMS = Milliseconds(took[len(took)/2]), Milliseconds(took[len(took)-1])
 				sizes := slices.Clone(calls.sizes)
 				slices.Sort(sizes)
 				r.MedianBytes, r.MaxBytes = sizes[len(sizes)/2], sizes[len(sizes)-1]
@@ -178,7 +185,7 @@ func (t *requestTimes) report() ([]requestMinute, map[string]int) {
 				took, sizes := slices.Clone(calls.firstData), slices.Clone(calls.firstDataSizes)
 				slices.Sort(took)
 				slices.Sort(sizes)
-				r.FirstDataMedianMS, r.FirstDataMaxMS = milliseconds(took[len(took)/2]), milliseconds(took[len(took)-1])
+				r.FirstDataMedianMS, r.FirstDataMaxMS = Milliseconds(took[len(took)/2]), Milliseconds(took[len(took)-1])
 				r.FirstDataMedianBytes, r.FirstDataMaxBytes = sizes[len(sizes)/2], sizes[len(sizes)-1]
 			}
 			for status, n := range calls.failed {
@@ -191,7 +198,7 @@ func (t *requestTimes) report() ([]requestMinute, map[string]int) {
 		}
 		minutes = append(minutes, out)
 	}
-	slices.SortFunc(minutes, func(a, b requestMinute) int { return a.Minute.Compare(b.Minute) })
+	slices.SortFunc(minutes, func(a, b RequestMinute) int { return a.Minute.Compare(b.Minute) })
 	streams := make(map[string]int, len(t.streams))
 	for operation, n := range t.streams {
 		streams[operation] = n
@@ -199,7 +206,8 @@ func (t *requestTimes) report() ([]requestMinute, map[string]int) {
 	return minutes, streams
 }
 
-func milliseconds(d time.Duration) float64 {
+// Milliseconds rounds a duration to tenths of a millisecond for diagnostic JSON.
+func Milliseconds(d time.Duration) float64 {
 	return math.Round(float64(d.Microseconds())/100) / 10
 }
 
@@ -207,7 +215,7 @@ func milliseconds(d time.Duration) float64 {
 // stream handlers require, and Unwrap, for http.ResponseController.
 type timedWriter struct {
 	http.ResponseWriter
-	times     *requestTimes
+	times     *RequestTimes
 	operation string
 	status    int // 0 until the header is sent
 	stream    bool
