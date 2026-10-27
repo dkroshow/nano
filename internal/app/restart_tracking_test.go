@@ -25,13 +25,13 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	s, store := bootReattachServer(t, "", daemon.wsURL())
 	path := filepath.Join(t.TempDir(), restartsFileName)
 	s.restart = newRestartTracker(path, "test-stamp", "boot-test", time.Now())
-	for _, native := range []string{"starred", "plain", "forgotten", "resting"} {
+	for _, native := range []string{"starred", "plain", "forgotten"} {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
 		store.remember(rec)
 	}
 	seedBootAttachments(t, s)
-	// The boot loop queues only threads with open work; "resting" has none.
+	// The boot loop queues only threads with open work.
 	for _, hosted := range []string{"nht_starred", "nht_plain", "nht_forgotten"} {
 		if _, _, err := s.agentExecutions.beginTurn(hosted, "nano:test:open-turn", "hash"); err != nil {
 			t.Fatal(err)
@@ -56,7 +56,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 		data, err := os.ReadFile(path)
 		return err == nil && json.Unmarshal(data, &record) == nil
 	})
-	if !record.Complete || record.ThreadsTotal != 4 || record.Live != 2 || record.Failed != 1 || record.Pending != 0 || record.Resting != 1 || record.Visible != 1 {
+	if !record.Complete || record.ThreadsTotal != 3 || record.Live != 2 || record.Failed != 1 || record.Pending != 0 || record.Visible != 1 {
 		t.Fatalf("restart summary = %+v", record)
 	}
 	if record.HTTPOpenMs == nil || record.BootLoopMs == nil || record.VisibleLiveMs == nil || record.AllSettledMs == nil {
@@ -91,15 +91,11 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	if forgotten := byNative["forgotten"]; forgotten.FailedMs == nil || forgotten.Reason != "no_longer_stored" || forgotten.LiveMs != nil {
 		t.Fatalf("forgotten thread = %+v", forgotten)
 	}
-	// A thread left resting settles the record without a pick or a failure.
-	if resting := byNative["resting"]; resting.State != restartStateResting || resting.PickedMs != nil || resting.FailedMs != nil {
-		t.Fatalf("resting thread = %+v", resting)
-	}
-	if codex := record.ByProvider["codex"]; codex.Threads != 4 || codex.Live != 2 || codex.Failed != 1 || codex.Resting != 1 || codex.Ms["reconnect"].N != 2 {
+	if codex := record.ByProvider["codex"]; codex.Threads != 3 || codex.Live != 2 || codex.Failed != 1 || codex.Ms["reconnect"].N != 2 {
 		t.Fatalf("codex totals = %+v", codex)
 	}
 
-	for query, wantThreads := range map[string]int{"": 0, "?threads=1": 4} {
+	for query, wantThreads := range map[string]int{"": 0, "?threads=1": 3} {
 		rec := httptest.NewRecorder()
 		s.handleRestarts(rec, httptest.NewRequest(http.MethodGet, "/api/v1/restarts"+query, nil))
 		var body struct{ Restarts []restartRecord }
@@ -221,5 +217,24 @@ func TestRestartRecordWaitsForAnOnDemandAttach(t *testing.T) {
 	tracker.mu.Unlock()
 	if record.Live != 1 || record.Pending != 0 {
 		t.Fatalf("record after the attach = live %d, pending %d", record.Live, record.Pending)
+	}
+}
+
+// Failure caught: with only resting threads, the record was written the
+// moment the boot loop finished, before any browser asked for the threads it
+// shows, so their attaches were never recorded. Boundary: the restart tracker.
+func TestRestartRecordWaitsForBrowsersWhileThreadsRest(t *testing.T) {
+	tracker := newRestartTracker(filepath.Join(t.TempDir(), restartsFileName), "test-stamp", "boot-test", time.Now())
+	shown := attachmentRecord{Provider: "codex", NativeThreadID: "shown", HostedThreadID: "nht_shown"}
+	tracker.addThreads([]attachmentRecord{shown})
+	tracker.rest([]attachmentRecord{shown})
+	tracker.markBootLoopDone()
+	tracker.thread(shown.key()).at(restartPicked) // a browser shows it after the loop
+	tracker.thread(shown.key()).at(restartLive)
+	tracker.mu.Lock()
+	written, record := tracker.written, tracker.recordLocked(true)
+	tracker.mu.Unlock()
+	if written || record.Live != 1 || record.Resting != 0 {
+		t.Fatalf("record = written %v, live %d, resting %d; want unwritten with the browser's attach live", written, record.Live, record.Resting)
 	}
 }

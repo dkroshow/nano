@@ -274,6 +274,28 @@ func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
 	}
 }
 
+// Failure caught: a restart left unstarred idle threads resting, and the
+// sidebar dropped them, so no browser showed them or asked for them and they
+// stayed resting. A resting thread keeps its place like an attached one; a
+// detached one is still history. Boundary: sidebar assembly.
+func TestSidebarKeepsRestingThreadsActive(t *testing.T) {
+	root := catalogThread{ID: "root", Provider: "codex", NativeID: "root-native", HostedThreadID: "hosted-root",
+		Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
+	child := catalogThread{ID: "child", Provider: "codex", NativeID: "child-native", HostedThreadID: "hosted-child",
+		InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
+	detached := catalogThread{ID: "detached", Provider: "codex", NativeID: "detached-native", HostedThreadID: "hosted-detached",
+		Runtime: &runtimeInfo{Detached: true}}
+	s := &server{sessions: map[string]*session{}}
+	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child, detached}, sidebarRuntimeSnapshot{})
+	included := map[string]bool{}
+	for _, node := range nodes {
+		included[node.thread.ID] = node.included
+	}
+	if !included["root"] || !included["child"] || included["detached"] {
+		t.Fatalf("included = %v; want the resting root and child, not the detached thread", included)
+	}
+}
+
 func TestSidebarActiveRelatedLineageBeatsInvokerAndNative(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
 	s, ids := sidebarActiveFixture(t, now)

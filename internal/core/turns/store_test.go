@@ -99,3 +99,27 @@ func turnFixture(t *testing.T) *sql.DB {
 	}
 	return db
 }
+
+// Failure caught: a restart left a thread with an unfinished turn resting,
+// because the check read only the latest row and an older turn's outcome
+// saved after the newer turn started is the latest. Boundary: the store.
+func TestUnfinishedSeesAnOpenTurnBehindALaterSavedOutcome(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(ctx, turnFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	if open, err := store.Unfinished(ctx, "host"); err != nil || open {
+		t.Fatalf("unfinished with no turns = %v, %v", open, err)
+	}
+	if _, _, err := store.Started(ctx, Start{HostedThreadID: "host", Provider: "claude", NativeThreadID: "native", TurnID: "current", At: at}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Finished(ctx, Finish{HostedThreadID: "host", Provider: "claude", NativeThreadID: "native", TurnID: "older", FinalMessageID: "older-final", Outcome: "completed", At: at.Add(time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if open, err := store.Unfinished(ctx, "host"); err != nil || !open {
+		t.Fatalf("unfinished behind a later saved outcome = %v, %v; want true", open, err)
+	}
+}

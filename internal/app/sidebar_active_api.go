@@ -1026,6 +1026,11 @@ func sidebarIndependentlyActive(thread catalogThread) bool {
 	if thread.Runtime != nil && thread.Runtime.Attached {
 		return true
 	}
+	// A thread resting since a restart is held like an attached one; it
+	// attaches once a browser shows it, so it keeps its place.
+	if thread.Runtime != nil && thread.Runtime.Status == "resting" {
+		return true
+	}
 	if thread.Starred {
 		return true
 	}

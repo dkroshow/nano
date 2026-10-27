@@ -29,6 +29,10 @@ const (
 	// still be on its way: a Claude respawn goes live before its resume
 	// returns. The record waits at most this long for it.
 	restartSettleGrace = 30 * time.Second
+	// Browsers ask for the resting threads they show right after a restart.
+	// With resting threads, the record waits until no attach has settled for
+	// this long, so those attaches count.
+	restartRestQuiet = time.Minute
 	// Restart lines carry every thread (~100 KB for 400 threads).
 	restartsReadTail     = 4 << 20
 	restartsDefaultLimit = 5
@@ -129,6 +133,7 @@ type restartTracker struct {
 	threads     []*restartThread
 	byKey       map[attachmentKey]*restartThread
 	grace       *time.Timer
+	quiet       *time.Timer
 	written     bool // final: no later mark changes the record
 	interrupted bool
 	saved       bool // the line is in the file
@@ -305,12 +310,31 @@ func (t *restartTracker) writeIfSettledLocked() {
 	if t.written || t.bootLoop == nil {
 		return
 	}
-	marksDue := false
+	marksDue, resting := false, false
 	for _, th := range t.threads {
 		if th.State == restartStatePending {
 			return
 		}
 		marksDue = marksDue || th.State == restartStateLive && th.AttachedMs == nil
+		resting = resting || th.State == restartStateResting
+	}
+	if resting {
+		if t.quiet != nil {
+			t.quiet.Stop()
+		}
+		t.quiet = time.AfterFunc(restartRestQuiet, func() {
+			t.mu.Lock()
+			defer t.mu.Unlock()
+			for _, th := range t.threads {
+				if th.State == restartStatePending {
+					return // an attach in progress re-arms this once it settles
+				}
+			}
+			if !t.written {
+				t.writeLocked(false)
+			}
+		})
+		return
 	}
 	if !marksDue {
 		t.writeLocked(false)

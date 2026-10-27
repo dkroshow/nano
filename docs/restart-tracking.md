@@ -16,9 +16,10 @@ total, so restart speed is measured rather than guessed. The code is
   threads. Both read the end of the file only, through the same tail reader
   as the alert ledger.
 
-The line is written when the boot loop is done, every thread is live or
-failed, and every live thread has its `attached` mark (at most 30 seconds
-later: a Claude respawn goes live before it).
+The line is written when the boot loop is done, every thread is live, failed
+or resting, and every live thread has its `attached` mark (at most 30 seconds
+later: a Claude respawn goes live before it); with resting threads, a minute
+after the last attach settles (below).
 It is also written, as it stands, 15 minutes after start (`not_live_at_cap`)
 or when Nano stops before that (`interrupted: true`). A crash during boot
 loses that boot's record. If the line cannot be written, the API keeps
@@ -54,7 +55,8 @@ something needs it: a sidebar row or pane that shows it (the browser's
 `visible` here is the server's estimate of what a browser shows, not what was
 reconnected at boot. A resting thread counts as settled; one picked for an
 attach before the line is written is pending again until it is live or
-failed.
+failed. While threads rest, the line waits until no attach has settled for a
+minute, so the attaches browsers ask for right after the restart count.
 
 ## Per thread (`threads=1`)
 

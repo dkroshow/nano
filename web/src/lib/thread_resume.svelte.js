@@ -27,9 +27,10 @@ function recordedValue(item, field) {
 }
 
 // prioritizeStartingThread asks Nano to re-attach a thread that still waits
-// after a restart now, ahead of the boot queue. The answer carries nothing the
-// pane needs: the tab goes live through the session list like any attach, and
-// the boot queue still reaches the thread if this request is lost.
+// after a restart now, ahead of the boot queue or out of rest, and reports
+// whether Nano accepted the request. The tab goes live through the session
+// list like any attach; a resting thread has no boot queue to fall back on,
+// so callers ask again after a failure.
 export function prioritizeStartingThread(hostedThreadId) {
   return fetch(`/api/v1/hosted-threads/${encodeURIComponent(hostedThreadId)}/prioritize`, { method: 'POST' })
     .then((response) => response.ok, () => false)

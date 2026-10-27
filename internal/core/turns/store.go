@@ -176,6 +176,18 @@ func (s *Store) Ended(ctx context.Context, hostedThreadID string) (map[string]bo
 	return ended, rows.Err()
 }
 
+// Unfinished reports whether any of the thread's turns started without a
+// recorded outcome. An older turn's outcome can be saved after a newer turn
+// started, so the latest row does not answer it.
+func (s *Store) Unfinished(ctx context.Context, hostedThreadID string) (bool, error) {
+	var found int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM completed_turns WHERE target_hosted_thread_id=? AND outcome='' LIMIT 1`, hostedThreadID).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (s *Store) Latest(ctx context.Context, hostedThreadID string) (Record, error) {
 	return scanRecord(s.db.QueryRowContext(ctx, selectRecord+` WHERE target_hosted_thread_id=? ORDER BY id DESC LIMIT 1`, hostedThreadID))
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	turns "github.com/dkroshow/nano/internal/core/turns"
 )
@@ -15,14 +16,18 @@ func newCompletedTurnSource(store *completedTurnStore) *completedTurnSource {
 	return &completedTurnSource{store: store}
 }
 
-// open reports a thread whose latest provider turn started and has no
-// recorded outcome.
+// open reports a thread with a provider turn that started and has no
+// recorded outcome. A store it cannot read counts as open.
 func (s *completedTurnSource) open(target string) bool {
 	if s == nil || s.store == nil || target == "" {
 		return false
 	}
-	latest, err := s.store.latest(target)
-	return err == nil && latest.ID != "" && latest.Outcome == ""
+	store, err := s.store.coreStore(context.Background())
+	if err != nil {
+		return true
+	}
+	unfinished, err := store.Unfinished(context.Background(), target)
+	return unfinished || err != nil
 }
 
 func (s *completedTurnSource) after(target, cursor string, limit int) ([]completedTurn, error) {
