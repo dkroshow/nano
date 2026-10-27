@@ -41,10 +41,9 @@ stranger.
      requirement it serves, the simplest alternative, and the difference the
      user would see. A finding that adds a mechanism without naming a
      user-visible failure is advisory.
-- **Always.** A light monitor watches Nano's memory and CPU, the provider
-  processes, swap, stuck prompts, and background jobs that keep failing,
-  each against a target. Performance is monitored, not gated: a performance
-  check never blocks a change from going live.
+- **Operator monitoring.** The monitor endpoint exposes memory, CPU and active
+  turn information for operator tools to read. Tools can also supply host
+  snapshots and alerts. Performance monitoring does not block a release.
 - **Periodically.** A repo-wide review reads the whole repo as a stranger
   would. It does not run on every push.
 

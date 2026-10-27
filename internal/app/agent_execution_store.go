@@ -519,24 +519,7 @@ func (s *agentExecutionStore) ensureNamedSessionWithIdentity(id, provider, prese
 		s.control.publishChange(id, metadataRevision, changedFields...)
 		return rec, nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	rec := agentSessionRecord{
-		ID: id, Provider: provider, PresentationMode: presentationMode,
-		Status: agentSessionCreating, RunID: s.runID, CreatedAt: now, UpdatedAt: now, Revision: 1,
-	}
-	// Legacy-only fallback remains for tests of the retired store. Keep its
-	// in-memory index unchanged if durable persistence fails.
-	previous, existed := s.sessions[id]
-	s.sessions[id] = rec
-	if err := s.persistAndNotifyLocked(); err != nil {
-		if existed {
-			s.sessions[id] = previous
-		} else {
-			delete(s.sessions, id)
-		}
-		return agentSessionRecord{}, err
-	}
-	return rec, nil
+	return agentSessionRecord{}, fmt.Errorf("hosted thread store unavailable")
 }
 
 func (s *agentExecutionStore) bindSession(id, nanoSessionID, nativeThreadID, status, presentationMode string) error {

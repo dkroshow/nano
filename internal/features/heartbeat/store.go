@@ -201,21 +201,9 @@ func OpenStore(path string, backup BackupFunc) (*Store, error) {
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("inspect heartbeat database: %w", statErr)
 	}
-	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
-		return nil, fmt.Errorf("create heartbeat directory: %w", err)
-	}
-	db, err := sql.Open("sqlite", statedb.URI(absolute, "rwc", "foreign_keys(1)"))
+	db, err := statedb.Open(context.Background(), absolute)
 	if err != nil {
 		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("configure heartbeat database: %w", err)
-	}
-	if err = os.Chmod(absolute, 0o600); err != nil && !os.IsNotExist(err) {
-		db.Close()
-		return nil, fmt.Errorf("secure heartbeat database: %w", err)
 	}
 	var version int
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {

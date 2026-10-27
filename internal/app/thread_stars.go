@@ -16,20 +16,19 @@ package app
 // window.
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
-	statedb "github.com/dkroshow/nano/internal/state/db"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/httpapi"
+	statedb "github.com/dkroshow/nano/internal/state/db"
 	_ "modernc.org/sqlite"
 )
 
@@ -48,21 +47,9 @@ func openThreadStarsStore(path string) (*threadStarsStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve thread stars database: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
-		return nil, fmt.Errorf("create thread stars directory: %w", err)
-	}
-	db, err := sql.Open("sqlite", statedb.URI(absolute, "rwc"))
+	db, err := statedb.Open(context.Background(), absolute)
 	if err != nil {
 		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("configure thread stars database: %w", err)
-	}
-	if err = os.Chmod(absolute, 0o600); err != nil && !os.IsNotExist(err) {
-		db.Close()
-		return nil, fmt.Errorf("secure thread stars database: %w", err)
 	}
 	if _, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS thread_stars (

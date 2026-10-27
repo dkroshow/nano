@@ -34,7 +34,7 @@ type MigrationRunner func(context.Context, MigrationStage, *sql.DB, *sql.Tx, int
 
 // Open creates a private SQLite file before SQLite can create its WAL, then
 // returns one serialized writer connection.
-func Open(ctx context.Context, path string) (*sql.DB, error) {
+func Open(ctx context.Context, path string, pragmas ...string) (*sql.DB, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 			return nil, err
 		}
 	}
-	database, err := sql.Open("sqlite", URI(absolute, "rw", "foreign_keys(1)"))
+	database, err := sql.Open("sqlite", URI(absolute, "rw", append([]string{"foreign_keys(1)"}, pragmas...)...))
 	if err != nil {
 		return nil, err
 	}

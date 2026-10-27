@@ -34,9 +34,9 @@ func TestFeaturePackagesUseOnlyInteractAndStoreUtilitiesFromNano(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Store URI settings must survive replacement SQLite connections.
-			// These store owners share that policy, not core state access.
-			if name == "github.com/dkroshow/nano/internal/state/db" && (path == "../features/heartbeat/store.go" || path == "../features/mail/store.go") {
+			// Store owners share one home for the 0600 file rule and connection
+			// settings, not core state access.
+			if name == "github.com/dkroshow/nano/internal/state/db" && (path == "../features/heartbeat/store.go" || path == "../features/mail/store.go" || path == "../features/feedback/store.go") {
 				alias := "db"
 				if spec.Name != nil {
 					alias = spec.Name.Name
@@ -47,8 +47,8 @@ func TestFeaturePackagesUseOnlyInteractAndStoreUtilitiesFromNano(t *testing.T) {
 				ast.Inspect(file, func(node ast.Node) bool {
 					selector, ok := node.(*ast.SelectorExpr)
 					if ok {
-						if ident, ok := selector.X.(*ast.Ident); ok && ident.Name == alias && selector.Sel.Name != "URI" {
-							t.Errorf("%s uses state/db.%s; only URI is store policy", path, selector.Sel.Name)
+						if ident, ok := selector.X.(*ast.Ident); ok && ident.Name == alias && selector.Sel.Name != "Open" && selector.Sel.Name != "URI" {
+							t.Errorf("%s uses state/db.%s; only Open and URI are store policy", path, selector.Sel.Name)
 						}
 					}
 					return true

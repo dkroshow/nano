@@ -29,8 +29,7 @@ const (
 	codexZeroTurnRecoveryMaximumBackoff = 2 * time.Second
 )
 
-// A variable only so a test that must outwait it does not pay five seconds.
-var codexZeroTurnRecoveryAttemptTimeout = 5 * time.Second
+const codexZeroTurnRecoveryAttemptTimeout = 5 * time.Second
 
 const (
 	supervisedDaemonLabel = "local.nano.app-server"

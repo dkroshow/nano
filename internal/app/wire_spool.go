@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,11 +28,41 @@ type wireSpool struct {
 }
 
 func prepareWireSpoolDir(base string) (string, error) {
-	if err := os.RemoveAll(base); err != nil {
-		return "", err
-	}
 	if err := os.MkdirAll(base, 0700); err != nil {
 		return "", err
+	}
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return "", err
+	}
+	marker := filepath.Join(base, ".nano-wire-spool")
+	info, markerErr := os.Lstat(marker)
+	if markerErr != nil && !os.IsNotExist(markerErr) {
+		return "", markerErr
+	}
+	if markerErr == nil && !info.Mode().IsRegular() {
+		return "", fmt.Errorf("wire spool marker is not a regular file: %s", marker)
+	}
+	if os.IsNotExist(markerErr) && len(entries) != 0 {
+		return "", fmt.Errorf("wire spool directory %s is non-empty and has no Nano marker; refusing cleanup", base)
+	}
+	if markerErr == nil {
+		contents, err := os.ReadFile(marker)
+		if err != nil {
+			return "", err
+		}
+		if string(contents) != "Nano wire spool\n" {
+			return "", fmt.Errorf("unrecognized wire spool marker: %s", marker)
+		}
+	} else if err := os.WriteFile(marker, []byte("Nano wire spool\n"), 0600); err != nil {
+		return "", err
+	}
+	for _, entry := range entries {
+		if entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "nano-wire-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+			if err := os.Remove(filepath.Join(base, entry.Name())); err != nil {
+				return "", err
+			}
+		}
 	}
 	return base, nil
 }
@@ -40,7 +71,7 @@ func newWireSpool(baseDir, sessionID string) (*wireSpool, error) {
 	if err := os.MkdirAll(baseDir, 0700); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(baseDir, sessionID+".jsonl")
+	path := filepath.Join(baseDir, "nano-wire-"+sessionID+".jsonl")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err

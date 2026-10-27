@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -31,20 +30,8 @@ func OpenStore(path, legacyPath string) (*Store, MigrationReport, error) {
 	if err != nil {
 		return nil, MigrationReport{}, fmt.Errorf("resolve mail path: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0700); err != nil {
-		return nil, MigrationReport{}, err
-	}
-	db, err := sql.Open("sqlite", statedb.URI(abs, "rwc", "foreign_keys(1)"))
+	db, err := statedb.Open(context.Background(), abs)
 	if err != nil {
-		return nil, MigrationReport{}, err
-	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, MigrationReport{}, err
-	}
-	if err := os.Chmod(abs, 0600); err != nil {
-		db.Close()
 		return nil, MigrationReport{}, err
 	}
 	store := &Store{DB: db}

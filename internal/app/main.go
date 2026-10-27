@@ -509,7 +509,7 @@ func (a *application) mount() (http.Handler, http.Handler) {
 		}
 		fileServer.ServeHTTP(w, r)
 	}))
-	return listenerHandlersWithLoopback(compressResponses(a.server.refuseWritesWhileStopping(mux)), a.remoteAuth.Guard, nil)
+	return listenerHandlersWithLoopback(compressResponses(a.server.refuseWritesWhileStopping(mux)), a.remoteAuth.Guard, a.config.AllowDevOrigin)
 }
 
 func (a *application) run(localHandler, remoteHandler http.Handler) {
@@ -607,8 +607,7 @@ func (a *application) serve(listener net.Listener, localHandler, remoteHandler h
 }
 
 // launchd sends SIGKILL 5 s after SIGTERM (the job sets no ExitTimeOut). The
-// stop ends well before that; deploy.sh also waits only 10 s for the new
-// process.
+// stop finishes within that deadline.
 const (
 	stopDeliveryWait = 3 * time.Second
 	stopDeadline     = 4 * time.Second
@@ -1143,67 +1142,8 @@ func (s *server) handleCodexModels(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	models, err = ensureCodexAstraModel(models)
-	if err != nil {
-		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(models)
-}
-
-// ensureCodexAstraModel keeps the public catalog aligned with a model the
-// installed Codex runtime already accepts, even while model/list lags behind.
-// Once the provider advertises Astra, its response remains byte-for-byte
-// authoritative so Nano cannot shadow newer metadata.
-func ensureCodexAstraModel(models json.RawMessage) (json.RawMessage, error) {
-	var body map[string]json.RawMessage
-	if err := json.Unmarshal(models, &body); err != nil {
-		return nil, fmt.Errorf("decode model/list: %w", err)
-	}
-
-	var data []json.RawMessage
-	if err := json.Unmarshal(body["data"], &data); err != nil {
-		return nil, fmt.Errorf("decode model/list data: %w", err)
-	}
-	for _, raw := range data {
-		var model struct {
-			Model string `json:"model"`
-		}
-		if err := json.Unmarshal(raw, &model); err != nil {
-			return nil, fmt.Errorf("decode model/list entry: %w", err)
-		}
-		if model.Model == "gpt-6-astra" {
-			return models, nil
-		}
-	}
-
-	data = append(data, json.RawMessage(`{
-		"id":"gpt-6-astra",
-		"model":"gpt-6-astra",
-		"displayName":"GPT-6-Astra",
-		"description":"Our most capable model for complex, demanding work.",
-		"hidden":false,
-		"defaultReasoningEffort":"low",
-		"supportedReasoningEfforts":[
-			{"reasoningEffort":"low"},
-			{"reasoningEffort":"medium"},
-			{"reasoningEffort":"high"},
-			{"reasoningEffort":"xhigh"},
-			{"reasoningEffort":"max"},
-			{"reasoningEffort":"ultra"}
-		]
-	}`))
-	encodedData, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("encode model/list data: %w", err)
-	}
-	body["data"] = encodedData
-	merged, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("encode model/list: %w", err)
-	}
-	return merged, nil
 }
 
 func (s *server) handleGrokModels(w http.ResponseWriter, r *http.Request) {

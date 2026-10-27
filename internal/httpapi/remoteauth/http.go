@@ -55,15 +55,6 @@ func New(store *Store, remoteHost string) *Authenticator {
 
 func (a *Authenticator) RemoteHost() string { return a.remoteHost }
 
-// WithAuthenticatedSession supplies the same request facts as Guard after it
-// validates a remote browser cookie. It exists for trusted edge composition
-// and focused tests; public requests must enter through Guard.
-func WithAuthenticatedSession(r *http.Request, sessionID string) *http.Request {
-	ctx := context.WithValue(r.Context(), remoteRequestKey, true)
-	ctx = context.WithValue(ctx, remoteSessionKey, Session{ID: sessionID})
-	return r.WithContext(ctx)
-}
-
 func (a *Authenticator) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/auth/login", a.handleLogin)
 	mux.HandleFunc("/auth/logout", a.handleLogout)
@@ -166,13 +157,14 @@ func (a *Authenticator) Guard(next http.Handler) http.Handler {
 // GuardLocal protects every route on the trusted loopback listener, including
 // diagnostics and maintenance routes mounted outside the application mux.
 // Requests without browser provenance remain available to local tools.
-func GuardLocal(next http.Handler) http.Handler {
+func GuardLocal(next http.Handler, allowDevOrigin bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
 		if !isLoopbackRequestHost(r.Host) {
 			httpapi.WriteHTTPError(w, "local host required", http.StatusMisdirectedRequest)
 			return
 		}
-		if (requestChangesState(r) || strings.HasPrefix(r.URL.Path, "/debug/pprof/")) && !localRequestOriginAllowed(r) {
+		if (requestChangesState(r) || strings.HasPrefix(r.URL.Path, "/debug/pprof/")) && !localRequestOriginAllowed(r, allowDevOrigin) {
 			httpapi.WriteHTTPError(w, "invalid request origin", http.StatusForbidden)
 			return
 		}
@@ -180,7 +172,7 @@ func GuardLocal(next http.Handler) http.Handler {
 	})
 }
 
-func localRequestOriginAllowed(r *http.Request) bool {
+func localRequestOriginAllowed(r *http.Request, allowDevOrigin bool) bool {
 	if site := strings.TrimSpace(strings.ToLower(r.Header.Get("Sec-Fetch-Site"))); site == "cross-site" {
 		return false
 	}
@@ -193,13 +185,13 @@ func localRequestOriginAllowed(r *http.Request) bool {
 		if err != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
 			return false
 		}
-		return requestOriginMatches(origin, localScheme(r), r.Host) || requestOriginMatches(origin, "http", "localhost:5173")
+		return requestOriginMatches(origin, localScheme(r), r.Host) || (allowDevOrigin && requestOriginMatches(origin, "http", "localhost:5173"))
 	}
 	if site := strings.TrimSpace(strings.ToLower(r.Header.Get("Sec-Fetch-Site"))); site != "" {
 		return site == "same-origin"
 	}
 	if referer := strings.TrimSpace(r.Header.Get("Referer")); referer != "" {
-		return requestOriginMatches(referer, localScheme(r), r.Host) || requestOriginMatches(referer, "http", "localhost:5173")
+		return requestOriginMatches(referer, localScheme(r), r.Host) || (allowDevOrigin && requestOriginMatches(referer, "http", "localhost:5173"))
 	}
 	return true
 }

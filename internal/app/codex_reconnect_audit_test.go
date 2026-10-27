@@ -365,9 +365,6 @@ func TestReconnectAuditZeroTurnWaitsForSlotWithoutAttemptTimeout(t *testing.T) {
 	daemon := fake.daemon()
 	sess := reconnectTestSession(t, daemon, "saturated-zero")
 	sess.codexZeroTurnResume = true
-	previous := codexZeroTurnRecoveryAttemptTimeout
-	codexZeroTurnRecoveryAttemptTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { codexZeroTurnRecoveryAttemptTimeout = previous })
 	for slot := 0; slot < codexResumeConcurrency; slot++ {
 		daemon.resumeSlots <- struct{}{}
 	}

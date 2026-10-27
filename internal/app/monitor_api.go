@@ -17,11 +17,9 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi"
 )
 
-// An external host monitor reads these few numbers every minute
-// instead of the full session list. In turn, Nano notices when the monitor's
-// snapshots stop, so each process watches the other. Both write alerts to one
-// append-only file in the monitor's directory, and this endpoint serves the
-// newest of them to agents.
+// The monitor endpoint exposes Nano process and active-turn state to operator
+// tools. If a tool writes host snapshots and alerts in the health directory,
+// Nano serves the latest records and flags snapshots that have stopped updating.
 
 const (
 	// Snapshots land every minute and the check runs every minute, so a

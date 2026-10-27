@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1219,4 +1220,43 @@ func TestSlowWriteHoldsLogOncePerMinuteWithACount(t *testing.T) {
 	if lines := strings.Count(logs.String(), "slow write hold"); lines != 2 || !strings.Contains(logs.String(), "; 1 more since the last line") {
 		t.Fatalf("log after the minute =\n%s", logs.String())
 	}
+}
+
+// openStore uses an instrumenting driver to observe the statements a history
+// cycle issues. Production uses the shared private-file opener.
+func openStore(driverName, path string) (*Store, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("history database path is empty")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve history database path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
+		return nil, fmt.Errorf("create history data directory: %w", err)
+	}
+
+	u := url.URL{Scheme: "file", Path: abs}
+	query := u.Query()
+	query.Set("_pragma", "busy_timeout(5000)")
+	query.Add("_pragma", "foreign_keys(1)")
+	query.Add("_pragma", fmt.Sprintf("journal_size_limit(%d)", historyJournalSizeLimit))
+	u.RawQuery = query.Encode()
+	db, err := sql.Open(driverName, u.String())
+	if err != nil {
+		return nil, fmt.Errorf("open history database: %w", err)
+	}
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+
+	store := &Store{db: db}
+	if err := store.initialize(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := os.Chmod(abs, 0o600); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("protect history database: %w", err)
+	}
+	return store, nil
 }

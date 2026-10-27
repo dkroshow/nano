@@ -41,7 +41,7 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Deploy records as scripts/deploy.sh writes them (scrubbed).
+	// Synthetic deployment records in the format accepted by the endpoint.
 	var deploys strings.Builder
 	for i := range 7 {
 		fmt.Fprintf(&deploys, `{"v":1,"started_at":"2026-10-01T0%d:00:00Z","stamp":"s%d","restarted_at":"2026-10-01T0%d:01:00Z","offline_s":12,"result":"verified"}`+"\n", i, i, i)

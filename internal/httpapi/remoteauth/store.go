@@ -5,6 +5,7 @@ package remoteauth
 // erase a password or silently sign every remote browser out.
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -12,18 +13,15 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"golang.org/x/crypto/argon2"
 	"net/mail"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/dkroshow/nano/internal/files"
-
-	"golang.org/x/crypto/argon2"
+	statedb "github.com/dkroshow/nano/internal/state/db"
 	_ "modernc.org/sqlite"
 )
 
@@ -62,25 +60,9 @@ func OpenStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve remote auth database: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
-		return nil, fmt.Errorf("create remote auth directory: %w", err)
-	}
-	u := url.URL{Scheme: "file", Path: absolute}
-	query := u.Query()
-	query.Add("_pragma", "busy_timeout(5000)")
-	u.RawQuery = query.Encode()
-	db, err := sql.Open("sqlite", u.String())
+	db, err := statedb.Open(context.Background(), absolute)
 	if err != nil {
 		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("configure remote auth database: %w", err)
-	}
-	if err = os.Chmod(absolute, 0o600); err != nil && !os.IsNotExist(err) {
-		db.Close()
-		return nil, fmt.Errorf("secure remote auth database: %w", err)
 	}
 	store := &Store{db: db, now: time.Now}
 	if err := store.migrate(); err != nil {

@@ -9,56 +9,6 @@ import (
 	"time"
 )
 
-func TestEnsureCodexAstraModelAppendsFallback(t *testing.T) {
-	input := json.RawMessage(`{"data":[{"model":"gpt-5.6-sol","displayName":"Sol"}],"nextCursor":"cursor"}`)
-	merged, err := ensureCodexAstraModel(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var got struct {
-		Data []struct {
-			Model                     string `json:"model"`
-			DisplayName               string `json:"displayName"`
-			DefaultReasoningEffort    string `json:"defaultReasoningEffort"`
-			SupportedReasoningEfforts []struct {
-				ReasoningEffort string `json:"reasoningEffort"`
-			} `json:"supportedReasoningEfforts"`
-		} `json:"data"`
-		NextCursor string `json:"nextCursor"`
-	}
-	if err := json.Unmarshal(merged, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.NextCursor != "cursor" || len(got.Data) != 2 {
-		t.Fatalf("merged catalog = %s", merged)
-	}
-	astra := got.Data[1]
-	if astra.Model != "gpt-6-astra" || astra.DisplayName != "GPT-6-Astra" || astra.DefaultReasoningEffort != "low" {
-		t.Fatalf("Astra fallback = %+v", astra)
-	}
-	wantEfforts := []string{"low", "medium", "high", "xhigh", "max", "ultra"}
-	if len(astra.SupportedReasoningEfforts) != len(wantEfforts) {
-		t.Fatalf("Astra efforts = %+v", astra.SupportedReasoningEfforts)
-	}
-	for i, want := range wantEfforts {
-		if got := astra.SupportedReasoningEfforts[i].ReasoningEffort; got != want {
-			t.Fatalf("Astra effort %d = %q, want %q", i, got, want)
-		}
-	}
-}
-
-func TestEnsureCodexAstraModelPreservesProviderEntry(t *testing.T) {
-	input := json.RawMessage(`{"data":[{"model":"gpt-6-astra","displayName":"Provider Astra","futureField":true}]}`)
-	merged, err := ensureCodexAstraModel(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(merged, input) {
-		t.Fatalf("provider catalog changed:\n got %s\nwant %s", merged, input)
-	}
-}
-
 // The New Window UI selects models from model/list, then shows this exact
 // preview before spawning. Keep GPT-6.1 Sol, GPT-6 Astra, Sol, Luna and the current GPT-5.6 family covered here so a
 // future change cannot silently drop or rewrite one of the selected slugs.

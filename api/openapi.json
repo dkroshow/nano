@@ -1838,7 +1838,7 @@
         "tags": ["Browser validation"],
         "operationId": "listBrowserValidations",
         "summary": "Read browser validations and durable duplicate incidents",
-        "description": "Returns the latest content-free intended-versus-mounted row comparisons, meaningful-change history, and durable duplicate fingerprints. Validation rows are in-memory browser evidence. Duplicate incidents survive restart and include their pending-to-sent standing-orchestrator inbox relay watermark.",
+        "description": "Returns the latest content-free intended-versus-mounted row comparisons, meaningful-change history, and durable duplicate fingerprints. Validation rows are in-memory browser evidence. Duplicate incidents survive restart.",
         "parameters": [
           {"name":"hostedThreadId","in":"query","schema":{"type":"string"}},
           {"name":"threadId","in":"query","schema":{"type":"string"}},
@@ -1858,7 +1858,7 @@
         "tags": ["Browser validation"],
         "operationId": "observeBrowserValidation",
         "summary": "Publish one content-free mounted-row observation",
-        "description": "Accepts only row identities and state. Nano independently derives duplicate raw render keys and semantic message IDs. A duplicate observation is committed durably before acceptance; its standing-orchestrator alert retries from the durable pending row.",
+        "description": "Accepts only row identities and state. Nano independently derives duplicate raw render keys and semantic message IDs. A duplicate observation is committed durably before acceptance; the incident remains available for later inspection.",
         "requestBody": {
           "required": true,
           "content": {"application/json":{"schema":{"$ref":"#/components/schemas/TranscriptValidation"}}}

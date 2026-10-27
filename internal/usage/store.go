@@ -6,12 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
+	statedb "github.com/dkroshow/nano/internal/state/db"
 	_ "modernc.org/sqlite"
 )
 
@@ -55,10 +54,7 @@ func Open(path string) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("usage store path is required")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("create usage-limits directory: %w", err)
-	}
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	db, err := statedb.Open(context.Background(), path)
 	if err != nil {
 		return nil, fmt.Errorf("open usage-limits database: %w", err)
 	}

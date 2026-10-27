@@ -5,18 +5,17 @@
 package feedback
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
+	statedb "github.com/dkroshow/nano/internal/state/db"
 	_ "modernc.org/sqlite"
 )
 
@@ -81,22 +80,9 @@ func Open(path string) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("feedback database path is required")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("create feedback directory: %w", err)
-	}
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: url.Values{"mode": {"rwc"}, "_pragma": {"busy_timeout(5000)"}}.Encode()}
-	db, err := sql.Open("sqlite", uri.String())
+	db, err := statedb.Open(context.Background(), path)
 	if err != nil {
 		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("configure feedback database: %w", err)
-	}
-	if err = os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
-		db.Close()
-		return nil, fmt.Errorf("secure feedback database: %w", err)
 	}
 	if _, err = db.Exec(`
 CREATE TABLE IF NOT EXISTS feedback_notes (

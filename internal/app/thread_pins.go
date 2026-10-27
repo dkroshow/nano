@@ -29,19 +29,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/httpapi"
-	statedb "github.com/dkroshow/nano/internal/state/db"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/httpapi"
+	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
 const (
@@ -73,21 +72,9 @@ func openThreadPinsStore(path string) (*threadPinsStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve thread pins database: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
-		return nil, fmt.Errorf("create thread pins directory: %w", err)
-	}
-	db, err := sql.Open("sqlite", statedb.URI(absolute, "rwc"))
+	db, err := statedb.Open(context.Background(), absolute)
 	if err != nil {
 		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("configure thread pins database: %w", err)
-	}
-	if err = os.Chmod(absolute, 0o600); err != nil && !os.IsNotExist(err) {
-		db.Close()
-		return nil, fmt.Errorf("secure thread pins database: %w", err)
 	}
 	// The observation tables belong to the monitor. They count reads; they
 	// never reference pins by foreign key and never change a pin row.

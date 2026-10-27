@@ -26,6 +26,10 @@ func TestPackageImportsOnlyEdgeDependencies(t *testing.T) {
 		}
 		for _, spec := range file.Imports {
 			name, _ := strconv.Unquote(spec.Path.Value)
+			// Only the store may share the single 0600 SQLite file rule.
+			if path == "store.go" && name == "github.com/dkroshow/nano/internal/state/db" {
+				continue
+			}
 			if strings.HasPrefix(name, "github.com/dkroshow/nano/") && !allowed[name] {
 				t.Fatalf("%s imports %s", path, name)
 			}

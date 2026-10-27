@@ -27,6 +27,11 @@ func TestUsageDependencyDirection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Only the store shares the single 0600 SQLite file rule; it
+			// still cannot depend on application state.
+			if path == "store.go" && dependency == "github.com/dkroshow/nano/internal/state/db" {
+				continue
+			}
 			if strings.HasPrefix(dependency, "github.com/dkroshow/nano/") {
 				t.Errorf("%s imports Nano package %s", path, dependency)
 			}

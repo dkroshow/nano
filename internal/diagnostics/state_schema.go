@@ -6,7 +6,8 @@ import (
 )
 
 // MigrateStateSchema owns the browser incident table while it remains lodged
-// in the shared state database.
+// in the shared state database. The unused alert columns and index remain
+// for existing stores; removing them would require a schema migration.
 func MigrateStateSchema(tx interface {
 	Exec(string, ...any) (sql.Result, error)
 }, version int) error {
@@ -50,14 +51,12 @@ func MigrateStateSchema(tx interface {
 func CheckStateIntegrity(db *sql.DB) error {
 	var invalid int
 	err := db.QueryRow(`SELECT count(*) FROM browser_duplicate_incidents
-		WHERE (raw_render_key_fingerprint='' AND semantic_id_fingerprint='')
-		OR alert_state NOT IN ('pending','sent')
-		OR (alert_state='sent' AND (alert_message_id IS NULL OR alert_message_id=''))`).Scan(&invalid)
+		WHERE (raw_render_key_fingerprint='' AND semantic_id_fingerprint='')`).Scan(&invalid)
 	if err != nil {
 		return err
 	}
 	if invalid != 0 {
-		return fmt.Errorf("control metadata integrity failure: %d browser duplicate incidents have invalid fingerprint or alert state", invalid)
+		return fmt.Errorf("control metadata integrity failure: %d browser duplicate incidents have invalid fingerprint", invalid)
 	}
 	return nil
 }

@@ -7,9 +7,10 @@ import (
 	"testing"
 )
 
-func TestLoopbackDebugHandlerExposesGoroutinesOnlyLocally(t *testing.T) {
+// Process diagnostics are local-only; the remote application mux must not expose them.
+func TestLoopbackOnlyRoutesNeverReachRemoteHandler(t *testing.T) {
 	application := http.NewServeMux()
-	local, remote := listenerHandlersWithLoopback(application, func(handler http.Handler) http.Handler { return handler }, nil)
+	local, remote := listenerHandlersWithLoopback(application, func(handler http.Handler) http.Handler { return handler }, false)
 
 	response := httptest.NewRecorder()
 	local.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost:7690/debug/pprof/goroutine?debug=1", nil))
@@ -25,7 +26,7 @@ func TestLoopbackDebugHandlerExposesGoroutinesOnlyLocally(t *testing.T) {
 }
 
 func TestLoopbackDebugHandlerExposesStandardPprofRoutes(t *testing.T) {
-	local, _ := listenerHandlersWithLoopback(http.NewServeMux(), func(handler http.Handler) http.Handler { return handler }, nil)
+	local, _ := listenerHandlersWithLoopback(http.NewServeMux(), func(handler http.Handler) http.Handler { return handler }, false)
 	for _, path := range []string{"/debug/pprof/", "/debug/pprof/cmdline", "/debug/pprof/symbol"} {
 		response := httptest.NewRecorder()
 		local.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost:7690"+path, nil))
@@ -35,35 +36,12 @@ func TestLoopbackDebugHandlerExposesStandardPprofRoutes(t *testing.T) {
 	}
 }
 
-func TestLoopbackOnlyRoutesNeverReachRemoteHandler(t *testing.T) {
-	application := http.NewServeMux()
-	local, remote := listenerHandlersWithLoopback(application, func(handler http.Handler) http.Handler { return handler }, func(mux *http.ServeMux) {
-		mux.HandleFunc("/api/v1/maintenance/interrupted-submissions", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	})
-	cases := map[string]struct {
-		handler http.Handler
-		want    int
-	}{
-		"local":  {local, http.StatusNoContent},
-		"remote": {remote, http.StatusNotFound},
-	}
-	for name, test := range cases {
-		t.Run(name, func(t *testing.T) {
-			response := httptest.NewRecorder()
-			test.handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "http://localhost:7690/api/v1/maintenance/interrupted-submissions", nil))
-			if response.Code != test.want {
-				t.Fatalf("status = %d, want %d", response.Code, test.want)
-			}
-		})
-	}
-}
-
 func TestLocalListenerRejectsUntrustedHostBeforeAnyRoute(t *testing.T) {
 	application := http.NewServeMux()
 	application.HandleFunc("/api/write", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	application.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	application.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	local, _ := listenerHandlersWithLoopback(application, func(handler http.Handler) http.Handler { return handler }, nil)
+	local, _ := listenerHandlersWithLoopback(application, func(handler http.Handler) http.Handler { return handler }, false)
 	for _, host := range []string{"127.0.0.1:7690", "localhost:7690", "[::1]:7690", "127.0.0.2:7690"} {
 		t.Run(host, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "http://localhost:7690/api/write", nil)
@@ -100,12 +78,10 @@ func TestLocalListenerRejectsUntrustedHostBeforeAnyRoute(t *testing.T) {
 	}
 }
 
-func TestLocalListenerRejectsCrossSiteWritesWithoutBlockingToolsOrVite(t *testing.T) {
+func TestLocalListenerRejectsCrossSiteWritesWithoutBlockingLocalTools(t *testing.T) {
 	application := http.NewServeMux()
 	application.HandleFunc("/api/write", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	local, _ := listenerHandlersWithLoopback(application, func(handler http.Handler) http.Handler { return handler }, func(mux *http.ServeMux) {
-		mux.HandleFunc("/api/v1/maintenance/interrupted-submissions", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	})
+	local, _ := listenerHandlersWithLoopback(application, func(handler http.Handler) http.Handler { return handler }, false)
 	for _, test := range []struct {
 		name, method, path, host, origin, referer, fetchSite string
 		want                                                 int
@@ -113,13 +89,12 @@ func TestLocalListenerRejectsCrossSiteWritesWithoutBlockingToolsOrVite(t *testin
 		{"curl and hosted agents", http.MethodPost, "/api/write", "127.0.0.1:7690", "", "", "", http.StatusNoContent},
 		{"same origin browser", http.MethodPut, "/api/write", "localhost:7690", "http://localhost:7690", "", "same-origin", http.StatusNoContent},
 		{"Vite proxy", http.MethodPost, "/api/write", "localhost:5173", "http://localhost:5173", "", "same-origin", http.StatusNoContent},
-		{"Vite direct API", http.MethodPost, "/api/write", "localhost:7690", "http://localhost:5173", "", "same-site", http.StatusNoContent},
+		{"Vite direct API", http.MethodPost, "/api/write", "localhost:7690", "http://localhost:5173", "", "same-site", http.StatusForbidden},
 		{"cross-site origin", http.MethodPost, "/api/write", "127.0.0.1:7690", "https://attacker.example", "", "", http.StatusForbidden},
 		{"opaque origin", http.MethodPost, "/api/write", "127.0.0.1:7690", "null", "", "", http.StatusForbidden},
 		{"cross-site fetch metadata", http.MethodPut, "/api/write", "127.0.0.1:7690", "", "", "cross-site", http.StatusForbidden},
 		{"cross-site referer", http.MethodDelete, "/api/write", "localhost:7690", "", "https://attacker.example/form", "", http.StatusForbidden},
 		{"cross-site maintenance", http.MethodPost, "/api/v1/maintenance/interrupted-submissions", "localhost:7690", "https://attacker.example", "", "", http.StatusForbidden},
-		{"local maintenance", http.MethodPost, "/api/v1/maintenance/interrupted-submissions", "localhost:7690", "", "", "", http.StatusNoContent},
 		// An https target arrives over TLS: the loopback HTTPS listener serves this same handler.
 		{"HTTPS same origin browser", http.MethodPost, "https://localhost:7694/api/write", "localhost:7694", "https://localhost:7694", "", "same-origin", http.StatusNoContent},
 		{"HTTPS same origin referer", http.MethodPost, "https://localhost:7694/api/write", "localhost:7694", "", "https://localhost:7694/?thread=a", "", http.StatusNoContent},
@@ -151,7 +126,7 @@ func TestLocalListenerRejectsCrossSiteWritesWithoutBlockingToolsOrVite(t *testin
 }
 
 func TestLocalListenerRejectsCrossSiteProfilingReads(t *testing.T) {
-	local, _ := listenerHandlersWithLoopback(http.NewServeMux(), func(handler http.Handler) http.Handler { return handler }, nil)
+	local, _ := listenerHandlersWithLoopback(http.NewServeMux(), func(handler http.Handler) http.Handler { return handler }, false)
 	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:7690/debug/pprof/goroutine?debug=1", nil)
 	request.Header.Set("Sec-Fetch-Site", "cross-site")
 	response := httptest.NewRecorder()

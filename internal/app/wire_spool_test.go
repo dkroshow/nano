@@ -154,3 +154,46 @@ func assertSeqs(t *testing.T, events []wireEvent, want []int64) {
 		}
 	}
 }
+
+// A configured spool path must never erase another application's files.
+func TestPrepareWireSpoolDirPreservesForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	foreign := filepath.Join(dir, "notes.jsonl")
+	if err := os.WriteFile(foreign, []byte("keep me"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareWireSpoolDir(dir); err == nil {
+		t.Fatal("accepted a non-empty, unmarked directory")
+	}
+	if got, err := os.ReadFile(foreign); err != nil || string(got) != "keep me" {
+		t.Fatalf("foreign file changed: %q, %v", got, err)
+	}
+}
+
+// Restart cleanup owns only marked Nano spool files, never the directory.
+func TestPrepareWireSpoolDirRemovesOnlyStaleSpools(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := prepareWireSpoolDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	spool, err := newWireSpool(dir, "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := spool.close(false); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(dir, "notes.jsonl")
+	if err := os.WriteFile(foreign, []byte("keep me"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareWireSpoolDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(spool.path); !os.IsNotExist(err) {
+		t.Fatalf("stale spool remains: %v", err)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Fatalf("foreign file removed: %v", err)
+	}
+}

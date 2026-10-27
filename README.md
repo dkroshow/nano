@@ -36,7 +36,7 @@ every change is held to: [docs/principles.md](docs/principles.md).
 
 - macOS. Nano watches provider session files with kqueue and finds new ones
   with FSEvents; Linux is untested.
-- Go 1.24 or later. Node: the latest 22.x, or newer. The locked web
+- Go 1.25 or later. The module selects the Go 1.26.5 toolchain. Node: the latest 22.x, or newer. The locked web
   dependencies need at least 22.22.2 in the 22 line, 24.15 in the 24 line,
   or any 26. Older Node builds the bundle with a warning but fails the
   component tests.

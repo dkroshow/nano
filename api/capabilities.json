@@ -286,7 +286,7 @@
     },
     {
       "id": "browserValidations.observe",
-      "summary": "Publish or read content-free browser row validation, including durable duplicate fingerprints and their exactly-once standing-orchestrator alert state.",
+      "summary": "Publish or read content-free browser row validation, including durable duplicate fingerprints and their durable incident state.",
       "method": "GET|POST",
       "path": "/api/v1/browser-validations"
     },

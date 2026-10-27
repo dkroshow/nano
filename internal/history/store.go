@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	statedb "github.com/dkroshow/nano/internal/state/db"
 	_ "modernc.org/sqlite"
 )
 
@@ -125,7 +126,18 @@ func (s *Store) backgroundWrite(ctx context.Context) (func(), error) {
 const historyJournalSizeLimit = 256 << 20
 
 func Open(path string) (*Store, error) {
-	return openStore("sqlite", path)
+	db, err := statedb.Open(context.Background(), path, fmt.Sprintf("journal_size_limit(%d)", historyJournalSizeLimit))
+	if err != nil {
+		return nil, fmt.Errorf("open history database: %w", err)
+	}
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+	store := &Store{db: db}
+	if err := store.initialize(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return store, nil
 }
 
 // OpenReadOnly opens an existing history store without migrations, journal
@@ -204,46 +216,6 @@ func OpenMaintenance(path string) (*Store, error) {
 		return nil, fmt.Errorf("history database schema is %d, want 28", schemaVersion)
 	}
 	return &Store{db: db}, nil
-}
-
-// openStore is the driver-parameterized core of Open. Production always passes
-// the "sqlite" driver; tests substitute an instrumenting wrapper to observe the
-// statements a cycle issues.
-func openStore(driverName, path string) (*Store, error) {
-	if strings.TrimSpace(path) == "" {
-		return nil, errors.New("history database path is empty")
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return nil, fmt.Errorf("resolve history database path: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
-		return nil, fmt.Errorf("create history data directory: %w", err)
-	}
-
-	u := url.URL{Scheme: "file", Path: abs}
-	query := u.Query()
-	query.Set("_pragma", "busy_timeout(5000)")
-	query.Add("_pragma", "foreign_keys(1)")
-	query.Add("_pragma", fmt.Sprintf("journal_size_limit(%d)", historyJournalSizeLimit))
-	u.RawQuery = query.Encode()
-	db, err := sql.Open(driverName, u.String())
-	if err != nil {
-		return nil, fmt.Errorf("open history database: %w", err)
-	}
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
-
-	store := &Store{db: db}
-	if err := store.initialize(context.Background()); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := os.Chmod(abs, 0o600); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("protect history database: %w", err)
-	}
-	return store, nil
 }
 
 func (s *Store) initialize(ctx context.Context) error {
