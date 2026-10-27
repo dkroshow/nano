@@ -1,0 +1,8 @@
+{"type":"session_meta","timestamp":"2026-01-01T00:00:00Z","payload":{"id":"thread","cwd":" /work ","originator":"cli","cli_version":"1","title":" Initial ","gitInfo":{"branch":"main"},"source":{"subagent":{"other":"guardian","thread_spawn":{"parent_thread_id":"parent"}}}}}
+{"type":"turn_context","timestamp":"2026-01-01T00:00:01Z","payload":{"collaboration_mode":{"settings":{"model":"model-a","effort":"high","service_tier":"fast"}},"sandbox_policy":{"type":"workspace-write"}}}
+{"type":"response_item","timestamp":"2026-01-01T00:00:02Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>injected</environment_context>"}]}}
+{"type":"response_item","timestamp":"2026-01-01T00:00:03Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":" First\n request "}]}}
+{"type":"event_msg","timestamp":"2026-01-01T00:00:04Z","payload":{"type":"user_message","message":"Do not replace preview"}}
+{"type":"turn_context","timestamp":"invalid","ts":"2026-01-01T00:00:05Z","payload":{"model":"model-b","effort":"low","serviceTier":"standard","approvalPolicy":"never","cwd":"/work"}}
+{"type":"turn_context","payload":{"updated_at":"2026-01-01T00:00:06Z","model":"model-b"}}
+{"type":"session_meta","timestamp":"2026-01-01T00:00:07Z","payload":{"threadId":"thread","name":" Renamed ","preview":" Last\n preview "}}

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "sourceField": "timestamp",
+        "precision": "millisecond"
+      },
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "parentUuid": "id-b526a187",
+          "isSidechain": false,
+          "attachment": {
+            "type": "auto_mode",
+            "autoModeConsentFlow": false,
+            "bashFirst": true,
+            "steerOnly": true,
+            "bypass": true
+          },
+          "type": "attachment",
+          "uuid": "id-4e477552",
+          "timestamp": "2026-01-01T00:00:00.000Z",
+          "userType": "[scrubbed]",
+          "entrypoint": "nano",
+          "cwd": "[scrubbed]",
+          "sessionId": "id-fccbbcc6",
+          "version": "2.1.257",
+          "gitBranch": "[scrubbed]"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "506e463d98a3c50b0b82bec732ac55cdb300cbfcd41d5694a6fef5eefd153e03",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-ba0b38b11818 at byte 17306. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

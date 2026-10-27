@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CODEX_SNAPSHOT_DELTA_OVERLAP_UNPROVEN",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 2
+      },
+      "detail": "Without a provider offset/sequence, repeated delta overlap is ambiguous."
+    }
+  ],
+  "observations": [
+    {
+      "type": "snapshot_merge",
+      "itemNativeId": "m",
+      "baselineText": "A",
+      "alreadyReceivedDelta": "B",
+      "expectedText": "AB",
+      "requires": "proven nonoverlapping prefix baseline",
+      "replayMarker": {
+        "kind": "resume_snapshot",
+        "requestId": 7
+      }
+    }
+  ]
+}

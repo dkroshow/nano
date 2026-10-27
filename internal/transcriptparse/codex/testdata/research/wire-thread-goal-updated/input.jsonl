@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "thread/goal/updated", "params": {"goal": {"createdAt": 0, "objective": "example", "status": "active", "threadId": "thread-example", "timeUsedSeconds": 0, "tokensUsed": 0, "updatedAt": 0}, "threadId": "thread-example"}}}

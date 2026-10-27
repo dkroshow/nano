@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "native_item_id",
+          "value": "item-example",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "turn-example",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "command",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "in_progress",
+      "outcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": "2026-01-01T00:00:00.000Z",
+      "tool": null,
+      "detail": {
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "itemId": "item-example",
+          "startedAtMs": 0,
+          "threadId": "thread-example",
+          "turnId": "turn-example"
+        }
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

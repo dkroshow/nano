@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "mode",
+          "mode": "normal",
+          "sessionId": "id-3d663b75"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "7d4d5e0a9964943e1bce0ef40d918f7c95c4a513bedeaca4fe82e68ee7257502",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-22a2322e34c0 at byte 0. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

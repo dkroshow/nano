@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [
+        {
+          "type": "row_uuid",
+          "value": "id-76c3a569",
+          "authority": "native"
+        }
+      ],
+      "turnRef": null,
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "[scrubbed]",
+      "contentParts": [
+        {
+          "text": "[scrubbed]",
+          "type": "text"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "sourceField": "timestamp",
+        "precision": "millisecond"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeRowFields": {
+          "parentUuid": null,
+          "isSidechain": false,
+          "promptId": "[scrubbed]",
+          "type": "user",
+          "uuid": "id-76c3a569",
+          "timestamp": "2026-01-01T00:00:00.000Z",
+          "permissionMode": "bypassPermissions",
+          "promptSource": "[scrubbed]",
+          "userType": "[scrubbed]",
+          "entrypoint": "nano",
+          "cwd": "[scrubbed]",
+          "sessionId": "id-fccbbcc6",
+          "version": "2.1.257",
+          "gitBranch": "[scrubbed]"
+        }
+      },
+      "originScope": {
+        "human": true,
+        "sidechain": false,
+        "nativeEntrypoint": "nano",
+        "nativeOrigin": null,
+        "injectedContext": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "message.content[0]",
+          "nativeEventId": null,
+          "hash": "cacef9a5019139070d122d24cf73f3737e90ff4e7d4a7ef52388dfea49b17f6b",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-ba0b38b11818 at byte 278. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

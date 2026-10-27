@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": "turn-example",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "snapshot_coverage",
+      "itemsView": "notLoaded",
+      "itemCountKnown": false
+    },
+    {
+      "type": "native_time",
+      "startedAt": 1767225600,
+      "completedAt": 1767225602,
+      "precision": "second",
+      "durationMs": 2100
+    }
+  ]
+}

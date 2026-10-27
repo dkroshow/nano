@@ -1,0 +1,24 @@
+nanod
+node_modules/
+web/dist/
+.DS_Store
+artifacts/browser-smoke/
+
+# impeccable: per-machine install (npx impeccable install --project); reinstall per clone
+.claude/settings.local.json
+.claude/skills/impeccable
+.agents/skills/impeccable
+.codex/hooks.json
+.impeccable/*
+!.impeccable/config.json
+claude-shim-bin
+nanod.prev
+nano-launcher-bin
+__pycache__/
+
+.project/
+.env
+mcp.json
+CLAUDE.local.md
+AGENTS.override.md
+.claude/worktrees/

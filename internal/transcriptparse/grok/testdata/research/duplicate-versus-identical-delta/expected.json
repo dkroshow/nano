@@ -1,0 +1,110 @@
+{
+  "items": [
+    {
+      "id": "derived:s1:e1",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e1",
+          "origin": "native"
+        },
+        {
+          "type": "native_event_id",
+          "value": "e2",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "AA",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "AA"
+        }
+      ],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000001,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_message_chunk"
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e1",
+          "replay": false,
+          "sha256": "fe25f4cefc7fdbd67e8ccb56d68b9582a03d36d70dfb82c04c48a90eb340c20e",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e1",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000001
+          }
+        },
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e2",
+          "replay": false,
+          "sha256": "bc33619df27aade56a70d044ff193149576bce210dddbfe82b27ba5647997f3b",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e2",
+            "promptId": "p1",
+            "agentTimestampMs": 1893455999000
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "GROK_DUPLICATE_EVENT",
+      "severity": "info",
+      "source": "input.jsonl",
+      "line": 3
+    },
+    {
+      "code": "GROK_TIME_REGRESSION",
+      "severity": "info",
+      "source": "input.jsonl",
+      "line": 2
+    }
+  ],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

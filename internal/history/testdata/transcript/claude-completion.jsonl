@@ -1,0 +1,8 @@
+{"type":"user","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-07-13T19:00:00Z","isMeta":true,"message":{"role":"user","content":"<system-reminder>PRIVATE_SENTINEL</system-reminder>"}}
+{"type":"user","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-07-13T19:00:01Z","message":{"role":"user","content":[{"type":"text","text":"Inspect the saved session."}]}}
+{"type":"assistant","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-07-13T19:00:02Z","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"Sidechain draft."}],"stop_reason":"end_turn"}}
+{"type":"assistant","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-07-13T19:00:03Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Checking structure."},{"type":"text","text":"I am inspecting it."},{"type":"tool_use","id":"tool-a","name":"Read","input":{"file_path":"PRIVATE_SENTINEL"}}],"stop_reason":"tool_use"}}
+{"type":"user","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-07-13T19:00:04Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-a","content":"Fixture contents."}]}}
+{"type":"assistant","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-07-13T19:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"The session is valid."}],"stop_reason":"end_turn"}}
+{"type":"system","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-07-13T19:00:06Z","subtype":"turn_duration","durationMs":6000}
+{"type":"future-private-row","payload":{"raw":"PRIVATE_SENTINEL"}}

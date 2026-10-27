@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "u1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "<task-notification><task-id>agent-example</task-id><status>completed</status><summary>Finished.</summary></task-notification>",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": false,
+        "taskNotification": true,
+        "parentCoordination": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "5a7f61d15a4f3e5375293e88ecfc101d4676dfc64cbef06fe15ea6599ad5f222",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "Origin is message provenance, separate from entrypoint. An explicit human origin must not suppress human activity. A notification does not open a human prompt turn."
+}

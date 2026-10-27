@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "sourceField": "timestamp",
+        "precision": "millisecond"
+      },
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "parentUuid": "id-e7fbd442",
+          "isSidechain": false,
+          "attachment": {
+            "type": "sandbox_instructions",
+            "content": "[scrubbed]"
+          },
+          "type": "attachment",
+          "uuid": "id-60c8e201",
+          "timestamp": "2026-01-01T00:00:00.000Z",
+          "userType": "[scrubbed]",
+          "entrypoint": "nano",
+          "cwd": "[scrubbed]",
+          "sessionId": "id-75eb2988",
+          "version": "2.1.257",
+          "gitBranch": "[scrubbed]"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "af97dde098823761758fea53f0e2f0501e0ddf65db6344581fba443625562d34",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-3005f4f078c6 at byte 1695932. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

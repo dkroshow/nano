@@ -1,0 +1,88 @@
+{
+  "items": [
+    {
+      "id": "derived:id-1:id-655",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "id-655",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1787069335265,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "subagent_spawned",
+        "native": {
+          "sessionUpdate": "subagent_spawned",
+          "subagent_id": "id-654",
+          "parent_session_id": "id-1",
+          "parent_prompt_id": "id-525",
+          "child_session_id": "id-654",
+          "subagent_type": "[text]",
+          "description": "[text]",
+          "effective_context_source": "new",
+          "capability_mode": "all",
+          "model": "[text]"
+        }
+      },
+      "scope": {
+        "sessionId": "id-1",
+        "origin": "parent_coordination",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "id-655",
+          "replay": false,
+          "sha256": "2840c555d6fc1279460a4146ddafa00f143ad6f65065c85fc825d4e7f779807f",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1787069335,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {
+            "eventId": "id-655",
+            "agentTimestampMs": 1787069335265
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

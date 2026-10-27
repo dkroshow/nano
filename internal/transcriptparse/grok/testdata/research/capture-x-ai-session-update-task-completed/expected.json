@@ -1,0 +1,112 @@
+{
+  "items": [
+    {
+      "id": "derived:id-900:id-977",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "id-977",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "command",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "success",
+      "nativeTimestamp": {
+        "value": 1787271174091,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "task_completed",
+        "native": {
+          "sessionUpdate": "task_completed",
+          "task_snapshot": {
+            "task_id": "[text]",
+            "command": "[text]",
+            "cwd": "/workspace/example",
+            "start_time": {
+              "secs_since_epoch": 1787271155,
+              "nanos_since_epoch": 306815000
+            },
+            "end_time": {
+              "secs_since_epoch": 1787271174,
+              "nanos_since_epoch": 91104000
+            },
+            "output": "[text]",
+            "output_file": "[text]",
+            "truncated": false,
+            "output_total_bytes": 215,
+            "exit_code": 0,
+            "signal": null,
+            "completed": true,
+            "kind": "bash",
+            "block_waited": false,
+            "explicitly_killed": false,
+            "kill_result_delivered": false,
+            "owner_session_id": "[text]",
+            "description": "[text]",
+            "is_backgrounded": true
+          },
+          "will_wake": true
+        },
+        "outputCompleteness": {
+          "state": "complete",
+          "basis": "task_snapshot.truncated",
+          "totalBytes": 215
+        }
+      },
+      "scope": {
+        "sessionId": "id-900",
+        "origin": "task_notification",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "id-977",
+          "replay": false,
+          "sha256": "bd970bccf443bc8a634d48f5b95318af765daaba25e36d98f9929ce7627333bc",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1787271174,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {
+            "eventId": "id-977",
+            "agentTimestampMs": 1787271174091
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

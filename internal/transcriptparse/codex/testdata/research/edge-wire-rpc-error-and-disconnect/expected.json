@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": "turn-example",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "CODEX_RPC_ERROR",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 2
+      },
+      "detail": "A resume failure does not prove the supervised turn ended."
+    }
+  ],
+  "observations": [
+    {
+      "type": "transport_close",
+      "observed": false,
+      "constructedCondition": "socket closes before terminal",
+      "expectedTurnState": "unknown"
+    }
+  ]
+}

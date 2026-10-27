@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "compaction",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [
+        {
+          "type": "encrypted",
+          "opaque": true,
+          "bodyRetained": false
+        }
+      ],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "precision": "millisecond",
+        "sourceField": "timestamp"
+      },
+      "observedTime": null,
+      "tool": null,
+      "detail": {
+        "type": "context_compaction"
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

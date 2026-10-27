@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "file-history-snapshot",
+          "messageId": "[scrubbed]",
+          "snapshot": {
+            "messageId": "[scrubbed]",
+            "trackedFileBackups": {},
+            "timestamp": "2026-01-01T00:00:00.000Z"
+          },
+          "isSnapshotUpdate": false
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "7db7a4080c494b4009ba43e286909be575b3b0b733accf71a798bf64cc550ce2",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-22a2322e34c0 at byte 198. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "mcp_tool_call_end", "call_id": "id-480590b559", "invocation": {"server": "[redacted]", "tool": "[redacted]", "arguments": {"query": "[redacted]", "limit": 5}}, "duration": {"secs": 0, "nanos": 370005786}, "result": {"Ok": {"content": [{"type": "text", "text": "[redacted]"}]}}}}

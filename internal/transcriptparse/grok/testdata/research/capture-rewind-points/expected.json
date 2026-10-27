@@ -1,0 +1,12 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "metadata": {
+    "prompt_index": 0,
+    "created_at": "2030-01-01T00:00:00.000000Z",
+    "file_snapshots": {},
+    "after_snapshots": {}
+  },
+  "note": "Auxiliary native snapshot. Retain as bounded source metadata; do not create duplicate conversation turns."
+}

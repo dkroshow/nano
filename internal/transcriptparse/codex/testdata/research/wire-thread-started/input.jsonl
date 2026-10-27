@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "thread/started", "params": {"thread": {"cliVersion": "example", "createdAt": 0, "cwd": "/workspace/example", "ephemeral": false, "id": "item-example", "modelProvider": "example", "preview": "example", "sessionId": "example", "source": "cli", "status": {"type": "notLoaded"}, "turns": [], "updatedAt": 0}}}}

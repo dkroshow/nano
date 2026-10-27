@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "collab_close_end", "call_id": "id-7c24b452cf", "sender_thread_id": "[redacted]", "receiver_thread_id": "[redacted]", "receiver_agent_nickname": "[redacted]", "receiver_agent_role": "[redacted]", "status": {"completed": "[redacted]"}}}

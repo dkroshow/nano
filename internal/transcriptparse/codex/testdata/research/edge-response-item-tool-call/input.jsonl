@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"id": "item-example", "method": "item/tool/call", "params": {"arguments": {}, "callId": "item-example", "threadId": "thread-example", "tool": "example", "turnId": "turn-example"}}}
+{"ts": "2026-01-01T00:00:00.001Z", "dir": "send", "msg": {"id": "item-example", "result": {"success": false, "contentItems": [{"type": "inputText", "text": "Example tool failure."}]}}}

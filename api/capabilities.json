@@ -1,0 +1,692 @@
+{
+  "schemaVersion": 1,
+  "name": "Nano Hosted Thread API",
+  "apiVersion": "v1",
+  "description": "Start, operate, observe, and continue ordinary Nano-hosted Codex and Claude sessions plus experimental Grok Build sessions.",
+  "discovery": {
+    "capabilities": "/api/v1/capabilities",
+    "openapi": "/api/v1/openapi.json"
+  },
+  "transport": {
+    "basePath": "/api/v1",
+    "defaultOrigin": "http://127.0.0.1:7690",
+    "formats": [
+      "application/json",
+      "text/event-stream"
+    ],
+    "trustBoundary": "local-machine",
+    "authentication": "none"
+  },
+  "providers": [
+    "codex",
+    "claude",
+    "grok"
+  ],
+  "providerStatus": {
+    "codex": "stable",
+    "claude": "stable",
+    "grok": "experimental"
+  },
+  "orchestrationAssignments": {
+    "optional": true,
+    "meaning": "A compact execution record owned by Nano, separate from prompts and permission policy.",
+    "roles": ["worker", "auditor"],
+    "focus": "Required trimmed text, at most 500 UTF-8 bytes.",
+    "relationship": "relatedHostedThreadId optionally sets the current visual parent for either role. Nano normalizes aliases, rejects self-links and cycles, and never changes immutable invocation lineage.",
+    "auditTargets": "Auditor only; zero through 16 normalized hosted-thread targets, each with an optional operationId that belongs to that thread.",
+    "creation": "POST /api/v1/hosted-threads accepts optional assignment. Omission remains unassigned; Nano never defaults to worker.",
+    "updates": "PUT /api/v1/hosted-threads/{threadRef}/assignment atomically replaces or clears the complete assignment and visual relationship using clientActionId idempotency.",
+    "snapshots": "Each accepted turn operation retains its immutable assignment event. Reassignment and status updates never rewrite older operations.",
+    "promptPolicy": "Nano never injects, prefixes, or rewrites caller prompts for an assignment. Sender attribution on agent-API prompts is a separate, turn-submit policy: see messaging.senderFooter."
+  },
+  "messaging": {
+    "status": "feature-owned durable inbox: mail.sqlite, indefinite retention by default, one optional dispositioned-mail retention-days setting, and no delete API, wake, prompt-mode mail, priority, or expiry",
+    "operator": "The human operator can send mail (operator:true instead of senderThreadRef) under the generic Operator identity, edit an operator-authored message while it is still unread (POST /api/v1/messages/{messageId}/edit; the previous content survives as an 'edited' event), and read everything without marking mail seen (peek reads, plus the read-only GET /api/v1/agent-messages cross-thread listing). Dispositions remain the recipient's alone. Catalog rows carry a read-time mail counts overlay and the thread-index SSE stream emits 'mail' count events.",
+    "boundary": "Mail is an addressed durable record and never creates a prompt turn. Direct prompts remain the separate emergency/ownership path.",
+    "send": "POST /api/v1/hosted-threads/{recipientRef}/messages requires senderThreadRef, sender-selected clientMessageId, and body; subject, refs, and dispositionFeedback are optional. Disposition feedback defaults off. Exact retries return one record; conflicting reuse returns 409.",
+    "read": "GET /api/v1/hosted-threads/{self}/inbox?actorThreadRef={self}. A normal read marks returned unread mail seen; peek=true does not. status=seen finds mail that was read but never dispositioned. Outbox and single-message event reads are also available.",
+    "disposition": "POST /api/v1/messages/{messageId}/status as the recipient with acted, declined, or deferred. Deferred may later become acted or declined. When that message opted into dispositionFeedback, Nano atomically sends a non-recursive system feedback message to the original sender.",
+    "unreadFooter": "Mail owns one bounded generic per-thread notice. Core prompt admission appends [nano: N unread — GET /api/v1/hosted-threads/<id>/inbox] when N > 0 without reading the mail store. The notice creates no turn and does not mark mail seen.",
+    "cli": "nano-agent send|inbox|outbox|message|ack. --from me and --as me require NANO_HOSTED_THREAD_ID.",
+    "senderThreadRef": "Required for agent-origin POST /api/v1/hosted-threads/{threadRef}/turns: the submitting agent's own hosted, alias, session, or live native reference. Nano rejects missing, unresolved, provisional, or identity-incomplete senders before it creates an operation, queue entry, send attempt, or provider delivery. A valid sender has a Nano display name and confirmed provider-native thread id; Nano captures its own UTC admission timestamp before queueing, persists origin=agent plus that immutable snapshot, and appends [from <name> · <native uuid> · submitted <UTC timestamp>]. System-origin requests omit senderThreadRef and use a nano: action id. Browser UI prompts remain unsigned and Nano system prompts remain [from nano].",
+    "senderFooter": "Every valid agent-API prompt is delivered as the caller's text, a blank line, then exactly one line: [from <Nano display name> · <provider-native thread ID> · submitted <UTC timestamp>]. The timestamp is Nano's server-side admission time, captured before queueing and preserved across retries, not eventual provider delivery time. Admission rejects a sender without either identity component. Human prompts from the UI carry no footer. System prompts carry [from nano]. The footer is composed before the text is persisted, is excluded from the clientActionId idempotency hash, and is never rewritten.",
+    "origin": "Every operation records origin: human (browser path), agent (the default on the hosted-turn API), or system (explicit on that API with a nano: action id).",
+    "queueOrder": "The per-thread prompt queue delivers by origin class human, then agent, then system, first-come within a class. queuePosition is the current delivery position and can increase when a human prompt arrives.",
+    "availability": "GET /api/v1/hosted-threads/{threadRef}/availability answers busy | awaiting-human | available | unreachable from hard facts only: turn in flight, queued backlog, an open permission/input card, and attachment state. The latest human-message time remains a diagnostic fact but elapsed time does not decide ownership. Read it before a prompt that would interrupt; pass requireIdle=true as well when you need an atomic guarantee. turnActive can under-report for notification-started turns.",
+    "norm": "Anyone may submit a prompt to any hosted thread. Be respectful: prefer reading availability and holding when the thread is busy or awaiting a human, and submit directly only when you are responsible for the recipient or the need is real. Every forced turn is attributed."
+  },
+  "subscriptions": {
+	"field": "subscriptions",
+    "creationOnly": false,
+    "default": {"inbox": "send", "prompt": "none"},
+	"meaning": "An invoker chooses inbox and prompt independently when it creates a child. PUT /api/v1/hosted-threads/{threadRef}/subscriptions updates both explicit choices after creation for subsequent completions. Each value is send or none. The inbox is the default and least intrusive option; prompt delivery is opt-in.",
+    "payload": "Each delivery contains only the worker display name, operationId, status, and GET /api/v1/turn-operations/{operationId}; it never includes response text.",
+	"delivery": "Inbox delivery is durable mail. Prompt delivery is an idempotent system-origin turn with clientActionId nano:subscription:{operationId}; ordinary prompt admission queues it behind a running turn and never interrupts.",
+	"fallback": "GET /api/v1/turn-operations/changes remains the pull surface.",
+    "reservedClientActionPrefix": "nano: identifies Nano-owned system submissions. Agent-origin turn submission rejects it; system-origin submission requires it."
+  },
+  "heartbeat": {
+    "status": "advanced, default-off; start Nano with -heartbeat",
+    "model": "A stateless UTC wall-clock scheduler with a one-minute floor, no tick counter, and no catch-up. After ten and twenty consecutive wakes without a human message or resume, the effective cadence floor rises to two and five minutes.",
+    "lifecycle": "Each attachment is active, explicitly paused with actor and reason, or removed. Pause and resume both require a reason. Any hosted agent may manage any attachment and every mutation is audited. A gone target self-pauses with a reason instead of disappearing.",
+    "wakeGate": "On every due minute: an explicit pause skips unless its pre-ping reports an arrival; interact lifecycle facts skip busy, awaiting-human, and unreachable targets; pre-ping may wake, skip, or fail; the global rolling-hour cap then gates interact prompt submission. Ineligible work is dropped, never queued or deferred.",
+    "prePing": "The stable boundary sends bounded settings and due facts to one immutable per-attachment template copy. Wake may replace the prompt. A paused-arrival wake carries the pause reason, what arrived, and asks the agent to restate its wait. Failure sends at most one diagnostic and latches the attachment paused.",
+    "scripts": "The API lists repository templates and immutable attachment copies but cannot create arbitrary source or revise a copy. Selecting templateId while attaching or updating makes a fresh copy. The retained inbox_match template reads Nano mail without marking it seen.",
+    "authorityBoundary": "Pre-ping scripts are repository-reviewed, read-only API clients. The awakened agent performs the work. Model invocation and external writes are outside heartbeat.",
+    "delivery": "Heartbeat reads lifecycle and submits only through internal/interact. Submissions are system-origin, requireIdle, never queue, and contain the attachment or replacement text plus one [from nano heartbeat] footer. Heartbeat never reads a transcript and has no reply-text token. Idempotence is attachment plus epoch minute.",
+    "creation": "Attaching is one frictionless API call. Nano records creator identity and claimed authority for audit but does not gate creation. Create heartbeat attachments only with the operator's explicit approval.",
+    "budget": "-heartbeat-max-wakes-per-hour sets the global rolling-hour admission cap and defaults to 60. Each wake logs provider-reported input, cached-input, and output tokens, or usage unavailable, and attachments show summed counters.",
+    "persistence": "~/.nanod/heartbeat.sqlite stores attachments, immutable template copies, actor/authority audit, and per-due-minute decisions. Decision-only skips expire after 30 days; deliveries and failures remain. It never stores raw script output, prompt text, inbox contents, transcript excerpts, or chain of thought."
+  },
+  "codexServiceTier": {
+    "field": "serviceTier",
+    "default": "default",
+    "policy": "Standard is the default. Use Priority only when the operator, user, or invoking agent explicitly requests it.",
+    "values": {
+      "default": "Standard service.",
+      "priority": "Priority/Fast service when the selected model advertises it; may increase usage."
+    },
+    "creation": "Set serviceTier on POST /api/v1/hosted-threads. Nano resolves an omitted value to default before starting Codex.",
+    "reasoningEffortIsSeparate": "Reasoning effort controls reasoning depth; it does not select service priority."
+  },
+  "identity": {
+    "preferred": "hostedThreadId",
+    "forPeople": "displayName, then nativeThreadId when an id is needed; never hostedThreadId",
+    "description": "Use hostedThreadId only as a key: hosted control paths, invokerThreadRef, senderThreadRef. When you refer to an agent in text a person reads (reports, commentary, replies, notifications), use its Nano display name, and the native thread UUID when an id is needed; never show a hostedThreadId to people. Resolve any reference with identityResolve. clientSessionId is an optional creation-idempotency alias and nanoSessionId is process-local.",
+    "whenInDoubt": "For an API call, use hostedThreadId: it is always known from creation, never rotates, and is never replaced. For text people read, use the display name plus native UUID from identityResolve; if a hosted id cannot be resolved, write it as nht_… (unresolved hosted id).",
+    "identifiers": {
+      "hostedThreadId": {
+        "form": "nht_<hex>",
+        "owner": "nano",
+        "durability": "Immutable for the thread's whole life; survives Nano restarts, reattachment rotation, and provider resume.",
+        "use": "Retain it for API calls and pass it as invokerThreadRef when creating hosted threads. Do not cite it in reports or other text for people; cite the display name and native UUID instead."
+      },
+      "nativeThreadId": {
+        "form": "provider-native (Codex/Claude UUID, Grok session id)",
+        "owner": "provider",
+        "durability": "May not exist until the first prompt completes, and a Claude resume can replace it with a fresh id. Use an exact UUID in ?thread= links for attribution; Nano retains observed hosted history to route that link. Look it up live via GET /api/v1/hosted-threads/{threadRef}; never store it as your own name.",
+        "provisionalForm": "A cs_<hex> value is a Claude shim stand-in, not a provider id: the thread has not completed its first prompt. Views mark this with nativeThreadIdProvisional: true."
+      },
+      "nanoSessionId": {
+        "form": "short hex",
+        "owner": "nano-process",
+        "durability": "Names the current in-process attachment only; rotates on every Nano restart. Never retain it."
+      },
+      "clientSessionId": {
+        "form": "caller-chosen",
+        "owner": "caller",
+        "durability": "Creation-idempotency alias, meaningful only to the caller that supplied it. Never granted authority."
+      }
+    },
+    "threadReference": {
+      "form": "?thread=<native UUID>",
+      "use": "Agent-facing attribution and browser deep link. Resolve it with GET /api/v1/thread-references/{reference}; a live hosted continuation returns nht_* as the canonical browser URL.",
+      "safety": "Exact only. Nano returns typed not_indexed, unknown, or ambiguous outcomes and never prefix-matches or guesses."
+    },
+    "identityResolve": {
+      "use": "GET /api/v1/identity/resolve?ref=<displayName|nativeThreadId|hostedThreadId>",
+      "returns": ["displayName", "nativeThreadId", "hostedThreadId", "provider", "matchCount"],
+      "notFound": 404,
+      "duplicates": "Duplicate display names resolve to the most recently updated thread; matchCount is how many matched.",
+      "current": "Always the current mapping. Rename updates displayName. Resume and Claude respawn keep hostedThreadId and return the current nativeThreadId; a predecessor native id still resolves.",
+      "cli": "nano-agent resolve <ref>"
+    },
+    "example": {
+      "description": "One thread wearing all four identifiers at once.",
+      "hostedThreadId": "nht_e575b94ce03a5d00835e21b26809c718",
+      "nativeThreadId": "2dd36191-9386-542b-a1ef-bed95e638620",
+      "nanoSessionId": "27d6189c",
+      "clientSessionId": "research-17",
+      "note": "After a Nano restart nanoSessionId changes; after a Claude resume nativeThreadId may change; hostedThreadId never does."
+    },
+    "threadRefAccepts": [
+      "hostedThreadId",
+      "clientSessionId",
+      "nanoSessionId",
+      "known nativeThreadId"
+    ],
+    "agentCreation": {
+      "requiredField": "invokerThreadRef",
+      "description": "An agent creating a hosted thread must identify its own Nano-hosted thread. Nano resolves the reference immediately and stores a durable provider-neutral invocation edge.",
+      "normalizedResponseFields": [
+        "invokerHostedThreadId",
+        "invokerNativeThreadId",
+        "invokerProvider"
+      ],
+      "securityMeaning": "Attribution and UI lineage only under the localhost trust boundary; it does not grant authority."
+    }
+  },
+  "selfIdentity": {
+    "delivery": "Injected once into the hosted agent's trusted context at session start: Codex appends it to developerInstructions (caller text preserved), Claude carries it as --append-system-prompt.",
+    "blockFields": [
+      "hostedThreadId",
+      "provider",
+      "apiOrigin",
+      "self-lookup URL"
+    ],
+    "immutability": "Creation-time and immutable. The block never contains nativeThreadId: that id may not exist yet and can be replaced on resume.",
+    "guarantee": {
+      "codex": true,
+      "claude": true,
+      "grok": false
+    },
+    "grokNote": "Grok exposes no non-user-role context seam, so Grok-hosted agents are not guaranteed to know their own identity and should be given it explicitly when they must create children.",
+    "preexistingThreads": "Threads created before identity injection are not backfilled and cannot self-identify.",
+    "callerOverride": "A Codex caller supplying config.developer_instructions bypasses the appended field and forfeits the identity guarantee for that thread.",
+    "use": "Read hostedThreadId from your injected 'Nano hosted identity' block to fill invokerThreadRef and to query your own current details."
+  },
+  "capabilities": [
+    {
+      "id": "threadReferences.resolve",
+      "summary": "Resolve an exact native UUID, hosted nht_*, or compatibility catalog nth_* reference for browser navigation.",
+      "method": "GET",
+      "path": "/api/v1/thread-references/{reference}"
+    },
+    {
+      "id": "identity.resolve",
+      "summary": "Resolve a Nano display name, native thread id, or hosted thread id to the current three-way identity.",
+      "method": "GET",
+      "path": "/api/v1/identity/resolve"
+    },
+    {
+      "id": "hostedThreads.list",
+      "summary": "List every currently hosted or detached thread.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads"
+    },
+    {
+      "id": "hostedThreads.create",
+	  "summary": "Create a hosted thread with required invokerThreadRef lineage and optional clientSessionId idempotency.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads"
+    },
+    {
+      "id": "hostedThreads.read",
+      "summary": "Resolve a stable thread reference to its current identities and exact attached, ready, working, turn-active, and transcript-owner-error lifecycle facts.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}"
+    },
+    {
+      "id": "hostedThreads.executionFamily",
+      "summary": "Read durable hosted-thread invocation lineage and operation identifiers without changing threads.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/family"
+    },
+    {
+      "id": "hostedThreads.bulkClosePreview",
+      "summary": "Preview every member, depth, working state, and star in the current assignment-first sidebar tree without changing it.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/family/close"
+    },
+    {
+      "id": "hostedThreads.bulkCloseTree",
+      "summary": "Close a root and every descendant in Nano's current assignment-first sidebar tree. Requires an explicit preserve or unstar policy and returns one result per member.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{threadRef}/family/close"
+    },
+    {
+      "id": "hostedThreads.assignment",
+      "summary": "Replace or clear the current optional execution assignment; assignment history remains metadata evidence.",
+      "method": "PUT",
+      "path": "/api/v1/hosted-threads/{threadRef}/assignment"
+    },
+    {
+      "id": "hostedThreads.metadata",
+      "summary": "Read canonical current metadata, identity history, and read-time attachment provenance.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/metadata"
+    },
+    {
+      "id": "hostedThreads.metadataEvents",
+      "summary": "Read bounded immutable metadata evidence using an event cursor and optional field, source, disposition, and freshness filters.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/metadata/events"
+    },
+    {
+      "id": "hostedThreads.permissionEvents",
+      "summary": "Read cursor-paginated permission requests and decisions without exposing command text or full request bodies.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/permission-events"
+    },
+    {
+      "id": "hostedThreads.metadataChanges",
+      "summary": "Read hosted revision hints after afterRevision; refetch canonical current metadata when refetchRequired reports a bounded-ring gap.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/metadata/changes"
+    },
+    {
+      "id": "heartbeat.attachments",
+      "summary": "List or explicitly attach a hosted thread to the default-off wall-clock heartbeat.",
+      "method": "GET|POST",
+      "path": "/api/v1/heartbeat/attachments"
+    },
+    {
+      "id": "heartbeat.attachment",
+      "summary": "Read, update, remove, pause, or resume one audited heartbeat attachment.",
+      "method": "GET|PATCH|POST|DELETE",
+      "path": "/api/v1/heartbeat/attachments/{attachmentId}[/{action}]"
+    },
+    {
+      "id": "heartbeat.log",
+      "summary": "Read bounded persisted wake decisions, including silent skips and delivery failures.",
+      "method": "GET",
+      "path": "/api/v1/heartbeat/log"
+    },
+    {
+      "id": "conversation.snapshot",
+      "summary": "Read the current normalized conversation and durable agent submission metadata; messages-only by default.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/conversation"
+    },
+    {
+      "id": "conversation.events",
+      "summary": "Watch resumable normalized conversation updates and durable agent submission metadata over SSE.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/conversation/events"
+    },
+    {
+      "id": "browserValidations.observe",
+      "summary": "Publish or read content-free browser row validation, including durable duplicate fingerprints and their exactly-once standing-orchestrator alert state.",
+      "method": "GET|POST",
+      "path": "/api/v1/browser-validations"
+    },
+    {
+      "id": "feedback.notes",
+      "summary": "List or read operator Feedback notes, each with the thread, build, view, pane state, and content-free browser evidence of its save. Saving a note notifies no agent.",
+      "method": "GET|POST",
+      "path": "/api/v1/feedback"
+    },
+    {
+      "id": "transcriptAudits.run",
+      "summary": "Run a bounded, on-demand audit of one exact browser pane against a pinned saved transcript window; only user and assistant messages are checked.",
+      "method": "POST|GET",
+      "path": "/api/v1/transcript-audits"
+    },
+    {
+      "id": "turns.submit",
+      "summary": "Submit one agent- or system-origin prompt idempotently; busy targets queue without interruption.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{threadRef}/turns"
+    },
+    {
+      "id": "turns.completed",
+      "summary": "Read completed, failed, and interrupted turns with provider token counters after a durable per-target cursor.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/completed-turns"
+    },
+    {
+      "id": "transcript.window",
+      "summary": "Read a bounded row window directly from the transcript owner by cursor and limit.",
+      "method": "GET",
+      "path": "/api/v1/threads/{threadId}/transcript"
+    },
+    {
+      "id": "turnOperations.read",
+      "summary": "Read or long-poll one submitted turn until it changes or reaches provider terminal evidence.",
+      "method": "GET",
+      "path": "/api/v1/turn-operations/{operationId}"
+    },
+    {
+      "id": "turnOperations.cancelQueued",
+      "summary": "Cancel a prompt while it is still waiting in Nano's durable queue.",
+      "method": "DELETE",
+      "path": "/api/v1/turn-operations/{operationId}"
+    },
+    {
+      "id": "turnOperations.changes",
+      "summary": "Pull every semantic operation transition since a bookmark — one call answers 'did any of my workers change state', with an optional invoker filter and explicit long-poll.",
+      "method": "GET",
+      "path": "/api/v1/turn-operations/changes"
+    },
+    {
+      "id": "turnOperations.bulkStatus",
+      "summary": "Read many operations at once; pruned or unknown ids come back {id, missing: true} instead of failing the batch.",
+      "method": "GET",
+      "path": "/api/v1/turn-operations"
+    },
+    {
+      "id": "maintenance.creationNames",
+      "summary": "Preview or repair immutable creation names with an exact-set guard, fresh backup, and one transaction.",
+      "method": "POST",
+      "path": "/api/v1/maintenance/creation-names"
+    },
+    {
+      "id": "maintenance.retiredHostedRecords",
+      "summary": "Preview and retire duplicate hosted records with an exact-set guard, fresh backup and transactional identity proof.",
+      "method": "POST",
+      "path": "/api/v1/maintenance/retired-hosted-records"
+    },
+    {
+      "id": "interactions.answer",
+      "summary": "Answer one pending approval, question, or elicitation and continue the same turn operation.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{threadRef}/interactions/{requestId}"
+    },
+    {
+      "id": "turns.interrupt",
+      "summary": "Request interruption of the current turn without inventing success when it already ended.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{threadRef}/interrupt"
+    },
+    {
+      "id": "hostedThreads.close",
+      "summary": "End the attachment and settle open operations as interrupted; the durable hosted-thread record survives with status exited.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{threadRef}/close"
+    },
+    {
+      "id": "hostedThreads.detach",
+      "summary": "Non-destructively release the live attachment while every record survives; refused (409) while operations are open. Boot reattach and resume restore the thread.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{threadRef}/detach"
+    },
+    {
+      "id": "hostedThreads.delete",
+      "summary": "Destroy: close if live, then erase the durable hosted-thread record, its operations, and queued prompts. Behavior change 2026-08-06 — DELETE previously acted as close; use hostedThreads.close for that.",
+      "method": "DELETE",
+      "path": "/api/v1/hosted-threads/{threadRef}"
+    },
+    {
+      "id": "historySearch.messages",
+      "summary": "Search the complete ready historical conversation corpus with explicit literal or word-term semantics.",
+      "method": "GET",
+      "path": "/api/v1/search/messages"
+    },
+    {
+      "id": "historySearch.status",
+      "summary": "Read durable readiness, progress, versions, and revisions for both historical search modes.",
+      "method": "GET",
+      "path": "/api/v1/search/status"
+    },
+    {
+      "id": "sidebar.threads",
+      "summary": "Read the current active sidebar graph: attached, working/needs_you, starred, required ancestors, and active related descendants, with historical counts and canonical hierarchy.",
+      "method": "GET",
+      "path": "/api/v1/sidebar/threads"
+    },
+    {
+      "id": "threads.starred",
+      "summary": "Star or unstar a catalog thread. The pin is stored in Nano SQLite and included in thread listings and the active sidebar.",
+      "method": "PUT",
+      "path": "/api/v1/threads/{threadId}/starred"
+    },
+    {
+      "id": "hostedThreads.pins.append",
+      "summary": "Append a thread-local pin anchored to the latest or an exact transcript message. No approval, status, or cleanup.",
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{threadRef}/pins"
+    },
+    {
+      "id": "hostedThreads.pins.list",
+      "summary": "List a hosted thread's pins newest first with cursor pagination.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/pins"
+    },
+    {
+      "id": "hostedThreads.pins.candidates",
+      "summary": "List recent user and agent messages with the item ids a pin can anchor.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/pins/candidates"
+    },
+    {
+      "id": "hostedThreads.pins.read",
+      "summary": "Read one pin.",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/pins/{pinId}"
+    },
+    {
+      "id": "hostedThreads.pins.context",
+      "summary": "Read a pin's anchored message plus the N complete turns before it (default 10).",
+      "method": "GET",
+      "path": "/api/v1/hosted-threads/{threadRef}/pins/{pinId}/context"
+    },
+    {
+      "id": "pins.monitor",
+      "summary": "Observe pin accumulation, retrieval depth, and broken anchors without changing pins.",
+      "method": "GET",
+      "path": "/api/v1/pins/monitor"
+    }
+  ],
+  "conversation": {
+    "defaultView": "messages",
+    "views": [
+      "messages",
+      "full"
+    ],
+    "messagesIncludes": [
+      "userMessage",
+      "agentMessage",
+      "turn metadata",
+      "runtime metadata",
+      "pending interactions"
+    ],
+    "fullAdds": [
+      "reasoning",
+      "tool calls and results",
+      "command output",
+      "file changes",
+      "plans",
+      "unknown provider item types"
+    ],
+    "resumeCursor": [
+      "epoch",
+      "revision"
+    ],
+    "ownerWindow": {
+      "defaultRows": 20,
+      "maximumRows": 100,
+      "olderCursor": "nextBeforeCursor -> before",
+      "stability": "Newer appends do not move the cursor boundary; an owner epoch change returns 409. The limit applies before messages/full view filtering."
+    }
+  },
+  "sidebarActive": {
+    "path": "/api/v1/sidebar/threads",
+    "historyPath": "/api/v1/sidebar/threads/{id}/history",
+    "contents": "One complete current active-thread dataset: attached (including transient memory rows), detached, tmux-pane-live, fleet working/needs_you, starred, required structural ancestors, and active related descendants. Fleet labels are idle, needs_you, or working; rows Nano holds copy their session's lifecycle label (runtime.threadStatus), and inferred history rows carry watched=true, with an unanswered prompt working only while its saved file moved in the last 30 minutes. historicalCount and per-parent historicalDescendantCount cover the eligible-and-rescued population. Rows include canonical parent/root/ancestry, descendant activity, and normalized sort primitives. Transcripts are never included.",
+    "eligibility": "Default window is now minus 30 days with subagents included, programmatic excluded, archived included. The endpoint accepts the same updatedFrom bound as the catalog. Attached, detached, pane-live, starred, and required-ancestor rows are rescued outside that window.",
+    "cache": "Cache-Control: private, no-store. Nano serves a process-local materialized state with no catalog, runtime, metadata, star, or mail joins on the request path.",
+    "updates": "After the whole-state GET, row/removal/root deltas arrive as sidebar events on /api/v1/thread-index/events, each naming the generation (Nano process) and revision it produces. Apply an event whose generation matches and whose revision follows the list's; anything else, including a refresh marker at another generation or revision, means repair from a fresh GET. Revisions compare only within one generation: they count from 1 again after a restart.",
+    "history": "GET /api/v1/sidebar/threads/{id}/history pages inactive descendants of one parent, 100 rows, updatedAt desc then id desc. 404 unknown parent, 400 invalid cursor."
+  },
+  "transcriptPins": {
+    "purpose": "Thread-local bookmarks so an agent can return to a paused topic.",
+    "append": "POST /api/v1/hosted-threads/{threadRef}/pins {\"text\": \"short topic\", \"commentary\"?: \"...\", \"itemId\"?: \"nit_...\", \"creatorThreadRef\"?: \"<your hostedThreadId>\"}. Omit itemId for \"pin this\" (the latest indexed message); pass the exact itemId for \"pin your earlier analysis\" (find it with GET .../pins/candidates).",
+    "retrieve": "GET .../pins lists newest first; read backward (nextCursor) until the pin names the topic, then GET its contextUrl. The context holds the anchored message plus the whole turns before it, with stable turn and item ids and hasEarlierHistory.",
+    "noCeremony": "Append freely. Do not delete or rewrite pins.",
+    "anchor": "Each pin stores provider, native thread id, and the canonical normalized message id; the context link is generated from that anchor at read time.",
+    "durability": "Pins belong to the hosted thread and survive provider-native replacement, reattachment, Nano restarts, and history-catalog rebuilds. A missing anchor is reported (pin_anchor_missing) with the pin intact.",
+    "transparency": "Nano never injects pins into a turn. An agent sees pins only through its own API calls, which remain in its native transcript.",
+    "monitor": "GET /api/v1/pins/monitor is observational only."
+  },
+  "historySearch": {
+    "messagesPath": "/api/v1/search/messages",
+    "statusPath": "/api/v1/search/status",
+    "modes": {
+      "literal": "Case-sensitive exact character sequence matching. Trigram FTS supplies candidates; Nano verifies canonical retained text before returning a hit.",
+      "terms": "Case-insensitive Unicode word-token matching. Every supplied token is required; caller text is never interpreted as raw SQLite FTS syntax."
+    },
+    "groups": ["message", "thread"],
+    "filters": ["since", "until", "role", "provider", "kind"],
+    "pagination": "The opaque cursor binds the normalized query, grouping, complete sort key, and search revision. A revision change returns 409 search_changed; a malformed or mismatched cursor returns 400 invalid_cursor.",
+    "availability": "A mode that is needs_build, building, or failed returns 503 search_index_building rather than a partial result. Guardians are never searchable."
+  },
+  "turnOperations": {
+    "states": [
+      "queued",
+      "delivery_pending",
+      "delivery_unknown",
+      "running",
+      "waiting_for_input",
+      "completed",
+      "failed",
+      "interrupted"
+    ],
+    "terminalStates": [
+      "completed",
+      "failed",
+      "interrupted"
+    ],
+    "callerStopStates": [
+      "completed",
+      "failed",
+      "interrupted",
+      "delivery_unknown"
+    ],
+    "longPoll": {
+      "query": "?afterRevision={lastRevision}&waitMs=30000",
+      "maximumWaitMs": 30000,
+      "timeoutChangesProviderState": false
+    },
+    "changesFeed": {
+      "path": "/api/v1/turn-operations/changes",
+      "query": "?since={bookmark}&invoker={yourHostedThreadId}&waitMs=30000",
+      "semantics": "In-memory, loss-tolerant ring of semantic status transitions behind an epoch.seq bookmark. Every response carries the next bookmark. resnapshot: true (no_bookmark, unknown_bookmark, or bookmark_expired — a Nano restart mints a fresh epoch) means re-read the operations you retained via bulk status, keep the returned bookmark, and continue.",
+      "recommendedLoop": "On a later parent turn, one changes call with your invoker filter replaces polling each operation individually; fetch details for changed operations via bulk status."
+    }
+  },
+  "creationNameMaintenance": {
+    "path": "/api/v1/maintenance/creation-names",
+    "request": "POST {apply, records?, unrecoverable?, expectedFingerprint?}. The audit classifies every unnamed program-created thread. Each repair record includes its identity, creation name, and allowed evidence source; unrecoverable entries carry identity and reason. Apply requires the preview fingerprint.",
+    "scope": "Canonical nano_threads.sqlite only. The operation records immutable creationName metadata. It does not write the names file directly; every bind applies that fact only when the provider/native display-name slot is empty.",
+    "apply": "Fresh store backup, exact preview revalidation, and all missing records in one transaction. Matching existing records are idempotent. Changed identities, conflicting facts, stale fingerprints, and any failed write refuse or roll back.",
+    "receipt": "Normalized repair records with missing/existing state, the no-recoverable-name list, SHA256 fingerprint, applied flag, and on apply the backup path and SHA256. Save the receipt; successful apply makes the preview stale."
+  },
+  "retiredHostedRecordMaintenance": {
+    "path": "/api/v1/maintenance/retired-hosted-records",
+    "request": "POST {apply, outboxDisposition, expectedFingerprint?, expectedCounts?}. Explicit repoint/delete is required. Apply requires the fingerprint from a reviewed preview; no hand-written target list is accepted.",
+    "scope": "Canonical nano_threads.sqlite only. Records derive from retired current-native claims with another surviving owner. Unretired claims, conflicting identities, runtime/attachment edges and unexpected dependent references refuse the operation.",
+    "apply": "Fresh store backup, exact preview revalidation, one transaction, exact all-table content check and canonical resolver proof before commit; execution/outbox caches update under their locks after commit. No restart or automatic invocation.",
+    "receipt": "Full deleted/reference rows (may contain prompt text), all-table before/after counts, backup path and SHA256, and surviving native-owner resolutions. Save the receipt. A successful apply makes its preview fingerprint stale; retries refuse."
+  },
+  "coordination": {
+    "defaultMode": "detached",
+    "afterSubmit": "Retain hostedThreadId and operationId, report that the worker started, and end the controlling agent's current turn so the user can keep chatting.",
+    "laterTurns": "At the start of a later controlling turn, pull /api/v1/turn-operations/changes with your invoker filter (one call for all workers), then read changed operations via bulk status; per-operation GET remains available.",
+    "foregroundWait": "Use afterRevision plus waitMs, or nano-agent run --wait, only when the user explicitly wants the controlling agent to wait in the foreground.",
+    "completionDelivery": "pull"
+  },
+  "interactions": {
+    "decisions": [
+      "accept",
+      "acceptForSession",
+      "decline",
+      "cancel"
+    ],
+    "note": "When status is waiting_for_input, answer an interaction and continue polling the same operationId."
+  },
+  "idempotency": {
+    "creation": "Reuse clientSessionId only with identical normalized creation parameters, including any assignment and normalized target aliases.",
+    "assignmentUpdate": "Reuse an assignment clientActionId only with the identical complete assignment or clear request on that hosted thread.",
+	"turnSubmission": "Reuse clientActionId only with the identical prompt and requireIdle policy on the same hosted thread. requireIdle true atomically rejects busy, not-ready, detached, or backlogged targets without creating an operation. The nano: prefix is reserved.",
+    "deliveryUnknown": "Nano does not silently retry when provider acceptance cannot be proven. The caller owns the retry decision."
+  },
+  "examples": {
+    "createThread": {
+      "method": "POST",
+      "path": "/api/v1/hosted-threads",
+      "body": {
+        "clientSessionId": "research-17",
+        "invokerThreadRef": "a39195ac-b913-5f73-9303-4efdc43117c2",
+        "provider": "codex",
+        "mode": "start",
+        "presentationMode": "background",
+        "assignment": {"assignmentRole":"worker","focus":"Inspect the parser and report the likely fault.","relatedHostedThreadId":"a39195ac-b913-5f73-9303-4efdc43117c2","auditTargets":[]},
+        "serviceTier": "default",
+        "cwd": "/absolute/project"
+      }
+    },
+    "submitTurn": {
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{hostedThreadId}/turns",
+      "body": {
+        "clientActionId": "investigate-1",
+        "prompt": "Inspect the parser and report the likely fault. Do not edit files."
+      }
+    },
+    "updateAssignment": {
+      "method": "PUT",
+      "path": "/api/v1/hosted-threads/{hostedThreadId}/assignment",
+      "body": {"clientActionId":"audit-1","assignment":{"assignmentRole":"auditor","focus":"Review the implementation.","relatedHostedThreadId":"a39195ac-b913-5f73-9303-4efdc43117c2","auditTargets":[{"hostedThreadId":"a39195ac-b913-5f73-9303-4efdc43117c2"}]}}
+    },
+    "pollTurn": {
+      "method": "GET",
+      "path": "/api/v1/turn-operations/{operationId}?afterRevision={revision}&waitMs=30000"
+    },
+    "checkTurnLater": {
+      "method": "GET",
+      "path": "/api/v1/turn-operations/{operationId}"
+    },
+    "cancelQueuedTurn": {
+      "method": "DELETE",
+      "path": "/api/v1/turn-operations/{operationId}"
+    },
+    "answerInteraction": {
+      "method": "POST",
+      "path": "/api/v1/hosted-threads/{hostedThreadId}/interactions/{requestId}",
+      "body": {
+        "decision": "accept",
+        "answers": {
+          "question-id": ["choice"]
+        }
+      }
+    }
+  },
+  "quickstart": [
+    {
+      "step": 1,
+      "use": "GET /api/v1/capabilities",
+      "purpose": "Discover supported behavior and the OpenAPI document."
+    },
+    {
+      "step": 2,
+      "use": "POST /api/v1/hosted-threads",
+      "purpose": "Create a Codex, Claude, or Grok Build thread with your own thread id in invokerThreadRef — read it from your injected 'Nano hosted identity' block; retain the returned hostedThreadId and normalized invoker identity."
+    },
+    {
+      "step": 3,
+      "use": "POST /api/v1/hosted-threads/{threadRef}/turns",
+      "purpose": "Submit a prompt with a stable clientActionId and retain operationId. Nano queues it durably when the thread is starting or busy."
+    },
+    {
+      "step": 4,
+      "use": "Yield the controlling conversation",
+      "purpose": "Report the durable operationId and end the current parent turn. Do not hold a long-poll open while the user may want to chat."
+    },
+    {
+      "step": 5,
+      "use": "GET /api/v1/turn-operations/{operationId}",
+      "purpose": "On a later parent turn, check current state without blocking. Repeat for other outstanding workers."
+    },
+    {
+      "step": 6,
+      "use": "GET /api/v1/turn-operations/{operationId}?afterRevision={revision}&waitMs=30000",
+      "purpose": "Opt into foreground waiting only when the user explicitly asks the parent agent to wait."
+    },
+    {
+      "step": 7,
+      "use": "GET /api/v1/hosted-threads/{threadRef}/conversation/events",
+      "purpose": "Optionally watch message activity; add view=full only when tool detail is required."
+    },
+    {
+      "step": 8,
+      "use": "POST /api/v1/hosted-threads/{threadRef}/interactions/{requestId}",
+      "purpose": "Answer pending input, then detach again or explicitly foreground-wait on the same operation."
+    },
+    {
+      "step": 9,
+      "use": "POST /api/v1/hosted-threads/{threadRef}/turns",
+      "purpose": "Send follow-up corrections to the same conversational thread."
+    }
+  ],
+  "safetyNotes": [
+    "Nano's v1 API is a localhost trust boundary, not an authenticated remote multi-user service.",
+    "Lifecycle verbs are distinct as of 2026-08-06: interrupt stops a turn, DELETE /turn-operations/{id} cancels a queued prompt, detach releases the attachment non-destructively, close ends the attachment and keeps the durable record, DELETE destroys the record. DELETE previously behaved as close — callers meaning close must use POST {threadRef}/close.",
+    "An HTTP timeout or quiet stream is not provider completion or cancellation.",
+    "Only provider terminal evidence completes a turn operation.",
+    "Do not keep a parent agent's turn open merely to watch a worker; detached submission keeps the controlling conversation available.",
+    "A queued operation has not crossed the provider-delivery boundary; DELETE its operationId to cancel it before delivery begins.",
+    "A background presentation mode changes browser visibility, not runtime capability or permissions.",
+    "invokerThreadRef records attribution and nesting; it is not authentication or permission delegation.",
+    ".agents/ holds the role contracts and skills agents operate under. Do not edit anything in .agents/ unless the human has given explicit approval. If you think something there should change, propose the edit and stop."
+  ]
+}

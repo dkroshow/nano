@@ -1,0 +1,2 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "call_id": "call-example", "arguments": "{\"cmd\":\"exit 2\",\"workdir\":\"/workspace/example\"}"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "call-example", "output": {"stdout": "", "stderr": "Example failure.", "exit_code": 2}}}

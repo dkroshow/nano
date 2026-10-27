@@ -1,0 +1,1 @@
+{"timestamp":1787069595,"method":"session/update","params":{"sessionId":"id-1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"[text]"},"_meta":{"modelId":"[text]","promptIndex":5,"hideFromScrollback":true}},"_meta":{"eventId":"id-680","agentTimestampMs":1787069593557}}}

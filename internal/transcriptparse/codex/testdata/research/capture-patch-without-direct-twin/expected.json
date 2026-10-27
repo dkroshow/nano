@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "tool_call_id",
+          "value": "id-3572dd7d6b",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "id-419ef09e4f",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "file_change",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "outcome": "success",
+      "nativeTimestamp": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "precision": "millisecond",
+        "sourceField": "timestamp"
+      },
+      "observedTime": null,
+      "tool": {
+        "name": null,
+        "callId": "id-3572dd7d6b",
+        "arguments": null,
+        "outputs": null
+      },
+      "detail": {
+        "type": "patch_apply_end",
+        "call_id": "id-3572dd7d6b",
+        "turn_id": "id-419ef09e4f",
+        "stdout": "[redacted]",
+        "stderr": "[redacted]",
+        "success": true,
+        "changes": {
+          "/workspace/file-aa340ce8": {
+            "type": "update",
+            "unified_diff": "[redacted]",
+            "move_path": null
+          },
+          "/workspace/file-d0d9301d": {
+            "type": "add",
+            "content": "[redacted]"
+          }
+        },
+        "status": "completed",
+        "absenceEvidence": {
+          "scope": "complete sampled file",
+          "sameCallResponseOutputPresent": false
+        }
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

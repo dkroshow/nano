@@ -1,0 +1,139 @@
+{
+  "items": [
+    {
+      "id": "derived:s1:line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "No native clock.",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "No native clock."
+        }
+      ],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_message_chunk"
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": null,
+          "replay": false,
+          "sha256": "6d314e1f35724707bd94e5d890586b7c8533b4bd4711c6d4361e4fc181bf5e12",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:line-2",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-2",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "Second precision only.",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "Second precision only."
+        }
+      ],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000,
+        "unit": "unix_seconds",
+        "precision": "second",
+        "sourceField": "timestamp"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_message_chunk"
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": null,
+          "replay": false,
+          "sha256": "6af848d360171948c87a758b58a552a9c30363877905de6ad67febcadcfd5a7f",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1893456000,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

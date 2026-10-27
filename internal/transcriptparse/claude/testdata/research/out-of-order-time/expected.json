@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "u1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Inspect the example.",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "ca521b69e22f807b3c3da712bb2903ce2e8072883a36429e9752d2cd82d9bbdf",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    },
+    {
+      "id": "m1-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Earlier clock",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "ea11879d20d10cb0603dcc8ba1757e4679a9ea41a8429e4cf67184c807bae13e",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_TIMESTAMP_NONMONOTONIC",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 2
+      },
+      "detail": ""
+    }
+  ],
+  "notes": "Keep source sequence order; timestamps are observations, not a sort key. The scan found 878 within-segment decreases. This synthetic example does not establish the producer cause."
+}

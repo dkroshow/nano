@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "request_resolution",
+      "method": "mcpServer/elicitation/request",
+      "requestId": {
+        "scalarType": "string",
+        "value": "item-example"
+      },
+      "result": {
+        "action": "decline",
+        "content": null
+      },
+      "doesNotImplyTurnCompletion": true
+    }
+  ]
+}

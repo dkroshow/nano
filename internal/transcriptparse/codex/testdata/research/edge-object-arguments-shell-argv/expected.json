@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "command",
+      "callId": "call-example",
+      "argv": [
+        "sh",
+        "-lc",
+        "printf example"
+      ],
+      "displayCommand": "printf example",
+      "cwd": "/workspace/example",
+      "preserveRawArguments": true
+    }
+  ]
+}

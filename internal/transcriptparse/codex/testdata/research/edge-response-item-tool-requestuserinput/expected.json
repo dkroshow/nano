@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "request_resolution",
+      "method": "item/tool/requestUserInput",
+      "requestId": {
+        "scalarType": "string",
+        "value": "item-example"
+      },
+      "result": {
+        "answers": {}
+      },
+      "doesNotImplyTurnCompletion": true
+    }
+  ]
+}

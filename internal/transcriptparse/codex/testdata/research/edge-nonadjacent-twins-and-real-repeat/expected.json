@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CODEX_AMBIGUOUS_MESSAGE_TWIN",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 4
+      },
+      "detail": ""
+    }
+  ],
+  "observations": [
+    {
+      "type": "ambiguous_message_match",
+      "lines": [
+        2,
+        4
+      ],
+      "reason": "No shared native message ID; intervening telemetry prevents Nano adjacent dedupe. Do not collapse by text globally."
+    },
+    {
+      "type": "distinct_message",
+      "line": 7,
+      "reason": "Different native turn and message identity"
+    }
+  ]
+}

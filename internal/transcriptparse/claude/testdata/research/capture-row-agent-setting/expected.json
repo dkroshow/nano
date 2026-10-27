@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "agent-setting",
+          "agentSetting": "[scrubbed]",
+          "sessionId": "id-ca39fa4a"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "f1b30d7cb51d5c3a4cfb2fba9ea7b6d1c6a51aa1138f09443376b83e70597a17",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_SHAPE_SEMANTICS_UNCONFIRMED",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": "Preserve native payload; do not infer a successful conversation turn."
+    }
+  ],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-b627e8d792a6 at byte 0. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

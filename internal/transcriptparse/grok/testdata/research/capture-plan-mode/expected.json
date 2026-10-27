@@ -1,0 +1,13 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "metadata": {
+    "state": "[text]",
+    "was_previously_active": false,
+    "reminder_count": 0,
+    "pending_exit_reminder": false,
+    "awaiting_plan_approval": false
+  },
+  "note": "Auxiliary native snapshot. Retain as bounded source metadata; do not create duplicate conversation turns."
+}

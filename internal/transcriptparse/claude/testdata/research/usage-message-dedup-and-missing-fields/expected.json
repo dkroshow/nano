@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": {
+        "provider": "claude",
+        "grain": "per_turn",
+        "input_tokens": 5,
+        "output_tokens": 6,
+        "cache_read_input_tokens": 10,
+        "cache_creation_input_tokens": 5,
+        "output_tokens_details": {
+          "thinking_tokens": 1
+        },
+        "coverage": {
+          "cache": "partial; m2 omitted cache fields",
+          "reasoning": "partial; m1 omitted reasoning"
+        },
+        "total_tokens": null
+      }
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Distinct API messages add within a conversation turn; repeated snapshots of m1 replace its prior usage. Null/missing are not zeros. Preserve coverage status because summing observed subsets otherwise looks like a complete total."
+}

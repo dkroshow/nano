@@ -1,0 +1,209 @@
+{
+  "items": [
+    {
+      "id": "derived:s1:e1",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e1",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000001,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "future_shape",
+        "native": {
+          "sessionUpdate": "future_shape",
+          "payload": {
+            "value": 1
+          }
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e1",
+          "replay": false,
+          "sha256": "c005dcd59259dddb5bb1cc05539556b21a2c62912a659d8659776cfbabd5a4b2",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e1",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000001
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e2",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e2",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000002,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_message_chunk"
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e2",
+          "replay": false,
+          "sha256": "7468b7aa4368a957daf00265a9e9ff2e3581417049dd5c8a3027a416b0ae2832",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e2",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000002
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:line-3",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-3",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/future_notification",
+        "requestId": null,
+        "params": {
+          "sessionId": "s1",
+          "value": 1
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "s1"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "GROK_UNKNOWN_UPDATE",
+      "severity": "warning",
+      "source": "input.jsonl",
+      "line": 1,
+      "detail": {
+        "sessionUpdate": "future_shape"
+      }
+    }
+  ],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

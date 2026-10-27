@@ -1,0 +1,9 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "metadata": {
+    "todos": {}
+  },
+  "note": "Auxiliary native snapshot. Retain as bounded source metadata; do not create duplicate conversation turns."
+}

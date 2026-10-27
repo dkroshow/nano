@@ -1,0 +1,45 @@
+{
+  "id": "nth_claude_detail",
+  "provider": "claude",
+  "nativeId": "66666666-6666-4666-8666-666666666666",
+  "kind": "main",
+  "name": {"value": "metadata boundary probe", "provenance": "imported", "evidence": "user_assigned"},
+  "title": "Catalog detail example",
+  "preview": "Inspect the metadata projection boundary.",
+  "createdAt": "2026-07-09T18:00:00Z",
+  "updatedAt": "2026-07-09T18:05:00Z",
+  "archived": false,
+  "interaction": "interactive",
+  "metadata": {
+    "cwd": {"state": "known", "value": "/workspace/example", "evidence": "native_durable"},
+    "model": {"state": "known", "value": "claude-example", "evidence": "native_durable"},
+    "effort": {"state": "unknown", "value": null, "evidence": null},
+    "priority": {"state": "unsupported", "value": null, "evidence": null},
+    "permission": {"state": "known", "value": "plan", "evidence": "native_durable"},
+    "historicalBranch": {"state": "known", "value": "feature/example", "evidence": "native_durable"},
+    "origin": {"state": "known", "value": "cli", "evidence": "native_durable"}
+  },
+  "source": {
+    "status": "present",
+    "conflict": false,
+    "diagnosticCount": 1,
+    "lastIndexedAt": "2026-07-09T18:05:01Z"
+  },
+  "sources": [
+    {
+      "rootKind": "claude_projects",
+      "path": "/home/example/.claude/projects/-workspace/66666666-6666-4666-8666-666666666666.jsonl",
+      "generation": 1,
+      "parserVersion": "claude-metadata-v2",
+      "status": "present",
+      "archived": false,
+      "identityEvidence": "native_durable",
+      "diagnosticCount": 1,
+      "diagnostics": [
+        "unknown_row at line 4: provider row type is not recognized by this parser version"
+      ],
+      "error": null,
+      "lastIndexedAt": "2026-07-09T18:05:01Z"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"timestamp":1787271170,"method":"_x.ai/session/update","params":{"sessionId":"id-900","update":{"sessionUpdate":"task_backgrounded","tool_call_id":"id-954","task_id":"[text]","command":"[text]","cwd":"/workspace/example","output_file":"[text]","description":"[text]"},"_meta":{"eventId":"id-972","agentTimestampMs":1787271170392}}}

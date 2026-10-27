@@ -1,0 +1,296 @@
+{
+ "source": "Claude Code session file of one hosted Claude orchestrator thread, rows from 2026-09-29T13:08:52.814Z to 13:21:56.895Z: one Nano prompt, its answer, then a task-notification continuation that the catalog folds into the same turn.",
+ "scrubbed": "All message text, tool inputs, tool results and the notification body are replaced. Attachment and queue-operation rows are dropped, and so are working directories, request ids, models, hook details and permission fields. Row, prompt, message and tool ids are synthetic but keep their joins. The session id and the prompt's event id are filled in by the test ({{native}}, {{prompt-event-id}}); the prompt text by {{prompt}}.",
+ "live": "The live side is derived in the test from these rows: assistant and tool-result rows become Claude stream frames without a shim turn id, as the shim tags only a Nano prompt's frames. The saved task-notification user row never reaches the wire. Instead, a shim spool capture (2026-09-29T13:35Z, another hosted Claude thread) shows a system task_notification frame and a system init frame with their own uuids, which are never saved; liveOnly holds scrubbed copies of both, sent where the notification row sits. Assistant and tool-result frame uuids on that wire equal their saved row uuids.",
+ "liveOnly": [
+  {
+   "type": "system",
+   "subtype": "task_notification",
+   "task_id": "fixture-task",
+   "tool_use_id": "toolu_fixture-task",
+   "status": "completed",
+   "output_file": "scrubbed",
+   "summary": "scrubbed",
+   "uuid": "live-notification-1",
+   "session_id": "{{native}}"
+  },
+  {
+   "type": "system",
+   "subtype": "init",
+   "session_id": "{{native}}",
+   "uuid": "live-init-1",
+   "model": "scrubbed",
+   "permissionMode": "scrubbed",
+   "tools": [],
+   "mcp_servers": []
+  }
+ ],
+ "rows": [
+  {
+   "type": "user",
+   "uuid": "{{prompt-event-id}}",
+   "parentUuid": null,
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:08:52.814Z",
+   "promptId": "prompt-1",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "text",
+      "text": "{{prompt}}"
+     }
+    ]
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "row-2",
+   "parentUuid": "{{prompt-event-id}}",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:08:55.243Z",
+   "message": {
+    "role": "assistant",
+    "id": "msg_fixture-1",
+    "type": "message",
+    "stop_reason": "tool_use",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "",
+      "signature": ""
+     }
+    ]
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "row-3",
+   "parentUuid": "row-2",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:08:59.492Z",
+   "message": {
+    "role": "assistant",
+    "id": "msg_fixture-1",
+    "type": "message",
+    "stop_reason": "tool_use",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_fixture-1",
+      "name": "Bash",
+      "input": {
+       "command": "scrubbed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "type": "user",
+   "uuid": "row-4",
+   "parentUuid": "row-3",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:08:59.748Z",
+   "promptId": "prompt-1",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_fixture-1",
+      "content": "scrubbed",
+      "is_error": false
+     }
+    ]
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "row-5",
+   "parentUuid": "row-4",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:09:02.691Z",
+   "message": {
+    "role": "assistant",
+    "id": "msg_fixture-2",
+    "type": "message",
+    "stop_reason": "end_turn",
+    "content": [
+     {
+      "type": "text",
+      "text": "fixture answer 2"
+     }
+    ]
+   }
+  },
+  {
+   "type": "system",
+   "subtype": "stop_hook_summary",
+   "uuid": "row-6",
+   "parentUuid": "row-5",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:09:02.755Z"
+  },
+  {
+   "type": "user",
+   "uuid": "row-7",
+   "parentUuid": "row-6",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:32.843Z",
+   "origin": {
+    "kind": "task-notification"
+   },
+   "promptId": "prompt-2",
+   "message": {
+    "role": "user",
+    "content": "<task-notification>\n<task-id>fixture-task</task-id>\n<status>completed</status>\n<summary>scrubbed</summary>\n</task-notification>"
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "row-8",
+   "parentUuid": "row-7",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:36.981Z",
+   "message": {
+    "role": "assistant",
+    "id": "msg_fixture-3",
+    "type": "message",
+    "stop_reason": "tool_use",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_fixture-2",
+      "name": "Bash",
+      "input": {
+       "command": "scrubbed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "type": "user",
+   "uuid": "row-9",
+   "parentUuid": "row-8",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:37.311Z",
+   "promptId": "prompt-2",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_fixture-2",
+      "content": "scrubbed",
+      "is_error": false
+     }
+    ]
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "row-10",
+   "parentUuid": "row-9",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:40.962Z",
+   "message": {
+    "role": "assistant",
+    "id": "msg_fixture-4",
+    "type": "message",
+    "stop_reason": "tool_use",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "",
+      "signature": ""
+     }
+    ]
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "row-11",
+   "parentUuid": "row-10",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:48.498Z",
+   "message": {
+    "role": "assistant",
+    "id": "msg_fixture-4",
+    "type": "message",
+    "stop_reason": "tool_use",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_fixture-3",
+      "name": "Bash",
+      "input": {
+       "command": "scrubbed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "type": "user",
+   "uuid": "row-12",
+   "parentUuid": "row-11",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:53.841Z",
+   "promptId": "prompt-2",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_fixture-3",
+      "content": "scrubbed",
+      "is_error": false
+     }
+    ]
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "row-13",
+   "parentUuid": "row-12",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:56.817Z",
+   "message": {
+    "role": "assistant",
+    "id": "msg_fixture-5",
+    "type": "message",
+    "stop_reason": "end_turn",
+    "content": [
+     {
+      "type": "text",
+      "text": "fixture answer 3"
+     }
+    ]
+   }
+  },
+  {
+   "type": "system",
+   "subtype": "stop_hook_summary",
+   "uuid": "row-14",
+   "parentUuid": "row-13",
+   "isSidechain": false,
+   "sessionId": "{{native}}",
+   "timestamp": "2026-09-29T13:21:56.895Z"
+  }
+ ]
+}

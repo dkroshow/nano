@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":"perm1","method":"session/request_permission","params":{"sessionId":"s1","toolCall":{"toolCallId":"c1","title":"Read example","rawInput":{"path":"/workspace/example"}},"options":[{"optionId":"allow-once","kind":"allow_once","name":"Allow once"},{"optionId":"reject-once","kind":"reject_once","name":"Reject"}]}}
+{"jsonrpc":"2.0","id":"plan1","method":"_x.ai/exit_plan_mode","params":{"sessionId":"s1","toolCallId":"c2","planContent":"Read and report."}}
+{"jsonrpc":"2.0","id":"ask1","method":"_x.ai/ask_user_question","params":{"sessionId":"s1","toolCallId":"c3","questions":[{"question":"Choose a color","options":[{"label":"Blue","description":"Use blue"}],"multiSelect":false}],"mode":"blocking"}}
+{"jsonrpc":"2.0","id":"perm1","result":{"outcome":{"outcome":"selected","optionId":"allow-once"}}}
+{"jsonrpc":"2.0","id":"plan1","result":{"outcome":"revised","feedback":"Add validation."}}
+{"jsonrpc":"2.0","id":"ask1","result":{"outcome":"accepted","answers":{"Choose a color":["Blue"]}}}

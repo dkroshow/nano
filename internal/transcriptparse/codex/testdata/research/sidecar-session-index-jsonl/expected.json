@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "thread_metadata",
+      "source": "session_index.jsonl",
+      "fields": {
+        "id": "id-3362dc196d",
+        "thread_name": "[redacted]",
+        "updated_at": "2026-01-01T00:00:00.000Z"
+      },
+      "authoritativeConversationSource": false
+    }
+  ]
+}

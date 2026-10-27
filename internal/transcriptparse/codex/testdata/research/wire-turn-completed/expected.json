@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": "turn-example",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": [
+          {
+            "method": "turn/completed"
+          }
+        ]
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "observations": []
+}

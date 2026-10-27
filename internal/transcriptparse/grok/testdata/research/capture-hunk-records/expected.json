@@ -1,0 +1,22 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "metadata": {
+    "hunkId": "[text]",
+    "filePath": "[text]",
+    "hunkStart": 1,
+    "hunkEnd": 1,
+    "linesAdded": 1,
+    "linesRemoved": 0,
+    "authorType": "[text]",
+    "authorId": "[text]",
+    "agentId": "[text]",
+    "sessionId": "id-20447",
+    "timestamp": "[text]",
+    "promptIndex": 0,
+    "sourceType": "[text]",
+    "eventType": "[text]"
+  },
+  "note": "Auxiliary native snapshot. Retain as bounded source metadata; do not create duplicate conversation turns."
+}

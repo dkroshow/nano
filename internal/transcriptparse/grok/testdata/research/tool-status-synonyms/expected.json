@@ -1,0 +1,323 @@
+{
+  "items": [
+    {
+      "id": "derived:s1:e1",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e1",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "c1",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "success",
+      "nativeTimestamp": {
+        "value": 1893456000001,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "c1",
+          "name": null,
+          "nativeStatus": "success",
+          "arguments": null,
+          "output": null,
+          "locations": null,
+          "metadata": null
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e1",
+          "replay": false,
+          "sha256": "0d85aeefb0d5396e5467a5bb6c37a7cd2439732960c29283cd8c20f907085378",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e1",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000001
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e2",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e2",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "c2",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "failure",
+      "nativeTimestamp": {
+        "value": 1893456000001,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "c2",
+          "name": null,
+          "nativeStatus": "error",
+          "arguments": null,
+          "output": null,
+          "locations": null,
+          "metadata": null
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e2",
+          "replay": false,
+          "sha256": "c192a655d9b930fd5871828486dd040cd5bd1afc98680f1efd3ab1a1f2eeceaf",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e2",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000001
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e3",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e3",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "c3",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "interrupted",
+      "nativeTimestamp": {
+        "value": 1893456000001,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "c3",
+          "name": null,
+          "nativeStatus": "canceled",
+          "arguments": null,
+          "output": null,
+          "locations": null,
+          "metadata": null
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e3",
+          "replay": false,
+          "sha256": "5074a7e1f5f476f9566f8d7b5c648eb8bf72d3e507cc1dc98c46c1ec5e2a92da",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e3",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000001
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e4",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e4",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "c4",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "interrupted",
+      "nativeTimestamp": {
+        "value": 1893456000001,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "c4",
+          "name": null,
+          "nativeStatus": "interrupted",
+          "arguments": null,
+          "output": null,
+          "locations": null,
+          "metadata": null
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 4,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e4",
+          "replay": false,
+          "sha256": "20b0aef8c246017f579e95c7cfb6b5713b808fb8f61129201c2b8932d70fc9b8",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e4",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000001
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

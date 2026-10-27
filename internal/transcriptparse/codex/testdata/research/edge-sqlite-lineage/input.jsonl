@@ -1,0 +1,2 @@
+{"table": "threads", "row": {"id": "child-example", "source": "{\"subagent\":{\"other\":\"guardian\"}}", "created_at": 1767225600, "created_at_ms": 1767225600123}}
+{"table": "thread_spawn_edges", "row": {"parent_thread_id": "parent-example", "child_thread_id": "child-example", "status": "completed"}}

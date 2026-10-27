@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "thread/realtime/transcript/delta", "params": {"delta": "Example text.", "role": "example", "threadId": "thread-example"}}}

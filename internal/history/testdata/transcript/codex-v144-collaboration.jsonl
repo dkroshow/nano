@@ -1,0 +1,15 @@
+{"timestamp":"2026-07-13T18:00:00Z","type":"session_meta","payload":{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}}
+{"timestamp":"2026-07-13T18:00:01Z","type":"turn_context","payload":{"turn_id":"turn-a","model":"gpt-test","cwd":"/workspace"}}
+{"timestamp":"2026-07-13T18:00:02Z","type":"event_msg","payload":{"type":"user_message","message":"Review the adapter boundary."}}
+{"timestamp":"2026-07-13T18:00:03Z","type":"response_item","payload":{"id":"canonical-user","type":"message","role":"user","content":[{"type":"input_text","text":"Review the adapter boundary."}]}}
+{"timestamp":"2026-07-13T18:00:04Z","type":"response_item","payload":{"id":"reason-1","type":"reasoning","summary":[{"type":"text","text":"Checking the boundary."}]}}
+{"timestamp":"2026-07-13T18:00:05Z","type":"response_item","payload":{"id":"call-1","type":"function_call","name":"exec_command","call_id":"call-a","arguments":"private arguments are not display text"}}
+{"timestamp":"2026-07-13T18:00:06Z","type":"response_item","payload":{"id":"output-1","type":"function_call_output","call_id":"call-a","output":"Tests passed."}}
+{"timestamp":"2026-07-13T18:00:07Z","type":"event_msg","payload":{"type":"agent_message","message":"The boundary is sound."}}
+{"timestamp":"2026-07-13T18:00:08Z","type":"response_item","payload":{"id":"canonical-final","type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"The boundary is sound."}]}}
+{"timestamp":"2026-07-13T18:00:09Z","type":"event_msg","payload":{"type":"thread_settings_applied","model":"gpt-test","effort":"high","developer_instructions":"PRIVATE_SENTINEL"}}
+{"timestamp":"2026-07-13T18:00:10Z","type":"event_msg","payload":{"type":"sub_agent_activity","agent_id":"agent-a","thread_id":"thread-a","status":"completed","prompt":"PRIVATE_SENTINEL"}}
+{"timestamp":"2026-07-13T18:00:11Z","type":"world_state","agents":[{"id":"agent-a","encrypted_content":"PRIVATE_SENTINEL"}]}
+{"timestamp":"2026-07-13T18:00:12Z","type":"inter_agent_communication_metadata","payload":{"message_id":"message-a","sender_thread_id":"thread-a","receiver_thread_id":"thread-b","content":"PRIVATE_SENTINEL"}}
+{"timestamp":"2026-07-13T18:00:13Z","type":"event_msg","payload":{"type":"task_complete"}}
+{"timestamp":"2026-07-13T18:00:14Z","type":"future_private_row","payload":{"raw":"PRIVATE_SENTINEL"}}

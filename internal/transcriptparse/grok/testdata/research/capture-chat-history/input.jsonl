@@ -1,0 +1,6 @@
+{"type":"system","content":"[text]"}
+{"type":"user","content":[{"type":"text","text":"[text]"}]}
+{"type":"reasoning","id":"id-895","summary":[{"type":"summary_text","text":"[text]"}],"encrypted_content":"[text]","status":"completed"}
+{"type":"assistant","content":"[text]","tool_calls":[{"id":"id-7","name":"[text]","arguments":"[text]"},{"id":"id-14","name":"[text]","arguments":"[text]"},{"id":"id-18","name":"[text]","arguments":"[text]"}],"model_id":"[text]","model_fingerprint":"[text]","reasoning_effort":"high"}
+{"type":"tool_result","tool_call_id":"id-7","content":"[text]"}
+{"type":"backend_tool_call","kind":{"tool_type":"[text]","action":{"type":"open_page","url":"[text]"},"id":"id-7867","status":"completed"}}

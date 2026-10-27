@@ -1,0 +1,8 @@
+{
+  "id": "inbox_match",
+  "name": "Unread inbox match",
+  "description": "Wake when unread Nano inbox mail matches a configured sender and/or reference; with neither configured, any unread message matches.",
+  "language": "javascript",
+  "defaultSettings": {},
+  "defaultPrompt": "Review the matching unread Nano inbox message."
+}

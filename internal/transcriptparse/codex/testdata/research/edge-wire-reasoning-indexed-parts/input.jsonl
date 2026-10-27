@@ -1,0 +1,4 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/started", "params": {"threadId": "thread-example", "turnId": "turn-example", "item": {"type": "reasoning", "id": "r", "summary": [], "content": []}, "startedAtMs": 1767225600000}}}
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/reasoning/summaryTextDelta", "params": {"threadId": "thread-example", "turnId": "turn-example", "itemId": "r", "summaryIndex": 1, "delta": "Second."}}}
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/reasoning/summaryTextDelta", "params": {"threadId": "thread-example", "turnId": "turn-example", "itemId": "r", "summaryIndex": 0, "delta": "First."}}}
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/reasoning/textDelta", "params": {"threadId": "thread-example", "turnId": "turn-example", "itemId": "r", "contentIndex": 0, "delta": "Separate raw content."}}}

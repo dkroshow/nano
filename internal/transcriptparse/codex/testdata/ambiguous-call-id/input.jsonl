@@ -1,0 +1,4 @@
+{"type":"event_msg","payload":{"type":"task_started","turn_id":"t"}}
+{"type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"c","arguments":{"cmd":"false"}}}
+{"type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"c","arguments":{"cmd":"true"}}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"c","output":"Execution failed"}}

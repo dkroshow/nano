@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "tool_search_call", "call_id": "id-5f4d2a7355", "status": "completed", "execution": "[redacted]", "arguments": {"query": "[redacted]", "limit": 5}}}

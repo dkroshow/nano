@@ -1,0 +1,401 @@
+{
+  "items": [
+    {
+      "id": "derived:s1:line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "interaction",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "session/request_permission",
+        "requestId": "perm1",
+        "params": {
+          "sessionId": "s1",
+          "toolCall": {
+            "toolCallId": "c1",
+            "title": "Read example",
+            "rawInput": {
+              "path": "/workspace/example"
+            }
+          },
+          "options": [
+            {
+              "optionId": "allow-once",
+              "kind": "allow_once",
+              "name": "Allow once"
+            },
+            {
+              "optionId": "reject-once",
+              "kind": "reject_once",
+              "name": "Reject"
+            }
+          ]
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "s1"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:line-2",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-2",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "interaction",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/exit_plan_mode",
+        "requestId": "plan1",
+        "params": {
+          "sessionId": "s1",
+          "toolCallId": "c2",
+          "planContent": "Read and report."
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "s1"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:line-3",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-3",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "interaction",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/ask_user_question",
+        "requestId": "ask1",
+        "params": {
+          "sessionId": "s1",
+          "toolCallId": "c3",
+          "questions": [
+            {
+              "question": "Choose a color",
+              "options": [
+                {
+                  "label": "Blue",
+                  "description": "Use blue"
+                }
+              ],
+              "multiSelect": false
+            }
+          ],
+          "mode": "blocking"
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "s1"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-4",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-4",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": "perm1",
+        "params": {},
+        "result": {
+          "outcome": {
+            "outcome": "selected",
+            "optionId": "allow-once"
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 4,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-5",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-5",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": "plan1",
+        "params": {},
+        "result": {
+          "outcome": "revised",
+          "feedback": "Add validation."
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 5,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-6",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-6",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": "ask1",
+        "params": {},
+        "result": {
+          "outcome": "accepted",
+          "answers": {
+            "Choose a color": [
+              "Blue"
+            ]
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 6,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained.",
+  "interactionJoins": [
+    {
+      "requestId": "perm1",
+      "requestLine": 1,
+      "responseLine": 4,
+      "identityScope": "connection"
+    },
+    {
+      "requestId": "plan1",
+      "requestLine": 2,
+      "responseLine": 5,
+      "identityScope": "connection"
+    },
+    {
+      "requestId": "ask1",
+      "requestLine": 3,
+      "responseLine": 6,
+      "identityScope": "connection"
+    }
+  ]
+}

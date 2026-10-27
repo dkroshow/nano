@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "turn-example",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "command",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "outcome": "failure",
+      "nativeTimestamp": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "precision": "millisecond",
+        "sourceField": "timestamp"
+      },
+      "observedTime": null,
+      "tool": {
+        "name": "exec_command",
+        "callId": "call-example",
+        "arguments": {
+          "cmd": "exit 2"
+        },
+        "outputs": {
+          "exitCode": 2,
+          "stdout": "",
+          "stderr": "Example failure."
+        }
+      },
+      "detail": {},
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        },
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 2,
+          "interpretationRule": "assembly-evidence"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

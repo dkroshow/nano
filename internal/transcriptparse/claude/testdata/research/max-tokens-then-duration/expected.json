@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "truncated",
+        "evidence": [
+          "message.stop_reason=max_tokens",
+          "durationMs=50"
+        ]
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Duration is elapsed-time evidence. It must not erase explicit model truncation. Current reopenForTerminalEvidence allows the later duration row to reopen and complete the truncated turn."
+}

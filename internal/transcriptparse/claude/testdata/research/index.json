@@ -1,0 +1,856 @@
+[
+  {
+    "case": "capture-assistant-block-fallback",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "assistant.block:fallback"
+    ]
+  },
+  {
+    "case": "capture-assistant-block-text",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "assistant.block:text"
+    ]
+  },
+  {
+    "case": "capture-assistant-block-thinking",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "assistant.block:thinking"
+    ]
+  },
+  {
+    "case": "capture-assistant-block-tool-use",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "assistant.block:tool_use"
+    ]
+  },
+  {
+    "case": "capture-attachment-agent-listing-delta",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:agent_listing_delta"
+    ]
+  },
+  {
+    "case": "capture-attachment-async-hook-response",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:async_hook_response"
+    ]
+  },
+  {
+    "case": "capture-attachment-auto-mode",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:auto_mode"
+    ]
+  },
+  {
+    "case": "capture-attachment-batching-reminder-sent",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:batching_reminder_sent"
+    ]
+  },
+  {
+    "case": "capture-attachment-command-permissions",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:command_permissions"
+    ]
+  },
+  {
+    "case": "capture-attachment-compact-file-reference",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:compact_file_reference"
+    ]
+  },
+  {
+    "case": "capture-attachment-date-change",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:date_change"
+    ]
+  },
+  {
+    "case": "capture-attachment-deferred-tools-delta",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:deferred_tools_delta"
+    ]
+  },
+  {
+    "case": "capture-attachment-edited-text-file",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:edited_text_file"
+    ]
+  },
+  {
+    "case": "capture-attachment-file",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:file"
+    ]
+  },
+  {
+    "case": "capture-attachment-goal-status",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:goal_status"
+    ]
+  },
+  {
+    "case": "capture-attachment-hook-additional-context",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:hook_additional_context"
+    ]
+  },
+  {
+    "case": "capture-attachment-hook-non-blocking-error",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:hook_non_blocking_error"
+    ]
+  },
+  {
+    "case": "capture-attachment-hook-success",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:hook_success"
+    ]
+  },
+  {
+    "case": "capture-attachment-output-style",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:output_style"
+    ]
+  },
+  {
+    "case": "capture-attachment-plan-mode",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:plan_mode"
+    ]
+  },
+  {
+    "case": "capture-attachment-queued-command",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:queued_command"
+    ]
+  },
+  {
+    "case": "capture-attachment-read-truncation-notice",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:read_truncation_notice"
+    ]
+  },
+  {
+    "case": "capture-attachment-sandbox-instructions",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:sandbox_instructions"
+    ]
+  },
+  {
+    "case": "capture-attachment-silent-turn-reminder",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:silent_turn_reminder"
+    ]
+  },
+  {
+    "case": "capture-attachment-skill-listing",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:skill_listing"
+    ]
+  },
+  {
+    "case": "capture-attachment-task-reminder",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:task_reminder"
+    ]
+  },
+  {
+    "case": "capture-attachment-total-tokens-reminder",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "attachment:total_tokens_reminder"
+    ]
+  },
+  {
+    "case": "capture-flag-isapierrormessage",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "flag:isApiErrorMessage"
+    ]
+  },
+  {
+    "case": "capture-flag-iscompactsummary",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "flag:isCompactSummary"
+    ]
+  },
+  {
+    "case": "capture-flag-ismeta",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "flag:isMeta"
+    ]
+  },
+  {
+    "case": "capture-flag-issidechain",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "flag:isSidechain"
+    ]
+  },
+  {
+    "case": "capture-flag-isvisibleintranscriptonly",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "flag:isVisibleInTranscriptOnly"
+    ]
+  },
+  {
+    "case": "capture-origin-coordinator",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "origin:coordinator"
+    ]
+  },
+  {
+    "case": "capture-origin-human",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "origin:human"
+    ]
+  },
+  {
+    "case": "capture-origin-task-notification",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "origin:task-notification"
+    ]
+  },
+  {
+    "case": "capture-row-agent-name",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:agent-name"
+    ]
+  },
+  {
+    "case": "capture-row-agent-setting",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:agent-setting"
+    ]
+  },
+  {
+    "case": "capture-row-ai-title",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:ai-title"
+    ]
+  },
+  {
+    "case": "capture-row-assistant",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:assistant"
+    ]
+  },
+  {
+    "case": "capture-row-atis-latch",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:atis-latch"
+    ]
+  },
+  {
+    "case": "capture-row-attachment",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:attachment"
+    ]
+  },
+  {
+    "case": "capture-row-bridge-session",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:bridge-session"
+    ]
+  },
+  {
+    "case": "capture-row-cost-state",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:cost-state"
+    ]
+  },
+  {
+    "case": "capture-row-custom-title",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:custom-title"
+    ]
+  },
+  {
+    "case": "capture-row-file-history-delta",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:file-history-delta"
+    ]
+  },
+  {
+    "case": "capture-row-file-history-snapshot",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:file-history-snapshot"
+    ]
+  },
+  {
+    "case": "capture-row-last-prompt",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:last-prompt"
+    ]
+  },
+  {
+    "case": "capture-row-mode",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:mode"
+    ]
+  },
+  {
+    "case": "capture-row-permission-mode",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:permission-mode"
+    ]
+  },
+  {
+    "case": "capture-row-queue-operation",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:queue-operation"
+    ]
+  },
+  {
+    "case": "capture-row-result",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:result"
+    ]
+  },
+  {
+    "case": "capture-row-started",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:started"
+    ]
+  },
+  {
+    "case": "capture-row-system",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:system"
+    ]
+  },
+  {
+    "case": "capture-row-user",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "row:user"
+    ]
+  },
+  {
+    "case": "capture-system-api-error",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "system.api_error"
+    ]
+  },
+  {
+    "case": "capture-system-compact-boundary",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "system.compact_boundary"
+    ]
+  },
+  {
+    "case": "capture-system-local-command",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "system.local_command"
+    ]
+  },
+  {
+    "case": "capture-system-model-refusal-fallback",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "system.model_refusal_fallback"
+    ]
+  },
+  {
+    "case": "capture-system-stop-hook-summary",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "system.stop_hook_summary"
+    ]
+  },
+  {
+    "case": "capture-system-turn-duration",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "system.turn_duration"
+    ]
+  },
+  {
+    "case": "capture-tooluseresult-create",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "toolUseResult:create"
+    ]
+  },
+  {
+    "case": "capture-tooluseresult-file-unchanged",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "toolUseResult:file_unchanged"
+    ]
+  },
+  {
+    "case": "capture-tooluseresult-image",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "toolUseResult:image"
+    ]
+  },
+  {
+    "case": "capture-tooluseresult-parts",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "toolUseResult:parts"
+    ]
+  },
+  {
+    "case": "capture-tooluseresult-text",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "toolUseResult:text"
+    ]
+  },
+  {
+    "case": "capture-tooluseresult-update",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "toolUseResult:update"
+    ]
+  },
+  {
+    "case": "capture-user-block-image",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "user.block:image"
+    ]
+  },
+  {
+    "case": "capture-user-block-text",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "user.block:text"
+    ]
+  },
+  {
+    "case": "capture-user-block-tool-result",
+    "classification": "scrubbed capture",
+    "shapes": [
+      "user.block:tool_result"
+    ]
+  },
+  {
+    "case": "paired-split-file",
+    "classification": "constructed example",
+    "shapes": [
+      "paired-split-file"
+    ]
+  },
+  {
+    "case": "paired-split-wire",
+    "classification": "constructed example",
+    "shapes": [
+      "paired-split-wire"
+    ]
+  },
+  {
+    "case": "interleaved-message-ids",
+    "classification": "constructed example",
+    "shapes": [
+      "interleaved-message-ids"
+    ]
+  },
+  {
+    "case": "duplicate-row-versus-equal-text",
+    "classification": "constructed example",
+    "shapes": [
+      "duplicate-row-versus-equal-text"
+    ]
+  },
+  {
+    "case": "out-of-order-time",
+    "classification": "constructed example",
+    "shapes": [
+      "out-of-order-time"
+    ]
+  },
+  {
+    "case": "origin-human",
+    "classification": "constructed example",
+    "shapes": [
+      "origin-human"
+    ]
+  },
+  {
+    "case": "origin-task-notification",
+    "classification": "constructed example",
+    "shapes": [
+      "origin-task-notification"
+    ]
+  },
+  {
+    "case": "origin-coordinator",
+    "classification": "constructed example",
+    "shapes": [
+      "origin-coordinator"
+    ]
+  },
+  {
+    "case": "worker-file-and-parent-scope",
+    "classification": "constructed example",
+    "shapes": [
+      "worker-file-and-parent-scope"
+    ]
+  },
+  {
+    "case": "compaction-preserved-lineage",
+    "classification": "constructed example",
+    "shapes": [
+      "compaction-preserved-lineage"
+    ]
+  },
+  {
+    "case": "interruption-plain",
+    "classification": "constructed example",
+    "shapes": [
+      "interruption-plain"
+    ]
+  },
+  {
+    "case": "interruption-tool-use",
+    "classification": "constructed example",
+    "shapes": [
+      "interruption-tool-use"
+    ]
+  },
+  {
+    "case": "interruption-tag",
+    "classification": "constructed example",
+    "shapes": [
+      "interruption-tag"
+    ]
+  },
+  {
+    "case": "terminal-failed",
+    "classification": "constructed example",
+    "shapes": [
+      "terminal-failed"
+    ]
+  },
+  {
+    "case": "terminal-interrupted",
+    "classification": "constructed example",
+    "shapes": [
+      "terminal-interrupted"
+    ]
+  },
+  {
+    "case": "terminal-completed",
+    "classification": "constructed example",
+    "shapes": [
+      "terminal-completed"
+    ]
+  },
+  {
+    "case": "max-tokens-then-duration",
+    "classification": "constructed example",
+    "shapes": [
+      "max-tokens-then-duration"
+    ]
+  },
+  {
+    "case": "synthetic-error-stop-sequence",
+    "classification": "constructed example",
+    "shapes": [
+      "synthetic-error-stop-sequence"
+    ]
+  },
+  {
+    "case": "model-refusal-retraction",
+    "classification": "constructed example",
+    "shapes": [
+      "model-refusal-retraction"
+    ]
+  },
+  {
+    "case": "tool-call-completeness-and-failure",
+    "classification": "constructed example",
+    "shapes": [
+      "tool-call-completeness-and-failure"
+    ]
+  },
+  {
+    "case": "question-control-and-file-answer",
+    "classification": "constructed example",
+    "shapes": [
+      "question-control-and-file-answer"
+    ]
+  },
+  {
+    "case": "control-replay-answered-and-pending",
+    "classification": "constructed example",
+    "shapes": [
+      "control-replay-answered-and-pending"
+    ]
+  },
+  {
+    "case": "control-elicitation",
+    "classification": "constructed example",
+    "shapes": [
+      "control-elicitation"
+    ]
+  },
+  {
+    "case": "control-request-user-dialog",
+    "classification": "constructed example",
+    "shapes": [
+      "control-request-user-dialog"
+    ]
+  },
+  {
+    "case": "control-hook-callback",
+    "classification": "constructed example",
+    "shapes": [
+      "control-hook-callback"
+    ]
+  },
+  {
+    "case": "control-mcp-message",
+    "classification": "constructed example",
+    "shapes": [
+      "control-mcp-message"
+    ]
+  },
+  {
+    "case": "control-settings-interrupt-cancel",
+    "classification": "constructed example",
+    "shapes": [
+      "control-settings-interrupt-cancel"
+    ]
+  },
+  {
+    "case": "wire-system-init",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-system-init"
+    ]
+  },
+  {
+    "case": "wire-system-status",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-system-status"
+    ]
+  },
+  {
+    "case": "wire-system-thinking-tokens",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-system-thinking-tokens"
+    ]
+  },
+  {
+    "case": "wire-rate-limit-event",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-rate-limit-event"
+    ]
+  },
+  {
+    "case": "wire-system-hook-started",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-system-hook-started"
+    ]
+  },
+  {
+    "case": "wire-system-hook-response",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-system-hook-response"
+    ]
+  },
+  {
+    "case": "wire-snapshot-without-deltas",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-snapshot-without-deltas"
+    ]
+  },
+  {
+    "case": "wire-orphan-result",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-orphan-result"
+    ]
+  },
+  {
+    "case": "wire-multiple-user-blocks",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-multiple-user-blocks"
+    ]
+  },
+  {
+    "case": "mixed-content-and-images",
+    "classification": "constructed example",
+    "shapes": [
+      "mixed-content-and-images"
+    ]
+  },
+  {
+    "case": "redacted-thinking-server-tool",
+    "classification": "constructed example",
+    "shapes": [
+      "redacted-thinking-server-tool"
+    ]
+  },
+  {
+    "case": "plan-and-file-change-tools",
+    "classification": "constructed example",
+    "shapes": [
+      "plan-and-file-change-tools"
+    ]
+  },
+  {
+    "case": "task-launch-and-notification",
+    "classification": "constructed example",
+    "shapes": [
+      "task-launch-and-notification"
+    ]
+  },
+  {
+    "case": "shim-envelope-replay-exit",
+    "classification": "constructed example",
+    "shapes": [
+      "shim-envelope-replay-exit"
+    ]
+  },
+  {
+    "case": "unknown-malformed-and-tail",
+    "classification": "constructed example",
+    "shapes": [
+      "unknown-malformed-and-tail"
+    ]
+  },
+  {
+    "case": "rewrite-and-size-budget",
+    "classification": "constructed example",
+    "shapes": [
+      "rewrite-and-size-budget"
+    ]
+  },
+  {
+    "case": "guardian-origin-not-native",
+    "classification": "constructed example",
+    "shapes": [
+      "guardian-origin-not-native"
+    ]
+  },
+  {
+    "case": "usage-message-dedup-and-missing-fields",
+    "classification": "constructed example",
+    "shapes": [
+      "usage-message-dedup-and-missing-fields"
+    ]
+  },
+  {
+    "case": "code-only-file-vocabulary",
+    "classification": "constructed example",
+    "shapes": [
+      "code-only-file-vocabulary"
+    ]
+  },
+  {
+    "case": "native-time-precision-and-absence",
+    "classification": "constructed example",
+    "shapes": [
+      "native-time-precision-and-absence"
+    ]
+  },
+  {
+    "case": "wire-initial-content-at-start",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-initial-content-at-start"
+    ]
+  },
+  {
+    "case": "wire-orphan-delta-and-truncation",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-orphan-delta-and-truncation"
+    ]
+  },
+  {
+    "case": "permission-denied-and-question-skipped",
+    "classification": "constructed example",
+    "shapes": [
+      "permission-denied-and-question-skipped"
+    ]
+  },
+  {
+    "case": "wire-result-usage-grain",
+    "classification": "constructed example",
+    "shapes": [
+      "wire-result-usage-grain"
+    ]
+  },
+  {
+    "case": "partial-assistant-api-error-stop",
+    "classification": "constructed example",
+    "shapes": [
+      "partial-assistant-api-error-stop"
+    ]
+  },
+  {
+    "case": "bare-string-message",
+    "classification": "constructed example",
+    "shapes": [
+      "bare-string-message"
+    ]
+  }
+]

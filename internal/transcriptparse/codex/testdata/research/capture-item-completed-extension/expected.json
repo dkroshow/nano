@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "native_item_id",
+          "value": "id-a53503c78f",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "id-9c367b11a1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_call",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1788673781913,
+        "precision": "millisecond",
+        "sourceField": "payload.completed_at_ms"
+      },
+      "observedTime": null,
+      "tool": null,
+      "detail": {
+        "type": "Extension",
+        "kind": "web.search",
+        "id": "id-a53503c78f",
+        "query": "[redacted]",
+        "action": {
+          "type": "search",
+          "query": null,
+          "queries": [
+            "[redacted]",
+            "[redacted]"
+          ]
+        },
+        "results": [
+          {
+            "type": "text_result",
+            "domain": "[redacted]",
+            "ref_id": "[redacted]",
+            "snippet": "[redacted]",
+            "title": "[redacted]",
+            "url": "[redacted]"
+          },
+          {
+            "type": "text_result",
+            "domain": "[redacted]",
+            "ref_id": "[redacted]",
+            "snippet": "[redacted]",
+            "title": "[redacted]",
+            "url": "[redacted]"
+          },
+          {
+            "type": "text_result",
+            "domain": "[redacted]",
+            "ref_id": "[redacted]",
+            "snippet": "[redacted]",
+            "title": "[redacted]",
+            "url": "[redacted]"
+          },
+          {
+            "type": "text_result",
+            "domain": "[redacted]",
+            "ref_id": "[redacted]",
+            "snippet": "[redacted]",
+            "title": "[redacted]",
+            "url": "[redacted]"
+          }
+        ]
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": "/payload/item",
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

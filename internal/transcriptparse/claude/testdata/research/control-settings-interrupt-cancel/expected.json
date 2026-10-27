@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "settings",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "initialize": "acknowledged",
+        "modelChange": "failed",
+        "interruptAcknowledged": true,
+        "permissionCancellation": "unverified shape"
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "e5dae40487f94c952ed481f2320f5059540811d85382f5b32ae26e2a222a0e5f",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": [
+          "interrupt acknowledgment does not prove interruption"
+        ]
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Constructed. initialize/set_model/interrupt and success/error frames are code-backed. set_permission_mode/control_cancel_request are survey-backed names; cancellation top-level framing requires capture verification. No native file equivalent for the control exchange."
+}

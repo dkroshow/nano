@@ -1,0 +1,140 @@
+{
+  "items": [
+    {
+      "id": "nth_codex_main",
+      "provider": "codex",
+      "nativeId": "11111111-1111-4111-8111-111111111111",
+      "kind": "main",
+      "title": "Refactor request routing",
+      "preview": "Trace the request path and propose a safer boundary.",
+      "createdAt": "2026-07-09T17:00:00Z",
+      "updatedAt": "2026-07-09T17:30:00Z",
+      "archived": false,
+      "interaction": "interactive",
+      "metadata": {
+        "cwd": {"state": "known", "value": "/workspace/nano", "evidence": "native_durable"},
+        "model": {"state": "known", "value": "gpt-example", "evidence": "provider_api"},
+        "effort": {"state": "known", "value": "high", "evidence": "native_durable"},
+        "priority": {"state": "known", "value": "priority", "evidence": "native_durable"},
+        "permission": {"state": "known", "value": "read-only", "evidence": "native_durable"},
+        "historicalBranch": {"state": "known", "value": "main", "evidence": "native_durable"},
+        "origin": {"state": "known", "value": "codex-tui", "evidence": "native_durable"}
+      },
+      "source": {"status": "present", "conflict": false, "diagnosticCount": 0, "lastIndexedAt": "2026-07-09T17:30:01Z"}
+    },
+    {
+      "id": "nth_claude_main",
+      "provider": "claude",
+      "nativeId": "22222222-2222-4222-8222-222222222222",
+      "kind": "main",
+      "title": null,
+      "preview": "Review the storage migration.",
+      "createdAt": "2026-07-09T16:00:00Z",
+      "updatedAt": "2026-07-09T16:45:00Z",
+      "archived": false,
+      "interaction": "interactive",
+      "metadata": {
+        "cwd": {"state": "known", "value": "/workspace/storage", "evidence": "native_durable"},
+        "model": {"state": "known", "value": "claude-example", "evidence": "native_durable"},
+        "effort": {"state": "unknown", "value": null, "evidence": null},
+        "priority": {"state": "unsupported", "value": null, "evidence": null},
+        "permission": {"state": "known", "value": "plan", "evidence": "native_durable"},
+        "historicalBranch": {"state": "known", "value": "feature/storage", "evidence": "native_durable"},
+        "origin": {"state": "known", "value": "cli", "evidence": "native_durable"}
+      },
+      "source": {"status": "present", "conflict": false, "diagnosticCount": 1, "lastIndexedAt": "2026-07-09T16:45:01Z"}
+    },
+    {
+      "id": "nth_codex_archived",
+      "provider": "codex",
+      "nativeId": "33333333-3333-4333-8333-333333333333",
+      "kind": "main",
+      "title": "Archived investigation",
+      "preview": null,
+      "createdAt": "2026-06-01T10:00:00Z",
+      "updatedAt": "2026-06-01T11:00:00Z",
+      "archived": true,
+      "interaction": "programmatic",
+      "metadata": {
+        "cwd": {"state": "known", "value": "/workspace/archive", "evidence": "native_durable"},
+        "model": {"state": "unknown", "value": null, "evidence": null},
+        "effort": {"state": "unknown", "value": null, "evidence": null},
+        "priority": {"state": "unknown", "value": null, "evidence": null},
+        "permission": {"state": "unknown", "value": null, "evidence": null},
+        "historicalBranch": {"state": "unknown", "value": null, "evidence": null},
+        "origin": {"state": "known", "value": "codex_exec", "evidence": "native_durable"}
+      },
+      "source": {"status": "present", "conflict": false, "diagnosticCount": 0, "lastIndexedAt": "2026-07-09T15:00:00Z"}
+    },
+    {
+      "id": "nth_claude_missing",
+      "provider": "claude",
+      "nativeId": "44444444-4444-4444-8444-444444444444",
+      "kind": "main",
+      "name": {"value": "storage migration debugging", "provenance": "manual", "evidence": "user_assigned"},
+      "title": "Retained projection",
+      "preview": null,
+      "createdAt": null,
+      "updatedAt": "2026-05-10T12:00:00Z",
+      "archived": false,
+      "interaction": "programmatic",
+      "metadata": {
+        "cwd": {"state": "unknown", "value": null, "evidence": null},
+        "model": {"state": "known", "value": "claude-example", "evidence": "native_durable"},
+        "effort": {"state": "unknown", "value": null, "evidence": null},
+        "priority": {"state": "unsupported", "value": null, "evidence": null},
+        "permission": {"state": "unknown", "value": null, "evidence": null},
+        "historicalBranch": {"state": "unknown", "value": null, "evidence": null},
+        "origin": {"state": "known", "value": "sdk-cli", "evidence": "native_durable"}
+      },
+      "source": {"status": "source_missing", "conflict": false, "diagnosticCount": 0, "lastIndexedAt": "2026-07-09T14:00:00Z"}
+    },
+    {
+      "id": "nth_codex_conflict",
+      "provider": "codex",
+      "nativeId": "55555555-5555-4555-8555-555555555555",
+      "kind": "main",
+      "title": null,
+      "preview": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "archived": false,
+      "interaction": "unclassified",
+      "metadata": {
+        "cwd": {"state": "unknown", "value": null, "evidence": null},
+        "model": {"state": "unknown", "value": null, "evidence": null},
+        "effort": {"state": "unknown", "value": null, "evidence": null},
+        "priority": {"state": "unknown", "value": null, "evidence": null},
+        "permission": {"state": "unknown", "value": null, "evidence": null},
+        "historicalBranch": {"state": "unknown", "value": null, "evidence": null},
+        "origin": {"state": "unknown", "value": null, "evidence": null}
+      },
+      "source": {"status": "present", "conflict": true, "diagnosticCount": 1, "lastIndexedAt": "2026-07-09T13:00:00Z"}
+    },
+    {
+      "id": "nth_claude_subagent",
+      "provider": "claude",
+      "nativeId": "agent-example",
+      "kind": "subagent",
+      "parentNativeId": "22222222-2222-4222-8222-222222222222",
+      "title": null,
+      "preview": "Inspect the parser without editing files.",
+      "createdAt": "2026-07-09T12:00:00Z",
+      "updatedAt": "2026-07-09T12:05:00Z",
+      "archived": false,
+      "interaction": "interactive",
+      "metadata": {
+        "cwd": {"state": "known", "value": "/workspace/parser", "evidence": "native_durable"},
+        "model": {"state": "known", "value": "claude-example", "evidence": "native_durable"},
+        "effort": {"state": "unknown", "value": null, "evidence": null},
+        "priority": {"state": "unsupported", "value": null, "evidence": null},
+        "permission": {"state": "unknown", "value": null, "evidence": null},
+        "historicalBranch": {"state": "known", "value": "main", "evidence": "native_durable"},
+        "origin": {"state": "known", "value": "cli", "evidence": "native_durable"}
+      },
+      "source": {"status": "present", "conflict": false, "diagnosticCount": 0, "lastIndexedAt": "2026-07-09T12:05:01Z"}
+    }
+  ],
+  "nextCursor": "opaque-next-page",
+  "catalogVersion": 12
+}

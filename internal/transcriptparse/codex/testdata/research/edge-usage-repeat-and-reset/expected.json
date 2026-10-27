@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": "turn-example",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": {
+        "provider": "codex",
+        "aggregation": "deduplicated snapshot",
+        "value": {
+          "input_tokens": 10,
+          "cached_input_tokens": 2,
+          "output_tokens": 3,
+          "reasoning_output_tokens": 1,
+          "total_tokens": 13
+        }
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "CODEX_REPEATED_USAGE_SNAPSHOT",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 3
+      },
+      "detail": ""
+    },
+    {
+      "code": "CODEX_USAGE_COUNTER_RESET",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 4
+      },
+      "detail": ""
+    }
+  ],
+  "observations": []
+}

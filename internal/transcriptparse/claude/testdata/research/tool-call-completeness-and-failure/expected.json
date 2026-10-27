@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "call1",
+      "identityAliases": [
+        {
+          "type": "tool_call_id",
+          "value": "call1",
+          "authority": "native"
+        }
+      ],
+      "turnRef": null,
+      "kind": "command",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "printf example",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "failure",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "toolName": "Bash",
+        "arguments": {
+          "command": "printf example",
+          "timeout": 1000
+        }
+      },
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "7a91a5f68fcc9c3de216b42d553977e717f1b816f5a958eb32ac8864e90cec95",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    },
+    {
+      "id": "r1",
+      "identityAliases": [
+        {
+          "type": "tool_call_id",
+          "value": "call1",
+          "authority": "native"
+        }
+      ],
+      "turnRef": null,
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Example failure",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "failure",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "callId": "call1",
+        "output": [
+          {
+            "type": "text",
+            "text": "Example failure"
+          }
+        ]
+      },
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "6a1fe0c757b60042e24fb6be72c2cbbe7f2f9a1917d9b0283eef4723b133e3d2",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "Complete argument generation does not imply successful tool execution. Keep call and result as separate linked items; live Nano instead mutates the call with output. Preserve structured output and input, which the historical tool path mostly omits."
+}

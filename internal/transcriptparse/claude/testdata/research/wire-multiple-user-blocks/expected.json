@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "u1",
+      "identityAliases": [
+        {
+          "type": "row_uuid",
+          "value": "u1",
+          "authority": "native"
+        }
+      ],
+      "turnRef": null,
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "First\nSecond",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "First"
+        },
+        {
+          "type": "text",
+          "text": "Second"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "7371a246ead42b7df3e558c66d44c25a7cbb0d144e791b90a0c04117b25bf1a2",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One message retains ordered content parts. Current live adapter upserts the same uuid for each text block; its own state retains only the last block. Historical path emits two items without the row UUID."
+}

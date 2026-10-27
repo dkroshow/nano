@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "plan1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "plan",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Example plan.",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "toolName": "ExitPlanMode",
+        "callId": "plan1"
+      },
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "992e2ceb2ac765f8325eaa56f09f4e5b78d077af7df0adb66ca46a55a5cd6007",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    },
+    {
+      "id": "edit1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "file_change",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "toolName": "Edit",
+        "callId": "edit1",
+        "changes": [
+          {
+            "path": "/workspace/example.txt",
+            "before": "before",
+            "after": "after",
+            "applied": "unknown"
+          }
+        ]
+      },
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "992e2ceb2ac765f8325eaa56f09f4e5b78d077af7df0adb66ca46a55a5cd6007",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "Constructed tool payloads. A proposed edit is not proof the file changed. Historical kind heuristic notices Edit/Write and command tools, but plan tools remain ordinary tool calls. Plan content shape/version needs a retained real capture."
+}

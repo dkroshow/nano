@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "m1-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Initial tail",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "bcc058a11d2b6d6e1d0809dfa58900571c705ee8bd0f4a77f94139bf4957c690",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "Constructed nonempty start block. Initial content belongs in assembled text. Current live adapter retains the block object but does not seed normalized Text, so appended tail can omit Initial."
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "thread_lineage",
+      "parent": "parent-example",
+      "child": "child-example",
+      "scope": "guardian",
+      "timestamps": {
+        "seconds": 1767225600,
+        "milliseconds": 1767225600123
+      },
+      "notAConversationItem": true
+    }
+  ]
+}

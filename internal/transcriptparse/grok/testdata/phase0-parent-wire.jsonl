@@ -1,0 +1,9 @@
+{"seq":13,"dir":"recv","msg":{"method":"_x.ai/queue/changed","params":{"sessionId":"parent-1","runningPromptId":"parent-prompt-1","runningText":"[redacted]"}}}
+{"seq":15,"dir":"recv","msg":{"method":"session/update","params":{"sessionId":"parent-1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"[redacted]"}},"_meta":{"eventId":"parent-1-15"}}}}
+{"seq":111,"dir":"recv","msg":{"method":"_x.ai/queue/changed","params":{"sessionId":"child-1","runningPromptId":"child-prompt-1","runningText":"[redacted]"}}}
+{"seq":114,"dir":"recv","msg":{"method":"session/update","params":{"sessionId":"child-1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"[redacted]"}},"_meta":{"eventId":"child-1-114"}}}}
+{"seq":129,"dir":"recv","msg":{"method":"session/update","params":{"sessionId":"child-1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"[redacted]"}},"_meta":{"eventId":"child-1-129","promptId":"child-prompt-1"}}}}
+{"seq":200,"dir":"recv","msg":{"method":"_x.ai/session_notification","params":{"sessionId":"parent-1","update":{"sessionUpdate":"subagent_spawned","child_session_id":"child-1","parent_session_id":"parent-1","description":"[redacted]"},"_meta":{"eventId":"parent-1-200"}}}}
+{"seq":201,"dir":"recv","msg":{"method":"_x.ai/session_notification","params":{"sessionId":"parent-1","update":{"sessionUpdate":"subagent_progress","child_session_id":"child-1","tokens_used":12,"context_percentage":1.5},"_meta":{"eventId":"parent-1-201"}}}}
+{"seq":202,"dir":"recv","msg":{"method":"_x.ai/session_notification","params":{"sessionId":"parent-1","update":{"sessionUpdate":"subagent_finished","child_session_id":"child-1","status":"completed","output":"[redacted]"},"_meta":{"eventId":"parent-1-202"}}}}
+{"seq":262,"dir":"recv","msg":{"method":"_x.ai/session/prompt_complete","params":{"sessionId":"parent-1","promptId":"parent-prompt-1","stopReason":"end_turn"}}}

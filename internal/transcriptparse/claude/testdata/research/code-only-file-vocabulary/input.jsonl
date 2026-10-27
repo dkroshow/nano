@@ -1,0 +1,12 @@
+{"type":"summary","summary":"Example summary.","leafUuid":"leaf-example"}
+{"type":"progress","uuid":"progress-example","data":{"type":"unknown-progress-example"}}
+{"type":"worktree-state","sessionId":"session-example","worktreePath":"/workspace/example"}
+{"type":"system","subtype":"turn-duration","sessionId":"session-example"}
+{"type":"system","subtype":"compaction","sessionId":"session-example"}
+{"type":"system","subtype":"init","sessionId":"session-example"}
+{"type":"system","subtype":"status","sessionId":"session-example"}
+{"type":"system","subtype":"hook_started","sessionId":"session-example"}
+{"type":"system","subtype":"hook_response","sessionId":"session-example"}
+{"type":"system","subtype":"scheduled_task_fire","sessionId":"session-example"}
+{"type":"system","subtype":"worktree-state","sessionId":"session-example"}
+{"type":"system","subtype":"file-history-delta","sessionId":"session-example"}

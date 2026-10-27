@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "hook/completed", "params": {"run": {"displayOrder": 0, "entries": [], "eventName": "preToolUse", "executionMode": "sync", "handlerType": "command", "id": "item-example", "scope": "thread", "sourcePath": "example", "startedAt": 0, "status": "running"}, "threadId": "thread-example"}}}

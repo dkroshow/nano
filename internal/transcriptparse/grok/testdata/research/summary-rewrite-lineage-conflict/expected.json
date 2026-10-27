@@ -1,0 +1,30 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "GROK_LINEAGE_CONFLICT",
+      "severity": "warning",
+      "detail": {
+        "child": "s1",
+        "parents": [
+          "parent-a",
+          "parent-b"
+        ]
+      }
+    }
+  ],
+  "modelObservations": [
+    {
+      "value": "model-a",
+      "scope": "session_snapshot",
+      "source": "before-summary.json"
+    },
+    {
+      "value": "model-b",
+      "scope": "session_snapshot",
+      "source": "after-summary.json"
+    }
+  ],
+  "note": "Do not restamp past turn facts from latest snapshot. Summary-only session has no transcript; appearance of updates preserves native session identity. Malformed temporary sidecar does not invalidate prior proven edge."
+}

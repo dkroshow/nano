@@ -1,0 +1,3 @@
+{"type":"user","uuid":"u1","sessionId":"session-example","timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Inspect the example."}]}}
+{"type":"assistant","uuid":"a1","sessionId":"session-example","timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Finished."}],"id":"m1","model":"claude-example","stop_reason":null},"apiBlockIndex":0}
+{"type":"result","subtype":"success","is_error":false,"result":"Finished."}

@@ -1,0 +1,4 @@
+{
+  "construct": "JSON encode an agent_message_chunk whose text is x repeated 1048577 times; add newline",
+  "payloadBytes": 1048577
+}

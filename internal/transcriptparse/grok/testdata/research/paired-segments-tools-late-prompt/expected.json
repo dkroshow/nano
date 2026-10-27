@@ -1,0 +1,598 @@
+{
+  "items": [
+    {
+      "id": "derived:s1:e1",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e1",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "Run a check.",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "Run a check."
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000001,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "user_message_chunk"
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e1",
+          "replay": false,
+          "sha256": "39b6e06fbbeb8198ef6d51ac44b5495921db2d5349f318bcec72fd3eabd926f4",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e1",
+            "agentTimestampMs": 1893456000001
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e2",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e2",
+          "origin": "native"
+        },
+        {
+          "type": "native_event_id",
+          "value": "e3",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "I will check.",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "I will check."
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000002,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_message_chunk"
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire.jsonl",
+          "line": 2,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e2",
+          "replay": false,
+          "sha256": "f1be44969b3ec72ec961d483c27cdabde5d484ba474d488fa9c8803b5ed2a255",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e2",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000002
+          }
+        },
+        {
+          "source": "wire.jsonl",
+          "line": 3,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e3",
+          "replay": false,
+          "sha256": "1d4cdd76cfd8331c3025fc73351ffd43230c50fe3f100c2131cc90e2f185286d",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e3",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000003
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e4",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e4",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "c1",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_call",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000004,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call",
+        "tool": {
+          "callId": "c1",
+          "name": "run_terminal_command",
+          "nativeStatus": null,
+          "arguments": {
+            "command": "true"
+          },
+          "output": null,
+          "locations": null,
+          "metadata": {
+            "name": "run_terminal_command",
+            "kind": "execute"
+          }
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire.jsonl",
+          "line": 4,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e4",
+          "replay": false,
+          "sha256": "cf79852d03ad135c14e57f67d11c081c15d72a7a4ea17dfcb9764e5a1a71f472",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e4",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000004
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e5",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e5",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "c1",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_call",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000005,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "c1",
+          "name": null,
+          "nativeStatus": "in_progress",
+          "arguments": null,
+          "output": null,
+          "locations": null,
+          "metadata": null
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire.jsonl",
+          "line": 5,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e5",
+          "replay": false,
+          "sha256": "07bffcd8b62b79c1c2d67cdecece9a524b96bfcbacfaebd493e95d8b02ffda01",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e5",
+            "agentTimestampMs": 1893456000005
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e6",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e6",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "c1",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "success",
+      "nativeTimestamp": {
+        "value": 1893456000006,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "c1",
+          "name": null,
+          "nativeStatus": "completed",
+          "arguments": null,
+          "output": null,
+          "locations": null,
+          "metadata": null
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire.jsonl",
+          "line": 6,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e6",
+          "replay": false,
+          "sha256": "d3c432d045c91db566e9854782d370036d7400e313b61f5f574bb06f74cd6b7e",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e6",
+            "agentTimestampMs": 1893456000006
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e7",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e7",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "final_answer",
+        "basis": "last_assistant_segment_before_matching_end_turn",
+        "confidence": "medium"
+      },
+      "text": "Check passed.",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "Check passed."
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000007,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_message_chunk"
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire.jsonl",
+          "line": 7,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e7",
+          "replay": false,
+          "sha256": "031a966555bfd1c261dd62ce4b27e502ae6adc10125b77029c0e9a25f5c23f5f",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e7",
+            "promptId": "p1",
+            "agentTimestampMs": 1893456000007
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:e8",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "e8",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "p1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1893456000008,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "turn_completed",
+        "native": {
+          "sessionUpdate": "turn_completed",
+          "prompt_id": "p1",
+          "stop_reason": "end_turn",
+          "usage": {
+            "inputTokens": 20,
+            "outputTokens": 5,
+            "modelUsage": {
+              "example-model": {
+                "inputTokens": 20,
+                "outputTokens": 5
+              }
+            },
+            "usageIsIncomplete": false
+          }
+        }
+      },
+      "scope": {
+        "sessionId": "s1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire.jsonl",
+          "line": 8,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "e8",
+          "replay": false,
+          "sha256": "e25d6dc867040ce0cf1a95771f5161e44bf6491e26b37ecb3b01748dbc799d2e",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "e8",
+            "agentTimestampMs": 1893456000008
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "nativeSessionId": "s1",
+      "nativeTurnId": "p1",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": "e1",
+        "endEventId": "e8"
+      },
+      "completion": {
+        "state": "completed",
+        "basis": "native_turn_completed",
+        "stopReason": "end_turn",
+        "cancellationCategory": null
+      },
+      "finalItemRefs": [
+        "derived:s1:e7"
+      ],
+      "modelObservations": [],
+      "usage": {
+        "provider": "grok",
+        "grain": "native_prompt",
+        "values": {
+          "inputTokens": 20,
+          "outputTokens": 5,
+          "modelUsage": {
+            "example-model": {
+              "inputTokens": 20,
+              "outputTokens": 5
+            }
+          },
+          "usageIsIncomplete": false
+        },
+        "completeness": "reported_not_flagged"
+      },
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

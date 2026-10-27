@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": null,
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "interrupted",
+        "evidence": [
+          {
+            "source": "input.jsonl",
+            "line": 1,
+            "shape": "event_msg/turn_aborted"
+          }
+        ]
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "observations": []
+}

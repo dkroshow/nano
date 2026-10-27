@@ -1,0 +1,432 @@
+// boot_reattach.go — the eager half of the durability rule. The decision docs
+// framed the slice as "persist attachments, re-attach on boot"
+// (docs/decisions/supervised-app-server.md, docs/decisions/claude-shim-daemon.md);
+// what shipped first was the lazy half (detached rows, one-click re-attach).
+// This closes the gap: a nano restart brings every stored attachment back as a
+// live session by itself, because the point of the daemons is that a deploy
+// costs the operator nothing — not a click per thread.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+type bootProviderControl struct {
+	handshakeSlots chan struct{}
+	// Tests shorten session/load and backoff without changing production values.
+	// Zero always selects the provider default.
+	loadTimeout      time.Duration
+	retryBackoffBase time.Duration
+}
+
+// bootReattach is one boot's set of stored attachments that are not live yet.
+// Registration takes minutes for hundreds of threads, so HTTP opens first and
+// the set reports each waiting thread in the existing "starting" state. The
+// background loop registers them in sidebar priority (bootOrder); a request
+// that needs one thread live registers that thread at once through the same
+// code.
+type bootReattach struct {
+	order    []attachmentRecord
+	controls map[string]*bootProviderControl
+
+	mu       sync.Mutex
+	pending  map[attachmentKey]bool
+	byHosted map[string]attachmentRecord
+
+	runtimeActive  bool
+	runtimeDirty   bool
+	runtimeRefresh bool
+}
+
+// prepareBootReattach records every stored attachment as starting. Nothing is
+// live at boot. It runs once, before HTTP serves.
+func (s *server) prepareBootReattach() {
+	if s.boot != nil || s.attachments == nil {
+		return
+	}
+	records := s.attachments.detachedExcept(nil)
+	boot := &bootReattach{
+		controls: map[string]*bootProviderControl{},
+		pending:  make(map[attachmentKey]bool, len(records)),
+		byHosted: make(map[string]attachmentRecord, len(records)),
+	}
+	for i := len(records) - 1; i >= 0; i-- { // oldest attach first: bootOrder's order for ties
+		rec := records[i]
+		boot.order = append(boot.order, rec)
+		boot.pending[rec.key()] = true
+		if rec.HostedThreadID != "" {
+			boot.byHosted[rec.HostedThreadID] = rec
+		}
+		if boot.controls[rec.Provider] == nil {
+			control := &bootProviderControl{}
+			if limit := providerLifecycleCapabilities(rec.Provider).BootHandshakeLimit; limit > 0 {
+				control.handshakeSlots = make(chan struct{}, limit)
+			}
+			boot.controls[rec.Provider] = control
+		}
+	}
+	s.boot = boot
+	s.restart.addThreads(boot.order)
+}
+
+// holdHandshakeSlot takes one of the provider's boot handshake slots for
+// sess's attach and returns its release. The slot goes back once: when the
+// attach starts waiting for its saved catch-up, or when it ends.
+func (c *bootProviderControl) holdHandshakeSlot(sess *session) func() {
+	if c == nil || c.handshakeSlots == nil {
+		return func() {}
+	}
+	c.handshakeSlots <- struct{}{}
+	var once sync.Once
+	release := func() { once.Do(func() { <-c.handshakeSlots }) }
+	sess.stateMu.Lock()
+	sess.releaseHandshakeSlot = release
+	sess.stateMu.Unlock()
+	return release
+}
+
+// starting reports whether a stored thread still waits for its boot
+// registration. Nil-safe: without a boot set nothing is starting.
+func (b *bootReattach) starting(key attachmentKey) bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pending[key]
+}
+
+func (b *bootReattach) startingHosted(hostedThreadID string) (attachmentRecord, bool) {
+	if b == nil || hostedThreadID == "" {
+		return attachmentRecord{}, false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	rec, ok := b.byHosted[hostedThreadID]
+	return rec, ok && b.pending[rec.key()]
+}
+
+func (b *bootReattach) settle(rec attachmentRecord) {
+	b.mu.Lock()
+	delete(b.pending, rec.key())
+	b.mu.Unlock()
+}
+
+type bootReattachOutcome int
+
+const (
+	bootReattachSettled bootReattachOutcome = iota // registered or settled by another caller
+	bootReattachRegistered
+	bootReattachFailed
+	bootReattachForgotten
+)
+
+// bootRuntimePublishInterval bounds sidebar rebuilds while keeping boot progress visible.
+const bootRuntimePublishInterval = 250 * time.Millisecond
+
+// bootHiddenWaitLimit bounds how long hidden threads wait for every
+// provider's visible ones to register, so a stuck provider delays the other
+// providers' hidden threads by at most this.
+const bootHiddenWaitLimit = 30 * time.Second
+
+// reattachOnBoot registers every stored attachment through spawnSession — the
+// same path a sidebar re-attach click takes, dual-attachment guards and
+// posture restoration included. Codex re-binds to the app-server daemon's
+// thread; claude walks the resume ladder (live shim child first). A record
+// refused before its shell registers remains detached. Later handshake
+// failures stay visible on the shell through the provider-neutral lifecycle.
+// Registrations run one at a time per provider, in one queue per provider;
+// provider handshakes run behind their shells under per-provider limits.
+func (s *server) reattachOnBoot() {
+	s.prepareBootReattach()
+	boot := s.boot
+	if boot == nil {
+		return
+	}
+	boot.mu.Lock()
+	boot.runtimeActive = true
+	boot.mu.Unlock()
+	started := time.Now()
+	ranks, ok := s.sidebarBootRanks(boot.order)
+	if !ok {
+		log.Printf("boot re-attach: sidebar unavailable; attaching in stored order")
+	}
+	order := bootOrder(boot.order, ranks)
+	s.restart.rank(ranks, order)
+	// One queue per provider, each in sidebar priority, so a provider whose
+	// daemon hangs holds only its own threads. The restart record's order is
+	// the planned priority; within each provider it is also the actual order.
+	queues := map[string][]attachmentRecord{}
+	for _, rec := range order {
+		queues[rec.Provider] = append(queues[rec.Provider], rec)
+	}
+	// A queue's hidden threads wait until every queue's visible threads are
+	// registered: once registered, a hidden thread's replay competes for the
+	// CPU and the stores with the registrations of the threads the operator
+	// sees first. A stuck provider holds the others' hidden threads only for
+	// bootHiddenWaitLimit.
+	hidden, release := context.WithTimeout(context.Background(), bootHiddenWaitLimit)
+	defer release()
+	var visiblePending sync.WaitGroup
+	var countsMu sync.Mutex
+	counts := map[bootReattachOutcome]int{}
+	var queued sync.WaitGroup
+	for _, records := range queues {
+		queued.Add(1)
+		visiblePending.Add(1)
+		go func() {
+			defer queued.Done()
+			waiting := true
+			for _, rec := range records {
+				if waiting && !ranks[rec.key()].visible {
+					waiting = false
+					visiblePending.Done()
+					<-hidden.Done()
+				}
+				outcome := s.reattachStored(rec, false)
+				countsMu.Lock()
+				counts[outcome]++
+				countsMu.Unlock()
+			}
+			if waiting {
+				visiblePending.Done()
+			}
+		}()
+	}
+	go func() {
+		visiblePending.Wait()
+		release()
+	}()
+	registered := make(chan struct{})
+	go func() {
+		queued.Wait()
+		close(registered)
+	}()
+	timer := time.NewTimer(bootRuntimePublishInterval)
+	defer timer.Stop()
+registering:
+	for {
+		select {
+		case <-registered:
+			break registering
+		case <-timer.C:
+			s.publishBootRuntime(false)
+			timer.Reset(bootRuntimePublishInterval)
+		}
+	}
+	s.publishBootRuntime(true)
+	log.Printf("boot re-attach finished: %d threads in %s (%d registered, %d settled by a request, %d failed, %d no longer stored)",
+		len(boot.order), time.Since(started).Round(time.Millisecond), counts[bootReattachRegistered],
+		counts[bootReattachSettled], counts[bootReattachFailed], counts[bootReattachForgotten])
+	s.restart.markBootLoopDone()
+}
+
+const (
+	bootTierStarred = iota
+	bootTierTopLevel
+	bootTierNested
+	bootTierUnseen
+)
+
+var bootTierNames = [...]string{"starred", "top_level", "nested", "unseen"}
+
+// bootOrder sets restart priority from the sidebar, so the threads near its
+// top come back first: starred threads, then top-level rows, then subagents
+// nested under them, each visible first and then most recently updated first.
+// A thread the sidebar does not know goes last. The sort is stable, so ties
+// keep the stored order, and without ranks the stored order stands. Every
+// visible thread precedes every hidden one, which reattachOnBoot's hold
+// relies on.
+func bootOrder(records []attachmentRecord, ranks map[attachmentKey]bootRank) []attachmentRecord {
+	rankOf := func(rec attachmentRecord) bootRank {
+		if r, ok := ranks[rec.key()]; ok {
+			return r
+		}
+		return bootRank{tier: bootTierUnseen}
+	}
+	ordered := append([]attachmentRecord(nil), records...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		a, b := rankOf(ordered[i]), rankOf(ordered[j])
+		if a.tier != b.tier {
+			return a.tier < b.tier
+		}
+		if a.visible != b.visible {
+			return a.visible
+		}
+		return a.updated.After(b.updated)
+	})
+	return ordered
+}
+
+// sidebarVisibleTopLevel is how many top-level rows count as visible: about
+// one screen of the sidebar under its starred rows.
+const sidebarVisibleTopLevel = 20
+
+// bootRank is a stored thread's place in the sidebar at boot.
+type bootRank struct {
+	tier    int
+	updated time.Time
+	visible bool
+}
+
+// sidebarBootRanks reads each stored thread's place in the sidebar's default
+// view: starred rows, top-level rows and nested rows, with the catalog's
+// updated time. Visible rows are the ones a browser shows first once the
+// restart is done: every starred row, and the first sidebarVisibleTopLevel
+// top-level rows by recency among the rows the active sidebar will show (rows
+// it shows now, plus stored threads, which show once attached). Ordinary
+// history rows do not count. A thread the sidebar does not know has no entry
+// and ranks as unseen.
+func (s *server) sidebarBootRanks(stored []attachmentRecord) (map[attachmentKey]bootRank, bool) {
+	nodes, ready := s.sidebar.defaultNodes()
+	if !ready {
+		return nil, false
+	}
+	isStored := make(map[attachmentKey]bool, len(stored))
+	for _, rec := range stored {
+		isStored[rec.key()] = true
+	}
+	ranks := make(map[attachmentKey]bootRank, len(nodes))
+	var topLevel []attachmentKey
+	for _, node := range nodes {
+		key := attachmentKey{provider: node.thread.Provider, nativeThreadID: node.thread.NativeID}
+		r := bootRank{tier: bootTierNested}
+		if updated := parseCatalogTimePtr(node.thread.UpdatedAt); updated != nil {
+			r.updated = *updated
+		}
+		switch {
+		case node.thread.Starred:
+			r.tier, r.visible = bootTierStarred, true
+		case node.parentID == "":
+			r.tier = bootTierTopLevel
+			if node.included || isStored[key] {
+				topLevel = append(topLevel, key)
+			}
+		}
+		ranks[key] = r
+	}
+	sort.SliceStable(topLevel, func(i, j int) bool { return ranks[topLevel[i]].updated.After(ranks[topLevel[j]].updated) })
+	for _, key := range topLevel[:min(len(topLevel), sidebarVisibleTopLevel)] {
+		r := ranks[key]
+		r.visible = true
+		ranks[key] = r
+	}
+	return ranks, true
+}
+
+// resumeSpawnLock returns provider's resume lock.
+func (s *server) resumeSpawnLock(provider string) *sync.Mutex {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "claude":
+		return &s.resumeSpawnClaude
+	case "codex":
+		return &s.resumeSpawnCodex
+	case "grok":
+		return &s.resumeSpawnGrok
+	default:
+		return &s.resumeSpawnMu
+	}
+}
+
+// reattachStartingHosted registers one starting thread now, for a request that
+// needs it live. Any other thread is left as it is.
+func (s *server) reattachStartingHosted(hostedThreadID string) {
+	if rec, ok := s.boot.startingHosted(hostedThreadID); ok {
+		s.reattachStored(rec, true)
+	}
+}
+
+// handleHostedThreadPrioritize registers a thread that still waits for its
+// boot re-attach now, ahead of the boot queue, because the operator opened it.
+// A thread not waiting is left as it is. The registration runs behind the
+// answer, so a provider stuck in its handshake holds no request.
+func (s *server) handleHostedThreadPrioritize(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
+	_, starting := s.boot.startingHosted(record.ID)
+	if starting {
+		go s.reattachStartingHosted(record.ID)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]bool{"starting": starting})
+}
+
+// reattachStored registers one boot record unless another caller already
+// settled it. Two callers may race here; spawnSession's resume guard lets only
+// the first register, and the second sees the live session.
+func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bool) bootReattachOutcome {
+	boot := s.boot
+	if !boot.starting(rec.key()) {
+		return bootReattachSettled
+	}
+	// Settle only after the attempt, so no view sees the thread as neither
+	// starting nor live.
+	defer func() {
+		boot.settle(rec)
+		if immediateRuntimePublish {
+			s.publishRuntime(false)
+		} else {
+			s.notifyRuntime()
+		}
+	}()
+	restart := s.restart.thread(rec.key())
+	restart.at(restartPicked)
+	if _, stored := s.attachments.get(rec.Provider, rec.NativeThreadID); !stored {
+		restart.fail("no_longer_stored")
+		return bootReattachForgotten // detached or closed while it waited
+	}
+	// Presentation is mutable and control.sqlite is its authority; the
+	// attachment copy may be stale from a flip while nano was down or the
+	// thread detached. The attachment value covers only legacy records that
+	// predate hosted identity.
+	presentationMode := rec.PresentationMode
+	if rec.HostedThreadID != "" && s.agentExecutions != nil {
+		if canonical, ok := s.agentExecutions.presentationModeFor(rec.HostedThreadID); ok {
+			presentationMode = canonical
+		}
+	}
+	sess, err := s.spawnSession(spawnRequest{
+		Provider:                rec.Provider,
+		Mode:                    "resume",
+		ThreadID:                rec.NativeThreadID,
+		HostedThreadID:          rec.HostedThreadID,
+		InvokerHostedThreadID:   rec.InvokerHostedThreadID,
+		InvokerNativeThreadID:   rec.InvokerNativeThreadID,
+		InvokerProvider:         rec.InvokerProvider,
+		PresentationMode:        presentationMode,
+		PendingName:             rec.PendingName,
+		codexZeroTurnResume:     providerLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
+		bootReattach:            boot.controls[rec.Provider],
+		immediateRuntimePublish: immediateRuntimePublish,
+		restart:                 restart,
+		// A thread the sidebar does not show catches up after the visible
+		// ones; one the operator opened before the boot loop reached it
+		// (immediateRuntimePublish) does not wait.
+		catalogBackground: !immediateRuntimePublish && restart.hiddenAtBoot(),
+	})
+	var attached *threadAttachedError
+	switch {
+	case errors.As(err, &attached):
+		return bootReattachSettled // the winning resume carries the entry
+	case errors.Is(err, errHostedControlUnavailable):
+		restart.fail("control_unavailable")
+		log.Printf("boot re-attach %s/%s failed (left detached): %v", rec.Provider, rec.NativeThreadID, err)
+		return bootReattachFailed
+	case err != nil:
+		restart.fail("spawn_error")
+		log.Printf("boot re-attach %s/%s failed (left detached): %v", rec.Provider, rec.NativeThreadID, err)
+		return bootReattachFailed
+	}
+	// Codex turn overrides (service tier included) are re-seeded by the
+	// shared resume seam — seedCodexTurnOverrides via startCodexSession —
+	// so boot and click-resume converge; no boot-only patching here.
+	log.Printf("boot re-attach %s/%s registered session %s", rec.Provider, rec.NativeThreadID, sess.id)
+	return bootReattachRegistered
+}

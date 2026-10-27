@@ -1,0 +1,1081 @@
+{
+  "cases": 122,
+  "scenarios": {
+    "paired-split-file": "TestPairedSplitSnapshotsDoNotDuplicateStream",
+    "paired-split-wire": "TestPairedSplitSnapshotsDoNotDuplicateStream",
+    "rewrite-and-size-budget": "TestClaudeResearchSourceReplacementAndBudget"
+  },
+  "differences": {
+    "capture-attachment-agent-listing-delta": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-async-hook-response": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-auto-mode": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-batching-reminder-sent": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-command-permissions": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-compact-file-reference": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-date-change": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-deferred-tools-delta": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-edited-text-file": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-file": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-goal-status": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-hook-additional-context": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-hook-non-blocking-error": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-hook-success": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-output-style": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-plan-mode": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-queued-command": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-read-truncation-notice": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-sandbox-instructions": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-silent-turn-reminder": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-skill-listing": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-task-reminder": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-attachment-total-tokens-reminder": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-agent-name": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-agent-setting": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-ai-title": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-atis-latch": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-attachment": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-bridge-session": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-cost-state": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-custom-title": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-file-history-delta": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-file-history-snapshot": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-last-prompt": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-mode": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-permission-mode": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-queue-operation": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-row-result": {
+      "difference": "CLAUDE-JOURNAL-1",
+      "reason": "Task-journal records remain source metadata and provide no conversation completion.",
+      "items": []
+    },
+    "capture-row-started": {
+      "difference": "CLAUDE-JOURNAL-1",
+      "reason": "Task-journal records remain source metadata and provide no conversation completion.",
+      "items": []
+    },
+    "capture-row-system": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-system-api-error": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-system-local-command": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-system-model-refusal-fallback": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-system-stop-hook-summary": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "capture-system-turn-duration": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "wire-system-hook-response": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "wire-system-hook-started": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "wire-system-init": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "wire-system-status": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "wire-system-thinking-tokens": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Native metadata remains a scoped observation; the draft empty system item is omitted.",
+      "items": []
+    },
+    "control-hook-callback": {
+      "difference": "CLAUDE-CONTROL-2",
+      "reason": "Unverified controls or unmatched responses retain observations and diagnostics without invented request items.",
+      "items": []
+    },
+    "control-mcp-message": {
+      "difference": "CLAUDE-CONTROL-2",
+      "reason": "Unverified controls or unmatched responses retain observations and diagnostics without invented request items.",
+      "items": []
+    },
+    "control-settings-interrupt-cancel": {
+      "difference": "CLAUDE-CONTROL-2",
+      "reason": "Unverified controls or unmatched responses retain observations and diagnostics without invented request items.",
+      "items": []
+    },
+    "permission-denied-and-question-skipped": {
+      "difference": "CLAUDE-CONTROL-2",
+      "reason": "Unverified controls or unmatched responses retain observations and diagnostics without invented request items.",
+      "items": []
+    },
+    "wire-rate-limit-event": {
+      "difference": "CLAUDE-OBSERVATION-2",
+      "reason": "Metadata and unresolved or malformed input stay observations or source records with diagnostics, not empty content items.",
+      "items": []
+    },
+    "unknown-malformed-and-tail": {
+      "difference": "CLAUDE-OBSERVATION-2",
+      "reason": "Metadata and unresolved or malformed input stay observations or source records with diagnostics, not empty content items.",
+      "items": []
+    },
+    "wire-orphan-delta-and-truncation": {
+      "difference": "CLAUDE-OBSERVATION-2",
+      "reason": "Metadata and unresolved or malformed input stay observations or source records with diagnostics, not empty content items.",
+      "items": []
+    },
+    "capture-assistant-block-fallback": {
+      "difference": "CLAUDE-UNKNOWN-1",
+      "reason": "An unknown assistant block keeps its native role and payload with a diagnostic.",
+      "items": [
+        {
+          "type": "provider_event",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-assistant-block-tool-use": {
+      "difference": "CLAUDE-TOOL-2",
+      "reason": "Native JSON arguments remain readable; the scrubbed tool name does not prove command specialization.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "{\"command\":\"[scrubbed]\",\"description\":\"[scrubbed]\"}",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-flag-isapierrormessage": {
+      "difference": "CLAUDE-END-2",
+      "reason": "The explicit API-error flag marks synthetic failure, not an answer candidate.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "failed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-flag-ismeta": {
+      "difference": "CLAUDE-ORIGIN-1",
+      "reason": "The native isMeta flag identifies system content, including the captured image.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-user-block-image": {
+      "difference": "CLAUDE-ORIGIN-1",
+      "reason": "The native isMeta flag identifies system content, including the captured image.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-tooluseresult-create": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-tooluseresult-file-unchanged": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-tooluseresult-image": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-tooluseresult-parts": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-tooluseresult-text": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-tooluseresult-update": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-user-block-tool-result": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[scrubbed]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "wire-orphan-result": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "A native non-error result records its own success; its absent invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Result survives.",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "interleaved-message-ids": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The reader includes the native setup prompt omitted by this focused research view.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "First",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Second",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Third",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "interruption-plain": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The reader includes the native setup prompt omitted by this focused research view.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "[Request interrupted by user]",
+          "phase": "",
+          "outcome": "interrupted",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "interruption-tag": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The reader includes the native setup prompt omitted by this focused research view.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "<turn_aborted>Stopped</turn_aborted>",
+          "phase": "",
+          "outcome": "interrupted",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "interruption-tool-use": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The reader includes the native setup prompt omitted by this focused research view.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "[Request interrupted by user for tool use]",
+          "phase": "",
+          "outcome": "interrupted",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "synthetic-error-stop-sequence": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The reader includes the native setup prompt omitted by this focused research view.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example provider error",
+          "phase": "",
+          "outcome": "failed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "compaction-preserved-lineage": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The reader includes the surrounding native prompt and continuation as well as both compaction records.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "Context summary.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Continue after compact.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "worker-file-and-parent-scope": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The native worker prompt remains content in worker scope.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the worker example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Worker finished.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "max-tokens-then-duration": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The assertion-only draft omitted readable prompt and partial answer; truncation belongs to turn evidence.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Partial",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "usage-message-dedup-and-missing-fields": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The assertion-only usage view omitted three native assistant blocks.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "One",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Two",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Three",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "terminal-completed": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The partial terminal assertion omitted its prompt and answer; terminal outcomes are checked separately.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Finished.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "terminal-failed": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The partial terminal assertion omitted its prompt and answer; terminal outcomes are checked separately.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Finished.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "terminal-interrupted": {
+      "difference": "CLAUDE-CONTEXT-1",
+      "reason": "The partial terminal assertion omitted its prompt and answer; terminal outcomes are checked separately.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Inspect the example.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Finished.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "mixed-content-and-images": {
+      "difference": "CLAUDE-BLOCK-1",
+      "reason": "Each native content block keeps its own ordered item, including image/document blocks.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Bare text",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Block text",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "wire-multiple-user-blocks": {
+      "difference": "CLAUDE-BLOCK-1",
+      "reason": "Each native content block keeps its own ordered item, including image/document blocks.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "First",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Second",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "model-refusal-retraction": {
+      "difference": "CLAUDE-END-2",
+      "reason": "Failure or retraction evidence remains scoped observations beside the retained answer content.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Retracted response.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "partial-assistant-api-error-stop": {
+      "difference": "CLAUDE-END-2",
+      "reason": "Failure or retraction evidence remains scoped observations beside the retained answer content.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Partial.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "control-elicitation": {
+      "difference": "CLAUDE-CONTROL-1",
+      "reason": "A pending native request has running interaction outcome.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "control-request-user-dialog": {
+      "difference": "CLAUDE-CONTROL-2",
+      "reason": "The request is pending, while its unverified answer schema remains diagnosed.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "control-replay-answered-and-pending": {
+      "difference": "CLAUDE-CONTROL-1",
+      "reason": "An answered request and a pending request keep their independent outcomes.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        },
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "plan-and-file-change-tools": {
+      "difference": "CLAUDE-TOOL-2",
+      "reason": "The proposed file-change display includes its native target path; generation does not apply it.",
+      "items": [
+        {
+          "type": "plan",
+          "role": "assistant",
+          "text": "Example plan.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "/workspace/example.txt",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "question-control-and-file-answer": {
+      "difference": "CLAUDE-QUESTION-1",
+      "reason": "One system interaction and its separate native tool result retain exact multi-select answers.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Choose a color.\n\u2192 Blue, Green",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "redacted-thinking-server-tool": {
+      "difference": "CLAUDE-UNKNOWN-1",
+      "reason": "The research labels the server-result subtype unobserved: retain assistant envelope role and unknown payload, not a speculative tool result. Invocation arguments remain readable.",
+      "items": [
+        {
+          "type": "reasoning",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "{\"query\":\"example\"}",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "provider_event",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "shim-envelope-replay-exit": {
+      "difference": "CLAUDE-CAPTURE-1",
+      "reason": "The native enclosed user message remains readable once; the draft only described envelope assertions.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "Example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "task-launch-and-notification": {
+      "difference": "CLAUDE-ORIGIN-1",
+      "reason": "Retain generated arguments, the separate launch result, and the full native notification body; child completion does not complete the parent.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "{\"prompt\":\"Inspect example.\",\"run_in_background\":true}",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Async agent launched. agentId: worker-example",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        },
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "<task-notification><task-id>worker-example</task-id><status>completed</status><summary>Finished.</summary></task-notification>",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "tool-call-completeness-and-failure": {
+      "difference": "CLAUDE-TOOL-1",
+      "reason": "The completed generation does not inherit failure from its separate execution result.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "printf example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Example failure",
+          "phase": "",
+          "outcome": "failed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "code-only-file-vocabulary": {
+      "difference": "CLAUDE-METADATA-1",
+      "reason": "Known summaries and compaction retain content; survey-only metadata stays observations with explicit unknown diagnostics.",
+      "items": [
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "Example summary.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    }
+  }
+}

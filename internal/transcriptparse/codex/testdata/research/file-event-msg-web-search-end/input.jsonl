@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "web_search_end", "call_id": "id-2c315f2072", "query": "[redacted]", "action": {"type": "search", "query": "[redacted]", "queries": ["[redacted]", "[redacted]", "[redacted]", "[redacted]"]}}}

@@ -1,0 +1,13 @@
+{"method":"item/started","params":{"item":{"id":"u-1","type":"userMessage","content":[{"type":"text","text":"inspect the change"}]}}}
+{"method":"item/completed","params":{"item":{"id":"u-1","type":"userMessage","content":[{"type":"text","text":"inspect the change"}]}}}
+{"method":"item/started","params":{"item":{"id":"r-1","type":"reasoning","summary":[],"content":[]}}}
+{"method":"item/reasoning/summaryTextDelta","params":{"itemId":"r-1","summaryIndex":0,"delta":"Planning"}}
+{"method":"item/reasoning/summaryTextDelta","params":{"itemId":"r-1","summaryIndex":0,"delta":" the inspection"}}
+{"method":"item/completed","params":{"item":{"id":"r-1","type":"reasoning","summary":[],"content":[]}}}
+{"method":"item/started","params":{"item":{"id":"c-1","type":"commandExecution","command":"rg -n live_projection"}}}
+{"method":"item/commandExecution/outputDelta","params":{"itemId":"c-1","chunk":"b3V0cHV0Cg=="}}
+{"method":"item/completed","params":{"item":{"id":"c-1","type":"commandExecution","command":"rg -n live_projection","aggregatedOutput":"output\n","exitCode":0}}}
+{"method":"item/started","params":{"item":{"id":"a-1","type":"agentMessage","text":"Done","phase":"final_answer"}}}
+{"method":"item/completed","params":{"item":{"id":"a-1","type":"agentMessage","text":"Done","phase":"final_answer"}}}
+{"method":"future/providerShape","params":{"unknown":"is retained only in the raw feed"}}
+not-json

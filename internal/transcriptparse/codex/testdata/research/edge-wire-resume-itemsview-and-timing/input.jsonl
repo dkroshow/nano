@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"id": 8, "result": {"thread": {"id": "thread-example", "turns": [{"id": "turn-example", "status": "completed", "itemsView": "notLoaded", "items": [], "startedAt": 1767225600, "completedAt": 1767225602, "durationMs": 2100}]}}}}

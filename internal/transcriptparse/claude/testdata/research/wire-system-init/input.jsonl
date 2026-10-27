@@ -1,0 +1,1 @@
+{"type":"system","session_id":"session-example","uuid":"event1","subtype":"init","model":"claude-example","tools":["Read"],"mcp_servers":[],"permissionMode":"default","cwd":"/workspace/example"}

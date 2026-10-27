@@ -1,0 +1,64 @@
+{
+  "basis": "same native thread identity in both original sources",
+  "wireOriginal": "protocol/captures/first-turn.jsonl",
+  "wireRows": 34,
+  "fileRows": 12,
+  "sourceNativeIdentitySha256": "1943b5573b30023f2a814ea040ac0a25ce70bd418644d300481a577b5628dc31",
+  "rowRelations": [
+    {
+      "wire": [
+        18,
+        19
+      ],
+      "file": [
+        6,
+        7
+      ],
+      "kind": "user message"
+    },
+    {
+      "wire": [
+        20,
+        21
+      ],
+      "file": [
+        8
+      ],
+      "kind": "reasoning"
+    },
+    {
+      "wire": [
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28
+      ],
+      "file": [
+        9,
+        10
+      ],
+      "kind": "final assistant message"
+    },
+    {
+      "wire": [
+        29
+      ],
+      "file": [
+        11
+      ],
+      "kind": "usage"
+    },
+    {
+      "wire": [
+        34
+      ],
+      "file": [
+        12
+      ],
+      "kind": "turn terminal"
+    }
+  ]
+}

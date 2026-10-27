@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": null,
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": [
+          {
+            "source": "input.jsonl",
+            "line": 1,
+            "shape": "turn_context"
+          }
+        ]
+      },
+      "finalItemRefs": [],
+      "modelObservations": [
+        {
+          "fields": {
+            "cwd": "/workspace/example",
+            "approval_policy": "[redacted]",
+            "sandbox_policy": {
+              "mode": "workspace-write",
+              "writable_roots": [
+                "[redacted]"
+              ],
+              "network_access": false,
+              "exclude_tmpdir_env_var": false,
+              "exclude_slash_tmp": false
+            },
+            "model": "[redacted]",
+            "effort": "medium",
+            "summary": "[redacted]"
+          },
+          "source": "turn_context"
+        }
+      ],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "observations": []
+}

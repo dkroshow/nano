@@ -1,0 +1,1 @@
+{"type":"control_request","request_id":"control1","request":{"subtype":"mcp_message","server_name":"example-mcp","message":{"jsonrpc":"2.0","id":1,"method":"example"}}}

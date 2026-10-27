@@ -1,0 +1,9 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "runtimeObservation": {
+    "runningNativePromptId": null,
+    "orphanedExecution": "interrupted_without_invented_native_end_time"
+  }
+}

@@ -1,0 +1,2 @@
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"subagent_future_diagnostic","description":"Example."},"_meta":{"eventId":"e1","promptId":"p1","agentTimestampMs":1893456000001}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"image","mimeType":"image/png","data":"[opaque-image]"}},"_meta":{"eventId":"e2","promptId":"p1","agentTimestampMs":1893456000002}}}

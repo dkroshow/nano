@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "sourceField": "timestamp",
+        "precision": "millisecond"
+      },
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "parentUuid": "id-b76d3e46",
+          "isSidechain": false,
+          "attachment": {
+            "type": "batching_reminder_sent",
+            "text": "[scrubbed]",
+            "model": "[scrubbed]"
+          },
+          "type": "attachment",
+          "uuid": "id-a509b6a0",
+          "timestamp": "2026-01-01T00:00:00.000Z",
+          "userType": "[scrubbed]",
+          "entrypoint": "nano",
+          "cwd": "[scrubbed]",
+          "sessionId": "id-fccbbcc6",
+          "version": "2.1.257",
+          "gitBranch": "[scrubbed]"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "27f0a7bc7c95bfa950c083a7a5c8f07fe8b80987f8f2f41389b874016f0c89f6",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-ba0b38b11818 at byte 88017. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

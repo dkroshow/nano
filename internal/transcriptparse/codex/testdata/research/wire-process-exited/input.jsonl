@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "process/exited", "params": {"exitCode": 0, "processHandle": "example", "stderr": "example", "stderrCapReached": false, "stdout": "example", "stdoutCapReached": false}}}

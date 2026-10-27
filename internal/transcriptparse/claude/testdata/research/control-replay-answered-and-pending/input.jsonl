@@ -1,0 +1,3 @@
+{"type":"control_request","request_id":"permission1","request":{"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"call1","input":{"command":"printf example"}}}
+{"type":"control_response","response":{"subtype":"success","request_id":"permission1","response":{"behavior":"allow","updatedInput":{"command":"printf example"}}}}
+{"type":"control_request","request_id":"pending1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","tool_use_id":"call1","input":{"questions":[{"question":"Choose a color.","header":"Color","multiSelect":true,"options":[{"label":"Blue","description":"Example option."},{"label":"Green","description":"Example option."}]}]}}}

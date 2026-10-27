@@ -1,0 +1,38 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "metadata": {
+    "version": 1,
+    "prompt_mode": "[text]",
+    "audience": "[text]",
+    "include_browser_verification": true,
+    "agents_md_files": [
+      {
+        "file_name": "[text]",
+        "file_path": "/workspace/example",
+        "content": "[text]"
+      },
+      {
+        "file_name": "[text]",
+        "file_path": "/workspace/example",
+        "content": "[text]"
+      },
+      {
+        "file_name": "[text]",
+        "file_path": "/workspace/example",
+        "content": "[text]"
+      }
+    ],
+    "persona_summaries": [],
+    "build_timestamp_utc": "[text]",
+    "memory_enabled": false,
+    "os_name": "[text]",
+    "shell_path": "[text]",
+    "working_directory": "[text]",
+    "current_date": "[text]",
+    "is_non_interactive": false,
+    "system_prompt_label": "[text]"
+  },
+  "note": "Auxiliary native snapshot. Retain as bounded source metadata; do not create duplicate conversation turns."
+}

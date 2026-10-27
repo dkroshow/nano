@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "distinct_requests",
+      "ids": [
+        {
+          "type": "integer",
+          "value": 1
+        },
+        {
+          "type": "string",
+          "value": "1"
+        }
+      ],
+      "namespace": "connection/server-request"
+    }
+  ]
+}

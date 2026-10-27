@@ -1,0 +1,1 @@
+{"type":"control_request","request_id":"control1","request":{"subtype":"hook_callback","callback_id":"hook-example","input":{"hook_event_name":"Example"}}}

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "cost-state",
+          "sessionId": "id-7c21c999",
+          "totalCostUSD": 0,
+          "totalAPIDuration": 0,
+          "totalAPIDurationWithoutRetries": 0,
+          "totalToolDuration": 0,
+          "totalLinesAdded": 0,
+          "totalLinesRemoved": 0,
+          "totalDuration": 2264,
+          "startTime": 1788303347922,
+          "modelUsage": {},
+          "hasUnknownModelCost": false
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "046bd951350a85064304fd26b7ef6fd205346069657131b9d84c228d3399f5ea",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_SHAPE_SEMANTICS_UNCONFIRMED",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": "Preserve native payload; do not infer a successful conversation turn."
+    }
+  ],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-72509ec6b3fa at byte 2604. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

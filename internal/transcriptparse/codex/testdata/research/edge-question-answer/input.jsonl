@@ -1,0 +1,2 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "request_user_input", "call_id": "question-call", "arguments": "{\"questions\": [{\"id\": \"choice\", \"header\": \"Choice\", \"question\": \"Choose one.\", \"options\": [{\"label\": \"A\", \"description\": \"Example.\"}]}]}"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "question-call", "output": "{\"answers\": {\"choice\": {\"answers\": [\"A\"]}}}"}}

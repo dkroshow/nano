@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/fileChange/requestApproval", "params": {"threadId": "thread-example", "turnId": "turn-example", "itemId": "patch-one", "grantRoot": null, "reason": null, "startedAtMs": 1767225600000}, "id": 1}}
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/fileChange/requestApproval", "params": {"threadId": "thread-example", "turnId": "turn-example", "itemId": "patch-two", "grantRoot": null, "reason": null, "startedAtMs": 1767225600000}, "id": "1"}}

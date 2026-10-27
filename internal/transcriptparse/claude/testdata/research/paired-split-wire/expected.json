@@ -1,0 +1,196 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "u1",
+      "identityAliases": [
+        {
+          "type": "row_uuid",
+          "value": "u1",
+          "authority": "native"
+        }
+      ],
+      "turnRef": {
+        "parserLocalKey": "t1"
+      },
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Inspect the example.",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "c006b8930548aa7b85f14e7df0ba3c4ded567ab403cf2a92d34812ad481781ed",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    },
+    {
+      "id": "m1-0",
+      "identityAliases": [
+        {
+          "type": "message_id",
+          "value": "m1",
+          "authority": "native"
+        },
+        {
+          "type": "message_block",
+          "value": "m1:0",
+          "authority": "derived"
+        }
+      ],
+      "turnRef": {
+        "parserLocalKey": "t1"
+      },
+      "kind": "reasoning",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Check.",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "af79aba453bc01c438c1f824c8e86a6bebbb5bd53480d06cc5d51c5b57630886",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    },
+    {
+      "id": "m1-1",
+      "identityAliases": [
+        {
+          "type": "message_id",
+          "value": "m1",
+          "authority": "native"
+        },
+        {
+          "type": "message_block",
+          "value": "m1:1",
+          "authority": "derived"
+        }
+      ],
+      "turnRef": {
+        "parserLocalKey": "t1"
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": true,
+        "basis": "terminal evidence",
+        "confidence": "medium"
+      },
+      "text": "Ready.",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 7,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "02c61627187b72e93c17d5286a42ef5d8c24aaa85e1b4073d4f3491ea038a6ff",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": [
+          "result.success"
+        ]
+      },
+      "finalItemRefs": [
+        "m1-1"
+      ],
+      "modelObservations": [],
+      "usage": {
+        "provider": "claude",
+        "grain": "per_turn",
+        "aggregation": "last observation per message id, then sum distinct message ids",
+        "input_tokens": 2,
+        "output_tokens": 4,
+        "cache_read_input_tokens": 10,
+        "cache_creation_input_tokens": 5,
+        "total_tokens": null
+      }
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Pair: paired-split-file ↔ paired-split-wire. Constructed same conversation, not a real paired capture. Data snapshots confirm streamed blocks and do not append duplicates. Signature retained as opaque reasoning metadata. Wire event uuid is a fixture placeholder; real event identity is nullable. Expected semantic items omit ancillary lifecycle system items; all such inputs remain in provenance/turn evidence.",
+  "pair": "paired-split",
+  "snapshotSemantics": "upsert existing logical block; retain every contributing source coordinate"
+}

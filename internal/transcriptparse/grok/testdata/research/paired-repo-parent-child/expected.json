@@ -1,0 +1,560 @@
+{
+  "items": [
+    {
+      "id": "derived:parent-1:line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/queue/changed",
+        "requestId": null,
+        "params": {
+          "sessionId": "parent-1",
+          "runningPromptId": "parent-prompt-1",
+          "runningText": "[redacted]"
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "parent-1"
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 1,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:parent-1:parent-1-15",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "parent-1-15",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[redacted]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[redacted]"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "user_message_chunk"
+      },
+      "scope": {
+        "sessionId": "parent-1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 2,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "parent-1-15",
+          "replay": false,
+          "sha256": "105879a44b83733ffecd2d401e0a39bc52f074f35d439683304c1ad5d693bc57",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "parent-1-15"
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:child-1:line-3",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-3",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/queue/changed",
+        "requestId": null,
+        "params": {
+          "sessionId": "child-1",
+          "runningPromptId": "child-prompt-1",
+          "runningText": "[redacted]"
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "child-1"
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 3,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:child-1:child-1-114",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "child-1-114",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[redacted]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[redacted]"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "user_message_chunk"
+      },
+      "scope": {
+        "sessionId": "child-1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 4,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "child-1-114",
+          "replay": false,
+          "sha256": "1c5aff348df2a4f0fb002ee2bcf325df04d5d1193d3c192f96a1dc88566ea5a2",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "child-1-114"
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:child-1:child-1-129",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "child-1-129",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "child-prompt-1",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "reasoning",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[redacted]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[redacted]"
+        }
+      ],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_thought_chunk"
+      },
+      "scope": {
+        "sessionId": "child-1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 5,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "child-1-129",
+          "replay": false,
+          "sha256": "74ea35eaaebaf7bc12474186f0368a6e5952ff76338f0e302b38640c06a96862",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "child-1-129",
+            "promptId": "child-prompt-1"
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:parent-1:parent-1-200",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "parent-1-200",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "subagent_spawned",
+        "native": {
+          "sessionUpdate": "subagent_spawned",
+          "child_session_id": "child-1",
+          "parent_session_id": "parent-1",
+          "description": "[redacted]"
+        }
+      },
+      "scope": {
+        "sessionId": "parent-1",
+        "origin": "parent_coordination",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 6,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "parent-1-200",
+          "replay": false,
+          "sha256": "95b63c34fce6b5365cea5c6a8e5b4d85fbd7de7639713eabd95f17895a160549",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "parent-1-200"
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:parent-1:parent-1-201",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "parent-1-201",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "subagent_progress",
+        "native": {
+          "sessionUpdate": "subagent_progress",
+          "child_session_id": "child-1",
+          "tokens_used": 12,
+          "context_percentage": 1.5
+        }
+      },
+      "scope": {
+        "sessionId": "parent-1",
+        "origin": "parent_coordination",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 7,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "parent-1-201",
+          "replay": false,
+          "sha256": "5d98f00225a058371695fc5f273a671604bc7fc7f3d305bf56d0e5b977b8819c",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "parent-1-201"
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:parent-1:parent-1-202",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "parent-1-202",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "success",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "subagent_finished",
+        "native": {
+          "sessionUpdate": "subagent_finished",
+          "child_session_id": "child-1",
+          "status": "completed",
+          "output": "[redacted]"
+        }
+      },
+      "scope": {
+        "sessionId": "parent-1",
+        "origin": "parent_coordination",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 8,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "parent-1-202",
+          "replay": false,
+          "sha256": "93487c4bebbae3b1f4352901fff407afa88c35f7bc67ffbd314d178274825375",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "nativeEnvelopeMetadata": {
+            "eventId": "parent-1-202"
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:parent-1:line-9",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-9",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/session/prompt_complete",
+        "requestId": null,
+        "params": {
+          "sessionId": "parent-1",
+          "promptId": "parent-prompt-1",
+          "stopReason": "end_turn"
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "parent-1"
+      },
+      "provenance": [
+        {
+          "source": "wire-capture.jsonl",
+          "line": 9,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

@@ -1,0 +1,5 @@
+{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"First "},"_meta":{"promptIndex":1}},"_meta":{"eventId":"e1"}}}
+{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"prompt."},"_meta":{"promptIndex":1}},"_meta":{"eventId":"e1b"}}}
+{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Second prompt."},"_meta":{"promptIndex":2}},"_meta":{"eventId":"e2"}}}
+{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Second answer."}},"_meta":{"eventId":"e3","promptId":"p2"}}}
+{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"First "},"_meta":{"promptIndex":1}},"_meta":{"eventId":"e1","isReplay":true}}}

@@ -1,0 +1,36 @@
+session id="sess-onpage-live" threadId="onpage-live" status="ready" cwd="/canon/onpage" model="canon-model-a" metadata.revision=4
+session id="sess-outside-live" threadId="outside-live" status="ready" cwd="/canon/outside" model="canon-model-b" metadata.revision=4
+session id="sess-unindexed-live" threadId="unindexed-live" status="ready" cwd="/canon/unindexed" model="canon-model-c" metadata.revision=4
+session id="sess-failed-live" threadId="failed-live" status="ready" cwd="/canon/failed" model="canon-model-d" needsAttention=true metadata.revision=4
+session id="sess-badged-live" threadId="badged-live" status="ready" cwd="/canon/badged" model="canon-model-e" metadata.revision=4
+session id="sess-missing-record-live" threadId="missing-record-live" status="ready" cwd="" model="" metadataUnavailable=true
+session id="sess-budget-indexed-000" threadId="budget-indexed-000" status="ready" cwd="/canon/budget-indexed-000" model="canon-model-x" metadata.revision=4
+session id="sess-budget-unindexed-001" threadId="budget-unindexed-001" status="ready" cwd="/canon/budget-unindexed-001" model="canon-model-x" metadata.revision=4
+session id="sess-budget-indexed-002" threadId="budget-indexed-002" status="ready" cwd="/canon/budget-indexed-002" model="canon-model-x" metadata.revision=4
+session id="sess-budget-unindexed-003" threadId="budget-unindexed-003" status="ready" cwd="/canon/budget-unindexed-003" model="canon-model-x" metadata.revision=4
+detached provider="codex" nativeThreadId="detached-old"
+detached provider="codex" nativeThreadId="detached-hosted" hostedThreadId="nht_detached-hosted" metadata.revision=4
+detached provider="codex" nativeThreadId="detached-unnamed" hostedThreadId="nht_detached-unnamed" metadata.revision=4
+thread provider="codex" nativeId="budget-unindexed-003" idClass="mem" kind="thread" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/budget-unindexed-003" metadata.model.value="canon-model-x" fleet.label="idle"
+thread provider="codex" nativeId="budget-unindexed-001" idClass="mem" kind="thread" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/budget-unindexed-001" metadata.model.value="canon-model-x" fleet.label="idle"
+thread provider="codex" nativeId="missing-record-live" idClass="mem" kind="thread" runtime.status="ready" runtime.detached=false fleet.label="idle"
+thread provider="codex" nativeId="unindexed-live" idClass="mem" kind="thread" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/unindexed" metadata.model.value="canon-model-c" fleet.label="idle"
+thread provider="codex" nativeId="onpage-live" idClass="nth" kind="main" name.value="Onpage durable" name.provenance="manual" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/onpage" metadata.model.value="canon-model-a" fleet.label="idle"
+thread provider="codex" nativeId="failed-live" idClass="nth" kind="main" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/failed" metadata.model.value="canon-model-d" fleet.label="idle"
+thread provider="codex" nativeId="badged-live" idClass="nth" kind="main" name.value="Badged import" name.provenance="imported" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/badged" metadata.model.value="canon-model-e" fleet.label="idle"
+thread provider="codex" nativeId="outside-live" idClass="nth" kind="main" name.value="Outside creation" name.provenance="creation" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/outside" metadata.model.value="canon-model-b" fleet.label="idle"
+thread provider="codex" nativeId="detached-old" idClass="nth" kind="main" runtime.detached=true metadata.cwd.value="/w/detached-old" metadata.model.value="test-model" fleet.label="idle"
+thread provider="codex" nativeId="budget-indexed-000" idClass="nth" kind="main" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/budget-indexed-000" metadata.model.value="canon-model-x" fleet.label="idle"
+thread provider="codex" nativeId="budget-indexed-002" idClass="nth" kind="main" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/budget-indexed-002" metadata.model.value="canon-model-x" fleet.label="idle"
+thread nextCursor=false
+sidebar provider="codex" nativeId="onpage-live" idClass="nth" name.value="Onpage durable" name.provenance="manual" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="failed-live" idClass="nth" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="badged-live" idClass="nth" name.value="Badged import" name.provenance="imported" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="outside-live" idClass="nth" name.value="Outside creation" name.provenance="creation" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="budget-indexed-000" idClass="nth" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="budget-indexed-002" idClass="nth" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="unindexed-live" idClass="mem" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="missing-record-live" idClass="mem" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="budget-unindexed-001" idClass="mem" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar provider="codex" nativeId="budget-unindexed-003" idClass="mem" runtime.status="ready" sidebar.active=true sidebar.depth=0 fleet.label="idle"
+sidebar historicalCount=1 roots=10

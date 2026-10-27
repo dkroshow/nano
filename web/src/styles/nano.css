@@ -1,0 +1,2831 @@
+
+
+:root {
+  --bg: #191a1b; --bg2: #1e1f20; --surface: #232425;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.12);
+  --text: #e8e6e3; --text-soft: #c9c3b9; --text2: #8a8a8a; --text3: #5a5a5a;
+  --accent: #D97757; --accent2: #c4693e; --accent-dim: rgba(217,119,87,0.12);
+  --accent-focus: rgba(217,119,87,0.5); --red: #e5534b;
+  --red-dim: rgba(229,83,75,0.08); --red-line: rgba(229,83,75,0.34);
+  --green: #3fb950; --orange: #d29922; --blue: #58a6ff;
+
+  --text-size: 15px; --code-size: 13px; --mono-size: 13px;
+  --turn-pad-v: 16px; --turn-pad-h: 18px; --turn-gap: 12px;
+  --turn-radius: 18px; --line-h: 1.7;
+  --rail-w: 320px;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+
+
+html.light {
+  --bg: #f5f5f5; --bg2: #e8e8e8; --surface: #ddd;
+  --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.15);
+  --text: #1a1a1a; --text-soft: #3f3f3f; --text2: #555; --text3: #888;
+  --accent: #c45a30; --accent2: #a84820; --accent-dim: rgba(196,90,48,0.1);
+  --accent-focus: rgba(196,90,48,0.4); --red: #cc3333;
+  --red-dim: rgba(204,51,51,0.08); --red-line: rgba(204,51,51,0.28);
+  --green: #1a8a30; --orange: #b07d10; --blue: #0969da;
+  color-scheme: light;
+}
+
+/* Nano-only surfaces that predate tokenized light mode. */
+html.light .msg-user-surface { background: rgba(196,90,48,.1); }
+html.light .msg-agent-surface { background: rgba(0,0,0,.045); color: var(--text); }
+html.light .pending-user-dot { box-shadow: 0 0 0 2px rgba(196,90,48,.16); }
+html.light .md-body code { background: rgba(0,0,0,.06); color: #222; }
+html.light .md-body pre { background: var(--bg2); border-color: rgba(0,0,0,.1); color: #333; }
+html.light .md-body .box-table th { background: rgba(0,0,0,.03); }
+html.light .item.aux .body { border-left-color: rgba(0,0,0,.08); color: var(--text2); }
+html.light .file-editor { color: #1a1a1a; }
+html.light .md-raw .md-h,
+html.light .md-raw .md-hm,
+html.light .code-view .code-kw { color: #0000ff; }
+html.light .md-raw .md-code { color: #267f99; background: rgba(38,127,153,.08); }
+html.light .md-raw .md-fence { color: #555; }
+html.light .md-raw .md-fenced { color: #1a1a1a; background: rgba(0,0,0,.03); }
+html.light .md-raw .md-bullet { color: #795e26; }
+html.light .md-raw .md-blockquote,
+html.light .code-view .code-comment { color: #008000; }
+html.light .code-view { color: #1a1a1a; }
+html.light .code-view .code-string { color: #a31515; }
+html.light .nw-cwd-option:hover,
+html.light .nw-cwd-option.active { background: rgba(0,0,0,.06); }
+html.light .pane-resume-btn,
+html.light .nw-create-btn,
+html.light .interaction-btn.accept,
+html.light .xresume-btn { color: #fff; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #app { height: 100%; }
+/* dvh follows the mobile URL bar as it collapses and expands, so the composer
+   is not parked under it; the 100% above stays as the fallback for anything
+   that does not know the unit. */
+#app { height: 100dvh; }
+html { color-scheme: dark; background: var(--bg); }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  font-size: var(--text-size); line-height: var(--line-h);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+code, pre, .mono { font-family: var(--mono); font-size: var(--mono-size); }
+
+/* ---- App shell ---- */
+/* One row height for both thread renderers. Full density carries title,
+   working directory, and model; compact keeps the first two lines. Both
+   surfaces read the same token, so a row cannot change height on expansion. */
+.shell { height: 100%; display: flex; position: relative; --row-h: 66px; }
+.thread-reference-error { position: fixed; z-index: 30; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: min(620px, calc(100vw - 24px)); padding: 9px 12px; border: 1px solid var(--orange); border-radius: 7px; background: var(--surface); color: var(--text); }
+.thread-reference-error button { flex: none; }
+.shell.density-compact { --row-h: 48px; }
+.shell.density-compact .t-sub, .shell.density-compact .xc-sub { display: none; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.main > .xdetail { flex: 1; }
+.session { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.main-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 6px; color: var(--text3); font-size: 14px;
+}
+.main-empty-title { font-size: 22px; font-weight: 600; color: var(--text2); }
+
+
+/* The page's notices: one top-centre stack above the mobile drawer (120) and
+   the corner controls (200, 210), so the update note and the reconnecting
+   banner never cover each other. Only the notes' own controls take taps. */
+.page-notices {
+  position: fixed; z-index: 400; top: 8px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  max-width: calc(100vw - 32px); pointer-events: none;
+}
+.reconnecting-banner {
+  max-width: calc(100vw - 132px); padding: 5px 12px;
+  border: 1px solid var(--border2); border-radius: 999px; background: var(--surface);
+  color: var(--text2); font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 12px rgb(0 0 0 / 0.3);
+}
+.pane-toolbar {
+  min-height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 4px;
+  padding: 4px 50px 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--border);
+}
+.pane-toolbar button {
+  padding: 3px 9px; border: 1px solid var(--border2); border-radius: 6px;
+  color: var(--text2); font-size: 11px; font-weight: 600;
+}
+.pane-toolbar button:hover:not(:disabled) { color: var(--text); border-color: var(--text3); }
+.pane-toolbar button:disabled { color: var(--text3); border-color: var(--border); cursor: default; }
+
+.thread-panes { flex: 1; min-height: 0; display: flex; overflow: hidden; position: relative; }
+.thread-pane {
+  position: relative; display: flex; flex: 1; min-width: 0; min-height: 0;
+  flex-direction: column; overflow: hidden; border-right: 1px solid var(--border2);
+}
+.thread-pane:last-child { border-right: none; }
+.thread-pane.focused .thread-pane-tabs { border-bottom-color: var(--accent); }
+.thread-pane.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
+.thread-pane-stack {
+  display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column;
+  overflow: hidden; border-right: 1px solid var(--border2);
+}
+.thread-pane-stack:last-child { border-right: none; }
+.thread-pane-stack > .thread-pane { border-right: none; }
+.thread-pane-divider {
+  position: relative; z-index: 2; flex-shrink: 0; background: var(--border2);
+  transition: background 0.15s;
+}
+.thread-pane-divider.col { width: 4px; cursor: col-resize; }
+.thread-pane-divider.row { height: 4px; cursor: row-resize; }
+.thread-pane-divider::after { content: ''; position: absolute; z-index: 1; }
+.thread-pane-divider.col::after { inset: 0 -8px; }
+.thread-pane-divider.row::after { inset: -8px 0; }
+.thread-pane-divider:hover, .thread-pane-divider.active { background: var(--accent); }
+.thread-pane-drop {
+  position: absolute; left: 0; right: 0; z-index: 5; display: none;
+  box-sizing: border-box; pointer-events: none;
+  background: rgba(217, 119, 87, 0.15); border: 2px solid var(--accent);
+}
+
+.thread-pane-tabs {
+  min-height: 36px; flex-shrink: 0; display: flex; align-items: stretch; gap: 2px;
+  padding: 4px 6px 0; overflow-x: auto; scrollbar-width: none;
+  background: var(--bg2); border-bottom: 2px solid transparent;
+}
+.thread-pane-tabs::-webkit-scrollbar { display: none; }
+.thread-pane-tab {
+  position: relative; min-width: 110px; max-width: 220px; display: flex; align-items: center;
+  gap: 6px; padding: 3px 7px; color: var(--text3); cursor: pointer;
+  border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+}
+.thread-pane-tab:hover { color: var(--text2); }
+.thread-pane-tab.active {
+  color: var(--text); background: var(--bg); border-color: var(--border2);
+}
+.thread-pane-tab.drag-left::before, .thread-pane-tab.drag-right::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 3px;
+  z-index: 2; background: var(--accent); border-radius: 3px;
+}
+.thread-pane-tab.drag-left::before { left: -2px; }
+.thread-pane-tab.drag-right::after { right: -2px; }
+.thread-pane-dot {
+  width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--text3);
+}
+.thread-pane-dot.working { background: var(--orange); animation: dot-pulse 1.6s ease-in-out infinite; }
+.thread-pane-dot.idle { background: var(--green); }
+.thread-pane-dot.history { background: transparent; border: 1px solid var(--text3); }
+.thread-pane-dot.detached { background: var(--red); }
+.thread-pane-tab-copy { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.thread-pane-tab-name {
+  max-width: 100%; overflow: hidden; color: inherit; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 12px; line-height: 1.25;
+}
+.thread-pane-tab-meta {
+  max-width: 100%; overflow: hidden; color: var(--text3); text-overflow: ellipsis;
+  white-space: nowrap; font-family: var(--mono); font-size: 10px; line-height: 1.2;
+}
+.thread-pane-tab.active .thread-pane-tab-meta { color: var(--text2); }
+.thread-pane-tab-close, .thread-pane-close {
+  flex-shrink: 0; color: var(--text3); border-radius: 4px; line-height: 1;
+}
+.thread-pane-tab-close { padding: 2px 4px; font-size: 13px; }
+.thread-pane-close { margin-left: auto; padding: 2px 5px; font-size: 14px; }
+.thread-pane-tab-close:hover, .thread-pane-close:hover { color: var(--red); background: var(--red-dim); }
+.thread-pane-detail {
+  flex-shrink: 0; align-self: center; margin-left: auto; padding: 3px 7px;
+  border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 10.5px;
+}
+.thread-pane-detail:hover, .thread-pane-detail[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-focus); background: var(--accent-dim); }
+.thread-pane-placeholder, .pane-transcript-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 20px; color: var(--text3); font-size: 13px; text-align: center;
+}
+.pane-transcript-empty.error { color: var(--red); }
+.thread-pane-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* position: relative anchors the floating Resume affordance. */
+.thread-pane-content { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.thread-pane-view.hidden, .pane-transcript.hidden, .pane-readonly.hidden, .pane-transcript-empty.hidden,
+.pane-resume-float.hidden, .pane-feedback-float.hidden {
+  display: none;
+}
+.pane-transcript {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 16px 14px 36px;
+  scroll-behavior: smooth;
+}
+.pane-transcript.initial-position, .convo.initial-position {
+  visibility: hidden;
+  scroll-behavior: auto;
+}
+.pane-transcript .load-older { margin-bottom: 14px; }
+.pane-readonly {
+  min-height: 30px; flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px; color: var(--text3); background: var(--bg2);
+  border-top: 1px solid var(--border); font-family: var(--mono); font-size: 10.5px;
+}
+/* Resume floats over the transcript's top-right: it is the one action a
+   historical thread offers, and the status strip made it look incidental. */
+.pane-resume-float {
+  position: absolute; top: 10px; right: 14px; z-index: 3;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  max-width: 280px; pointer-events: none;
+}
+.pane-resume-float > * { pointer-events: auto; }
+/* The historical pane has no view bar, so Feedback floats top-left, opposite Resume. */
+.pane-feedback-float { position: absolute; top: 10px; left: 14px; z-index: 4; }
+.pane-feedback-float .transcript-audit-button { background: var(--bg2); }
+.pane-resume-btn {
+  padding: 7px 18px; background: var(--accent);
+  /* Dark ink on terracotta — same AA-contrast exception as .xresume-btn. */
+  color: #1e1f20; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .28);
+}
+.pane-resume-btn:hover:not(:disabled) { background: var(--accent2); }
+.pane-resume-btn:disabled { background: var(--surface); color: var(--text3); cursor: default; box-shadow: none; }
+.session-inspector-close {
+  margin-left: auto; padding: 5px 10px 7px; color: var(--text2); font-size: 18px; line-height: 1;
+}
+.session-inspector-close:hover { color: var(--text); }
+.pane-resume-note, .pane-resume-error {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg2); font-size: 11px; line-height: 1.4; text-align: right;
+}
+.pane-resume-note { color: var(--text2); }
+.pane-resume-error { color: var(--red); }
+
+/* ---- Sidebar (threads) ---- */
+/* The Explorer is not a second panel — it is this sidebar widened. The compact
+   list and the Explorer table are the same catalog, so only one is mounted at
+   a time; expanding swaps the body and grows the rail over the workspace,
+   which keeps rendering behind it at its normal geometry. */
+.sidebar {
+  position: relative; width: var(--rail-w); flex-shrink: 0; display: flex; flex-direction: column;
+  background: var(--bg2); border-right: 1px solid var(--border2);
+}
+.sidebar-resize-handle {
+  position: absolute; z-index: 4; top: 0; right: -5px; bottom: 0; width: 10px;
+  cursor: col-resize; touch-action: none;
+}
+.sidebar-resize-handle::after {
+  content: ''; position: absolute; top: 0; right: 4px; bottom: 0;
+  width: 1px; background: transparent;
+}
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:focus-visible::after,
+.shell.sidebar-resizing .sidebar-resize-handle::after { background: var(--accent); }
+.sidebar-resize-handle:focus-visible { outline: none; }
+.shell.sidebar-resizing, .shell.sidebar-resizing * { cursor: col-resize !important; user-select: none; }
+.sidebar.expanded {
+  position: absolute; z-index: 30; top: 0; bottom: 0; left: 0;
+  /* As wide as the table wants, never so wide that the thread behind it stops
+     being visible as the layer underneath. */
+  width: max-content; max-width: calc(100% - 240px);
+  /* Same surface as the compact rail: a tone change across its compact width
+     would read as a different window, not the same one widened. */
+  background: var(--bg2); border-right: 1px solid var(--border2);
+  box-shadow: 0 0 24px rgb(0 0 0 / 0.45);
+  /* The reveal is anchored at the rail's right edge: its compact width is
+     already on screen and must not move or fade, or the panel reads as a new
+     window arriving rather than the rail widening. Only the newly exposed area
+     wipes open. Clip never relayouts, so the table sits at its final width on
+     every frame. */
+  animation: side-expand 150ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes side-expand {
+  from { clip-path: inset(0 calc(100% - var(--rail-w)) 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar.expanded { animation: none; }
+}
+/* Holds the compact rail width so the session behind does not reflow when the
+   sidebar leaves the flow. */
+.side-rail-spacer { width: var(--rail-w); flex-shrink: 0; }
+.sidebar.expanded .side-brand, .sidebar.expanded .side-expand { background: var(--bg2); }
+.side-body { flex: 1; min-height: 0; display: flex; }
+.side-body > .session { min-width: 0; }
+/* Sort toggle. Sits above the liveness chips in both states — it is a sibling
+   of the swapped bodies, not part of either, so it pushes the chips and the
+   column header down by the same amount and the rows stay aligned. One button
+   that names the current sort and cycles on click. */
+.side-sort { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 14px 0; flex-shrink: 0; }
+.sort-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border: 1px solid var(--border2); border-radius: 999px;
+  font-size: 11px; color: var(--text2); white-space: nowrap;
+}
+.sort-btn:hover { color: var(--text); border-color: var(--text3); }
+.sort-btn:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 1px; }
+.sort-btn-glyph { color: var(--text3); font-size: 10px; line-height: 1; }
+.agent-groups-btn.on { color: var(--accent); border-color: var(--accent-focus); }
+.agent-groups-btn:disabled { color: var(--text3); border-color: var(--border); cursor: default; }
+
+/* Mounted-but-swapped bodies (see App.svelte): display:none keeps the DOM and
+   skips its layout, so neither one costs anything while it is off screen. */
+.side-compact { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sidebar-snapshot-fallback { padding: 6px 12px; color: var(--orange); font: 10.5px/1.35 var(--mono); border-bottom: 1px solid var(--border); }
+.side-body.hidden, .side-compact.hidden { display: none; }
+/* The rail already says "Thread Explorer" and owns the collapse affordance, so
+   the embedded view drops its own title and keeps only status + Refresh. */
+.side-body .topbar > .brand { display: none; }
+.sidebar.expanded .new-win-btn { width: auto; padding: 6px 14px; }
+.side-brand {
+  padding: 10px 14px; font-weight: 600; letter-spacing: 0.01em;
+  color: var(--accent); border-bottom: 1px solid var(--border); height: 47px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+/* Catalog health + Refresh, riding in the brand row while expanded. */
+.xstatus-slot { position: relative; display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.xroots-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; min-width: 260px;
+  border: 1px solid var(--border2); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+.side-brand-name { flex-shrink: 0; }
+/* Account headroom band. Sized to disappear into the rail's chrome — the bars
+   are the signal, and they only draw attention by changing colour. */
+.usage-strip {
+  flex-shrink: 0; padding: 7px 14px 8px; border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 5px;
+  width: 100%; text-align: left; background: none; cursor: pointer;
+}
+.usage-strip:hover { background: var(--surface); }
+.usage-strip:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: -2px; }
+/* When something is wrong the whole band gets a red edge, so the problem is
+   visible from peripheral vision rather than needing the text to be read. */
+.usage-strip.has-alert, .usage-strip.disconnected {
+  border-left: 2px solid var(--red); padding-left: 12px;
+}
+/* Bars whose provider is failing: still shown, because the last true reading
+   beats a blank, but visibly demoted so they cannot be mistaken for current.
+   The alert row directly beneath says why and how old they are. */
+.usage-row.stale { opacity: 0.45; }
+.usage-row.stale .usage-fill { background: var(--text3); }
+/* The error itself — printed, never hover-only. */
+.usage-alert {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 10.5px; line-height: 1.35; color: var(--red);
+}
+.usage-alert-mark {
+  font-family: var(--mono); font-weight: 700; font-size: 10px;
+  flex-shrink: 0; width: 12px; height: 12px; margin-top: 0.5px;
+  border: 1px solid var(--red-line); border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+}
+.usage-alert-text { min-width: 0; }
+/* A notice is not an alert: no mark, no red, no edge on the strip. It says
+   something is briefly not current and will fix itself. */
+.usage-notice { font-size: 10px; line-height: 1.35; color: var(--text3); }
+
+/* ---- usage detail modal (UsageDetail.svelte) ---- */
+.ud-overlay {
+  position: fixed; inset: 0; z-index: 300; background: rgb(0 0 0 / 0.55);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.ud-modal {
+  width: min(1120px, 100%); max-height: 90vh; display: flex; flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.5); overflow: hidden;
+}
+.ud-head {
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.ud-title { font-weight: 600; color: var(--text); font-size: 14px; }
+.ud-range { display: flex; gap: 2px; margin-left: auto; }
+.ud-range-btn {
+  font-family: var(--mono); font-size: 10.5px; color: var(--text3);
+  padding: 3px 8px; border: 1px solid transparent; border-radius: 999px;
+}
+.ud-range-btn:hover { color: var(--text); }
+.ud-range-btn.on { color: var(--accent); border-color: var(--accent-focus); background: var(--accent-dim); }
+.ud-close { margin-left: auto; font-size: 20px; line-height: 1; color: var(--text3); padding: 0 4px; }
+.ud-close:hover { color: var(--text); }
+.ud-body { overflow-y: auto; padding: 14px 16px 18px; }
+.ud-loading, .ud-load-error, .ud-empty { font-size: 12px; color: var(--text3); }
+.ud-load-error { color: var(--red); }
+
+.ud-layout {
+  display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr);
+  gap: 28px; align-items: start;
+}
+.ud-charts, .ud-information {
+  min-width: 0; display: flex; flex-direction: column; gap: 20px;
+}
+.ud-information {
+  padding-left: 24px; border-left: 1px solid var(--border);
+}
+.ud-chart-toolbar { display: flex; align-items: center; gap: 10px; }
+.ud-chart-toolbar-label {
+  font-family: var(--mono); font-size: 10px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.ud-chart-toolbar .ud-range { margin-left: 0; }
+
+.ud-chart-block { display: flex; flex-direction: column; gap: 6px; }
+.ud-chart-head { display: flex; align-items: baseline; gap: 10px; }
+.ud-chart-title {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.ud-plan {
+  font-size: 9.5px; color: var(--text3); text-transform: none; letter-spacing: 0;
+  border: 1px solid var(--border2); border-radius: 999px; padding: 1px 6px; margin-left: 6px;
+}
+.ud-chart-err { font-size: 10.5px; color: var(--red); }
+.ud-chart-note { font-size: 10.5px; color: var(--text3); }
+/* Wide content scrolls inside its own box; the modal body never scrolls sideways. */
+.ud-chart { width: 100%; height: auto; display: block; overflow: visible; }
+/* Grid and axes stay recessive — they are scaffolding, not data. */
+.ud-grid { stroke: var(--border); stroke-width: 1; }
+.ud-axis-label { font-family: var(--mono); font-size: 8px; fill: var(--text3); }
+.ud-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+/* A surface-coloured ring keeps overlapping end-dots separable. */
+.ud-dot { stroke: var(--bg2); stroke-width: 2; }
+.ud-series-label { font-family: var(--mono); font-size: 9px; font-weight: 600; }
+.ud-leader { stroke-width: 1; opacity: 0.5; }
+
+/* Crosshair. The hairline finds the X; the readout lists every series at that
+   X so the pointer never has to land on a line to get a value. */
+.ud-chart-wrap { position: relative; }
+.ud-chart:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 2px; }
+.ud-hairline { stroke: var(--text3); stroke-width: 1; pointer-events: none; }
+/* Surface ring so a dot sitting on its own line stays separable. */
+.ud-hover-dot { stroke: var(--bg2); stroke-width: 1.5; pointer-events: none; }
+/* pan-y, not none: a horizontal drag scrubs the crosshair, a vertical one
+   still scrolls the panel. Blocking both would trap the finger on a tall
+   mobile sheet. */
+.ud-hit { fill: transparent; cursor: crosshair; touch-action: pan-y; }
+.ud-readout {
+  position: absolute; top: 2px; transform: translateX(10px);
+  pointer-events: none; z-index: 2;
+  background: var(--bg); border: 1px solid var(--border2); border-radius: 6px;
+  padding: 5px 8px; min-width: 96px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.4);
+}
+/* Near the right edge the readout would overhang the panel; hang it left. */
+.ud-readout.flip { transform: translateX(calc(-100% - 10px)); }
+.ud-readout-time {
+  font-family: var(--mono); font-size: 9.5px; color: var(--text3);
+  white-space: nowrap; margin-bottom: 3px;
+}
+.ud-readout-row { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+/* A short stroke, not a filled box: at this density a box is data-weight ink
+   doing a label's job. */
+.ud-readout-key { width: 9px; height: 2px; border-radius: 1px; flex-shrink: 0; align-self: center; }
+.ud-readout-val {
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  color: var(--text); min-width: 30px; text-align: right;
+}
+.ud-readout-name { font-family: var(--mono); font-size: 9.5px; color: var(--text2); }
+
+.ud-section { display: flex; flex-direction: column; gap: 8px; }
+.ud-section-title {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.ud-section-note {
+  font-size: 9.5px; font-weight: 400; color: var(--text3);
+  text-transform: none; letter-spacing: 0;
+}
+.ud-credit-note { margin: -3px 0 0; line-height: 1.45; }
+.ud-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.ud-table th {
+  text-align: left; font-weight: 400; font-size: 9.5px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 0 8px 5px 0; border-bottom: 1px solid var(--border);
+}
+.ud-table td { padding: 5px 8px 5px 0; color: var(--text-soft); border-bottom: 1px solid var(--border); }
+.ud-table tr:last-child td { border-bottom: none; }
+.ud-num { font-family: var(--mono); }
+.ud-when { font-family: var(--mono); color: var(--text3); font-size: 10.5px; }
+.ud-prov {
+  font-family: var(--mono); font-size: 9.5px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-right: 4px;
+}
+.ud-empty-cell { color: var(--text3); }
+
+.ud-log { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; }
+.ud-log-row {
+  display: flex; align-items: baseline; gap: 10px; padding: 3px 0;
+  font-family: var(--mono); font-size: 10.5px; color: var(--text2);
+  border-bottom: 1px solid var(--border);
+}
+.ud-log-row:last-child { border-bottom: none; }
+.ud-log-row.bad { color: var(--red); }
+/* A skipped call is neither success nor failure — recede it. */
+.ud-log-row.skipped, .ud-log-row.skipped .ud-log-result { color: var(--text3); }
+.ud-log-time { flex-shrink: 0; color: var(--text3); }
+.ud-log-row.bad .ud-log-time { color: var(--red); }
+.ud-log-prov { flex-shrink: 0; width: 46px; }
+.ud-log-result { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ud-log-ms { flex-shrink: 0; color: var(--text3); }
+.ud-log-row.bad .ud-log-ms { color: var(--red); }
+
+@media (max-width: 700px) {
+  .ud-overlay { padding: 0; }
+  .ud-modal { width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; border: none; }
+  /* The panel fills the screen here, so there is no backdrop to tap and no
+     Escape key: this button is the ONLY way out and has to be an obvious,
+     finger-sized target rather than a 20px glyph. */
+  .ud-close {
+    min-width: 44px; min-height: 44px; font-size: 26px;
+    display: flex; align-items: center; justify-content: center;
+    margin-right: -8px; border-radius: 8px;
+  }
+  .ud-close:active { background: var(--surface); }
+  /* The header is a fixed band on mobile so the way out never scrolls away. */
+  .ud-head { position: sticky; top: 0; z-index: 1; background: var(--bg2); }
+}
+@media (max-width: 920px) {
+  .ud-layout { grid-template-columns: minmax(0, 1fr); }
+  .ud-information { padding-left: 0; border-left: none; }
+}
+/* One bar per row. Several bars cannot share a 270px rail without the labels
+   and percentages colliding, so each weekly cap gets its own line and the
+   provider name prints once, on the first of its rows. */
+.usage-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* Rows after the first of a provider indent under the (now blank) name
+   column, which is what makes the grouping readable without a second label. */
+.usage-provider {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text3); width: 40px; flex-shrink: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.usage-label {
+  font-family: var(--mono); font-size: 10px; color: var(--text2);
+  flex-shrink: 0; width: 36px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.usage-track {
+  flex: 1; min-width: 24px; height: 4px; border-radius: 999px;
+  background: var(--surface); overflow: hidden;
+}
+/* The countdown to the window rolling over — the other half of "how much is
+   left", and the reason a red bar is or is not worth worrying about. */
+.usage-reset {
+  font-family: var(--mono); font-size: 9.5px; color: var(--text3);
+  flex-shrink: 0; width: 26px; text-align: right;
+}
+.usage-fill {
+  display: block; height: 100%; width: 100%; border-radius: 999px;
+  background: var(--accent); transform-origin: left center;
+  transition: transform 0.4s ease, background-color 0.4s ease;
+}
+.usage-fill.warn { background: var(--orange); }
+.usage-fill.crit { background: var(--red); }
+.usage-pct {
+  font-family: var(--mono); font-size: 10px; color: var(--text2);
+  flex-shrink: 0; width: 27px; text-align: right;
+}
+.usage-pct.warn { color: var(--orange); }
+.usage-pct.crit { color: var(--red); }
+/* Codex's unused one-shot limit resets. Worth surfacing precisely when the
+   bar beside it is red, which is also the only time it is worth spending. */
+.usage-credit-slot {
+  width: 24px; flex-shrink: 0; display: flex; justify-content: flex-end;
+}
+.usage-credit {
+  font-family: var(--mono); font-size: 9.5px; color: var(--green);
+  border: 1px solid var(--border2); border-radius: 999px;
+  padding: 1px 5px; line-height: 1.3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .usage-fill { transition: none; }
+}
+.density-toggle {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 400;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3);
+  padding: 3px 8px; border: 1px solid var(--border2); border-radius: 999px;
+}
+.density-toggle:hover { color: var(--text); border-color: var(--text3); }
+.density-toggle:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 1px; }
+/* Section header for the thread list that is also the expand affordance: the
+   sidebar renders N of the catalog's M threads, and the » opens the full
+   Explorer. Header typography (uppercase, tracked) keeps it from reading as
+   one more thread row; the accent tint marks the Explorer view as current. */
+/* Band 2. Fixed height in both states so expanding never moves the list: the
+   toggle keeps its size and the filters occupy the new width beside it. */
+.side-head {
+  display: flex; align-items: stretch; height: 38px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.side-expand {
+  display: flex; align-items: baseline; gap: 8px; text-align: left;
+  padding: 10px 14px 8px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text2); flex: 1; min-width: 0;
+}
+/* Pinned to the rail's exact content width: letting it shrink to its own
+   content moved the count and glyph 1px left on every open. */
+.sidebar.expanded .side-expand { flex: 0 0 calc(var(--rail-w) - 1px); }
+.side-expand:hover { color: var(--text); background: var(--surface); }
+.side-expand.on { color: var(--accent); background: var(--accent-dim); }
+.side-expand-label { flex: 1; min-width: 0; }
+.side-expand-count { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0; }
+.side-expand-glyph { font-size: 12px; line-height: 1; }
+/* Liveness filter chips (.ifile-badge's pill shape, made pressable): the list
+   below shows the whole catalog, so these are how the operator asks for the
+   nano slice or the tmux slice. Header furniture — mono and small, so they
+   read as part of the section header rather than as another thread row. */
+.side-chips { display: flex; gap: 4px; padding: 6px 8px 0; }
+.side-chip {
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.7;
+  border: 1px solid var(--border2); border-radius: 999px; padding: 0 8px;
+  color: var(--text2);
+}
+.side-chip:hover:not(:disabled) { color: var(--text); border-color: var(--text3); }
+.side-chip.on { color: var(--accent); border-color: var(--accent-focus); background: var(--accent-dim); }
+.side-chip:disabled { color: var(--text3); border-color: var(--border); cursor: default; }
+.side-chip-n { color: var(--text3); }
+.side-chip.on .side-chip-n, .side-chip:disabled .side-chip-n { color: inherit; }
+.background-disclosure {
+  display: flex; align-items: center; gap: 6px; width: calc(100% - 16px);
+  margin: 6px 8px 0; padding: 5px 8px; border-radius: 7px;
+  color: var(--text2); font-family: var(--mono); font-size: 10.5px;
+  text-align: left;
+}
+.background-disclosure:hover { color: var(--text); background: var(--surface); }
+.background-count { margin-left: auto; color: var(--text3); }
+.thread-list { flex: 1; overflow-y: auto; padding: 6px; }
+.thread-list .load-older { margin: 4px 0 0; }
+.thread-row {
+  position: relative; display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  /* No margin: the pitch has to be exactly --row-h, or rows drift out of
+     alignment with the expanded table one row at a time. */
+  min-height: var(--row-h); padding: 4px 0 4px 8px; border-radius: 8px;
+}
+.thread-row.worker-child { padding-left: 8px; }
+.tree-branch-lines {
+  display: inline-flex; align-self: stretch; flex: none; color: var(--text3);
+}
+.tree-branch-lines.overlay { position: absolute; inset: 0 auto 0 0; }
+.tree-branch-slot { position: relative; align-self: stretch; width: 14px; min-height: 18px; }
+.tree-branch-slot.ancestor.continues::before,
+.tree-branch-slot.fork::before,
+.tree-branch-slot.fork::after {
+  content: ''; position: absolute; border-color: currentColor;
+}
+.tree-branch-slot.ancestor.continues::before {
+  top: -4px; bottom: -4px; left: 6px; border-left: 1px solid;
+}
+.tree-branch-slot.fork::before {
+  top: -4px; bottom: -4px; left: 6px; border-left: 1px solid;
+}
+.tree-branch-slot.fork.last::before { bottom: 50%; }
+.tree-branch-slot.fork::after {
+  top: 50%; left: 6px; right: 0; border-top: 1px solid;
+}
+.thread-row:hover .tree-branch-lines,
+.xrow:hover .tree-branch-lines,
+.thread-row.on .tree-branch-lines,
+.xrow.on .tree-branch-lines { color: var(--text2); }
+.thread-row:hover { background: var(--surface); }
+.thread-row.on { background: var(--accent-dim); }
+.t-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.t-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.t-title {
+  display: flex; align-items: baseline; gap: 5px; min-width: 0;
+  font-size: 13px; line-height: 1.35; white-space: nowrap; overflow: hidden;
+}
+.t-title-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The worker roll-up shares the working-directory line rather than the title
+   line: ahead of the title it pushed the name out of a rail this narrow, and
+   the name is what the rail is scanned for. The path yields the width. Both
+   surfaces carry it on this line — the two row stacks have to stay
+   line-for-line identical or expanding moves the text. */
+.t-cwd-line, .xc-cwd-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.t-cwd-line .t-cwd, .xc-cwd-line .xc-cwd { flex: 1; min-width: 0; }
+.worker-summary {
+  flex: none; border: 1px solid var(--border2); border-radius: 999px;
+  padding: 0 5px; color: var(--text3); font-family: var(--mono);
+  font-size: 10px; line-height: 1.45;
+}
+.worker-summary.active { color: var(--orange); border-color: rgba(210,153,34,0.4); }
+/* Tightened to fit inside the metadata line's own 14.3px box, so a row with
+   workers is exactly as tall as a row without one and the pitch stays --row-h.
+   Left at its natural size on the title line, which is taller. */
+.t-cwd-line .worker-summary, .xc-cwd-line .worker-summary { line-height: 1.2; }
+/* The same pill, made pressable where there are worker rows to disclose. Rows
+   the roll-up counts but the rail is not carrying stay the plain pill, so a
+   caret never promises an expansion that has nothing to show. */
+.worker-toggle:hover, .worker-toggle:focus-visible { color: var(--text); border-color: var(--text3); background: var(--surface); }
+.worker-toggle:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 1px; }
+.worker-caret { margin-right: 3px; }
+.worker-history-toggle {
+  flex: none; border: 0; padding: 0; color: var(--text3); font-family: var(--mono);
+  font-size: 10px; line-height: 1.2; text-decoration: underline; text-underline-offset: 2px;
+}
+.worker-history-toggle:hover, .worker-history-toggle:focus-visible { color: var(--text); }
+.worker-history-toggle:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 2px; }
+.worker-history-row {
+  display: flex; align-items: center; width: 100%; min-height: 24px;
+  padding: 2px 8px 2px var(--history-indent); border-radius: 6px;
+  text-align: left;
+}
+.worker-history-row:hover { background: var(--surface); }
+/* A cwd/id stand-in for an unnamed thread, muted identically in the rail
+   (.t-title-fallback) and the Explorer's name cell (.xname-fallback) — the
+   two surfaces render one label chain and must not disagree (the operator, 2026-07-29). */
+.t-title-fallback, .xname-fallback { color: var(--text3); }
+.t-cwd, .xc-cwd {
+  font-family: var(--mono); font-size: 11px; line-height: 1.3; color: var(--text2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.t-provider { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+.t-provider.claude { color: var(--orange); }
+.t-sub {
+  font-family: var(--mono); font-size: 11px; line-height: 1.3; color: var(--text3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.t-age {
+  flex-shrink: 0; min-width: 24px; color: var(--text3); font-size: 12px;
+  font-weight: 700; font-variant-numeric: tabular-nums; text-align: right;
+}
+.t-age.fresh { color: var(--green); }
+.t-age.warm { color: var(--orange); }
+.t-age.stale { color: var(--red); }
+.t-end {
+  display: flex; align-items: center; gap: 0; flex: 0 0 auto;
+}
+/* Star and ⋮ share the strip after the age field out to the row box, with
+   even gaps: age → star → ⋮ → row edge. */
+.t-trail {
+  display: flex; align-items: center; justify-content: space-evenly;
+  width: 40px; flex: 0 0 40px;
+}
+.t-detail {
+  flex: 0 0 8px; width: 8px; padding: 0; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text3); font-size: 16px; line-height: 1; opacity: 0;
+  position: relative;
+}
+.t-detail::after {
+  content: ""; position: absolute; top: -8px; right: -8px; bottom: -8px; left: 0;
+}
+.thread-row:hover .t-detail, .thread-row:focus-within .t-detail { opacity: 1; }
+.t-detail:hover { color: var(--text); background: var(--surface); }
+.t-star-slot {
+  flex: 0 0 14px; width: 14px; display: flex; align-items: center; justify-content: center;
+}
+.thread-star {
+  width: 14px; height: 16px; padding: 0; border: 0; background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text3); font-size: 13px; line-height: 1; opacity: 0;
+}
+.thread-row:hover .thread-star, .thread-row:focus-within .thread-star,
+.thread-star.on { opacity: 1; }
+.thread-star.on { color: var(--orange); }
+.thread-star:hover:not(:disabled) { color: var(--text); }
+.thread-star.on:hover:not(:disabled) { color: var(--accent); }
+.thread-star:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 1px; opacity: 1; }
+.thread-star:disabled { cursor: default; }
+.sidebar-section-label {
+  padding: 6px 8px 2px; color: var(--text3); font-family: var(--mono);
+  font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.sidebar-section-divider {
+  height: 1px; margin: 6px 8px; background: var(--border2);
+}
+/* Detached: a restart-killed thread (either provider), re-attachable. Dimmed
+   so it never reads as a live session; hover lifts it to signal it's
+   actionable (one click resumes). */
+.thread-row.detached { opacity: 0.6; }
+.thread-row.detached:hover { opacity: 1; }
+/* Historical rows (live nowhere) recede to the muted token so the live slice
+   above them stays scannable in the unfiltered list; hover restores them. */
+.thread-row.dim .t-title { color: var(--text2); }
+.thread-row.dim:hover .t-title { color: var(--text); }
+
+/* ---- Liveness indicator ---- */
+
+.t-dot.working, .xdot.working { background: var(--orange); animation: dot-pulse 1.6s ease-in-out infinite; }
+.t-dot.idle, .xdot.idle { background: var(--green); }
+
+.t-dot.waiting, .xdot.waiting { background: var(--orange); }
+.t-dot.detached, .xdot.detached { background: transparent; border: 1px solid var(--text3); }
+@keyframes dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) {
+  .t-dot.working, .xdot.working { animation: none; }
+  .composer textarea.send-blocked { animation: none; }
+}
+
+/* A working turn gets an amber 1px inset ring, but no amber wash. Keeping the
+   ordinary dark row background makes the focused thread's accent wash remain
+   the clearest selection signal. Working only: a waiting row keeps its steady
+   dot and no box. */
+.thread-row.working, .xrow.working {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.75);
+}
+.thread-row.working:hover, .xrow.working:hover { background: var(--surface); }
+.thread-row.on.working, .xrow.on.working {
+  background: var(--accent-dim);
+  box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.85);
+}
+
+/* The live working elapsed. Tabular numerals are not decoration here: without
+   them a ticking clock reflows its own column ten times a second. The rail
+   lends the timer its age slot (.t-age.t-working) and the Explorer renders the
+   same string as a chip on the title line. */
+.working-elapsed {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: var(--green);
+}
+.working-elapsed.waiting, .t-age.t-waiting { color: var(--orange); }
+.t-age.t-working, .t-age.t-waiting { font-weight: 700; font-variant-numeric: tabular-nums; }
+.t-age.t-working { min-width: 64px; }
+.t-age.t-waiting { font-family: var(--mono); font-size: 11px; }
+.t-compacting { font-family: var(--mono); font-size: 10px; color: var(--orange); }
+.side-empty { color: var(--text3); font-size: 12.5px; padding: 8px 10px; }
+.side-spawn { padding: 12px; border-top: 1px solid var(--border); }
+.new-win-btn {
+  width: 100%; padding: 8px; background: var(--surface); color: var(--text3);
+  border: 1px dashed var(--border2); border-radius: 8px; font-size: 12px;
+  font-weight: 500; transition: all 0.15s;
+}
+.new-win-btn:hover { color: var(--text); border-color: var(--text3); }
+
+
+.nw-overlay {
+  position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+}
+.nw-modal {
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 16px;
+  padding: 20px; width: min(720px, 92vw); position: relative;
+  max-height: 85vh; overflow-y: auto;
+}
+.nw-body { display: flex; gap: 18px; align-items: stretch; }
+.nw-form { flex: 0 0 300px; min-width: 0; }
+.nw-wire {
+  flex: 1; min-width: 0; border-left: 1px solid var(--border);
+  padding-left: 18px; display: flex; flex-direction: column; gap: 6px;
+}
+.nw-wire-head {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text3);
+}
+.nw-wire-label { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.nw-wire pre {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; overflow-x: auto; font-size: 11.5px; line-height: 1.55;
+  color: var(--text2); white-space: pre; margin: 0;
+}
+@media (max-width: 760px) {
+  .nw-body { flex-direction: column; }
+  .nw-form { flex: none; }
+  .nw-wire { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 12px; }
+}
+.nw-modal h3 { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+.nw-close-x {
+  position: absolute; top: 12px; right: 12px; width: 28px; height: 28px;
+  border-radius: 50%; background: var(--surface); color: var(--text2);
+  font-size: 16px; line-height: 28px; text-align: center; padding: 0;
+}
+.nw-close-x:active { background: var(--border); }
+.nw-input, .nw-modal select {
+  width: 100%; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 8px; padding: 8px 12px;
+  font-size: 13px; font-family: inherit; outline: none;
+}
+.nw-input.mono { font-family: var(--mono); font-size: 12px; }
+.nw-input:focus, .nw-modal select:focus { border-color: var(--accent-focus); }
+
+.nw-input::placeholder { color: var(--text2); }
+.nw-check-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer; }
+.nw-check-row input[type='radio'] {
+  width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;
+  flex-shrink: 0;
+}
+.nw-check-row label { color: var(--text2); font-size: 13px; cursor: pointer; user-select: none; }
+.nw-params { padding: 0 0 6px 26px; display: flex; flex-direction: column; gap: 8px; }
+.nw-mode-toggle {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 3px;
+}
+.nw-mode-toggle button {
+  min-height: 28px; border-radius: 6px; border: 1px solid transparent; color: var(--text3);
+  font-size: 12px; font-weight: 500;
+}
+.nw-mode-toggle button:hover { color: var(--text2); }
+.nw-mode-toggle button.on {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border2);
+}
+.nw-model-row label {
+  display: block; color: var(--text3); font-size: 11px; margin-bottom: 2px;
+}
+.nw-loading { color: var(--text2); font-size: 12px; padding: 4px 0; }
+.nw-advanced { margin-top: 4px; }
+.nw-advanced summary {
+  cursor: pointer; list-style: none; font-size: 12px; color: var(--text3);
+  padding: 4px 0;
+}
+.nw-advanced summary::-webkit-details-marker { display: none; }
+.nw-advanced summary::before { content: '▸ '; font-size: 10px; }
+.nw-advanced[open] summary::before { content: '▾ '; }
+.nw-advanced summary:hover { color: var(--text2); }
+.nw-advanced > :not(summary) { margin-top: 8px; }
+.nw-hint { color: var(--text2); font-size: 10.5px; font-weight: 400; }
+.nw-inline-check {
+  display: flex; align-items: center; gap: 7px; font-size: 12.5px;
+  color: var(--text2); cursor: pointer; user-select: none;
+}
+.nw-inline-check input[type='checkbox'] { width: 15px; height: 15px; accent-color: var(--accent); }
+.nw-textarea {
+  width: 100%; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 8px; padding: 7px 10px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+  outline: none; resize: vertical;
+}
+.nw-textarea:focus { border-color: var(--accent-focus); }
+.nw-textarea::placeholder { color: var(--text2); }
+.nw-error {
+  margin-top: 10px; color: var(--red); font-size: 12px; font-family: var(--mono);
+  word-break: break-word;
+}
+.nw-field-error { margin-top: 4px; color: var(--red); font-size: 10.5px; }
+.nw-create-btn {
+  width: 100%; padding: 10px; margin-top: 12px; background: var(--accent);
+
+  color: #1e1f20; border-radius: 8px; font-size: 14px; font-weight: 500;
+}
+.nw-create-btn:active { opacity: 0.8; }
+.nw-create-btn:disabled { background: var(--surface); color: var(--text3); cursor: default; }
+.nw-submit-hint { margin-top: 6px; color: var(--text2); font-size: 11.5px; text-align: center; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+  padding-right: 52px; /* clear the fixed settings gear at top-right */
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+  flex-shrink: 0; min-height: 44px;
+}
+.topbar .brand { font-weight: 600; letter-spacing: 0.01em; }
+.topbar .brand span { color: var(--accent); }
+.chip {
+  font-size: 12px; color: var(--text2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px;
+  font-family: var(--mono);
+}
+/* Clickable chip (full-history escape hatch): chip look, button affordance. */
+button.chip-action:hover { color: var(--text); border-color: var(--border2); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); }
+.status-dot.active { background: var(--green); }
+.status-dot.idle { background: var(--text3); }
+.status-dot.disconnected { background: var(--red); }
+.spacer { flex: 1; }
+
+.split { flex: 1; display: flex; min-height: 0; }
+.pane-left {
+  position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+  border-right: 1px solid var(--border2);
+}
+.pane-right { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+
+/* ---- Tabs (right pane) ---- */
+.tabs {
+  display: flex; gap: 2px; padding: 6px 10px 0; background: var(--bg2);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.tabs button {
+  padding: 6px 14px 7px; font-size: 13px; color: var(--text2);
+  border-radius: 8px 8px 0 0; border: 1px solid transparent; border-bottom: none;
+}
+.tabs button:hover { color: var(--text); }
+.tabs button.on {
+  color: var(--text); background: var(--bg); border-color: var(--border);
+  position: relative; top: 1px;
+}
+
+/* ---- Conversation (left) ---- */
+/* scroll-behavior stays auto: programmatic pins (initial tail, follow, the
+   show-earlier compensation) must be instant — smooth turns them into a
+   visible glide across the whole thread on open. */
+/* overflow-x: clip (not hidden): a hidden ancestor is a scroll container and
+   can steal a finger pan from a nested table wrap. clip contains the page
+   without becoming a competing X scroller. */
+.convo { flex: 1; min-width: 0; overflow-x: clip; overflow-y: auto; padding: 16px 16px 8px; }
+.convo-empty { color: var(--text3); text-align: center; margin-top: 40vh; font-size: 14px; }
+.item { margin-bottom: var(--turn-gap); max-width: 100%; }
+
+
+.msg-user-surface { background: rgba(217,119,87,.14); border: none;
+  color: var(--text); border-radius: 4px; }
+.msg-agent-surface { background: rgba(255,255,255,.06); border: none;
+  color: #b0aaa0; border-radius: 6px; }
+.msg-user-body {
+  padding: 8px 11px; max-width: 100%;
+  font-family: var(--mono); font-size: var(--mono-size); line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word;
+}
+.msg-agent-body {
+  padding: 9px 12px; max-width: 100%;
+  font-family: var(--mono); font-size: var(--mono-size); line-height: 1.55;
+
+  white-space: normal; word-break: break-word;
+}
+
+.item.userMessage { display: block; }
+
+.msg-user-surface.pending-user {
+  position: relative;
+  padding-left: 26px;
+}
+.pending-user-dot {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  width: 7px;
+  height: 7px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(217,119,87,0.16);
+}
+.pending-user-dot.queued {
+  background: transparent;
+  border: 1.5px solid var(--accent);
+  box-sizing: border-box;
+}
+.prompt-label { margin: 4px 2px 0; font: 10.5px var(--mono); color: var(--text2); }
+.pending-send-actions { display: flex; gap: 6px; margin: 5px 2px 0; }
+.pending-send-action {
+  padding: 2px 7px; color: var(--text2); background: transparent;
+  border: 1px solid var(--border2); border-radius: 4px; cursor: pointer;
+  font: 10.5px var(--mono);
+}
+.pending-send-action:hover:not(:disabled) { color: var(--text); border-color: var(--red-line); }
+.pending-send-action:disabled { cursor: not-allowed; opacity: .45; }
+
+
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body .md-plain { white-space: pre-wrap; }
+.md-body p { margin: 0 0 .55em; font-size: 1em; }
+.md-body p:last-child { margin-bottom: 0; }
+.md-body p > strong:only-child { font-size: 1.06em; }
+.md-body ul,
+.md-body ol { margin: .35em 0 .45em; padding-left: 1.75em; }
+.md-body li { margin: .18em 0; padding-left: .15em; font-size: 1em; }
+.md-body li::marker { color: var(--text3); }
+.md-body blockquote { margin: .45em 0; padding: 3px 10px;
+  border-left: 2px solid var(--border2); color: var(--text2); }
+.md-body h1,
+.md-body h2,
+.md-body h3 { margin: .45em 0 .25em; line-height: 1.35; }
+.md-body h1 { font-size: 1.12em; font-weight: 700; }
+.md-body h2 { font-size: 1.06em; font-weight: 650; }
+.md-body h3 { font-size: 1em; font-weight: 650; }
+.md-body h1:first-child,
+.md-body h2:first-child,
+.md-body h3:first-child { margin-top: 0; }
+.md-body h1:last-child,
+.md-body h2:last-child,
+.md-body h3:last-child,
+.md-body ul:last-child,
+.md-body ol:last-child,
+.md-body blockquote:last-child { margin-bottom: 0; }
+.md-body table { font-size: 1em; line-height: 1.45; }
+.md-body code { font-family: var(--mono); font-size: 1em;
+  background: rgba(255,255,255,.07); border-radius: 3px; padding: 0 4px; }
+.md-body pre { background: rgba(255,255,255,.04);
+  border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
+  margin: 8px 0 0; color: #c9c3b9; overflow: auto; max-height: 360px;
+  white-space: pre; font-family: var(--mono); font-size: var(--mono-size);
+  line-height: 1.45; }
+.md-body pre code { font-size: inherit; }
+.md-body .md-table-wrap { overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  margin: 0.5em 0; max-width: 100%; min-width: 0; }
+.md-body .md-table-wrap table { width: max-content;
+  min-width: 100%; max-width: none; margin: 0; border-collapse: collapse;
+  font-size: 1em; }
+.md-body .md-table-wrap th,
+.md-body .md-table-wrap td { padding: 5px 10px;
+  text-align: left; vertical-align: top; border-bottom: 1px solid var(--border);
+  min-width: 90px; max-width: 320px; }
+.md-body .md-table-wrap th { color: var(--text2); font-weight: 600; }
+.md-body .box-table-wrap { overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  margin: 0.5em 0; max-width: 100%; min-width: 0; }
+.md-body .box-table { border-collapse: collapse; width: 100%;
+  white-space: normal; }
+.md-body .box-table th,
+.md-body .box-table td { padding: 6px 10px; text-align: left;
+  vertical-align: top; border: 1px solid var(--border);
+  font-size: var(--mono-size); line-height: 1.4; word-break: break-word; }
+.md-body .box-table th { color: var(--text2); font-weight: 600;
+  background: rgba(255,255,255,0.03); }
+.md-body .box-table td { color: var(--text); }
+.item .kind {
+  font-size: 11px; color: var(--text3); font-family: var(--mono);
+  margin-bottom: 2px; display: flex; gap: 6px; align-items: center;
+}
+.item .kind .live { color: var(--orange); }
+.item-timestamp {
+  display: block; margin: 2px 0 0 6px; color: var(--text2);
+  font: 10px var(--mono); font-variant-numeric: tabular-nums;
+}
+.item-submission-timestamp {
+  display: block; margin: 2px 0 0 6px; color: var(--text2);
+  font: 10px var(--mono); font-variant-numeric: tabular-nums;
+}
+.item.aux .body {
+  border-left: 2px solid rgba(255,255,255,.06); padding: 2px 0 2px 10px;
+  color: #b0aaa0; font-size: var(--mono-size); line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word;
+}
+.item.aux .body.mono { font-family: var(--mono); }
+.item .cmd-line { color: var(--text); font-family: var(--mono); }
+.item .cmd-out { color: var(--text2); max-height: 200px; overflow-y: auto; }
+.item .exit-bad { color: var(--red); }
+
+.view-bar {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+  border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0;
+}
+.view-toggle { display: flex; gap: 4px; }
+.view-toggle button {
+  font-size: 12px; padding: 2px 12px; border-radius: 999px;
+  border: 1px solid var(--border2); color: var(--text2);
+}
+.view-toggle button.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+.view-hint { font-size: 11.5px; color: var(--text3); font-family: var(--mono); }
+.transcript-audit-controls { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text3); }
+.transcript-audit-button { white-space: nowrap; font-size: 12px; padding: 2px 10px; border: 1px solid var(--border2); border-radius: 999px; color: var(--text2); }
+.feedback { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.feedback-box {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: 320px; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  background: var(--bg); border: 1px solid var(--border2); border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.feedback-box textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 13px; line-height: 1.4; color: var(--text); background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.feedback-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.feedback-actions button { font-size: 12px; padding: 2px 10px; border: 1px solid var(--border2); border-radius: 999px; color: var(--text2); }
+.feedback-actions .feedback-save { border-color: var(--accent); color: var(--text); }
+.feedback-actions .feedback-save:disabled { color: var(--text3); border-color: var(--border2); cursor: default; }
+.feedback-error { font-size: 11px; color: var(--red); }
+.transcript-audit-result { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 7px 12px; border-bottom: 1px solid var(--border); background: var(--accent-dim); color: var(--text2); font: 11px/1.4 var(--mono); flex-shrink: 0; }
+.transcript-audit-result strong { color: var(--text); }
+.transcript-audit-result.mismatch { background: var(--red-dim); border-bottom-color: var(--red-line); }
+.transcript-audit-result.mismatch strong { color: var(--red); }
+.transcript-audit-result.inconclusive { background: var(--bg2); }
+.thread-details-toggle, .detach-toggle {
+  font-size: 12px; padding: 2px 12px; border-radius: 999px;
+  border: 1px solid var(--border2); color: var(--text2);
+}
+.thread-details-toggle.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+.detach-toggle:disabled { color: var(--text3); cursor: default; }
+.view-control-error {
+  padding: 5px 12px; border-bottom: 1px solid var(--red-line);
+  background: var(--red-dim); color: var(--red); font-size: 11px;
+}
+.transcript-validator {
+  padding: 7px 12px; border-bottom: 1px solid var(--border); background: var(--bg2);
+  color: var(--text2); font: 11px/1.4 var(--mono); flex-shrink: 0;
+}
+.transcript-validator.mismatch { background: var(--red-dim); border-bottom-color: var(--red-line); }
+.transcript-validator-summary { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.transcript-validator-summary strong { color: var(--text); }
+.transcript-validator.mismatch .transcript-validator-summary strong { color: var(--red); }
+.transcript-validator-counts { margin-top: 3px; color: var(--text2); }
+.transcript-validator details { margin-top: 4px; }
+.transcript-validator summary { cursor: pointer; color: var(--text3); }
+.transcript-validator-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+.transcript-validator-columns > div { min-width: 0; }
+.transcript-validator-columns b, .transcript-validator-columns code { display: block; }
+.transcript-validator-columns b { margin-bottom: 3px; color: var(--text2); }
+.transcript-validator-columns code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text3); }
+@media (max-width: 600px) {
+  .transcript-validator-columns { grid-template-columns: 1fr; }
+  .thread-menu .transcript-audit-controls { display: flex; margin-top: 8px; flex-wrap: wrap; }
+  .thread-menu .feedback { flex-wrap: wrap; }
+  .thread-menu .feedback-box { position: static; width: 100%; }
+  .thread-menu .thread-details-toggle { margin: 8px 0 0 4px; }
+  .thread-menu .detach-toggle { margin: 8px 0 0 4px; }
+}
+.item-raw { margin: -6px 0 var(--turn-gap); }
+.item-raw summary {
+  cursor: pointer; list-style: none; font-family: var(--mono); font-size: 11px;
+  color: var(--text3); padding: 1px 0;
+}
+.item-raw summary::-webkit-details-marker { display: none; }
+.item-raw summary::before { content: '{ } '; color: var(--text3); }
+.item-raw summary:hover { color: var(--text2); }
+.item-raw pre {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; margin-top: 4px; overflow-x: auto; font-size: 11.5px;
+  line-height: 1.5; max-height: 320px; overflow-y: auto; color: var(--text2);
+}
+
+.composer-wrap {
+  border-top: 1px solid var(--border); background: var(--bg2); flex-shrink: 0;
+}
+.composer {
+  display: flex; gap: 8px; padding: 8px 10px;
+  align-items: flex-end;
+}
+.composer textarea {
+  flex: 1; min-width: 0; resize: none; overflow-y: auto;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 16px; padding: 8px 14px;
+  font-size: var(--text-size); font-family: inherit;
+  line-height: 1.4; max-height: 40vh; outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.composer textarea:focus {
+  border-color: var(--accent-focus);
+  box-shadow: 0 0 0 3px rgba(217,119,87,0.1);
+}
+.composer textarea.send-blocked {
+  border-color: var(--accent-focus);
+  animation: composer-send-blocked .3s ease-in-out;
+}
+@keyframes composer-send-blocked {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+/* Keep the placeholder readable in the dim surface; the action icon stays
+   white for contrast against the accent button. */
+.composer textarea::placeholder { color: var(--text2); }
+.composer button {
+  background: var(--accent); color: #fff; border-radius: 999px; padding: 8px 16px;
+  font-weight: 500; flex-shrink: 0; min-height: 32px;
+}
+.composer button:hover { background: var(--accent2); }
+.composer button:disabled { background: var(--surface); color: var(--text3); cursor: default; }
+.composer button.submit-icon {
+  width: 32px; height: 32px; padding: 0; border: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.composer button.submit-icon svg { width: 16px; height: 16px; }
+.composer button.submit-icon:active { transform: scale(.92); }
+/* Stop is not an accent action — it undoes one. Same footprint as Send so the
+   button does not jump when a turn starts, but it reads as a warning. */
+.composer button.stop { background: var(--red-dim); color: var(--red); box-shadow: inset 0 0 0 1px var(--red-line); }
+.composer button.stop:hover { background: rgba(229,83,75,0.16); }
+.composer button.stop:disabled { background: var(--surface); color: var(--text3); box-shadow: none; }
+
+
+.interaction {
+  margin: 0 0 var(--turn-gap);
+  padding: 12px 14px;
+  background: var(--bg2);
+  border: 1px solid var(--accent-focus);
+  border-radius: var(--turn-radius);
+}
+.interaction-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.interaction-dot {
+  width: 6px; height: 6px; border-radius: 999px; background: var(--accent);
+  flex-shrink: 0; animation: dot-pulse 1.6s ease-in-out infinite;
+}
+.interaction-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.interaction-kind {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text2); border: 1px solid var(--border2); border-radius: 4px; padding: 1px 5px;
+}
+.interaction-detail { font-size: 12px; color: var(--text2); overflow-wrap: anywhere; }
+.interaction-command {
+  margin: 8px 0 0; padding: 7px 9px; background: var(--surface);
+  border: 1px solid var(--border2); border-radius: 6px;
+  font-family: var(--mono); font-size: var(--code-size); line-height: 1.45;
+  color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 260px; overflow-y: auto;
+}
+.interaction-question { margin-top: 10px; }
+.interaction-question-header {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3);
+}
+.interaction-question-text { font-size: 13px; color: var(--text); margin-bottom: 6px; }
+.interaction-options { display: flex; flex-direction: column; gap: 6px; }
+.interaction-option {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 7px 10px; background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 8px; cursor: pointer;
+}
+.interaction-option:hover { border-color: var(--accent-focus); }
+.interaction-option.on { border-color: var(--accent); background: var(--accent-dim); }
+.interaction-option-label { font-size: 12.5px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.interaction-option-desc { font-size: 11.5px; color: var(--text2); }
+.interaction-recommended {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--accent); border: 1px solid var(--accent-focus); border-radius: 4px; padding: 0 4px;
+}
+.interaction-free {
+  width: 100%; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 8px; padding: 7px 10px;
+  font: inherit; font-size: 12.5px; outline: none;
+}
+.interaction-free:focus { border-color: var(--accent-focus); }
+.interaction-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.interaction-btn {
+  padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border2); border-radius: 8px;
+}
+.interaction-btn:hover:not(:disabled) { border-color: var(--accent-focus); }
+.interaction-btn.accept { background: var(--accent); border-color: var(--accent); color: #1e1f20; }
+.interaction-btn.accept:hover:not(:disabled) { background: var(--accent2); border-color: var(--accent2); }
+.interaction-btn.deny { color: var(--red); border-color: var(--red-line); background: var(--red-dim); }
+.interaction-btn:disabled { opacity: 0.55; cursor: default; }
+.interaction-error { margin-top: 8px; font-size: 12px; color: var(--red); }
+
+
+.info-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px 2px; color: var(--text3); line-height: 1.5;
+}
+/* One rhythm for the whole run: the container's column-gap is the space before
+   every field, and the separator's margin-left is the identical space after
+   it — every dot sits exactly --info-gap from both neighbours. */
+.info-bar-facts {
+  --info-gap: 7px;
+  flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline;
+  column-gap: var(--info-gap); row-gap: 2px;
+  font-family: var(--mono); font-size: 10.5px;
+}
+.info-bar-item { display: inline-flex; align-items: baseline; min-width: 0; white-space: nowrap; }
+.info-bar-item.identity .info-bar-field { color: var(--text3); opacity: 0.75; }
+.info-bar-field { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.info-bar-field.path { color: var(--text2); }
+.info-bar-sep { color: var(--border2); margin-left: var(--info-gap); }
+
+/* ---- The thread menu ----
+   Everything scoped to THIS thread, behind one quiet glyph at the end of the
+   bar: model/effort, and on a phone the view toggle and detach the layout has
+   nowhere else to put. The settings gear stays global, top-right; this is the
+   thread's own corner. The popup opens upward — the bar is the last row on the
+   screen and there is nothing below it. */
+.thread-menu { position: relative; flex-shrink: 0; }
+.thread-menu-btn {
+  padding: 0 6px; border-radius: 5px; color: var(--text3);
+  font-size: 14px; line-height: 1.2;
+}
+.thread-menu-btn:hover, .thread-menu-btn[aria-expanded="true"] { color: var(--text); background: var(--surface); }
+.thread-menu-pop {
+  position: absolute; z-index: 20; right: 0; bottom: calc(100% + 6px);
+  min-width: 244px; max-width: min(320px, 84vw);
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 0.4);
+  font-size: 12px; color: var(--text2);
+}
+.thread-menu-item {
+  display: block; width: 100%; padding: 7px 8px; border-radius: 6px;
+  color: inherit; font: inherit; text-align: left;
+}
+.thread-menu-item:hover:not(:disabled) { color: var(--text); background: var(--surface); }
+.thread-menu-item:disabled { color: var(--text3); cursor: default; }
+.thread-menu-section { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; }
+.thread-menu-label { flex: 1 0 100%; color: var(--text3); font-size: 10.5px; }
+.thread-menu-error { padding: 4px 8px; color: var(--red); font-size: 11px; line-height: 1.4; }
+/* Inside the menu the selects are the content, not a quiet strip on a
+   composer — they stack and take the width. */
+.thread-menu-pop .turn-controls {
+  flex-direction: column; align-items: stretch; gap: 6px; padding: 2px 8px 6px;
+}
+/* Both selects take the same share of the row, so the two labels and the two
+   controls line up instead of ragging to their own content widths. */
+.thread-menu-pop .turn-control { justify-content: space-between; }
+.thread-menu-pop .turn-control select { flex: 0 0 62%; max-width: 62%; }
+
+/* Per-turn model/effort. These describe the NEXT turn, so they live in the
+   thread menu on the composer's own info bar rather than in a global settings
+   surface — and stay out of the way until asked for. */
+.turn-controls {
+  display: flex; gap: 14px; align-items: center;
+  padding: 6px 14px 0; font-size: 11.5px; color: var(--text2);
+}
+.turn-control { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.turn-control-label { color: var(--text3); }
+.turn-control select {
+  background: none; border: none; color: var(--text2); font: inherit;
+  padding: 1px 2px; border-radius: 4px; max-width: 210px; cursor: pointer;
+  text-overflow: ellipsis;
+}
+.turn-control select:hover { color: var(--text); background: var(--surface); }
+.turn-control select:focus-visible { outline: 1px solid var(--accent-focus); }
+
+/* The restart-seam grace: the pane's session id went stale and the successor
+   has not been adopted yet. A quiet floating pill, not a state change — the
+   live view stays mounted underneath. */
+.pane-reconnecting {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 4;
+  padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text3);
+  font-family: var(--mono); font-size: 11.5px;
+}
+
+/* ---- Send notice ----
+   The operation row carries the action controls; this is deliberately quiet
+   and has no dismiss-only button. */
+.send-notice {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 8px 14px 0; padding: 6px 10px;
+  font-size: 12px; line-height: 1.4; color: var(--red);
+  background: var(--red-dim); border: 1px solid var(--red-line); border-radius: 6px;
+}
+.send-error-text { min-width: 0; }
+.unsent-send {
+  margin: 8px 14px 0; padding: 6px 10px;
+  border: 1px dashed var(--red-line); border-radius: 6px; background: var(--surface);
+}
+.unsent-send-label { font: 10.5px var(--mono); color: var(--red); }
+.unsent-count {
+  display: block; margin: 8px 14px 0; padding: 0;
+  font: 10.5px var(--mono); color: var(--red); text-align: left;
+  background: none; border: none; cursor: pointer;
+}
+.unsent-count::before { content: '▸ '; }
+.unsent-count[aria-expanded='true']::before { content: '▾ '; }
+.unsent-send-text {
+  max-height: 6.5em; overflow-y: auto; margin-top: 2px;
+  font-size: 12.5px; line-height: 1.4; color: var(--text2);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* ---- Queued turns ----
+   Messages typed while a turn was running. They are waiting, not running, so
+   they read as quiet chips above the composer rather than as transcript items —
+   nothing has been said to the agent yet. Clicking one removes it. */
+.queued-turns { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; }
+.queued-turn {
+  display: flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 3px 8px; font-size: 11.5px; color: var(--text2);
+  background: var(--surface); border: 1px dashed var(--border2); border-radius: 999px;
+  cursor: pointer;
+}
+.queued-turn:hover { color: var(--text); border-color: var(--red-line); }
+.queued-turn-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queued-turn-x { color: var(--text3); flex-shrink: 0; }
+.queued-turn:hover .queued-turn-x { color: var(--red); }
+
+/* ---- Live thinking surface ----
+   Reasoning is process, not transcript. It streams in place of the message
+   that is coming, then vanishes when that message arrives — so the record
+   keeps only what was actually said. This replaced a fixed activity bar above
+   the composer: the same information, but where the reader is already looking
+   and gone the instant it stops being true. */
+.thinking {
+  margin: -2px 0 var(--turn-gap); display: flex; flex-direction: column; gap: 6px;
+  animation: thinking-in .2s ease-out both;
+}
+.thinking-head {
+  display: flex; align-items: baseline; gap: 8px;
+  font: 12px var(--mono); font-variant-numeric: tabular-nums;
+}
+/* The label carries the liveness the old pulsing dot did — a slow sheen across
+   the word itself rather than a separate blinking ornament. */
+.thinking-label {
+  background: linear-gradient(90deg, var(--text3) 30%, var(--text) 50%, var(--text3) 70%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: thinking-sheen 2.6s linear infinite;
+}
+.thinking-detail {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text3); font: inherit;
+}
+/* Tabular numerals: the clock ticks ten times a second under ten seconds, and
+   proportional digits make the whole head jitter as it does. */
+.thinking-elapsed {
+  margin-left: auto; color: var(--text3); flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.thinking-elapsed.waiting { color: var(--orange); }
+/* A completed turn's native duration, beside the message that ended it. Muted
+   and parenthesised: it annotates the transcript, it is not part of it. */
+.turn-took { color: var(--text3); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* column-reverse pins the newest line to the bottom edge, so an overlong
+   stream overflows upward into the mask instead of clipping the live text. */
+.thinking-stream {
+  max-height: 4.4em; overflow: hidden; display: flex; flex-direction: column-reverse;
+  color: var(--text3); font-family: var(--mono); font-size: var(--mono-size);
+  line-height: 1.55; word-break: break-word;
+  mask-image: linear-gradient(to bottom, transparent, #000 2.2em);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 2.2em);
+}
+.thinking-word { animation: thinking-word-in .34s ease-out both; }
+
+@keyframes thinking-in { from { opacity: 0; transform: translateY(3px); } }
+@keyframes thinking-sheen { to { background-position: -300% 0; } }
+@keyframes thinking-word-in {
+  from { opacity: 0; filter: blur(2px); }
+  to { opacity: 1; filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-label {
+    animation: none; -webkit-text-fill-color: currentColor; color: var(--text2);
+  }
+  .thinking-word { animation: none; }
+}
+
+/* Resume attach affordances (Slice R3): topbar chip while the background
+   thread/resume handshake runs, and the dim durable-history status rows in
+   the conversation pane (loading / unindexed fallback / paging errors). */
+.chip-attaching { color: var(--accent); border-color: var(--accent); }
+.history-fallback-note {
+  color: var(--text3); font-size: 12px; font-family: var(--mono);
+  text-align: center; padding: 4px 0 10px;
+}
+.convo-exited-note {
+  color: var(--red); font-size: 12px; font-family: var(--mono);
+  text-align: center; padding: 4px 0 10px;
+}
+
+/* ---- Event feed ---- */
+.feed { flex: 1; overflow-y: auto; padding: 8px 10px; font-family: var(--mono); font-size: 12px; }
+.load-older {
+  width: 100%; margin-bottom: 6px; padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text2); background: var(--surface); font-family: var(--mono);
+  font-size: 12px;
+}
+.load-older:hover { color: var(--text); border-color: var(--border2); }
+.load-older:disabled { color: var(--text3); cursor: default; }
+.evt { border-bottom: 1px solid var(--border); }
+.evt summary {
+  display: flex; gap: 8px; padding: 4px 4px; cursor: pointer; list-style: none;
+  align-items: baseline; white-space: nowrap; overflow: hidden;
+}
+.evt summary::-webkit-details-marker { display: none; }
+.evt summary:hover { background: var(--bg2); }
+.evt .t { color: var(--text3); flex-shrink: 0; }
+.evt .dir { flex-shrink: 0; width: 14px; text-align: center; }
+.evt .dir.send { color: var(--accent); }
+.evt .dir.recv { color: var(--text2); }
+.evt .m { color: var(--text); flex-shrink: 0; }
+.evt .m.reply { color: var(--green); }
+.evt .m.err { color: var(--red); }
+.evt .preview { color: var(--text3); overflow: hidden; text-overflow: ellipsis; }
+.evt pre {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; margin: 4px 2px 8px 22px; overflow-x: auto;
+  font-size: 11.5px; line-height: 1.5; max-height: 400px; overflow-y: auto;
+}
+.feed-controls {
+  display: flex; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  background: var(--bg2); font-size: 12px; color: var(--text2); align-items: center;
+}
+.feed-controls .count { font-family: var(--mono); }
+.feed-older-note {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  color: var(--text3); font-family: var(--mono); font-size: 11.5px;
+}
+.feed-older-note .load-older { width: auto; margin: 0; }
+
+/* ---- Responses Input panel ---- */
+.rinput { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.role-row { display: flex; gap: 6px; margin-bottom: 14px; }
+.role-row button {
+  font-size: 12px; font-family: var(--mono); padding: 3px 12px;
+  border: 1px solid var(--border2); border-radius: 999px; color: var(--text2);
+}
+.role-row button.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+.sect { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; background: var(--bg2); }
+.sect summary {
+  padding: 9px 12px; cursor: pointer; font-weight: 500; font-size: 14px;
+  list-style: none; display: flex; align-items: center; gap: 8px;
+}
+.sect summary::-webkit-details-marker { display: none; }
+.sect summary .n { color: var(--text3); font-size: 12px; font-family: var(--mono); font-weight: 400; }
+.sect summary::before { content: '▸'; color: var(--text3); font-size: 11px; transition: transform 0.15s ease-out; }
+.sect[open] summary::before { transform: rotate(90deg); }
+.sect .sect-body { padding: 2px 12px 12px; border-top: 1px solid var(--border); }
+.kv { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 3px 16px; font-size: 13px; }
+.kv dt { color: var(--text2); }
+.kv dd { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+.kv dd .ok { color: var(--green); }
+.kv dd .warn { color: var(--orange); }
+.list-row { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.list-row:last-child { border-bottom: none; }
+.list-row .name { font-family: var(--mono); font-size: 12.5px; }
+.list-row .desc { color: var(--text2); font-size: 12.5px; }
+.muted { color: var(--text3); font-size: 12.5px; padding: 8px 0; }
+.context-note {
+  color: var(--text2); font-size: 12.5px; padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+.context-note:first-of-type { margin-top: 8px; }
+.context-subhead {
+  color: var(--text3); font-size: 11px; font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-top: 12px;
+  padding-top: 8px; border-top: 1px solid var(--border);
+}
+.context-row {
+  display: flex; align-items: baseline; gap: 8px; padding: 5px 2px;
+  border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.context-row:last-child { border-bottom: none; }
+.context-path {
+  flex: 1; min-width: 0; font-family: var(--mono); color: var(--text2);
+  word-break: break-all;
+}
+.context-link {
+  color: var(--text2); text-decoration: none; font-family: var(--mono);
+  word-break: break-all;
+}
+.context-link:hover { color: var(--text); }
+
+/* ---- Instruction file rows (Responses Input) ---- */
+/* Each row is a click trigger; the file opens in a right-pane FileView tab. */
+.ifile-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  padding: 6px 2px; font-size: 13px; border-bottom: 1px solid var(--border);
+}
+.ifile-row:last-child { border-bottom: none; }
+.ifile-row:hover:not(:disabled) { background: var(--bg); }
+.ifile-row:disabled { cursor: default; opacity: 0.7; }
+.ifile-path {
+  flex: 1; min-width: 0; font-family: var(--mono); font-size: 12.5px;
+  word-break: break-all;
+}
+.ifile-badge {
+  flex-shrink: 0; font-family: var(--mono); font-size: 10.5px;
+  border: 1px solid var(--border2); border-radius: 999px; padding: 0 8px;
+
+  color: var(--text2);
+}
+.ifile-badge.wire-authoritative { color: var(--blue); border-color: rgba(88,166,255,0.38); }
+.ifile-badge.documented-expected { color: var(--green); border-color: rgba(63,185,80,0.4); }
+.ifile-badge.present-only { color: var(--text3); border-color: var(--border2); }
+.ifile-badge.editable { color: var(--green); border-color: rgba(63,185,80,0.4); }
+.ifile-badge.readonly { color: var(--orange); border-color: rgba(210,153,34,0.4); }
+.ifile-badge.missing { color: var(--red); border-color: var(--red-line); }
+.ifile-error {
+  color: var(--red); font-size: 12px; font-family: var(--mono);
+  padding: 4px 0; word-break: break-word;
+}
+
+/* ---- File tabs in the right-pane tab strip ---- */
+.tabs { flex-wrap: wrap; }
+.tabs button.file-tab { display: inline-flex; align-items: center; gap: 6px; }
+.file-tab .file-tab-name {
+  font-family: var(--mono); font-size: 12px; max-width: 160px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.file-tab .file-tab-close {
+  color: var(--text3); font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 4px;
+}
+.file-tab .file-tab-close:hover { color: var(--red); background: var(--red-dim); }
+.nano-file-link { color: var(--accent); text-decoration: none; cursor: pointer; }
+.nano-file-link:hover { text-decoration: underline; }
+.thread-pane-file-icon { color: var(--accent); font: 12px/1 var(--mono); flex: 0 0 auto; }
+
+
+
+/* ---- FileView (pane-native local file viewer/editor) ---- */
+.file-view { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.file-body { flex: 1; overflow-y: auto; }
+.file-status { padding: 24px; color: var(--text3); font-size: 13px; }
+.file-readonly-note {
+  padding: 5px 12px; font-size: 11.5px; font-family: var(--mono); color: var(--orange);
+  background: rgba(210,153,34,0.08); border-bottom: 1px solid var(--border);
+}
+.file-readonly-note.subtle { color: var(--text3); background: none; }
+
+.file-tab-toolbar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0;
+}
+.file-tab-path {
+  flex: 1; font-size: 11px; color: var(--text3); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono);
+}
+.file-tab-toggle { display: flex; gap: 0; background: var(--surface); border-radius: 6px; padding: 2px; }
+.file-tab-toggle button {
+  padding: 3px 10px; background: none; border: none; color: var(--text3);
+  font-size: 11px; font-weight: 600; font-family: inherit; border-radius: 4px;
+}
+.file-tab-toggle button.active { background: var(--bg); color: var(--text); }
+.file-dirty-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  display: inline-block; flex-shrink: 0;
+}
+.file-save-btn { padding: 3px 12px; border: none; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.file-save-btn.dirty { background: var(--accent); color: #fff; }
+.file-save-btn:not(.dirty) { background: var(--surface); color: var(--text3); }
+.file-save-btn.saving { opacity: 0.5; pointer-events: none; }
+.file-format-btn {
+  padding: 3px 9px; border: 1px solid var(--border2); border-radius: 4px;
+  background: transparent; color: var(--text2); font-size: 11px; font-weight: 600;
+}
+.file-format-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.file-format-btn.active { border-color: var(--accent); color: var(--accent); }
+.file-format-btn:disabled { opacity: 0.5; cursor: default; }
+.file-edit-btn {
+  padding: 3px 12px; background: none; border: 1px solid var(--border2);
+  border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text3);
+}
+.file-edit-btn.active { border-color: var(--accent); color: var(--accent); }
+.file-external-change {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  background: var(--accent-dim); border-bottom: 1px solid var(--accent);
+  font-size: 12px; color: var(--accent);
+}
+.file-external-change button {
+  padding: 2px 8px; background: var(--accent); color: #fff; border: none;
+  border-radius: 4px; font-size: 11px; font-weight: 600;
+}
+.file-external-change button.secondary { background: var(--surface); color: var(--text3); }
+.file-line-notice {
+  padding: 6px 12px; border-bottom: 1px solid var(--border); color: var(--orange);
+  background: rgba(210,153,34,0.08); font: 11.5px/1.4 var(--mono);
+}
+.file-candidates {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg2);
+}
+.file-candidates-label { font-size: 11.5px; color: var(--text3); }
+.file-candidate {
+  max-width: 100%; padding: 2px 0; background: none; border: none; text-align: left;
+  color: var(--accent); font: 11.5px/1.5 var(--mono); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.file-candidate:hover { text-decoration: underline; }
+.file-editor-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.file-editor {
+  flex: 1; width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: 12px 16px; border: none; outline: none;
+  background: transparent; color: #d4d4d4; font-size: var(--mono-size);
+  font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal;
+  overflow-x: hidden; overflow-y: auto; line-height: 1.5; resize: none;
+}
+.file-editor.no-wrap { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+
+/* Markdown reading column (Formatted view) */
+.fb-reader { max-width: 820px; margin: 0 auto; padding: 14px 14px 40px; }
+.fb-reader-body { color: var(--text); font-size: var(--text-size); line-height: 1.65; }
+.fb-reader-body h1, .fb-reader-body h2, .fb-reader-body h3,
+.fb-reader-body h4, .fb-reader-body h5, .fb-reader-body h6 {
+  color: var(--text); margin: 1.2em 0 0.5em; font-weight: 600;
+}
+.fb-reader-body h1 { font-size: 1.5em; } .fb-reader-body h2 { font-size: 1.3em; }
+.fb-reader-body h3 { font-size: 1.15em; }
+.fb-reader-body p { margin: 0.6em 0; }
+.fb-reader-body code {
+  background: var(--surface); padding: 2px 5px; border-radius: 4px;
+  font-size: 0.9em; font-family: var(--mono);
+}
+.fb-reader-body pre { background: var(--surface); padding: 12px 14px; border-radius: 8px; overflow-x: auto; margin: 0.8em 0; }
+.fb-reader-body pre code { background: none; padding: 0; font-size: 0.85em; }
+
+.fb-reader-body blockquote { border-left: 2px solid var(--border2); margin: 0.8em 0; padding: 4px 14px; color: var(--text2); }
+.fb-reader-body ul, .fb-reader-body ol { padding-left: 1.5em; margin: 0.5em 0; }
+.fb-reader-body li { margin: 0.3em 0; }
+.fb-reader-body a { color: var(--accent); text-decoration: none; }
+.fb-reader-body a:hover { text-decoration: underline; }
+.fb-reader-body table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+.fb-reader-body th, .fb-reader-body td { border: 1px solid var(--border2); padding: 6px 10px; font-size: 13px; text-align: left; }
+.fb-reader-body th { background: var(--surface); font-weight: 600; }
+.fb-reader-body img { max-width: 100%; border-radius: 8px; }
+.fb-reader-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+
+
+.md-raw, .code-view {
+  margin: 0; padding: 16px 14px; font-size: var(--mono-size); font-family: var(--mono);
+  white-space: pre-wrap; word-break: break-word; line-height: 1.6;
+}
+.file-source-line { min-height: 1.6em; padding: 0 8px; border-radius: 3px; }
+.file-source-line::before {
+  content: attr(data-line); display: inline-block; width: 4ch; margin-right: 14px;
+  color: var(--text3); text-align: right; user-select: none;
+}
+.file-source-line.file-line-target { background: var(--accent-dim); outline: 1px solid var(--accent); }
+.md-raw { color: var(--text); }
+.md-raw .md-h { color: #569cd6; font-weight: bold; }
+.md-raw .md-hm { color: #569cd6; opacity: 0.6; }
+.md-raw .md-code { color: #4ec9b0; background: rgba(78,201,176,0.08); padding: 1px 3px; border-radius: 3px; }
+.md-raw .md-fence { color: #808080; }
+.md-raw .md-fenced { color: #d4d4d4; background: rgba(255,255,255,0.03); display: inline; }
+.md-raw .md-bullet { color: #d7ba7d; }
+.md-raw .md-blockquote { color: #608b4e; }
+.md-raw .md-pipe { color: #808080; }
+.code-view { color: #d4d4d4; }
+.code-view .code-kw { color: #569cd6; }
+.code-view .code-string { color: #ce9178; }
+.code-view .code-comment { color: #6a9955; font-style: italic; }
+
+/* ---- Token gauge ---- */
+.gauge { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); font-family: var(--mono); }
+.gauge .bar {
+  width: 120px; height: 6px; border-radius: 3px; background: var(--surface);
+  overflow: hidden; border: 1px solid var(--border);
+}
+/* Fill animates via scaleX (compositor-only), never width (layout thrash). */
+.gauge .fill { width: 100%; height: 100%; background: var(--accent); border-radius: 3px; transform-origin: left; transition: transform 0.25s ease-out; }
+.gauge .fill.hot { background: var(--orange); }
+
+@media (prefers-reduced-motion: reduce) {
+  .convo { scroll-behavior: auto; }
+  .gauge .fill, .sect summary::before { transition: none; }
+}
+
+/* Narrow screens: stack panes */
+@media (max-width: 900px) {
+  .split { flex-direction: column; }
+  .pane-left { border-right: none; border-bottom: 1px solid var(--border2); }
+}
+
+
+.sg-root { position: fixed; top: 8px; right: 14px; z-index: 200; }
+.sg-btn {
+  width: 30px; height: 30px; border-radius: 8px; background: var(--surface);
+  border: 1px solid var(--border2); color: var(--text2); font-size: 15px;
+  line-height: 1; display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s;
+}
+.sg-btn:hover { color: var(--text); border-color: var(--text3); }
+.sg-menu {
+  position: absolute; top: 36px; right: 0; min-width: 190px;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 10px;
+  padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.sg-item {
+  display: block; width: 100%; text-align: left; padding: 7px 10px;
+  border-radius: 6px; font-size: 13px; color: var(--text2); text-decoration: none;
+}
+.sg-item:hover { background: var(--surface); color: var(--text); }
+.sg-lock-form { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+.sg-lock { color: var(--red); }
+.sg-lock:hover { color: var(--red); background: var(--red-dim); }
+.sg-section { border-top: 1px solid var(--border); margin-top: 4px; padding: 8px 10px 6px; }
+.sg-label { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+.sg-size-btns { display: flex; gap: 4px; }
+.sg-size-btn {
+  flex: 1; padding: 4px 0; border-radius: 6px; border: 1px solid var(--border2);
+  color: var(--text2); font-size: 12px; font-family: var(--mono);
+}
+.sg-size-btn:hover { color: var(--text); border-color: var(--text3); }
+.sg-size-btn.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+.sg-theme-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sg-theme-row > span { font-size: 12px; color: var(--text2); }
+.sg-theme-toggle {
+  height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text3); font-size: 11px; font-weight: 500;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.sg-theme-toggle.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sg-shortcut { display: flex; gap: 10px; padding: 2px 0; font-size: 12px; color: var(--text3); white-space: nowrap; }
+.sg-key { font-family: var(--mono); color: var(--text2); min-width: 64px; }
+
+/* ---- Network meter (debug, off by default) ---- */
+.nm-root { position: relative; margin-left: 8px; flex-shrink: 0; }
+.nm-badge {
+  height: 24px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--border2);
+  background: var(--surface); color: var(--text2); font: 11px var(--mono);
+}
+.nm-badge:hover { color: var(--text); border-color: var(--text3); }
+.nm-panel {
+  position: absolute; top: 30px; right: 0; z-index: 200;
+  width: min(720px, calc(100vw - 28px)); max-height: 70vh; overflow: auto;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 10px;
+  padding: 10px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); font-size: 12px; color: var(--text2);
+}
+.nm-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.nm-head strong { color: var(--text); font-size: 13px; }
+.nm-off { margin-left: auto; font-size: 11px; color: var(--text3); }
+.nm-off:hover { color: var(--text); }
+.nm-minutes { display: flex; flex-wrap: wrap; gap: 4px 12px; font: 11px var(--mono); margin-bottom: 8px; }
+.nm-table { width: 100%; border-collapse: collapse; font: 11px var(--mono); }
+.nm-table th { text-align: right; font-weight: 600; color: var(--text3); padding: 2px 6px; border-bottom: 1px solid var(--border); }
+.nm-table td { text-align: right; padding: 2px 6px; white-space: nowrap; }
+.nm-table th:first-child, .nm-table td.nm-key { text-align: left; white-space: normal; word-break: break-all; }
+.nm-note { margin: 8px 0 0; font-size: 11px; color: var(--text3); }
+
+/* ---- Thread Start Parameters modal ---- */
+.tsp-modal {
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 16px;
+  padding: 20px; width: min(1440px, 96vw); height: 94vh;
+  position: relative; display: flex; flex-direction: column; overflow: hidden;
+}
+.tsp-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 12px; }
+.tsp-tabs {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--border);
+  margin-bottom: 10px; flex-shrink: 0;
+}
+.tsp-tabs button {
+  padding: 6px 14px 7px; font-size: 13px; color: var(--text2);
+  border-radius: 8px 8px 0 0; border: 1px solid transparent; border-bottom: none;
+}
+.tsp-tabs button:hover { color: var(--text); }
+.tsp-tabs button.on {
+  color: var(--text); background: var(--bg); border-color: var(--border);
+  position: relative; top: 1px;
+}
+.tsp-note { font-size: 11.5px; color: var(--text3); margin-bottom: 4px; flex-shrink: 0; }
+.tsp-note code {
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  background: var(--surface); padding: 1px 4px; border-radius: 3px;
+}
+.tsp-placeholder { color: var(--text3); font-size: 13px; padding: 24px 4px; }
+
+.tsp-table-wrap { flex: 1; min-height: 0; overflow-y: auto; margin-top: 6px; }
+.tsp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tsp-table thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--bg2);
+  text-align: left; font-weight: 600; font-size: 11px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 6px 10px; border-bottom: 1px solid var(--border2);
+}
+.tsp-table tbody td {
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.tsp-col-param { width: 150px; }
+.tsp-col-default { width: 200px; }
+.tsp-col-show { width: 64px; text-align: center; }
+.tsp-col-show input[type='checkbox'] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.tsp-expand {
+  float: left; margin: 1px 4px 0 -2px; padding: 0; background: none; border: none;
+  color: var(--text3); font-size: 11px; line-height: 1; cursor: pointer;
+}
+.tsp-expand:hover { color: var(--text); }
+.tsp-subrow .tsp-col-param { padding-left: 34px; }
+.tsp-subrow td { background: var(--surface); }
+.tsp-pname { display: block; font-family: var(--mono); font-size: 12.5px; color: var(--text); word-break: break-all; }
+.tsp-ptype { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--text3); margin-top: 2px; }
+.tsp-muted { color: var(--text2); font-size: 12px; line-height: 1.5; }
+.tsp-muted code {
+  font-family: var(--mono); font-size: 11px; color: var(--text);
+  background: var(--surface); padding: 1px 4px; border-radius: 3px;
+}
+.tsp-input, .tsp-modal select {
+  width: 100%; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 6px; padding: 5px 8px;
+  font-size: 12px; font-family: inherit; outline: none;
+}
+.tsp-input.mono { font-family: var(--mono); font-size: 11.5px; }
+.tsp-input:focus, .tsp-modal select:focus { border-color: var(--accent-focus); }
+
+.tsp-input::placeholder { color: var(--text2); }
+.tsp-textarea {
+  width: 100%; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 6px; padding: 5px 8px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.45;
+  outline: none; resize: vertical;
+}
+.tsp-textarea:focus { border-color: var(--accent-focus); }
+.tsp-textarea::placeholder { color: var(--text2); }
+
+/* ---- Thread Explorer ---- */
+
+/* Sidebar entry point: the thread-list header (.side-expand) doubles as the
+   expand affordance — see the sidebar block at the top of this file. */
+
+.xstatus { display: flex; align-items: center; gap: 6px; }
+.xstatus-btn { display: flex; align-items: center; gap: 6px; }
+.xstatus-label { font-size: 12px; color: var(--text2); font-family: var(--mono); }
+.xrefresh { width: auto; margin: 0; padding: 4px 12px; }
+
+.xroots {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 14px;
+  background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.xroot { display: flex; align-items: baseline; gap: 10px; font-size: 12px; }
+.xroot-state { font-family: var(--mono); color: var(--text2); }
+.xroot-count { font-family: var(--mono); color: var(--text2); }
+.xroot-error { color: var(--red); font-family: var(--mono); font-size: 11.5px; }
+
+/* Inside the header band: one line, never wrapping — a second line would push
+   the threads down, which is the whole thing this layout avoids. */
+.xfilters {
+  display: flex; align-items: center; flex: 1; min-width: 0; gap: 10px;
+  padding: 0 14px 0 4px; overflow: hidden;
+}
+.xsearch {
+  display: flex; align-items: center; flex: 1 1 300px; min-width: 240px; max-width: 440px;
+}
+.xsearch input {
+  min-width: 0; width: 100%; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-right: 0; border-radius: 6px 0 0 6px;
+  padding: 4px 9px; font: 12px/1.25 var(--mono); outline: none;
+}
+.xsearch input::placeholder { color: var(--text2); }
+.xsearch input:focus { border-color: var(--accent-focus); }
+.xsearch button {
+  align-self: stretch; padding: 3px 10px; border: 1px solid var(--border2);
+  border-radius: 0 6px 6px 0; background: var(--bg3); color: var(--text2);
+  font-size: 12px;
+}
+.xsearch button:hover:not(:disabled) { color: var(--text); border-color: var(--accent-focus); }
+.xsearch button:disabled { opacity: 0.5; cursor: default; }
+.xfilters select {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border2);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; outline: none;
+}
+.xfilters select:focus { border-color: var(--accent-focus); }
+/* "N programmatic runs hidden": informative, so --text2, not --text3. */
+.xhidden-note { color: var(--text2); font-size: 12px; font-style: italic; }
+
+.xindex-error {
+  display: flex; align-items: center; gap: 10px; padding: 6px 14px;
+  border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0;
+}
+.xindex-error .ifile-error { padding: 0; }
+
+/* The list container owns the column tracks; header and rows are subgrids so
+   fit-content sizing is shared across every row (independent grids per row
+   would each size to their own values and misalign). Non-grid children
+   (states, pills, load-more) span the full width. */
+.xlist {
+  /* 6px gutter and a 15px dot track put every row, dot and title on the same
+     x as the compact rail — a 4px shift on open reads as the panel moving.
+     The dot track accounts for the grid's 10px column-gap. */
+  flex: 1; min-width: 0; overflow-y: auto; padding: 0 6px 8px;
+  display: grid;
+  /* name is content-sized (names are short); health, last, flexes so rows
+     still span the panel instead of a lone 1fr ballooning the name column. */
+  grid-template-columns: 13px fit-content(320px) fit-content(240px) 82px fit-content(200px) 78px 128px 128px fit-content(250px) minmax(100px, 150px) minmax(104px, 1fr);
+  column-gap: 10px; align-content: start;
+}
+.xlist > * { grid-column: 1 / -1; }
+.xlist .load-older { margin-top: 6px; }
+.xstate { padding: 24px 10px; text-align: center; }
+.xstate .load-older { margin-top: 10px; }
+/* Informative empty/loading states: AA override of the global .muted. */
+.xstate.muted, .xdetail .muted { color: var(--text2); }
+.xupdate {
+  width: 100%; margin: 8px 0; padding: 7px 10px; font-size: 12px;
+  background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 8px;
+  color: var(--text);
+}
+.xupdate:hover { background: rgba(217,119,87,0.18); }
+
+/* Catalog grid: one shared column template keeps the sticky header (inside the
+   same scroll container) and the rows in lockstep. Columns:
+   provider | project | model | effort | started | last msg | title | branch | health.
+   Every column is fixed or fr — each row is its own grid container, so an
+   auto/max-content track would resolve per row and break cross-row alignment.
+   project/model size to their widest value (fit-content caps stop a runaway
+   path or model id; overflow ellipsizes); spare width goes to title.
+   128px timestamp columns fit the widest neatTime value, "yesterday 12:32 PM",
+   right-aligned with hour-padded times so digits line up. */
+.xgrid {
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+}
+.xgrid .xc-when { text-align: right; }
+/* Band 3 of three: the same 26px the compact rail's chip row occupies, so the
+   first thread lands on the same pixel in both states. */
+.xlist-head {
+  position: sticky; top: 0; z-index: 1; background: var(--bg2);
+  /* 32px = the chip row (26) plus the compact list's 6px top padding, so the
+     first thread lands on the same pixel with or without the expansion. */
+  height: 32px; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--border2);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text2); font-weight: 600; text-align: left;
+}
+
+/* Column-header filter: the header label doubles as a button opening a
+   checkbox picker over the column's distinct values. The popup resets the
+   header's uppercase styling; it anchors to the sticky header so it scrolls
+   with it and sits above the rows. */
+.xhead-cell { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; }
+.xc-when.xhead-cell { justify-content: flex-end; }
+/* Sheets-style header: the name is a quick-sort button, the funnel icon at
+   its right opens the column's filter popup (accent while a filter is on). */
+.xhead-name {
+  background: none; border: 0; padding: 0; cursor: pointer; min-width: 0;
+  font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+  display: inline-flex; align-items: center; gap: 4px;
+  overflow: hidden; white-space: nowrap;
+}
+.xhead-name:hover { color: var(--accent); }
+.xhead-icon {
+  background: none; border: 0; padding: 2px 3px; cursor: pointer; border-radius: 4px;
+  color: var(--text3); display: inline-flex; align-items: center; flex: none;
+}
+.xhead-icon:hover { color: var(--text); background: var(--accent-dim); }
+.xhead-icon.filtered { color: var(--accent); }
+.xfacet-pop {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0;
+  min-width: 250px; max-height: 320px; overflow-y: auto; padding: 6px;
+  border: 1px solid var(--border2); border-radius: 10px; background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  text-transform: none; letter-spacing: normal; font-weight: 400; font-size: 12px;
+}
+.xfacet-actions { display: flex; gap: 10px; padding: 2px 6px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.xfacet-actions button {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--text2); font: inherit; font-size: 11px;
+}
+.xfacet-actions button:hover { color: var(--text); }
+.xfacet-row { display: flex; align-items: center; gap: 7px; padding: 3px 6px; border-radius: 5px; cursor: pointer; }
+.xfacet-row:hover { background: var(--accent-dim); }
+.xfacet-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); color: var(--text); }
+.xfacet-name.xfacet-unknown { color: var(--text2); font-style: italic; }
+.xfacet-count { color: var(--text2); font-size: 11px; font-family: var(--mono); }
+.xfacet-note { padding: 6px; color: var(--text2); }
+/* Time-column popup: inclusive local-date range (sorting is the name click). */
+.xsort-mark { font-size: 8px; color: var(--accent); }
+.xtime-pop { min-width: 216px; }
+.xtime-range { display: flex; flex-direction: column; gap: 5px; padding: 2px 6px; color: var(--text2); }
+.xtime-range label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.xtime-range input[type="date"] {
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px;
+  color: var(--text); padding: 3px 6px; font: inherit; font-size: 12px; color-scheme: inherit;
+}
+.xtime-range input[type="date"]:focus { border-color: var(--accent-focus); outline: none; }
+.xtime-clear { align-self: flex-end; background: none; border: 0; color: var(--text2); font-size: 11px; cursor: pointer; padding: 2px 6px; }
+.xtime-clear:hover { color: var(--text); }
+
+/* Catalog row (ThreadRowItem): one line, table-dense. */
+.xrow {
+  width: 100%; text-align: left; min-height: var(--row-h);
+  padding: 4px 8px; border-radius: 6px; font-size: 12.5px; cursor: pointer;
+}
+/* The name cell stacks title, working directory, and model exactly as .t-main
+   does in the rail; every other cell stays vertically centred against it. */
+.xc-title {
+  position: relative; display: flex; flex-direction: column; justify-content: center; font-size: 13px;
+}
+/* The title line, matching .t-title's inline arrangement in the rail — the
+   line-height too, not just the arrangement. Inheriting the body's 1.7 made
+   this line 4.5px taller than the rail's, and since both stacks are centred in
+   one --row-h, that offset every line of the row when the rail expanded. */
+.xc-line {
+  display: flex; align-items: baseline; gap: 5px; min-width: 0;
+  line-height: 1.35; white-space: nowrap; overflow: hidden;
+}
+.xc-line .xname-edit { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.xc-sub {
+  font-family: var(--mono); font-size: 11px; line-height: 1.3; color: var(--text3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.xrow:hover { background: var(--surface); }
+.xrow.on { background: var(--accent-dim); }
+.xrow:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: -1px; }
+.xc { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xrow .xc-project, .xrow .xc-model, .xrow .xc-branch { color: var(--text2); font-family: var(--mono); font-size: 12px; }
+.xrow .xc-nativeid { color: var(--text2); font-family: var(--mono); font-size: 11px; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.xrow .xc-nativeid > :first-child { overflow: hidden; text-overflow: ellipsis; }
+/* Copy affordance: invisible until the id cell is hovered or the button is
+   focused; flips to a check for a beat after copying. */
+.xcopy-btn {
+  visibility: hidden; flex: none; border: 0; background: none; padding: 0 2px;
+  color: var(--text2); font-size: 12px; line-height: 1; cursor: pointer;
+}
+.xc-nativeid:hover .xcopy-btn, .xcopy-btn:focus-visible { visibility: visible; }
+.xcopy-btn:hover { color: var(--text); }
+.xrow .xc-effort { color: var(--text2); font-size: 12px; }
+.xc-health { display: flex; align-items: center; gap: 4px; white-space: nowrap; min-width: 0; overflow: hidden; }
+.xrow .xc-when { font-size: 11.5px; color: var(--text2); font-family: var(--mono); }
+/* Right-aligned day slot sized to "yesterday" so times start at one x across rows. */
+.xw-day { display: inline-block; width: 9ch; text-align: right; margin-right: 5px; }
+.xdash { color: var(--text3); }
+.ifile-badge.neutral { color: var(--text2); border-color: var(--border2); }
+.ifile-badge.diag { color: var(--orange); border-color: rgba(210,153,34,0.4); }
+/* Programmatic-origin badge (sdk/exec) sitting inline before the row title.
+   Own tone class: same blue as wire-authoritative, but not that class — the
+   evidence-badge enum belongs to the instruction-file feature. */
+.ifile-badge.programmatic { color: var(--blue); border-color: rgba(88,166,255,0.38); }
+/* Runtime overlay badges (Slice R1): attached session → green "live", orange
+   "working" while a turn is active. Same token pairs as editable/readonly. */
+/* Leading activity dot: a live Nano session gets a quiet green dot at the
+   row's left edge; the title says where. */
+/* flex-start, not center: the rail's dot sits at the row's left edge and the
+   expanded one has to land on the same pixel. */
+.xc-dot { display: flex; align-items: center; justify-content: flex-start; }
+.xdot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+
+.ifile-badge.live { color: var(--green); border-color: rgba(63,185,80,0.4); }
+.ifile-badge.working { color: var(--orange); border-color: rgba(210,153,34,0.4); }
+.xc-title .xc-origin { margin-right: 6px; padding: 0 6px; font-size: 9.5px; vertical-align: 1px; }
+
+/* Click-to-edit thread name (list cell + detail heading). The trigger reads as
+   plain name text; a dotted underline on hover is the only editability hint,
+   keeping terracotta reserved for actions. The input is a compact Raised
+   Surface field with the terracotta focus cue. No new colors. */
+.xname-edit {
+  max-width: 100%; padding: 0; text-align: left; color: inherit; font: inherit;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.xname-edit:hover { text-decoration: underline dotted var(--text2); text-underline-offset: 2px; }
+.xname-edit:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 1px; border-radius: 3px; }
+.xname-edit:disabled { cursor: default; text-decoration: none; }
+.xname-input {
+  min-width: 0; max-width: 100%; width: 100%;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 4px;
+  padding: 1px 5px; font: inherit;
+}
+.xname-input:focus { outline: none; border-color: var(--accent-focus); }
+.xname-input:disabled { color: var(--text2); }
+.xname-error { display: block; }
+
+.xname-row { display: flex; align-items: center; gap: 6px; }
+.xname-row .xname-input { flex: 1; }
+.xname-save-btn {
+  flex: none; padding: 3px 10px; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text2); background: var(--surface); font-size: 11px; font-weight: 500;
+}
+.xname-save-btn:hover { color: var(--text); border-color: var(--border2); }
+.xname-save-btn:disabled { opacity: .6; cursor: default; }
+.xname-input-title { font-size: 14px; font-weight: 600; padding: 2px 6px; }
+.xname-edit-title { font-weight: 600; white-space: normal; }
+
+/* Thread history: transcript is the primary reading surface; canonical
+   metadata remains a compact evidence rail in the main workspace. */
+.xdetail { position: relative; height: 100%; padding: 16px 18px 18px; display: flex; flex-direction: column; min-height: 0; }
+/* Close × anchors to the card's top-right (.nw-close-x is absolute by default). */
+.xdetail-close { top: 10px; right: 10px; width: 24px; height: 24px; line-height: 24px; font-size: 14px; }
+.xdetail-heading {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  min-height: 42px; padding: 0 34px 12px 2px; border-bottom: 1px solid var(--border);
+}
+.xdetail-heading > div:first-child { flex: 1; min-width: 0; }
+.xdetail-title { font-size: 14px; font-weight: 600; word-break: break-word; line-height: 1.4; }
+.xdetail-subtitle { margin-top: 2px; color: var(--text2); font-size: 11.5px; }
+.xdetail-thread-diagnostics {
+  display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+  margin: 10px 2px 0; padding: 8px 10px; border: 1px solid var(--red-line);
+  border-radius: 6px; background: rgba(248, 81, 73, 0.08); color: var(--red);
+  font: 12px/1.4 var(--mono); word-break: break-word;
+}
+.xdetail-thread-diagnostics strong { font-family: var(--sans); }
+/* Resume bridge (Slice R1): accent button mirrors .nw-create-btn at header
+   scale; the disabled-note explains why resume is intentionally off. */
+.xdetail-actions { flex-shrink: 0; max-width: 260px; text-align: right; }
+.xresume-btn {
+  padding: 5px 16px; background: var(--accent);
+  /* Dark ink on terracotta — same AA-contrast exception as .nw-create-btn. */
+  color: #1e1f20; border-radius: 6px; font-size: 12px; font-weight: 500;
+}
+.xresume-btn:active { opacity: 0.8; }
+.xresume-btn:disabled { background: var(--surface); color: var(--text3); cursor: default; }
+.xdetach-btn {
+  padding: 5px 16px; background: var(--surface); color: var(--text2);
+  border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 500;
+}
+.xdetach-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text3); }
+.xdetach-btn:disabled { color: var(--text3); cursor: default; }
+.xresume-note { margin-top: 4px; color: var(--text2); font-size: 11px; line-height: 1.4; }
+.xresume-error { padding: 4px 0 0; font-size: 11px; }
+/* Inline jump affordance in the runtime-aware subtitle. */
+.xdetail-jump { padding: 0; color: var(--accent); font: inherit; }
+.xdetail-jump:hover { text-decoration: underline; }
+.xdetail-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.xdetail-evidence { min-height: 0; overflow: auto; padding: 16px 2px 16px 18px; border-left: 1px solid var(--border); }
+.xdetail-evidence .xsect + .xsect { margin-top: 20px; }
+.xsect-head {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text2); margin-bottom: 6px; display: flex; gap: 6px; align-items: baseline;
+}
+.xsect-n { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.kv dd.wrap { word-break: break-word; }
+.kv dd .bad { color: var(--red); }
+.mv-val { color: var(--text); }
+.mv-evidence { margin-left: 6px; font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.mv-unknown { font-style: italic; color: var(--text2); }
+.mv-na { color: var(--text2); }
+.xsource { padding: 8px 0; border-top: 1px solid var(--border); }
+.xsect-head + .xsource { border-top: none; }
+.xsource-path { font-family: var(--mono); font-size: 12px; color: var(--text2); word-break: break-all; margin-bottom: 4px; }
+.xdiags { margin: 4px 0 0 16px; color: var(--text2); font-size: 12px; }
+
+/* Pane-native detail replaces the former Explorer-global transcript/evidence
+   split. It is a narrow, independently scrolling companion to the active
+   tab; the transcript retains all remaining width. */
+.thread-detail-panel {
+  width: min(420px, 42%); min-width: 280px; min-height: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--bg);
+}
+.thread-detail-panel.standalone { width: auto; min-width: 0; flex: 1; border-left: 0; }
+.thread-detail-heading {
+  display: flex; justify-content: space-between; gap: 10px; align-items: flex-start;
+  padding: 12px; border-bottom: 1px solid var(--border);
+}
+.thread-detail-heading > div:first-child { min-width: 0; }
+.thread-detail-title { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.thread-detail-subtitle { margin-top: 3px; color: var(--text2); font-size: 11px; line-height: 1.35; }
+/* min-height holds the Resume button's box after attach empties this slot. */
+.thread-detail-action { flex: none; max-width: 170px; text-align: right; min-height: 27px; }
+.thread-detail-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 12px 22px; }
+.thread-detail-scroll .xsect + .xsect { margin-top: 20px; }
+.thread-live-detail { margin-bottom: 20px; }
+.thread-live-detail .rinput { margin: 0; }
+
+
+.quick-detail-overlay {
+  position: fixed; z-index: 100; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 18px; background: rgba(0, 0, 0, .56);
+}
+.quick-detail {
+  position: relative; width: min(560px, 92vw); max-height: min(720px, 88vh); overflow: auto;
+  padding: 20px; border: 1px solid var(--border2); border-radius: 12px; background: var(--bg2);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .45);
+}
+.quick-detail h3 { margin: 0 28px 14px 0; color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.quick-detail-close {
+  position: absolute; top: 10px; right: 10px; width: 27px; height: 27px; border-radius: 50%;
+  color: var(--text2); background: var(--surface); font-size: 16px; line-height: 1;
+}
+.quick-detail-close:hover { color: var(--text); background: var(--border); }
+.quick-detail-grid { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 0 10px; margin: 0; }
+.quick-detail-grid dt, .quick-detail-grid dd { min-width: 0; margin: 0; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.quick-detail-grid dt { color: var(--text3); font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.quick-detail-grid dd { color: var(--text); font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
+.quick-detail-actions {
+  display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center;
+  gap: 8px; margin-top: 14px;
+}
+.quick-detail-actions > button {
+  flex: none; white-space: nowrap; line-height: 1.25; height: auto;
+}
+.quick-detail-danger {
+  padding: 5px 16px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--red); background: var(--surface); font-size: 12px; font-weight: 500;
+}
+.quick-detail-danger:hover { border-color: var(--red); background: var(--red-dim); }
+.quick-detail-role-editor {
+  display: grid; gap: 10px; margin-top: 14px; padding: 12px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.quick-detail-role-editor label { display: grid; gap: 5px; color: var(--text2); font-size: 11px; font-weight: 600; }
+.quick-detail-role-editor input,
+.quick-detail-role-editor select,
+.quick-detail-role-editor textarea {
+  width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--border2); border-radius: 6px;
+  color: var(--text); background: var(--bg); font: 12px/1.35 var(--mono); resize: vertical;
+}
+.quick-detail-role-editor input:focus,
+.quick-detail-role-editor select:focus,
+.quick-detail-role-editor textarea:focus { border-color: var(--accent); outline: 1px solid var(--accent); }
+.quick-detail-role-note { margin: 0; color: var(--text3); font-size: 10.5px; line-height: 1.4; }
+.quick-detail-role-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Parent close keeps the visible lineage in view, but selection is explicit:
+   disabled durable rows are context only and no checkbox cascades below it. */
+.descendant-close-overlay {
+  position: fixed; z-index: 120; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 18px; background: rgba(0, 0, 0, .56);
+}
+.descendant-close-dialog {
+  width: min(620px, 92vw); max-height: min(720px, 88vh); overflow: auto;
+  padding: 20px; border: 1px solid var(--border2); border-radius: 12px; background: var(--bg2);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .45);
+}
+.descendant-close-dialog h3 { margin: 0 0 6px; font-size: 14px; color: var(--text); }
+.descendant-close-copy { margin: 0 0 14px; color: var(--text2); font-size: 12px; }
+.descendant-select-all { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; color: var(--text2); font-size: 12px; }
+.descendant-close-tree { border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.descendant-close-row { display: flex; align-items: center; gap: 7px; min-height: 31px; padding-right: 8px; border-bottom: 1px solid var(--border); }
+.descendant-close-row:last-child { border-bottom: 0; }
+.descendant-close-row.inactive { opacity: .55; }
+.descendant-close-name { display: flex; align-items: baseline; gap: 5px; min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.bulk-close-star { flex: none; color: var(--orange); font: 10.5px var(--mono); }
+.descendant-close-activity { flex: none; color: var(--text3); font: 10.5px var(--mono); }
+.descendant-close-activity.working { color: var(--orange); }
+.descendant-close-warning { margin: 10px 0 0; color: var(--orange); font-size: 12px; }
+.descendant-close-results { margin-top: 10px; color: var(--red); font-size: 12px; }
+.descendant-close-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.descendant-close-actions button { padding: 5px 12px; border: 1px solid var(--border2); border-radius: 6px; font-size: 12px; }
+.descendant-close-primary { color: var(--red); border-color: var(--red-line) !important; background: var(--red-dim); }
+.descendant-close-primary:disabled { color: var(--text3); border-color: var(--border) !important; }
+.bulk-close-actions { flex-wrap: wrap; }
+
+.history-pane { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding-right: 18px; }
+.history-head { min-height: 82px; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.history-head-main { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.history-head-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.history-title { font-size: 13px; font-weight: 600; }
+.history-readonly { margin-top: 2px; color: var(--text2); font-size: 11px; }
+.history-readonly span { color: var(--orange); font-size: 10px; margin-right: 4px; vertical-align: 1px; }
+.history-count { color: var(--text2); font: 11px var(--mono); }
+.history-mode { flex: none; display: inline-flex; padding: 2px; border: 1px solid var(--border2); border-radius: 999px; background: var(--bg); }
+.history-mode button { min-width: 68px; min-height: 26px; padding: 3px 10px; border-radius: 999px; color: var(--text2); font-size: 11.5px; transition: color .15s ease, background .15s ease; }
+.history-mode button:hover { color: var(--text); }
+.history-mode button:focus-visible, .history-filter-button:focus-visible, .history-filter-panel button:focus-visible { outline: 1px solid var(--accent-focus); outline-offset: 2px; }
+.history-mode button.on { background: var(--accent-dim); color: var(--accent); }
+.history-filter-wrap { position: relative; flex: none; }
+.history-filter-button { min-height: 30px; padding: 4px 9px; border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 11.5px; }
+.history-filter-button:hover, .history-filter-button.active { color: var(--accent); border-color: var(--accent-focus); }
+.history-filter-panel { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; width: 240px; padding: 10px; border: 1px solid var(--border2); border-radius: 10px; background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.history-filter-title { margin-bottom: 5px; color: var(--text2); font-size: 11px; font-weight: 600; }
+.history-filter-row { display: flex; align-items: center; gap: 8px; min-height: 27px; color: var(--text2); font-size: 12px; cursor: pointer; }
+.history-filter-row:hover { color: var(--text); }
+.history-filter-row input { accent-color: var(--accent); }
+.history-filter-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.history-filter-footer button { min-height: 27px; padding: 3px 8px; border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 11px; }
+.history-filter-footer button:hover:not(:disabled) { color: var(--text); border-color: var(--text3); }
+.history-filter-footer button:disabled { color: var(--text3); cursor: default; }
+.history-mode-note { color: var(--text2); font: 10.5px var(--mono); text-align: right; }
+.history-projection-notice { padding: 6px 8px; border: 1px solid rgba(210,153,34,0.32); border-radius: 6px; color: var(--orange); background: rgba(210,153,34,.07); font-size: 11px; overflow-wrap: anywhere; }
+.history-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 10px 24px 2px; scroll-behavior: auto; outline: none; }
+.history-scroll:focus-visible { box-shadow: inset 0 0 0 1px var(--accent-focus); }
+.history-items { display: flex; flex-direction: column; gap: 12px; }
+/* Message cards ride the shared engine (.msg-*-surface on .history-card,
+   .msg-*-body / .md-body on the bubble): borderless full-width mono blocks,
+   identical to the live conversation. Aux/error cards keep their own bordered
+   framing below. */
+.history-item { min-width: 0; }
+.history-kind { margin: 0 0 3px 6px; color: var(--text2); font: 10.5px var(--mono); }
+.history-card { overflow: hidden; }
+.history-agent.is-final .history-kind { color: var(--green); }
+.history-aux, .history-error { margin: 1px 8px; }
+.history-aux .history-card, .history-error .history-card { border: 1px solid var(--border); border-radius: 6px; }
+.history-aux .history-card { background: color-mix(in srgb, var(--surface) 42%, transparent); }
+.history-error .history-card { background: var(--red-dim); border-color: var(--red-line); }
+.history-error .history-kind { color: var(--red); }
+.history-aux-body { margin: 0; max-height: 260px; overflow: auto; padding: 8px 10px; color: var(--text2); font: 11.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.history-truncated { display: block; padding: 0 10px 8px; color: var(--orange); font-size: 10.5px; }
+.history-timestamp { display: block; margin: 2px 0 0 6px; color: var(--text2); font: 10px var(--mono); font-variant-numeric: tabular-nums; }
+.history-dev-meta { display: flex; flex-wrap: wrap; gap: 2px 9px; padding: 7px 10px; border-top: 1px solid var(--border); color: var(--text2); font: 10.5px/1.45 var(--mono); overflow-wrap: anywhere; }
+.history-dev-meta b { color: var(--text3); font-weight: 500; }
+.history-dev-tags { padding: 0 10px 7px; color: var(--text3); font: 10.5px/1.45 var(--mono); overflow-wrap: anywhere; }
+.history-dev-detail { border-top: 1px solid var(--border); }
+.history-dev-detail summary { min-height: 29px; padding: 5px 10px; color: var(--text2); font: 11px var(--mono); cursor: pointer; list-style-position: inside; }
+.history-dev-detail summary:hover { color: var(--text); }
+.history-dev-detail > pre { max-height: 360px; margin: 0; overflow: auto; padding: 9px 10px; border-top: 1px solid var(--border); color: var(--text-soft); background: rgba(0,0,0,.18); font: 11px/1.5 var(--mono); white-space: pre; }
+.history-evidence-state, .history-evidence-error { padding: 8px 10px; border-top: 1px solid var(--border); color: var(--text3); font: 11px var(--mono); }
+.history-evidence-error { color: var(--red); }
+.history-body-preview { padding: 6px 10px; border-top: 1px solid var(--border); color: var(--orange); font: 10.5px/1.45 var(--mono); }
+.history-native .load-older { margin: 0 10px 8px; }
+.history-full-body { border-top: 1px solid var(--border); }
+.history-full-body summary { min-height: 30px; padding: 6px 10px; color: var(--orange); font: 10.5px/1.5 var(--mono); cursor: pointer; list-style-position: inside; }
+.history-full-body summary:hover { color: var(--text); }
+.history-full-body > pre { max-height: 460px; margin: 0; overflow: auto; padding: 10px; border-top: 1px solid var(--border); color: var(--text); background: rgba(0,0,0,.18); font: 11.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Hydrated full bodies of agent messages render through the same md() engine;
+   only the frame differs from the bubble (scroll box inside the disclosure). */
+.history-full-markdown { max-height: 460px; overflow: auto; padding: 10px; border-top: 1px solid var(--border); background: rgba(0,0,0,.18); font-family: var(--mono); font-size: var(--mono-size); line-height: 1.55; word-break: break-word; }
+.history-full-body .load-older { margin: 0 10px 8px; }
+.history-provenance { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 2px 10px; padding: 8px 10px; border-top: 1px solid var(--border); font: 10.5px/1.45 var(--mono); }
+.history-provenance dt { color: var(--text3); }
+.history-provenance dd { min-width: 0; color: var(--text2); overflow-wrap: anywhere; }
+.history-raw-encoding { padding: 5px 10px; border-top: 1px solid var(--border); color: var(--orange); font: 10.5px var(--mono); }
+.history-earlier { display: flex; justify-content: center; padding-bottom: 14px; color: var(--text3); font: 10.5px var(--mono); }
+.history-page-error { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--red); font-size: 11.5px; }
+.history-page-error .load-older { flex: none; }
+.history-newer { position: absolute; z-index: 2; left: calc(50% - 9px); bottom: 14px; transform: translateX(-50%); display: block; min-height: 32px; padding: 5px 11px; border: 1px solid var(--accent-focus); border-radius: 999px; color: var(--accent); background: var(--surface); box-shadow: 0 4px 8px rgba(0,0,0,.28); font-size: 11.5px; }
+.history-newer:hover { color: var(--text); border-color: var(--accent); }
+.history-newer:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.history-retained { margin-bottom: 12px; padding: 7px 9px; border: 1px solid rgba(210,153,34,0.32); border-radius: 6px; color: var(--orange); font-size: 11.5px; }
+.history-state { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; text-align: center; color: var(--text2); font-size: 12px; }
+.history-state strong { color: var(--text); font-size: 13px; }
+.history-skeleton { padding: 24px 10px; display: flex; flex-direction: column; gap: 18px; }
+.history-skeleton span { display: block; height: 46px; width: 68%; border-radius: 10px; background: var(--surface); animation: history-pulse 1.2s ease-in-out infinite alternate; }
+.history-skeleton span:nth-child(2) { width: 46%; margin-left: auto; }
+.history-skeleton span:nth-child(3) { width: 58%; }
+@keyframes history-pulse { from { opacity: .48; } to { opacity: .85; } }
+
+/* Narrow screens: drop grid columns (header and rows share .xgrid, so both
+   templates and cell visibility stay in lockstep). */
+@media (max-width: 1100px) {
+  .xlist { grid-template-columns: 13px fit-content(280px) fit-content(200px) 82px fit-content(180px) 128px 128px minmax(104px, 1fr); }
+  .xc-effort, .xc-branch, .xc-nativeid { display: none; }
+}
+@media (max-width: 900px) {
+  .xlist { grid-template-columns: 13px minmax(120px, 1fr) 64px 128px 104px; }
+  .xc-project, .xc-model, .xc-when.xc-start { display: none; }
+  .xdetail-layout { grid-template-columns: 1fr; overflow-y: auto; }
+  .history-pane { min-height: 58vh; padding-right: 0; }
+  .xdetail-evidence { overflow: visible; border-left: 0; border-top: 1px solid var(--border); padding-left: 2px; }
+}
+
+@media (max-width: 680px) {
+	.history-head { min-height: 116px; height: auto; align-items: stretch; }
+  .history-head-main { align-items: flex-start; }
+  .history-head-actions { flex-wrap: wrap; gap: 6px; }
+  .history-count { width: 100%; text-align: right; }
+  .history-mode-note { text-align: left; }
+  .history-filter-panel { position: fixed; top: 50%; right: 50%; width: min(280px, calc(100vw - 32px)); transform: translate(50%, -50%); }
+}
+
+@media (max-width: 460px) {
+	.history-head { min-height: 152px; height: auto; }
+  .history-head-main { flex-direction: column; }
+  .history-head-actions { width: 100%; justify-content: flex-start; }
+  .history-count { text-align: left; }
+}
+
+@media (pointer: coarse) {
+  .history-mode button, .history-filter-button, .history-filter-row, .history-filter-footer button { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-skeleton span { animation: none; opacity: .7; }
+  .history-mode button { transition: none; }
+}
+
+/* ======================= Phone layer =======================
+   One width tier at 700px, below the existing 760/900/1100 breakpoints, plus
+   capability queries for touch. Everything here is additive: a desktop browser
+   above 700px with a mouse matches none of it, which is what keeps the desktop
+   layout pixel-identical.
+
+   Three decisions CSS cannot make live in lib/viewport.svelte.js instead,
+   because they are about which subtree mounts rather than how it paints: the
+   workspace renders one pane, the rail becomes a drawer, and Enter stops
+   sending. Those gates use the same 700px. */
+
+/* ---- The drawer's toggle ----
+   Fixed at the top-left, mirroring the settings gear at the opposite corner.
+   It stacks above the drawer so the same button closes what it opened; the
+   bands it lands on (.side-brand when open, .pane-toolbar when closed) hold a
+   gutter for it. Rendered only under 700px (App.svelte). */
+.nav-toggle {
+  position: fixed; z-index: 210; top: 8px; left: 10px;
+  width: 40px; height: 40px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 1px solid var(--border2);
+  color: var(--text2); font-size: 15px; line-height: 1;
+}
+.nav-toggle:hover { color: var(--text); border-color: var(--text3); }
+
+@media (max-width: 700px) {
+  /* Paint under the notch (viewport-fit=cover) without putting anything there. */
+  .shell { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  .composer-wrap { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* ---- Sidebar as an overlay drawer ----
+     A fixed desktop rail on a 390px screen is effectively the screen. The rail
+     leaves the flow entirely, so the workspace behind it is full-width. */
+  .sidebar, .sidebar.expanded {
+    position: fixed; z-index: 120; inset: 0 auto 0 0;
+    width: min(320px, 86vw); max-width: 100%;
+    transform: translateX(-100%);
+    transition: transform 160ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    box-shadow: 0 0 30px rgb(0 0 0 / 0.5);
+    padding-left: env(safe-area-inset-left);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Expanded, the Explorer takes the whole screen: the desktop cap that keeps
+     the workspace visible behind the panel leaves ~150px of table here. The
+     clip-path reveal is a widening rail, which is not what this is. */
+  .sidebar.expanded { width: 100vw; animation: none; }
+  .shell.drawer-open .sidebar { transform: translateX(0); }
+  .sidebar-scrim { position: fixed; z-index: 110; inset: 0; background: rgb(0 0 0 / 0.5); }
+  /* Nothing is holding a place in the flow to reserve. */
+  .side-rail-spacer { display: none; }
+  .sidebar-resize-handle { display: none; }
+  /* Gutters for the two fixed corner controls. */
+  .side-brand { padding-left: 58px; padding-right: 46px; }
+  .pane-toolbar { padding-left: 58px; }
+  /* The header band is one 38px row on desktop, where the Explorer's filters
+     fit beside the toggle. They do not here, so they take their own line — and
+     the rail's band alignment does not matter on a screen that never shows the
+     compact and expanded surfaces at once. */
+  .side-head { flex-direction: column; align-items: stretch; height: auto; }
+  .sidebar.expanded .side-expand { flex: none; }
+  .xfilters { flex-wrap: wrap; gap: 8px; padding: 6px 10px 8px; overflow: visible; }
+  .xsearch { flex: 1 1 100%; min-width: 0; max-width: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar, .sidebar.expanded { transition: none; }
+  }
+
+  /* ---- Workspace ----
+     One pane is rendered (PanesContainer), so the controls that make a second
+     one come off the layout. Thread details stay reachable through the rail
+     row's ⋮ quick record. */
+  .pane-add, .thread-pane-detail { display: none; }
+
+  /* ---- Composer ----
+     The audit at 390×844: the pane spent ~110px of a 844px screen on chrome
+     that was not the transcript or the composer. The view bar left the flow
+     entirely (Conversation.svelte renders it only above this tier) and the
+     model/effort strip moved into the thread menu, which is most of it back;
+     what is left is trimming the padding around what remains. Compact, not
+     cramped — the type scale and every touch target are untouched. */
+  .thread-pane-tabs { padding: 3px 4px 0; }
+  .convo { padding: 12px 12px 4px; }
+  .composer { gap: 6px; padding: 7px 10px; }
+  .queued-turns { padding: 6px 10px 0; }
+  .info-bar { padding: 3px 10px 1px; gap: 6px; }
+  .info-bar-facts { --info-gap: 6px; }
+  .turn-controls { flex-wrap: wrap; row-gap: 4px; }
+  .turn-control, .turn-control select { max-width: 100%; }
+  /* The menu is the phone's only route to detach and the view toggle, so it
+     gets room to be tapped in rather than being a 210px card in a corner. */
+  .thread-menu-pop { min-width: min(280px, calc(100vw - 28px)); max-width: calc(100vw - 28px); }
+
+  /* ---- Modals become full-screen sheets ----
+     A centred card with 8vw of scrim around it wastes the only screen there
+     is, and every one of these has content that wants the height. The raised
+     z-index goes with it: on desktop the card is inset far enough that it never
+     meets the fixed corner controls, but at 100vw the settings gear lands
+     exactly on the sheet's own close × and swallows the tap. */
+  .nw-overlay, .quick-detail-overlay {
+    z-index: 300; padding: 0; align-items: stretch; justify-content: stretch;
+  }
+  /* height: auto rather than a viewport unit — it hands the sizing back to the
+     overlay's `align-items: stretch`, and the overlay is `fixed; inset: 0`, so
+     the sheet tracks whatever layout viewport the on-screen keyboard leaves
+     behind. (.tsp-modal's own 94vh is what this is clearing.) */
+  .nw-modal, .quick-detail, .tsp-modal {
+    width: 100vw; max-width: none; height: auto; max-height: none;
+    border: 0; border-radius: 0;
+    padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+  }
+  .nw-modal, .quick-detail { overflow-y: auto; }
+  /* .tsp-modal keeps its own overflow: hidden — it is a flex column whose
+     table body does the scrolling. */
+  .nw-close-x, .quick-detail-close {
+    top: 6px; right: 6px; width: 40px; height: 40px; line-height: 40px; font-size: 18px;
+  }
+  .nw-modal h3, .quick-detail h3 { margin-right: 46px; }
+  /* The params table is wider than any phone; let it pan instead of squeezing
+     six columns into 390px. */
+  .tsp-table-wrap { overflow-x: auto; }
+  .tsp-table { min-width: 560px; }
+  /* iOS zooms the page whenever a focused field is under 16px, and a zoomed
+     sheet has to be pinched back out by hand. The .mono variants are listed
+     explicitly: they set their own smaller size at a specificity a bare
+     .nw-input here would lose to. */
+  .nw-input, .nw-input.mono, .nw-textarea, .nw-modal select,
+  .tsp-input, .tsp-input.mono, .tsp-textarea, .tsp-modal select,
+  .interaction-free, .xsearch input { font-size: 16px; }
+
+  /* Column-header and catalog-root popups: absolute at a 250px minimum, they
+     hang off the right edge of a 390px table. Same fixed-centred treatment
+     .history-filter-panel already takes at 680px. */
+  .xfacet-pop, .xroots-pop {
+    position: fixed; top: 50%; left: 50%; right: auto;
+    width: min(300px, calc(100vw - 32px)); min-width: 0;
+    max-height: min(60vh, 420px);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* The catalog table at phone width: is it live, what is it, when did it last
+   move. Header and rows both ride .xgrid subgrid, so hiding a cell class hides
+   the column in lockstep. */
+@media (max-width: 600px) {
+  .xlist { grid-template-columns: 13px minmax(0, 1fr) 112px; }
+  .xc-provider, .xc-health { display: none; }
+}
+
+/* ---- Touch capability ----
+   Width says how much room there is; these say what is pointing at it. A touch
+   laptop wants both of these at desktop width. */
+@media (hover: none) {
+  /* An affordance that appears on :hover never appears at all here. */
+  .t-detail { opacity: 1; }
+  .thread-star { opacity: 1; }
+  .xcopy-btn { visibility: visible; }
+}
+
+@media (pointer: coarse) {
+  /* 40px is the smallest target a thumb hits reliably. These are all <button>,
+     which centres its own content, except .sg-item — a block override. */
+  .side-chip, .sort-btn, .density-toggle, .load-older, .view-toggle button,
+  .sg-size-btn, .pane-toolbar button, .xsearch button, .xfilters select,
+  .interaction-btn, .interaction-option, .thread-pane-tab,
+  .thread-menu-item, .thread-menu-pop .turn-control select,
+  .global-mail-chip { min-height: 40px; }
+  /* The ⋯ is the only way into the thread menu on a phone, and a 10.5px bar is
+     not a target. Squared off so the tap area is honest in both directions. */
+  .thread-menu-btn {
+    min-width: 40px; min-height: 40px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sg-item { display: flex; align-items: center; min-height: 40px; }
+  .thread-pane-tabs { min-height: 48px; }
+  .thread-pane-tab-close {
+    min-width: 34px; min-height: 34px;
+    display: flex; align-items: center; justify-content: center;
+  }
+}
+
+/* Working-directory combobox (New Window): recent directories from the
+   catalog window, under the input. Same surface language as the thread menu
+   popup; compact labels with the full path on hover. */
+.nw-cwd-combo { position: relative; flex: 1; min-width: 0; }
+.nw-cwd-combo .nw-input { width: 100%; box-sizing: border-box; }
+.nw-cwd-list {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 40;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); overflow: hidden;
+}
+.nw-cwd-option {
+  display: block; width: 100%; text-align: left; padding: 5px 10px;
+  background: none; border: 0; color: var(--text1);
+  font: 12px var(--mono); cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nw-cwd-option:hover, .nw-cwd-option.active { background: rgba(255,255,255,.07); }
+@media (pointer: coarse) {
+  .nw-cwd-option { min-height: 40px; padding: 10px 12px; }
+}
+
+/* --- Agent mail -------------------------------------------------
+   The sidebar badge, the inbox pane inside the thread pop-up, and the global
+   mail pop-up. States: unread (accent, the agent has mail to read), dropped
+   (orange ring — mail read but never dispositioned), quiet (dim total). */
+.t-mail-badge {
+  flex: none; min-width: 20px; height: 16px; padding: 0 5px; margin-right: 6px;
+  border: 1px solid var(--border2); border-radius: 9px;
+  background: var(--surface); color: var(--text2);
+  font: 600 9.5px/14px var(--mono); letter-spacing: .02em;
+  cursor: pointer; white-space: nowrap;
+  position: relative;
+}
+/* Invisible hit-area expansion, same trick as .t-detail: the visible pill
+   stays 16px but a thumb gets ~32px without inflating the row. */
+.t-mail-badge::after {
+  content: ""; position: absolute; inset: -8px -4px;
+}
+.t-mail-badge.attention { border-color: var(--orange); background: rgba(210,153,34,0.12); color: var(--orange); }
+.t-mail-badge:hover { border-color: var(--text2); }
+
+.global-mail-btn .global-mail-count { color: var(--text3); font-weight: 600; }
+.global-mail-btn .global-mail-count.unread { color: var(--accent); }
+.global-mail-btn.has-unread { border-color: var(--accent); }
+
+/* The pop-up grows into two panes when the thread has an inbox: the existing
+   record on the left, mail on the right. Without a hosted identity the
+   single-pane layout is unchanged. Height is a real viewport fill so the mail
+   list keeps room even when the record column is short. */
+.quick-detail.with-mail {
+  width: min(1440px, 94vw); height: min(960px, 90vh); max-height: min(960px, 90vh);
+  display: flex; gap: 0; padding: 0; overflow: hidden;
+}
+.quick-detail.with-mail .quick-detail-main {
+  flex: 1 1 50%; min-width: 0; min-height: 0; padding: 20px; overflow-y: auto;
+}
+.quick-detail.with-mail .mail-pane {
+  flex: 1 1 50%; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--bg);
+  border-radius: 0 12px 12px 0; padding: 20px; overflow-y: auto;
+}
+@media (max-width: 860px) {
+  .quick-detail.with-mail {
+    flex-direction: column; height: auto; max-height: min(960px, 90vh); overflow: auto;
+  }
+  /* Stacked panes hand scrolling back to the sheet (the phone layer makes
+     .quick-detail itself overflow-y: auto); per-pane scrollbars inside a
+     stacked column would trap the page swipe. */
+  .quick-detail.with-mail .quick-detail-main { flex: none; overflow-y: visible; }
+  .quick-detail.with-mail .mail-pane {
+    flex: none; overflow-y: visible;
+    border-left: none; border-top: 1px solid var(--border); border-radius: 0 0 12px 12px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}
+/* Phone sheets already stretch the overlay; do not let the desktop fill
+   sizes win on specificity over the 700px full-screen rules above. */
+@media (max-width: 700px) {
+  .quick-detail.with-mail {
+    width: 100vw; height: auto; max-height: none; overflow-y: auto;
+  }
+}
+
+.mail-pane-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.mail-pane-head h4 { margin: 0; color: var(--text); font-size: 13px; font-weight: 600; }
+.mail-pane-note { color: var(--text3); font-size: 10.5px; }
+.mail-truncated { margin-top: 8px; }
+
+.mail-compose { display: grid; gap: 6px; margin-bottom: 12px; }
+.mail-compose-subject, .mail-compose-body {
+  width: 100%; box-sizing: border-box; padding: 6px 8px;
+  border: 1px solid var(--border2); border-radius: 6px;
+  background: var(--bg2); color: var(--text); font: 12px/1.4 var(--mono);
+}
+.mail-compose-subject:focus, .mail-compose-body:focus { border-color: var(--accent); outline: 1px solid var(--accent); }
+.mail-compose-body { resize: vertical; }
+.mail-compose-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+
+.mail-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.mail-item { border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); }
+.mail-item.unread { border-color: var(--accent-focus); }
+.mail-item-row {
+  display: grid; gap: 3px; width: 100%; padding: 8px 10px; text-align: left;
+  border: none; background: none; color: var(--text); cursor: pointer;
+}
+.mail-item-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.mail-sender { color: var(--text-soft); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.mail-sender.operator { color: var(--accent); }
+.mail-recipient { color: var(--text-soft); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.mail-status { flex: none; margin-left: auto; padding: 1px 6px; border-radius: 8px; font-size: 9.5px; font-weight: 600; letter-spacing: .03em; }
+.mail-status.unread { color: var(--accent); background: var(--accent-dim); }
+.mail-status.seen { color: var(--orange); background: rgba(210,153,34,0.12); }
+.mail-status.acted { color: var(--green); background: rgba(63,185,80,0.1); }
+.mail-status.declined { color: var(--red); background: var(--red-dim); }
+.mail-status.deferred { color: var(--blue); background: rgba(88,166,255,0.1); }
+.mail-time { flex: none; color: var(--text3); font-size: 10px; }
+.mail-subject { color: var(--text); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.mail-preview {
+  color: var(--text2); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.mail-preview.expanded { display: block; -webkit-line-clamp: unset; color: var(--text); white-space: pre-wrap; }
+.mail-item-detail { padding: 0 10px 8px; display: grid; gap: 6px; }
+.mail-status-note { color: var(--text2); font-size: 11px; }
+.mail-refs { display: flex; flex-wrap: wrap; gap: 4px; }
+.mail-ref { padding: 1px 6px; border: 1px solid var(--border2); border-radius: 8px; color: var(--text2); font: 10px/1.5 var(--mono); }
+.mail-events { list-style: none; margin: 0; padding: 6px 0 0; border-top: 1px dashed var(--border); display: grid; gap: 2px; }
+.mail-events li { display: flex; gap: 8px; align-items: baseline; }
+.mail-event-kind { color: var(--text2); font-size: 10.5px; }
+.mail-item-actions { display: flex; align-items: center; gap: 8px; }
+.mail-edit { padding: 8px 10px; display: grid; gap: 6px; }
+.mail-empty { color: var(--text3); font-size: 12px; padding: 10px 2px; }
+.mail-error { color: var(--red); font-size: 11px; overflow-wrap: anywhere; }
+
+.global-mail h3 { margin-bottom: 10px; }
+.global-mail-filters { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.global-mail-chip {
+  padding: 2px 9px; border: 1px solid var(--border2); border-radius: 10px;
+  background: none; color: var(--text2); font-size: 10.5px; font-weight: 600; cursor: pointer;
+}
+.global-mail-chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.global-mail.quick-detail { width: min(680px, 94vw); }

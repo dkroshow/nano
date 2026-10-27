@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "result",
+          "key": "[scrubbed]",
+          "agentId": "id-64980082",
+          "result": "[scrubbed]"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "752e1280b7091ecdce957580bdadf2e54c27dd44fcee30312ae8c42f2418d50c",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_SHAPE_SEMANTICS_UNCONFIRMED",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": "Preserve native payload; do not infer a successful conversation turn."
+    }
+  ],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-ca94baf9a505 at byte 375. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

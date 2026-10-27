@@ -1,0 +1,192 @@
+{
+  "items": [
+    {
+      "id": "derived:unknown:line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 1,
+        "params": {},
+        "result": {
+          "subscription_tier": "example",
+          "config": {
+            "currentPeriod": {
+              "type": "WEEKLY",
+              "start": "2030-01-01T00:00:00Z",
+              "end": "2030-01-08T00:00:00Z"
+            },
+            "creditUsagePercent": {
+              "val": 25
+            }
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-2",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-2",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 2,
+        "params": {},
+        "result": {
+          "config": {
+            "currentPeriod": {
+              "type": "MONTHLY",
+              "end": "2030-02-01T00:00:00Z"
+            }
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-3",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-3",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 3,
+        "params": {},
+        "result": {
+          "config": {
+            "used": {
+              "val": 2
+            },
+            "monthlyLimit": 10
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

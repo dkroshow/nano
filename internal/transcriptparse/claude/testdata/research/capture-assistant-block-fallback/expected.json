@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [
+        {
+          "type": "row_uuid",
+          "value": "id-259d263e",
+          "authority": "native"
+        },
+        {
+          "type": "message_id",
+          "value": "id-3151e213",
+          "authority": "native"
+        }
+      ],
+      "turnRef": null,
+      "kind": "system",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [
+        {
+          "type": "fallback",
+          "from": {
+            "model": "[scrubbed]"
+          },
+          "to": {
+            "model": "[scrubbed]"
+          }
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "sourceField": "timestamp",
+        "precision": "millisecond"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeRowFields": {
+          "parentUuid": "id-8ef5355c",
+          "isSidechain": false,
+          "requestId": "id-d6a48b3b",
+          "type": "assistant",
+          "uuid": "id-259d263e",
+          "timestamp": "2026-01-01T00:00:00.000Z",
+          "effort": "[scrubbed]",
+          "userType": "[scrubbed]",
+          "entrypoint": "nano",
+          "cwd": "[scrubbed]",
+          "sessionId": "id-f4d3691e",
+          "version": "2.1.227",
+          "gitBranch": "[scrubbed]"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false,
+        "nativeEntrypoint": "nano",
+        "nativeOrigin": null,
+        "injectedContext": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "message.content[0]",
+          "nativeEventId": null,
+          "hash": "34c7d48ac06981d83b5d01b047514e1d28894d7fbb032c7f952d17bc9aea9028",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-58f160393aad at byte 706067. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

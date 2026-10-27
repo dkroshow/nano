@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "execution_relation",
+      "originCallId": "call-one",
+      "pollCallId": "call-two",
+      "processHandle": "example-cell",
+      "basis": "tool-specific output/input relationship",
+      "confidence": "medium"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{"type":"control_request","request_id":"init1","request":{"subtype":"initialize"}}
+{"type":"control_response","response":{"subtype":"success","request_id":"init1","response":{"models":[],"commands":[]}}}
+{"type":"control_request","request_id":"model1","request":{"subtype":"set_model","model":"claude-example"}}
+{"type":"control_response","response":{"subtype":"error","request_id":"model1","error":"Example invalid model"}}
+{"type":"control_request","request_id":"stop1","request":{"subtype":"interrupt"}}
+{"type":"control_response","response":{"subtype":"success","request_id":"stop1","response":{"still_queued":[]}}}
+{"type":"control_request","request_id":"mode1","request":{"subtype":"set_permission_mode","mode":"default"}}
+{"type":"control_cancel_request","request_id":"permission1"}

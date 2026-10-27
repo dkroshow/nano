@@ -1,0 +1,1 @@
+{"type":"control_request","request_id":"control1","request":{"subtype":"elicitation","server_name":"example-mcp","message":"Provide an example.","requested_schema":{"type":"object","properties":{"value":{"type":"string"}}}}}

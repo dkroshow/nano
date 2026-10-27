@@ -1,0 +1,4 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec", "call_id": "call-one", "input": "await exampleTool()"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "call-one", "output": "Script running with cell ID example-cell"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "wait", "call_id": "call-two", "arguments": "{\"cell_id\":\"example-cell\"}"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "call-two", "output": "Example completion."}}

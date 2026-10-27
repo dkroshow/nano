@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"duration_ms":50,"duration_api_ms":40,"num_turns":2,"usage":{"input_tokens":5,"output_tokens":6},"modelUsage":{"claude-example":{"inputTokens":5,"outputTokens":6}},"total_cost_usd":0.01}

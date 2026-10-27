@@ -1,0 +1,6 @@
+{"ts":"2026-09-24T05:38:42.869076-07:00","line":{"type":"system","subtype":"status","status":"requesting","session_id":"00000000-0000-4000-8000-0000000000c1","uuid":"00000000-0000-4000-8000-000000000001"}}
+{"ts":"2026-09-24T05:38:42.884313-07:00","line":{"type":"system","subtype":"status","status":"compacting","session_id":"00000000-0000-4000-8000-0000000000c1","uuid":"00000000-0000-4000-8000-000000000002"}}
+{"ts":"2026-09-24T05:39:13.069311-07:00","line":{"type":"system","subtype":"status","status":"compacting","session_id":"00000000-0000-4000-8000-0000000000c1","uuid":"00000000-0000-4000-8000-000000000003"}}
+{"ts":"2026-09-24T05:39:43.075989-07:00","line":{"type":"system","subtype":"status","status":"compacting","session_id":"00000000-0000-4000-8000-0000000000c1","uuid":"00000000-0000-4000-8000-000000000004"}}
+{"ts":"2026-09-24T05:40:04.889054-07:00","line":{"type":"system","subtype":"status","status":null,"compact_result":"success","session_id":"00000000-0000-4000-8000-0000000000c1","uuid":"00000000-0000-4000-8000-000000000005"}}
+{"ts":"2026-09-24T05:40:05.121763-07:00","line":{"type":"system","subtype":"compact_boundary","uuid":"00000000-0000-4000-8000-000000000006","compact_metadata":{"trigger":"auto","pre_tokens":967245,"post_tokens":10726,"duration_ms":81698},"session_id":"00000000-0000-4000-8000-0000000000c1"}}

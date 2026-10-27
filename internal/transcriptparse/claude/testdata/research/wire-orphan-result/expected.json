@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "orphan",
+      "identityAliases": [
+        {
+          "type": "tool_call_id",
+          "value": "missing-call",
+          "authority": "native"
+        }
+      ],
+      "turnRef": null,
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "Result survives.",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "f61097d12930ad8a9c41950bc3dad48f77e213926cb8751999d735fb6ecfe82b",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_TOOL_CALL_MISSING",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": ""
+    }
+  ],
+  "notes": "Do not drop a tool result when the call was outside the capture or aged out of live state. Current live applyUser silently skips unmatched results."
+}

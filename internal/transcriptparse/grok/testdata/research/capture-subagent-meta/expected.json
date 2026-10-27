@@ -1,0 +1,23 @@
+{
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "metadata": {
+    "subagent_id": "id-654",
+    "parent_session_id": "id-1",
+    "child_session_id": "id-654",
+    "subagent_type": "[text]",
+    "description": "[text]",
+    "prompt": "[text]",
+    "status": "completed",
+    "started_at": "2030-01-01T00:00:00.000000Z",
+    "completed_at": "2030-01-01T00:00:00.000000Z",
+    "duration_ms": 386927,
+    "tool_calls": 135,
+    "turns": 1,
+    "effective_context_source": "new",
+    "child_cwd": "[text]",
+    "effective_model_id": "[text]"
+  },
+  "note": "Auxiliary native snapshot. Retain as bounded source metadata; do not create duplicate conversation turns."
+}

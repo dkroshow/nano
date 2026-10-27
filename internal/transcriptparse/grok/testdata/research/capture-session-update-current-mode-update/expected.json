@@ -1,0 +1,80 @@
+{
+  "items": [
+    {
+      "id": "derived:id-20241:id-20251",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "id-20251",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1786650287239,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "current_mode_update",
+        "native": {
+          "sessionUpdate": "current_mode_update",
+          "currentModeId": "plan"
+        }
+      },
+      "scope": {
+        "sessionId": "id-20241",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "id-20251",
+          "replay": false,
+          "sha256": "99805dbe8469cd145960ac2dc701bd4d6204a7ca334ec0497e309250016cf3e8",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1786650287,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {
+            "eventId": "id-20251",
+            "agentTimestampMs": 1786650287239
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

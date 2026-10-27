@@ -1,0 +1,2 @@
+{"type":"assistant","uuid":"a1","sessionId":"session-example","timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Retracted response."}],"id":"m1","model":"claude-example","stop_reason":null},"apiBlockIndex":0}
+{"type":"system","uuid":"fallback","sessionId":"session-example","timestamp":"2026-01-01T00:00:00.000Z","subtype":"model_refusal_fallback","originalModel":"claude-example-a","fallbackModel":"claude-example-b","retractedMessageUuids":["a1"],"refusedUserMessageUuid":"u1"}

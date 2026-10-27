@@ -1,0 +1,1 @@
+{"timestamp":1787067260,"method":"_x.ai/session/update","params":{"sessionId":"id-1","update":{"sessionUpdate":"hook_execution","event_name":"pre_tool_use","tool_name":"[text]","runs":[{"name":"[text]","status":{"status":"failed","error":"[text]","elapsed_ms":0}}]},"_meta":{"eventId":"id-6","agentTimestampMs":1787067260792}}}

@@ -1,0 +1,93 @@
+{
+  "items": [
+    {
+      "id": "derived:id-1:id-681",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "id-681",
+          "origin": "native"
+        },
+        {
+          "type": "native_chunk_id",
+          "value": 45,
+          "origin": "native",
+          "scope": "session/prompt"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "subagent-completed-id-682",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "reasoning",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[text]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1787069595652,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "agent_thought_chunk"
+      },
+      "scope": {
+        "sessionId": "id-1",
+        "origin": "parent_coordination",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": true
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "id-681",
+          "replay": false,
+          "sha256": "673fa5b10472318ad8de3dbd52b86241c09087666044a4c5b106d8aac94f03e0",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1787069595,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {
+            "totalTokens": 188810,
+            "eventId": "id-681",
+            "agentTimestampMs": 1787069595652,
+            "promptId": "subagent-completed-id-682",
+            "streamStartMs": 1787069594459,
+            "turnStartMs": 1787069593560,
+            "updateType": "[text]",
+            "chunkId": 45
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

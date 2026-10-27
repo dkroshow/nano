@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "tool_call_id",
+          "value": "id-da02e37a2d",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "{\"output\": \"[redacted]\", \"metadata\": {\"exit_code\": 0, \"duration_seconds\": 0.0}}",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "{\"output\": \"[redacted]\", \"metadata\": {\"exit_code\": 0, \"duration_seconds\": 0.0}}"
+        }
+      ],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "precision": "millisecond",
+        "sourceField": "timestamp"
+      },
+      "observedTime": null,
+      "tool": {
+        "name": null,
+        "callId": "id-da02e37a2d",
+        "arguments": null,
+        "outputs": "{\"output\": \"[redacted]\", \"metadata\": {\"exit_code\": 0, \"duration_seconds\": 0.0}}"
+      },
+      "detail": {
+        "type": "function_call_output",
+        "call_id": "id-da02e37a2d",
+        "output": "{\"output\": \"[redacted]\", \"metadata\": {\"exit_code\": 0, \"duration_seconds\": 0.0}}"
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

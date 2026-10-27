@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "collab_agent_spawn_end", "call_id": "id-768846051b", "sender_thread_id": "[redacted]", "new_thread_id": "[redacted]", "new_agent_nickname": "[redacted]", "new_agent_role": "[redacted]", "prompt": "[redacted]", "model": "[redacted]", "reasoning_effort": "xhigh", "status": "pending_init"}}

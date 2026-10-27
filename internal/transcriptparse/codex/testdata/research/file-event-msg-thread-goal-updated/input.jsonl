@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "thread_goal_updated", "threadId": "id-51ae1106ff", "goal": {"threadId": "id-51ae1106ff", "objective": "[redacted]", "status": "paused", "tokensUsed": 4353565, "timeUsedSeconds": 48108, "createdAt": 1785542762, "updatedAt": 1785567236}}}

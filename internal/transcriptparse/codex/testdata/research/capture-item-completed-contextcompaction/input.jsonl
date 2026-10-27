@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "ordinal": 199, "type": "event_msg", "payload": {"type": "item_completed", "thread_id": "id-717814128c", "turn_id": "id-9c367b11a1", "item": {"type": "ContextCompaction", "id": "id-85b20fd570"}, "started_at_ms": 1788674077282, "completed_at_ms": 1788674432895}}

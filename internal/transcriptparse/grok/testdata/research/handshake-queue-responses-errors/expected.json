@@ -1,0 +1,443 @@
+{
+  "items": [
+    {
+      "id": "derived:unknown:line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 1,
+        "params": {},
+        "result": {
+          "protocolVersion": 1,
+          "agentInfo": {
+            "name": "Grok Build",
+            "version": "1.0.3"
+          },
+          "_meta": {
+            "modelState": {
+              "currentModelId": "model-a",
+              "availableModels": [
+                {
+                  "modelId": "model-a",
+                  "_meta": {
+                    "reasoningEffort": "high",
+                    "reasoningEfforts": [
+                      {
+                        "reasoningEffort": "high"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-2",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-2",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 2,
+        "params": {},
+        "result": {
+          "sessionId": "s1",
+          "_meta": {
+            "x.ai/sessionConfig": {
+              "options": [
+                {
+                  "category": "mode",
+                  "id": "high",
+                  "selected": true
+                }
+              ]
+            },
+            "x.ai/sessionDetail": {
+              "currentModelId": "model-a"
+            }
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:s1:line-3",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-3",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/queue/changed",
+        "requestId": null,
+        "params": {
+          "sessionId": "s1",
+          "runningPromptId": "p1",
+          "runningText": "Check.",
+          "entries": [
+            {
+              "id": "p2",
+              "kind": "prompt",
+              "text": "Next check."
+            }
+          ]
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": "s1"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-4",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-4",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 3,
+        "params": {},
+        "result": {
+          "stopReason": "end_turn",
+          "_meta": {
+            "promptId": "p1"
+          }
+        },
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 4,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-5",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-5",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": "_x.ai/session/prompt_complete",
+        "requestId": null,
+        "params": {
+          "promptId": "p1",
+          "stopReason": "end_turn"
+        },
+        "result": null,
+        "error": null
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 5,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-6",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-6",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 4,
+        "params": {},
+        "result": null,
+        "error": {
+          "code": -32601,
+          "message": "Method unavailable"
+        }
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 6,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:line-7",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "line-7",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "method": null,
+        "requestId": 5,
+        "params": {},
+        "result": null,
+        "error": {
+          "code": -32602,
+          "message": "Invalid parameters"
+        }
+      },
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 7,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

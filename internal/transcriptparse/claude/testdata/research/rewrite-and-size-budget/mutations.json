@@ -1,0 +1,32 @@
+{
+  "operations": [
+    {
+      "operation": "replace_source",
+      "before": "input.jsonl",
+      "afterRows": [
+        {
+          "type": "custom-title",
+          "customTitle": "Example"
+        },
+        {
+          "type": "user",
+          "uuid": "u1",
+          "message": {
+            "role": "user",
+            "content": "Inspect the example."
+          }
+        }
+      ]
+    },
+    {
+      "operation": "apply_budget",
+      "maxLineBytes": 32,
+      "input": "input.jsonl"
+    }
+  ],
+  "expected": {
+    "logicalUserIdentitySurvivesPrepend": true,
+    "lineAliasChanges": true,
+    "overBudgetProducesDiagnostic": true
+  }
+}

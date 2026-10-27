@@ -1,0 +1,13 @@
+{
+  "reference": [
+    {"id":"saved-user-1","projectedSeq":1,"type":"user_message","category":"messages","role":"user","text":"Analyze the repository.","contentTruncated":false},
+    {"id":"saved-agent-1","projectedSeq":2,"type":"agent_message","category":"messages","role":"assistant","text":"Repository analysis complete.","contentTruncated":false}
+  ],
+  "browser": [
+    {"source":"durable","id":"saved-user-1","semanticId":"saved-user-1","projectedSeq":1,"type":"user_message","category":"messages","role":"user","contentState":"visible","presentation":"Analyze the repository.","inScope":true},
+    {"source":"durable","id":"saved-agent-1","semanticId":"saved-agent-1","projectedSeq":2,"type":"agent_message","category":"messages","role":"assistant","contentState":"visible","presentation":"Repository analysis complete.","inScope":true},
+    {"source":"live","id":"live-user-copy","semanticId":"saved-user-1","projectedSeq":0,"type":"userMessage","category":"messages","role":"user","contentState":"visible","presentation":"Analyze the repository.","inScope":true},
+    {"source":"live","id":"live-agent-copy","semanticId":"saved-agent-1","projectedSeq":0,"type":"agentMessage","category":"messages","role":"assistant","contentState":"visible","presentation":"Repository analysis complete.","inScope":true},
+    {"source":"live","id":"uncertain-tail","semanticId":"","projectedSeq":0,"type":"userMessage","category":"messages","role":"user","contentState":"visible","presentation":"Sanitized refused tail prompt.","inScope":true}
+  ]
+}

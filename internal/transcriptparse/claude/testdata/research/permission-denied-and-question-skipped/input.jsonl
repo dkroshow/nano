@@ -1,0 +1,2 @@
+{"type":"control_response","response":{"subtype":"success","request_id":"permission1","response":{"behavior":"deny","message":"Example refusal."}}}
+{"type":"control_response","response":{"subtype":"success","request_id":"question1","response":{"behavior":"allow","updatedInput":{"questions":[{"question":"Example?"}],"answers":{}}}}}

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": {
+        "provider": "claude",
+        "grain": "provider_result",
+        "input_tokens": 5,
+        "output_tokens": 6,
+        "aggregation": "do not add to corresponding message totals",
+        "scopeConfidence": "unverified result extras"
+      }
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Constructed result-extra vocabulary, not a complete captured schema. Survey confirms result usage/cache detail but named fixture lacks these extras. Preserve each observation with grain rather than assuming modelUsage, usage and num_turns are independent additive counters.",
+  "assertionsOnly": true
+}

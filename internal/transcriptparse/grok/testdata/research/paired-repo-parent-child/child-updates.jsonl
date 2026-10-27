@@ -1,0 +1,2 @@
+{"timestamp":1786992001,"method":"session/update","params":{"sessionId":"child-1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"[redacted]"}},"_meta":{"eventId":"child-1-114"}}}
+{"timestamp":1786992002,"method":"session/update","params":{"sessionId":"child-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"[redacted]"}},"_meta":{"eventId":"child-1-129","promptId":"child-prompt-1"}}}

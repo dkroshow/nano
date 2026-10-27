@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": [
+          {
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "result": "Finished."
+          }
+        ]
+      },
+      "finalItemRefs": [
+        "m1-0"
+      ],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Input may be a wire result or constructed transcript row. Current live terminal distinguishes these states; file result handler reports all as completed. Expected final reference denotes the preceding assistant block; it is a partial assertion here.",
+  "assertionsOnly": true
+}

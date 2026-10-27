@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "native_item_id",
+          "value": "id-2e62a65dd8",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "id-b609c1de20",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": "final_answer",
+      "finality": {
+        "designation": "final_answer",
+        "basis": "native phase",
+        "confidence": "high"
+      },
+      "text": "[redacted]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[redacted]"
+        }
+      ],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1788671866553,
+        "precision": "millisecond",
+        "sourceField": "payload.completed_at_ms"
+      },
+      "observedTime": null,
+      "tool": null,
+      "detail": {
+        "type": "AgentMessage",
+        "id": "id-2e62a65dd8",
+        "content": [
+          {
+            "type": "Text",
+            "text": "[redacted]"
+          }
+        ],
+        "phase": "final_answer"
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": "/payload/item",
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

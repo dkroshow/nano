@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/tool/requestUserInput", "params": {"threadId": "thread-example", "turnId": "turn-example", "itemId": "q", "autoResolutionMs": 1000, "questions": [{"id": "choice", "header": "Choice", "question": "Choose one.", "options": [{"label": "A", "description": "Example."}]}]}, "id": "request-1"}}
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "serverRequest/resolved", "params": {"threadId": "thread-example", "requestId": "request-1"}}}

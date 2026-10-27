@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": null,
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": {
+        "provider": "codex",
+        "aggregation": "distinct cumulative observation",
+        "value": {
+          "input_tokens": 3410,
+          "cached_input_tokens": 3072,
+          "output_tokens": 1377,
+          "reasoning_output_tokens": 1152,
+          "total_tokens": 4787
+        },
+        "observations": [
+          {
+            "total_token_usage": {
+              "input_tokens": 3410,
+              "cached_input_tokens": 3072,
+              "output_tokens": 1377,
+              "reasoning_output_tokens": 1152,
+              "total_tokens": 4787
+            },
+            "last_token_usage": {
+              "input_tokens": 3410,
+              "cached_input_tokens": 3072,
+              "output_tokens": 1377,
+              "reasoning_output_tokens": 1152,
+              "total_tokens": 4787
+            },
+            "model_context_window": 258400
+          },
+          {
+            "total_token_usage": {
+              "input_tokens": 3410,
+              "cached_input_tokens": 3072,
+              "output_tokens": 1377,
+              "reasoning_output_tokens": 1152,
+              "total_tokens": 4787
+            },
+            "last_token_usage": {
+              "input_tokens": 3410,
+              "cached_input_tokens": 3072,
+              "output_tokens": 1377,
+              "reasoning_output_tokens": 1152,
+              "total_tokens": 4787
+            },
+            "model_context_window": 258400
+          }
+        ]
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "CODEX_REPEATED_USAGE_SNAPSHOT",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 2
+      },
+      "detail": "Same last and total usage; rate-limit reset changed. Count once."
+    }
+  ],
+  "observations": []
+}

@@ -1,0 +1,402 @@
+{
+  "items": [
+    {
+      "id": "derived:unknown:aux-line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[text]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "system",
+          "content": "[text]"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "model_history"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-2",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-2",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[text]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "[text]"
+            }
+          ]
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "model_history"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-3",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-3",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "reasoning",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [
+        {
+          "type": "summary_text",
+          "text": "[text]"
+        },
+        {
+          "type": "opaque_reasoning",
+          "content": "[redacted]"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "reasoning",
+          "id": "id-895",
+          "summary": [
+            {
+              "type": "summary_text",
+              "text": "[text]"
+            }
+          ],
+          "encrypted_content": "[text]",
+          "status": "completed"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "model_history"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-4",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-4",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[text]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "assistant",
+          "content": "[text]",
+          "tool_calls": [
+            {
+              "id": "id-7",
+              "name": "[text]",
+              "arguments": "[text]"
+            },
+            {
+              "id": "id-14",
+              "name": "[text]",
+              "arguments": "[text]"
+            },
+            {
+              "id": "id-18",
+              "name": "[text]",
+              "arguments": "[text]"
+            }
+          ],
+          "model_id": "[text]",
+          "model_fingerprint": "[text]",
+          "reasoning_effort": "high"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "model_history"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 4,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-5",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-5",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "[text]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "tool_result",
+          "tool_call_id": "id-7",
+          "content": "[text]"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "model_history"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 5,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-6",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-6",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_call",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "backend_tool_call",
+          "kind": {
+            "tool_type": "[text]",
+            "action": {
+              "type": "open_page",
+              "url": "[text]"
+            },
+            "id": "id-7867",
+            "status": "completed"
+          }
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "model_history"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 6,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Parallel native view, never append these to ACP items without an explicit join. No ACP finality or turn identity can be assumed."
+}

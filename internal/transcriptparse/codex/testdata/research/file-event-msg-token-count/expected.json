@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": null,
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": {
+        "provider": "codex",
+        "aggregation": "unresolved observation; deduplicate before adding",
+        "observations": [
+          {
+            "type": "token_count",
+            "info": null,
+            "rate_limits": {
+              "primary": {
+                "used_percent": 0.0,
+                "window_minutes": 300,
+                "resets_at": 1761873011
+              },
+              "secondary": {
+                "used_percent": 0.0,
+                "window_minutes": 10080,
+                "resets_at": 1762459811
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "diagnostics": [],
+  "observations": []
+}

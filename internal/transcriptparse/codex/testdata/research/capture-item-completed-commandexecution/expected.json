@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "native_item_id",
+          "value": "id-e346d85af9",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "id-7229008be2",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "command",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1788672062760,
+        "precision": "millisecond",
+        "sourceField": "payload.completed_at_ms"
+      },
+      "observedTime": null,
+      "tool": null,
+      "detail": {
+        "type": "CommandExecution",
+        "id": "id-e346d85af9",
+        "process_id": "[redacted]",
+        "command": [
+          "[redacted]",
+          "[redacted]",
+          "[redacted]"
+        ],
+        "cwd": "/workspace/example",
+        "parsed_cmd": [
+          {
+            "type": "unknown",
+            "cmd": "[redacted]"
+          }
+        ],
+        "source": "[redacted]",
+        "status": "completed",
+        "stdout": "[redacted]",
+        "stderr": "[redacted]",
+        "aggregated_output": "[redacted]",
+        "exit_code": 0,
+        "duration": {
+          "secs": 30,
+          "nanos": 28086628
+        },
+        "formatted_output": "[redacted]"
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": "/payload/item",
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

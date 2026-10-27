@@ -1,0 +1,1 @@
+{"parentUuid":null,"isSidechain":false,"type":"attachment","uuid":"id-9e463a6a","timestamp":"2026-01-01T00:00:00.000Z","attachment":{"type":"goal_status","met":false,"sentinel":true,"condition":"[scrubbed]"},"userType":"[scrubbed]","entrypoint":"cli","cwd":"[scrubbed]","sessionId":"id-1167b895","version":"2.1.208","gitBranch":"[scrubbed]"}

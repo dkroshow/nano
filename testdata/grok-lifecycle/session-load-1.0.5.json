@@ -1,0 +1,32 @@
+{
+  "models": {
+    "currentModelId": "grok-4.6"
+  },
+  "_meta": {
+    "x.ai/sessionConfig": {
+      "options": [
+        {
+          "category": "model",
+          "id": "grok-4.6",
+          "label": "Grok 4.6",
+          "selected": true
+        },
+        {
+          "category": "mode",
+          "description": "Highest effort and reasoning level",
+          "id": "xhigh",
+          "label": "Extra High Effort",
+          "selected": true
+        }
+      ]
+    },
+    "sessionId": "native-thread",
+    "x.ai/sessionDetail": {
+      "sessionId": "native-thread",
+      "cwd": "/fixture",
+      "kind": "build",
+      "currentModelId": "grok-4.6",
+      "title": "fixture"
+    }
+  }
+}

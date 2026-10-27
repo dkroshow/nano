@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": "id-b609c1de20",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "unknown",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": {
+        "provider": "codex",
+        "aggregation": "unresolved observation; deduplicate before adding",
+        "observations": [
+          {
+            "thread_id": "id-6d22c54faa",
+            "turn_id": "id-b609c1de20",
+            "session_id": "[redacted]",
+            "root_turn_id": "[redacted]",
+            "response_id": "[redacted]",
+            "usage": {
+              "input_tokens": 28396,
+              "cached_input_tokens": 0,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 357,
+              "reasoning_output_tokens": 326,
+              "total_tokens": 28753
+            },
+            "turn_token_usage": {
+              "input_tokens": 28396,
+              "cached_input_tokens": 0,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 357,
+              "reasoning_output_tokens": 326,
+              "total_tokens": 28753
+            },
+            "thread_token_usage": {
+              "input_tokens": 28396,
+              "cached_input_tokens": 0,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 357,
+              "reasoning_output_tokens": 326,
+              "total_tokens": 28753
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "diagnostics": [],
+  "observations": []
+}

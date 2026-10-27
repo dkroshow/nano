@@ -1,0 +1,1 @@
+{"type":"user","uuid":"u1","sessionId":"session-example","timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Inspect the example."}]}}

@@ -1,0 +1,1 @@
+{"timestamp":1787067260,"method":"session/update","params":{"sessionId":"id-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"[text]"}},"_meta":{"totalTokens":10104,"eventId":"id-5","agentTimestampMs":1787067257579,"promptId":"id-4","streamStartMs":1787067253681,"turnStartMs":1787067253048,"updateType":"[text]","chunkId":77}}}

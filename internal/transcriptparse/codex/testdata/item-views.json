@@ -1,0 +1,1719 @@
+{
+  "cases": 215,
+  "scenarios": {
+    "paired-first-turn": "TestCodexPairedFirstTurn and TestCodexCheckpointBetweenPairedRows",
+    "edge-oversize-body-budget": "TestCodexResearchOversizeRecipeAdvancesSource"
+  },
+  "differences": {
+    "capture-guardian-meta": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "capture-programmatic-meta": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "capture-worker-meta": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "file-session-meta": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "file-future-native-row": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "file-future-private-row": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "schema-response-item-other": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "edge-malformed-and-unknown": {
+      "difference": "CODEX-METADATA-1",
+      "reason": "Metadata and unknown source shapes remain bounded observations or malformed source records with diagnostics, rather than draft empty items.",
+      "items": []
+    },
+    "file-world-state": {
+      "difference": "CODEX-METADATA-3",
+      "reason": "World/thread/coordination metadata retains its complete native observation without invented content or turns.",
+      "items": []
+    },
+    "file-inter-agent-communication-metadata": {
+      "difference": "CODEX-METADATA-3",
+      "reason": "World/thread/coordination metadata retains its complete native observation without invented content or turns.",
+      "items": []
+    },
+    "file-event-msg-thread-name-updated": {
+      "difference": "CODEX-METADATA-3",
+      "reason": "World/thread/coordination metadata retains its complete native observation without invented content or turns.",
+      "items": []
+    },
+    "file-event-msg-thread-goal-updated": {
+      "difference": "CODEX-METADATA-3",
+      "reason": "World/thread/coordination metadata retains its complete native observation without invented content or turns.",
+      "items": []
+    },
+    "file-event-msg-thread-settings-applied": {
+      "difference": "CODEX-METADATA-3",
+      "reason": "World/thread/coordination metadata retains its complete native observation without invented content or turns.",
+      "items": []
+    },
+    "wire-account-login-completed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-account-ratelimits-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-account-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-app-list-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-externalagentconfig-import-completed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-externalagentconfig-import-progress": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-fs-changed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-fuzzyfilesearch-sessioncompleted": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-fuzzyfilesearch-sessionupdated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-hook-completed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-hook-started": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-mcpserver-oauthlogin-completed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-mcpserver-startupstatus-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-model-rerouted": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-model-safetybuffering-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-model-verification": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-remotecontrol-status-changed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-skills-changed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-archived": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-closed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-deleted": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-goal-cleared": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-goal-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-name-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-settings-updated": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-started": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-status-changed": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-thread-unarchived": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-turn-moderationmetadata": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-windowssandbox-setupcompleted": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "Transport and lifecycle metadata stays a scoped native observation, not an empty system item or conversation terminal.",
+      "items": []
+    },
+    "wire-configwarning": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "A native warning/error body remains readable without proving action failure.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "wire-deprecationnotice": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "A native warning/error body remains readable without proving action failure.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "wire-error": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "A native warning/error body remains readable without proving action failure.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-guardianwarning": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "A native warning/error body remains readable without proving action failure.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "wire-warning": {
+      "difference": "CODEX-METADATA-2",
+      "reason": "A native warning/error body remains readable without proving action failure.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "capture-agent-message": {
+      "difference": "CODEX-SCOPE-1",
+      "reason": "Native metadata explicitly identifies the message turn omitted by the draft view.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "[redacted]",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "id-2ef89832ca"
+        }
+      ]
+    },
+    "file-response-item-agent-message": {
+      "difference": "CODEX-SCOPE-1",
+      "reason": "Native metadata explicitly identifies the message turn omitted by the draft view.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "[redacted]",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "id-2ef89832ca"
+        }
+      ]
+    },
+    "edge-interruption": {
+      "difference": "CODEX-SCOPE-1",
+      "reason": "The explicit native task boundary scopes the retained partial answer.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Partial response.",
+          "phase": "commentary",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-partial-final-line": {
+      "difference": "CODEX-SCOPE-1",
+      "reason": "The explicit native task boundary scopes the retained partial answer.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Unfinished response.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "capture-item-completed-commandexecution": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native completed-item content and execution fields survive; item completion is separate from parent completion.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "[redacted] [redacted] [redacted]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": "id-7229008be2"
+        }
+      ]
+    },
+    "capture-item-completed-contextcompaction": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native completed-item content and execution fields survive; item completion is separate from parent completion.",
+      "items": [
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "Conversation context compacted",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "id-9c367b11a1"
+        }
+      ]
+    },
+    "capture-item-completed-extension": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native completed-item content and execution fields survive; item completion is separate from parent completion.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "[redacted]",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "id-9c367b11a1"
+        }
+      ]
+    },
+    "capture-item-completed-filechange": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native completed-item content and execution fields survive; item completion is separate from parent completion.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": "id-9c367b11a1"
+        }
+      ]
+    },
+    "capture-item-completed-reasoning": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native completed-item content and execution fields survive; item completion is separate from parent completion.",
+      "items": [
+        {
+          "type": "reasoning",
+          "role": "assistant",
+          "text": "[redacted]\n\n[redacted]",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "id-b609c1de20"
+        }
+      ]
+    },
+    "file-event-msg-exec-command-begin": {
+      "difference": "CODEX-ACTION-1",
+      "reason": "Native lifecycle events retain an execution facet and its own outcome, independent of generation and parent completion.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-event-msg-exec-command-end": {
+      "difference": "CODEX-ACTION-1",
+      "reason": "Native lifecycle events retain an execution facet and its own outcome, independent of generation and parent completion.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "[redacted] [redacted] [redacted]",
+          "phase": "",
+          "outcome": "failed",
+          "nativeTurnId": "id-2279c2c61c"
+        }
+      ]
+    },
+    "file-event-msg-patch-apply-begin": {
+      "difference": "CODEX-ACTION-1",
+      "reason": "Native lifecycle events retain an execution facet and its own outcome, independent of generation and parent completion.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-event-msg-patch-apply-end": {
+      "difference": "CODEX-ACTION-1",
+      "reason": "Native lifecycle events retain an execution facet and its own outcome, independent of generation and parent completion.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": "id-2279c2c61c"
+        }
+      ]
+    },
+    "file-event-msg-guardian-assessment": {
+      "difference": "CODEX-GUARDIAN-1",
+      "reason": "The review retains its own interaction and native action display; running review status does not settle target execution.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "[redacted]",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "id-01c89e6541"
+        }
+      ]
+    },
+    "file-event-msg-collab-agent-spawn-end": {
+      "difference": "CODEX-NOTICE-1",
+      "reason": "A native coordination record retains its legacy readable event label; child state remains bounded detail.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "collab agent spawn end",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-event-msg-collab-close-end": {
+      "difference": "CODEX-NOTICE-1",
+      "reason": "A native coordination record retains its legacy readable event label; child state remains bounded detail.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "collab close end",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-event-msg-collab-waiting-end": {
+      "difference": "CODEX-NOTICE-1",
+      "reason": "A native coordination record retains its legacy readable event label; child state remains bounded detail.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "collab waiting end",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-event-msg-sub-agent-activity": {
+      "difference": "CODEX-NOTICE-1",
+      "reason": "A native coordination record retains its legacy readable event label; child state remains bounded detail.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "sub agent activity",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-event-msg-context-compacted": {
+      "difference": "CODEX-COMPACTION-1",
+      "reason": "The known compaction marker retains a readable label without replaying replacement history.",
+      "items": [
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "Conversation context compacted",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-compaction-replacement-replay": {
+      "difference": "CODEX-COMPACTION-2",
+      "reason": "The summary record and unaddressed adjacent completion marker remain separate evidence; adjacency does not prove one operation.",
+      "items": [
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "Example summary.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "Conversation context compacted",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-command-arguments-and-object-result": {
+      "difference": "CODEX-GENERATION-1",
+      "reason": "Retain generated arguments and a separate linked failed result. No native turn ID is present in this input.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "exit 2",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "{\"stdout\":\"\",\"stderr\":\"Example failure.\",\"exit_code\":2}",
+          "phase": "",
+          "outcome": "failed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-freeform-exec-and-later-wait": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Each native call and result remains distinct. A textual running-cell report does not prove an execution outcome or a shared invocation.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: exec",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Script running with cell ID example-cell",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: wait",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Example completion.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-image-only-and-unknown-content": {
+      "difference": "CODEX-CONTENT-2",
+      "reason": "The native assistant message keeps its role and unknown typed media part with a diagnostic, rather than replacing the message type.",
+      "items": [
+        {
+          "type": "user_message",
+          "role": "user",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-nonadjacent-twins-and-real-repeat": {
+      "difference": "CODEX-TWIN-1",
+      "reason": "Two serialization twins share one logical item while the later turn repeat remains separate.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Same text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        },
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Same text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-two"
+        }
+      ]
+    },
+    "edge-object-arguments-shell-argv": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native object arguments expose the command while retaining complete argv in native detail.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "printf example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-question-answer": {
+      "difference": "CODEX-GENERATION-1",
+      "reason": "The question invocation remains separate from the exact native answer result.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Tool call: request_user_input",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "{\"answers\": {\"choice\": {\"answers\": [\"A\"]}}}",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-reasoning-summary-opaque": {
+      "difference": "CODEX-REASONING-1",
+      "reason": "The readable summary is retained beside opaque encrypted detail.",
+      "items": [
+        {
+          "type": "reasoning",
+          "role": "assistant",
+          "text": "Example summary.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-task-notification-and-abort-wrapper": {
+      "difference": "CODEX-CONTENT-2",
+      "reason": "Both native system bodies remain readable; neither is a human prompt or a successful terminal.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "<subagent_notification>Example worker result.</subagent_notification>",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        },
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "<turn_aborted>Previous action interrupted.</turn_aborted>",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-response-item-custom-tool-call": {
+      "difference": "CODEX-GENERATION-1",
+      "reason": "The native apply_patch invocation retains a proposed file-change facet and generated status only.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "Tool call: apply_patch",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-response-item-function-call": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "The native command name and argv permit command specialization.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "[redacted] [redacted] [redacted]",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-response-item-local-shell-call": {
+      "difference": "CODEX-GENERATION-1",
+      "reason": "Native nested shell argv remains readable; its call status proves argument generation only.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "printf example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-local-shell-call": {
+      "difference": "CODEX-GENERATION-1",
+      "reason": "Native nested shell argv remains readable; its call status proves argument generation only.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "printf example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-custom-tool-call": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native tool names remain readable; arguments stay separate in native parts.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-function-call": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native tool names remain readable; arguments stay separate in native parts.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: example_tool",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-response-item-tool-search-call": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native built-in lookup/search status and names survive without completing the parent.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: tool_search_call",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-response-item-web-search-call": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native built-in lookup/search status and names survive without completing the parent.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: web_search_call",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-tool-search-call": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native built-in lookup/search status and names survive without completing the parent.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: tool_search_call",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-web-search-call": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native built-in lookup/search status and names survive without completing the parent.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: web_search_call",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-event-msg-mcp-tool-call-end": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Structured native results remain readable and inspectable; absent invocation identity is not invented.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "{\"Ok\":{\"content\":[{\"type\":\"text\",\"text\":\"[redacted]\"}]}}",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-response-item-local-shell-call-output": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Structured native results remain readable and inspectable; absent invocation identity is not invented.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "file-response-item-tool-search-output": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Structured native results remain readable and inspectable; absent invocation identity is not invented.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[{\"type\":\"namespace\",\"name\":\"neutral_tool\",\"description\":\"[redacted]\",\"tools\":[{\"type\":\"function\",\"name\":\"spawn_agent\",\"description\":\"[redacted]\",\"strict\":false,\"defer_loading\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"agent_type\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"fork_context\":{\"type\":\"boolean\",\"description\":\"[redacted]\"},\"items\":{\"type\":\"array\",\"description\":\"[redacted]\",\"items\":{\"type\":\"object\",\"properties\":{\"image_url\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"name\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"path\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"text\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"type\":{\"type\":\"string\",\"description\":\"[redacted]\"}},\"additionalProperties\":false}},\"message\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"model\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"reasoning_effort\":{\"type\":\"string\",\"description\":\"[redacted]\"},\"service_tier\":{\"type\":\"string\",\"description\":\"[redacted]\"}},\"additionalProperties\":false}},{\"type\":\"function\",\"name\":\"resume_agent\",\"description\":\"[redacted]\",\"strict\":false,\"defer_loading\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"[redacted]\"}},\"required\":[\"[redacted]\"],\"additionalProperties\":false}},{\"type\":\"function\",\"name\":\"close_agent\",\"description\":\"[redacted]\",\"strict\":false,\"defer_loading\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"target\":{\"type\":\"string\",\"description\":\"[redacted]\"}},\"required\":[\"[redacted]\"],\"additionalProperties\":false}},{\"type\":\"function\",\"name\":\"wait_agent\",\"description\":\"[redacted]\",\"strict\":false,\"defer_loading\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"targets\":{\"type\":\"array\",\"description\":\"[redacted]\",\"items\":{\"type\":\"string\"}},\"timeout_ms\":{\"type\":\"number\",\"description\":\"[redacted]\"}},\"required\":[\"[redacted]\"],\"additionalProperties\":false}}]}]",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-custom-tool-call-output": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Structured native results remain readable and inspectable; absent invocation identity is not invented.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-function-call-output": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Structured native results remain readable and inspectable; absent invocation identity is not invented.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "schema-response-item-tool-search-output": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Structured native results remain readable and inspectable; absent invocation identity is not invented.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "[]",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "request-applypatchapproval": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "A provider-originated pending request remains an interaction with its own request identity and readable prompt.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "File change approval requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-response-applypatchapproval": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "The captured answer settles the matching request outcome, not target execution or conversation completion.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "File change approval requested",
+          "phase": "",
+          "outcome": "declined",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "request-execcommandapproval": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "A provider-originated pending request remains an interaction with its own request identity and readable prompt.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Command approval requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-response-execcommandapproval": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "The captured answer settles the matching request outcome, not target execution or conversation completion.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Command approval requested",
+          "phase": "",
+          "outcome": "declined",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "request-item-commandexecution-requestapproval": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "A provider-originated pending request remains an interaction with its own request identity and readable prompt.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Command approval requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-response-item-commandexecution-requestapproval": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "The captured answer settles the matching request outcome, not target execution or conversation completion.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Command approval requested",
+          "phase": "",
+          "outcome": "declined",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "request-item-filechange-requestapproval": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "A provider-originated pending request remains an interaction with its own request identity and readable prompt.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "File change approval requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-response-item-filechange-requestapproval": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "The captured answer settles the matching request outcome, not target execution or conversation completion.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "File change approval requested",
+          "phase": "",
+          "outcome": "declined",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "request-item-permissions-requestapproval": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "A provider-originated pending request remains an interaction with its own request identity and readable prompt.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Permissions requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-response-item-permissions-requestapproval": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "The captured answer settles the matching request outcome, not target execution or conversation completion.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Permissions requested",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "request-item-tool-requestuserinput": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "A provider-originated pending request remains an interaction with its own request identity and readable prompt.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "User input requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-response-item-tool-requestuserinput": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "The captured answer settles the matching request outcome, not target execution or conversation completion.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "User input requested",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "request-mcpserver-elicitation-request": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "A provider-originated pending request remains an interaction with its own request identity and readable prompt.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "edge-response-mcpserver-elicitation-request": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "The captured answer settles the matching request outcome, not target execution or conversation completion.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "declined",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "request-account-chatgptauthtokens-refresh": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "Authentication and attestation stay connection observations with opaque material excluded.",
+      "items": []
+    },
+    "request-attestation-generate": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "Authentication and attestation stay connection observations with opaque material excluded.",
+      "items": []
+    },
+    "request-item-tool-call": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "The native dynamic invocation retains its tool name; complete generation does not prove execution.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-response-item-tool-call": {
+      "difference": "CODEX-CONTROL-2",
+      "reason": "Dynamic invocation and native failed result remain separate, linked facets.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        },
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "Example tool failure.",
+          "phase": "",
+          "outcome": "failed",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-wire-request-id-types": {
+      "difference": "CODEX-CONTROL-1",
+      "reason": "Numeric and string request IDs remain distinct pending interactions.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "File change approval requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        },
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "File change approval requested",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-wire-approval-resolved-elsewhere": {
+      "difference": "CODEX-CONTROL-3",
+      "reason": "A resolution ends a request lifetime but does not invent a decision.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "assistant",
+          "text": "User input requested",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-serverrequest-resolved": {
+      "difference": "CODEX-CONTROL-3",
+      "reason": "An unmatched request resolution remains a diagnosed observation.",
+      "items": []
+    },
+    "edge-wire-plain-text-not-base64": {
+      "difference": "CODEX-TOOL-1",
+      "reason": "Native command text and failed execution survive; its output is plain text.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "printf TWFu",
+          "phase": "",
+          "outcome": "failed",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-wire-reasoning-indexed-parts": {
+      "difference": "CODEX-PART-2",
+      "reason": "Native summary indices determine display order, while observations retain arrival order.",
+      "items": [
+        {
+          "type": "reasoning",
+          "role": "assistant",
+          "text": "First.\n\nSecond.\n\nSeparate raw content.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-wire-resume-delta-race": {
+      "difference": "CODEX-SNAPSHOT-1",
+      "reason": "An unordered snapshot cannot overwrite the earlier live delta without ordering proof; the overlap remains diagnosed.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "B",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "edge-wire-unknown-and-missing-id": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Unknown methods retain observations and unknown item shapes retain bounded items with diagnostics.",
+      "items": [
+        {
+          "type": "provider_event",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-collabagenttoolcall": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: spawnAgent",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-commandexecution": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "example",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-contextcompaction": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "compaction",
+          "role": "system",
+          "text": "Conversation context compacted",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-dynamictoolcall": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: example",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-enteredreviewmode": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-exitedreviewmode": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-filechange": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-imageview": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "/workspace/example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-mcptoolcall": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "Tool call: example",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-subagentactivity": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Sub-agent started",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-websearch": {
+      "difference": "CODEX-ITEM-1",
+      "reason": "Native item taxonomy, display and execution fields survive independently of generation completion.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-agentmessage-delta": {
+      "difference": "CODEX-PART-1",
+      "reason": "An addressed native delta retains a partial item and typed parts; no start or terminal is invented.",
+      "items": [
+        {
+          "type": "agent_message",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-commandexecution-outputdelta": {
+      "difference": "CODEX-PART-1",
+      "reason": "An addressed native delta retains a partial item and typed parts; no start or terminal is invented.",
+      "items": [
+        {
+          "type": "command",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-reasoning-summarypartadded": {
+      "difference": "CODEX-PART-1",
+      "reason": "An addressed native delta retains a partial item and typed parts; no start or terminal is invented.",
+      "items": [
+        {
+          "type": "reasoning",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-reasoning-summarytextdelta": {
+      "difference": "CODEX-PART-1",
+      "reason": "An addressed native delta retains a partial item and typed parts; no start or terminal is invented.",
+      "items": [
+        {
+          "type": "reasoning",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-reasoning-textdelta": {
+      "difference": "CODEX-PART-1",
+      "reason": "An addressed native delta retains a partial item and typed parts; no start or terminal is invented.",
+      "items": [
+        {
+          "type": "reasoning",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-filechange-outputdelta": {
+      "difference": "CODEX-PROGRESS-1",
+      "reason": "Addressed orphan updates retain an incomplete item and native detail with item_update_without_start.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-filechange-patchupdated": {
+      "difference": "CODEX-PROGRESS-1",
+      "reason": "Addressed orphan updates retain an incomplete item and native detail with item_update_without_start.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-mcptoolcall-progress": {
+      "difference": "CODEX-PROGRESS-1",
+      "reason": "Addressed orphan updates retain an incomplete item and native detail with item_update_without_start.",
+      "items": [
+        {
+          "type": "tool_call",
+          "role": "assistant",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-plan-delta": {
+      "difference": "CODEX-PROGRESS-1",
+      "reason": "Addressed orphan updates retain an incomplete item and native detail with item_update_without_start.",
+      "items": [
+        {
+          "type": "plan",
+          "role": "assistant",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-autoapprovalreview-started": {
+      "difference": "CODEX-PROGRESS-2",
+      "reason": "The captured review status is still inProgress even on completed generation; keep the running review and readable action.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "example",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-item-autoapprovalreview-completed": {
+      "difference": "CODEX-PROGRESS-2",
+      "reason": "The captured review status is still inProgress even on completed generation; keep the running review and readable action.",
+      "items": [
+        {
+          "type": "interaction",
+          "role": "system",
+          "text": "example",
+          "phase": "",
+          "outcome": "running",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-turn-diff-updated": {
+      "difference": "CODEX-PROGRESS-2",
+      "reason": "A turn-level facet has system origin and no fabricated item ID.",
+      "items": [
+        {
+          "type": "file_change",
+          "role": "system",
+          "text": "example",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-turn-plan-updated": {
+      "difference": "CODEX-PROGRESS-2",
+      "reason": "A turn-level facet has system origin and no fabricated item ID.",
+      "items": [
+        {
+          "type": "plan",
+          "role": "system",
+          "text": "",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": "turn-example"
+        }
+      ]
+    },
+    "wire-process-exited": {
+      "difference": "CODEX-PROCESS-1",
+      "reason": "A standalone process exit is a result with retained stdout/stderr and explicit execution; missing invocation remains diagnosed.",
+      "items": [
+        {
+          "type": "tool_result",
+          "role": "tool",
+          "text": "example\nexample",
+          "phase": "",
+          "outcome": "completed",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "wire-thread-realtime-closed": {
+      "difference": "CODEX-REALTIME-1",
+      "reason": "Realtime transport facts remain native observations; unverified arbitrary item payloads are diagnosed.",
+      "items": []
+    },
+    "wire-thread-realtime-itemadded": {
+      "difference": "CODEX-REALTIME-1",
+      "reason": "Realtime transport facts remain native observations; unverified arbitrary item payloads are diagnosed.",
+      "items": []
+    },
+    "wire-thread-realtime-sdp": {
+      "difference": "CODEX-REALTIME-1",
+      "reason": "Realtime transport facts remain native observations; unverified arbitrary item payloads are diagnosed.",
+      "items": []
+    },
+    "wire-thread-realtime-started": {
+      "difference": "CODEX-REALTIME-1",
+      "reason": "Realtime transport facts remain native observations; unverified arbitrary item payloads are diagnosed.",
+      "items": []
+    },
+    "wire-thread-realtime-error": {
+      "difference": "CODEX-REALTIME-1",
+      "reason": "The realtime error retains its readable body without ending a conversation turn.",
+      "items": [
+        {
+          "type": "notice",
+          "role": "system",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    },
+    "wire-thread-realtime-transcript-done": {
+      "difference": "CODEX-REALTIME-1",
+      "reason": "The fixture role example is not a known user or assistant role; retain unclassified content and diagnose it.",
+      "items": [
+        {
+          "type": "provider_event",
+          "role": "",
+          "text": "Example text.",
+          "phase": "",
+          "outcome": "unknown",
+          "nativeTurnId": null
+        }
+      ]
+    }
+  }
+}

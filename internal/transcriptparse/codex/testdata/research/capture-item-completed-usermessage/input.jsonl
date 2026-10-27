@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "ordinal": 9, "type": "event_msg", "payload": {"type": "item_completed", "thread_id": "id-6d22c54faa", "turn_id": "id-b609c1de20", "item": {"type": "UserMessage", "id": "id-670e45b017", "content": [{"type": "text", "text": "[redacted]", "text_elements": []}]}, "started_at_ms": 1788671858782, "completed_at_ms": 1788671858782}}

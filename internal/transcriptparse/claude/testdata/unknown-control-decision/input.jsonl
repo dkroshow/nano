@@ -1,0 +1,2 @@
+{"type":"control_request","request_id":"permission","request":{"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"c","input":{"command":"true"}}}
+{"type":"control_response","response":{"subtype":"success","request_id":"permission","response":null}}

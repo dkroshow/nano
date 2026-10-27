@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CODEX_DELTA_WITHOUT_BASE",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": "Excerpt has no baseline. Retain update until target can be resolved."
+    }
+  ],
+  "observations": [
+    {
+      "type": "item_update",
+      "method": "thread/realtime/outputAudio/delta",
+      "targetNativeItemId": null,
+      "payload": {
+        "audio": {
+          "data": "example",
+          "numChannels": 0.0,
+          "sampleRate": 0.0
+        },
+        "threadId": "thread-example"
+      },
+      "requiresAssembly": true
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "example-0",
+      "identityAliases": [
+        {
+          "type": "row_uuid",
+          "value": "id-5fa733b1",
+          "authority": "native"
+        }
+      ],
+      "turnRef": null,
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [
+        {
+          "tool_use_id": "id-a2cabe53",
+          "type": "tool_result",
+          "content": [
+            {
+              "type": "image",
+              "source": {
+                "type": "base64",
+                "data": "[scrubbed]",
+                "media_type": "[scrubbed]"
+              }
+            }
+          ]
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "sourceField": "timestamp",
+        "precision": "millisecond"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeRowFields": {
+          "parentUuid": "id-f7495fc6",
+          "isSidechain": false,
+          "promptId": "[scrubbed]",
+          "type": "user",
+          "uuid": "id-5fa733b1",
+          "timestamp": "2026-01-01T00:00:00.000Z",
+          "toolUseResult": {
+            "type": "image",
+            "file": {
+              "base64": "[scrubbed]",
+              "type": "[scrubbed]",
+              "originalSize": 208989,
+              "dimensions": {
+                "originalWidth": 1200,
+                "originalHeight": 1444,
+                "displayWidth": 1200,
+                "displayHeight": 1444
+              }
+            }
+          },
+          "sourceToolAssistantUUID": "id-f7495fc6",
+          "userType": "[scrubbed]",
+          "entrypoint": "nano",
+          "cwd": "[scrubbed]",
+          "sessionId": "id-9275c064",
+          "version": "2.1.257",
+          "gitBranch": "[scrubbed]"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false,
+        "nativeEntrypoint": "nano",
+        "nativeOrigin": null,
+        "injectedContext": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "message.content[0]",
+          "nativeEventId": null,
+          "hash": "115f3d8ac74fda1c95458fd1795699b44fda9aae661ebb447540173bce5ffbc7",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "One isolated shape, not a complete conversation; turn reference stays null. Source source-c99c1f952168 at byte 585581. All prose, paths and ids replaced; lists shortened to at most two entries. Native keys retained where structural. Producer timing and semantic purpose are inferred unless the references say otherwise."
+}

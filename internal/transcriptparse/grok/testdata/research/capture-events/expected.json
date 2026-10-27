@@ -1,0 +1,457 @@
+{
+  "items": [
+    {
+      "id": "derived:unknown:aux-line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "turn_started",
+          "session_id": "[text]",
+          "turn_number": 0,
+          "model_id": "[text]",
+          "yolo_mode": true,
+          "conversation_message_count": 3,
+          "session_relationship": "[text]",
+          "schema_version": "[text]"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-2",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-2",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "loop_started",
+          "loop_index": 0
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-3",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-3",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "phase_changed",
+          "phase": "waiting_for_model"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-4",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-4",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "first_token"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 4,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-5",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-5",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "tool_started",
+          "tool_name": "[text]"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 5,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-6",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-6",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "permission_requested",
+          "tool_name": "[text]"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 6,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-7",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-7",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "permission_resolved",
+          "tool_name": "[text]",
+          "decision": "[text]",
+          "wait_ms": 0
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 7,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    },
+    {
+      "id": "derived:unknown:aux-line-8",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "aux-line-8",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "ts": "[text]",
+          "type": "tool_completed",
+          "tool_name": "[text]",
+          "duration_ms": 0,
+          "outcome": "[text]",
+          "tool_call_id": "id-20369"
+        }
+      },
+      "scope": {
+        "sessionId": null,
+        "origin": "unknown",
+        "view": "execution_telemetry"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 8,
+          "blockPath": "$",
+          "interpretationRule": "research-draft-1",
+          "nativeEnvelopeMetadata": {}
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Parallel native view, never append these to ACP items without an explicit join. No ACP finality or turn identity can be assumed."
+}

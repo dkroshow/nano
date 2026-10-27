@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "turn_context", "payload": {"cwd": "/workspace/example", "approval_policy": "[redacted]", "sandbox_policy": {"mode": "workspace-write", "writable_roots": ["[redacted]"], "network_access": false, "exclude_tmpdir_env_var": false, "exclude_slash_tmp": false}, "model": "[redacted]", "effort": "medium", "summary": "[redacted]"}}

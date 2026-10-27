@@ -1,0 +1,12 @@
+{"type":"system","subtype":"init","sessionId":"thread","timestamp":"2026-01-01T00:00:00Z","cwd":" /work ","version":"1","effort":{"level":"high"},"permissionMode":"default","entrypoint":"cli","gitBranch":"main"}
+{"type":"ai-title","sessionId":"thread","timestamp":"2026-01-01T00:00:01Z","aiTitle":" First title "}
+{"type":"summary","sessionId":"thread","timestamp":"2026-01-01T00:00:02Z","summary":"Do not replace title"}
+{"type":"user","sessionId":"thread","timestamp":"2026-01-01T00:00:03Z","isMeta":true,"message":{"role":"user","content":"Injected context"}}
+{"type":"user","sessionId":"thread","timestamp":"2026-01-01T00:00:04Z","message":{"role":"user","content":"<system-reminder>ignore</system-reminder>"}}
+{"type":"user","sessionId":"thread","timestamp":"2026-01-01T00:00:05Z","message":{"role":"user","content":[{"type":"text","text":" First\n request "}]}}
+{"type":"assistant","sessionId":"thread","timestamp":"2026-01-01T00:00:06Z","cwd":"/work","message":{"id":"m1","model":"model-a","role":"assistant","content":[{"type":"text","text":"Answer"}]}}
+{"type":"assistant","sessionId":"thread","timestamp":"2026-01-01T00:00:07Z","message":{"id":"m2","model":"<synthetic>","role":"assistant","content":[{"type":"text","text":"Notice"}]}}
+{"type":"permission-mode","sessionId":"thread","createdAt":"2026-01-01T00:00:08Z","mode":"acceptEdits","effort":"low"}
+{"type":"custom-title","sessionId":"thread","timestamp":"invalid","updatedAt":"2026-01-01T00:00:09Z","customTitle":"Custom title","cwd":"/work"}
+{"type":"last-prompt","sessionId":"thread","lastPrompt":" Last\n prompt "}
+{"type":"system","sessionId":"thread","forkedFromId":"parent","timestamp":"2026-01-01T00:00:11Z","git_branch":"feature","effort":"low"}

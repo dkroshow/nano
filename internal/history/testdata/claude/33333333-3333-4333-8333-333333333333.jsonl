@@ -1,0 +1,11 @@
+{"type":"user","sessionId":"33333333-3333-4333-8333-333333333333","uuid":"user-injected","isSidechain":false,"isMeta":false,"timestamp":"2026-07-09T20:00:00Z","cwd":"/workspace/claude","gitBranch":"main","version":"2.1.206","message":{"role":"user","content":"<system-reminder>internal context</system-reminder>"}}
+{"type":"user","sessionId":"33333333-3333-4333-8333-333333333333","uuid":"user-real","isSidechain":false,"isMeta":false,"timestamp":"2026-07-09T20:01:00Z","cwd":"/workspace/claude-next","gitBranch":"feature/explorer","entrypoint":"cli","message":{"role":"user","content":"Inspect all saved threads."}}
+{"type":"assistant","sessionId":"33333333-3333-4333-8333-333333333333","uuid":"assistant-1","isSidechain":false,"timestamp":"2026-07-09T20:02:00Z","message":{"role":"assistant","model":"claude-test","content":[{"type":"text","text":"I will inspect them."}]}}
+{"type":"assistant","sessionId":"33333333-3333-4333-8333-333333333333","uuid":"assistant-synthetic","isSidechain":false,"timestamp":"2026-07-09T20:02:30Z","message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"Not logged in · Please run /login"}]}}
+{"type":"system","sessionId":"33333333-3333-4333-8333-333333333333","timestamp":"2026-07-09T20:03:00Z","effort":{"level":"high"}}
+{"type":"permission-mode","sessionId":"33333333-3333-4333-8333-333333333333","timestamp":"2026-07-09T20:04:00Z","permissionMode":"bypassPermissions"}
+{"type":"last-prompt","sessionId":"33333333-3333-4333-8333-333333333333","timestamp":"2026-07-09T20:05:00Z","lastPrompt":"Show the latest catalog state."}
+{"type":"summary","sessionId":"33333333-3333-4333-8333-333333333333","timestamp":"2026-07-09T20:06:00Z","summary":"Thread catalog work"}
+{"type":"custom-title","sessionId":"33333333-3333-4333-8333-333333333333","timestamp":"2026-07-09T20:07:00Z","customTitle":"Explorer design"}
+{"type":"future-native-row","sessionId":"33333333-3333-4333-8333-333333333333","timestamp":"2026-07-09T20:08:00Z"}
+not-json

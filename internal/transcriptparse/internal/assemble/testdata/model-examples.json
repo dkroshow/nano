@@ -1,0 +1,26 @@
+{
+  "provenance": "Executable examples from sample-task model revision 2 sections 3, 6, 7 and 10; semantic assembly inputs, not native reader conformance fixtures.",
+  "grokReplay": [
+    {"id":"o1","kind":"delta","nativeEventId":"E1","text":"ha"},
+    {"id":"o2","kind":"delta","nativeEventId":"E2","text":"ha"},
+    {"id":"o3","kind":"delta","nativeEventId":"E1","text":"ha"}
+  ],
+  "claudeCall": [
+    {"id":"block-start","kind":"snapshot","text":"{\"command\":\"false\"}"},
+    {"id":"block-stop","kind":"stop","complete":true}
+  ],
+  "claudeResult": {"id":"tool-result","kind":"result","text":"exit code 1","complete":true,"outcome":"failed"},
+  "codexUsage": [
+    {"id":"response-usage","grain":"response","sampleId":"response-1","semantics":"snapshot","values":{"total":10},"observationRefs":["response-row"]},
+    {"id":"turn-usage","grain":"turn","sampleId":"turn-1","semantics":"snapshot","values":{"total":10},"observationRefs":["turn-row"]},
+    {"id":"thread-usage","grain":"thread","sampleId":"thread-1","semantics":"cumulative","values":{"total":100},"observationRefs":["thread-row"]}
+  ],
+  "nullWireTime": {
+    "id":"wire-1","kind":"delta","text":"hello",
+    "times":[
+      {"value":null,"class":"native","sourceField":"timestamp","precision":"unknown","meaning":"event","observationRef":"wire-1"},
+      {"value":"2026-09-09T00:00:01Z","class":"capture","sourceField":"capture.timestamp","precision":"second","meaning":"write","observationRef":"wire-1"},
+      {"value":"2026-09-09T00:00:02Z","class":"observed","sourceField":"caller.observedAt","precision":"second","meaning":"event","observationRef":"wire-1"}
+    ]
+  }
+}

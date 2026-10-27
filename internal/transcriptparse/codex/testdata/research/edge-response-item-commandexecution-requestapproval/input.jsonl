@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"id": "item-example", "method": "item/commandExecution/requestApproval", "params": {"itemId": "item-example", "startedAtMs": 0, "threadId": "thread-example", "turnId": "turn-example"}}}
+{"ts": "2026-01-01T00:00:00.001Z", "dir": "send", "msg": {"id": "item-example", "result": {"decision": "decline"}}}

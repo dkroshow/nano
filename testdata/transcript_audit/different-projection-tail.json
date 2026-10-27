@@ -1,0 +1,12 @@
+{
+  "snapshotHeadSeq": 2,
+  "reference": [
+    {"id":"new-user-1","projectedSeq":1,"type":"user_message","category":"messages","role":"user","text":"Analyze the repository.","contentTruncated":false},
+    {"id":"new-agent-1","projectedSeq":2,"type":"agent_message","category":"messages","role":"assistant","text":"Repository analysis complete.","contentTruncated":false}
+  ],
+  "browser": [
+    {"source":"durable","id":"old-user-1","semanticId":"old-user-1","projectedSeq":1,"type":"user_message","category":"messages","role":"user","contentState":"visible","presentation":"Analyze the repository.","inScope":true,"index":0},
+    {"source":"durable","id":"old-agent-1","semanticId":"old-agent-1","projectedSeq":2,"type":"agent_message","category":"messages","role":"assistant","contentState":"visible","presentation":"Repository analysis complete.","inScope":true,"index":1},
+    {"source":"durable","id":"post-pin","semanticId":"post-pin","projectedSeq":3,"type":"agent_message","category":"messages","role":"assistant","contentState":"visible","presentation":"Arrived after the audit pin.","inScope":true,"index":2}
+  ]
+}

@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "send", "msg": {"id": 1, "method": "thread/resume", "params": {"threadId": "thread-example"}}}
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"id": 1, "error": {"code": -32000, "message": "no rollout found", "data": null}}}

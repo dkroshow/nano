@@ -1,0 +1,3833 @@
+{
+  "TestParsedClaudeCatalogSelectsSourceWithoutNativeDecoding/root_identity_conflict/claude/2b4afe1366c8e620c9403c8ab66937d10ca087451b6650ecb391fe9b08e8a4d0": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "root",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Root prompt",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/root",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 262,
+    "completeLines": 2,
+    "bytesRead": 262,
+    "diagnostics": [
+      {
+        "kind": "identity_conflict",
+        "line": 2,
+        "message": "source file claims more than one native thread identity"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 1,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 1,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedClaudeCatalogSelectsSourceWithoutNativeDecoding/root_with_worker/claude/64ec737c02d1a3b59d2fd19df2726c75be314598b37f599778af18a7fc0d2ba7": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "root",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Root prompt",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T01:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/root",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "root-model",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T01:00:00Z"
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 692,
+    "completeLines": 4,
+    "bytesRead": 692,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedClaudeCatalogSelectsSourceWithoutNativeDecoding/worker_with_mismatched_agent/claude/104749303e531f2f394280eb1e175e1e79716a08dbfcfb5637b4edd68f9150d0": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "worker",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "root",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-01-01T01:00:00Z",
+      "updatedAt": "2026-01-01T01:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/worker",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T01:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "child-model",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T01:00:00Z"
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 418,
+    "completeLines": 2,
+    "bytesRead": 418,
+    "diagnostics": [
+      {
+        "kind": "identity_conflict",
+        "line": 1,
+        "message": "Claude subagent row agent identity does not match its source filename"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 1,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 1,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedFileGrokSeparateCatalogAndDocumentClosure/grok/1dd9d34c9c823e7cff05555f41025a4da1f84878eccb691d901d085b074fd2eb": {
+    "projection": {
+      "provider": "grok",
+      "nativeThreadId": "session",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "Catalog title",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 114,
+    "completeLines": 1,
+    "bytesRead": 114,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedFilePartialTailRestoresThroughStore/claude/1c8e86411939d4a06e0cc794f37debe5cbbe8505e44aff70ea140ea6b834e977": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "native",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "A prompt",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:01:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 346,
+    "completeLines": 2,
+    "bytesRead": 346,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedFilePartialTailRestoresThroughStore/claude/a53475066519b4f00ff8a5e994e97afa7b323d9a45cf84cc49e12654910b44a4": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "native",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "A prompt",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 135,
+    "completeLines": 1,
+    "bytesRead": 143,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedFilePartialTailRestoresThroughStore/claude/e7712bcd4d5c174cf8582b28b4aad1a788a30d1f766dea6dc6cb704773b4917a": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "native",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "A prompt",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 135,
+    "completeLines": 1,
+    "bytesRead": 145,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedGrokCatalogKeepsDiscoveredNativeParent/grok/f7484deb227a3d93e893b540249433a586d68d315b4294c03c855ede9ff37aa4": {
+    "projection": {
+      "provider": "grok",
+      "nativeThreadId": "child",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "parent",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/child",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 74,
+    "completeLines": 1,
+    "bytesRead": 74,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedGrokMetadataMatchesExistingCatalogFields/grok/4b2412ff8dec9f3f30690bf7791be0946887d66a6b1e740ca321329e0a5863d7": {
+    "projection": {
+      "provider": "grok",
+      "nativeThreadId": "id",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "A title",
+      "preview": "First second",
+      "createdAt": "2026-01-02T00:00:00Z",
+      "updatedAt": "2026-01-02T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-02T00:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-02T00:00:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-02T00:00:00Z"
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "off",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-02T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 254,
+    "completeLines": 1,
+    "bytesRead": 254,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedGrokMetadataMatchesExistingCatalogFields/grok/8559b3a3884d14019e551f10a17550ab9d48e8aef5fc90ef5023f327fdf8a2f9": {
+    "projection": {
+      "provider": "grok",
+      "nativeThreadId": "id-1",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "[text]",
+      "preview": "[text]",
+      "createdAt": "2030-01-01T00:00:00Z",
+      "updatedAt": "2030-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/example",
+          "evidence": "native_durable",
+          "observedAt": "2030-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "[text]",
+          "evidence": "native_durable",
+          "observedAt": "2030-01-01T00:00:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2030-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "off",
+          "evidence": "native_durable",
+          "observedAt": "2030-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 743,
+    "completeLines": 1,
+    "bytesRead": 743,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedGrokMetadataMatchesExistingCatalogFields/grok/f5139c662a69656ad94e425fe8022bee9ae3d653398c4e92e281c90a6481b6cc": {
+    "projection": {
+      "provider": "grok",
+      "nativeThreadId": "id",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00-07:00",
+      "updatedAt": "2026-01-02T00:00:00-07:00",
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "known",
+          "value": "model",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-02T00:00:00-07:00"
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 131,
+    "completeLines": 1,
+    "bytesRead": 131,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/0dc91b3532bc2885d34f9d731eb6ed24b7500534eb8c06a890764b15c87560b0": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:04Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 715,
+    "completeLines": 5,
+    "bytesRead": 715,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/159c6ce59598fc15dd48ce160d5f8f31766108738958df00b7e4a73bcc6f93b5": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:05Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 868,
+    "completeLines": 6,
+    "bytesRead": 868,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/3f8f0bc16adca80e6beb8c0250c259e871ecf715a8eaf282a6662157244e3eaf": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:06Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1062,
+    "completeLines": 7,
+    "bytesRead": 1062,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/537d4d4e2ba9c51112da32603dc0fd80fae5970c7b9d72883d1e2c56ef305d35": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:02Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 422,
+    "completeLines": 3,
+    "bytesRead": 422,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/589276a9e61fd8b48a69f3ef55dd061c1ea8934662ddb7614c8c2a1974082220": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:07Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1246,
+    "completeLines": 8,
+    "bytesRead": 1246,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/597f6b4162364ccc80ddc05b980d43285498c6e90cba9e8b2e911d707db36d8c": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:01Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 314,
+    "completeLines": 2,
+    "bytesRead": 314,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/755b5a3d988ffdf36c6a621c4587134f679485298bd8c0be81a5a240de2a698b": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:07Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "low",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:08Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "acceptEdits",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:08Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1365,
+    "completeLines": 9,
+    "bytesRead": 1365,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/a83dc5516ff8c098d01943d54efdef5d75f58f186baa50bc0e6b3715a6a1a338": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "fork",
+      "parentNativeId": "parent",
+      "title": "Custom title",
+      "preview": "Last prompt",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:07Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:09Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "low",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:11Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "acceptEdits",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:08Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:11Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1721,
+    "completeLines": 12,
+    "bytesRead": 1721,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/da2f05ddd1315511a6e1ae1626f34b920b42362da2c44a1769b6f89adf8ff2f3": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "First title",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:03Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 563,
+    "completeLines": 4,
+    "bytesRead": 563,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/dbc70a6be0bba91d6e512fdb52083e388d515a694308b509906d712c50bba176": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "Custom title",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:07Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:09Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "low",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:08Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "acceptEdits",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:08Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1510,
+    "completeLines": 10,
+    "bytesRead": 1510,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/ea9d5c32c9fe2fade7028970601585a97ce1ee8f714702a03c57856c995e536c": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "default",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 212,
+    "completeLines": 1,
+    "bytesRead": 212,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/catalog.jsonl/claude/ef0469e3128d8d1fd9a32e0f753cf7978524c5c3cc61f90a6f86dc2b9c497745": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "Custom title",
+      "preview": "Last prompt",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:07Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:09Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "low",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:08Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "acceptEdits",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:08Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1585,
+    "completeLines": 11,
+    "bytesRead": 1585,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/research/capture-row-result/input.jsonl/claude/b4242552a5bad8904f7eb7fa9faf42dac0767f8633e995f04c0c0582efd56d70": {
+    "projection": {
+      "provider": "claude",
+      "kind": "main",
+      "title": null,
+      "preview": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 83,
+    "completeLines": 1,
+    "bytesRead": 83,
+    "diagnostics": [
+      {
+        "kind": "missing_identity",
+        "message": "provider file has no durable or filename native identity"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 1,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 1,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/claude/testdata/research/capture-row-started/input.jsonl/claude/f9d394b011a27e5db3a9acdbf34aa44f1f795f2a6ee8f58b5a9cec8f82123d0c": {
+    "projection": {
+      "provider": "claude",
+      "kind": "main",
+      "title": null,
+      "preview": null,
+      "createdAt": null,
+      "updatedAt": null,
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 62,
+    "completeLines": 1,
+    "bytesRead": 62,
+    "diagnostics": [
+      {
+        "kind": "unknown_row",
+        "line": 1,
+        "message": "provider row type is not recognized by this parser version"
+      },
+      {
+        "kind": "missing_identity",
+        "message": "provider file has no durable or filename native identity"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 2,
+      "malformed": 0,
+      "unknownRows": 1,
+      "missingIdentity": 1,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/0576ce0d46680fe7a9c176d5fd24f2ca3e907d04deb6234e0df1dcd35f0a6db5": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Initial",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:04Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-b",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "low",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "standard",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "never",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1241,
+    "completeLines": 7,
+    "bytesRead": 1241,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/1392a8e943ad089c12b2242754eebd9eb33682b26d029eafb29237ac34713ff5": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Initial",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 274,
+    "completeLines": 1,
+    "bytesRead": 274,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/2d1ae82f2846a78a251d9164fe35f9a37b51373584d94cf943d57c343e6324b3": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Initial",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:03Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "fast",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "workspace-write",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 843,
+    "completeLines": 4,
+    "bytesRead": 843,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/95da3250e5dd9670b4c33c508499975b1c5b9bbd26b2740cdca583662c91928d": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Initial",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:04Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-b",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "low",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "standard",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "never",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1151,
+    "completeLines": 6,
+    "bytesRead": 1151,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/aa49910afd99760ac57580877891a2f5a87596589e59d3b49c69bede4527601b": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Initial",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:02Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "fast",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "workspace-write",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 679,
+    "completeLines": 3,
+    "bytesRead": 679,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/b5f3f9ba3268dae1787d9a719b049f9d89e0652423a5ba5a756b791df75bb8cb": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Renamed",
+      "preview": "Last preview",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:04Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-b",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:06Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "low",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "standard",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "never",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:05Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 1380,
+    "completeLines": 8,
+    "bytesRead": 1380,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/cc6213beedbc0e371387350da87a5416c5827e84966f4c7b05402bf9201a0ee4": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Initial",
+      "preview": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:01Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "fast",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "workspace-write",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 481,
+    "completeLines": 2,
+    "bytesRead": 481,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/../transcriptparse/codex/testdata/catalog.jsonl/codex/e327450bb6aebd1b6bad0c276f99bbfbfbb881fa4ab7c7ef55d882e3974618b1": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent",
+      "title": "Initial",
+      "preview": "First request",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:04Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/work",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "model-a",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "fast",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "workspace-write",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:01Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-01-01T00:00:00Z"
+        }
+      },
+      "providerVersion": "1"
+    },
+    "completeOffset": 968,
+    "completeLines": 5,
+    "bytesRead": 968,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/0fa81d8424503470f56daaaf855b7845bbd97777635db2599a1c034ca161ed68": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "Explorer design",
+      "preview": "Show the latest catalog state.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:03:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "bypassPermissions",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:04:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1871,
+    "completeLines": 9,
+    "bytesRead": 1871,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/20c4cb227d3e522edfc296a55f47d5feb25276e4c23cc90119dc4c9096dfdeae": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Show the latest catalog state.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:03:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "bypassPermissions",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:04:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1592,
+    "completeLines": 7,
+    "bytesRead": 1592,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/2218708a60e899e94a3dd28ec68aed3502487c1a304879362036ec37a9f3f93b": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Inspect all saved threads.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:03:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "bypassPermissions",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:04:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1437,
+    "completeLines": 6,
+    "bytesRead": 1437,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/2341179c6a574b91587ab4928efb54c2b9977fd845ea3c80b07b02109af14c32": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "Explorer design",
+      "preview": "Show the latest catalog state.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:03:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "bypassPermissions",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:04:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1995,
+    "completeLines": 11,
+    "bytesRead": 1995,
+    "diagnostics": [
+      {
+        "kind": "unknown_row",
+        "line": 10,
+        "message": "provider row type is not recognized by this parser version"
+      },
+      {
+        "kind": "malformed_line",
+        "line": 11,
+        "message": "complete JSONL line is not a JSON object"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 2,
+      "malformed": 1,
+      "unknownRows": 1,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/305f310476ef3dbfc5912f9cf71f7d2af145dd5e5876d74aea2c647e2774a073": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "Explorer design",
+      "preview": "Show the latest catalog state.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:03:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "bypassPermissions",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:04:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1986,
+    "completeLines": 10,
+    "bytesRead": 1986,
+    "diagnostics": [
+      {
+        "kind": "unknown_row",
+        "line": 10,
+        "message": "provider row type is not recognized by this parser version"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 1,
+      "malformed": 0,
+      "unknownRows": 1,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/56401abfed01a03ae00b29a6c9cb4519eac3d403e70b8a8f654d85d1b26cc3b6": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Inspect all saved threads.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:03:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1287,
+    "completeLines": 5,
+    "bytesRead": 1287,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/5e4ec9fefc6d617fa82cf48f3ef6ae0ce12bc9c8f87408656b4583385df57821": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Inspect all saved threads.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 876,
+    "completeLines": 3,
+    "bytesRead": 876,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/714c64e4cbdd0c64ae398eefd69df088083fd74b1d5eec26eeb67c7aaf37f089": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Inspect all saved threads.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1157,
+    "completeLines": 4,
+    "bytesRead": 1157,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/96d0335c169dff096ff9cb54e88e698cb0a493c6ee54dceb645b4bf499f31234": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "main",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:00:00Z"
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 315,
+    "completeLines": 1,
+    "bytesRead": 315,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/ce2f0233638423376b2d1c2aec7bad58935767d4271d11253585e79e8fba0033": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": null,
+      "preview": "Inspect all saved threads.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:01:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 617,
+    "completeLines": 2,
+    "bytesRead": 617,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/claude/33333333-3333-4333-8333-333333333333.jsonl/claude/e97ea6a1cda22e79c6ee070e867b730bd68a712a738dbf8e6d2289e6930d580a": {
+    "projection": {
+      "provider": "claude",
+      "nativeThreadId": "33333333-3333-4333-8333-333333333333",
+      "identityEvidence": "native_durable",
+      "kind": "main",
+      "title": "Thread catalog work",
+      "preview": "Show the latest catalog state.",
+      "createdAt": "2026-07-09T20:00:00Z",
+      "updatedAt": "2026-07-09T20:02:30Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/claude-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "claude-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:02:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:03:00Z"
+        },
+        "priority": {
+          "state": "unsupported",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "known",
+          "value": "bypassPermissions",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:04:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/explorer",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "cli",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T20:01:00Z"
+        }
+      },
+      "providerVersion": "2.1.206"
+    },
+    "completeOffset": 1729,
+    "completeLines": 8,
+    "bytesRead": 1729,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/guardian-parentless.jsonl/codex/11bde755115e250c7ed1e613db7f22186349203156e1f0abbcded941291d37cd": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "guardian-parentless-thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "title": null,
+      "preview": "Assess an older permission request.",
+      "createdAt": "2026-07-11T12:00:00Z",
+      "updatedAt": "2026-07-11T12:00:01Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/guardian",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-11T12:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 358,
+    "completeLines": 2,
+    "bytesRead": 358,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/guardian-parentless.jsonl/codex/9b7cb9c76b52263b92c631640ff7d80a5b6eea1c1e7965f3fbcb2b276a3e9a67": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "guardian-parentless-thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-07-11T12:00:00Z",
+      "updatedAt": "2026-07-11T12:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/guardian",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-11T12:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 176,
+    "completeLines": 1,
+    "bytesRead": 176,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/guardian-recent.jsonl/codex/70ae96366179e751a3722c347e2f7c7019f5e0211b116d05407b23e7697601f9": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "guardian-recent-thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent-thread",
+      "title": null,
+      "preview": "Assess this permission request.",
+      "createdAt": "2026-08-07T12:00:00Z",
+      "updatedAt": "2026-08-07T12:00:01Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/guardian",
+          "evidence": "native_durable",
+          "observedAt": "2026-08-07T12:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 385,
+    "completeLines": 2,
+    "bytesRead": 385,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/guardian-recent.jsonl/codex/b79c1845b30b17a76f9e8088ea6cc1c64d09fe418d1435e514d484265590f525": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "guardian-recent-thread",
+      "identityEvidence": "native_durable",
+      "kind": "guardian",
+      "parentNativeId": "parent-thread",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-08-07T12:00:00Z",
+      "updatedAt": "2026-08-07T12:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/guardian",
+          "evidence": "native_durable",
+          "observedAt": "2026-08-07T12:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 207,
+    "completeLines": 1,
+    "bytesRead": 207,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/rollout-2026-07-09T12-00-00-11111111-1111-4111-8111-111111111111.jsonl/codex/104453a1695b90a04a3ff9cfe3365dd16dec3d1dade46de1b7bdcc116cb01782": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "11111111-1111-4111-8111-111111111111",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "22222222-2222-4222-8222-222222222222",
+      "title": null,
+      "preview": "Build the read-only thread catalog.",
+      "createdAt": "2026-07-09T19:00:00Z",
+      "updatedAt": "2026-07-09T19:03:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/catalog-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "gpt-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "priority",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "on-request",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/catalog",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "codex_exec",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        }
+      },
+      "providerVersion": "0.150.0"
+    },
+    "completeOffset": 978,
+    "completeLines": 5,
+    "bytesRead": 978,
+    "diagnostics": [
+      {
+        "kind": "unknown_row",
+        "line": 5,
+        "message": "provider row type is not recognized by this parser version"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 1,
+      "malformed": 0,
+      "unknownRows": 1,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/rollout-2026-07-09T12-00-00-11111111-1111-4111-8111-111111111111.jsonl/codex/1b5e46c063611609cf38a9a11eb88386420dfaa527b71ca9db0d98cfd7235627": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "11111111-1111-4111-8111-111111111111",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "22222222-2222-4222-8222-222222222222",
+      "title": null,
+      "preview": "Build the read-only thread catalog.",
+      "createdAt": "2026-07-09T19:00:00Z",
+      "updatedAt": "2026-07-09T19:03:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/catalog-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "gpt-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "priority",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "on-request",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/catalog",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "codex_exec",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        }
+      },
+      "providerVersion": "0.150.0"
+    },
+    "completeOffset": 1022,
+    "completeLines": 6,
+    "bytesRead": 1022,
+    "diagnostics": [
+      {
+        "kind": "unknown_row",
+        "line": 5,
+        "message": "provider row type is not recognized by this parser version"
+      },
+      {
+        "kind": "malformed_line",
+        "line": 6,
+        "message": "complete JSONL line is not a JSON object"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 2,
+      "malformed": 1,
+      "unknownRows": 1,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/rollout-2026-07-09T12-00-00-11111111-1111-4111-8111-111111111111.jsonl/codex/6a2e78bae2c443a055c24c19e2b555811072073652261c9bc72ccccd05e0f944": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "11111111-1111-4111-8111-111111111111",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "22222222-2222-4222-8222-222222222222",
+      "title": null,
+      "preview": "Build the read-only thread catalog.",
+      "createdAt": "2026-07-09T19:00:00Z",
+      "updatedAt": "2026-07-09T19:03:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/catalog-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "gpt-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "priority",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "on-request",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/catalog",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "codex_exec",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        }
+      },
+      "providerVersion": "0.150.0"
+    },
+    "completeOffset": 901,
+    "completeLines": 4,
+    "bytesRead": 901,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/rollout-2026-07-09T12-00-00-11111111-1111-4111-8111-111111111111.jsonl/codex/a6e526b6211fec92192af87e10c1c01d7f93e4ad0ac0d5233c63e42ca12510a3": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "11111111-1111-4111-8111-111111111111",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "22222222-2222-4222-8222-222222222222",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-07-09T19:00:00Z",
+      "updatedAt": "2026-07-09T19:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/catalog",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/catalog",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "codex_exec",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        }
+      },
+      "providerVersion": "0.150.0"
+    },
+    "completeOffset": 353,
+    "completeLines": 1,
+    "bytesRead": 353,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/rollout-2026-07-09T12-00-00-11111111-1111-4111-8111-111111111111.jsonl/codex/c47460dab13d4f505dc69c064fc7485a2f7068546f7cb20eb0d8b801d5fa5d08": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "11111111-1111-4111-8111-111111111111",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "22222222-2222-4222-8222-222222222222",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-07-09T19:00:00Z",
+      "updatedAt": "2026-07-09T19:01:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/catalog-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "gpt-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "priority",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "on-request",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/catalog",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "codex_exec",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        }
+      },
+      "providerVersion": "0.150.0"
+    },
+    "completeOffset": 603,
+    "completeLines": 2,
+    "bytesRead": 603,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/codex/rollout-2026-07-09T12-00-00-11111111-1111-4111-8111-111111111111.jsonl/codex/e75c32810c9fa4cca7857f78f0b9512cc9e33c3e21475fa3c81b951d56d2bedc": {
+    "projection": {
+      "provider": "codex",
+      "nativeThreadId": "11111111-1111-4111-8111-111111111111",
+      "identityEvidence": "native_durable",
+      "kind": "subagent",
+      "parentNativeId": "22222222-2222-4222-8222-222222222222",
+      "title": null,
+      "preview": "Build the read-only thread catalog.",
+      "createdAt": "2026-07-09T19:00:00Z",
+      "updatedAt": "2026-07-09T19:02:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "known",
+          "value": "/workspace/catalog-next",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "model": {
+          "state": "known",
+          "value": "gpt-test",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "effort": {
+          "state": "known",
+          "value": "high",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "priority": {
+          "state": "known",
+          "value": "priority",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "permission": {
+          "state": "known",
+          "value": "on-request",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:01:00Z"
+        },
+        "historicalBranch": {
+          "state": "known",
+          "value": "feature/catalog",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        },
+        "origin": {
+          "state": "known",
+          "value": "codex_exec",
+          "evidence": "native_durable",
+          "observedAt": "2026-07-09T19:00:00Z"
+        }
+      },
+      "providerVersion": "0.150.0"
+    },
+    "completeOffset": 741,
+    "completeLines": 3,
+    "bytesRead": 741,
+    "diagnosticSummary": {
+      "total": 0,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 0,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/transcript/codex-recommended-plugins-opener.jsonl/codex/02b15acd7b105620685fe8bc8e271a162fceced5f427bad7520e0f5dabb4801b": {
+    "projection": {
+      "provider": "codex",
+      "kind": "main",
+      "title": null,
+      "preview": null,
+      "createdAt": "2026-08-08T09:00:00Z",
+      "updatedAt": "2026-08-08T09:00:00Z",
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 491,
+    "completeLines": 1,
+    "bytesRead": 491,
+    "diagnostics": [
+      {
+        "kind": "missing_identity",
+        "message": "provider file has no durable or filename native identity"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 1,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 1,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  },
+  "TestParsedJSONLMetadataMatchesExistingCatalogFields/testdata/transcript/codex-recommended-plugins-opener.jsonl/codex/4e609f80bc0c3ea5e4b75e6ec5a1cea13b6a641452ff124e4c475be460231cfb": {
+    "projection": {
+      "provider": "codex",
+      "kind": "main",
+      "title": null,
+      "preview": "Implement the bounded Guardian classification slice.",
+      "createdAt": "2026-08-08T09:00:00Z",
+      "updatedAt": "2026-08-08T09:00:01Z",
+      "metadata": {
+        "cwd": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "model": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "effort": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "priority": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "permission": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "historicalBranch": {
+          "state": "unknown",
+          "value": null,
+          "evidence": null
+        },
+        "origin": {
+          "state": "",
+          "value": null,
+          "evidence": null
+        }
+      }
+    },
+    "completeOffset": 713,
+    "completeLines": 2,
+    "bytesRead": 713,
+    "diagnostics": [
+      {
+        "kind": "missing_identity",
+        "message": "provider file has no durable or filename native identity"
+      }
+    ],
+    "diagnosticSummary": {
+      "total": 1,
+      "malformed": 0,
+      "unknownRows": 0,
+      "missingIdentity": 1,
+      "identityConflicts": 0,
+      "oversizedLines": 0,
+      "filesystem": 0,
+      "dropped": 0
+    }
+  }
+}

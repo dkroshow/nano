@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CODEX_DELTA_WITHOUT_BASE",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": "Excerpt has no baseline. Retain update until target can be resolved."
+    }
+  ],
+  "observations": [
+    {
+      "type": "item_update",
+      "method": "item/fileChange/outputDelta",
+      "targetNativeItemId": "item-example",
+      "payload": {
+        "delta": "Example text.",
+        "itemId": "item-example",
+        "threadId": "thread-example",
+        "turnId": "turn-example"
+      },
+      "requiresAssembly": true
+    }
+  ]
+}

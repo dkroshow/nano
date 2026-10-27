@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "unknown",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "nativeType": "future_example"
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "ff3a72f8e0e9a6c1a853d43946d799dd4c6402a2d4e22edae1ba27aa523e7ab4",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    },
+    {
+      "id": "malformed",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "rawPrefix": "{not-json}"
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "aa4b143348f3e7cc620a0b03986c3a428677bfccc9f998f5a7f447f832fcf389",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_ROW_UNKNOWN",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": ""
+    },
+    {
+      "code": "CLAUDE_JSON_INVALID",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 2
+      },
+      "detail": ""
+    },
+    {
+      "code": "CLAUDE_PARTIAL_TAIL",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 3
+      },
+      "detail": ""
+    }
+  ],
+  "notes": "Third row is deliberately incomplete with no newline. Keep the complete-line checkpoint before it. Preserve a partial-source diagnostic; do not infer a completed or failed conversation from EOF. Unknown items are inspectable."
+}

@@ -1,0 +1,229 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "tool_call_id",
+          "value": "id-5f4d2a7355",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "precision": "millisecond",
+        "sourceField": "timestamp"
+      },
+      "observedTime": null,
+      "tool": {
+        "name": null,
+        "callId": "id-5f4d2a7355",
+        "arguments": null,
+        "outputs": null
+      },
+      "detail": {
+        "type": "tool_search_output",
+        "call_id": "id-5f4d2a7355",
+        "status": "completed",
+        "execution": "[redacted]",
+        "tools": [
+          {
+            "type": "namespace",
+            "name": "neutral_tool",
+            "description": "[redacted]",
+            "tools": [
+              {
+                "type": "function",
+                "name": "spawn_agent",
+                "description": "[redacted]",
+                "strict": false,
+                "defer_loading": true,
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "agent_type": {
+                      "type": "string",
+                      "description": "[redacted]"
+                    },
+                    "fork_context": {
+                      "type": "boolean",
+                      "description": "[redacted]"
+                    },
+                    "items": {
+                      "type": "array",
+                      "description": "[redacted]",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "image_url": {
+                            "type": "string",
+                            "description": "[redacted]"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "[redacted]"
+                          },
+                          "path": {
+                            "type": "string",
+                            "description": "[redacted]"
+                          },
+                          "text": {
+                            "type": "string",
+                            "description": "[redacted]"
+                          },
+                          "type": {
+                            "type": "string",
+                            "description": "[redacted]"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "[redacted]"
+                    },
+                    "model": {
+                      "type": "string",
+                      "description": "[redacted]"
+                    },
+                    "reasoning_effort": {
+                      "type": "string",
+                      "description": "[redacted]"
+                    },
+                    "service_tier": {
+                      "type": "string",
+                      "description": "[redacted]"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "function",
+                "name": "resume_agent",
+                "description": "[redacted]",
+                "strict": false,
+                "defer_loading": true,
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "[redacted]"
+                    }
+                  },
+                  "required": [
+                    "[redacted]"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "function",
+                "name": "close_agent",
+                "description": "[redacted]",
+                "strict": false,
+                "defer_loading": true,
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "target": {
+                      "type": "string",
+                      "description": "[redacted]"
+                    }
+                  },
+                  "required": [
+                    "[redacted]"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "function",
+                "name": "wait_agent",
+                "description": "[redacted]",
+                "strict": false,
+                "defer_loading": true,
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "targets": {
+                      "type": "array",
+                      "description": "[redacted]",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "timeout_ms": {
+                      "type": "number",
+                      "description": "[redacted]"
+                    }
+                  },
+                  "required": [
+                    "[redacted]"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

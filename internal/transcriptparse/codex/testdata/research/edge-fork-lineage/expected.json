@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "thread_lineage",
+      "relation": "fork",
+      "child": "fork-child",
+      "parent": "fork-parent",
+      "basis": "payload.forked_from_id",
+      "origin": "native"
+    }
+  ]
+}

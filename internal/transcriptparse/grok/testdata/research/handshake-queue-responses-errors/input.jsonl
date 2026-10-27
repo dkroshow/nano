@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentInfo":{"name":"Grok Build","version":"1.0.3"},"_meta":{"modelState":{"currentModelId":"model-a","availableModels":[{"modelId":"model-a","_meta":{"reasoningEffort":"high","reasoningEfforts":[{"reasoningEffort":"high"}]}}]}}}}
+{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s1","_meta":{"x.ai/sessionConfig":{"options":[{"category":"mode","id":"high","selected":true}]},"x.ai/sessionDetail":{"currentModelId":"model-a"}}}}
+{"jsonrpc":"2.0","method":"_x.ai/queue/changed","params":{"sessionId":"s1","runningPromptId":"p1","runningText":"Check.","entries":[{"id":"p2","kind":"prompt","text":"Next check."}]}}
+{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn","_meta":{"promptId":"p1"}}}
+{"jsonrpc":"2.0","method":"_x.ai/session/prompt_complete","params":{"promptId":"p1","stopReason":"end_turn"}}
+{"jsonrpc":"2.0","id":4,"error":{"code":-32601,"message":"Method unavailable"}}
+{"jsonrpc":"2.0","id":5,"error":{"code":-32602,"message":"Invalid parameters"}}

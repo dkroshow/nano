@@ -1,0 +1,126 @@
+{
+  "items": [
+    {
+      "id": "derived:id-1:id-12",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "id-12",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "id-7",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "id-4",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_call",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1787067260792,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "id-7",
+          "name": "[text]",
+          "nativeStatus": null,
+          "arguments": {
+            "variant": "[text]",
+            "merge": false,
+            "todos": [
+              {
+                "key-0": "id-8",
+                "key-1": "[text]",
+                "key-2": "in_progress"
+              },
+              {
+                "key-0": "id-9",
+                "key-1": "[text]",
+                "key-2": "pending"
+              },
+              {
+                "key-0": "id-10",
+                "key-1": "[text]",
+                "key-2": "pending"
+              }
+            ]
+          },
+          "output": null,
+          "locations": [],
+          "metadata": {
+            "version": 1,
+            "name": "[text]",
+            "kind": "plan",
+            "namespace": "[text]",
+            "label": "[text]",
+            "read_only": false
+          }
+        }
+      },
+      "scope": {
+        "sessionId": "id-1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "id-12",
+          "replay": false,
+          "sha256": "2b2dde03421571752e9a62c679b962349e4edcd3e3c75ecf0723ad24eba0bc7a",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1787067260,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {
+            "totalTokens": 20627,
+            "eventId": "id-12",
+            "agentTimestampMs": 1787067260792,
+            "promptId": "id-4",
+            "streamStartMs": 1787067253681,
+            "turnStartMs": 1787067253048,
+            "updateType": "[text]",
+            "updateParams": {
+              "toolCallId": "id-7",
+              "status": null
+            }
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

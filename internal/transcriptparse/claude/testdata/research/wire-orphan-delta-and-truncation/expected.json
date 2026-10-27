@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "orphan",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "unknown",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "nativeEvent": {
+          "type": "stream_event",
+          "session_id": "session-example",
+          "uuid": "event-example",
+          "parent_tool_use_id": null,
+          "event": {
+            "type": "content_block_delta",
+            "index": 3,
+            "delta": {
+              "type": "text_delta",
+              "text": "Partial."
+            }
+          }
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "95061bd4868c3580b40fa7f76db85bc7563551401bdf80e5b453cb764e55ec26",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "truncated",
+        "evidence": [
+          "message_delta.stop_reason=max_tokens"
+        ]
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_BLOCK_START_MISSING",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": ""
+    }
+  ],
+  "notes": "Constructed capture beginning mid-message. Retain fragment as unknown or unbound content until assembly scope is established. Current live adapter discards orphan deltas and message_delta. Truncation assignment is provisional because no complete prompt/message scope was supplied."
+}

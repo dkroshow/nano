@@ -1,0 +1,6 @@
+{"type":"user","uuid":"prompt","message":{"content":"Run two calls"}}
+{"type":"assistant","uuid":"first","message":{"id":"message","content":[{"type":"tool_use","id":"call-a","name":"Bash","input":{"command":"one"}}]}}
+{"type":"assistant","uuid":"second","message":{"id":"message","content":[{"type":"tool_use","id":"call-b","name":"Bash","input":{"command":"two"}}]}}
+{"type":"result","subtype":"success"}
+{"type":"user","uuid":"next","message":{"content":"Next prompt"}}
+{"type":"assistant","uuid":"second","message":{"id":"message","content":[{"type":"tool_use","id":"call-b","name":"Bash","input":{"command":"two"}}]}}

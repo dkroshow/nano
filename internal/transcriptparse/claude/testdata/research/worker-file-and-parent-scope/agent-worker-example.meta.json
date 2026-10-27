@@ -1,0 +1,8 @@
+{
+  "agentType": "example",
+  "description": "Example worker",
+  "toolUseId": "launch-1",
+  "spawnDepth": 1,
+  "model": "claude-example",
+  "parentAgentId": null
+}

@@ -1,0 +1,8 @@
+{"ts":"[text]","type":"turn_started","session_id":"[text]","turn_number":0,"model_id":"[text]","yolo_mode":true,"conversation_message_count":3,"session_relationship":"[text]","schema_version":"[text]"}
+{"ts":"[text]","type":"loop_started","loop_index":0}
+{"ts":"[text]","type":"phase_changed","phase":"waiting_for_model"}
+{"ts":"[text]","type":"first_token"}
+{"ts":"[text]","type":"tool_started","tool_name":"[text]"}
+{"ts":"[text]","type":"permission_requested","tool_name":"[text]"}
+{"ts":"[text]","type":"permission_resolved","tool_name":"[text]","decision":"[text]","wait_ms":0}
+{"ts":"[text]","type":"tool_completed","tool_name":"[text]","duration_ms":0,"outcome":"[text]","tool_call_id":"id-20369"}

@@ -1,0 +1,22 @@
+{
+  "name": "nano-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench:streaming-markdown": "node scripts/benchmark_streaming_markdown.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "marked": "^18.0.5"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@testing-library/svelte": "^5.4.2",
+    "jsdom": "^30.0.1",
+    "svelte": "^5.56.3",
+    "vite": "^8.0.16",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "compaction_trigger",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "nativePayload": {
+        "type": "compaction_trigger"
+      },
+      "completionKnown": false
+    }
+  ]
+}

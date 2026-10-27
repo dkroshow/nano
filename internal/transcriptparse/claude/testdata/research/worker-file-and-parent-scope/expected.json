@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "wm-0",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": true,
+        "basis": "terminal evidence",
+        "confidence": "medium"
+      },
+      "text": "Worker finished.",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {},
+      "originScope": {
+        "human": false,
+        "sidechain": true,
+        "workerLocal": true,
+        "parentSessionId": "session-example",
+        "workerId": "worker-example"
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 2,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "dbf65d56bd302841c979a05facdb98b1f96373a7d764d2241ac3707671db519d",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "id": "worker-t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "worker-t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": []
+      },
+      "finalItemRefs": [
+        "wm-0"
+      ],
+      "modelObservations": [],
+      "usage": {
+        "provider": "claude",
+        "grain": "worker_turn",
+        "input_tokens": 2,
+        "cache_read_input_tokens": 10,
+        "cache_creation_input_tokens": 5,
+        "output_tokens": 4
+      }
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Interpret input as <parent>/subagents/agent-worker-example.jsonl. These rows are primary inside the worker file. The same rows embedded in a parent transcript must not close its turn or add its usage. Companion meta.json is constructed from observed field keys.",
+  "parentScopeExpected": {
+    "turnCompletionUnaffected": true,
+    "parentUsageUnaffected": true
+  }
+}

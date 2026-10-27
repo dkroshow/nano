@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "guardian_assessment", "id": "id-fd91057917", "target_item_id": "[redacted]", "turn_id": "id-01c89e6541", "status": "in_progress", "action": {"type": "command", "source": "[redacted]", "command": "[redacted]", "cwd": "/workspace/example"}}}

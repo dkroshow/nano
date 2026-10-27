@@ -1,0 +1,112 @@
+{
+  "items": [
+    {
+      "id": "derived:id-1:id-806",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "id-806",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "id-805",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1787170806533,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "turn_completed",
+        "native": {
+          "sessionUpdate": "turn_completed",
+          "prompt_id": "id-805",
+          "stop_reason": "cancelled"
+        }
+      },
+      "scope": {
+        "sessionId": "id-1",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "id-806",
+          "replay": false,
+          "sha256": "bcca7fa57f231b01b86e6eacb660c2fac81d25b7e39626ed484c71897cb256a2",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1787170806,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {
+            "eventId": "id-806",
+            "agentTimestampMs": 1787170806533,
+            "cancellationCategory": "MidTurnAbort"
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "nativeSessionId": "id-1",
+      "nativeTurnId": "id-805",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": "not_in_excerpt",
+        "endEventId": "id-806"
+      },
+      "completion": {
+        "state": "interrupted",
+        "basis": "native_turn_completed",
+        "stopReason": "cancelled",
+        "cancellationCategory": "MidTurnAbort"
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": {
+        "provider": "grok",
+        "grain": "native_prompt",
+        "values": null,
+        "completeness": "unknown"
+      },
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

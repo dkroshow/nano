@@ -1,0 +1,4 @@
+{"type":"user","uuid":"prompt","message":{"content":"Run the example"}}
+{"type":"assistant","uuid":"one","message":{"id":"m1","content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"false"}}]}}
+{"type":"assistant","uuid":"two","message":{"id":"m2","content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"true"}}]}}
+{"type":"user","uuid":"result","message":{"content":[{"type":"tool_result","tool_use_id":"c","content":"Execution failed","is_error":true}]}}

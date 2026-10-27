@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "request_resolution",
+      "method": "item/tool/call",
+      "requestId": {
+        "scalarType": "string",
+        "value": "item-example"
+      },
+      "result": {
+        "success": false,
+        "contentItems": [
+          {
+            "type": "inputText",
+            "text": "Example tool failure."
+          }
+        ]
+      },
+      "doesNotImplyTurnCompletion": true
+    }
+  ]
+}

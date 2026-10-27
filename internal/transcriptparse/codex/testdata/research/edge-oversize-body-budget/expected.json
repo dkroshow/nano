@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "fixture_recipe",
+      "replaceTextWith": {
+        "repeat": "x",
+        "count": 33554433
+      },
+      "expectedDiagnostic": "CODEX_OVERSIZED_RECORD",
+      "expectedSourceCheckpoint": "advance past complete oversized line",
+      "retainBoundedRawReference": true
+    }
+  ]
+}

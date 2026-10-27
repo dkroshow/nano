@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"success"},"_meta":{"eventId":"e1","promptId":"p1","agentTimestampMs":1893456000001}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"c2","status":"error"},"_meta":{"eventId":"e2","promptId":"p1","agentTimestampMs":1893456000001}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"c3","status":"canceled"},"_meta":{"eventId":"e3","promptId":"p1","agentTimestampMs":1893456000001}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"c4","status":"interrupted"},"_meta":{"eventId":"e4","promptId":"p1","agentTimestampMs":1893456000001}}}

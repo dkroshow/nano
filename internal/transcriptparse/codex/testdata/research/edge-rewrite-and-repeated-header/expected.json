@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "thread_identity",
+      "nativeThreadId": "thread-example",
+      "sourceHeaderLines": [
+        1,
+        2
+      ]
+    },
+    {
+      "type": "source_generation_scenario",
+      "old": {
+        "inode": 1,
+        "size": 1000
+      },
+      "new": {
+        "inode": 2,
+        "size": 800
+      },
+      "expected": "rebuild source checkpoint; do not duplicate logical thread"
+    }
+  ]
+}

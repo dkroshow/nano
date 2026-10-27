@@ -1,0 +1,7 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-example"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Same text."}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "token_count", "info": null}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Same text."}], "id": "answer-1"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "turn-example"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-two"}}
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Same text."}], "id": "answer-2"}}

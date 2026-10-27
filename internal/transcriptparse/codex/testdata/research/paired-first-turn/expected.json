@@ -1,0 +1,852 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "native_item_id",
+          "value": "native-cb0ecb18c1",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:19",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "native-92e6fbdfea",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "Reply with exactly: EXAMPLE_OK",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "Reply with exactly: EXAMPLE_OK"
+        }
+      ],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1767225602975,
+        "precision": "millisecond",
+        "sourceField": "params.completedAtMs"
+      },
+      "observedTime": "2026-01-01T00:00:02.976338Z",
+      "tool": null,
+      "detail": {
+        "type": "userMessage",
+        "id": "native-cb0ecb18c1",
+        "clientId": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "Reply with exactly: EXAMPLE_OK",
+            "text_elements": []
+          }
+        ]
+      },
+      "origin": {
+        "human": true,
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 19,
+          "byteOffset": null,
+          "blockPath": "/msg/params/item",
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        },
+        {
+          "sourceLabel": "file.jsonl",
+          "line": 6,
+          "interpretationRule": "same-captured-thread-correspondence"
+        },
+        {
+          "sourceLabel": "file.jsonl",
+          "line": 7,
+          "interpretationRule": "same-captured-thread-correspondence"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    },
+    {
+      "id": "item-2",
+      "identityAliases": [
+        {
+          "type": "native_item_id",
+          "value": "native-1c7041eb47",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:21",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "native-92e6fbdfea",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "reasoning",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [
+        {
+          "type": "encrypted",
+          "opaque": true,
+          "source": "file.jsonl:8",
+          "bodyRetained": false
+        }
+      ],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1767225604234,
+        "precision": "millisecond",
+        "sourceField": "params.completedAtMs"
+      },
+      "observedTime": "2026-01-01T00:00:04.234281Z",
+      "tool": null,
+      "detail": {
+        "type": "reasoning",
+        "id": "native-1c7041eb47",
+        "summary": [],
+        "content": []
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 21,
+          "byteOffset": null,
+          "blockPath": "/msg/params/item",
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        },
+        {
+          "sourceLabel": "file.jsonl",
+          "line": 8,
+          "interpretationRule": "same-captured-thread-correspondence"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    },
+    {
+      "id": "item-3",
+      "identityAliases": [
+        {
+          "type": "native_item_id",
+          "value": "native-a066798ab7",
+          "origin": "native"
+        },
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:28",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "native-92e6fbdfea",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": "final_answer",
+      "finality": {
+        "designation": "final_answer",
+        "basis": "native phase",
+        "confidence": "high"
+      },
+      "text": "EXAMPLE_OK",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "EXAMPLE_OK"
+        }
+      ],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": 1767225604344,
+        "precision": "millisecond",
+        "sourceField": "params.completedAtMs"
+      },
+      "observedTime": "2026-01-01T00:00:04.345235Z",
+      "tool": null,
+      "detail": {
+        "type": "agentMessage",
+        "id": "native-a066798ab7",
+        "text": "EXAMPLE_OK",
+        "phase": "final_answer",
+        "memoryCitation": null
+      },
+      "origin": {
+        "human": "unknown",
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": false
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": false,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 28,
+          "byteOffset": null,
+          "blockPath": "/msg/params/item",
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        },
+        {
+          "sourceLabel": "file.jsonl",
+          "line": 9,
+          "interpretationRule": "same-captured-thread-correspondence"
+        },
+        {
+          "sourceLabel": "file.jsonl",
+          "line": 10,
+          "interpretationRule": "same-captured-thread-correspondence"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "nativeTurnId": "native-92e6fbdfea",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": {
+          "value": 1767225602,
+          "precision": "second",
+          "source": "input.jsonl:13/params/turn/startedAt"
+        },
+        "end": {
+          "value": 1767225605,
+          "precision": "second",
+          "source": "input.jsonl:34/params/turn/completedAt"
+        }
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": [
+          {
+            "source": "file.jsonl",
+            "line": 12,
+            "shape": "task_complete"
+          },
+          {
+            "source": "input.jsonl",
+            "line": 34,
+            "method": "turn/completed"
+          }
+        ]
+      },
+      "finalItemRefs": [
+        "item-3"
+      ],
+      "modelObservations": [],
+      "usage": {
+        "provider": "codex",
+        "aggregation": "same usage observation in two sources; count once",
+        "file": {
+          "total_token_usage": {
+            "input_tokens": 12165,
+            "cached_input_tokens": 4992,
+            "output_tokens": 20,
+            "reasoning_output_tokens": 9,
+            "total_tokens": 12185
+          },
+          "last_token_usage": {
+            "input_tokens": 12165,
+            "cached_input_tokens": 4992,
+            "output_tokens": 20,
+            "reasoning_output_tokens": 9,
+            "total_tokens": 12185
+          },
+          "model_context_window": 258400
+        },
+        "wire": {
+          "total": {
+            "totalTokens": 12185,
+            "inputTokens": 12165,
+            "cachedInputTokens": 4992,
+            "outputTokens": 20,
+            "reasoningOutputTokens": 9
+          },
+          "last": {
+            "totalTokens": 12185,
+            "inputTokens": 12165,
+            "cachedInputTokens": 4992,
+            "outputTokens": 20,
+            "reasoningOutputTokens": 9
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    }
+  ],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "source_context",
+      "source": "file.jsonl",
+      "lines": [
+        1,
+        3,
+        4
+      ],
+      "human": false
+    },
+    {
+      "type": "turn_config",
+      "source": "file.jsonl",
+      "line": 5,
+      "fields": {
+        "turn_id": "native-92e6fbdfea",
+        "cwd": "/workspace/example",
+        "workspace_roots": [
+          "[redacted]"
+        ],
+        "current_date": "[redacted]",
+        "timezone": "[redacted]",
+        "approval_policy": "[redacted]",
+        "sandbox_policy": {
+          "type": "read-only"
+        },
+        "permission_profile": {
+          "type": "managed",
+          "file_system": {
+            "type": "restricted",
+            "entries": [
+              {
+                "path": {
+                  "type": "special",
+                  "value": {
+                    "kind": "root"
+                  }
+                },
+                "access": "[redacted]"
+              }
+            ]
+          },
+          "network": "[redacted]"
+        },
+        "model": "gpt-5.5",
+        "comp_hash": "[redacted]",
+        "personality": "[redacted]",
+        "collaboration_mode": {
+          "mode": "[redacted]",
+          "settings": {
+            "model": "gpt-5.5",
+            "reasoning_effort": "[redacted]",
+            "developer_instructions": null
+          }
+        },
+        "multi_agent_version": "[redacted]",
+        "realtime_active": false,
+        "effort": "high",
+        "summary": "auto"
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 1,
+      "direction": "send",
+      "message": {
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "clientInfo": {
+            "name": "[redacted]",
+            "title": "[redacted]",
+            "version": "[redacted]"
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 2,
+      "direction": "recv",
+      "message": {
+        "id": 1,
+        "result": {
+          "userAgent": "[redacted]",
+          "codexHome": "/workspace/example",
+          "platformFamily": "[redacted]",
+          "platformOs": "[redacted]"
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 3,
+      "direction": "recv",
+      "message": {
+        "method": "remoteControl/status/changed",
+        "params": {
+          "status": "disabled",
+          "serverName": "[redacted]",
+          "installationId": "[redacted]",
+          "environmentId": null
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 4,
+      "direction": "send",
+      "message": {
+        "method": "initialized"
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 5,
+      "direction": "send",
+      "message": {
+        "id": 2,
+        "method": "thread/start",
+        "params": {
+          "approvalPolicy": "never",
+          "cwd": "/workspace/example",
+          "sandbox": "[redacted]"
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 6,
+      "direction": "recv",
+      "message": {
+        "id": 2,
+        "result": {
+          "thread": {
+            "id": "native-1943b5573b",
+            "sessionId": "[redacted]",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "[redacted]",
+            "ephemeral": false,
+            "modelProvider": "openai",
+            "createdAt": 1767225602,
+            "updatedAt": 1767225602,
+            "recencyAt": 1783299757,
+            "status": {
+              "type": "idle"
+            },
+            "path": "/workspace/example",
+            "cwd": "/workspace/example",
+            "cliVersion": "[redacted]",
+            "source": "vscode",
+            "threadSource": null,
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": null,
+            "name": null,
+            "turns": []
+          },
+          "model": "gpt-5.5",
+          "modelProvider": "openai",
+          "serviceTier": "priority",
+          "cwd": "/workspace/example",
+          "runtimeWorkspaceRoots": [
+            "[redacted]"
+          ],
+          "instructionSources": [
+            "[redacted]",
+            "[redacted]"
+          ],
+          "approvalPolicy": "never",
+          "approvalsReviewer": "auto_review",
+          "sandbox": {
+            "type": "readOnly",
+            "networkAccess": false
+          },
+          "activePermissionProfile": null,
+          "reasoningEffort": "high",
+          "multiAgentMode": "explicitRequestOnly"
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 7,
+      "direction": "recv",
+      "message": {
+        "method": "thread/started",
+        "params": {
+          "thread": {
+            "id": "native-1943b5573b",
+            "sessionId": "[redacted]",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "[redacted]",
+            "ephemeral": false,
+            "modelProvider": "openai",
+            "createdAt": 1767225602,
+            "updatedAt": 1767225602,
+            "recencyAt": 1783299757,
+            "status": {
+              "type": "idle"
+            },
+            "path": "/workspace/example",
+            "cwd": "/workspace/example",
+            "cliVersion": "[redacted]",
+            "source": "vscode",
+            "threadSource": null,
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": null,
+            "name": null,
+            "turns": []
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 8,
+      "direction": "recv",
+      "message": {
+        "method": "mcpServer/startupStatus/updated",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "name": "[redacted]",
+          "status": "starting",
+          "error": null
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 9,
+      "direction": "recv",
+      "message": {
+        "method": "mcpServer/startupStatus/updated",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "name": "[redacted]",
+          "status": "starting",
+          "error": null
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 10,
+      "direction": "send",
+      "message": {
+        "id": 3,
+        "method": "turn/start",
+        "params": {
+          "input": [
+            {
+              "text": "Reply with exactly: EXAMPLE_OK",
+              "type": "text"
+            }
+          ],
+          "threadId": "native-1943b5573b"
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 11,
+      "direction": "recv",
+      "message": {
+        "id": 3,
+        "result": {
+          "turn": {
+            "id": "native-92e6fbdfea",
+            "items": [],
+            "itemsView": "[redacted]",
+            "status": "inProgress",
+            "error": null,
+            "startedAt": null,
+            "completedAt": null,
+            "durationMs": null
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 12,
+      "direction": "recv",
+      "message": {
+        "method": "thread/status/changed",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "status": {
+            "type": "active",
+            "activeFlags": []
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 14,
+      "direction": "recv",
+      "message": {
+        "method": "mcpServer/startupStatus/updated",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "name": "[redacted]",
+          "status": "ready",
+          "error": null
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 15,
+      "direction": "recv",
+      "message": {
+        "method": "mcpServer/startupStatus/updated",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "name": "[redacted]",
+          "status": "ready",
+          "error": null
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 16,
+      "direction": "recv",
+      "message": {
+        "method": "hook/started",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "turnId": "native-92e6fbdfea",
+          "run": {
+            "id": "native-361f91ffaf",
+            "eventName": "userPromptSubmit",
+            "handlerType": "[redacted]",
+            "executionMode": "sync",
+            "scope": "[redacted]",
+            "sourcePath": "[redacted]",
+            "source": "user",
+            "displayOrder": 0,
+            "status": "running",
+            "statusMessage": null,
+            "startedAt": 1767225603,
+            "completedAt": null,
+            "durationMs": null,
+            "entries": []
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 17,
+      "direction": "recv",
+      "message": {
+        "method": "hook/completed",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "turnId": "native-92e6fbdfea",
+          "run": {
+            "id": "native-361f91ffaf",
+            "eventName": "userPromptSubmit",
+            "handlerType": "[redacted]",
+            "executionMode": "sync",
+            "scope": "[redacted]",
+            "sourcePath": "[redacted]",
+            "source": "user",
+            "displayOrder": 0,
+            "status": "completed",
+            "statusMessage": null,
+            "startedAt": 1767225603,
+            "completedAt": 1767225603,
+            "durationMs": 91,
+            "entries": []
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 30,
+      "direction": "recv",
+      "message": {
+        "method": "account/rateLimits/updated",
+        "params": {
+          "rateLimits": {
+            "limitId": "[redacted]",
+            "limitName": null,
+            "primary": {
+              "usedPercent": 3,
+              "windowDurationMins": 300,
+              "resetsAt": 1783310118
+            },
+            "secondary": {
+              "usedPercent": 67,
+              "windowDurationMins": 10080,
+              "resetsAt": 1783392089
+            },
+            "credits": null,
+            "individualLimit": null,
+            "planType": "[redacted]",
+            "rateLimitReachedType": null
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 31,
+      "direction": "recv",
+      "message": {
+        "method": "hook/started",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "turnId": "native-92e6fbdfea",
+          "run": {
+            "id": "native-f2a7315939",
+            "eventName": "stop",
+            "handlerType": "[redacted]",
+            "executionMode": "sync",
+            "scope": "[redacted]",
+            "sourcePath": "[redacted]",
+            "source": "user",
+            "displayOrder": 1,
+            "status": "running",
+            "statusMessage": null,
+            "startedAt": 1767225605,
+            "completedAt": null,
+            "durationMs": null,
+            "entries": []
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 32,
+      "direction": "recv",
+      "message": {
+        "method": "hook/completed",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "turnId": "native-92e6fbdfea",
+          "run": {
+            "id": "native-f2a7315939",
+            "eventName": "stop",
+            "handlerType": "[redacted]",
+            "executionMode": "sync",
+            "scope": "[redacted]",
+            "sourcePath": "[redacted]",
+            "source": "user",
+            "displayOrder": 1,
+            "status": "completed",
+            "statusMessage": null,
+            "startedAt": 1767225605,
+            "completedAt": 1767225605,
+            "durationMs": 88,
+            "entries": []
+          }
+        }
+      }
+    },
+    {
+      "type": "control_observation",
+      "source": "input.jsonl",
+      "line": 33,
+      "direction": "recv",
+      "message": {
+        "method": "thread/status/changed",
+        "params": {
+          "threadId": "native-1943b5573b",
+          "status": {
+            "type": "idle"
+          }
+        }
+      }
+    }
+  ]
+}

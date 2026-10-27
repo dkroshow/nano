@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "req1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "interaction",
+      "role": "user",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "requestId": "req1",
+        "callId": "call1",
+        "questions": [
+          {
+            "question": "Choose a color.",
+            "header": "Color",
+            "multiSelect": true,
+            "options": [
+              {
+                "label": "Blue",
+                "description": "Example option."
+              },
+              {
+                "label": "Green",
+                "description": "Example option."
+              }
+            ]
+          }
+        ],
+        "answers": {
+          "Choose a color.": [
+            "Blue",
+            "Green"
+          ]
+        },
+        "state": "answered"
+      },
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "84afa35fe762ae9b4700b88aa1b1a5c1c0567b180cf1e8c6cba82ef34940a4e1",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "Composite constructed example: first two rows are wire; last is file. This is not a captured pair. Answers use exact question text as keys; arrays are supported by code but real multi-select was not confirmed in this scan. Request producer is system; answer actor is user; retain both actor facts."
+}

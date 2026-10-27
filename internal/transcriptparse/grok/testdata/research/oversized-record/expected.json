@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "id": "derived:unknown:oversized-line-1",
+      "identityAliases": [
+        {
+          "type": "derived_key",
+          "value": "oversized-line-1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "unknown",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTimestamp": null,
+      "observedTime": null,
+      "detail": {},
+      "scope": {
+        "sessionId": null
+      },
+      "provenance": [
+        {
+          "source": "generated-input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1"
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "GROK_OVERSIZED_RECORD",
+      "severity": "warning",
+      "source": "generated-input.jsonl",
+      "line": 1
+    }
+  ],
+  "note": "Proposed unknown handle retains source coordinates and size, not megabytes of text."
+}

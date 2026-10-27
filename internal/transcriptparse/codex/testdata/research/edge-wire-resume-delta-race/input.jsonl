@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/agentMessage/delta", "params": {"threadId": "thread-example", "turnId": "turn-example", "itemId": "m", "delta": "B"}}}
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"id": 7, "result": {"thread": {"id": "thread-example", "turns": [{"id": "turn-example", "status": "inProgress", "startedAt": 1767225600, "itemsView": "full", "items": [{"type": "agentMessage", "id": "m", "text": "A", "phase": "commentary"}]}]}}}}

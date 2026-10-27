@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-01T00:00:00.000Z", "type": "event_msg", "payload": {"type": "sub_agent_activity", "event_id": "[redacted]", "occurred_at_ms": 1783654118233, "agent_thread_id": "id-a7e225dea8", "agent_path": "/workspace/example", "kind": "started"}}

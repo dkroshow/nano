@@ -1,0 +1,84 @@
+{
+  "schema_version": 2,
+  "request_id": "[text]",
+  "created_at": "2030-01-01T00:00:00.000000Z",
+  "trigger": "auto",
+  "prompt_variant": "[text]",
+  "model": "[text]",
+  "user_context": null,
+  "chat_history": [
+    {
+      "type": "system",
+      "content": "[text]"
+    },
+    {
+      "type": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ]
+    },
+    {
+      "type": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ],
+      "synthetic_reason": "system_reminder"
+    }
+  ],
+  "tools": [
+    {
+      "name": "run_terminal_command",
+      "description": "[text]",
+      "parameters": {
+        "$schema": "[text]",
+        "required": [
+          "[text]",
+          "[text]"
+        ],
+        "properties": {
+          "command": {
+            "description": "[text]",
+            "type": "string"
+          },
+          "timeout": {
+            "description": "[text]",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "[text]",
+            "minimum": 0,
+            "default": 120000,
+            "maximum": 36000000
+          },
+          "description": {
+            "description": "[text]",
+            "type": "string"
+          },
+          "background": {
+            "description": "[text]",
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "type": "object"
+      }
+    }
+  ],
+  "summary": "[text]",
+  "error": null,
+  "attempts": 1,
+  "attempt_details": [
+    {
+      "attempt": 1,
+      "outcome": "[text]",
+      "summary_chars": 5120
+    }
+  ]
+}

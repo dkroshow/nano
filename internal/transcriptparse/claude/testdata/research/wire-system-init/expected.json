@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "event1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "system",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "native": {
+          "type": "system",
+          "session_id": "session-example",
+          "uuid": "event1",
+          "subtype": "init",
+          "model": "claude-example",
+          "tools": [
+            "Read"
+          ],
+          "mcp_servers": [],
+          "permissionMode": "default",
+          "cwd": "/workspace/example"
+        }
+      },
+      "originScope": {
+        "human": false,
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "3f7340bf51f94c742007b3ed7d571738bdbbbfdf274e6e4feb181980828b59d5",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_WIRE_DETAIL_NOT_CAPTURED",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": ""
+    }
+  ],
+  "notes": "Constructed minimal discriminator, not a complete vendor schema. Init has code-backed fields; status/thinking_tokens/rate_limit_event are live-observed names in the 2.1.201 survey without retained payloads. Hook events require the optional include-hook-events flag, absent from Nano argv. Preserve unknown fields and raise coverage diagnostics for unverified detail."
+}

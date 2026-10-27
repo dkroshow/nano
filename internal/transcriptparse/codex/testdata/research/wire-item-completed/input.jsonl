@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "item/completed", "params": {"completedAtMs": 0, "item": {"content": [], "id": "item-example", "type": "userMessage"}, "threadId": "thread-example", "turnId": "turn-example"}}}

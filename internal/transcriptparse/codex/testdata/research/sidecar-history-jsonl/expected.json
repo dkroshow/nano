@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [],
+  "diagnostics": [],
+  "observations": [
+    {
+      "type": "prompt_history_hint",
+      "source": "history.jsonl",
+      "fields": {
+        "session_id": "[redacted]",
+        "ts": 1769787090,
+        "text": "[redacted]"
+      },
+      "authoritativeConversationSource": false
+    }
+  ]
+}

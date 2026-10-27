@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [],
+  "turns": [
+    {
+      "nativeTurnId": "turn-a",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    },
+    {
+      "nativeTurnId": "turn-b",
+      "parserLocalTurnKey": null,
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "running",
+        "evidence": []
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "CODEX_LATE_TERMINAL",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 3
+      },
+      "detail": "Terminal belongs to turn-a, not the current turn-b."
+    }
+  ],
+  "observations": []
+}

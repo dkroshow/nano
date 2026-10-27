@@ -1,0 +1,114 @@
+{
+  "items": [
+    {
+      "id": "derived:id-3097:id-3825",
+      "identityAliases": [
+        {
+          "type": "native_event_id",
+          "value": "id-3825",
+          "origin": "native"
+        },
+        {
+          "type": "native_tool_call_id",
+          "value": "id-3820",
+          "origin": "native"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": "id-3100",
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "tool_result",
+      "role": "tool",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": null,
+        "confidence": "unknown"
+      },
+      "text": "",
+      "contentParts": [
+        {
+          "type": "content",
+          "content": {
+            "type": "image",
+            "data": "[text]",
+            "mimeType": "[text]"
+          }
+        }
+      ],
+      "completeness": "complete",
+      "executionOutcome": "success",
+      "nativeTimestamp": {
+        "value": 1787274379637,
+        "unit": "unix_milliseconds",
+        "precision": "millisecond",
+        "sourceField": "params._meta.agentTimestampMs"
+      },
+      "observedTime": null,
+      "detail": {
+        "nativeType": "tool_call_update",
+        "tool": {
+          "callId": "id-3820",
+          "name": null,
+          "nativeStatus": "completed",
+          "arguments": null,
+          "output": {
+            "type": "ReadFile",
+            "ImageContent": {
+              "data": "[text]",
+              "mime_type": "[text]"
+            }
+          },
+          "locations": null,
+          "metadata": null
+        }
+      },
+      "scope": {
+        "sessionId": "id-3097",
+        "origin": "unknown",
+        "hiddenFromScrollback": false,
+        "syntheticContinuation": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": "$.params.update",
+          "interpretationRule": "research-draft-1",
+          "nativeEventId": "id-3825",
+          "replay": false,
+          "sha256": "87339aa84d7e8bcf5553ff8e487dfc8dd60e5a30d0451edf20fb1e890e5cae2a",
+          "hashBasis": "canonical scrubbed fixture JSON",
+          "savedTimestamp": {
+            "value": 1787274379,
+            "unit": "unix_seconds",
+            "precision": "second"
+          },
+          "nativeEnvelopeMetadata": {
+            "totalTokens": 150585,
+            "eventId": "id-3825",
+            "agentTimestampMs": 1787274379637,
+            "promptId": "id-3100",
+            "streamStartMs": 1787274373772,
+            "turnStartMs": 1787273775901,
+            "updateType": "[text]",
+            "updateParams": {
+              "toolCallId": "id-3820",
+              "status": "Completed"
+            }
+          }
+        }
+      ],
+      "versions": {
+        "schema": "research-draft-1",
+        "providerParser": "grok-format-research-2026-09-07",
+        "assembly": "proposed-segments-v1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "note": "Proposed model snapshots. Single-record captures do not prove start boundaries, final answers, or human origin. observedTime is absent because capture receipt was not retained."
+}

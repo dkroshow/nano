@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [
+    {
+      "id": "permission1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "interaction",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "complete",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "state": "answered",
+        "behavior": "allow"
+      },
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 1,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "c268d22605209a03bd244df74bca83787abd32d85c1eac9e4245bd6a7f741224",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    },
+    {
+      "id": "pending1",
+      "identityAliases": [],
+      "turnRef": null,
+      "kind": "interaction",
+      "role": "system",
+      "nativePhase": null,
+      "finality": {
+        "isFinalAnswer": false,
+        "basis": "not designated",
+        "confidence": "high"
+      },
+      "text": "",
+      "contentParts": [],
+      "completeness": "in_progress",
+      "executionOutcome": "unknown",
+      "nativeTime": null,
+      "observedTime": null,
+      "detail": {
+        "state": "pending",
+        "questions": [
+          {
+            "question": "Choose a color.",
+            "header": "Color",
+            "multiSelect": true,
+            "options": [
+              {
+                "label": "Blue",
+                "description": "Example option."
+              },
+              {
+                "label": "Green",
+                "description": "Example option."
+              }
+            ]
+          }
+        ]
+      },
+      "originScope": {
+        "human": "unknown",
+        "sidechain": false
+      },
+      "provenance": [
+        {
+          "source": "input.jsonl",
+          "line": 3,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": "f221bafa14c09b57a80ac7b77914c312e9598f2385d51e63443c0cef25863371",
+          "replay": false,
+          "interpretationRule": "shape-reference"
+        }
+      ],
+      "versions": {
+        "schema": "claude-research-draft-1",
+        "providerParser": "proposed-claude-1",
+        "assembly": "proposed-assembly-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "notes": "Treat all three lines as shim replay, then replayDone. Do not open dialogs before replay finishes. Only pending1 survives. Replaying again changes no semantic items. Capture direction and seq in a real envelope; this fixture supplies replay disposition as assertions.",
+  "replayAssertions": {
+    "pendingRequestIds": [
+      "pending1"
+    ],
+    "answeredRequestIds": [
+      "permission1"
+    ],
+    "repeatReplayItemCount": 2
+  }
+}

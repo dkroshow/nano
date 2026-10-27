@@ -1,0 +1,33 @@
+{
+  "checkpoint_id": "[text]",
+  "prompt_index_at_compaction": 25,
+  "compacted_history": [
+    {
+      "type": "system",
+      "content": "[text]"
+    },
+    {
+      "type": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ],
+      "synthetic_reason": "compaction_meta"
+    },
+    {
+      "type": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "[text]"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "created_at": "2030-01-01T00:00:00.000000Z",
+  "original_user_info": "[text]",
+  "reread_file_paths": []
+}

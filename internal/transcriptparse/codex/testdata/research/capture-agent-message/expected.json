@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "draft-research-1",
+  "items": [
+    {
+      "id": "item-1",
+      "identityAliases": [
+        {
+          "type": "source_coordinate",
+          "value": "input.jsonl:1",
+          "origin": "derived"
+        }
+      ],
+      "turnRef": {
+        "nativeTurnId": null,
+        "parserLocalTurnKey": null,
+        "nanoTurnOrdinal": null
+      },
+      "kind": "message",
+      "role": "assistant",
+      "nativePhase": null,
+      "finality": {
+        "designation": "unknown",
+        "basis": "no terminal evidence in excerpt",
+        "confidence": "unknown"
+      },
+      "text": "[redacted]",
+      "contentParts": [
+        {
+          "type": "text",
+          "text": "[redacted]"
+        }
+      ],
+      "completeness": "complete",
+      "outcome": "unknown",
+      "nativeTimestamp": {
+        "value": "2026-01-01T00:00:00.000Z",
+        "precision": "millisecond",
+        "sourceField": "timestamp"
+      },
+      "observedTime": null,
+      "tool": null,
+      "detail": {
+        "type": "agent_message",
+        "author": "[redacted]",
+        "recipient": "[redacted]",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "[redacted]"
+          },
+          {
+            "type": "encrypted_content",
+            "encrypted_content": "[opaque ciphertext omitted]"
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "id-2ef89832ca"
+        }
+      },
+      "origin": {
+        "human": false,
+        "injectedContext": false,
+        "taskNotification": false,
+        "parentCoordination": true
+      },
+      "scope": {
+        "workerLocal": false,
+        "sidechain": true,
+        "guardian": false
+      },
+      "provenance": [
+        {
+          "sourceLabel": "input.jsonl",
+          "line": 1,
+          "byteOffset": null,
+          "blockPath": null,
+          "nativeEventId": null,
+          "hash": null,
+          "replayMarker": null,
+          "interpretationRule": "codex-research-v1"
+        }
+      ],
+      "versions": {
+        "schema": "draft-research-1",
+        "providerParser": "codex-research-1",
+        "assembly": "research-oracle-1"
+      }
+    }
+  ],
+  "turns": [],
+  "diagnostics": [],
+  "observations": []
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [],
+  "turns": [],
+  "diagnostics": [
+    {
+      "code": "CLAUDE_SOURCE_REPLACED",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": ""
+    },
+    {
+      "code": "CLAUDE_ROW_TOO_LARGE",
+      "severity": "warning",
+      "source": {
+        "label": "input.jsonl",
+        "line": 1
+      },
+      "detail": ""
+    }
+  ],
+  "notes": "Constructed source mutations and a lowered parser budget are specified in mutations.json. Do not write real provider files. This fixture records input operations rather than allocating a 33MiB row. Source replacement requires a new source incarnation, preserving native identity aliases. Truncation of source bytes is distinct from a model max_tokens stop and UI text truncation.",
+  "assertionsOnly": true
+}

@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"id": "item-example", "method": "mcpServer/elicitation/request", "params": {"message": "Example text.", "mode": "form", "requestedSchema": {"properties": {}, "type": "object"}, "serverName": "example", "threadId": "thread-example"}}}
+{"ts": "2026-01-01T00:00:00.001Z", "dir": "send", "msg": {"id": "item-example", "result": {"action": "decline", "content": null}}}

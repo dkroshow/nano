@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "claude-research-draft-1",
+  "status": "proposed expected output; not current Nano output",
+  "items": [],
+  "turns": [
+    {
+      "id": "t1",
+      "nativeTurnId": null,
+      "parserLocalKey": "t1",
+      "nanoTurnOrdinal": null,
+      "boundaries": {
+        "start": null,
+        "end": null
+      },
+      "completion": {
+        "state": "completed",
+        "evidence": [
+          "recv result at seq=2"
+        ]
+      },
+      "finalItemRefs": [],
+      "modelObservations": [],
+      "usage": null
+    }
+  ],
+  "diagnostics": [],
+  "notes": "Constructed exact spool envelope. seq/ts are Nano shim fields, not Claude native ids/time. Replaying an envelope preserves original observed time. Process exit after success does not change that turn outcome. A mid-turn exit without result instead yields unknown/interrupted evidence depending on exit cause.",
+  "transportAssertions": {
+    "replayDuplicateKey": [
+      "shimSessionId",
+      "seq"
+    ],
+    "nativeTime": null,
+    "observedTimeSource": "ts",
+    "noSemanticItemsForReplayDone": true
+  }
+}

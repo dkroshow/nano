@@ -1,0 +1,1 @@
+{"ts": "2026-01-01T00:00:00.000Z", "dir": "recv", "msg": {"method": "thread/realtime/outputAudio/delta", "params": {"audio": {"data": "example", "numChannels": 0.0, "sampleRate": 0.0}, "threadId": "thread-example"}}}
