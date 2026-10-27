@@ -1,8 +1,8 @@
 # nano agent guide
 
-Nano is a Go server with an embedded Svelte web app. The root package
-(`package main`, flat) is the server; `internal/` holds the packages it is
-built from; `cmd/` holds the helper binaries; `web/` is the UI. Read
+Nano is a Go server with an embedded Svelte web app. `internal/app` is the
+server; `internal/` also holds the packages it is built from. `cmd/nanod` is
+the entry point, `cmd/` holds the helper binaries, and `web/` is the UI. Read
 `docs/architecture.md` before a change that crosses a package boundary, and
 `docs/principles.md` before any design choice: where documents disagree,
 `docs/principles.md` wins.
@@ -12,8 +12,8 @@ built from; `cmd/` holds the helper binaries; `web/` is the UI. Read
 ```sh
 npm --prefix web ci                  # web dependencies (lockfile)
 npm --prefix web run build           # web/dist, which the server embeds
-go build -o nanod . && ./nanod       # http://127.0.0.1:7690
-go test ./...                        # Go tests; the root package is slow
+go build -o nanod ./cmd/nanod && ./nanod       # http://127.0.0.1:7690
+go test ./...                        # Go tests; the app package is slow
 npm --prefix web test                # web logic and component tests
 npm --prefix web run dev             # UI loop on http://localhost:5173
 ```
@@ -28,7 +28,7 @@ gofmt -l . && go vet ./... && go test ./... && npm --prefix web test
 
 ## Conventions an agent could not guess
 
-- **The web bundle is embedded** (`//go:embed all:web/dist` in `main.go`).
+- **The web bundle is embedded** (`//go:embed all:dist` in `web/embed.go`).
   A UI change shows nothing until `npm --prefix web run build` and a fresh
   `go build`. During UI work use the dev server instead: it proxies `/api`
   and `/events` to a `nanod` already running on :7690, which must stay up.
@@ -51,7 +51,7 @@ gofmt -l . && go vet ./... && go test ./... && npm --prefix web test
 - **Transcripts come from the saved file.** Panes and agent reads show rows
   from the provider's own transcript file, plus unsaved live text. Nano keeps
   no copy of transcript rows in memory; do not add one.
-- **Fixtures are synthetic or scrubbed.** `testdata/` holds small captured
+- **Fixtures are synthetic or scrubbed.** `internal/app/testdata/` holds small captured
   shapes with invented ids, paths and text. Never add a real session.
 - **No always-on work without a measured reason.** No new polling, per-frame
   encoding or whole-store scans; carry the fact in the event that already

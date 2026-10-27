@@ -12,7 +12,7 @@ import (
 // The coordinator may initialize from New or install Transition's result.
 // Copies of that snapshot cannot become a second mutable status/work owner.
 func TestSessionLifecycleHasOneMutationBoundary(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("..", "..", "*.go"))
+	paths, err := filepath.Glob(filepath.Join("..", "app", "*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

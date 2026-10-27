@@ -9,14 +9,14 @@ under [decisions/](decisions/) say why each piece is the way it is.
 
 ## The server
 
-The root package (`package main`, a flat set of files) is the server. It
+The `internal/app` package is the server; `cmd/nanod` calls its entry point. It
 parses every flag into one `Config` value (`config.go`) before it opens a
 store or a listener, builds the HTTP router (`routes.go`), and holds the map
 of live sessions. Each live session owns one connection to a provider
 runtime, a bounded in-memory buffer of its wire events, and the live-text
 loop that turns streamed output into what a pane shows.
 
-`internal/` holds the packages the root is built from. Each package's doc
+`internal/` also holds the packages the server is built from. Each package's doc
 comment states what it may depend on, and import tests hold the direction
 for the parsing module, the state layer and lifecycle.
 
@@ -33,12 +33,12 @@ for the parsing module, the state layer and lifecycle.
 | `transcript` | Whether a provider's saved transcript proves a prompt Nano delivered. |
 | `interact` | The four operations features build on: submit a prompt, send and read mail, read the completed-turn feed, read a transcript page and lifecycle facts. Standard library only. |
 | `features/{mail,heartbeat,subscriptions,feedback}` | Durable inbox, scheduled wakes, child-completion notices, operator notes. Each depends on `interact`, never on providers. |
-| `usage` | Account-usage polling, retention and read models. Provider clients stay at the root. |
+| `usage` | Account-usage polling, retention and read models. Provider clients stay in `internal/app`. |
 | `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution; content-free browser evidence. |
 | `httpapi`, `httpapi/remoteauth` | HTTP transport conventions; the password-guarded remote listener and its store. |
 | `state/db`, `app/persistence`, `app/statestore`, `edge/statewiring` | The shared SQLite connection policy and the composition of table owners at the program edge. |
 
-`cmd/` holds the helper binaries: `claude-shim` (below), `nano-agent` (a thin
+`cmd/` holds the `nanod` entry point and the helper binaries: `claude-shim` (below), `nano-agent` (a thin
 localhost client for the hosted-thread API), `nano-threads` (inspect or copy
 the durable store, every path explicit), `transcript-dump` (run the parsers on
 a file with no server), and `nano-launcher` (a small fixed parent process
@@ -117,7 +117,7 @@ clears stale ones. Every flag that names a path is listed by `nanod -h`.
 ## The web UI
 
 `web/` is a Svelte 5 app built with Vite. `npm --prefix web run build`
-writes `web/dist`, and `main.go` embeds it (`//go:embed all:web/dist`), so
+writes `web/dist`, and `web/embed.go` embeds it (`//go:embed all:dist`), so
 the binary is self-contained and a UI change needs a rebuild of both. In
 development `npm --prefix web run dev` serves the source on :5173 and
 proxies `/api` and `/events` to a running server.

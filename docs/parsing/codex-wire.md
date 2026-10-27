@@ -26,7 +26,7 @@ Codex uses JSON-RPC-shaped objects without requiring `jsonrpc: "2.0"`: request `
 
 Handshake: initialize request/result, unsolicited status may arrive, initialized client notification, thread/start or thread/resume, turn/start acceptance, then notifications. `turn/start` acceptance is not completion. Client-side requests and server-side requests use separate identity namespaces even if numeric IDs coincide. Requests may remain pending while unrelated thread events flow.
 
-Thread notifications route through params.threadId, legacy conversationId, or thread.id. Events without those fields do not enter a session wire buffer through this route ([codex.go:618](../../codex.go)). Connection/account/process-scoped events need a separate observation scope. A socket close is delivery uncertainty, not proof the supervised model turn ended.
+Thread notifications route through params.threadId, legacy conversationId, or thread.id. Events without those fields do not enter a session wire buffer through this route ([codex.go:618](../../internal/app/codex.go)). Connection/account/process-scoped events need a separate observation scope. A socket close is delivery uncertainty, not proof the supervised model turn ended.
 
 ## Lifecycle, replay and snapshots
 
@@ -34,7 +34,7 @@ Normal item flow is started → indexed deltas → completed snapshot. Final tex
 
 Turn.startedAt/completedAt are Unix seconds. Item startedAtMs/completedAtMs are milliseconds on the notification envelope. Native timestamps can be missing. Capture ts is observed time. `turn.itemsView` distinguishes full/summary/notLoaded; an empty notLoaded array does not prove an empty turn. ThreadItem items may also appear in resume/read/fork responses.
 
-`thread/resume` repairs subscription and returns persisted turns. Nano selects five terminal turns plus active tail, then merges live notifications that raced the reply ([codex_resume_projection.go:21](../../codex_resume_projection.go)). This is a snapshot, not provider replayed deltas. The schema has no universal replay sequence/token. Nano's SSE revisions/epochs are its own transport, not Codex-native IDs. There is no separate thread/subscribe arm in this checked-in client schema.
+`thread/resume` repairs subscription and returns persisted turns. Nano selects five terminal turns plus active tail, then merges live notifications that raced the reply ([codex_resume_projection.go:21](../../internal/app/codex_resume_projection.go)). This is a snapshot, not provider replayed deltas. The schema has no universal replay sequence/token. Nano's SSE revisions/epochs are its own transport, not Codex-native IDs. There is no separate thread/subscribe arm in this checked-in client schema.
 
 ## Notification coverage
 
@@ -274,7 +274,7 @@ Realtime transcript/done maps to a message with its native role. Realtime transc
 
 ## Existing live fixture limitation
 
-The repository's [testdata/live_projection/codex.jsonl](../../testdata/live_projection/codex.jsonl) is a deliberately reduced adapter fixture, not a genuine capture. It omits required current-schema routing/timing fields. Its command delta uses a base64 `chunk` field (line 8), while the current native notification schema requires a plain string `delta`. Passing that fixture does not validate native output encoding. The real first-turn capture and newly schema-checked examples provide different evidence.
+The repository's [testdata/live_projection/codex.jsonl](../../internal/app/testdata/live_projection/codex.jsonl) is a deliberately reduced adapter fixture, not a genuine capture. It omits required current-schema routing/timing fields. Its command delta uses a base64 `chunk` field (line 8), while the current native notification schema requires a plain string `delta`. Passing that fixture does not validate native output encoding. The real first-turn capture and newly schema-checked examples provide different evidence.
 
 ## Raw ResponseItem schema union
 

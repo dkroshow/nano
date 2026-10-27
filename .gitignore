@@ -1,4 +1,4 @@
-nanod
+/nanod
 node_modules/
 web/dist/
 .DS_Store

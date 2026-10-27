@@ -60,9 +60,9 @@ func TestProviderDependencyDirection(t *testing.T) {
 
 func TestSharedTurnVerbsDoNotDispatchOnProviderNames(t *testing.T) {
 	targets := map[string]map[string]bool{
-		"../../interactions.go": {"respondInteraction": true, "closeInteractions": true, "handleInteraction": true},
-		"../../session.go":      {"handleInterrupt": true},
-		"../../turn_send.go":    {"runTransactionalTurnSend": true},
+		"../app/interactions.go": {"respondInteraction": true, "closeInteractions": true, "handleInteraction": true},
+		"../app/session.go":      {"handleInterrupt": true},
+		"../app/turn_send.go":    {"runTransactionalTurnSend": true},
 	}
 	for path, functions := range targets {
 		fset := token.NewFileSet()

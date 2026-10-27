@@ -1,0 +1,108 @@
+package app
+
+import (
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/lifecycle"
+	"net/http"
+	"time"
+)
+
+// Availability: hard facts only, read-only. It answers
+// "can I safely send this thread a prompt right now?" from facts Nano holds
+// itself — never from transcript heuristics. Later stages add the soft signals
+// (judge verdict, declared state) and use the same facts at wake admission.
+
+const (
+	availabilityBusy          = "busy"
+	availabilityAwaitingHuman = "awaiting-human"
+	availabilityAvailable     = "available"
+	availabilityUnreachable   = "unreachable"
+)
+
+type availabilityFacts struct {
+	TurnActive               bool   `json:"turnActive"`
+	TurnActiveMayUnderReport bool   `json:"turnActiveMayUnderReport"`
+	QueuedPrompts            int    `json:"queuedPrompts"`
+	PendingInteraction       bool   `json:"pendingInteraction"`
+	LastHumanMessageAt       string `json:"lastHumanMessageAt,omitempty"`
+	Attachment               string `json:"attachment"` // live | detached | exited | deleted
+	SessionStatus            string `json:"sessionStatus,omitempty"`
+}
+
+type availabilityView struct {
+	HostedThreadID string            `json:"hostedThreadId"`
+	State          string            `json:"state"`
+	Reasons        []string          `json:"reasons"`
+	Facts          availabilityFacts `json:"facts"`
+	ObservedAt     string            `json:"observedAt"`
+}
+
+func (s *server) handleHostedThreadAvailability(w http.ResponseWriter, r *http.Request, hostedThreadID string) {
+	httpapi.WriteJSON(w, s.availabilityFor(hostedThreadID, time.Now().UTC()))
+}
+
+// availabilityFor derives the state. Connection takes precedence over work;
+// waiting takes precedence over busy work. A recent human message is exposed as a fact,
+// but it does not change availability: elapsed time is not a stable signal of
+// which party owns the next move.
+func (s *server) availabilityFor(hostedThreadID string, now time.Time) availabilityView {
+	view := availabilityView{HostedThreadID: hostedThreadID, ObservedAt: now.Format(time.RFC3339Nano), Reasons: []string{}}
+	view.Facts.TurnActiveMayUnderReport = true
+	record, ok := s.agentExecutions.session(hostedThreadID)
+	if !ok {
+		view.State, view.Facts.Attachment = availabilityUnreachable, "deleted"
+		view.Reasons = append(view.Reasons, "unknown_or_deleted")
+		return view
+	}
+	view.Facts.LastHumanMessageAt = record.LastHumanPromptAt
+	sess := s.sessionForHostedThread(hostedThreadID)
+	if sess == nil && record.Status == sessionStatusExited {
+		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityUnreachable, "exited", record.Status
+		view.Reasons = append(view.Reasons, "exited")
+		return view
+	}
+	if _, starting := s.boot.startingHosted(hostedThreadID); sess == nil && starting {
+		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityBusy, "starting", "starting"
+		view.Reasons = append(view.Reasons, "session_starting")
+		return view
+	}
+	if sess == nil {
+		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityUnreachable, "detached", record.Status
+		view.Reasons = append(view.Reasons, "detached")
+		return view
+	}
+	view.Facts.Attachment = "live"
+	sess.stateMu.Lock()
+	status, active, waiting := sess.connectionStatusLocked(), sess.workActiveLocked(), sess.waitingLocked()
+	permission := sess.lifecyclePermissionLocked()
+	lastHuman := sess.lastHumanPromptAt
+	sess.stateMu.Unlock()
+	view.Facts.SessionStatus = status
+	view.Facts.TurnActive = active
+	pending := sess.corePromptInFlight()
+	view.Facts.QueuedPrompts = sess.queuedTurns.queuedCount(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
+	view.Facts.PendingInteraction = waiting
+	if !lastHuman.IsZero() && (view.Facts.LastHumanMessageAt == "" || lastHuman.Format(time.RFC3339Nano) > view.Facts.LastHumanMessageAt) {
+		view.Facts.LastHumanMessageAt = lastHuman.UTC().Format(time.RFC3339Nano)
+	}
+
+	view.State = string(permission.Availability)
+	switch {
+	case permission.Availability == lifecycle.Unavailable || permission.Availability == lifecycle.Invalid:
+		view.State = availabilityUnreachable
+		view.Reasons = append(view.Reasons, status)
+	case status != "ready":
+		view.Reasons = append(view.Reasons, "session_"+status)
+	case waiting:
+		view.Reasons = append(view.Reasons, "pending_interaction")
+	case active:
+		view.Reasons = append(view.Reasons, "turn_active")
+	case pending:
+		view.State = availabilityBusy
+		view.Reasons = append(view.Reasons, "prompt_in_flight")
+	case view.Facts.QueuedPrompts > 0:
+		view.State = availabilityBusy
+		view.Reasons = append(view.Reasons, "queued_backlog")
+	}
+	return view
+}

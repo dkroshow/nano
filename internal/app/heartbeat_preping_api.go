@@ -1,0 +1,100 @@
+package app
+
+import (
+	"encoding/json"
+	"github.com/dkroshow/nano/internal/httpapi"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
+
+func (s *server) handleHeartbeatScriptTemplates(w http.ResponseWriter, r *http.Request) {
+	items, err := loadHeartbeatScriptTemplates()
+	if err != nil {
+		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	httpapi.WriteJSON(w, map[string]any{"items": items})
+}
+
+type heartbeatPrePingTemplateRequest struct {
+	TemplateID string          `json:"templateId"`
+	Settings   json.RawMessage `json:"settings,omitempty"`
+}
+
+func (s *server) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, actor heartbeatActor, authority, prompt string, now time.Time) (*heartbeatPrePingReference, string, error) {
+	template, err := heartbeatScriptTemplateByID(strings.TrimSpace(body.TemplateID))
+	if err != nil {
+		return nil, prompt, err
+	}
+	settings := body.Settings
+	if len(settings) == 0 {
+		settings = template.DefaultSettings
+	}
+	settings, err = normalizeJSONObject(settings, 16<<10)
+	if err != nil {
+		return nil, prompt, err
+	}
+	if strings.TrimSpace(prompt) == "" {
+		prompt = template.DefaultPrompt
+	}
+	input := heartbeatScriptRevisionInput{
+		Name: template.Name + " attachment copy", Source: template.Source, DefaultPrompt: prompt,
+		DefaultSettings: settings, TemplateID: template.ID, TemplateRevision: template.Revision,
+		Authority: strings.TrimSpace(authority), Actor: actor,
+	}
+	_, revision, err := s.heartbeat.Store.CreateScript(input, now)
+	if err != nil {
+		return nil, prompt, err
+	}
+	return &heartbeatPrePingReference{ScriptID: revision.ScriptID, Revision: revision.Revision, Settings: settings}, prompt, nil
+}
+
+func (s *server) handleHeartbeatScripts(w http.ResponseWriter, r *http.Request) {
+	if s.heartbeat == nil {
+		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	items, err := s.heartbeat.Store.ListScripts()
+	if err != nil {
+		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	httpapi.WriteJSON(w, map[string]any{"items": items})
+}
+
+func (s *server) handleHeartbeatScriptRead(w http.ResponseWriter, r *http.Request) {
+	if s.heartbeat == nil {
+		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	id := r.PathValue("scriptId")
+	if id == "" {
+		httpapi.WriteNotFound(w)
+		return
+	}
+	script, err := s.heartbeat.Store.Script(id)
+	if err != nil {
+		httpapi.WriteHTTPError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	revision := script.CurrentRevision
+	if rawRevision := strings.TrimSpace(r.URL.Query().Get("revision")); rawRevision != "" {
+		revision, err = strconv.ParseInt(rawRevision, 10, 64)
+		if err != nil || revision < 1 {
+			httpapi.WriteHTTPError(w, "revision must be a positive integer", http.StatusBadRequest)
+			return
+		}
+	}
+	value, err := s.heartbeat.Store.ScriptRevision(id, revision)
+	if err != nil {
+		httpapi.WriteHTTPError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	httpapi.WriteJSON(w, map[string]any{"script": script, "revision": value})
+}
+
+func (s *server) handleHeartbeatScriptUnsupported(w http.ResponseWriter, _ *http.Request) {
+	httpapi.WriteHTTPError(w, "GET only; heartbeat scripts are immutable attachment copies", http.StatusMethodNotAllowed)
+}

@@ -54,7 +54,7 @@ every change is held to: [docs/principles.md](docs/principles.md).
 ```sh
 git clone https://github.com/dkroshow/nano.git
 cd nano
-npm --prefix web ci && npm --prefix web run build && go build -o nanod . && ./nanod
+npm --prefix web ci && npm --prefix web run build && go build -o nanod ./cmd/nanod && ./nanod
 ```
 
 Open <http://127.0.0.1:7690/> and press **New Window** to start a session in

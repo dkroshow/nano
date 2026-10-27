@@ -6,7 +6,7 @@ import { projectSidebar } from './sidebar_projection.js'
 
 const fixture = JSON.parse(
   readFileSync(
-    fileURLToPath(new URL('../../../testdata/thread_catalog/threads-page.json', import.meta.url)),
+    fileURLToPath(new URL('../../../internal/app/testdata/thread_catalog/threads-page.json', import.meta.url)),
     'utf8'
   )
 )

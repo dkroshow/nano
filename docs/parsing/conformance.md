@@ -47,17 +47,17 @@ and confidence numbers are not compared as if they were the implemented API.
 Exact native content and identities remain available through observations and
 aliases; opaque fields are retained without claiming every field is validated.
 
-[Converted fixture receipts](../../testdata/transcript-compatibility.json)
+[Converted fixture receipts](../../internal/app/testdata/transcript-compatibility.json)
 cover all 417 native inputs through the actual file/SQLite or live adapter path.
 160 views match the old adapters; 257 differ under the named rules on this page.
-[The reconciliation test](../../transcript_fixture_reconciliation_test.go)
+[The reconciliation test](../../internal/app/transcript_fixture_reconciliation_test.go)
 checks source hashes, reader selection, exact converted-view hashes, every
 native fixture's membership and a documented name for each changed case.
 These reviewed receipts supplement the independent semantic assertions above;
 they establish fixture reconciliation, not the still-pending corpus gate.
 
 `LIVE-CODEX-RESUME-1`: resume items now pass through `ParseWire` and the shared
-live conversion. [Resume assertions](../../codex_resume_parse_test.go) preserve
+live conversion. [Resume assertions](../../internal/app/codex_resume_parse_test.go) preserve
 command display text, plain output, failed outcome and native identities. The
 RPC client supplies only a result body, so this boundary adds a caller-local
 correlation label; the reader treats it as an uncorrelated snapshot, with no
@@ -68,7 +68,7 @@ completion evidence remain absent in the module. Items without a native ID are
 not assigned a manufactured native ID by this route.
 
 `LIVE-GROK-2`: operational prompt, response-candidate and terminal consumers
-now read `ParseWire` items and observations. [Operational assertions](../../grok_parse_evidence_test.go)
+now read `ParseWire` items and observations. [Operational assertions](../../internal/app/grok_parse_evidence_test.go)
 and the existing Grok prompt/terminal and load-handshake tests check native
 prompt scope, nullable clocks, terminal usage, synthetic continuations and
 child isolation. Bounded native terminal detail still supplies the operational
@@ -160,7 +160,7 @@ each rule. `grokResearchViewDifferences` names the exact changed research views.
 | GROK-META-2, GROK-DIRECTION-1 | [Envelope metadata and client-sent updates](../../internal/transcriptparse/grok/update_metadata_test.go) |
 | GROK-AUX-1 | [Auxiliary bodies, calls, telemetry and ambiguity](../../internal/transcriptparse/grok/auxiliary_test.go) |
 | GROK-OBSERVATION-1, GROK-COORDINATION-1, GROK-SEGMENT-1 | [Exact research views](../../internal/transcriptparse/grok/research_views_test.go), supplemented by the control, metadata and reader tests above |
-| GROK-REPLAY-2 | [Late replay assertions](../../internal/transcriptparse/grok/replay_test.go) keep post-eviction replay as a native observation reference; [live conversion](../../live_parse_test.go) resolves a retained original and leaves a missing original as evidence. |
+| GROK-REPLAY-2 | [Late replay assertions](../../internal/transcriptparse/grok/replay_test.go) keep post-eviction replay as a native observation reference; [live conversion](../../internal/app/live_parse_test.go) resolves a retained original and leaves a missing original as evidence. |
 
 ## Deliberate limits
 
@@ -364,7 +364,7 @@ the old Codex text helper.
 HISTORY-EVIDENCE-1: file ingestion retains the existing Dev view's source-only
 record links as history rows, separate from model Items. Record positions also
 keep a terminal event out of an older page snapshot. The constructed fixtures
-in [the catalog service tests](../../thread_catalog_service_test.go)
+in [the catalog service tests](../../internal/app/thread_catalog_service_test.go)
 (`TestTranscriptDevEvidencePreservesExactNativeTextAndRejectsReplacement` and
 `TestThreadTranscriptFixedSnapshotBodyAndETagStableAcrossAppend`) exercise
 native whitespace, invalid UTF-8, exact numeric text, replacement rejection,
@@ -383,7 +383,7 @@ request. Distinct local items within one retained source turn also remain
 distinct; native receipts can still resolve provisional items after eviction
 changes that source turn key. The existing Claude
 `control-replay-answered-and-pending` and Codex `ambiguous-call-id` fixtures
-now run through the actual SQLite conversion in [live_parse_test.go](../../live_parse_test.go);
+now run through the actual SQLite conversion in [live_parse_test.go](../../internal/app/live_parse_test.go);
 the Claude fixture also runs through the live adapter. Each retains both
 requests/invocations and their independent outcomes. History conversion v5
 rebuilds earlier converted projections; the module types and readers are unchanged.
@@ -393,7 +393,7 @@ DTO still uses receipt time as a display fallback and labels finished cards
 `completed`; the model keeps unknown native time and failed outcome separately.
 Native card detail retains execution status and output. `CODEX-TOOL-1` now also
 applies to this route: plain command output is not opportunistically base64
-decoded. The constructed [live assertions](../../live_parse_test.go) cover
+decoded. The constructed [live assertions](../../internal/app/live_parse_test.go) cover
 literal `TWFu`, failed completion, null native time, and resumed text prefixes.
 Resume prefixes remain at the view boundary and do not become parser evidence.
 Provider-supplied item IDs are available during deltas; a generated view ID
@@ -423,7 +423,7 @@ old stream-only adapter. Nested child traffic stays outside the parent cards.
 Initial block text and every native user block survive. An orphan tool result
 remains visible with its unresolved call ID. Generated user-view IDs no longer
 appear in the native-ID field.
-[Live assertions](../../live_parse_test.go) exercise these changes. The existing
+[Live assertions](../../internal/app/live_parse_test.go) exercise these changes. The existing
 live fixture now supplies native delta `type` fields. User event UUID fallback
 and receipt-time display remain compatibility view choices.
 
@@ -432,10 +432,10 @@ with native receipts outside parser continuation. An evicted Claude result
 rejoins its first invocation card; conflicting UUID content leaves that card
 unchanged. Replay aliases cannot claim a later turn's call, and an earlier
 replay does not freeze a subsequent snapshot revision. The constructed tests
-in [live_parse_test.go](../../live_parse_test.go) and
+in [live_parse_test.go](../../internal/app/live_parse_test.go) and
 [the receipt index tests](../../internal/history/transcript_identity_index_test.go)
 cover these cases. Receipts leave memory when their view rows leave the tail.
-The opt-in frozen-source [live projection test](../../live_parse_frozen_test.go)
+The opt-in frozen-source [live projection test](../../internal/app/live_parse_frozen_test.go)
 runs through `applyWireLive`, including a later Nano turn. With and without
 reader eviction, an exactly identified replay keeps its card, turn, presentation
 owner, and position/content hash, with two observation references and `replay_of`.
@@ -457,8 +457,8 @@ compatibility field. Known tool results still fill their invocation cards, and
 terminal prompts settle their cards. An ordinary agent chunk no longer gets
 `final_answer` phase automatically; the converted view requires the module's
 finality evidence. Content completion, outcome and finality
-remain separate in the model. [Live assertions](../../live_parse_test.go) and
-[Grok integration tests](../../grok_test.go) cover these changes.
+remain separate in the model. [Live assertions](../../internal/app/live_parse_test.go) and
+[Grok integration tests](../../internal/app/grok_test.go) cover these changes.
 Unknown updates and malformed records remain evidence/diagnostics instead of
 invented conversation cards. Discovery also reads child sidecars through
 `ParseFile`; existing lineage and conflict tests retain the catalog contract.
@@ -482,7 +482,7 @@ LIVE-TIME-1: while native creation time is unknown, later deltas and snapshots
 keep the live card's first receipt time, including resume seeds. The module
 continues to record unknown native time and separate observed clocks.
 `TestLiveModulePreservesFirstReceiptTimeAcrossUpdates` in
-[live_parse_test.go](../../live_parse_test.go) exercises all three providers.
+[live_parse_test.go](../../internal/app/live_parse_test.go) exercises all three providers.
 A later native timestamp takes precedence over that display fallback. This
 explains the remaining creation-time difference in Claude's genuine paired
 wire excerpt: its later assistant snapshots supply native timestamps, while

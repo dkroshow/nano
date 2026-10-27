@@ -12,11 +12,11 @@ import {
 } from './transcript_audit.js'
 
 const duplicateTailFixture = JSON.parse(readFileSync(
-  resolve(process.cwd(), '../testdata/transcript_audit/duplicate-tail.json'),
+  resolve(process.cwd(), '../internal/app/testdata/transcript_audit/duplicate-tail.json'),
   'utf8',
 ))
 const differentProjectionFixture = JSON.parse(readFileSync(
-  resolve(process.cwd(), '../testdata/transcript_audit/different-projection-tail.json'),
+  resolve(process.cwd(), '../internal/app/testdata/transcript_audit/different-projection-tail.json'),
   'utf8',
 ))
 

@@ -20,7 +20,7 @@ import (
 
 func twinFixture(t *testing.T, name string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "duplicate_gate", name))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "app", "testdata", "duplicate_gate", name))
 	if err != nil {
 		t.Fatal(err)
 	}

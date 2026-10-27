@@ -84,7 +84,8 @@ func TestStateLayerDependencyDirection(t *testing.T) {
 	}
 	assertImports("internal/state/db", map[string]bool{"modernc.org/sqlite": true})
 	assertImports("internal/lifecycle", nil)
-	assertNoUpwardImports("internal/app")
+	assertNoUpwardImports("internal/app/persistence")
+	assertNoUpwardImports("internal/app/statestore")
 	threadImports := assertImports("internal/threads", map[string]bool{
 		"github.com/dkroshow/nano/internal/state/db": true,
 		"modernc.org/sqlite":                         true,
