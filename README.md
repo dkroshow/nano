@@ -151,11 +151,15 @@ exact contract.
   overwrite any existing text file it can reach, with mtime conflict checks;
   the instruction files a session loads are editable the same way. A save
   writes a temporary file beside the target and renames it over the
-  original, so the file gets a new inode and a hard link to it is left
-  behind. Writes must name a canonical absolute path: a path through a
-  symlink is refused, and files under `~/.codex`, `~/.claude` and `~/.grok`
-  stay view-only. Nano never creates new files of yours and never deletes
-  any.
+  original: the replacement gets a new inode, and any existing hard links
+  still point to the old contents. A write through `/api/v1/files` must
+  name a canonical absolute path, so a path through a symlink is refused.
+  The instruction-file editor is different: it accepts the spelling on its
+  allow-list and writes the resolved target, so it follows a symlink when
+  that target is inside the session's permitted workspace and outside the
+  provider directories. Files under `~/.codex`, `~/.claude` and `~/.grok`
+  stay view-only on both paths. Nano never creates new files of yours and
+  never deletes any.
 - **Reads your Claude login token and sends it to Anthropic.** With the
   default `-usage=true`, Nano reads the Claude Code OAuth access token from
   `~/.claude/.credentials.json` or the macOS Keychain and sends it to
