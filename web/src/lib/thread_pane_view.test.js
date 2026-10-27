@@ -286,8 +286,17 @@ describe('thread pane view', () => {
         { id: 'agent-prompt', type: 'user_message', role: 'user', category: 'messages', text: senderFooterFixture.text },
         { id: 'human-prompt', type: 'user_message', role: 'user', category: 'messages', text: 'A person asks a question.' },
       ] }) : jsonResponse({}))
+    // The footer formats in the browser's zone; pin it so the expectation holds
+    // wherever the suite runs.
+    const DateTimeFormat = Intl.DateTimeFormat
+    const pinnedZone = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((locale, options) =>
+      new DateTimeFormat(locale, { ...options, timeZone: options?.timeZone ?? 'UTC' }))
     const { container } = render(ThreadPaneView, { tab: historicalTab() })
-    await waitFor(() => expect(container.querySelector('.item-submission-timestamp')?.textContent).toBe('Submitted Oct 7, 6:29:25 PM PDT'))
+    try {
+      await waitFor(() => expect(container.querySelector('.item-submission-timestamp')?.textContent).toBe('Submitted Oct 8, 1:29:25 AM UTC'))
+    } finally {
+      pinnedZone.mockRestore()
+    }
     expect(container.querySelectorAll('.item-submission-timestamp')).toHaveLength(1)
     expect(container.querySelector('.pane-readonly')?.textContent).toContain('Read only')
     expect(container.querySelector('.userMessage .bubble').textContent).toBe(senderFooterFixture.text)
