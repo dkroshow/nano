@@ -145,12 +145,17 @@ exact contract.
   copies) to show them in the inspector. It never writes under those three
   directories.
 - **Reads and edits local text files.** A file reference in a transcript
-  opens as a tab. Through those tabs and `/api/v1/files`, Nano reads UTF-8
-  text files resolved from a thread's working directory and can save edits
-  to an existing file, with mtime conflict checks; the instruction files a
-  session loads are editable the same way. Files under `~/.codex`,
-  `~/.claude` and `~/.grok` stay view-only. Nano never creates, renames or
-  deletes files.
+  opens as a tab. Through those tabs and `/api/v1/files`, Nano reads any
+  UTF-8 text file the server's user can read, by absolute path (`~` is
+  expanded) or by a path relative to a thread's working directory, and can
+  overwrite any existing text file it can reach, with mtime conflict checks;
+  the instruction files a session loads are editable the same way. A save
+  writes a temporary file beside the target and renames it over the
+  original, so the file gets a new inode and a hard link to it is left
+  behind. Writes must name a canonical absolute path: a path through a
+  symlink is refused, and files under `~/.codex`, `~/.claude` and `~/.grok`
+  stay view-only. Nano never creates new files of yours and never deletes
+  any.
 - **Reads your Claude login token and sends it to Anthropic.** With the
   default `-usage=true`, Nano reads the Claude Code OAuth access token from
   `~/.claude/.credentials.json` or the macOS Keychain and sends it to
@@ -167,9 +172,14 @@ exact contract.
   them with the flags or per session in the New Window dialog.
 - **State on disk.** Nano's internal state lives under `~/.nanod` unless
   `-data-dir` moves it: SQLite stores for the thread catalog, hosted threads,
-  mail, heartbeat, stars and usage, and a server log. A transient wire spool
-  for live sessions goes under the system temp directory (under `-data-dir`
-  when one is set) and is deleted when the session closes.
+  mail, heartbeat, stars, transcript pins, feedback notes, the remote
+  listener's password and sessions, and usage; a server log under `logs/`;
+  a restart log (`restarts.jsonl`); and `threads-backups/`, a copy of the
+  hosted-thread store taken before each schema migration. A brand-new
+  install runs its migrations on an empty database and so writes over a
+  megabyte of such backups on first start. A transient wire spool for live
+  sessions lives in `wire/` under the same directory: Nano empties it at
+  startup and deletes each session's file when that session closes.
 - **Network.** The server's usage check above, off with `-usage=false`, is
   the only network egress. The page in your browser makes no request of its
   own for transcript content: Markdown is rendered with raw HTML escaped and

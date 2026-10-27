@@ -57,7 +57,12 @@ gofmt -l . && go vet ./... && go test ./... && npm --prefix web test
   encoding or whole-store scans; carry the fact in the event that already
   exists. Log on change, not on every pass.
 - Flags are the configuration surface; `config.go` parses all of them into
-  one value before any store or listener opens.
+  one value before any store or listener opens. Four environment variables
+  are read beside them: `CODEX_NANO_CLAUDE_BIN` and `CODEX_NANO_GROK_BIN`
+  name the CLI executables when the flags are empty, and the two switches
+  `NANO_LIVE_TEXT_DELTAS=off` and `NANO_SUPERSEDED_COLLECTION=on` exist so
+  a rollback to an older binary keeps the same launch command. Do not add
+  more.
 - `scripts/build-helper.sh claude-shim|nano-launcher` builds a helper binary
   into the repo root under its ignored name (`claude-shim-bin`,
   `nano-launcher-bin`), unsigned by default; with `NANO_CODESIGN_IDENTITY`
