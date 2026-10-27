@@ -238,3 +238,30 @@ func TestRestartRecordWaitsForBrowsersWhileThreadsRest(t *testing.T) {
 		t.Fatalf("record = written %v, live %d, resting %d; want unwritten with the browser's attach live", written, record.Live, record.Resting)
 	}
 }
+
+// Failure caught: a quiet timer armed while threads rested wrote the record
+// after a browser's attach went live but before its attached mark, skipping
+// the grace that waits for that mark. Boundary: the restart tracker.
+func TestRestartRecordQuietKeepsTheAttachedMarkGrace(t *testing.T) {
+	tracker := newRestartTracker(filepath.Join(t.TempDir(), restartsFileName), "test-stamp", "boot-test", time.Now())
+	shown := attachmentRecord{Provider: "codex", NativeThreadID: "shown", HostedThreadID: "nht_shown"}
+	other := attachmentRecord{Provider: "codex", NativeThreadID: "other", HostedThreadID: "nht_other"}
+	tracker.addThreads([]attachmentRecord{shown, other})
+	tracker.rest([]attachmentRecord{shown, other})
+	tracker.markBootLoopDone()
+	tracker.thread(shown.key()).at(restartPicked)
+	tracker.thread(shown.key()).at(restartLive) // attached mark still on its way
+	tracker.mu.Lock()
+	tracker.lastMark = time.Now().Add(-2 * restartRestQuiet) // the quiet has passed
+	tracker.quiet.Reset(0)                                   // the armed timer fires now
+	tracker.mu.Unlock()
+	var written, grace bool
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline) && !grace && !written; time.Sleep(5 * time.Millisecond) {
+		tracker.mu.Lock()
+		written, grace = tracker.written, tracker.grace != nil
+		tracker.mu.Unlock()
+	}
+	if written || !grace {
+		t.Fatalf("after the quiet with an attached mark due: written %v, grace armed %v; want the grace, not a write", written, grace)
+	}
+}

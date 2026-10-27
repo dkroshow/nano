@@ -134,7 +134,8 @@ type restartTracker struct {
 	byKey       map[attachmentKey]*restartThread
 	grace       *time.Timer
 	quiet       *time.Timer
-	written     bool // final: no later mark changes the record
+	lastMark    time.Time // when a mark last changed the record
+	written     bool      // final: no later mark changes the record
 	interrupted bool
 	saved       bool // the line is in the file
 }
@@ -241,7 +242,7 @@ func (t *restartTracker) markBootLoopDone() {
 	if t.bootLoop == nil {
 		t.bootLoop = t.sinceStart()
 	}
-	t.writeIfSettledLocked()
+	t.markedLocked()
 }
 
 // hiddenAtBoot reports a boot thread the sidebar did not show at first sight.
@@ -280,7 +281,7 @@ func (th *restartThread) at(step restartStep) {
 	if *field == nil {
 		*field = t.sinceStart()
 	}
-	t.writeIfSettledLocked()
+	t.markedLocked()
 }
 
 // fail records a failure; failed_ms and reason keep the first one. A thread
@@ -300,12 +301,18 @@ func (th *restartThread) fail(reason string) {
 	if th.FailedMs == nil {
 		th.FailedMs, th.Reason = t.sinceStart(), reason
 	}
-	t.writeIfSettledLocked()
+	t.markedLocked()
 }
 
 // writeIfSettledLocked writes the record once the boot loop is done, every
 // thread is live or failed, and every live thread has its attached mark; or
 // restartSettleGrace after the rest holds.
+// markedLocked notes that a mark just changed the record, then weighs it.
+func (t *restartTracker) markedLocked() {
+	t.lastMark = time.Now()
+	t.writeIfSettledLocked()
+}
+
 func (t *restartTracker) writeIfSettledLocked() {
 	if t.written || t.bootLoop == nil {
 		return
@@ -319,22 +326,19 @@ func (t *restartTracker) writeIfSettledLocked() {
 		resting = resting || th.State == restartStateResting
 	}
 	if resting {
-		if t.quiet != nil {
-			t.quiet.Stop()
+		if wait := restartRestQuiet - time.Since(t.lastMark); wait > 0 {
+			if t.quiet != nil {
+				t.quiet.Stop()
+			}
+			// The callback weighs the record afresh, so a timer armed before
+			// a later mark cannot skip that mark's conditions.
+			t.quiet = time.AfterFunc(wait, func() {
+				t.mu.Lock()
+				defer t.mu.Unlock()
+				t.writeIfSettledLocked()
+			})
+			return
 		}
-		t.quiet = time.AfterFunc(restartRestQuiet, func() {
-			t.mu.Lock()
-			defer t.mu.Unlock()
-			for _, th := range t.threads {
-				if th.State == restartStatePending {
-					return // an attach in progress re-arms this once it settles
-				}
-			}
-			if !t.written {
-				t.writeLocked(false)
-			}
-		})
-		return
 	}
 	if !marksDue {
 		t.writeLocked(false)
