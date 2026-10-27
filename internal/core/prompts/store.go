@@ -281,6 +281,19 @@ func (j Journal) ListThreadAttempts(ctx context.Context, provider model.Provider
 	return listThreadAttempts(ctx, j.db, provider, nativeThreadID)
 }
 
+// InFlight reports whether the thread has a prompt still on its way or in a
+// provider turn not known to have ended: queued, delivering, uncertain, or
+// accepted with no terminal turn status.
+func (s *Store) InFlight(ctx context.Context, hostedThreadID string) (bool, error) {
+	var found int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM queued_turns WHERE hosted_thread_id=? AND (state IN (?,?,?) OR (state=? AND COALESCE(provider_terminal_status,'')='')) LIMIT 1`,
+		hostedThreadID, Queued, Delivering, Uncertain, Accepted).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // Queued lists the thread's queued prompts in delivery order: by delivery
 // class, then submission order. It reads only those rows.
 func (s *Store) Queued(ctx context.Context, hostedThreadID string) ([]Record, error) {

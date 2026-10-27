@@ -202,7 +202,10 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				if test.unused {
 					w.fake.setResumeError("no rollout found for thread id " + native)
 				}
-				go w.s.reattachOnBoot()
+				go func() {
+					w.s.reattachOnBoot()
+					w.s.reattachWaitingHosted(hosted) // no work open, so it rests until needed
+				}()
 				waitForClaude(t, "the boot shell", func() bool {
 					sess = w.s.sessionForHostedThread(hosted)
 					return sess != nil && sess.turns != nil
@@ -234,6 +237,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				})
 			default:
 				w.s.reattachOnBoot()
+				w.s.reattachWaitingHosted(hosted) // no work open, so it rests until needed
 				waitForClaude(t, "the first attachment", func() bool {
 					sess = w.s.sessionForHostedThread(hosted)
 					return sess != nil && sess.summary().Status == "ready"

@@ -602,10 +602,13 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	if recorder.Code != http.StatusAccepted && recorder.Code != http.StatusOK {
 		t.Fatalf("prompt to a resting thread = %d %s", recorder.Code, recorder.Body.String())
 	}
+	// The prompt leaves the queue for the provider once its thread attaches
+	// (the queued browser prompt above has reached it too).
 	waitForClaude(t, "the prompt to reach the provider", func() bool {
+		turn, ok := s.agentExecutions.turnForAction("nht_child-idle", "nano:test:resting")
 		daemon.mu.Lock()
 		defer daemon.mu.Unlock()
-		return daemon.turnStarts == 1
+		return ok && turn.Status != agentTurnQueued && daemon.turnStarts == 2
 	})
 
 	// An idle-only wake (a heartbeat) to a resting thread is admitted while

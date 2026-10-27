@@ -328,17 +328,19 @@ func bootQueue(ordered []attachmentRecord, workOpen func(attachmentRecord) bool)
 }
 
 // bootWorkOpen reports a stored thread with work not yet settled, from each
-// record of it: a hosted operation, a queued prompt, or a provider turn that
-// started and has no outcome. Such a thread cannot wait for someone to look
-// at it.
+// record of it: a hosted operation, a prompt in flight (queued, delivering,
+// uncertain, or accepted into a turn not known to have ended), or a provider
+// turn that started and has no outcome. Such a thread cannot wait for someone
+// to look at it. A store it cannot read counts as work, so the thread attaches.
 func (s *server) bootWorkOpen(rec attachmentRecord) bool {
-	if s.agentExecutions.hasNonTerminalTurns(rec.HostedThreadID) {
+	if s.agentExecutions.hasNonTerminalTurns(rec.HostedThreadID) || s.completedTurns.open(rec.HostedThreadID) {
 		return true
 	}
-	if _, queued := s.queuedTurns.first(rec.Provider, rec.NativeThreadID, rec.HostedThreadID); queued {
-		return true
+	if s.turns == nil {
+		return false
 	}
-	return s.completedTurns.open(rec.HostedThreadID)
+	inFlight, err := s.turns.InFlight(context.Background(), rec.HostedThreadID)
+	return inFlight || err != nil
 }
 
 // sidebarVisibleTopLevel is how many top-level rows count as visible: about
