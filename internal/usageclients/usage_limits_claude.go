@@ -1,4 +1,4 @@
-package app
+package usageclients
 
 // usage_limits_claude.go — the Claude half of account usage.
 //
@@ -35,6 +35,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dkroshow/nano/internal/usage"
 	"net/http"
 	"os"
 	"os/exec"
@@ -116,10 +117,10 @@ type claudeUsageResponse struct {
 
 var claudeUsageHTTPClient = &http.Client{Timeout: 20 * time.Second}
 
-// fetchClaudeUsage reads the live subscription usage. Like the Codex fetcher it
+// FetchClaudeUsage reads the live subscription usage. Like the Codex fetcher it
 // always returns a snapshot; failures carry Error and no buckets.
-func fetchClaudeUsage(ctx context.Context) *usageProviderSnapshot {
-	out := &usageProviderSnapshot{Provider: "claude", Buckets: []usageBucket{}}
+func FetchClaudeUsage(ctx context.Context) *usage.ProviderSnapshot {
+	out := &usage.ProviderSnapshot{Provider: "claude", Buckets: []usage.Bucket{}}
 
 	creds, err := readClaudeCredentials()
 	if err != nil {
@@ -154,8 +155,8 @@ func fetchClaudeUsage(ctx context.Context) *usageProviderSnapshot {
 
 // claudeUsageFromEndpoint is the HTTP half, split out so the failure paths can
 // be driven against a local test server instead of the real account.
-func claudeUsageFromEndpoint(ctx context.Context, endpoint, token string) *usageProviderSnapshot {
-	out := &usageProviderSnapshot{Provider: "claude", Buckets: []usageBucket{}}
+func claudeUsageFromEndpoint(ctx context.Context, endpoint, token string) *usage.ProviderSnapshot {
+	out := &usage.ProviderSnapshot{Provider: "claude", Buckets: []usage.Bucket{}}
 
 	reqCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
@@ -214,11 +215,11 @@ func claudeUsageFromEndpoint(ctx context.Context, endpoint, token string) *usage
 // keep stable keys; a per-model or per-surface cap is keyed by its scope so a
 // new model appearing mid-week starts its own series rather than overwriting
 // another model's.
-func claudeUsageBucket(lim claudeUsageLimit) (usageBucket, bool) {
+func claudeUsageBucket(lim claudeUsageLimit) (usage.Bucket, bool) {
 	if lim.Kind == "" {
-		return usageBucket{}, false
+		return usage.Bucket{}, false
 	}
-	b := usageBucket{
+	b := usage.Bucket{
 		UsedPercent: lim.Percent,
 		Severity:    lim.Severity,
 		IsActive:    lim.IsActive,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/usageclients"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -57,11 +58,15 @@ func newUsageLimitsPoller(store *usageLimitsStore, codex *codexDaemon, grok sess
 	if interval <= 0 {
 		interval = defaultUsageLimitPollInterval
 	}
+	var readCodex func(context.Context, string, any, any) error
+	if codex != nil {
+		readCodex = codex.Call
+	}
 	poller := usage.NewPoller(store.Store, interval,
 		usage.Source{Provider: "codex", Fetch: func(ctx context.Context) *usageProviderSnapshot {
-			return fetchCodexUsage(ctx, codex)
+			return usageclients.FetchCodexUsage(ctx, readCodex)
 		}},
-		usage.Source{Provider: "claude", Fetch: fetchClaudeUsage},
+		usage.Source{Provider: "claude", Fetch: usageclients.FetchClaudeUsage},
 		usage.Source{Provider: "grok", Fetch: func(ctx context.Context) *usageProviderSnapshot {
 			return fetchGrokUsage(ctx, grok)
 		}},

@@ -1,4 +1,4 @@
-package app
+package usageclients
 
 // usage_limits_codex.go — the Codex half of account usage.
 //
@@ -18,6 +18,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/dkroshow/nano/internal/usage"
 	"sort"
 	"time"
 )
@@ -58,19 +59,19 @@ type codexRateLimitsResponse struct {
 	RateLimitResetCredits *codexRateLimitResetCredits       `json:"rateLimitResetCredits"`
 }
 
-// fetchCodexUsage reads the account-wide limits from the app-server. It always
+// FetchCodexUsage reads the account-wide limits from the app-server. It always
 // returns a snapshot: on failure, one carrying only Error, which the store
 // folds into the last good reading rather than discarding it.
-func fetchCodexUsage(ctx context.Context, daemon *codexDaemon) *usageProviderSnapshot {
-	out := &usageProviderSnapshot{Provider: "codex", Buckets: []usageBucket{}}
-	if daemon == nil {
+func FetchCodexUsage(ctx context.Context, call func(context.Context, string, any, any) error) *usage.ProviderSnapshot {
+	out := &usage.ProviderSnapshot{Provider: "codex", Buckets: []usage.Bucket{}}
+	if call == nil {
 		return out.Fail("Codex connection is not configured", nil)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
 	var resp codexRateLimitsResponse
-	if err := daemon.Call(callCtx, codexRateLimitsReadMethod, map[string]any{}, &resp); err != nil {
+	if err := call(callCtx, codexRateLimitsReadMethod, map[string]any{}, &resp); err != nil {
 		return out.Fail("Codex didn't answer the usage request",
 			fmt.Errorf("%s: %w", codexRateLimitsReadMethod, err))
 	}
@@ -138,16 +139,16 @@ func fetchCodexUsage(ctx context.Context, daemon *codexDaemon) *usageProviderSna
 // codexUsageResetCredits keeps one-time reset expiry separate from metered
 // usage windows. The API may include used or expired credits in the array;
 // only available credits belong in the operator's current headroom view.
-func codexUsageResetCredits(summary *codexRateLimitResetCredits) (int, []usageResetCredit) {
+func codexUsageResetCredits(summary *codexRateLimitResetCredits) (int, []usage.ResetCredit) {
 	if summary == nil {
 		return 0, nil
 	}
-	details := make([]usageResetCredit, 0, len(summary.Credits))
+	details := make([]usage.ResetCredit, 0, len(summary.Credits))
 	for _, credit := range summary.Credits {
 		if credit.Status != "available" {
 			continue
 		}
-		detail := usageResetCredit{ID: credit.ID, Title: credit.Title, Status: credit.Status}
+		detail := usage.ResetCredit{ID: credit.ID, Title: credit.Title, Status: credit.Status}
 		if credit.ExpiresAt != nil {
 			detail.ExpiresAt = *credit.ExpiresAt
 		}
@@ -166,11 +167,11 @@ func codexUsageResetCredits(summary *codexRateLimitResetCredits) (int, []usageRe
 
 // codexUsageBucket normalizes one window. Returns ok=false when the provider
 // reported no window at that slot, which is the common case for `secondary`.
-func codexUsageBucket(limitID, slot, limitName string, primary bool, w *codexRateLimitWindow) (usageBucket, bool) {
+func codexUsageBucket(limitID, slot, limitName string, primary bool, w *codexRateLimitWindow) (usage.Bucket, bool) {
 	if w == nil {
-		return usageBucket{}, false
+		return usage.Bucket{}, false
 	}
-	b := usageBucket{
+	b := usage.Bucket{
 		Key:         limitID + ":" + slot,
 		UsedPercent: w.UsedPercent,
 		Primary:     primary,
