@@ -27,11 +27,6 @@ import (
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
-// defaultClaudeShimWS is the supervised daemon's address (main.go's
-// -claude-shim-ws default); empty disables the shim and spawns children
-// directly.
-const defaultClaudeShimWS = "ws://127.0.0.1:7692"
-
 const (
 	claudeShimDialTimeout = 3 * time.Second
 	claudeShimCallTimeout = 10 * time.Second

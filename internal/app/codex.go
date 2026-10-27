@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dkroshow/nano/internal/config"
 	"log"
 	"os/exec"
 	"strings"
@@ -32,7 +33,7 @@ const (
 const codexZeroTurnRecoveryAttemptTimeout = 5 * time.Second
 
 const (
-	supervisedDaemonLabel = "local.nano.app-server"
+	supervisedDaemonLabel = config.DefaultCodexSupervisorLabel
 	fallbackSpawnDelay    = 30 * time.Second
 	supervisorCheckRate   = time.Second
 	supervisorWaitLogRate = time.Minute

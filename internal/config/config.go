@@ -1,4 +1,4 @@
-package app
+package config
 
 import (
 	"flag"
@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/configpaths"
+	"github.com/dkroshow/nano/internal/features/heartbeat"
+	"github.com/dkroshow/nano/internal/usage"
 )
 
 // Config is Nano's complete process configuration. Every filesystem write
-// target is explicit after ParseConfig returns, so an isolated candidate can
+// target is explicit after Parse returns, so an isolated candidate can
 // run without sharing the installed server's data, logs, or transient spool.
 type Config struct {
 	Port                     int
@@ -71,9 +73,16 @@ type ConfigPaths struct {
 	WireSpoolDir             string
 }
 
+// DefaultCodexSupervisorLabel identifies the separately supervised Codex daemon.
+const DefaultCodexSupervisorLabel = "local.nano.app-server"
+
+// defaultClaudeShimWS is the separately supervised Claude shim address.
+const defaultClaudeShimWS = "ws://127.0.0.1:7692"
+
 type configPathFlags ConfigPaths
 
-func parseConfig(args []string) (Config, error) {
+// Parse resolves process flags and paths without opening stores or starting workers.
+func Parse(args []string) (Config, error) {
 	return parseConfigWith(args, os.UserHomeDir, os.Stderr)
 }
 
@@ -89,7 +98,7 @@ func parseConfigWith(args []string, userHomeDir func() (string, error), output i
 	flags.StringVar(&config.Model, "model", "", "default model override (default: provider config)")
 	flags.StringVar(&config.ReasoningSummary, "reasoning-summary", "detailed", "codex reasoning summary level: auto | concise | detailed | none")
 	flags.StringVar(&config.CodexWS, "codex-ws", "ws://127.0.0.1:7691", "codex app-server daemon websocket URL")
-	flags.StringVar(&config.CodexSupervisorLabel, "codex-supervisor-label", supervisedDaemonLabel, "launchd label of the supervised Codex app-server")
+	flags.StringVar(&config.CodexSupervisorLabel, "codex-supervisor-label", DefaultCodexSupervisorLabel, "launchd label of the supervised Codex app-server")
 	flags.StringVar(&config.ClaudeBin, "claude-bin", "", "claude executable path (default: CODEX_NANO_CLAUDE_BIN, ~/.local/bin/claude, Homebrew, then PATH)")
 	flags.StringVar(&config.ClaudeShimWS, "claude-shim-ws", defaultClaudeShimWS, "claude shim daemon websocket URL; empty spawns claude children directly")
 	flags.StringVar(&config.ClaudeShimSpoolDir, "claude-shim-spool-dir", "", "the claude shim daemon's spool directory, read before re-attach (default <data-dir>/claude-shim/spools)")
@@ -98,10 +107,10 @@ func parseConfigWith(args []string, userHomeDir func() (string, error), output i
 	flags.StringVar(&config.AllowedTools, "allowed-tools", "Read,Grep,Glob", "claude allowed tools")
 	flags.BoolVar(&config.DisableWatch, "no-watch", false, "watch no attached-thread files; attached threads then advance only on provider hints and explicit refresh")
 	flags.BoolVar(&config.HeartbeatEnabled, "heartbeat", false, "enable the wall-clock heartbeat scheduler")
-	flags.IntVar(&config.HeartbeatMaxWakesPerHour, "heartbeat-max-wakes-per-hour", defaultHeartbeatMaxWakesPerHour, "global maximum heartbeat wakes in a rolling hour")
+	flags.IntVar(&config.HeartbeatMaxWakesPerHour, "heartbeat-max-wakes-per-hour", heartbeat.DefaultMaxWakesPerHour, "global maximum heartbeat wakes in a rolling hour")
 	flags.IntVar(&config.MailRetentionDays, "mail-retention-days", -1, "days to keep dispositioned mail; -1 preserves the stored setting")
 	flags.BoolVar(&config.UsageEnabled, "usage", true, "poll and retain account usage")
-	flags.DurationVar(&config.UsagePollInterval, "usage-poll-interval", defaultUsageLimitPollInterval, "account usage polling interval")
+	flags.DurationVar(&config.UsagePollInterval, "usage-poll-interval", usage.DefaultPollInterval, "account usage polling interval")
 	flags.IntVar(&config.RemoteAuthPort, "remote-auth-port", 0, "protected loopback port for a Tailscale Serve proxy")
 	flags.StringVar(&config.RemoteAuthHost, "remote-auth-host", "", "exact public Host accepted by the protected remote listener")
 	flags.IntVar(&config.LocalTLSPort, "local-tls-port", 0, "trusted loopback HTTPS port, using <data-dir>/tls/localhost.pem and localhost-key.pem")

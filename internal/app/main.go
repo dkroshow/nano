@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/dkroshow/nano/internal/config"
 	"io"
 	"io/fs"
 	"log"
@@ -203,7 +204,7 @@ type server struct {
 
 // Main runs Nano using the process arguments and standard streams.
 func Main() {
-	config, err := parseConfig(os.Args[1:])
+	config, err := config.Parse(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		return
 	}
@@ -213,14 +214,14 @@ func Main() {
 	run(config)
 }
 
-func run(config Config) {
+func run(config config.Config) {
 	application := construct(config)
 	local, remote := application.mount()
 	application.run(local, remote)
 }
 
 type application struct {
-	config          Config
+	config          config.Config
 	server          *server
 	absCwd          string
 	serverLog       io.Closer
@@ -230,7 +231,7 @@ type application struct {
 	remoteAuth      *remoteauth.Authenticator
 }
 
-func construct(config Config) *application {
+func construct(config config.Config) *application {
 	serverLog := installPersistentServerLog(config.Paths.ServerLog)
 
 	absCwd, err := filepath.Abs(config.WorkingDirectory)
