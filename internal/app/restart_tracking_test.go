@@ -239,29 +239,48 @@ func TestRestartRecordWaitsForBrowsersWhileThreadsRest(t *testing.T) {
 	}
 }
 
-// Failure caught: a quiet timer armed while threads rested wrote the record
-// after a browser's attach went live but before its attached mark, skipping
-// the grace that waits for that mark. Boundary: the restart tracker.
-func TestRestartRecordQuietKeepsTheAttachedMarkGrace(t *testing.T) {
+// Failure caught: a timer armed while threads rested wrote the record after a
+// later mark changed what it had to wait for: before a browser's attach had
+// its attached mark, or while a second browser attach was still pending, so
+// the record froze and later marks were lost. Boundary: the restart tracker.
+func TestRestartRecordTimerReweighsLaterMarks(t *testing.T) {
 	tracker := newRestartTracker(filepath.Join(t.TempDir(), restartsFileName), "test-stamp", "boot-test", time.Now())
-	shown := attachmentRecord{Provider: "codex", NativeThreadID: "shown", HostedThreadID: "nht_shown"}
-	other := attachmentRecord{Provider: "codex", NativeThreadID: "other", HostedThreadID: "nht_other"}
-	tracker.addThreads([]attachmentRecord{shown, other})
-	tracker.rest([]attachmentRecord{shown, other})
+	first := attachmentRecord{Provider: "codex", NativeThreadID: "first", HostedThreadID: "nht_first"}
+	second := attachmentRecord{Provider: "codex", NativeThreadID: "second", HostedThreadID: "nht_second"}
+	tracker.addThreads([]attachmentRecord{first, second})
+	tracker.rest([]attachmentRecord{first, second})
 	tracker.markBootLoopDone()
-	tracker.thread(shown.key()).at(restartPicked)
-	tracker.thread(shown.key()).at(restartLive) // attached mark still on its way
-	tracker.mu.Lock()
-	tracker.lastMark = time.Now().Add(-2 * restartRestQuiet) // the quiet has passed
-	tracker.quiet.Reset(0)                                   // the armed timer fires now
-	tracker.mu.Unlock()
-	var written, grace bool
-	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline) && !grace && !written; time.Sleep(5 * time.Millisecond) {
+	// fire makes the quiet pass and fires the armed timer now.
+	fire := func() bool {
+		t.Helper()
 		tracker.mu.Lock()
-		written, grace = tracker.written, tracker.grace != nil
+		tracker.lastMark = time.Now().Add(-2 * restartRestQuiet)
+		if tracker.wake != nil {
+			tracker.wake.Reset(0)
+		}
 		tracker.mu.Unlock()
+		time.Sleep(50 * time.Millisecond)
+		tracker.mu.Lock()
+		defer tracker.mu.Unlock()
+		return tracker.written
 	}
-	if written || !grace {
-		t.Fatalf("after the quiet with an attached mark due: written %v, grace armed %v; want the grace, not a write", written, grace)
+	tracker.thread(first.key()).at(restartPicked)
+	tracker.thread(first.key()).at(restartLive) // its attached mark is on its way
+	if fire() {
+		t.Fatal("written before the first attach's attached mark, within its grace")
+	}
+	tracker.thread(second.key()).at(restartPicked) // a browser shows the second
+	tracker.thread(first.key()).at(restartAttached)
+	if fire() {
+		t.Fatal("written while the second attach is pending")
+	}
+	tracker.thread(second.key()).at(restartLive)
+	tracker.thread(second.key()).at(restartAttached)
+	fire()
+	tracker.mu.Lock()
+	written, record := tracker.written, tracker.recordLocked(true)
+	tracker.mu.Unlock()
+	if !written || record.Live != 2 || record.Pending != 0 {
+		t.Fatalf("record = written %v, live %d, pending %d; want both browser attaches live", written, record.Live, record.Pending)
 	}
 }

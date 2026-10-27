@@ -25,9 +25,9 @@ const (
 	// A boot that has not settled every thread by then is written as it
 	// stands, with the rest marked not_live_at_cap.
 	restartRecordCap = 15 * time.Minute
-	// Once every thread is live or failed, a live thread's attached mark may
-	// still be on its way: a Claude respawn goes live before its resume
-	// returns. The record waits at most this long for it.
+	// A live thread's attached mark may still be on its way: a Claude respawn
+	// goes live before its resume returns. The record waits at most this long
+	// after the thread went live.
 	restartSettleGrace = 30 * time.Second
 	// Browsers ask for the resting threads they show right after a restart.
 	// With resting threads, the record waits until no attach has settled for
@@ -132,10 +132,9 @@ type restartTracker struct {
 	bootLoop    *int64
 	threads     []*restartThread
 	byKey       map[attachmentKey]*restartThread
-	grace       *time.Timer
-	quiet       *time.Timer
-	lastMark    time.Time // when a mark last changed the record
-	written     bool      // final: no later mark changes the record
+	wake        *time.Timer // the next time the record may be written
+	lastMark    time.Time   // when a mark last changed the record
+	written     bool        // final: no later mark changes the record
 	interrupted bool
 	saved       bool // the line is in the file
 }
@@ -304,9 +303,10 @@ func (th *restartThread) fail(reason string) {
 	t.markedLocked()
 }
 
-// writeIfSettledLocked writes the record once the boot loop is done, every
-// thread is live or failed, and every live thread has its attached mark; or
-// restartSettleGrace after the rest holds.
+// writeIfSettledLocked writes the record once the boot loop is done, no
+// thread is pending, every live thread has its attached mark or has waited
+// restartSettleGrace since it went live, and, while threads rest, no mark has
+// changed the record for restartRestQuiet.
 // markedLocked notes that a mark just changed the record, then weighs it.
 func (t *restartTracker) markedLocked() {
 	t.lastMark = time.Now()
@@ -317,42 +317,36 @@ func (t *restartTracker) writeIfSettledLocked() {
 	if t.written || t.bootLoop == nil {
 		return
 	}
-	marksDue, resting := false, false
+	now, wait := time.Now(), time.Duration(0)
+	resting := false
 	for _, th := range t.threads {
-		if th.State == restartStatePending {
-			return
+		switch {
+		case th.State == restartStatePending:
+			return // the mark that settles it weighs the record again
+		case th.State == restartStateResting:
+			resting = true
+		case th.State == restartStateLive && th.AttachedMs == nil && th.LiveMs != nil:
+			due := t.started.Add(time.Duration(*th.LiveMs)*time.Millisecond + restartSettleGrace)
+			wait = max(wait, due.Sub(now))
 		}
-		marksDue = marksDue || th.State == restartStateLive && th.AttachedMs == nil
-		resting = resting || th.State == restartStateResting
 	}
 	if resting {
-		if wait := restartRestQuiet - time.Since(t.lastMark); wait > 0 {
-			if t.quiet != nil {
-				t.quiet.Stop()
-			}
-			// The callback weighs the record afresh, so a timer armed before
-			// a later mark cannot skip that mark's conditions.
-			t.quiet = time.AfterFunc(wait, func() {
-				t.mu.Lock()
-				defer t.mu.Unlock()
-				t.writeIfSettledLocked()
-			})
-			return
+		wait = max(wait, restartRestQuiet-now.Sub(t.lastMark))
+	}
+	if wait > 0 {
+		// One timer for every wait; its callback weighs the record afresh, so
+		// a deadline set before a later mark cannot skip that mark.
+		if t.wake != nil {
+			t.wake.Stop()
 		}
-	}
-	if !marksDue {
-		t.writeLocked(false)
-		return
-	}
-	if t.grace == nil {
-		t.grace = time.AfterFunc(restartSettleGrace, func() {
+		t.wake = time.AfterFunc(wait, func() {
 			t.mu.Lock()
 			defer t.mu.Unlock()
-			if !t.written {
-				t.writeLocked(false)
-			}
+			t.writeIfSettledLocked()
 		})
+		return
 	}
+	t.writeLocked(false)
 }
 
 // writeUnsettled writes the record as it stands: at the cap, or when Nano
