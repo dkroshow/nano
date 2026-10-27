@@ -35,7 +35,7 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 	}
 	var alerts strings.Builder
 	for i := range 1000 { // about 100 KB, past the tail the endpoint reads
-		fmt.Fprintf(&alerts, `{"at":"2026-10-01T05:00:00Z","row":"swap","firing":true,"text":"alert %d","source":"nano-health"}`+"\n", i)
+		fmt.Fprintf(&alerts, `{"at":"2026-10-01T05:00:00Z","row":"swap","firing":true,"text":"alert %d","source":"host-monitor"}`+"\n", i)
 	}
 	if err := os.WriteFile(filepath.Join(dir, monitorAlertsName), []byte(alerts.String()), 0o600); err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestHostMonitorRecordsStoppedSnapshotsOnceAndTheirReturn(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range monitorAlertsShown + 10 {
-		fmt.Fprintf(f, `{"at":"2026-10-01T06:00:00Z","row":"swap","firing":%t,"text":"x","source":"nano-health"}`+"\n", i%2 == 0)
+		fmt.Fprintf(f, `{"at":"2026-10-01T06:00:00Z","row":"swap","firing":%t,"text":"x","source":"host-monitor"}`+"\n", i%2 == 0)
 	}
 	f.Close()
 	if err := os.Chtimes(snapshot, now, now); err != nil {

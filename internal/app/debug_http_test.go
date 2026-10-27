@@ -88,6 +88,7 @@ func TestLocalListenerRejectsCrossSiteWritesWithoutBlockingLocalTools(t *testing
 	}{
 		{"curl and hosted agents", http.MethodPost, "/api/write", "127.0.0.1:7690", "", "", "", http.StatusNoContent},
 		{"same origin browser", http.MethodPut, "/api/write", "localhost:7690", "http://localhost:7690", "", "same-origin", http.StatusNoContent},
+		{"Vite proxy", http.MethodPost, "/api/write", "localhost:5173", "http://localhost:5173", "", "same-origin", http.StatusNoContent},
 		{"cross-site origin", http.MethodPost, "/api/write", "127.0.0.1:7690", "https://attacker.example", "", "", http.StatusForbidden},
 		{"opaque origin", http.MethodPost, "/api/write", "127.0.0.1:7690", "null", "", "", http.StatusForbidden},
 		{"cross-site fetch metadata", http.MethodPut, "/api/write", "127.0.0.1:7690", "", "", "cross-site", http.StatusForbidden},
