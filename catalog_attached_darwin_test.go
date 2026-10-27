@@ -418,6 +418,7 @@ func TestOutsideSessionIsDiscoveredWithoutRefresh(t *testing.T) {
 		idle = append(idle, []string{filepath.Join(project, fmt.Sprintf("idle-%03d.jsonl", i))})
 	}
 	c.service.holdOutside(idle)
+	idleSince := time.Now()
 	writer, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -427,6 +428,15 @@ func TestOutsideSessionIsDiscoveredWithoutRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.waitTexts(t, nativeID, []string{"prompt 0", "prompt 1"})
+	// The saved rows are readable before the pass records the hold's
+	// activity; on a slower host the cap was reached in that gap and the
+	// active session looked idlest.
+	waitForCatalog(t, func() bool {
+		c.service.attachedMu.Lock()
+		defer c.service.attachedMu.Unlock()
+		held := c.service.held[path]
+		return held != nil && held.progressAt.After(idleSince)
+	})
 
 	// One more session past the cap releases the idlest hold, not the
 	// active one.
