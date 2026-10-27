@@ -1,4 +1,4 @@
-package app
+package httpapi
 
 import (
 	"bufio"
@@ -32,7 +32,7 @@ func TestCompressResponsesKeepsStreamsLiveAndHonorsAcceptEncoding(t *testing.T) 
 		<-release
 		fmt.Fprint(w, "data: second\n\n")
 	})
-	server := httptest.NewServer(compressResponses(mux))
+	server := httptest.NewServer(CompressResponses(mux))
 	defer server.Close()
 	defer close(release) // before Close, so a stalled stream fails instead of hanging
 	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}

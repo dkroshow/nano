@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -15,7 +16,7 @@ import (
 
 func TestAPICapabilitiesDescribesTheAgentWorkflow(t *testing.T) {
 	rec := httptest.NewRecorder()
-	handleAPICapabilities(rec, httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil))
+	httpapi.DiscoveryHandler(api.CapabilitiesJSON, `</api/v1/openapi.json>; rel="service-desc"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("capabilities status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -185,7 +186,7 @@ func TestAPICapabilitiesDescribesTheAgentWorkflow(t *testing.T) {
 
 func TestOpenAPIDescribesEveryHostedThreadCapability(t *testing.T) {
 	rec := httptest.NewRecorder()
-	handleOpenAPI(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	httpapi.DiscoveryHandler(api.OpenAPIJSON, `</api/v1/capabilities>; rel="service-meta"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("openapi status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -334,7 +335,7 @@ func TestOpenAPIDescribesEveryHostedThreadCapability(t *testing.T) {
 
 func TestOpenAPIRequiresAndReturnsInvocationLineage(t *testing.T) {
 	rec := httptest.NewRecorder()
-	handleOpenAPI(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	httpapi.DiscoveryHandler(api.OpenAPIJSON, `</api/v1/capabilities>; rel="service-meta"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	var document struct {
 		Components struct {
 			Schemas map[string]json.RawMessage `json:"schemas"`
@@ -372,7 +373,7 @@ func TestOpenAPIRequiresAndReturnsInvocationLineage(t *testing.T) {
 
 func TestOpenAPIExposesThreadDiagnostics(t *testing.T) {
 	rec := httptest.NewRecorder()
-	handleOpenAPI(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	httpapi.DiscoveryHandler(api.OpenAPIJSON, `</api/v1/capabilities>; rel="service-meta"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("openapi status = %d, body %s", rec.Code, rec.Body.String())
 	}

@@ -1,4 +1,4 @@
-package app
+package httpapi
 
 import (
 	"math/rand/v2"
@@ -17,7 +17,8 @@ var connectionTestPayload = func() []byte {
 	return payload
 }()
 
-func handleConnectionTest(w http.ResponseWriter, _ *http.Request) {
+// HandleConnectionTest serves an uncacheable payload for connection throughput measurements.
+func HandleConnectionTest(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Length", strconv.Itoa(len(connectionTestPayload)))

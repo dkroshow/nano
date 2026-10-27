@@ -1,4 +1,4 @@
-package app
+package httpapi
 
 import (
 	"compress/gzip"
@@ -8,11 +8,11 @@ import (
 	"sync"
 )
 
-// compressResponses gzips text, JSON and event streams for clients that
+// CompressResponses gzips text, JSON and event streams for clients that
 // accept gzip, on every listener. JSON compresses about tenfold, which is
 // most of what a page moves over a slow remote link. A stream stays live:
 // each Flush sends the compressed bytes written so far.
-func compressResponses(next http.Handler) http.Handler {
+func CompressResponses(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Either encoding may answer this URL, so a cache must key on it.
 		w.Header().Add("Vary", "Accept-Encoding")

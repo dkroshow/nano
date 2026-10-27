@@ -510,7 +510,7 @@ func (a *application) mount() (http.Handler, http.Handler) {
 		}
 		fileServer.ServeHTTP(w, r)
 	}))
-	return listenerHandlersWithLoopback(compressResponses(a.server.refuseWritesWhileStopping(mux)), a.remoteAuth.Guard)
+	return listenerHandlersWithLoopback(httpapi.CompressResponses(a.server.refuseWritesWhileStopping(mux)), a.remoteAuth.Guard)
 }
 
 func (a *application) run(localHandler, remoteHandler http.Handler) {

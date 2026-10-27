@@ -60,7 +60,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/grok/models", "models.grok.list", s.handleGrokModels},
 		{http.MethodDelete, "/api/attachments/{nativeThreadId}", "attachments.forget", s.handleAttachmentScoped},
 		{http.MethodGet, "/api/v1/build", "build.read", handleBuildInfo},
-		{http.MethodGet, "/api/v1/connection-test", "connection.test", handleConnectionTest},
+		{http.MethodGet, "/api/v1/connection-test", "connection.test", httpapi.HandleConnectionTest},
 		{http.MethodGet, "/api/v1/monitor", "monitor.read", s.handleMonitor},
 		{http.MethodGet, "/api/v1/monitor/ingest-receipts", "monitor.ingestReceipts", s.handleIngestReceipts},
 		{http.MethodGet, "/api/v1/restarts", "restarts.read", s.handleRestarts},
