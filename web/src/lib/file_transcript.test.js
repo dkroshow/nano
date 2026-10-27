@@ -92,6 +92,7 @@ afterEach(() => {
   cleanup()
   dropSessionStore('session-1')
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('file-only pane status', () => {
@@ -366,12 +367,15 @@ describe('file-only pane', () => {
   // The mounted boundary catches a dropped adapter field or a wrong view
   // gate; the stream test owns the admission-time lookup itself.
   it('shows a live agent submission line only in Enhanced and removes it at saved handoff', async () => {
+    const DateTimeFormat = Intl.DateTimeFormat
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((locale, options) =>
+      new DateTimeFormat(locale, { ...options, timeZone: options.timeZone ?? 'UTC' }))
     const { container, getByRole } = renderPane()
     const prompt = { id: 'prompt:agent-1', kind: 'prompt', text: 'Inspect the parser.',
       actionId: 'agent-1', state: 'queued', senderSubmittedAt: '2026-08-27T15:22:14.843Z' }
     const source = await stream()
     await send(source, tail([], [prompt]))
-    const line = 'Submitted Aug 27, 8:22:14 AM PDT'
+    const line = 'Submitted Aug 27, 3:22:14 PM UTC'
     expect(container.querySelector('.item-submission-timestamp')?.textContent).toBe(line)
     expect(container.querySelector('[data-transcript-content]')?.textContent.trim()).toBe('Inspect the parser.')
 
@@ -392,12 +396,15 @@ describe('file-only pane', () => {
   // The mounted boundary owns the saved decoration and view gate, while the
   // stream owns the atomic handoff. The saved prompt keeps its footer bytes.
   it('keeps exactly one Submitted line through saved footer handoff in Enhanced only', async () => {
+    const DateTimeFormat = Intl.DateTimeFormat
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((locale, options) =>
+      new DateTimeFormat(locale, { ...options, timeZone: options.timeZone ?? 'UTC' }))
     const { container, getByRole } = renderPane()
     const { text, submittedAt } = senderFooterFixture
     const prompt = { id: 'prompt:agent-footer', kind: 'prompt', text: 'Inspect the parser.',
       actionId: 'agent-footer', state: 'queued', senderSubmittedAt: submittedAt }
     const source = await stream()
-    const line = 'Submitted Oct 7, 6:29:25 PM PDT'
+    const line = 'Submitted Oct 8, 1:29:25 AM UTC'
     await send(source, tail([], [prompt]))
     expect([...container.querySelectorAll('.item-submission-timestamp')].map((el) => el.textContent)).toEqual([line])
     const rows = [row(1, 'user_message', text), row(2, 'user_message', 'A person asks a question.')]

@@ -1778,8 +1778,13 @@ describe('a send Nano never acknowledged retries until Nano answers', () => {
     syncSessionSummaries([liveSession])
     await typeAndSend(container, getByRole, 'storage is full')
     await waitFor(() => expect(unsentRow(container)?.textContent).toContain('(attempt 1)'))
+    await waitFor(() => expect(getSessionStore('session-1').store.sending).toBe(0))
+    // jsdom Storage methods live on its prototype; spying on the instance
+    // writes a storage entry instead of replacing the method. Node's shim
+    // has own methods, so spy where this runtime actually defines setItem.
+    const storageMethods = Object.hasOwn(localStorage, 'setItem') ? localStorage : Object.getPrototypeOf(localStorage)
     const setItem = localStorage.setItem
-    vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+    vi.spyOn(storageMethods, 'setItem').mockImplementation((key, value) => {
       if (String(key).startsWith('nano-unsent:')) throw new DOMException('quota', 'QuotaExceededError')
       return setItem.call(localStorage, key, value)
     })

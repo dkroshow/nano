@@ -344,15 +344,15 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if open}
-  <!-- Click-outside closes; the panel stops propagation. -->
-  <div class="ud-overlay" role="presentation" onclick={() => onClose?.()}>
+  <!-- Only the backdrop closes the panel. -->
+  <div class="ud-overlay" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
     <div
       class="ud-modal"
       role="dialog"
       aria-modal="true"
       aria-label="Account usage detail"
       data-testid="usage-detail"
-      onclick={(e) => e.stopPropagation()}
+      tabindex="-1"
     >
       <div class="ud-head">
         <span class="ud-title">Account usage</span>
@@ -411,8 +411,12 @@
                 width={W}
                 height={height}
                 viewBox="0 0 {W} {height}"
-                role="img"
+                role="slider"
                 aria-label="{provider} limit usage over the last {hours} hours"
+                aria-valuemin={domain[0]}
+                aria-valuemax={Math.min(now, domain[1])}
+                aria-valuenow={hoverT ?? Math.min(now, domain[1])}
+                aria-valuetext={crosshairTime(hoverT ?? Math.min(now, domain[1]))}
                 tabindex="0"
                 onpointermove={(e) => (hover[provider] = pointerToTime(e, domain))}
                 onpointerdown={(e) => (hover[provider] = pointerToTime(e, domain))}

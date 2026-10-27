@@ -3,7 +3,7 @@
 // The one-time reset's own expiry must appear in the mounted dialog. It must
 // never be substituted with the separate usage-window reset time.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/svelte'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte'
 import UsageDetail from './UsageDetail.svelte'
 
 function jsonResponse(body) {
@@ -61,8 +61,8 @@ describe('usage detail', () => {
 
     const screen = render(UsageDetail, { open: true, onClose: () => {} })
 
-    await waitFor(() => expect(screen.getByRole('img', { name: /grok limit usage/i })).toBeTruthy())
-    const grokChart = screen.getByRole('img', { name: /grok limit usage/i })
+    await waitFor(() => expect(screen.getByRole('slider', { name: /grok limit usage/i })).toBeTruthy())
+    const grokChart = screen.getByRole('slider', { name: /grok limit usage/i })
     expect(grokChart.getAttribute('width')).toBe('560')
     expect(grokChart.getAttribute('height')).toBe('170')
     expect(grokChart.textContent).toMatch(/%/)
@@ -76,7 +76,7 @@ describe('usage detail', () => {
     const resets = screen.getByRole('heading', { name: 'Resets' }).closest('section')
     expect(resets.textContent).toMatch(/grok\s+month/)
     expect(resets.textContent).toMatch(/in \d+d/)
-    const codexChart = screen.getByRole('img', { name: /codex limit usage/i })
+    const codexChart = screen.getByRole('slider', { name: /codex limit usage/i })
     expect(codexChart.getAttribute('height')).toBe('170')
     expect(charts.textContent).not.toContain('GPT-5.3-Codex-Spark')
     expect(screen.getByTestId('usage-information')).toBeTruthy()
@@ -108,13 +108,25 @@ describe('usage detail', () => {
       pollSeconds: 300,
     })))
 
-    const screen = render(UsageDetail, { open: true, onClose: () => {} })
-    await waitFor(() => expect(screen.getByRole('img', { name: /grok limit usage/i })).toBeTruthy())
-    const chart = screen.getByRole('img', { name: /grok limit usage/i })
+    const onClose = vi.fn()
+    const screen = render(UsageDetail, { open: true, onClose })
+    await waitFor(() => expect(screen.getByRole('slider', { name: /grok limit usage/i })).toBeTruthy())
+    const chart = screen.getByRole('slider', { name: /grok limit usage/i })
     const right = Number(chart.querySelector('.ud-grid').getAttribute('x2'))
     const dot = chart.querySelector('.ud-dot')
     expect(Number(dot.getAttribute('cx'))).toBeCloseTo(right, 0)
     expect(chart.textContent).not.toMatch(/Wed 14/)
+
+    // The chart remains keyboard-operable when exposed as an interactive slider.
+    await fireEvent.keyDown(chart, { key: 'ArrowLeft' })
+    expect(screen.container.querySelector('.ud-readout')?.textContent).toContain('40%')
+    expect(Number(chart.getAttribute('aria-valuenow'))).toBe(now.getTime())
+    await fireEvent.blur(chart)
+    expect(screen.container.querySelector('.ud-readout')).toBeNull()
+    await fireEvent.click(chart)
+    expect(onClose).not.toHaveBeenCalled()
+    await fireEvent.click(screen.container.querySelector('.ud-overlay'))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('shows an available Codex reset credit beside its own expiry', async () => {

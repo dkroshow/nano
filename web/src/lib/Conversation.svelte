@@ -21,7 +21,7 @@
   import { visibleInteractions } from './interactions.js'
   import { newClientActionId } from './pending_sends.js'
   import {
-	formatPacificSubmissionTimestamp,
+	formatSubmissionTimestamp,
     formatTranscriptTimestamp,
     senderSubmissionTimestampFromFooter,
     itemText as durableItemText,
@@ -83,7 +83,7 @@
   }
 
   function submissionTimestamp(item) {
-    return formatPacificSubmissionTimestamp(item?.senderSubmittedAt)
+    return formatSubmissionTimestamp(item?.senderSubmittedAt)
   }
 
   function openTranscriptFile(reference) {
@@ -1462,7 +1462,7 @@
       {@const took = durableTurnDurations.get(it.id)}
       {#if kind === 'user'}
         {@const submittedUTC = view === 'clean' ? senderSubmissionTimestampFromFooter(durableItemText(it)) : ''}
-        {@const submittedAt = formatPacificSubmissionTimestamp(submittedUTC)}
+        {@const submittedAt = formatSubmissionTimestamp(submittedUTC)}
         <div class="item userMessage" data-transcript-row data-transcript-key={transcriptValidationKey('durable', it.id)} data-transcript-source="durable" data-transcript-id={it.id} data-transcript-semantic-id={it.id} data-transcript-projected-seq={it.projectedSeq || undefined} data-transcript-projection-key={history?.projection?.key ?? history?.projection?.epoch ?? undefined} data-transcript-type={it.type} data-transcript-category={transcriptItemCategory(it)} data-transcript-role={it.role || 'user'} data-transcript-truncated={it.contentTruncated || undefined}>
           <div class="bubble msg-user-surface msg-user-body" data-transcript-content>{durableItemText(it)}</div>
           {#if timestamp}

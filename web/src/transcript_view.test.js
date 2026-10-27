@@ -4,7 +4,7 @@ import {
   consumeTranscriptFilterEscape,
   evidenceDisplay,
   evidenceProvenance,
-	formatPacificSubmissionTimestamp,
+	formatSubmissionTimestamp,
   formatTranscriptTimestamp,
   liveItemCategory,
   normalizedItemMetadata,
@@ -88,14 +88,15 @@ describe('transcript presentation', () => {
   })
 
   it('keeps a compact human timestamp while retaining invalid-value safety', () => {
-    expect(formatTranscriptTimestamp('2026-07-14T12:34:56Z')).toMatch(/Jul.*14.*(12|5):34:56/i)
+    expect(formatTranscriptTimestamp('2026-07-14T12:34:56Z', 'UTC')).toMatch(/Jul.*14.*12:34:56/i)
     expect(formatTranscriptTimestamp('not-a-date')).toBe('')
   })
 
-  it('formats durable agent submission time in Pacific time across daylight saving', () => {
-    expect(formatPacificSubmissionTimestamp('2026-08-27T15:22:14.843Z')).toBe('Aug 27, 8:22:14 AM PDT')
-    expect(formatPacificSubmissionTimestamp('2026-01-15T16:22:14Z')).toBe('Jan 15, 8:22:14 AM PST')
-    expect(formatPacificSubmissionTimestamp('not-a-date')).toBe('')
+  it('formats durable agent submission time in the requested zone across daylight saving', () => {
+    expect(formatSubmissionTimestamp('2026-08-27T15:22:14.843Z', 'America/Los_Angeles')).toBe('Aug 27, 8:22:14 AM PDT')
+    expect(formatSubmissionTimestamp('2026-01-15T16:22:14Z', 'America/Los_Angeles')).toBe('Jan 15, 8:22:14 AM PST')
+    expect(formatSubmissionTimestamp('2026-08-27T15:22:14.843Z', 'UTC')).toBe('Aug 27, 3:22:14 PM UTC')
+    expect(formatSubmissionTimestamp('not-a-date')).toBe('')
   })
 
   it('auto-pages only near the oldest loaded transcript edge', () => {

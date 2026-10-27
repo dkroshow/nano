@@ -90,10 +90,10 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="nw-overlay" onclick={onOverlayClick}>
-  <div class="tsp-modal">
+<div class="nw-overlay" role="presentation" onclick={onOverlayClick}>
+  <div class="tsp-modal" role="dialog" aria-modal="true" aria-labelledby="tsp-title">
     <button class="nw-close-x" onclick={() => onClose?.()} title="Close">×</button>
-    <h3 class="tsp-title">Thread Start Parameters</h3>
+    <h3 id="tsp-title" class="tsp-title">Thread Start Parameters</h3>
 
     <div class="tsp-tabs">
       <button class:on={tab === 'codex'} onclick={() => (tab = 'codex')}>Codex</button>

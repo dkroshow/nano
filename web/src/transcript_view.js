@@ -115,11 +115,12 @@ export function transcriptItemKind(item) {
   return 'aux'
 }
 
-export function formatTranscriptTimestamp(value) {
+export function formatTranscriptTimestamp(value, timeZone) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat(undefined, {
+    timeZone,
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -128,15 +129,15 @@ export function formatTranscriptTimestamp(value) {
   }).format(date)
 }
 
-// Agent submission time is always shown in Pacific time in Nano Enhanced.
+// Agent submission time uses the viewer's local zone in Enhanced view.
 // Live rows use the server-recorded UTC operation value; saved rows recover
 // it from the sender footer. Formatting never rewrites the prompt text.
-export function formatPacificSubmissionTimestamp(value) {
+export function formatSubmissionTimestamp(value, timeZone) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Los_Angeles',
+    timeZone,
     month: 'short',
     day: 'numeric',
     hour: 'numeric',

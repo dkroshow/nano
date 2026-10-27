@@ -2,7 +2,7 @@
   import { onDestroy, tick } from 'svelte'
   import {
     formatTranscriptTimestamp,
-    formatPacificSubmissionTimestamp,
+    formatSubmissionTimestamp,
     senderSubmissionTimestampFromFooter,
     itemText,
     shouldAutoLoadEarlier,
@@ -203,7 +203,7 @@
     {@const took = turnDurations.get(item.id)}
     {#if kind === 'user'}
       {@const submittedUTC = senderSubmissionTimestampFromFooter(itemText(item))}
-      {@const submittedAt = formatPacificSubmissionTimestamp(submittedUTC)}
+      {@const submittedAt = formatSubmissionTimestamp(submittedUTC)}
       <div class="item userMessage">
         <div class="bubble msg-user-surface msg-user-body">{itemText(item)}</div>
         {#if timestamp}
