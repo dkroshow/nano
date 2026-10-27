@@ -3,19 +3,18 @@ package app
 import (
 	"context"
 	"database/sql"
-	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/usageclients"
 	"net/http"
 	"path/filepath"
 	"time"
 
+	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/usage"
+	"github.com/dkroshow/nano/internal/usageclients"
 )
 
 const defaultUsageLimitPollInterval = usage.DefaultPollInterval
 
 type usageBucket = usage.Bucket
-type usageResetCredit = usage.ResetCredit
 type usageProviderSnapshot = usage.ProviderSnapshot
 
 type usageLimitsStore struct {

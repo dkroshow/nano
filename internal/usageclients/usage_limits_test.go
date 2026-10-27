@@ -3,12 +3,13 @@ package usageclients
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/usage"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/usage"
 )
 
 // The two provider payloads below are verbatim-shaped captures of live

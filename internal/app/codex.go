@@ -8,13 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/config"
 	"log"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )

@@ -3,13 +3,14 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/setup"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {

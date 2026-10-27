@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"github.com/dkroshow/nano/internal/setup"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 func TestHistoricalClaudeResolverSharesWorkspaceAndSeparatesEvidence(t *testing.T) {

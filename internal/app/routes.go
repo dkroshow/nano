@@ -1,10 +1,11 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 type applicationRoute struct {

@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 
 	"github.com/dkroshow/nano/api"
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 func apiDiscoveryRoutes() []applicationRoute {

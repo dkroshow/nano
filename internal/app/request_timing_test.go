@@ -3,7 +3,6 @@ package app
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/observability"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 type monitorRequests struct {

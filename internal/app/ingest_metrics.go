@@ -1,7 +1,6 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/observability"
 	"runtime"
 	"slices"
 	"sync"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 // Attached-file ingestion reports its speed, throughput, backlog and failures

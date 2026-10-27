@@ -1,8 +1,9 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
+
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 // handleSkills serves a Codex session's skills list, read when the composer's

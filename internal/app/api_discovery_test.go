@@ -2,21 +2,21 @@ package app
 
 import (
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/dkroshow/nano/internal/history"
-
 	"github.com/dkroshow/nano/api"
+	"github.com/dkroshow/nano/internal/history"
 )
 
 func TestAPICapabilitiesDescribesTheAgentWorkflow(t *testing.T) {
 	rec := httptest.NewRecorder()
-	httpapi.DiscoveryHandler(api.CapabilitiesJSON, `</api/v1/openapi.json>; rel="service-desc"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil))
+	mux := http.NewServeMux()
+	mountRoutes(mux, apiDiscoveryRoutes())
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("capabilities status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -186,9 +186,14 @@ func TestAPICapabilitiesDescribesTheAgentWorkflow(t *testing.T) {
 
 func TestOpenAPIDescribesEveryHostedThreadCapability(t *testing.T) {
 	rec := httptest.NewRecorder()
-	httpapi.DiscoveryHandler(api.OpenAPIJSON, `</api/v1/capabilities>; rel="service-meta"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	mux := http.NewServeMux()
+	mountRoutes(mux, apiDiscoveryRoutes())
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("openapi status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Link"); got != `</api/v1/capabilities>; rel="service-meta"` {
+		t.Fatalf("discovery link = %q", got)
 	}
 	var document struct {
 		OpenAPI    string                     `json:"openapi"`
@@ -335,7 +340,9 @@ func TestOpenAPIDescribesEveryHostedThreadCapability(t *testing.T) {
 
 func TestOpenAPIRequiresAndReturnsInvocationLineage(t *testing.T) {
 	rec := httptest.NewRecorder()
-	httpapi.DiscoveryHandler(api.OpenAPIJSON, `</api/v1/capabilities>; rel="service-meta"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	mux := http.NewServeMux()
+	mountRoutes(mux, apiDiscoveryRoutes())
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	var document struct {
 		Components struct {
 			Schemas map[string]json.RawMessage `json:"schemas"`
@@ -373,7 +380,9 @@ func TestOpenAPIRequiresAndReturnsInvocationLineage(t *testing.T) {
 
 func TestOpenAPIExposesThreadDiagnostics(t *testing.T) {
 	rec := httptest.NewRecorder()
-	httpapi.DiscoveryHandler(api.OpenAPIJSON, `</api/v1/capabilities>; rel="service-meta"`)(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	mux := http.NewServeMux()
+	mountRoutes(mux, apiDiscoveryRoutes())
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("openapi status = %d, body %s", rec.Code, rec.Body.String())
 	}

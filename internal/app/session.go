@@ -12,8 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/setup"
 	"log"
 	"net/http"
 	"os"
@@ -28,10 +26,12 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/providers"
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 // wireBufferCap bounds the raw events a session keeps in memory: the tail the
@@ -2464,7 +2464,7 @@ func (sess *session) handleState(w http.ResponseWriter, r *http.Request) {
 
 	// The pane's info bar names the branch this session is working on. Cached
 	// per directory and refreshed only when /state is rebuilt (live_git.go).
-	if branch := setup.LiveGit.Branch(r.Context(), cwd); branch != "" {
+	if branch := liveGit.Branch(r.Context(), cwd); branch != "" {
 		out["gitBranch"] = branch
 	}
 

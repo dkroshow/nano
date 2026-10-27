@@ -18,9 +18,10 @@ package usageclients
 import (
 	"context"
 	"fmt"
-	"github.com/dkroshow/nano/internal/usage"
 	"sort"
 	"time"
+
+	"github.com/dkroshow/nano/internal/usage"
 )
 
 const codexRateLimitsReadMethod = "account/rateLimits/read"

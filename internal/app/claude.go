@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/core/prompts"
-	"github.com/dkroshow/nano/internal/lifecycle"
-	"github.com/dkroshow/nano/internal/setup"
 	"io"
 	"log"
 	"os"
@@ -19,6 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/setup"
 	transcriptmodel "github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )

@@ -21,7 +21,8 @@ type ClaudeContextSource struct {
 	Exists   bool   `json:"exists"`
 }
 
-type claudeContextAssumptions struct {
+// ClaudeContextAssumptions describes inferred startup sources and their limits.
+type ClaudeContextAssumptions struct {
 	Sources       []ClaudeContextSource `json:"sources"`
 	ConfigSources []ClaudeContextSource `json:"configSources"`
 	Docs          []map[string]string   `json:"docs"`
@@ -30,8 +31,8 @@ type claudeContextAssumptions struct {
 
 // ClaudeContext reconstructs Claude Code startup/context inputs from documented
 // loading rules. These sources are not a wire-attested assembled prompt.
-func ClaudeContext(cwd string, initRaw json.RawMessage) claudeContextAssumptions {
-	return claudeContextAssumptions{
+func ClaudeContext(cwd string, initRaw json.RawMessage) ClaudeContextAssumptions {
+	return ClaudeContextAssumptions{
 		Sources:       ClaudeContextSources(cwd, initRaw),
 		ConfigSources: ClaudeConfigSources(cwd),
 		Docs: []map[string]string{
@@ -138,15 +139,6 @@ func ClaudeContextSources(cwd string, initRaw json.RawMessage) []ClaudeContextSo
 	}
 
 	return sources
-}
-
-func claudeInstructionFiles(cwd string) []string {
-	sources := ClaudeContextSources(cwd, nil)
-	paths := make([]string, 0, len(sources))
-	for _, src := range sources {
-		paths = append(paths, src.Path)
-	}
-	return paths
 }
 
 // ClaudeInstructionSources projects Claude context sources into instruction-file evidence.

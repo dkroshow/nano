@@ -9,29 +9,28 @@ import (
 )
 
 const (
-	defaultHeartbeatMaxWakesPerHour = featureheartbeat.DefaultMaxWakesPerHour
-	heartbeatStateActive            = featureheartbeat.StateActive
-	heartbeatStatePaused            = featureheartbeat.StatePaused
-	heartbeatStateRemoved           = featureheartbeat.StateRemoved
-	heartbeatGateManualPause        = featureheartbeat.GateManualPause
-	heartbeatGateHardFacts          = featureheartbeat.GateHardFacts
-	heartbeatGatePrePing            = featureheartbeat.GatePrePing
-	heartbeatGateDedupeSkip         = featureheartbeat.GateDedupeSkip
-	heartbeatGateGlobalCap          = featureheartbeat.GateGlobalCap
-	heartbeatGateDelivery           = featureheartbeat.GateDelivery
-	heartbeatOutcomeSkipped         = featureheartbeat.OutcomeSkipped
-	heartbeatOutcomeDelivered       = featureheartbeat.OutcomeDelivered
-	heartbeatOutcomeFailed          = featureheartbeat.OutcomeFailed
-	heartbeatActionPrefix           = featureheartbeat.ActionPrefix
-	heartbeatFooter                 = featureheartbeat.Footer
-	heartbeatUsagePending           = featureheartbeat.UsagePending
-	heartbeatUsageReported          = featureheartbeat.UsageReported
-	heartbeatUsageUnavailable       = featureheartbeat.UsageUnavailable
-	heartbeatPrePingWake            = featureheartbeat.PrePingWake
-	heartbeatPrePingSkip            = featureheartbeat.PrePingSkip
-	heartbeatPrePingFail            = featureheartbeat.PrePingFail
-	heartbeatInboxTemplateID        = featureheartbeat.InboxTemplateID
-	heartbeatTargetClosedReason     = featureheartbeat.TargetClosedReason
+	heartbeatStateActive        = featureheartbeat.StateActive
+	heartbeatStatePaused        = featureheartbeat.StatePaused
+	heartbeatStateRemoved       = featureheartbeat.StateRemoved
+	heartbeatGateManualPause    = featureheartbeat.GateManualPause
+	heartbeatGateHardFacts      = featureheartbeat.GateHardFacts
+	heartbeatGatePrePing        = featureheartbeat.GatePrePing
+	heartbeatGateDedupeSkip     = featureheartbeat.GateDedupeSkip
+	heartbeatGateGlobalCap      = featureheartbeat.GateGlobalCap
+	heartbeatGateDelivery       = featureheartbeat.GateDelivery
+	heartbeatOutcomeSkipped     = featureheartbeat.OutcomeSkipped
+	heartbeatOutcomeDelivered   = featureheartbeat.OutcomeDelivered
+	heartbeatOutcomeFailed      = featureheartbeat.OutcomeFailed
+	heartbeatActionPrefix       = featureheartbeat.ActionPrefix
+	heartbeatFooter             = featureheartbeat.Footer
+	heartbeatUsagePending       = featureheartbeat.UsagePending
+	heartbeatUsageReported      = featureheartbeat.UsageReported
+	heartbeatUsageUnavailable   = featureheartbeat.UsageUnavailable
+	heartbeatPrePingWake        = featureheartbeat.PrePingWake
+	heartbeatPrePingSkip        = featureheartbeat.PrePingSkip
+	heartbeatPrePingFail        = featureheartbeat.PrePingFail
+	heartbeatInboxTemplateID    = featureheartbeat.InboxTemplateID
+	heartbeatTargetClosedReason = featureheartbeat.TargetClosedReason
 )
 
 var (

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/setup"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 const historicalClaudeResolverVersion = "claude-docs-2.1.220+nano-1"

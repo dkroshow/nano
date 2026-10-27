@@ -10,9 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/dkroshow/nano/internal/config"
-	"github.com/dkroshow/nano/internal/observability"
-	"github.com/dkroshow/nano/internal/setup"
 	"io"
 	"io/fs"
 	"log"
@@ -29,6 +26,7 @@ import (
 	"time"
 
 	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	feedback "github.com/dkroshow/nano/internal/features/feedback"
 	nanofiles "github.com/dkroshow/nano/internal/files"
@@ -36,6 +34,8 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/web"
 )
 
@@ -206,18 +206,18 @@ type server struct {
 
 // Main runs Nano using the process arguments and standard streams.
 func Main() {
-	config, err := config.Parse(os.Args[1:])
+	cfg, err := config.Parse(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		return
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
-	run(config)
+	run(cfg)
 }
 
-func run(config config.Config) {
-	application := construct(config)
+func run(cfg config.Config) {
+	application := construct(cfg)
 	local, remote := application.mount()
 	application.run(local, remote)
 }
@@ -233,14 +233,14 @@ type application struct {
 	remoteAuth      *remoteauth.Authenticator
 }
 
-func construct(config config.Config) *application {
-	serverLog := observability.InstallPersistentServerLog(config.Paths.ServerLog)
+func construct(cfg config.Config) *application {
+	serverLog := observability.InstallPersistentServerLog(cfg.Paths.ServerLog)
 
-	absCwd, err := filepath.Abs(config.WorkingDirectory)
+	absCwd, err := filepath.Abs(cfg.WorkingDirectory)
 	if err != nil {
 		log.Fatal(err)
 	}
-	spoolDir, err := prepareWireSpoolDir(config.Paths.WireSpoolDir)
+	spoolDir, err := prepareWireSpoolDir(cfg.Paths.WireSpoolDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -248,17 +248,17 @@ func construct(config config.Config) *application {
 	if removed, sweepErr := history.SweepStaleParsedSpools(os.TempDir(), time.Hour, time.Now()); sweepErr != nil || removed > 0 {
 		log.Printf("parsed spool sweep: removed %d stale spools from %s (err=%v)", removed, os.TempDir(), sweepErr)
 	}
-	catalogStore, catalogService, catalogPath, err := openThreadCatalog(config.Paths.HistoryDB, config.Paths.ThreadNames, config.DisableWatch)
+	catalogStore, catalogService, catalogPath, err := openThreadCatalog(cfg.Paths.HistoryDB, cfg.Paths.ThreadNames, cfg.DisableWatch)
 	if err != nil {
 		log.Printf("thread catalog unavailable: %v", err)
 	} else {
 		log.Printf("thread catalog using %s", catalogPath)
 	}
-	remoteAuthStore, err := remoteauth.OpenStore(config.Paths.RemoteAuthDB)
+	remoteAuthStore, err := remoteauth.OpenStore(cfg.Paths.RemoteAuthDB)
 	if err != nil {
 		log.Fatalf("remote authentication unavailable: %v", err)
 	}
-	remoteAuth := remoteauth.New(remoteAuthStore, config.RemoteAuthHost)
+	remoteAuth := remoteauth.New(remoteAuthStore, cfg.RemoteAuthHost)
 	var catalog threadCatalog
 	var catalogRefresh func(string)
 	var catalogSources attachedSourceCatalog
@@ -278,7 +278,7 @@ func construct(config config.Config) *application {
 	// Durable attachments live beside the history DB. Ordinary load failures
 	// disable hosted control. A rollback-source conflict must instead stop boot
 	// before HTTP can expose a catalog built from stale canonical identity.
-	legacyCompletedPath := config.Paths.CompletedTurnsDB
+	legacyCompletedPath := cfg.Paths.CompletedTurnsDB
 	var completedTurns *completedTurnStore
 	var attachments *attachmentStore
 	var controlMetadata *controlMetadataStore
@@ -291,7 +291,7 @@ func construct(config config.Config) *application {
 	var mail *agentMessageStore
 	var usageLimits *usageLimitsStore
 	if catalogPath != "" {
-		attachPath := config.Paths.Attachments
+		attachPath := cfg.Paths.Attachments
 		store, err := newAttachmentStore(attachPath)
 		if err != nil {
 			log.Printf("attachment store unavailable (%s): %v", attachPath, err)
@@ -300,12 +300,12 @@ func construct(config config.Config) *application {
 			log.Printf("attachment store using %s", attachPath)
 		}
 		stores, err := openThreadRuntimeStoresAt(context.Background(), state.StorePaths{
-			Destination: config.Paths.ThreadsDB,
-			Control:     config.Paths.LegacyControlDB,
-			BackupRoot:  config.Paths.ThreadsBackups,
+			Destination: cfg.Paths.ThreadsDB,
+			Control:     cfg.Paths.LegacyControlDB,
+			BackupRoot:  cfg.Paths.ThreadsBackups,
 			Turns: prompts.LegacyTurnPaths{
-				Queue:     config.Paths.LegacyQueuedTurns,
-				Attempts:  config.Paths.LegacySendAttempts,
+				Queue:     cfg.Paths.LegacyQueuedTurns,
+				Attempts:  cfg.Paths.LegacySendAttempts,
 				Completed: legacyCompletedPath,
 			},
 		}, newSessionID())
@@ -319,17 +319,17 @@ func construct(config config.Config) *application {
 				log.Printf("canonical attachment migration unavailable: %v", err)
 				controlMetadataErr, executionControlErr = err.Error(), err.Error()
 			} else {
-				log.Printf("canonical hosted metadata and turn stores using %s", config.Paths.ThreadsDB)
+				log.Printf("canonical hosted metadata and turn stores using %s", cfg.Paths.ThreadsDB)
 			}
 		}
-		mailPath := config.Paths.MailDB
-		legacyMailPath := config.Paths.ThreadsDB
+		mailPath := cfg.Paths.MailDB
+		legacyMailPath := cfg.Paths.ThreadsDB
 		mailStore, report, err := openAgentMessageStore(mailPath, legacyMailPath)
 		if err != nil {
 			log.Fatalf("required mail store unavailable: %v", err)
 		}
 		mail = mailStore
-		retentionDays, retentionEnabled, deleted, err := mailStore.ConfigureRetention(config.MailRetentionDays, time.Now())
+		retentionDays, retentionEnabled, deleted, err := mailStore.ConfigureRetention(cfg.MailRetentionDays, time.Now())
 		if err != nil {
 			log.Fatalf("mail retention unavailable: %v", err)
 		}
@@ -343,7 +343,7 @@ func construct(config config.Config) *application {
 		// thing here that cannot be rebuilt from provider files, and
 		// history.sqlite's delete-and-rebuild guarantee depends on holding
 		// nothing of that kind. See usage_limits.go.
-		usageStore, usagePath, err := openUsageLimitsAt(config.UsageEnabled, config.Paths.UsageDB)
+		usageStore, usagePath, err := openUsageLimitsAt(cfg.UsageEnabled, cfg.Paths.UsageDB)
 		if err != nil {
 			log.Printf("usage limits unavailable (%s): %v", usagePath, err)
 		} else if usageStore != nil {
@@ -351,7 +351,7 @@ func construct(config config.Config) *application {
 			log.Printf("usage limits using %s", usagePath)
 		}
 	}
-	codexDaemon := newCodexDaemon(config.CodexWS, config.CodexSupervisorLabel)
+	codexDaemon := newCodexDaemon(cfg.CodexWS, cfg.CodexSupervisorLabel)
 	skills := setup.NewSkillsListCache(func(ctx context.Context, cwd string) (json.RawMessage, error) {
 		var result json.RawMessage
 		err := codexDaemon.Call(ctx, "skills/list", map[string]any{"cwds": []string{cwd}}, &result)
@@ -362,17 +362,17 @@ func construct(config config.Config) *application {
 		dropLiveTextDeltas: liveTextDeltasDisabled(),
 		defaults: sessionDefaults{
 			cwd:              absCwd,
-			model:            config.Model,
-			sandbox:          config.Sandbox,
-			approval:         config.Approval,
-			reasoningSummary: config.ReasoningSummary,
-			allowedTools:     config.AllowedTools,
-			claudeBin:        resolveClaudeBin(config.ClaudeBin),
-			claudeShimWS:     strings.TrimSpace(config.ClaudeShimWS),
-			claudeShimSpools: config.ClaudeShimSpoolDir,
-			grokBin:          resolveGrokBin(config.GrokBin),
-			grokLeaderSocket: strings.TrimSpace(config.GrokLeaderSocket),
-			apiOrigin:        fmt.Sprintf("http://127.0.0.1:%d", config.Port),
+			model:            cfg.Model,
+			sandbox:          cfg.Sandbox,
+			approval:         cfg.Approval,
+			reasoningSummary: cfg.ReasoningSummary,
+			allowedTools:     cfg.AllowedTools,
+			claudeBin:        resolveClaudeBin(cfg.ClaudeBin),
+			claudeShimWS:     strings.TrimSpace(cfg.ClaudeShimWS),
+			claudeShimSpools: cfg.ClaudeShimSpoolDir,
+			grokBin:          resolveGrokBin(cfg.GrokBin),
+			grokLeaderSocket: strings.TrimSpace(cfg.GrokLeaderSocket),
+			apiOrigin:        fmt.Sprintf("http://127.0.0.1:%d", cfg.Port),
 		},
 		codex:                 codexDaemon,
 		skills:                skills,
@@ -403,17 +403,17 @@ func construct(config config.Config) *application {
 	if agentExecutions != nil {
 		agentExecutions.useSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
 	}
-	s.restart = newRestartTracker(filepath.Join(config.Paths.DataDir, restartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
+	s.restart = newRestartTracker(filepath.Join(cfg.Paths.DataDir, restartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
 	if err := s.syncMailNotices(); err != nil {
 		log.Fatalf("initialize mail notices: %v", err)
 	}
 	if catalogService != nil && controlMetadata != nil {
 		catalogService.setCreationNameSource(controlMetadata.creationThreadNames)
 	}
-	s.hostMonitor = newHostMonitor(filepath.Join(config.Paths.DataDir, "health"), filepath.Join(config.Paths.DataDir, "deploys.jsonl"))
+	s.hostMonitor = newHostMonitor(filepath.Join(cfg.Paths.DataDir, "health"), filepath.Join(cfg.Paths.DataDir, "deploys.jsonl"))
 	go s.hostMonitor.run(context.Background())
 	if usageLimits != nil {
-		s.usageLimitsPoller = newUsageLimitsPoller(usageLimits, codexDaemon, s.defaults, config.UsagePollInterval)
+		s.usageLimitsPoller = newUsageLimitsPoller(usageLimits, codexDaemon, s.defaults, cfg.UsagePollInterval)
 		go s.usageLimitsPoller.run(context.Background())
 	}
 	if catalogService != nil {
@@ -438,17 +438,17 @@ func construct(config config.Config) *application {
 		s.sidebar = newSidebarMaterializedState()
 		s.fleet = startFleetWatcher(context.Background(), s.sidebar)
 	}
-	if store, err := openThreadStarsStore(config.Paths.ThreadStarsDB); err != nil {
+	if store, err := openThreadStarsStore(cfg.Paths.ThreadStarsDB); err != nil {
 		log.Printf("thread stars store unavailable: %v", err)
 	} else {
 		s.threadStars = store
 	}
-	if store, err := openThreadPinsStore(config.Paths.ThreadPinsDB); err != nil {
+	if store, err := openThreadPinsStore(cfg.Paths.ThreadPinsDB); err != nil {
 		log.Printf("thread pins store unavailable: %v", err)
 	} else {
 		s.threadPins = store
 	}
-	if store, err := feedback.Open(config.Paths.FeedbackDB); err != nil {
+	if store, err := feedback.Open(cfg.Paths.FeedbackDB); err != nil {
 		log.Printf("feedback store unavailable: %v", err)
 	} else {
 		s.feedback = store
@@ -456,10 +456,10 @@ func construct(config config.Config) *application {
 	if completedTurns != nil {
 		s.completedTurns = newCompletedTurnSource(completedTurns)
 	}
-	if config.HeartbeatMaxWakesPerHour < 1 {
+	if cfg.HeartbeatMaxWakesPerHour < 1 {
 		log.Fatal("heartbeat-max-wakes-per-hour must be positive")
 	}
-	if store, err := openHeartbeatStore(config.Paths.HeartbeatDB); err != nil {
+	if store, err := openHeartbeatStore(cfg.Paths.HeartbeatDB); err != nil {
 		log.Printf("heartbeat store unavailable: %v", err)
 	} else {
 		if deleted, err := store.PruneDecisionLog(time.Now().AddDate(0, 0, -30)); err != nil {
@@ -467,9 +467,9 @@ func construct(config config.Config) *application {
 		} else if deleted > 0 {
 			log.Printf("heartbeat decision retention removed %d old skip rows", deleted)
 		}
-		s.heartbeat = newHeartbeatService(s, store, config.HeartbeatEnabled, log.Printf)
-		s.heartbeat.MaxWakesHour = config.HeartbeatMaxWakesPerHour
-		log.Printf("heartbeat store ready (scheduler enabled=%v; max wakes/hour=%d)", config.HeartbeatEnabled, config.HeartbeatMaxWakesPerHour)
+		s.heartbeat = newHeartbeatService(s, store, cfg.HeartbeatEnabled, log.Printf)
+		s.heartbeat.MaxWakesHour = cfg.HeartbeatMaxWakesPerHour
+		log.Printf("heartbeat store ready (scheduler enabled=%v; max wakes/hour=%d)", cfg.HeartbeatEnabled, cfg.HeartbeatMaxWakesPerHour)
 	}
 	if s.historicalCodex != nil && catalog != nil {
 		go s.historicalCodex.WarmCatalog(context.Background(), catalog)
@@ -485,7 +485,7 @@ func construct(config config.Config) *application {
 		log.Printf("sidebar materialization unavailable: %v", err)
 	}
 	return &application{
-		config: config, server: s, absCwd: absCwd, serverLog: serverLog,
+		config: cfg, server: s, absCwd: absCwd, serverLog: serverLog,
 		catalogStore: catalogStore, catalogService: catalogService,
 		remoteAuthStore: remoteAuthStore, remoteAuth: remoteAuth,
 	}
@@ -517,7 +517,7 @@ func (a *application) mount() (http.Handler, http.Handler) {
 }
 
 func (a *application) run(localHandler, remoteHandler http.Handler) {
-	config, s := a.config, a.server
+	cfg, s := a.config, a.server
 	stopSignals := make(chan os.Signal, 1)
 	signal.Notify(stopSignals, syscall.SIGTERM, os.Interrupt)
 	go func() {
@@ -528,9 +528,9 @@ func (a *application) run(localHandler, remoteHandler http.Handler) {
 		log.Printf("nano stopped in %s: %s", time.Since(started).Round(time.Millisecond), report)
 		os.Exit(0)
 	}()
-	listenAddress := fmt.Sprintf("127.0.0.1:%d", config.Port)
+	listenAddress := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
 	log.Printf("nano listening on http://%s (default cwd %s, codex daemon %s, claude shim %s, grok %s)",
-		listenAddress, a.absCwd, config.CodexWS, s.defaults.claudeShimWS, s.defaults.grokBin)
+		listenAddress, a.absCwd, cfg.CodexWS, s.defaults.claudeShimWS, s.defaults.grokBin)
 	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		log.Fatal(err)
@@ -568,7 +568,7 @@ func (a *application) run(localHandler, remoteHandler http.Handler) {
 // restart is seconds of closed port rather than minutes. It returns the first
 // serving error.
 func (a *application) serve(listener net.Listener, localHandler, remoteHandler http.Handler) error {
-	config, s := a.config, a.server
+	cfg, s := a.config, a.server
 	serveErrors := make(chan error, 3)
 	go func() { serveErrors <- http.Serve(listener, localHandler) }()
 	s.restart.markHTTPOpen()
@@ -581,11 +581,11 @@ func (a *application) serve(listener net.Listener, localHandler, remoteHandler h
 			s.heartbeat.Start(context.Background())
 		}
 	}()
-	if config.RemoteAuthPort != 0 {
+	if cfg.RemoteAuthPort != 0 {
 		if a.remoteAuth.RemoteHost() == "" {
 			log.Fatal("-remote-auth-host is required when -remote-auth-port is enabled")
 		}
-		remoteAddress := fmt.Sprintf("127.0.0.1:%d", config.RemoteAuthPort)
+		remoteAddress := fmt.Sprintf("127.0.0.1:%d", cfg.RemoteAuthPort)
 		log.Printf("nano protected remote listener on http://%s for host %s", remoteAddress, a.remoteAuth.RemoteHost())
 		remoteServer := &http.Server{
 			Addr:              remoteAddress,
@@ -595,12 +595,12 @@ func (a *application) serve(listener net.Listener, localHandler, remoteHandler h
 		}
 		go func() { serveErrors <- remoteServer.ListenAndServe() }()
 	}
-	if config.LocalTLSPort != 0 {
+	if cfg.LocalTLSPort != 0 {
 		// The same trusted handler over TLS, so browsers get HTTP/2: one
 		// connection carries every pane's stream instead of hitting the
 		// six-connection limit browsers keep per HTTP/1.1 host.
-		tlsAddress := fmt.Sprintf("127.0.0.1:%d", config.LocalTLSPort)
-		tlsDir := filepath.Join(config.Paths.DataDir, "tls")
+		tlsAddress := fmt.Sprintf("127.0.0.1:%d", cfg.LocalTLSPort)
+		tlsDir := filepath.Join(cfg.Paths.DataDir, "tls")
 		log.Printf("nano trusted local listener on https://%s", tlsAddress)
 		tlsServer := &http.Server{Addr: tlsAddress, Handler: localHandler}
 		go func() {

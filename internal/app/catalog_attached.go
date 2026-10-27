@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"github.com/dkroshow/nano/internal/setup"
 	"io"
 	"io/fs"
 	"net/url"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 // Attached threads are the catalog's watch set, with the outside sessions

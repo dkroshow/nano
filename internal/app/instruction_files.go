@@ -11,13 +11,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/setup"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 const maxInstructionFileBytes = 1 << 20 // files beyond this are view/edit-rejected

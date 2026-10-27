@@ -35,7 +35,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/usage"
 	"net/http"
 	"os"
 	"os/exec"
@@ -43,6 +42,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/dkroshow/nano/internal/usage"
 )
 
 const (

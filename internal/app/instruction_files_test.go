@@ -3,13 +3,14 @@ package app
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/setup"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 func writeTestFile(t *testing.T, path, content string) {

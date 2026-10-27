@@ -35,7 +35,7 @@ for the parsing module, the state layer and lifecycle.
 | `features/{mail,heartbeat,subscriptions,feedback}` | Durable inbox, scheduled wakes, child-completion notices, operator notes. Each depends on `interact`, never on providers. |
 | `config` | Process flags, defaults and resolved filesystem paths; opens no stores or workers. |
 | `usage`, `usageclients` | Account-usage polling, retention and read models; read-only Claude and Codex clients. Grok launch-policy glue stays in `app`. |
-| `setup` | Read-only Claude context sources and workspace inspection caches. Session handlers stay in `app`. |
+| `setup` | Read-only Claude context sources and the workspace skills cache. Session handlers stay in `app`. |
 | `observability` | Bounded request measurements and rotating process logs. Stateful diagnostics handlers stay in `app`. |
 | `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution; content-free browser evidence. |
 | `httpapi`, `httpapi/remoteauth` | HTTP transport conventions, compression, discovery document delivery and connection measurement; the password-guarded remote listener and its store. |
