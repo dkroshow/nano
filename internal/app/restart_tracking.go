@@ -45,6 +45,9 @@ const (
 	restartStatePending = "pending"
 	restartStateLive    = "live"
 	restartStateFailed  = "failed"
+	// resting: left by the boot loop until something needs it; settled for
+	// the record unless it is attached before the record is written.
+	restartStateResting = "resting"
 )
 
 const (
@@ -72,6 +75,7 @@ type restartRecord struct {
 	Live             int                               `json:"live"`
 	Failed           int                               `json:"failed"`
 	Pending          int                               `json:"pending"`
+	Resting          int                               `json:"resting"`
 	Visible          int                               `json:"visible"`
 	ByProvider       map[string]restartProviderSummary `json:"by_provider"`
 	Threads          []restartThreadRecord             `json:"threads,omitempty"`
@@ -82,6 +86,7 @@ type restartProviderSummary struct {
 	Live    int                    `json:"live"`
 	Failed  int                    `json:"failed"`
 	Pending int                    `json:"pending"`
+	Resting int                    `json:"resting"`
 	Ms      map[string]restartStat `json:"ms"`
 }
 
@@ -99,7 +104,8 @@ type restartThreadRecord struct {
 	Visible        bool   `json:"visible"`
 	Tier           string `json:"tier"`
 	Order          int    `json:"order"`
-	// State is pending, live or failed: the last of live and failed wins.
+	// State is pending, resting, live or failed: the last of live and failed
+	// wins.
 	State        string `json:"state"`
 	PickedMs     *int64 `json:"picked_ms"`
 	LockMs       *int64 `json:"lock_ms"`
@@ -198,6 +204,20 @@ func (t *restartTracker) rank(ranks map[attachmentKey]bootRank, ordered []attach
 	}
 }
 
+// rest marks threads the boot loop leaves resting.
+func (t *restartTracker) rest(records []attachmentRecord) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, rec := range records {
+		if th := t.byKey[rec.key()]; th != nil && th.State == restartStatePending && th.PickedMs == nil {
+			th.State = restartStateResting // a thread a request already picked stays pending
+		}
+	}
+}
+
 func (t *restartTracker) thread(key attachmentKey) *restartThread {
 	if t == nil {
 		return nil
@@ -246,8 +266,11 @@ func (th *restartThread) at(step restartStep) {
 	if t.written {
 		return
 	}
-	if step == restartLive {
+	switch {
+	case step == restartLive:
 		th.State = restartStateLive
+	case step == restartPicked && th.State == restartStateResting:
+		th.State = restartStatePending // attaching on demand: settled only once live or failed
 	}
 	if *field == nil {
 		*field = t.sinceStart()
@@ -393,6 +416,7 @@ func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
 			s.last = laterMs(s.last, th.LiveMs)
 		case restartStateFailed:
 			s.last, s.failed = laterMs(s.last, th.FailedMs), true
+		case restartStateResting:
 		default:
 			s.pending = true
 		}
@@ -408,6 +432,9 @@ func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
 		case restartStateFailed:
 			record.Failed++
 			p.Failed++
+		case restartStateResting:
+			record.Resting++
+			p.Resting++
 		default:
 			record.Pending++
 			p.Pending++

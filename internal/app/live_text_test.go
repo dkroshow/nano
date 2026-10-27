@@ -2362,7 +2362,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	writeClaudeTestSpool(t, srv.defaults.claudeShimSpools, hosted, spool...)
 	h.service.setTranscriptChanged(srv.confirmDurableThread)
 	srv.prepareBootReattach()
-	srv.reattachStartingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
+	srv.reattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
 	fresh := srv.sessionForThread("claude", native)
 	if fresh == nil || fresh == h.sess || fresh.liveText == h.sess.liveText {
 		t.Fatal("boot did not construct a fresh session and live-text loop")

@@ -465,7 +465,7 @@
         "operationId": "getHostedThreadAvailability",
         "summary": "Read whether a thread can safely receive a prompt now",
         "description": "Hard facts only (sample-task stage 0): busy when a turn is in flight or prompts are queued; awaiting-human when a permission/input card is open; unreachable when detached, exited, or unknown; otherwise available. The last human-message time remains diagnostic but elapsed time does not decide ownership. Read-only; no heuristics; turnActive can under-report for notification-started turns.",
-        "responses": {"200": {"description": "Availability state, reasons, and the facts behind it.", "content": {"application/json": {"schema": {"type": "object", "required": ["hostedThreadId", "state", "reasons", "facts", "observedAt"], "properties": {"hostedThreadId": {"type": "string"}, "state": {"type": "string", "enum": ["busy", "awaiting-human", "available", "unreachable"]}, "reasons": {"type": "array", "items": {"type": "string"}}, "facts": {"type": "object", "properties": {"turnActive": {"type": "boolean"}, "turnActiveMayUnderReport": {"type": "boolean"}, "queuedPrompts": {"type": "integer"}, "pendingInteraction": {"type": "boolean"}, "lastHumanMessageAt": {"type": "string"}, "attachment": {"type": "string", "enum": ["live", "detached", "exited", "deleted"]}, "sessionStatus": {"type": "string"}}}, "observedAt": {"type": "string"}}}}}}, "405": {"$ref": "#/components/responses/MethodNotAllowed"}}
+        "responses": {"200": {"description": "Availability state, reasons, and the facts behind it.", "content": {"application/json": {"schema": {"type": "object", "required": ["hostedThreadId", "state", "reasons", "facts", "observedAt"], "properties": {"hostedThreadId": {"type": "string"}, "state": {"type": "string", "enum": ["busy", "awaiting-human", "available", "unreachable"]}, "reasons": {"type": "array", "items": {"type": "string"}}, "facts": {"type": "object", "properties": {"turnActive": {"type": "boolean"}, "turnActiveMayUnderReport": {"type": "boolean"}, "queuedPrompts": {"type": "integer"}, "pendingInteraction": {"type": "boolean"}, "lastHumanMessageAt": {"type": "string"}, "attachment": {"type": "string", "enum": ["live", "starting", "resting", "detached", "exited", "deleted"]}, "sessionStatus": {"type": "string"}}}, "observedAt": {"type": "string"}}}}}}, "405": {"$ref": "#/components/responses/MethodNotAllowed"}}
       }
     },
     "/api/v1/hosted-threads/{threadRef}/messages": {
@@ -2912,7 +2912,8 @@
           "subscriptions": {"$ref": "#/components/schemas/CompletionSubscriptions"},
           "status": {
             "type": "string",
-            "enum": ["creating", "starting", "ready", "reconnecting", "detached", "creation_unknown", "exited"]
+            "enum": ["creating", "starting", "resting", "ready", "reconnecting", "detached", "creation_unknown", "exited"],
+            "description": "resting: after a restart Nano left the thread unattached because nothing showed it and no turn was open; any request that needs it live (a prompt, an operation, an open pane) attaches it first."
           },
           "error": {
             "type": "string"

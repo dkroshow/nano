@@ -249,6 +249,7 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 		Bin: "/stored/claude", Args: storedPosture, AttachedAt: "2026-08-25T13:02:50Z",
 	})
 	ensureClaudeTestSpool(t, s, "claude", current.ID)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 	s.mu.Lock()
 	var sess *session

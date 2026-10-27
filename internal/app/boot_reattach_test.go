@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
+	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
@@ -41,6 +43,18 @@ func bootReattachServer(t *testing.T, shimURL, codexURL string) (*server, *attac
 		s.codex.supervisedJobLoaded = func() bool { return true }
 	}
 	return s, store
+}
+
+// openTurnsForBoot gives every stored thread an open turn, so the boot loop
+// queues each one whatever the sidebar shows; tests of the loop's own limits
+// use it.
+func openTurnsForBoot(t *testing.T, s *server) {
+	t.Helper()
+	for _, record := range s.attachments.records() {
+		if _, _, err := s.agentExecutions.beginTurn(record.HostedThreadID, "nano:test:open-turn", "hash"); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func seedBootAttachments(t *testing.T, s *server) {
@@ -121,6 +135,7 @@ func TestBootReattachResumesClaudeThroughLiveShim(t *testing.T) {
 	store.remember(rec)
 
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 
 	s.mu.Lock()
@@ -173,6 +188,7 @@ func TestBootReattachKeepsRunningButIdleClaudeSessionIdle(t *testing.T) {
 	store.remember(rec)
 
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 	s.mu.Lock()
 	var sess *session
@@ -204,6 +220,7 @@ func TestBootReattachUsesRetainedClaudeHistorySeam(t *testing.T) {
 	record.TurnStartedAtMs, record.TurnAnchorSeq = 1789766804441, 2 // stale anchor
 	store.remember(record)
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	stored, _ := s.attachmentFor("claude", claudeResumeThreadID)
 	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, stored.HostedThreadID,
 		recvFrame(1, claudeInitLine), sendFrame(2, testUserPrompt), recvFrame(3, messageStart("a")),
@@ -247,6 +264,7 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 	})
 
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 	s.mu.Lock()
 	var sess *session
@@ -295,6 +313,7 @@ func TestBootReattachReloadsCanonicalCreationNameWhenAttachmentDroppedIt(t *test
 	rec.PendingName = ""
 	store.remember(rec)
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	if err := s.controlMetadata.recordCreationName(rec.HostedThreadID, "creation survives boot"); err != nil {
 		t.Fatal(err)
 	}
@@ -342,6 +361,7 @@ func TestBootReattachPendingRenameDoesNotBecomeCreationName(t *testing.T) {
 	rec.PendingName = "operator rename"
 	store.remember(rec)
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	if err := s.controlMetadata.recordCreationName(rec.HostedThreadID, "creation name"); err != nil {
 		t.Fatal(err)
 	}
@@ -376,6 +396,7 @@ func TestBootReattachResumesCodexThread(t *testing.T) {
 	store.remember(rec)
 
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 
 	s.mu.Lock()
@@ -458,6 +479,7 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 			daemon.setResumeErrorSequence(refusals...)
 
 			seedBootAttachments(t, s)
+			openTurnsForBoot(t, s)
 			s.reattachOnBoot()
 
 			s.mu.Lock()
@@ -492,43 +514,60 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 	}
 }
 
-// Boot used to attach stored threads oldest attach time first, an order that
-// has nothing to do with what the operator sees. It must follow the sidebar
-// top to bottom: starred threads, then top-level rows, then nested
-// subagents, each most recently updated first; a thread the sidebar does not
-// know goes last.
-// Boundary: the real boot loop over stored attachments and the materialized
-// sidebar, read from the loop's own registration lines.
-func TestBootReattachAttachesSidebarVisibleThreadsFirst(t *testing.T) {
+// A restart reconnects only threads with work not yet settled; every other
+// stored thread rests until something needs it. Every stored thread used to
+// reconnect at boot, hundreds of hidden subagents included, so the boot loop
+// ran for minutes. Failure caught: a thread with open work of any kind (an
+// operation, a queued browser prompt, a provider turn started and not
+// finished) left resting, so its work
+// never settles; an idle thread reconnected at boot; a prompt or an idle-only
+// wake to a resting thread refused or lost. Boundary: the boot loop over the
+// stores and the materialized sidebar, then the hosted turn API.
+func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.wsURL())
+	s.completedTurns = newCompletedTurnSource(&completedTurnStore{db: s.queuedTurns.db})
 	now := time.Now().UTC()
-	want := []string{"starred-old", "root-recent", "root-older", "child-newest", "not-in-sidebar"}
-	for i, native := range want {
+	natives := []string{"starred-idle", "root-idle", "child-idle", "operation-open", "prompt-queued", "provider-turn-open"}
+	for i, native := range natives {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		if native == "child-newest" {
-			rec.InvokerHostedThreadID, rec.InvokerNativeThreadID, rec.InvokerProvider = "nht_root-recent", "root-recent", "codex"
+		if native == "child-idle" {
+			rec.InvokerHostedThreadID, rec.InvokerNativeThreadID, rec.InvokerProvider = "nht_root-idle", "root-idle", "codex"
 		}
-		// Oldest attach time last, so the old order is the reverse of want.
 		rec.AttachedAt = now.Add(-time.Duration(i) * time.Minute).Format(time.RFC3339)
 		store.remember(rec)
 	}
 	seedBootAttachments(t, s)
+	ctx := context.Background()
+	if _, _, err := s.agentExecutions.beginTurn("nht_operation-open", "nano:test:open-turn", "hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.turns.Submit(ctx, turns.Submission{
+		HostedThreadID: "nht_prompt-queued", Provider: model.ProviderCodex, NativeThreadID: "prompt-queued", ActionID: "browser-queued",
+		ProviderText: "queued in the browser", PresentationText: "queued in the browser", Origin: turns.HumanOrigin,
+		TextHash: sendTextHash("queued in the browser"), RequestHash: sendTextHash("queued in the browser"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := s.completedTurns.store.coreStore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := completed.Started(ctx, coreturns.Start{HostedThreadID: "nht_provider-turn-open", Provider: "codex", NativeThreadID: "provider-turn-open", TurnID: "turn-running", At: now, Source: "test"}); err != nil {
+		t.Fatal(err)
+	}
 	s.prepareBootReattach()
 	updated := func(ago time.Duration) *string {
 		value := now.Add(-ago).Format(time.RFC3339Nano)
 		return &value
 	}
 	threads := []catalogThread{
-		{ID: "nth_starred", Provider: "codex", NativeID: "starred-old", HostedThreadID: "nht_starred-old", Starred: true, UpdatedAt: updated(40 * 24 * time.Hour)},
-		{ID: "nth_root_recent", Provider: "codex", NativeID: "root-recent", HostedThreadID: "nht_root-recent", UpdatedAt: updated(time.Hour)},
-		{ID: "nth_root_older", Provider: "codex", NativeID: "root-older", HostedThreadID: "nht_root-older", UpdatedAt: updated(2 * time.Hour)},
-		{ID: "nth_child", Provider: "codex", NativeID: "child-newest", HostedThreadID: "nht_child-newest", UpdatedAt: updated(time.Minute)},
+		{ID: "nth_starred", Provider: "codex", NativeID: "starred-idle", HostedThreadID: "nht_starred-idle", Starred: true, UpdatedAt: updated(40 * 24 * time.Hour)},
+		{ID: "nth_root", Provider: "codex", NativeID: "root-idle", HostedThreadID: "nht_root-idle", UpdatedAt: updated(time.Hour)},
+		{ID: "nth_child", Provider: "codex", NativeID: "child-idle", HostedThreadID: "nht_child-idle", UpdatedAt: updated(time.Minute)},
 	}
-	// The same steps materializeSidebar takes at boot: every stored thread is
-	// starting, which puts it in the default view.
-	s.attachRuntimeOverlayBatch(context.Background(), threads, s.sidebarRuntimeSnapshot())
+	s.attachRuntimeOverlayBatch(ctx, threads, s.sidebarRuntimeSnapshot())
 	query := sidebarDefaultQuery(now)
 	active, nodes := projectSidebar(threads, query, 1)
 	s.sidebar = newSidebarMaterializedState()
@@ -546,10 +585,38 @@ func TestBootReattachAttachesSidebarVisibleThreadsFirst(t *testing.T) {
 			got = append(got, strings.Fields(after)[0])
 		}
 	}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("boot attach order = %v, want %v", got, want)
+	slices.Sort(got)
+	if want := []string{"operation-open", "prompt-queued", "provider-turn-open"}; !slices.Equal(got, want) {
+		t.Fatalf("boot registered %v, want %v", got, want)
 	}
-	waitForClaude(t, "every thread/resume call", func() bool { return daemon.resumeCount() == len(want) })
+	for _, native := range []string{"starred-idle", "root-idle", "child-idle"} {
+		if state := s.boot.state(attachmentKey{provider: "codex", nativeThreadID: native}); state != "resting" {
+			t.Fatalf("%s after boot = %q, want resting", native, state)
+		}
+	}
+	waitForClaude(t, "the boot loop's thread/resume calls", func() bool { return daemon.resumeCount() == 3 })
+
+	body := `{"prompt":"sent while resting","clientActionId":"nano:test:resting","origin":"system"}`
+	recorder := httptest.NewRecorder()
+	s.handleAgentTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/nht_child-idle/turns", strings.NewReader(body)), "nht_child-idle")
+	if recorder.Code != http.StatusAccepted && recorder.Code != http.StatusOK {
+		t.Fatalf("prompt to a resting thread = %d %s", recorder.Code, recorder.Body.String())
+	}
+	waitForClaude(t, "the prompt to reach the provider", func() bool {
+		daemon.mu.Lock()
+		defer daemon.mu.Unlock()
+		return daemon.turnStarts == 1
+	})
+
+	// An idle-only wake (a heartbeat) to a resting thread is admitted while
+	// the thread attaches, not refused as not ready.
+	daemon.setReplyDelay("thread/resume", time.Second)
+	if _, _, err := s.submitHostedTurnWithOptions("nht_root-idle", "nano:test:idle-wake", "scheduled wake", true); err != nil {
+		t.Fatalf("idle-only wake to a resting thread = %v", err)
+	}
+	if state := s.boot.state(attachmentKey{provider: "codex", nativeThreadID: "starred-idle"}); state != "resting" {
+		t.Fatalf("an unrelated resting thread after the prompts = %q, want resting", state)
+	}
 }
 
 // A slow fleet snapshot must not hold the boot registration queue. The runtime
@@ -565,6 +632,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 		store.remember(rec)
 	}
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.prepareBootReattach()
 	updates := s.runtimeEvents.subscribe()
 	defer s.runtimeEvents.unsubscribe(updates)
@@ -638,6 +706,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 		store.remember(rec)
 	}
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.prepareBootReattach()
 	updates := s.runtimeEvents.subscribe()
 	defer s.runtimeEvents.unsubscribe(updates)
@@ -740,7 +809,7 @@ func TestBootReattachRuntimeGateKeepsRefreshAndPrioritizedRegistration(t *testin
 	default:
 	}
 
-	s.reattachStartingHosted(rec.HostedThreadID)
+	s.reattachWaitingHosted(rec.HostedThreadID)
 	select {
 	case delta := <-updates:
 		attached := false
@@ -794,6 +863,7 @@ func TestBootReattachStuckProviderDoesNotHoldAnother(t *testing.T) {
 	claude.AttachedAt = "2026-07-28T10:09:00Z" // stored order: the Codex thread first
 	store.remember(claude)
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	var logs syncBuffer
 	priorLog := log.Writer()
 	log.SetOutput(&logs)
@@ -838,8 +908,9 @@ func TestBootOrderPutsVisibleThreadsBeforeTiedHiddenOnes(t *testing.T) {
 // Failure caught: one provider's queue reached its hidden threads while
 // another provider still registered its visible ones. At boot Grok's single
 // visible thread registered at once and its 31 hidden replays then competed
-// with the visible Claude and Codex registrations. Boundary: the boot loop,
-// across provider queues.
+// with the visible Claude and Codex registrations. The boot loop queues only
+// threads with open work, so every thread here has a turn open. Boundary: the
+// boot loop, across provider queues.
 func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.T) {
 	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
 		c.reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 0})
@@ -849,11 +920,12 @@ func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.
 	s, store := bootReattachServer(t, shim.wsURL(), daemon.wsURL())
 	for _, native := range []string{"codex-visible", "codex-hidden"} {
 		rec := bootCodexRecord(t)
-		rec.NativeThreadID = native
+		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
 		store.remember(rec)
 	}
 	store.remember(rememberedClaudeSession(t, "/stored/claude"))
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.prepareBootReattach()
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
@@ -930,6 +1002,7 @@ func TestBootReattachRegistersAllShellsBeforeSlowClaudeHandshake(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		seedBootAttachments(t, s)
+		openTurnsForBoot(t, s)
 		s.reattachOnBoot()
 		close(done)
 	}()
@@ -995,6 +1068,7 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 		})
 	}
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s) // queued at boot though the sidebar does not show them
 	s.reattachOnBoot()
 	t.Cleanup(func() { _ = os.WriteFile(filepath.Join(stateDir, "release"), []byte("release"), 0600) })
 
@@ -1091,6 +1165,7 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 		})
 	}
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 
 	for i := 0; i < claudeBootHandshakeLimit; i++ {
@@ -1191,6 +1266,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	store.remember(rec)
 
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 
 	s.mu.Lock()
@@ -1329,6 +1405,7 @@ func TestBootReattachFailureLeavesRecordDetachedAndContinues(t *testing.T) {
 	store.remember(bootCodexRecord(t))
 
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
 
 	var sessions []*session
@@ -1379,6 +1456,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	server.turns, server.queuedTurns.turns, attempts.turns, server.sendAttempts = turnStore, turnStore, turnStore, attempts
 	store.remember(rememberedClaudeSession(t, "/stored/claude"))
 	seedBootAttachments(t, server)
+	openTurnsForBoot(t, server)
 	remembered, ok := store.get("claude", claudeResumeThreadID)
 	if !ok || remembered.HostedThreadID == "" {
 		t.Fatalf("seeded attachment = %#v, found=%v", remembered, ok)
@@ -1443,6 +1521,7 @@ func startingCodexServer(t *testing.T) (*server, *fakeAppServer, attachmentRecor
 	s, store := bootReattachServer(t, "", daemon.wsURL())
 	store.remember(bootCodexRecord(t))
 	seedBootAttachments(t, s)
+	openTurnsForBoot(t, s) // the boot loop's own thread, not left resting
 	s.prepareBootReattach()
 	return s, daemon, store.records()[0]
 }
@@ -1603,8 +1682,8 @@ waitingForPublish:
 		}
 	}
 	waitForClaude(t, "the opened thread's registration", func() bool {
-		_, starting := s.boot.startingHosted(rec.HostedThreadID)
-		return !starting && s.sessionForHostedThread(rec.HostedThreadID) != nil
+		_, waiting := s.boot.waitingHosted(rec.HostedThreadID)
+		return waiting == "" && s.sessionForHostedThread(rec.HostedThreadID) != nil
 	})
 	waitForClaude(t, "thread/resume call", func() bool { return daemon.resumeCount() == 1 })
 	if got := prioritize(); got != `{"starting":false}` {
@@ -1669,7 +1748,7 @@ func TestBootLoopSkipsAThreadForgottenWhileStarting(t *testing.T) {
 	if count != 0 || daemon.resumeCount() != 0 {
 		t.Fatalf("sessions = %d, provider resumes = %d; want the forgotten thread left alone", count, daemon.resumeCount())
 	}
-	if _, starting := s.boot.startingHosted(rec.HostedThreadID); starting {
+	if _, waiting := s.boot.waitingHosted(rec.HostedThreadID); waiting != "" {
 		t.Fatal("the forgotten thread still reports starting")
 	}
 }
@@ -1807,6 +1886,7 @@ func TestResumeAnswerWithOlderTerminalTurnsNotifiesNobody(t *testing.T) {
 	dispatcher.Sweep("") // start the child's cursor where a running Nano would have it
 
 	s.reattachOnBoot()
+	s.reattachWaitingHosted(rec.HostedThreadID) // no work open, so it rests until needed
 	waitForClaude(t, "the reattached session", func() bool {
 		sess := s.sessionForHostedThread(rec.HostedThreadID)
 		return sess != nil && sess.summary().Status == "ready"

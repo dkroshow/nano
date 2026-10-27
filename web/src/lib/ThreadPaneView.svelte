@@ -216,7 +216,7 @@
   const startingHostedId = $derived.by(() => {
     if (info) return ''
     const stored = app.detached.find((row) => row.provider === identity.provider && row.nativeThreadId === nativeId)
-    return stored?.status === 'starting' ? stored.hostedThreadId ?? '' : ''
+    return stored?.status === 'starting' || stored?.status === 'resting' ? stored.hostedThreadId ?? '' : ''
   })
   let prioritized = ''
   $effect(() => {
@@ -225,8 +225,12 @@
       return
     }
     if (!visible || startingHostedId === prioritized) return
-    prioritized = startingHostedId
-    prioritizeStartingThread(startingHostedId)
+    const asked = startingHostedId
+    prioritized = asked
+    // A failed request re-arms: the pane asks again when it is next shown.
+    void prioritizeStartingThread(asked).then((ok) => {
+      if (!ok && prioritized === asked) prioritized = ''
+    })
   })
   const detacher = createDetachAction()
   const detachUi = $derived(detachLabels(info?.provider ?? tab.provider))

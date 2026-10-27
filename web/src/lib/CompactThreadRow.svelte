@@ -12,6 +12,7 @@
   import WorkingTimer from './WorkingTimer.svelte'
   import TreeBranch from './TreeBranch.svelte'
   import { workingIndicator } from './explorer_format.js'
+  import { attachShownRestingThread } from './thread_resume.svelte.js'
 
   // One sidebar row over a projected model (lib/sidebar_projection.js): the
   // liveness indicator, title, working directory, model, activity clock, and
@@ -50,6 +51,11 @@
   // Inbox badge: live SSE counts win; the row's catalog-stamped
   // counts cover the gap before the first delta names this thread.
   const mail = $derived(mailBadge(liveMailCounts(row.hostedThreadId) ?? row.mail))
+  // The sidebar shows this row, so a thread resting since a restart comes
+  // back now: a restart reconnects what is shown, the rest on demand.
+  $effect(() => {
+    if (row.hostedThreadId) attachShownRestingThread(row.hostedThreadId, row.runtime?.status === 'resting')
+  })
   async function activate() {
     await openSidebarRow(click)
   }

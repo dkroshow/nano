@@ -161,3 +161,32 @@ it('sets a role and reparents the thread under the related hosted thread', async
   ]))
   expect(arrangeThreadHierarchy(explorer.dataset)[2]).toMatchObject({ treeDepth: 1 })
 })
+
+// After a restart Nano leaves every thread without open work resting, and a
+// browser brings back what it shows: a shown row, an expanded child included,
+// asks for its thread once per resting spell, however often it re-renders,
+// and asks again after a failed request.
+it('asks once for a resting thread its sidebar row shows', async () => {
+  app.sessions = []
+  const resting = { ...catalogRow(), hostedThreadId: 'nht-resting', runtime: { detached: true, status: 'resting' } }
+  const [row] = projectSidebar([resting], [])
+  const rail = render(CompactThreadRow, { props: { row } })
+  const prioritized = () => fetch.mock.calls.filter(([url]) => String(url) === '/api/v1/hosted-threads/nht-resting/prioritize')
+  await waitFor(() => expect(prioritized()).toHaveLength(1))
+  await rail.rerender({ row: { ...row } })
+  expect(prioritized()).toHaveLength(1)
+
+  // Attached, then resting again after a later restart: it asks again.
+  await rail.rerender({ row: { ...row, runtime: { attached: true, status: 'ready' } } })
+  await rail.rerender({ row: { ...row } })
+  await waitFor(() => expect(prioritized()).toHaveLength(2))
+
+  // A failed request re-arms: the next render asks again.
+  await rail.rerender({ row: { ...row, runtime: { attached: true, status: 'ready' } } })
+  fetch.mockImplementationOnce(async () => ({ ok: false, json: async () => ({}) }))
+  await rail.rerender({ row: { ...row } })
+  await waitFor(() => expect(prioritized()).toHaveLength(3))
+  await new Promise((resolve) => setTimeout(resolve))
+  await rail.rerender({ row: { ...row, title: 'rerendered' } })
+  await waitFor(() => expect(prioritized()).toHaveLength(4))
+})

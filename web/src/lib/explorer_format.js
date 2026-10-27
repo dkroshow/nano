@@ -165,6 +165,7 @@ const NANO_DOT_TITLES = {
   waiting: 'nano session (waiting for you)',
   idle: 'nano session',
   starting: 'nano session (starting)',
+  resting: 'nano session (resting since a restart; reconnects when needed)',
   reconnecting: 'nano session (reconnecting)',
   parked: 'nano session (reconnect parked)',
   unreachable: 'nano session (unreachable)',
@@ -186,9 +187,10 @@ export function workerSummaryText(counts) {
 
 export function activityDot(item) {
   const runtime = item.runtime
-  // After a restart a stored thread is starting before its session exists:
-  // Nano is bringing it back by itself, so it is not shown as detached.
-  const hosted = runtime?.attached || runtime?.status === 'starting'
+  // After a restart a stored thread is starting before its session exists, or
+  // resting until something needs it: Nano brings it back by itself, so it is
+  // not shown as detached.
+  const hosted = runtime?.attached || runtime?.status === 'starting' || runtime?.status === 'resting'
   const live = []
   if (hosted) live.push(NANO_DOT_TITLES[nanoDotState(runtime)])
   if (item.kind === 'subagent' && threadWorkIsActive(item)) live.push('worker running')

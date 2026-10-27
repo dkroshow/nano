@@ -2,9 +2,13 @@
 // framed the slice as "persist attachments, re-attach on boot"
 // (docs/decisions/supervised-app-server.md, docs/decisions/claude-shim-daemon.md);
 // what shipped first was the lazy half (detached rows, one-click re-attach).
-// This closes the gap: a nano restart brings every stored attachment back as a
-// live session by itself, because the point of the daemons is that a deploy
-// costs the operator nothing — not a click per thread.
+// This closes the gap: a nano restart brings back by itself every stored
+// thread with work not yet settled, and a browser brings back every thread it
+// shows, because the point of the daemons is that a deploy costs the operator
+// nothing — not a click per thread. The rest rest: each comes back the moment
+// something needs it (a pane or sidebar row shows it, a prompt or request for
+// it), so a restart does not spend minutes on hundreds of threads nobody looks
+// at.
 package app
 
 import (
@@ -29,16 +33,17 @@ type bootProviderControl struct {
 
 // bootReattach is one boot's set of stored attachments that are not live yet.
 // Registration takes minutes for hundreds of threads, so HTTP opens first and
-// the set reports each waiting thread in the existing "starting" state. The
-// background loop registers them in sidebar priority (bootOrder); a request
-// that needs one thread live registers that thread at once through the same
-// code.
+// the set reports each waiting thread as "starting" while the background loop
+// registers it in sidebar priority (bootOrder), or as "resting" when the loop
+// leaves it for later. A request that needs one waiting thread live registers
+// that thread at once through the same code.
 type bootReattach struct {
 	order    []attachmentRecord
 	controls map[string]*bootProviderControl
 
 	mu       sync.Mutex
 	pending  map[attachmentKey]bool
+	resting  map[attachmentKey]bool // pending, but not queued by the boot loop
 	byHosted map[string]attachmentRecord
 
 	runtimeActive  bool
@@ -56,6 +61,7 @@ func (s *server) prepareBootReattach() {
 	boot := &bootReattach{
 		controls: map[string]*bootProviderControl{},
 		pending:  make(map[attachmentKey]bool, len(records)),
+		resting:  map[attachmentKey]bool{},
 		byHosted: make(map[string]attachmentRecord, len(records)),
 	}
 	for i := len(records) - 1; i >= 0; i-- { // oldest attach first: bootOrder's order for ties
@@ -93,30 +99,66 @@ func (c *bootProviderControl) holdHandshakeSlot(sess *session) func() {
 	return release
 }
 
-// starting reports whether a stored thread still waits for its boot
-// registration. Nil-safe: without a boot set nothing is starting.
-func (b *bootReattach) starting(key attachmentKey) bool {
+// state reports a stored thread that still waits for its registration:
+// "starting" while the boot loop will register it, "resting" while it waits
+// for something to need it, and "" once settled. Nil-safe: without a boot set
+// nothing waits.
+func (b *bootReattach) state(key attachmentKey) string {
 	if b == nil {
-		return false
+		return ""
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.pending[key]
+	return b.stateLocked(key)
 }
 
-func (b *bootReattach) startingHosted(hostedThreadID string) (attachmentRecord, bool) {
+func (b *bootReattach) stateLocked(key attachmentKey) string {
+	switch {
+	case !b.pending[key]:
+		return ""
+	case b.resting[key]:
+		return "resting"
+	default:
+		return "starting"
+	}
+}
+
+func (b *bootReattach) waiting(key attachmentKey) bool { return b.state(key) != "" }
+
+// waitingHosted returns a waiting thread's record and state by hosted id.
+func (b *bootReattach) waitingHosted(hostedThreadID string) (attachmentRecord, string) {
 	if b == nil || hostedThreadID == "" {
-		return attachmentRecord{}, false
+		return attachmentRecord{}, ""
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	rec, ok := b.byHosted[hostedThreadID]
-	return rec, ok && b.pending[rec.key()]
+	if !ok {
+		return attachmentRecord{}, ""
+	}
+	return rec, b.stateLocked(rec.key())
+}
+
+// rest leaves records for something to need them.
+func (b *bootReattach) rest(records []attachmentRecord) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, rec := range records {
+		b.resting[rec.key()] = true
+	}
+}
+
+// wake ends a thread's rest as its attach begins, so it reports starting.
+func (b *bootReattach) wake(rec attachmentRecord) {
+	b.mu.Lock()
+	delete(b.resting, rec.key())
+	b.mu.Unlock()
 }
 
 func (b *bootReattach) settle(rec attachmentRecord) {
 	b.mu.Lock()
 	delete(b.pending, rec.key())
+	delete(b.resting, rec.key())
 	b.mu.Unlock()
 }
 
@@ -159,8 +201,12 @@ func (s *server) reattachOnBoot() {
 	if !ok {
 		log.Printf("boot re-attach: sidebar unavailable; attaching in stored order")
 	}
-	order := bootOrder(boot.order, ranks)
-	s.restart.rank(ranks, order)
+	ordered := bootOrder(boot.order, ranks)
+	s.restart.rank(ranks, ordered)
+	order, resting := bootQueue(ordered, s.bootWorkOpen)
+	boot.rest(resting)
+	s.restart.rest(resting)
+	log.Printf("boot re-attach: %d threads queued, %d resting until needed", len(order), len(resting))
 	// One queue per provider, each in sidebar priority, so a provider whose
 	// daemon hangs holds only its own threads. The restart record's order is
 	// the planned priority; within each provider it is also the actual order.
@@ -266,6 +312,35 @@ func bootOrder(records []attachmentRecord, ranks map[attachmentKey]bootRank) []a
 	return ordered
 }
 
+// bootQueue splits ordered records into the ones the boot loop registers, the
+// threads with work not yet settled, and the ones left resting. What a person
+// sees comes back through the browser, which asks for every resting thread it
+// shows; the server's sidebar estimate is not what any browser shows.
+func bootQueue(ordered []attachmentRecord, workOpen func(attachmentRecord) bool) (queue, resting []attachmentRecord) {
+	for _, rec := range ordered {
+		if workOpen(rec) {
+			queue = append(queue, rec)
+		} else {
+			resting = append(resting, rec)
+		}
+	}
+	return queue, resting
+}
+
+// bootWorkOpen reports a stored thread with work not yet settled, from each
+// record of it: a hosted operation, a queued prompt, or a provider turn that
+// started and has no outcome. Such a thread cannot wait for someone to look
+// at it.
+func (s *server) bootWorkOpen(rec attachmentRecord) bool {
+	if s.agentExecutions.hasNonTerminalTurns(rec.HostedThreadID) {
+		return true
+	}
+	if _, queued := s.queuedTurns.first(rec.Provider, rec.NativeThreadID, rec.HostedThreadID); queued {
+		return true
+	}
+	return s.completedTurns.open(rec.HostedThreadID)
+}
+
 // sidebarVisibleTopLevel is how many top-level rows count as visible: about
 // one screen of the sidebar under its starred rows.
 const sidebarVisibleTopLevel = 20
@@ -336,22 +411,24 @@ func (s *server) resumeSpawnLock(provider string) *sync.Mutex {
 	}
 }
 
-// reattachStartingHosted registers one starting thread now, for a request that
-// needs it live. Any other thread is left as it is.
-func (s *server) reattachStartingHosted(hostedThreadID string) {
-	if rec, ok := s.boot.startingHosted(hostedThreadID); ok {
+// reattachWaitingHosted registers one waiting thread (starting or resting)
+// now, for a request that needs it live. Any other thread is left as it is.
+func (s *server) reattachWaitingHosted(hostedThreadID string) {
+	if rec, state := s.boot.waitingHosted(hostedThreadID); state != "" {
 		s.reattachStored(rec, true)
 	}
 }
 
-// handleHostedThreadPrioritize registers a thread that still waits for its
-// boot re-attach now, ahead of the boot queue, because the operator opened it.
-// A thread not waiting is left as it is. The registration runs behind the
-// answer, so a provider stuck in its handshake holds no request.
+// handleHostedThreadPrioritize registers a thread that still waits after a
+// restart now, ahead of the boot queue or out of rest, because the operator
+// sees it (an open pane, a sidebar row). A thread not waiting is left as it
+// is. The registration runs behind the answer, so a provider stuck in its
+// handshake holds no request.
 func (s *server) handleHostedThreadPrioritize(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
-	_, starting := s.boot.startingHosted(record.ID)
+	_, state := s.boot.waitingHosted(record.ID)
+	starting := state != ""
 	if starting {
-		go s.reattachStartingHosted(record.ID)
+		go s.reattachWaitingHosted(record.ID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
@@ -363,7 +440,7 @@ func (s *server) handleHostedThreadPrioritize(w http.ResponseWriter, _ *http.Req
 // the first register, and the second sees the live session.
 func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bool) bootReattachOutcome {
 	boot := s.boot
-	if !boot.starting(rec.key()) {
+	if !boot.waiting(rec.key()) {
 		return bootReattachSettled
 	}
 	// Settle only after the attempt, so no view sees the thread as neither
@@ -376,6 +453,7 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 			s.notifyRuntime()
 		}
 	}()
+	boot.wake(rec)
 	restart := s.restart.thread(rec.key())
 	restart.at(restartPicked)
 	if _, stored := s.attachments.get(rec.Provider, rec.NativeThreadID); !stored {

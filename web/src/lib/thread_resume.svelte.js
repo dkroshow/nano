@@ -31,7 +31,24 @@ function recordedValue(item, field) {
 // pane needs: the tab goes live through the session list like any attach, and
 // the boot queue still reaches the thread if this request is lost.
 export function prioritizeStartingThread(hostedThreadId) {
-  void fetch(`/api/v1/hosted-threads/${encodeURIComponent(hostedThreadId)}/prioritize`, { method: 'POST' }).catch(() => {})
+  return fetch(`/api/v1/hosted-threads/${encodeURIComponent(hostedThreadId)}/prioritize`, { method: 'POST' })
+    .then((response) => response.ok, () => false)
+}
+
+// After a restart Nano leaves every thread without open work "resting", and a
+// sidebar row that shows one asks for it once while it rests: rows re-render
+// often. A request that fails re-arms, so the next render asks again.
+const restingAsked = new Set()
+export function attachShownRestingThread(hostedThreadId, resting) {
+  if (!resting) {
+    restingAsked.delete(hostedThreadId)
+    return
+  }
+  if (restingAsked.has(hostedThreadId)) return
+  restingAsked.add(hostedThreadId)
+  void prioritizeStartingThread(hostedThreadId).then((ok) => {
+    if (!ok) restingAsked.delete(hostedThreadId)
+  })
 }
 
 // null → no resume affordance at all. Anything else renders the button, enabled

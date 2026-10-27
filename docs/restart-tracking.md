@@ -34,17 +34,27 @@ text.
 |---|---|
 | `restart_id` | the boot id that browser diagnostics also use |
 | `http_open_ms` | the port answers |
-| `boot_loop_ms` | the boot loop has handed every stored thread to its provider |
+| `boot_loop_ms` | the boot loop has handed every queued thread to its provider |
 | `visible_live_ms` | every sidebar-visible thread is live; null while one is pending or if one failed |
 | `visible_settled_ms` | every sidebar-visible thread is live or failed |
-| `all_live_ms`, `all_settled_ms` | the same for every stored thread |
-| `threads_total = live + failed + pending`, `visible` | counts |
+| `all_live_ms`, `all_settled_ms` | the same for every queued thread |
+| `threads_total = live + failed + pending + resting`, `visible` | counts |
 | `by_provider.<p>.ms.<stage>` | n, p50, p95 and max of each stage below |
 
 Sidebar-visible means every starred row, plus the first 20 top-level rows by
 recency among the rows the active sidebar shows once the restart is done
 (rows it shows already, and stored threads, which show once attached).
 Browsers also group and filter rows locally, so this approximates one screen.
+
+The boot loop queues only threads with work not yet settled: a hosted
+operation, a queued prompt, or a provider turn that started and has no
+outcome. Every other stored thread is left `resting` and comes back when
+something needs it: a sidebar row or pane that shows it (the browser's
+`prioritize`), or an agent's turn, operation or read that needs it live. So
+`visible` here is the server's estimate of what a browser shows, not what was
+reconnected at boot. A resting thread counts as settled; one picked for an
+attach before the line is written is pending again until it is live or
+failed.
 
 ## Per thread (`threads=1`)
 
@@ -62,7 +72,7 @@ agent reconnected: Claude shim attach or respawn, Codex `thread/resume`, Grok
 session load), `live_ms` (the session's connection first became ready, which for a
 re-attached thread waits until the catalog has caught up its saved file, so
 `attached_ms` to `live_ms` is that wait) and `failed_ms` with
-`reason` (the first failure). `state` is `pending`, `live` or `failed`: the
+`reason` (the first failure). `state` is `pending`, `resting`, `live` or `failed`: the
 last of live and failed wins, and the counts follow it, so a thread that went
 live and then failed counts as failed. Records written before 2026-10-09 also
 carry `restore_started_ms`, `restore_done_ms` and `restore_outcome`, from a

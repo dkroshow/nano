@@ -971,7 +971,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	if req.Mode == "resume" {
 		// Whichever path registers a still-starting thread (the boot loop, a
 		// request, a manual resume) is tracked from here, lock wait included.
-		if key := (attachmentKey{provider: req.Provider, nativeThreadID: req.ThreadID}); req.restart == nil && s.boot.starting(key) {
+		if key := (attachmentKey{provider: req.Provider, nativeThreadID: req.ThreadID}); req.restart == nil && s.boot.waiting(key) {
 			req.restart = s.restart.thread(key)
 			req.restart.at(restartPicked)
 		}

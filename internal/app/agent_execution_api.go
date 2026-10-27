@@ -123,7 +123,7 @@ func (s *server) handleAgentSessionsList(w http.ResponseWriter, _ *http.Request)
 	records := s.agentExecutions.listSessions()
 	items := make([]agentSessionView, 0, len(records))
 	for _, record := range records {
-		if _, starting := s.boot.startingHosted(record.ID); record.Status == sessionStatusExited && !attached[record.ID] && !starting {
+		if _, waiting := s.boot.waitingHosted(record.ID); record.Status == sessionStatusExited && !attached[record.ID] && waiting == "" {
 			continue
 		}
 		view := s.agentSessionView(record.ID)
@@ -990,7 +990,8 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 	if sub.NextTurn {
 		hash = turnRequestHash(prompt, true)
 	}
-	s.reattachStartingHosted(hostedThreadID)
+	_, waited := s.boot.waitingHosted(hostedThreadID)
+	s.reattachWaitingHosted(hostedThreadID)
 	_, found := s.agentExecutions.turnForAction(hostedThreadID, actionID)
 	if !found && s.sessionForHostedThread(hostedThreadID) == nil {
 		if requireIdle {
@@ -1014,12 +1015,16 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 		sess.stateMu.Lock()
 		status, permission := sess.connectionStatusLocked(), sess.lifecyclePermissionLocked()
 		sess.stateMu.Unlock()
+		// A thread resting since a restart had no work open (bootWorkOpen) and
+		// is attaching for this prompt, so it is idle: the prompt queues behind
+		// the attach, as an idle thread's would start.
+		restingIdle := waited == "resting" && status == "starting"
 		switch {
 		case status == sessionStatusExited:
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
-		case status != "ready" || sess.nanoIsStopping():
+		case sess.nanoIsStopping() || status != "ready" && !restingIdle:
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "notReady"}
-		case permission.Submit != lifecycle.SendNow || sess.corePromptInFlight():
+		case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.corePromptInFlight()):
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "busy"}
 		}
 		if _, queued := sess.queuedTurns.first(sess.provider, sess.currentThreadID(), sess.hostedThreadID); queued {
@@ -1325,8 +1330,8 @@ func (s *server) agentSessionView(id string) agentSessionView {
 		view.Ready = sess.lifecycleState.State.Connection == lifecycle.Ready
 		view.Working = view.Ready && sess.lifecycleState.State.Work == lifecycle.Working
 		sess.stateMu.Unlock()
-	} else if _, starting := s.boot.startingHosted(id); starting {
-		view.Status = "starting"
+	} else if _, waiting := s.boot.waitingHosted(id); waiting != "" {
+		view.Status = waiting
 	}
 	view.NativeThreadIDProvisional = nativeThreadIDProvisional(view.Provider, view.NativeThreadID)
 	view.Attachment = s.hostedAttachmentState(id)
@@ -1380,8 +1385,8 @@ func (s *server) hostedAttachmentState(id string) hostedAttachmentView {
 		}
 		return hostedAttachmentView{State: state, Provenance: "live_session", Error: sum.Error}
 	}
-	if _, starting := s.boot.startingHosted(id); starting {
-		return hostedAttachmentView{State: "starting", Provenance: "boot_reattach"}
+	if _, waiting := s.boot.waitingHosted(id); waiting != "" {
+		return hostedAttachmentView{State: waiting, Provenance: "boot_reattach"}
 	}
 	if s.agentExecutions == nil {
 		return hostedAttachmentView{State: "unavailable", Provenance: "execution_control", Error: "execution control unavailable"}
@@ -1457,7 +1462,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 // hostedSessionForRequest is sessionForHostedThread for a request that needs
 // the thread live: a thread still starting after a restart is registered first.
 func (s *server) hostedSessionForRequest(id string) *session {
-	s.reattachStartingHosted(id)
+	s.reattachWaitingHosted(id)
 	return s.sessionForHostedThread(id)
 }
 

@@ -928,8 +928,8 @@ func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionVi
 	detached := []detachedSessionView{}
 	for _, record := range records {
 		view := detachedSessionView{attachmentRecord: record}
-		if s.boot.starting(record.key()) {
-			view.Status = "starting"
+		if state := s.boot.state(record.key()); state != "" {
+			view.Status = state
 		}
 		// These retired JSON fields must never leak back into a hosted
 		// response as a plausible current setting.

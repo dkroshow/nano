@@ -96,6 +96,7 @@
   function status() {
     if (runtime?.attached || session) return `Nano attached · ${runtimeLabel(session ?? runtime)}`
     if (runtime?.status === 'starting') return 'Starting after restart · durable history'
+    if (runtime?.status === 'resting') return 'Resting since restart · reconnects when needed'
     if (runtime?.detached) return 'Detached · durable history'
     return 'Historical · durable history'
   }

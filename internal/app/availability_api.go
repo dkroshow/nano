@@ -61,9 +61,16 @@ func (s *server) availabilityFor(hostedThreadID string, now time.Time) availabil
 		view.Reasons = append(view.Reasons, "exited")
 		return view
 	}
-	if _, starting := s.boot.startingHosted(hostedThreadID); sess == nil && starting {
+	switch _, waiting := s.boot.waitingHosted(hostedThreadID); {
+	case sess == nil && waiting == "starting":
 		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityBusy, "starting", "starting"
 		view.Reasons = append(view.Reasons, "session_starting")
+		return view
+	case sess == nil && waiting == "resting":
+		// A resting thread has no work open (bootWorkOpen), and a prompt to
+		// it attaches it first; an idle-only one queues behind that attach.
+		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityAvailable, "resting", "resting"
+		view.Reasons = append(view.Reasons, "attaches_on_demand")
 		return view
 	}
 	if sess == nil {

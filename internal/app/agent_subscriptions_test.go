@@ -192,7 +192,7 @@ func TestCompletionSubscriptionReactsToFinishedTurnsWithoutPolling(t *testing.T)
 	s, daemon, rec, client, dispatcher := subscribedCodexServer(t, `[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`)
 	s.subscriptions = dispatcher
 	dispatcher.Start()
-	s.reattachStartingHosted(rec.HostedThreadID)
+	s.reattachWaitingHosted(rec.HostedThreadID)
 	waitForClaude(t, "the live turn", func() bool {
 		sess := s.sessionForHostedThread(rec.HostedThreadID)
 		if sess == nil {
@@ -226,7 +226,7 @@ type preparingSubscriptionClient struct {
 }
 
 func (c *preparingSubscriptionClient) SubmitPrompt(ctx context.Context, request interact.SubmitPromptRequest) (interact.Turn, error) {
-	c.s.reattachStartingHosted(request.ThreadRef)
+	c.s.reattachWaitingHosted(request.ThreadRef)
 	return c.feedSubscriptionClient.SubmitPrompt(ctx, request)
 }
 
@@ -259,7 +259,7 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	s.subscriptions = subscriptions.NewDispatcher(s.agentExecutions.control.db, client, nil, nil)
 	s.subscriptions.Sweep("") // the child's cursor starts where a running Nano would have it
 
-	s.reattachStartingHosted(child.ID)
+	s.reattachWaitingHosted(child.ID)
 	waitForClaude(t, "the child's live turn", func() bool {
 		sess := s.sessionForHostedThread(child.ID)
 		if sess == nil {

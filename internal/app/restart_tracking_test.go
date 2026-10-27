@@ -25,12 +25,18 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	s, store := bootReattachServer(t, "", daemon.wsURL())
 	path := filepath.Join(t.TempDir(), restartsFileName)
 	s.restart = newRestartTracker(path, "test-stamp", "boot-test", time.Now())
-	for _, native := range []string{"starred", "plain", "forgotten"} {
+	for _, native := range []string{"starred", "plain", "forgotten", "resting"} {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
 		store.remember(rec)
 	}
 	seedBootAttachments(t, s)
+	// The boot loop queues only threads with open work; "resting" has none.
+	for _, hosted := range []string{"nht_starred", "nht_plain", "nht_forgotten"} {
+		if _, _, err := s.agentExecutions.beginTurn(hosted, "nano:test:open-turn", "hash"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	s.prepareBootReattach()
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
@@ -50,7 +56,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 		data, err := os.ReadFile(path)
 		return err == nil && json.Unmarshal(data, &record) == nil
 	})
-	if !record.Complete || record.ThreadsTotal != 3 || record.Live != 2 || record.Failed != 1 || record.Pending != 0 || record.Visible != 1 {
+	if !record.Complete || record.ThreadsTotal != 4 || record.Live != 2 || record.Failed != 1 || record.Pending != 0 || record.Resting != 1 || record.Visible != 1 {
 		t.Fatalf("restart summary = %+v", record)
 	}
 	if record.HTTPOpenMs == nil || record.BootLoopMs == nil || record.VisibleLiveMs == nil || record.AllSettledMs == nil {
@@ -85,11 +91,15 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	if forgotten := byNative["forgotten"]; forgotten.FailedMs == nil || forgotten.Reason != "no_longer_stored" || forgotten.LiveMs != nil {
 		t.Fatalf("forgotten thread = %+v", forgotten)
 	}
-	if codex := record.ByProvider["codex"]; codex.Threads != 3 || codex.Live != 2 || codex.Failed != 1 || codex.Ms["reconnect"].N != 2 {
+	// A thread left resting settles the record without a pick or a failure.
+	if resting := byNative["resting"]; resting.State != restartStateResting || resting.PickedMs != nil || resting.FailedMs != nil {
+		t.Fatalf("resting thread = %+v", resting)
+	}
+	if codex := record.ByProvider["codex"]; codex.Threads != 4 || codex.Live != 2 || codex.Failed != 1 || codex.Resting != 1 || codex.Ms["reconnect"].N != 2 {
 		t.Fatalf("codex totals = %+v", codex)
 	}
 
-	for query, wantThreads := range map[string]int{"": 0, "?threads=1": 3} {
+	for query, wantThreads := range map[string]int{"": 0, "?threads=1": 4} {
 		rec := httptest.NewRecorder()
 		s.handleRestarts(rec, httptest.NewRequest(http.MethodGet, "/api/v1/restarts"+query, nil))
 		var body struct{ Restarts []restartRecord }
@@ -185,5 +195,31 @@ func TestRestartRecordIsCompleteOnlyOnceWritten(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("restart line not written: %v", err)
+	}
+}
+
+// Failure caught: a resting thread picked for an on-demand attach still
+// counted as settled, so the record could be written complete before that
+// attach went live or failed. Boundary: the restart tracker.
+func TestRestartRecordWaitsForAnOnDemandAttach(t *testing.T) {
+	tracker := newRestartTracker(filepath.Join(t.TempDir(), restartsFileName), "test-stamp", "boot-test", time.Now())
+	rec := attachmentRecord{Provider: "codex", NativeThreadID: "resting", HostedThreadID: "nht_resting"}
+	tracker.addThreads([]attachmentRecord{rec})
+	tracker.rest([]attachmentRecord{rec})
+	tracker.thread(rec.key()).at(restartPicked)
+	tracker.thread(rec.key()).at(restartRegistered)
+	tracker.markBootLoopDone()
+	tracker.mu.Lock()
+	record := tracker.recordLocked(true)
+	tracker.mu.Unlock()
+	if record.Complete || record.Pending != 1 || record.Resting != 0 {
+		t.Fatalf("record during an on-demand attach = complete %v, pending %d, resting %d; want pending, not complete", record.Complete, record.Pending, record.Resting)
+	}
+	tracker.thread(rec.key()).at(restartLive)
+	tracker.mu.Lock()
+	record = tracker.recordLocked(true)
+	tracker.mu.Unlock()
+	if record.Live != 1 || record.Pending != 0 {
+		t.Fatalf("record after the attach = live %d, pending %d", record.Live, record.Pending)
 	}
 }
