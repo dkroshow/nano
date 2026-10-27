@@ -115,12 +115,11 @@ export function transcriptItemKind(item) {
   return 'aux'
 }
 
-export function formatTranscriptTimestamp(value, timeZone) {
+export function formatTranscriptTimestamp(value) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat(undefined, {
-    timeZone,
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -132,12 +131,11 @@ export function formatTranscriptTimestamp(value, timeZone) {
 // Agent submission time uses the viewer's local zone in Enhanced view.
 // Live rows use the server-recorded UTC operation value; saved rows recover
 // it from the sender footer. Formatting never rewrites the prompt text.
-export function formatSubmissionTimestamp(value, timeZone) {
+export function formatSubmissionTimestamp(value) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat('en-US', {
-    timeZone,
     month: 'short',
     day: 'numeric',
     hour: 'numeric',

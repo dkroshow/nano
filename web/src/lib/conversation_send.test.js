@@ -1784,9 +1784,9 @@ describe('a send Nano never acknowledged retries until Nano answers', () => {
     // has own methods, so spy where this runtime actually defines setItem.
     const storageMethods = Object.hasOwn(localStorage, 'setItem') ? localStorage : Object.getPrototypeOf(localStorage)
     const setItem = localStorage.setItem
-    vi.spyOn(storageMethods, 'setItem').mockImplementation((key, value) => {
+    vi.spyOn(storageMethods, 'setItem').mockImplementation(function (key, value) {
       if (String(key).startsWith('nano-unsent:')) throw new DOMException('quota', 'QuotaExceededError')
-      return setItem.call(localStorage, key, value)
+      return setItem.call(this, key, value)
     })
 
     await fireEvent.click(getByRole('button', { name: 'Discard' }))

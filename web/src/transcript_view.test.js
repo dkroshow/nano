@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   senderSubmissionTimestampFromFooter,
   consumeTranscriptFilterEscape,
@@ -16,6 +16,8 @@ import {
 } from './transcript_view.js'
 import senderFooterFixture from './lib/fixtures/sender-footer.json'
 import { ENHANCED_HIDDEN_CATEGORIES } from './transcript_query.js'
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('live wire item categories', () => {
   // The live block renders raw wire types; the enhanced hide-set is expressed
@@ -88,14 +90,22 @@ describe('transcript presentation', () => {
   })
 
   it('keeps a compact human timestamp while retaining invalid-value safety', () => {
-    expect(formatTranscriptTimestamp('2026-07-14T12:34:56Z', 'UTC')).toMatch(/Jul.*14.*12:34:56/i)
+    const DateTimeFormat = Intl.DateTimeFormat
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((locale, options) =>
+      new DateTimeFormat(locale, { ...options, timeZone: 'UTC' }))
+    expect(formatTranscriptTimestamp('2026-07-14T12:34:56Z')).toMatch(/Jul.*14.*12:34:56/i)
     expect(formatTranscriptTimestamp('not-a-date')).toBe('')
   })
 
-  it('formats durable agent submission time in the requested zone across daylight saving', () => {
-    expect(formatSubmissionTimestamp('2026-08-27T15:22:14.843Z', 'America/Los_Angeles')).toBe('Aug 27, 8:22:14 AM PDT')
-    expect(formatSubmissionTimestamp('2026-01-15T16:22:14Z', 'America/Los_Angeles')).toBe('Jan 15, 8:22:14 AM PST')
-    expect(formatSubmissionTimestamp('2026-08-27T15:22:14.843Z', 'UTC')).toBe('Aug 27, 3:22:14 PM UTC')
+  it('formats durable agent submission time in the browser zone across daylight saving', () => {
+    const DateTimeFormat = Intl.DateTimeFormat
+    let timeZone = 'America/Los_Angeles'
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((locale, options) =>
+      new DateTimeFormat(locale, { ...options, timeZone }))
+    expect(formatSubmissionTimestamp('2026-08-27T15:22:14.843Z')).toBe('Aug 27, 8:22:14 AM PDT')
+    expect(formatSubmissionTimestamp('2026-01-15T16:22:14Z')).toBe('Jan 15, 8:22:14 AM PST')
+    timeZone = 'UTC'
+    expect(formatSubmissionTimestamp('2026-08-27T15:22:14.843Z')).toBe('Aug 27, 3:22:14 PM UTC')
     expect(formatSubmissionTimestamp('not-a-date')).toBe('')
   })
 
