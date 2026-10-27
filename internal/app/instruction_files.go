@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/setup"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,21 +21,6 @@ import (
 )
 
 const maxInstructionFileBytes = 1 << 20 // files beyond this are view/edit-rejected
-
-type instructionFileSource struct {
-	Path         string
-	SourceKind   string
-	SourceScope  string
-	SourceLoad   string
-	ProvenLoaded bool
-	Evidence     string
-}
-
-const (
-	instructionEvidenceWire       = "wire-authoritative"
-	instructionEvidenceDocumented = "documented-expected"
-	instructionEvidencePresent    = "present-only"
-)
 
 // instructionFilePolicy holds canonical (symlink-resolved) roots: writes must
 // land under a writeRoot; protectedRoots are always view-only, enforcing the
@@ -97,23 +83,23 @@ func protectedInstructionRoots() []string {
 	}
 }
 
-func instructionEvidence(src instructionFileSource) string {
+func instructionEvidence(src setup.InstructionFileSource) string {
 	if src.Evidence != "" {
 		return src.Evidence
 	}
 	if src.ProvenLoaded {
-		return instructionEvidenceWire
+		return setup.InstructionEvidenceWire
 	}
-	return instructionEvidencePresent
+	return setup.InstructionEvidencePresent
 }
 
 // instructionFileSources derives the session's instruction-file allowlist and
 // write policy. Codex paths are wire-authoritative (the thread response reports
 // them); Claude paths are documented-expected from Claude Code's memory loading
 // rules, but not wire-attested as exact prompt input.
-func (sess *session) instructionFileSources() ([]instructionFileSource, instructionFilePolicy) {
+func (sess *session) instructionFileSources() ([]setup.InstructionFileSource, instructionFilePolicy) {
 	pol := instructionFilePolicy{protectedRoots: protectedInstructionRoots()}
-	var sources []instructionFileSource
+	var sources []setup.InstructionFileSource
 	switch sess.provider {
 	case "codex":
 		sess.stateMu.Lock()
@@ -129,11 +115,11 @@ func (sess *session) instructionFileSources() ([]instructionFileSource, instruct
 			json.Unmarshal(raw, &thread)
 		}
 		for _, p := range thread.InstructionSources {
-			sources = append(sources, instructionFileSource{
+			sources = append(sources, setup.InstructionFileSource{
 				Path:         p,
 				SourceKind:   "codex-thread-instruction-source",
 				ProvenLoaded: true,
-				Evidence:     instructionEvidenceWire,
+				Evidence:     setup.InstructionEvidenceWire,
 			})
 		}
 		roots := append([]string(nil), thread.RuntimeWorkspaceRoots...)
@@ -150,13 +136,13 @@ func (sess *session) instructionFileSources() ([]instructionFileSource, instruct
 		sess.stateMu.Lock()
 		initRaw := sess.state["init"]
 		sess.stateMu.Unlock()
-		sources = append(sources, claudeInstructionSources(sess.cwd, initRaw)...)
+		sources = append(sources, setup.ClaudeInstructionSources(sess.cwd, initRaw)...)
 		pol.writeRoots = []string{canonicalPath(sess.cwd)}
 	}
 	return sources, pol
 }
 
-func findInstructionSource(sources []instructionFileSource, path string) *instructionFileSource {
+func findInstructionSource(sources []setup.InstructionFileSource, path string) *setup.InstructionFileSource {
 	for i := range sources {
 		if sources[i].Path == path { // exact allowlist match, no normalization
 			return &sources[i]
@@ -169,7 +155,7 @@ func findInstructionSource(sources []instructionFileSource, path string) *instru
 // content is nil whenever the file cannot be shown as text (missing,
 // oversized, binary, unreadable); meta.ReadOnlyReason then says why. A
 // non-nil content with Editable=false is viewable but write-protected.
-func inspectInstructionFile(provider string, src instructionFileSource, pol instructionFilePolicy) (instructionFileMeta, []byte) {
+func inspectInstructionFile(provider string, src setup.InstructionFileSource, pol instructionFilePolicy) (instructionFileMeta, []byte) {
 	meta := instructionFileMeta{
 		Path:         src.Path,
 		Basename:     filepath.Base(src.Path),

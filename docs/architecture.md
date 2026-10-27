@@ -10,7 +10,7 @@ under [decisions/](decisions/) say why each piece is the way it is.
 ## The server
 
 The `internal/app` package is the server; `cmd/nanod` calls its entry point. It
-parses every flag into one `Config` value (`config.go`) before it opens a
+uses `internal/config` to parse every flag into one `Config` value before it opens a
 store or a listener, builds the HTTP router (`routes.go`), and holds the map
 of live sessions. Each live session owns one connection to a provider
 runtime, a bounded in-memory buffer of its wire events, and the live-text
@@ -33,9 +33,12 @@ for the parsing module, the state layer and lifecycle.
 | `transcript` | Whether a provider's saved transcript proves a prompt Nano delivered. |
 | `interact` | The four operations features build on: submit a prompt, send and read mail, read the completed-turn feed, read a transcript page and lifecycle facts. Standard library only. |
 | `features/{mail,heartbeat,subscriptions,feedback}` | Durable inbox, scheduled wakes, child-completion notices, operator notes. Each depends on `interact`, never on providers. |
-| `usage` | Account-usage polling, retention and read models. Provider clients stay in `internal/app`. |
+| `config` | Process flags, defaults and resolved filesystem paths; opens no stores or workers. |
+| `usage`, `usageclients` | Account-usage polling, retention and read models; read-only Claude and Codex clients. Grok launch-policy glue stays in `app`. |
+| `setup` | Read-only Claude context sources and workspace inspection caches. Session handlers stay in `app`. |
+| `observability` | Bounded request measurements and rotating process logs. Stateful diagnostics handlers stay in `app`. |
 | `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution; content-free browser evidence. |
-| `httpapi`, `httpapi/remoteauth` | HTTP transport conventions; the password-guarded remote listener and its store. |
+| `httpapi`, `httpapi/remoteauth` | HTTP transport conventions, compression, discovery document delivery and connection measurement; the password-guarded remote listener and its store. |
 | `state/db`, `app/persistence`, `app/statestore`, `edge/statewiring` | The shared SQLite connection policy and the composition of table owners at the program edge. |
 
 `cmd/` holds the `nanod` entry point and the helper binaries: `claude-shim` (below), `nano-agent` (a thin

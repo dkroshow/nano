@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dkroshow/nano/internal/setup"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,8 +28,8 @@ type claudeWorkspaceSnapshot struct {
 	ResolvedAt    time.Time
 	TargetCWD     string
 	Settings      resolvedClaudeSettings
-	Instructions  []claudeContextSource
-	ConfigSources []claudeContextSource
+	Instructions  []setup.ClaudeContextSource
+	ConfigSources []setup.ClaudeContextSource
 	Skills        []resolvedSkill
 	MCPServers    []string
 	Plugins       []string
@@ -38,15 +39,15 @@ type claudeWorkspaceSnapshot struct {
 }
 
 type persistedClaudeWorkspaceSnapshot struct {
-	Settings      resolvedClaudeSettings `json:"settings"`
-	Instructions  []claudeContextSource  `json:"instructions"`
-	ConfigSources []claudeContextSource  `json:"configSources"`
-	Skills        []resolvedSkill        `json:"skills"`
-	MCPServers    []string               `json:"mcpServers"`
-	Plugins       []string               `json:"plugins"`
-	CLIVersion    string                 `json:"cliVersion,omitempty"`
-	Git           resolvedGit            `json:"git"`
-	Diagnostics   []string               `json:"diagnostics"`
+	Settings      resolvedClaudeSettings      `json:"settings"`
+	Instructions  []setup.ClaudeContextSource `json:"instructions"`
+	ConfigSources []setup.ClaudeContextSource `json:"configSources"`
+	Skills        []resolvedSkill             `json:"skills"`
+	MCPServers    []string                    `json:"mcpServers"`
+	Plugins       []string                    `json:"plugins"`
+	CLIVersion    string                      `json:"cliVersion,omitempty"`
+	Git           resolvedGit                 `json:"git"`
+	Diagnostics   []string                    `json:"diagnostics"`
 }
 
 type historicalClaudeResolver struct {
@@ -171,7 +172,7 @@ func (r *historicalClaudeResolver) resolveOrLoad(ctx context.Context, cwd string
 func (r *historicalClaudeResolver) resolveWorkspace(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, error) {
 	settings, settingsDiagnostics := resolveClaudeSettings(cwd)
 	instructions, instructionDiagnostics := resolveHistoricalClaudeInstructions(cwd, settings)
-	configSources := claudeConfigSources(cwd)
+	configSources := setup.ClaudeConfigSources(cwd)
 	skills, skillDiagnostics := resolveClaudeSkills(cwd)
 	mcpServers, mcpDiagnostics := resolveClaudeMCPNames(cwd, configSources)
 
@@ -287,19 +288,19 @@ func claudeSettingsLayerPaths(cwd string) []string {
 	if home, err := os.UserHomeDir(); err == nil {
 		paths = append(paths, filepath.Join(home, ".claude", "settings.json"))
 	}
-	for _, dir := range ancestorDirs(cwd) {
+	for _, dir := range setup.AncestorDirs(cwd) {
 		paths = append(paths,
 			filepath.Join(dir, ".claude", "settings.json"),
 			filepath.Join(dir, ".claude", "settings.local.json"),
 		)
 	}
-	paths = append(paths, managedClaudeSettingsPaths()...)
+	paths = append(paths, setup.ManagedClaudeSettingsPaths()...)
 	return uniqueNonempty(paths)
 }
 
-func resolveHistoricalClaudeInstructions(cwd string, settings resolvedClaudeSettings) ([]claudeContextSource, []string) {
-	sources := claudeContextSources(cwd, nil)
-	filtered := make([]claudeContextSource, 0, len(sources))
+func resolveHistoricalClaudeInstructions(cwd string, settings resolvedClaudeSettings) ([]setup.ClaudeContextSource, []string) {
+	sources := setup.ClaudeContextSources(cwd, nil)
+	filtered := make([]setup.ClaudeContextSource, 0, len(sources))
 	for _, source := range sources {
 		if source.Kind == "auto-memory" {
 			continue
@@ -312,14 +313,14 @@ func resolveHistoricalClaudeInstructions(cwd string, settings resolvedClaudeSett
 	if settings.AutoMemoryEnabled == nil || *settings.AutoMemoryEnabled {
 		memoryPath := ""
 		if settings.AutoMemoryDirectory != "" {
-			memoryPath = filepath.Join(expandHome(settings.AutoMemoryDirectory), "MEMORY.md")
+			memoryPath = filepath.Join(setup.ExpandHome(settings.AutoMemoryDirectory), "MEMORY.md")
 		} else {
-			memoryPath = claudeAutoMemoryPath(cwd, nil)
+			memoryPath = setup.ClaudeAutoMemoryPath(cwd, nil)
 		}
 		if info, err := os.Stat(memoryPath); err == nil && info.Mode().IsRegular() {
-			filtered = append(filtered, claudeContextSource{
+			filtered = append(filtered, setup.ClaudeContextSource{
 				Path: memoryPath, Kind: "auto-memory", Scope: "repository", Load: "startup-truncated",
-				Evidence: instructionEvidenceDocumented, Detail: "MEMORY.md startup entrypoint; Claude loads the first 200 lines or 25KB.",
+				Evidence: setup.InstructionEvidenceDocumented, Detail: "MEMORY.md startup entrypoint; Claude loads the first 200 lines or 25KB.",
 				Exists: true,
 			})
 		}
@@ -332,15 +333,15 @@ func resolveHistoricalClaudeInstructions(cwd string, settings resolvedClaudeSett
 
 var claudeImportRE = regexp.MustCompile(`@([~./A-Za-z0-9_-][^[:space:]` + "`" + `"'<>]*)`)
 
-func resolveClaudeImports(sources []claudeContextSource, excludes []string) ([]claudeContextSource, []string) {
+func resolveClaudeImports(sources []setup.ClaudeContextSource, excludes []string) ([]setup.ClaudeContextSource, []string) {
 	seen := map[string]bool{}
 	for _, source := range sources {
 		seen[source.Path] = true
 	}
-	var imports []claudeContextSource
+	var imports []setup.ClaudeContextSource
 	var diagnostics []string
-	var walk func(claudeContextSource, int)
-	walk = func(parent claudeContextSource, depth int) {
+	var walk func(setup.ClaudeContextSource, int)
+	walk = func(parent setup.ClaudeContextSource, depth int) {
 		if depth >= 5 || parent.Kind == "auto-memory" || parent.Load == "conditional" {
 			return
 		}
@@ -353,7 +354,7 @@ func resolveClaudeImports(sources []claudeContextSource, excludes []string) ([]c
 			if raw == "" || (!strings.Contains(raw, "/") && filepath.Ext(raw) == "") {
 				continue
 			}
-			path := expandHome(raw)
+			path := setup.ExpandHome(raw)
 			if !filepath.IsAbs(path) {
 				path = filepath.Join(filepath.Dir(parent.Path), path)
 			}
@@ -366,9 +367,9 @@ func resolveClaudeImports(sources []claudeContextSource, excludes []string) ([]c
 				continue
 			}
 			seen[path] = true
-			source := claudeContextSource{
+			source := setup.ClaudeContextSource{
 				Path: path, Kind: "claude-import", Scope: parent.Scope, Load: parent.Load,
-				Evidence: instructionEvidenceDocumented,
+				Evidence: setup.InstructionEvidenceDocumented,
 				Detail:   "Imported by " + parent.Path + "; external imports also depend on Claude's approval record.",
 				Exists:   true,
 			}
@@ -382,9 +383,9 @@ func resolveClaudeImports(sources []claudeContextSource, excludes []string) ([]c
 	return imports, diagnostics
 }
 
-func dedupeClaudeSources(sources []claudeContextSource) []claudeContextSource {
+func dedupeClaudeSources(sources []setup.ClaudeContextSource) []setup.ClaudeContextSource {
 	seen := map[string]bool{}
-	result := make([]claudeContextSource, 0, len(sources))
+	result := make([]setup.ClaudeContextSource, 0, len(sources))
 	for _, source := range sources {
 		if source.Path == "" || seen[source.Path] {
 			continue
@@ -398,7 +399,7 @@ func dedupeClaudeSources(sources []claudeContextSource) []claudeContextSource {
 func matchesClaudeExclude(path string, patterns []string) bool {
 	slashPath := filepath.ToSlash(path)
 	for _, pattern := range patterns {
-		pattern = filepath.ToSlash(expandHome(strings.TrimSpace(pattern)))
+		pattern = filepath.ToSlash(setup.ExpandHome(strings.TrimSpace(pattern)))
 		if pattern == "" {
 			continue
 		}
@@ -425,7 +426,7 @@ func resolveClaudeSkills(cwd string) ([]resolvedSkill, []string) {
 			root{filepath.Join(home, ".claude", "commands"), "user-command"},
 		)
 	}
-	for _, dir := range ancestorDirs(cwd) {
+	for _, dir := range setup.AncestorDirs(cwd) {
 		roots = append(roots,
 			root{filepath.Join(dir, ".claude", "skills"), "project"},
 			root{filepath.Join(dir, ".claude", "commands"), "project-command"},
@@ -514,7 +515,7 @@ func readClaudeExtensionMetadata(path string) (string, string) {
 	return name, description
 }
 
-func resolveClaudeMCPNames(cwd string, sources []claudeContextSource) ([]string, []string) {
+func resolveClaudeMCPNames(cwd string, sources []setup.ClaudeContextSource) ([]string, []string) {
 	names := map[string]bool{}
 	var diagnostics []string
 	for _, source := range sources {
@@ -539,7 +540,7 @@ func resolveClaudeMCPNames(cwd string, sources []claudeContextSource) ([]string,
 		for name := range document.MCPServers {
 			names[name] = true
 		}
-		for _, projectPath := range uniqueNonempty([]string{cwd, repoRoot(cwd)}) {
+		for _, projectPath := range uniqueNonempty([]string{cwd, setup.RepoRoot(cwd)}) {
 			if project, ok := document.Projects[projectPath]; ok {
 				for name := range project.MCPServers {
 					names[name] = true

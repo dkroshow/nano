@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/dkroshow/nano/internal/setup"
 	"io"
 	"io/fs"
 	"net/url"
@@ -441,7 +442,7 @@ func (s *threadCatalogService) attachedSourcePaths(ctx context.Context, provider
 		case cwd == "":
 			return nil, unresolvedNoCwd
 		}
-		return []string{filepath.Join(root.Root.Path, claudeSlugRE.ReplaceAllString(cwd, "-"), nativeID+".jsonl")}, ""
+		return []string{filepath.Join(root.Root.Path, setup.ClaudeProjectSlug(cwd), nativeID+".jsonl")}, ""
 	case "grok":
 		root, ok := s.rootOf(history.ProviderGrok, history.RootGrokSessions)
 		switch {

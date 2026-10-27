@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/dkroshow/nano/internal/setup"
 	"maps"
 	"os"
 	"path/filepath"
@@ -57,7 +58,7 @@ func TestHistoricalClaudeResolverSharesWorkspaceAndSeparatesEvidence(t *testing.
 	writeClaudeTestFile(t, filepath.Join(home, ".claude", "skills", "user-skill", "SKILL.md"), "---\nname: user-skill\ndescription: User skill\n---")
 	writeClaudeTestFile(t, filepath.Join(repo, ".claude", "skills", "project-skill", "SKILL.md"), "---\nname: project-skill\ndescription: Project skill\n---")
 
-	memoryPath := claudeAutoMemoryPath(child, nil)
+	memoryPath := setup.ClaudeAutoMemoryPath(child, nil)
 	if err := os.MkdirAll(filepath.Dir(memoryPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestHistoricalClaudeResolverSharesWorkspaceAndSeparatesEvidence(t *testing.
 	// Ancestor sources are allowed by design. Assert the complete fixture-owned
 	// set without counting unrelated sources above the temporary directory.
 	instructions := map[string]string{}
-	for _, source := range resolution.Values["instructionSources"].Value.([]claudeContextSource) {
+	for _, source := range resolution.Values["instructionSources"].Value.([]setup.ClaudeContextSource) {
 		if strings.HasPrefix(source.Path, root+string(os.PathSeparator)) {
 			instructions[source.Path] = source.Kind
 		}

@@ -56,7 +56,7 @@ gofmt -l . && go vet ./... && go test -timeout 30m ./... && npm --prefix web tes
 - **No always-on work without a measured reason.** No new polling, per-frame
   encoding or whole-store scans; carry the fact in the event that already
   exists. Log on change, not on every pass.
-- Flags are the configuration surface; `config.go` parses all of them into
+- Flags are the configuration surface; `internal/config/config.go` parses all of them into
   one value before any store or listener opens. Four environment variables
   are read beside them: `CODEX_NANO_CLAUDE_BIN` and `CODEX_NANO_GROK_BIN`
   name the CLI executables when the flags are empty, and the two switches

@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/setup"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,7 @@ func writeTestFile(t *testing.T, path, content string) {
 }
 
 func inspectOne(path string, pol instructionFilePolicy) (instructionFileMeta, []byte) {
-	src := instructionFileSource{Path: path, SourceKind: "test", ProvenLoaded: true}
+	src := setup.InstructionFileSource{Path: path, SourceKind: "test", ProvenLoaded: true}
 	return inspectInstructionFile("codex", src, pol)
 }
 
@@ -273,7 +274,7 @@ func TestClaudeInstructionFilesUseDocumentedLoadingRules(t *testing.T) {
 		cwd:            cwd,
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sources, _ := sess.instructionFileSources()
-	got := map[string]instructionFileSource{}
+	got := map[string]setup.InstructionFileSource{}
 	for _, src := range sources {
 		got[src.Path] = src
 	}
@@ -291,7 +292,7 @@ func TestClaudeInstructionFilesUseDocumentedLoadingRules(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing claude instruction source %s; got %#v", path, sources)
 		}
-		if src.SourceKind != kind || src.Evidence != instructionEvidenceDocumented || src.ProvenLoaded {
+		if src.SourceKind != kind || src.Evidence != setup.InstructionEvidenceDocumented || src.ProvenLoaded {
 			t.Fatalf("source %s = %+v, want documented-expected and not proven-loaded", path, src)
 		}
 	}

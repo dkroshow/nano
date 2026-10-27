@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/setup"
 	"io"
 	"io/fs"
 	"log"
@@ -148,7 +149,7 @@ type server struct {
 	historicalClaude *historicalClaudeResolver
 	// skills is the process-wide, cwd-keyed Codex skills/list cache. Session
 	// state reads never call the provider and boot fan-out is bounded here.
-	skills *skillsListCache
+	skills *setup.SkillsListCache
 	// fleet watches the recent catalog for fleet-state transitions and serves
 	// them as a bookmark feed (fleet_changes.go). Nil when the catalog is
 	// unavailable, which reports the feed as unavailable rather than empty.
@@ -351,7 +352,7 @@ func construct(config config.Config) *application {
 		}
 	}
 	codexDaemon := newCodexDaemon(config.CodexWS, config.CodexSupervisorLabel)
-	skills := newSkillsListCache(func(ctx context.Context, cwd string) (json.RawMessage, error) {
+	skills := setup.NewSkillsListCache(func(ctx context.Context, cwd string) (json.RawMessage, error) {
 		var result json.RawMessage
 		err := codexDaemon.Call(ctx, "skills/list", map[string]any{"cwds": []string{cwd}}, &result)
 		return result, err

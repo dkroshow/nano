@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/setup"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1472,8 +1472,6 @@ func (c *claudeSession) sendTurnWithEventID(text, eventID string, contexts ...co
 	return turnID, nil
 }
 
-var claudeSlugRE = regexp.MustCompile(`[^a-zA-Z0-9]`)
-
 // claudeTranscriptPath computes where the CLI persists this session's native
 // JSONL (verified pattern: cwd with non-alphanumerics mapped to '-').
 func claudeTranscriptPath(cwd, sessionID string) string {
@@ -1481,6 +1479,6 @@ func claudeTranscriptPath(cwd, sessionID string) string {
 	if err != nil || sessionID == "" {
 		return ""
 	}
-	slug := claudeSlugRE.ReplaceAllString(cwd, "-")
+	slug := setup.ClaudeProjectSlug(cwd)
 	return filepath.Join(home, ".claude", "projects", slug, sessionID+".jsonl")
 }

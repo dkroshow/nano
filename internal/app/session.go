@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/setup"
 	"log"
 	"net/http"
 	"os"
@@ -395,7 +396,7 @@ type session struct {
 	mcp mcpInventoryCache
 	// skills is shared across every session because app-server scopes its
 	// skills/list answer to cwd, not to one provider thread.
-	skills *skillsListCache
+	skills *setup.SkillsListCache
 
 	stateMu                    sync.Mutex
 	threadID                   string
@@ -1200,7 +1201,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	if req.Provider == "codex" {
 		// Boot can register dozens of panes at once. Start the shared cwd refresh
 		// now, without waiting for a browser to ask each session for /state.
-		sess.skills.current(req.Cwd)
+		sess.skills.Current(req.Cwd)
 	}
 
 	if req.Mode != "resume" {
@@ -2463,7 +2464,7 @@ func (sess *session) handleState(w http.ResponseWriter, r *http.Request) {
 
 	// The pane's info bar names the branch this session is working on. Cached
 	// per directory and refreshed only when /state is rebuilt (live_git.go).
-	if branch := liveGit.Branch(r.Context(), cwd); branch != "" {
+	if branch := setup.LiveGit.Branch(r.Context(), cwd); branch != "" {
 		out["gitBranch"] = branch
 	}
 
@@ -2471,9 +2472,9 @@ func (sess *session) handleState(w http.ResponseWriter, r *http.Request) {
 		if p := claudeTranscriptPath(cwd, threadID); p != "" {
 			out["transcriptPath"] = p
 		}
-		out["claudeContext"] = claudeContext(cwd, initRaw)
+		out["claudeContext"] = setup.ClaudeContext(cwd, initRaw)
 		paths := []string{}
-		for _, src := range claudeInstructionSources(cwd, initRaw) {
+		for _, src := range setup.ClaudeInstructionSources(cwd, initRaw) {
 			paths = append(paths, src.Path)
 		}
 		out["instructionFiles"] = paths

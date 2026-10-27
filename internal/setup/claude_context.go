@@ -1,15 +1,17 @@
-package app
+package setup
 
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
 )
 
-type claudeContextSource struct {
+// ClaudeContextSource describes one read-only source of Claude context.
+type ClaudeContextSource struct {
 	Path     string `json:"path"`
 	Kind     string `json:"kind"`
 	Scope    string `json:"scope"`
@@ -20,18 +22,18 @@ type claudeContextSource struct {
 }
 
 type claudeContextAssumptions struct {
-	Sources       []claudeContextSource `json:"sources"`
-	ConfigSources []claudeContextSource `json:"configSources"`
+	Sources       []ClaudeContextSource `json:"sources"`
+	ConfigSources []ClaudeContextSource `json:"configSources"`
 	Docs          []map[string]string   `json:"docs"`
 	Notes         []string              `json:"notes"`
 }
 
-// claudeContext reconstructs Claude Code startup/context inputs from documented
+// ClaudeContext reconstructs Claude Code startup/context inputs from documented
 // loading rules. These sources are not a wire-attested assembled prompt.
-func claudeContext(cwd string, initRaw json.RawMessage) claudeContextAssumptions {
+func ClaudeContext(cwd string, initRaw json.RawMessage) claudeContextAssumptions {
 	return claudeContextAssumptions{
-		Sources:       claudeContextSources(cwd, initRaw),
-		ConfigSources: claudeConfigSources(cwd),
+		Sources:       ClaudeContextSources(cwd, initRaw),
+		ConfigSources: ClaudeConfigSources(cwd),
 		Docs: []map[string]string{
 			{"label": "Memory / CLAUDE.md", "url": "https://code.claude.com/docs/en/memory"},
 			{"label": "Settings scopes", "url": "https://code.claude.com/docs/en/settings"},
@@ -46,10 +48,11 @@ func claudeContext(cwd string, initRaw json.RawMessage) claudeContextAssumptions
 	}
 }
 
-func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSource {
-	var sources []claudeContextSource
+// ClaudeContextSources lists existing Claude instruction sources in load order.
+func ClaudeContextSources(cwd string, initRaw json.RawMessage) []ClaudeContextSource {
+	var sources []ClaudeContextSource
 	seen := map[string]bool{}
-	add := func(src claudeContextSource) {
+	add := func(src ClaudeContextSource) {
 		if src.Path == "" || seen[src.Path] {
 			return
 		}
@@ -58,12 +61,12 @@ func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSo
 		}
 		seen[src.Path] = true
 		src.Exists = true
-		src.Evidence = instructionEvidenceDocumented
+		src.Evidence = InstructionEvidenceDocumented
 		sources = append(sources, src)
 	}
 
 	for _, p := range managedClaudeMDPaths() {
-		add(claudeContextSource{
+		add(ClaudeContextSource{
 			Path:   p,
 			Kind:   "managed-claude-md",
 			Scope:  "managed",
@@ -73,7 +76,7 @@ func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSo
 	}
 
 	if home, err := os.UserHomeDir(); err == nil {
-		add(claudeContextSource{
+		add(ClaudeContextSource{
 			Path:   filepath.Join(home, ".claude", "CLAUDE.md"),
 			Kind:   "claude-md",
 			Scope:  "user",
@@ -81,7 +84,7 @@ func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSo
 			Detail: "User instructions loaded before project instructions.",
 		})
 		for _, p := range markdownFiles(filepath.Join(home, ".claude", "rules")) {
-			add(claudeContextSource{
+			add(ClaudeContextSource{
 				Path:   p,
 				Kind:   "claude-rule",
 				Scope:  "user",
@@ -91,22 +94,22 @@ func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSo
 		}
 	}
 
-	for _, dir := range ancestorDirs(cwd) {
-		add(claudeContextSource{
+	for _, dir := range AncestorDirs(cwd) {
+		add(ClaudeContextSource{
 			Path:   filepath.Join(dir, "CLAUDE.md"),
 			Kind:   "claude-md",
 			Scope:  "project",
 			Load:   "startup",
 			Detail: "Loaded by walking from filesystem root toward the session cwd.",
 		})
-		add(claudeContextSource{
+		add(ClaudeContextSource{
 			Path:   filepath.Join(dir, ".claude", "CLAUDE.md"),
 			Kind:   "claude-md",
 			Scope:  "project",
 			Load:   "startup",
 			Detail: "Project instructions in .claude/ for this directory level.",
 		})
-		add(claudeContextSource{
+		add(ClaudeContextSource{
 			Path:   filepath.Join(dir, "CLAUDE.local.md"),
 			Kind:   "claude-md",
 			Scope:  "local",
@@ -114,7 +117,7 @@ func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSo
 			Detail: "Local instructions append after CLAUDE.md at the same directory level.",
 		})
 		for _, p := range markdownFiles(filepath.Join(dir, ".claude", "rules")) {
-			add(claudeContextSource{
+			add(ClaudeContextSource{
 				Path:   p,
 				Kind:   "claude-rule",
 				Scope:  "project",
@@ -124,8 +127,8 @@ func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSo
 		}
 	}
 
-	if p := claudeAutoMemoryPath(cwd, initRaw); p != "" {
-		add(claudeContextSource{
+	if p := ClaudeAutoMemoryPath(cwd, initRaw); p != "" {
+		add(ClaudeContextSource{
 			Path:   p,
 			Kind:   "auto-memory",
 			Scope:  "repository",
@@ -138,7 +141,7 @@ func claudeContextSources(cwd string, initRaw json.RawMessage) []claudeContextSo
 }
 
 func claudeInstructionFiles(cwd string) []string {
-	sources := claudeContextSources(cwd, nil)
+	sources := ClaudeContextSources(cwd, nil)
 	paths := make([]string, 0, len(sources))
 	for _, src := range sources {
 		paths = append(paths, src.Path)
@@ -146,11 +149,12 @@ func claudeInstructionFiles(cwd string) []string {
 	return paths
 }
 
-func claudeInstructionSources(cwd string, initRaw json.RawMessage) []instructionFileSource {
-	contextSources := claudeContextSources(cwd, initRaw)
-	sources := make([]instructionFileSource, 0, len(contextSources))
+// ClaudeInstructionSources projects Claude context sources into instruction-file evidence.
+func ClaudeInstructionSources(cwd string, initRaw json.RawMessage) []InstructionFileSource {
+	contextSources := ClaudeContextSources(cwd, initRaw)
+	sources := make([]InstructionFileSource, 0, len(contextSources))
 	for _, src := range contextSources {
-		sources = append(sources, instructionFileSource{
+		sources = append(sources, InstructionFileSource{
 			Path:         src.Path,
 			SourceKind:   src.Kind,
 			SourceScope:  src.Scope,
@@ -175,7 +179,8 @@ func managedClaudeMDPaths() []string {
 	}
 }
 
-func managedClaudeSettingsPaths() []string {
+// ManagedClaudeSettingsPaths lists the platform-managed Claude settings locations.
+func ManagedClaudeSettingsPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{"/Library/Application Support/ClaudeCode/managed-settings.json"}
@@ -188,7 +193,8 @@ func managedClaudeSettingsPaths() []string {
 	}
 }
 
-func ancestorDirs(cwd string) []string {
+// AncestorDirs lists a directory and its ancestors from root to leaf.
+func AncestorDirs(cwd string) []string {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		abs = filepath.Clean(cwd)
@@ -247,14 +253,15 @@ func ruleLoad(path string) string {
 	return "startup"
 }
 
-func claudeAutoMemoryPath(cwd string, initRaw json.RawMessage) string {
+// ClaudeAutoMemoryPath resolves Claude memory from runtime evidence or its project path.
+func ClaudeAutoMemoryPath(cwd string, initRaw json.RawMessage) string {
 	var init struct {
 		MemoryPaths struct {
 			Auto string `json:"auto"`
 		} `json:"memory_paths"`
 	}
 	if len(initRaw) > 0 && json.Unmarshal(initRaw, &init) == nil && init.MemoryPaths.Auto != "" {
-		p := expandHome(init.MemoryPaths.Auto)
+		p := ExpandHome(init.MemoryPaths.Auto)
 		if filepath.Base(p) == "MEMORY.md" {
 			return p
 		}
@@ -264,14 +271,15 @@ func claudeAutoMemoryPath(cwd string, initRaw json.RawMessage) string {
 	if err != nil {
 		return ""
 	}
-	root := repoRoot(cwd)
+	root := RepoRoot(cwd)
 	if root == "" {
 		root = cwd
 	}
-	return filepath.Join(home, ".claude", "projects", claudeSlugRE.ReplaceAllString(root, "-"), "memory", "MEMORY.md")
+	return filepath.Join(home, ".claude", "projects", ClaudeProjectSlug(root), "memory", "MEMORY.md")
 }
 
-func repoRoot(cwd string) string {
+// RepoRoot finds the nearest ancestor containing Git metadata.
+func RepoRoot(cwd string) string {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		abs = filepath.Clean(cwd)
@@ -288,7 +296,8 @@ func repoRoot(cwd string) string {
 	}
 }
 
-func expandHome(path string) string {
+// ExpandHome expands a leading tilde using the current home directory.
+func ExpandHome(path string) string {
 	if path == "~" {
 		if home, err := os.UserHomeDir(); err == nil {
 			return home
@@ -302,8 +311,9 @@ func expandHome(path string) string {
 	return path
 }
 
-func claudeConfigSources(cwd string) []claudeContextSource {
-	var sources []claudeContextSource
+// ClaudeConfigSources lists existing Claude settings sources in precedence order.
+func ClaudeConfigSources(cwd string) []ClaudeContextSource {
+	var sources []ClaudeContextSource
 	seen := map[string]bool{}
 	add := func(path, kind, scope, detail string) {
 		if path == "" || seen[path] {
@@ -313,27 +323,32 @@ func claudeConfigSources(cwd string) []claudeContextSource {
 			return
 		}
 		seen[path] = true
-		sources = append(sources, claudeContextSource{
+		sources = append(sources, ClaudeContextSource{
 			Path:     path,
 			Kind:     kind,
 			Scope:    scope,
 			Load:     "startup",
-			Evidence: instructionEvidencePresent,
+			Evidence: InstructionEvidencePresent,
 			Detail:   detail,
 			Exists:   true,
 		})
 	}
-	for _, path := range managedClaudeSettingsPaths() {
+	for _, path := range ManagedClaudeSettingsPaths() {
 		add(path, "settings", "managed", "Organization-managed Claude settings.")
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		add(filepath.Join(home, ".claude", "settings.json"), "settings", "user", "User settings scope.")
 		add(filepath.Join(home, ".claude.json"), "mcp", "user", "Global/per-project Claude Code data and MCP configuration.")
 	}
-	for _, dir := range ancestorDirs(cwd) {
+	for _, dir := range AncestorDirs(cwd) {
 		add(filepath.Join(dir, ".mcp.json"), "mcp", "project", "Project MCP server configuration.")
 		add(filepath.Join(dir, ".claude", "settings.json"), "settings", "project", "Project settings scope.")
 		add(filepath.Join(dir, ".claude", "settings.local.json"), "settings", "local", "Local project settings scope.")
 	}
 	return sources
 }
+
+var claudeSlugRE = regexp.MustCompile(`[^a-zA-Z0-9]`)
+
+// ClaudeProjectSlug maps a workspace path to Claude's on-disk project directory name.
+func ClaudeProjectSlug(cwd string) string { return claudeSlugRE.ReplaceAllString(cwd, "-") }
