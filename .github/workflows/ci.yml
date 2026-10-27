@@ -33,5 +33,5 @@ jobs:
             echo "$files"
             exit 1
           fi
-      - run: go test ./...
+      - run: go test -timeout 30m ./...
       - run: npm --prefix web test

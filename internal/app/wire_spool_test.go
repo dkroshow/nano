@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -162,11 +163,54 @@ func TestPrepareWireSpoolDirPreservesForeignFiles(t *testing.T) {
 	if err := os.WriteFile(foreign, []byte("keep me"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	legacy := filepath.Join(dir, "000bc899.jsonl")
+	if err := os.WriteFile(legacy, []byte("keep this too"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := prepareWireSpoolDir(dir); err == nil {
 		t.Fatal("accepted a non-empty, unmarked directory")
 	}
 	if got, err := os.ReadFile(foreign); err != nil || string(got) != "keep me" {
 		t.Fatalf("foreign file changed: %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(legacy); err != nil || string(got) != "keep this too" {
+		t.Fatalf("mixed directory was partially cleaned: %q, %v", got, err)
+	}
+}
+
+// The first upgrade must recognize the unmarked files older Nano builds wrote.
+func TestPrepareWireSpoolDirUpgradesLegacyFiles(t *testing.T) {
+	for _, directoryEntry := range []bool{false, true} {
+		t.Run(fmt.Sprintf("directory=%v", directoryEntry), func(t *testing.T) {
+			dir := t.TempDir()
+			for _, name := range []string{"000bc899.jsonl", "1234abcd.jsonl", "ffffffff.jsonl"} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if directoryEntry {
+				if err := os.Mkdir(filepath.Join(dir, "01234567.jsonl"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := prepareWireSpoolDir(dir)
+			if directoryEntry {
+				if err == nil {
+					t.Fatal("accepted a legacy-named directory")
+				}
+				if _, err := os.Stat(filepath.Join(dir, "000bc899.jsonl")); err != nil {
+					t.Fatalf("refused directory was partially cleaned: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("upgrade refused: %v", err)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 1 || entries[0].Name() != ".nano-wire-spool" {
+				t.Fatalf("upgrade contents = %v, %v; want only marker", entries, err)
+			}
+		})
 	}
 }
 

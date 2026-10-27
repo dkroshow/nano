@@ -16,7 +16,6 @@ import (
 // target is explicit after ParseConfig returns, so an isolated candidate can
 // run without sharing the installed server's data, logs, or transient spool.
 type Config struct {
-	AllowDevOrigin           bool
 	Port                     int
 	WorkingDirectory         string
 	Sandbox                  string
@@ -83,7 +82,6 @@ func parseConfigWith(args []string, userHomeDir func() (string, error), output i
 	var paths configPathFlags
 	flags := flag.NewFlagSet("nanod", flag.ContinueOnError)
 	flags.SetOutput(output)
-	flags.BoolVar(&config.AllowDevOrigin, "allow-dev-origin", false, "trust the local Vite development server origin (http://localhost:5173)")
 	flags.IntVar(&config.Port, "port", 7690, "listen port")
 	flags.StringVar(&config.WorkingDirectory, "cwd", ".", "default working directory for new sessions")
 	flags.StringVar(&config.Sandbox, "sandbox", "danger-full-access", "codex sandbox mode when a start omits it: read-only | workspace-write | danger-full-access")

@@ -14,34 +14,15 @@ import (
 
 const testRemoteHost = "nano.example.ts.net:7690"
 
-// A local page must not be framed; Vite's cross-port write access requires an
-// explicit development opt-in and is denied by the release default.
-func TestLocalGuardFrameProtectionAndDevOrigin(t *testing.T) {
-	for _, allowDev := range []bool{false, true} {
-		guard := GuardLocal(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}), allowDev)
-		page := httptest.NewRecorder()
-		guard.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "http://localhost:7690/", nil))
-		if page.Header().Get("X-Frame-Options") != "DENY" {
-			t.Error("local page lacks frame protection")
-		}
-		for _, provenance := range []string{"Origin", "Referer"} {
-			r := httptest.NewRequest(http.MethodPost, "http://localhost:7690/api/write", nil)
-			r.Header.Set(provenance, "http://localhost:5173")
-			if provenance == "Origin" {
-				r.Header.Set("Sec-Fetch-Site", "same-site")
-			}
-			w := httptest.NewRecorder()
-			guard.ServeHTTP(w, r)
-			want := http.StatusForbidden
-			if allowDev {
-				want = http.StatusNoContent
-			}
-			if w.Code != want {
-				t.Errorf("allowDev=%v, %s: status=%d, want %d", allowDev, provenance, w.Code, want)
-			}
-		}
+// A local page must not be embedded by another website.
+func TestLocalGuardFrameProtection(t *testing.T) {
+	guard := GuardLocal(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	page := httptest.NewRecorder()
+	guard.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "http://localhost:7690/", nil))
+	if page.Header().Get("X-Frame-Options") != "DENY" {
+		t.Error("local page lacks frame protection")
 	}
 }
 
@@ -127,7 +108,7 @@ func TestRemoteOwnerLoginBypassPreservesTrustBoundary(t *testing.T) {
 	mux := http.NewServeMux()
 	auth.RegisterRoutes(mux)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "nano") })
-	local := GuardLocal(mux, false)
+	local := GuardLocal(mux)
 	values := url.Values{"allowed_logins": {owner}}
 	configure := func(origin, host string) *http.Request {
 		r := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:7690/security/allowed-logins", strings.NewReader(values.Encode()))

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,8 @@ const (
 	wireSpoolFlushInterval = 250 * time.Millisecond
 	wireSpoolChanSize      = 256
 )
+
+var legacyWireSpoolName = regexp.MustCompile(`^[0-9a-f]{8}\.jsonl$`)
 
 type wireSpool struct {
 	path string
@@ -43,10 +46,15 @@ func prepareWireSpoolDir(base string) (string, error) {
 	if markerErr == nil && !info.Mode().IsRegular() {
 		return "", fmt.Errorf("wire spool marker is not a regular file: %s", marker)
 	}
-	if os.IsNotExist(markerErr) && len(entries) != 0 {
-		return "", fmt.Errorf("wire spool directory %s is non-empty and has no Nano marker; refusing cleanup", base)
-	}
-	if markerErr == nil {
+	legacy := os.IsNotExist(markerErr)
+	if legacy {
+		// Validate the whole directory before removing any pre-marker spool files.
+		for _, entry := range entries {
+			if !entry.Type().IsRegular() || !legacyWireSpoolName.MatchString(entry.Name()) {
+				return "", fmt.Errorf("wire spool directory %s is unmarked and contains non-legacy entries; refusing cleanup", base)
+			}
+		}
+	} else {
 		contents, err := os.ReadFile(marker)
 		if err != nil {
 			return "", err
@@ -54,14 +62,17 @@ func prepareWireSpoolDir(base string) (string, error) {
 		if string(contents) != "Nano wire spool\n" {
 			return "", fmt.Errorf("unrecognized wire spool marker: %s", marker)
 		}
-	} else if err := os.WriteFile(marker, []byte("Nano wire spool\n"), 0600); err != nil {
-		return "", err
 	}
 	for _, entry := range entries {
-		if entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "nano-wire-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+		if entry.Type().IsRegular() && (legacy || (strings.HasPrefix(entry.Name(), "nano-wire-") && strings.HasSuffix(entry.Name(), ".jsonl"))) {
 			if err := os.Remove(filepath.Join(base, entry.Name())); err != nil {
 				return "", err
 			}
+		}
+	}
+	if legacy {
+		if err := os.WriteFile(marker, []byte("Nano wire spool\n"), 0600); err != nil {
+			return "", err
 		}
 	}
 	return base, nil

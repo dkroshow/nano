@@ -1222,8 +1222,7 @@ func TestSlowWriteHoldsLogOncePerMinuteWithACount(t *testing.T) {
 	}
 }
 
-// openStore uses an instrumenting driver to observe the statements a history
-// cycle issues. Production uses the shared private-file opener.
+// statedb.Open is authoritative; this test-only opener exists to count statements.
 func openStore(driverName, path string) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("history database path is empty")

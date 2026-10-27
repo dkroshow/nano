@@ -13,7 +13,7 @@ the entry point, `cmd/` holds the helper binaries, and `web/` is the UI. Read
 npm --prefix web ci                  # web dependencies (lockfile)
 npm --prefix web run build           # web/dist, which the server embeds
 go build -o nanod ./cmd/nanod && ./nanod       # http://127.0.0.1:7690
-go test ./...                        # Go tests; the app package is slow
+go test -timeout 30m ./...           # allow for the slow app test binary
 npm --prefix web test                # web logic and component tests
 npm --prefix web run dev             # UI loop on http://localhost:5173
 ```
@@ -21,7 +21,7 @@ npm --prefix web run dev             # UI loop on http://localhost:5173
 The one check before a commit:
 
 ```sh
-gofmt -l . && go vet ./... && go test ./... && npm --prefix web test
+gofmt -l . && go vet ./... && go test -timeout 30m ./... && npm --prefix web test
 ```
 
 `gofmt -l .` must print nothing. CI runs the same steps on macOS.
