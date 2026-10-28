@@ -107,10 +107,18 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 		t.Fatalf("stalled resume=%v; want unsettled replay", err)
 	}
 	stalled := h.current
+	drained, ok := claudeDrains.Load(claudeDrainKey(stalled))
+	if !ok {
+		t.Fatal("stalled replay has no pending drain acknowledgement")
+	}
 	before := stalled.seq
 	unblock()
-	if err := stalled.coreSession().Observe(context.Background(), coresession.AdapterEvent{}); err != nil && !strings.Contains(err.Error(), "closed") {
-		t.Fatal(err)
+	// A mailbox barrier can finish before the drain goroutine clears the
+	// retry guard. Its acknowledgement orders both publication and retry.
+	select {
+	case <-drained.(chan struct{}):
+	case <-time.After(3 * time.Second):
+		t.Fatal("abandoned replay did not acknowledge its drain")
 	}
 	if after := stalled.seq; after != before {
 		t.Fatalf("abandoned replay published %d more events after failure", after-before)
