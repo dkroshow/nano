@@ -36,7 +36,6 @@ func (c *blockingSupersededCollector) CollectSupersededProjectionsBatch(ctx cont
 }
 
 func TestSupersededProjectionCollectorRequiresExplicitEnable(t *testing.T) {
-	t.Setenv("NANO_SUPERSEDED_COLLECTION", "")
 	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +68,6 @@ func TestSupersededProjectionCollectorRequiresExplicitEnable(t *testing.T) {
 	}
 	service.Close()
 
-	t.Setenv("NANO_SUPERSEDED_COLLECTION", "on")
 	enabledStore, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
 	if err != nil {
 		t.Fatal(err)
