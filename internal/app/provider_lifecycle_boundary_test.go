@@ -11,18 +11,19 @@ import (
 
 func TestLifecycleMovedFunctionsHaveNoProviderDispatch(t *testing.T) {
 	functions := map[string][]string{
-		"agent_execution_api.go":          {"nativeThreadIDProvisional"},
-		"boot_reattach.go":                {"reattachOnBoot"},
-		"codex.go":                        {"startCodexZeroTurnRecovery"},
-		"codex_reconnect_state.go":        {"codexZeroTurnNativeMissing"},
-		"hosted_native_recovery_store.go": {"nativeRecoveryResumeGuard"},
-		"live_projection.go":              {"applyLiveRuntimeWire"},
-		"thread_reference_api.go":         {"resolveNativeThreadReference"},
-		"turn_send.go":                    {"runTransactionalTurnSend", "drainQueuedTurn"},
-		"session.go":                      {"recordWireAt"},
-		"provider_lifecycle.go":           nil,
-		"session_lifecycle.go":            nil,
-		"runtime.go":                      nil,
+		"boot_reattach.go":                     {"reattachOnBoot"},
+		"../sessions/codex.go":                 {"startCodexZeroTurnRecovery"},
+		"../sessions/codex_reconnect_state.go": {"codexZeroTurnNativeMissing"},
+		"hosted_native_recovery_store.go":      {"nativeRecoveryResumeGuard"},
+		"../sessions/session_projection.go":    {"applyLiveRuntimeWire"},
+		"thread_reference_api.go":              {"resolveNativeThreadReference"},
+		"../sessions/turn_send.go":             {"runTransactionalTurnSend", "drainQueuedTurn"},
+		"../sessions/session_wire.go":          {"recordWireAt"},
+		"../sessions/provider_lifecycle.go":    nil,
+		"../sessions/session_lifecycle.go":     nil,
+		"../sessions/runtime.go":               {"NativeThreadIDProvisional", "codexTurnFromParams", "startedAtMs"},
+		"../sessions/session_registry.go":      {"SessionForThread"},
+		"runtime_overlay.go":                   nil,
 	}
 	for path, names := range functions {
 		fset := token.NewFileSet()

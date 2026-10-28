@@ -507,10 +507,7 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 		t.Fatal(err)
 	}
 	projection := newLiveProjection("codex", hosted.ID)
-	projection.mu.Lock()
-	projection.runtime.TurnActive = true
-	projection.mu.Unlock()
-	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, Projection: projection}, "native-1", "ready", "")
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, Projection: projection}, "native-1", "ready", "", true)
 	saved := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: transcriptResponse{
 		Items: []transcriptItem{{ID: "saved-message-1", Type: "agent_message", Text: "working on it"}},
 	}}}

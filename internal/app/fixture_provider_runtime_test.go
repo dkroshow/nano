@@ -259,7 +259,7 @@ func configuredFixtureSession(t *testing.T, cfg sessionConfig, native, status, m
 		if len(active) > 0 && active[0] {
 			switch cfg.Provider {
 			case "codex":
-				f.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"`+f.session.ThreadID()+`","turn":{"id":"fixture-turn"}}}`))
+				f.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"`+f.session.ThreadID()+`","turn":{}}}`))
 			case "claude":
 				f.emit(t, []byte(`{"type":"assistant","message":{"id":"fixture-message","role":"assistant","content":[{"type":"text","text":"working"}]}}`))
 			case "grok":
