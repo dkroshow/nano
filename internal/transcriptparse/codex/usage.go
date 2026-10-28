@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/dkroshow/nano/internal/transcriptparse/internal/assemble"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
+	"strconv"
 )
 
 func usageValues(fields map[string]json.RawMessage) (model.TokenUsage, bool) {
@@ -52,10 +53,17 @@ func (state *State) addUsage(batch *model.Batch, turn model.Turn, obs model.Obse
 		scope.Kind, scope.TurnKey, scope.NativeTurnID = model.ScopeThread, "", nil
 	}
 	usage := model.UsageObservation{ID: obs.ID + "/usage/" + string(grain), Scope: scope, Grain: grain, SampleID: sample, Semantics: semantics, Values: values, ObservationRefs: []string{obs.ID}}
-	turn.UsageObservations = append(append([]model.UsageObservation(nil), turn.UsageObservations...), usage)
+	turn.UsageObservations = append(turn.UsageObservations, usage)
 	return turn
 }
+
+// finishUsage saves the observations a record added to turn.UsageObservations
+// and summarizes the turn's whole list.
 func (state *State) finishUsage(batch *model.Batch, turn model.Turn, obs model.Observation) {
+	for _, usage := range turn.UsageObservations {
+		state.appendUsage(turn.Key, usage)
+	}
+	turn.UsageObservations = state.usageOf(turn.Key)
 	var diagnostics []model.Diagnostic
 	turn, diagnostics = assemble.SummarizeUsage(turn)
 	batch.Diagnostics = append(batch.Diagnostics, diagnostics...)
@@ -94,7 +102,7 @@ func (state *State) tokenCount(batch *model.Batch, obs model.Observation, payloa
 	signature := sha256.Sum256(mustJSON([]any{last, total}))
 	sample := fmt.Sprintf("snapshot:%x", signature[:])
 	if len(last) > 0 {
-		for _, earlier := range turn.UsageObservations {
+		for _, earlier := range state.usageOf(turn.Key) {
 			if earlier.Grain == model.UsageResponse && earlier.SampleID == sample {
 				batch.Diagnostics = append(batch.Diagnostics, diagnostic("repeated_usage_snapshot", obs.Source))
 				break
@@ -102,7 +110,6 @@ func (state *State) tokenCount(batch *model.Batch, obs model.Observation, payloa
 		}
 	}
 	state.observeUsageTotal(batch, obs, total)
-	firstNew := len(turn.UsageObservations)
 	turn = state.addUsage(batch, turn, obs, last, model.UsageResponse, sample, "snapshot")
 	turn = state.addUsage(batch, turn, obs, total, model.UsageThread, "", "snapshot")
 	capacity, invalid := usageValues(info)
@@ -110,7 +117,7 @@ func (state *State) tokenCount(batch *model.Batch, obs model.Observation, payloa
 		batch.Diagnostics = append(batch.Diagnostics, diagnostic("invalid_usage_counter", obs.Source))
 	}
 	if capacity.ContextWindow != nil {
-		for i := firstNew; i < len(turn.UsageObservations); i++ {
+		for i := range turn.UsageObservations {
 			turn.UsageObservations[i].Values.ContextWindow = capacity.ContextWindow
 		}
 	}
@@ -136,4 +143,57 @@ func (state *State) observeUsageTotal(batch *model.Batch, obs model.Observation,
 		}
 	}
 	state.UsageTotals[key] = next
+}
+
+func usageKey(turnKey string, index int) string {
+	return turnKey + "#" + strconv.Itoa(index)
+}
+
+type turnChange struct {
+	turn  *model.Turn
+	count int
+}
+
+// fillUsage gives each turn change this call emitted the usage list its turn
+// had then, building each turn's list once. With a key, it fills only that
+// turn's changes, before eviction drops the turn's entries.
+func (state *State) fillUsage(key string) {
+	lists := map[string][]model.UsageObservation{}
+	var pending []turnChange
+	for _, change := range state.turnChanges {
+		if key != "" && change.turn.Key != key {
+			pending = append(pending, change)
+			continue
+		}
+		if change.count == 0 {
+			continue
+		}
+		list, ok := lists[change.turn.Key]
+		if !ok {
+			list = state.usageOf(change.turn.Key)
+			lists[change.turn.Key] = list
+		}
+		change.turn.UsageObservations = list[:change.count:change.count]
+	}
+	state.turnChanges = pending
+}
+
+func (state *State) appendUsage(turnKey string, usage model.UsageObservation) {
+	index := state.UsageCounts[turnKey]
+	state.Usage[usageKey(turnKey, index)] = usage
+	state.markChanged("usage", usageKey(turnKey, index))
+	state.UsageCounts[turnKey] = index + 1
+}
+
+// usageOf returns a turn's usage observations in arrival order.
+func (state State) usageOf(turnKey string) []model.UsageObservation {
+	count := state.UsageCounts[turnKey]
+	if count == 0 {
+		return nil
+	}
+	list := make([]model.UsageObservation, count)
+	for i := range list {
+		list[i] = state.Usage[usageKey(turnKey, i)]
+	}
+	return list
 }

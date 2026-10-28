@@ -245,6 +245,11 @@ type TranscriptProjectionResult struct {
 	parsedBatches func(func(model.Batch) error) error
 	// recordSource enables legacy Dev links for this native file only.
 	recordSource string
+	// continuation, for an append resumed from a resident copy, replaces
+	// ParserState with the changed entries; residentNext is the copy to keep
+	// once the save commits.
+	continuation *continuationDelta
+	residentNext *residentContinuation
 	// Grok's existing usage view displays current session model/effort on
 	// historical turns. This consumer snapshot never enters model.Turn.
 	sessionUsage *Metadata
@@ -264,6 +269,9 @@ type TranscriptCheckpoint struct {
 	LatestSeq             int64
 	ParserState           json.RawMessage
 	ErrorSummary          *string
+	// resident, from LoadTranscriptCheckpointForAppend, stands in for
+	// ParserState: the decoded continuation this checkpoint saved.
+	resident *residentContinuation
 }
 
 type TranscriptApplyRequest struct {

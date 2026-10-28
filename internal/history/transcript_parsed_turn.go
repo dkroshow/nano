@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -69,7 +70,7 @@ func ensureParsedTranscriptTurnTx(ctx context.Context, tx *sql.Tx, projectionID 
 			var raw []byte
 			var prior model.Turn
 			if err = rows.Scan(&candidate, &raw); err == nil {
-				prior, err = decodeParsedTurnTx(ctx, tx, projectionID, raw)
+				prior, err = decodeParsedTurnHeadTx(ctx, tx, projectionID, raw)
 			}
 			if err != nil {
 				break
@@ -111,13 +112,16 @@ func ensureParsedTranscriptTurnTx(ctx context.Context, tx *sql.Tx, projectionID 
 		}
 	} else {
 		var prior model.Turn
-		view, prior, err = loadParsedTranscriptTurnTx(ctx, tx, projectionID, key)
+		view, prior, err = loadParsedTranscriptTurnTx(ctx, tx, projectionID, key, false)
 		if err != nil {
 			return TranscriptTurn{}, err
 		}
 		// Binding adds identity without rewriting completion or usage. A later
 		// full snapshot write below owns changes to those source facts.
 		if turn.NativeTurnID != "" && prior.NativeTurnID == "" {
+			if _, prior, err = loadParsedTranscriptTurnTx(ctx, tx, projectionID, key, true); err != nil {
+				return TranscriptTurn{}, err
+			}
 			prior.NativeTurnID, prior.Scope.NativeTurnID = turn.NativeTurnID, turn.Scope.NativeTurnID
 			view.NativeTurnID = turn.NativeTurnID
 			if _, err := tx.ExecContext(ctx, `UPDATE conversation_turns SET native_turn_id=? WHERE projection_id=? AND turn_key=?`, turn.NativeTurnID, projectionID, key); err != nil {
@@ -143,7 +147,7 @@ func writeParsedTranscriptTurnTx(ctx context.Context, tx *sql.Tx, projectionID i
 	if err != nil {
 		return TranscriptTurn{}, err
 	}
-	_, prior, err := loadParsedTranscriptTurnTx(ctx, tx, projectionID, position.Key)
+	_, prior, err := loadParsedTranscriptTurnTx(ctx, tx, projectionID, position.Key, false)
 	if err != nil {
 		return TranscriptTurn{}, err
 	}
@@ -187,6 +191,9 @@ func writeParsedTranscriptTurnTx(ctx context.Context, tx *sql.Tx, projectionID i
 			turn.FinalItemID, turn.FinalItemRefs = prior.FinalItemID, prior.FinalItemRefs
 		}
 		if turn.Usage == nil {
+			if _, prior, err = loadParsedTranscriptTurnTx(ctx, tx, projectionID, position.Key, true); err != nil {
+				return TranscriptTurn{}, err
+			}
 			turn.Usage, turn.UsageBasis, turn.UsageRefs = prior.Usage, prior.UsageBasis, prior.UsageRefs
 			turn.UsageObservations, turn.UsageCoverage, turn.UsageIncomplete = prior.UsageObservations, prior.UsageCoverage, prior.UsageIncomplete
 		}
@@ -284,7 +291,20 @@ func parsedTurnView(turn model.Turn, position TranscriptTurn) TranscriptTurn {
 }
 
 func saveParsedTurnModelTx(ctx context.Context, tx *sql.Tx, projectionID int64, key string, turn model.Turn) error {
-	raw, err := encodeParsedTurnTx(ctx, tx, projectionID, turn)
+	var known []int64
+	var stored []byte
+	if err := tx.QueryRowContext(ctx, `SELECT parsed_json FROM conversation_turns WHERE projection_id=? AND turn_key=?`, projectionID, key).Scan(&stored); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if decoded, err := decodeTranscriptContinuation(stored); err == nil {
+		var saved struct {
+			UsageValues []int64 `json:"uv"`
+		}
+		if json.Unmarshal(decoded, &saved) == nil {
+			known = saved.UsageValues
+		}
+	}
+	raw, err := encodeParsedTurnOverTx(ctx, tx, projectionID, turn, known)
 	if err != nil {
 		return err
 	}
@@ -292,14 +312,14 @@ func saveParsedTurnModelTx(ctx context.Context, tx *sql.Tx, projectionID int64, 
 	return err
 }
 
-func loadParsedTranscriptTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, key string) (TranscriptTurn, model.Turn, error) {
+func loadParsedTranscriptTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, key string, usage bool) (TranscriptTurn, model.Turn, error) {
 	position := TranscriptTurn{Key: key}
 	var raw []byte
 	var turn model.Turn
 	var started, completed sql.NullString
 	err := tx.QueryRowContext(ctx, `SELECT ordinal,start_seq,end_seq,COALESCE(completion_seq,0),COALESCE(final_item_id,''),COALESCE(finality_source,''),COALESCE(finality_confidence,''),parsed_json,started_at,completed_at FROM conversation_turns WHERE projection_id=? AND turn_key=?`, projectionID, key).Scan(&position.Ordinal, &position.StartSeq, &position.EndSeq, &position.CompletionSeq, &position.FinalItemID, &position.FinalitySource, &position.FinalityConfidence, &raw, &started, &completed)
 	if err == nil {
-		turn, err = decodeParsedTurnTx(ctx, tx, projectionID, raw)
+		turn, err = decodeStoredTurnTx(ctx, tx, projectionID, raw, usage)
 	}
 	view := parsedTurnView(turn, position)
 	if err == nil {

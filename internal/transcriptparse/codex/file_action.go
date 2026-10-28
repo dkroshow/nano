@@ -91,7 +91,7 @@ func (state *State) fileAction(batch *model.Batch, obs model.Observation, payloa
 		call := state.Items[state.Calls[scopedKey(turn.Scope, "call", turn.Key+"/"+callID)]]
 		if call.ID != "" {
 			item.Relations = append(append([]model.Relation(nil), item.Relations...), model.Relation{Kind: model.RelationProgressOf, Scope: item.Scope, FromObservation: obs.ID, ToItem: call.ID, ObservationRefs: []string{obs.ID}})
-			state.Items[item.ID] = item
+			state.setItem(item)
 			batch.Changes = append(batch.Changes, model.Change{Item: &item})
 		}
 	}

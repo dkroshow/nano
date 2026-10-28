@@ -75,7 +75,7 @@ func (state *State) turnFacet(batch *model.Batch, obs model.Observation, method 
 		item = state.observeRequestItem(batch, prior, obs)
 	}
 	item.Relations = append(append([]model.Relation(nil), item.Relations...), model.Relation{Kind: model.RelationProgressOf, Scope: item.Scope, FromObservation: obs.ID, ToItem: item.ID, ObservationRefs: []string{obs.ID}})
-	state.Items[item.ID] = item
+	state.setItem(item)
 	batch.Changes = append(batch.Changes, model.Change{Item: &item})
 	return model.RecordSemantic
 }

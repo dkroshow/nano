@@ -81,3 +81,23 @@ func TestCodexUsageDecreaseDoesNotCrossNativeScope(t *testing.T) {
 		}
 	}
 }
+
+// A closed file's last read emits its turns with their usage samples. Found
+// in review of moving samples out of the turn: closing the checkpoint dropped
+// the samples before the read's turn changes received them. Boundary: one
+// closed read through ParseFile.
+func TestCodexClosedReadKeepsUsageOnEmittedTurns(t *testing.T) {
+	raw := []byte(`{"type":"event_msg","payload":{"type":"task_started","turn_id":"t"}}` + "\n" +
+		`{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":1,"total_tokens":11},"last_token_usage":{"input_tokens":10,"output_tokens":1,"total_tokens":11},"model_context_window":258400}}}` + "\n")
+	input := inputFor(raw)
+	input.Closed = true
+	view, _, err := parseFileView(parsedView{}, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, turn := range view.Turns {
+		if len(turn.UsageObservations) == 0 || turn.Usage == nil {
+			t.Fatalf("a closed read emitted its turn without usage samples: %+v", turn.UsageObservations)
+		}
+	}
+}

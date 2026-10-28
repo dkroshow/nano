@@ -150,6 +150,22 @@ func (s *Store) LoadTranscriptCheckpoint(ctx context.Context, threadID string) (
 	return s.loadTranscriptCheckpoint(ctx, threadID, true)
 }
 
+// LoadTranscriptCheckpointForAppend is LoadTranscriptCheckpoint for a caller
+// that resumes the parser from it: while the store keeps the continuation it
+// last saved for this checkpoint, the result carries that instead of reading
+// and decoding the saved entries.
+func (s *Store) LoadTranscriptCheckpointForAppend(ctx context.Context, threadID string) (TranscriptCheckpoint, bool, error) {
+	checkpoint, exists, err := s.loadTranscriptCheckpoint(ctx, threadID, false)
+	if err != nil || !exists {
+		return checkpoint, exists, err
+	}
+	if resident := s.resident.lookup(threadID, checkpoint.ProjectionKey, checkpoint.ReadOffset); resident != nil {
+		checkpoint.resident = resident
+		return checkpoint, true, nil
+	}
+	return s.loadTranscriptCheckpoint(ctx, threadID, true)
+}
+
 // LoadTranscriptCheckpointHeader omits the potentially large continuation body.
 // Scan planning needs only these guards; eligible appends load the body later.
 func (s *Store) LoadTranscriptCheckpointHeader(ctx context.Context, threadID string) (TranscriptCheckpoint, bool, error) {
@@ -252,15 +268,34 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'building', ?, ?, ?, 0, 0, ?, ?)`,
 }
 
 func (s *Store) ApplyTranscript(ctx context.Context, input TranscriptApplyRequest) (TranscriptApplyResult, error) {
+	result, err := s.applyTranscript(ctx, input)
+	s.resident.settle(input.ThreadID, input.Result.residentNext, err == nil)
+	return result, err
+}
+
+func (s *Store) applyTranscript(ctx context.Context, input TranscriptApplyRequest) (TranscriptApplyResult, error) {
 	if input.Result.ReadOffset == 0 {
 		input.Result.ReadOffset = input.Result.CompleteOffset
 	}
 	if err := validateTranscriptApply(input); err != nil {
 		return TranscriptApplyResult{}, err
 	}
-	parserState, parserStateEntries, err := splitTranscriptContinuation(input.Result.ParserState)
-	if err != nil {
-		return TranscriptApplyResult{}, err
+	var parserState []byte
+	var parserStateEntries []continuationEntry
+	delta := input.Result.continuation
+	if delta != nil {
+		if input.Mode != TranscriptAppend {
+			return TranscriptApplyResult{}, errors.New("a resumed continuation saves only an append")
+		}
+		parserState = delta.base
+	} else {
+		var err error
+		if parserState, parserStateEntries, err = splitTranscriptContinuation(input.Result.ParserState); err != nil {
+			return TranscriptApplyResult{}, err
+		}
+		if next := input.Result.residentNext; next != nil {
+			next.record(parserStateEntries)
+		}
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -370,7 +405,12 @@ WHERE id = ?`, input.Result.CompleteOffset, input.Result.CompleteLines,
 			parserState, count, latest, formatTime(input.IndexedAt), input.Result.ReadOffset, projectionID); err != nil {
 			return TranscriptApplyResult{}, err
 		}
-		if err := syncContinuationEntries(ctx, tx, projectionID, parserStateEntries); err != nil {
+		if delta != nil {
+			err = applyContinuationDelta(ctx, tx, projectionID, delta)
+		} else {
+			err = syncContinuationEntries(ctx, tx, projectionID, parserStateEntries)
+		}
+		if err != nil {
 			return TranscriptApplyResult{}, err
 		}
 		if _, err := maintainConversationSearchForProjectionSequenceRangeTx(ctx, tx, projectionID, oldLatest, latest); err != nil {

@@ -27,13 +27,13 @@ func (state *State) evictSettled(wire bool) {
 	}
 	for key, turn := range state.Turns {
 		if !keep[key] && settledOutcome(turn.Outcome) {
-			delete(state.Turns, key)
+			state.dropTurn(key)
 		}
 	}
 	for id, item := range state.Items {
 		if item.TurnKey != "" {
 			if _, exists := state.Turns[item.TurnKey]; !exists {
-				delete(state.Items, id)
+				state.dropItem(id)
 			}
 		}
 	}
@@ -62,6 +62,16 @@ func (state *State) evictSettled(wire bool) {
 	for key, id := range state.NativeTurns {
 		if _, exists := state.Turns[id]; !exists {
 			delete(state.NativeTurns, key)
+		}
+	}
+	for turnKey, count := range state.UsageCounts {
+		if _, exists := state.Turns[turnKey]; !exists {
+			state.fillUsage(turnKey)
+			for i := 0; i < count; i++ {
+				delete(state.Usage, usageKey(turnKey, i))
+				state.markChanged("usage", usageKey(turnKey, i))
+			}
+			delete(state.UsageCounts, turnKey)
 		}
 	}
 	for _, index := range []map[string]string{state.NativeItems, state.UpdateItems, state.Calls} {
@@ -111,7 +121,7 @@ func (state *State) retainReemittable(name func(reemit map[string]bool)) {
 	name(reemit)
 	for id, item := range state.Items {
 		if turn, exists := state.Turns[item.TurnKey]; exists && settledOutcome(turn.Outcome) && !reemit[id] {
-			delete(state.Items, id)
+			state.dropItem(id)
 		}
 	}
 }
@@ -157,7 +167,7 @@ func (state *State) retainRevisable() {
 		if item.SourcePayloadType == "item_completed" || completedTwinType(item.Type) {
 			continue
 		}
-		delete(state.Items, id)
+		state.dropItem(id)
 	}
 }
 
@@ -219,4 +229,70 @@ func (state *State) checkpointDiagnostic(batch *model.Batch) {
 		d.Message = "Open Codex continuation exceeds 4 MiB; unfinished evidence remains intact"
 		batch.Diagnostics = append(batch.Diagnostics, d)
 	}
+}
+
+// A saver that keeps the state between calls writes only the large map
+// entries a call set or deleted; every other field is small and is saved
+// whole. Every change to Items, Turns and Usage goes through these helpers.
+func (state *State) markChanged(field, key string) {
+	if state.changed == nil {
+		return
+	}
+	if state.changed[field] == nil {
+		state.changed[field] = map[string]bool{}
+	}
+	state.changed[field][key] = true
+}
+
+func (state *State) setItem(item model.Item) {
+	state.Items[item.ID] = item
+	state.markChanged("items", item.ID)
+}
+
+func (state *State) dropItem(id string) {
+	delete(state.Items, id)
+	state.markChanged("items", id)
+}
+
+func (state *State) setTurn(turn model.Turn) {
+	state.Turns[turn.Key] = turn
+	state.markChanged("turns", turn.Key)
+}
+
+func (state *State) dropTurn(key string) {
+	delete(state.Turns, key)
+	state.markChanged("turns", key)
+}
+
+// Changed names, by checkpoint field ("items", "turns", "usage"), the entries
+// set or deleted since ForgetChanged. It reports false when the state cannot
+// say: one restored from JSON or closed, which a saver writes whole.
+func (state State) Changed() (map[string][]string, bool) {
+	if state.changed == nil {
+		return nil, false
+	}
+	out := make(map[string][]string, len(state.changed))
+	for field, keys := range state.changed {
+		for key := range keys {
+			out[field] = append(out[field], key)
+		}
+	}
+	return out, true
+}
+
+// ForgetChanged starts tracking changes afresh, after a saver has written
+// the whole state or its changes.
+func (state State) ForgetChanged() State {
+	state.changed = map[string]map[string]bool{}
+	return state
+}
+
+// HasOpenTurn reports a turn that can still change: one with no settled outcome.
+func (state State) HasOpenTurn() bool {
+	for _, turn := range state.Turns {
+		if !settledOutcome(turn.Outcome) {
+			return true
+		}
+	}
+	return false
 }

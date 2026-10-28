@@ -43,8 +43,13 @@ type State struct {
 	Twins           map[string][]string         `json:"twins"`
 	NewestItems     map[string]string           `json:"newestItems"`
 	Calls           map[string]string           `json:"calls"`
-	NextItem        int64                       `json:"nextItem"`
-	NextTurn        int                         `json:"nextTurn"`
+	// A turn's usage observations, one entry each under usageKey, so a token
+	// count adds an entry instead of rewriting the turn; Turns holds no list.
+	// UsageCounts holds each turn's number of observations.
+	Usage       map[string]model.UsageObservation `json:"usage"`
+	UsageCounts map[string]int                    `json:"usageCounts"`
+	NextItem    int64                             `json:"nextItem"`
+	NextTurn    int                               `json:"nextTurn"`
 
 	// Continuation size accounting, deliberately unpersisted: measured is the
 	// last whole-state encoding, pending the input consumed since, and
@@ -53,6 +58,13 @@ type State struct {
 	measured     int
 	pending      int
 	measurements int
+
+	// The turn changes this call emitted, each with its usage count then;
+	// fillUsage gives them their lists once, before the call returns.
+	turnChanges []turnChange
+	// changed names the items, turns and usage entries set or deleted since
+	// ForgetChanged, by checkpoint field; nil means unknown.
+	changed map[string]map[string]bool
 }
 
 // ParseFile consumes chunks of Codex native JSONL. An open file's unterminated tail
@@ -86,6 +98,7 @@ func ParseFile(state State, input model.Input) (State, model.Batch, error) {
 		// checkpoint is compacted by reading nothing.
 		next.evictSettled(false)
 	}
+	next.fillUsage("")
 	if next.Framing.Closed {
 		next = next.closedCheckpoint()
 	}
@@ -111,6 +124,7 @@ func ParseWire(state State, frame model.Input) (State, model.Batch, error) {
 	}
 	next.evictSettled(true)
 	next.checkpointDiagnostic(&batch)
+	next.fillUsage("")
 	return next, batch, nil
 }
 
@@ -160,6 +174,25 @@ func prepare(state State, input model.Input, kind string) (State, model.Batch, e
 	state.Twins = copyMap(state.Twins)
 	state.NewestItems = copyMap(state.NewestItems)
 	state.Calls = copyMap(state.Calls)
+	state.Usage = copyMap(state.Usage)
+	state.UsageCounts = copyMap(state.UsageCounts)
+	if state.changed != nil {
+		changed := make(map[string]map[string]bool, len(state.changed))
+		for field, keys := range state.changed {
+			changed[field] = copyMap(keys)
+		}
+		state.changed = changed
+	}
+	for key, turn := range state.Turns {
+		// A checkpoint saved before usage moved out of Turns.
+		if len(turn.UsageObservations) > 0 {
+			for _, usage := range turn.UsageObservations {
+				state.appendUsage(key, usage)
+			}
+			turn.UsageObservations = nil
+			state.setTurn(turn)
+		}
+	}
 	return state, batch, nil
 }
 

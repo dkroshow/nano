@@ -105,4 +105,31 @@ func TestParsedModelStoragePreservesTypedFacts(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(turn, decoded) {
 		t.Fatalf("turn facts changed: err=%v\nwant=%+v\ngot=%+v", err, turn, decoded)
 	}
+	// Turns saved before usage samples became interned ids keep them inline;
+	// the upgrade must still read them.
+	var saved storedParsedTurn
+	if err := json.Unmarshal(encoded, &saved); err != nil {
+		t.Fatal(err)
+	}
+	saved.UsageValues = nil
+	for _, usage := range turn.UsageObservations {
+		inline := storedParsedUsageObservation{Grain: usage.Grain, Revision: usage.Revision, Semantics: usage.Semantics, Values: usage.Values}
+		if inline.ID, err = internTranscriptValueTx(ctx, tx, projection, usage.ID); err != nil {
+			t.Fatal(err)
+		}
+		if inline.Scope, err = internTranscriptValueTx(ctx, tx, projection, usage.Scope); err != nil {
+			t.Fatal(err)
+		}
+		if inline.SampleID, err = internTranscriptValueTx(ctx, tx, projection, usage.SampleID); err != nil {
+			t.Fatal(err)
+		}
+		if inline.ObservationRefs, err = storeTranscriptRefsTx(ctx, tx, projection, usage.ObservationRefs); err != nil {
+			t.Fatal(err)
+		}
+		saved.UsageObservations = append(saved.UsageObservations, inline)
+	}
+	older, _ := json.Marshal(saved)
+	if decoded, err = decodeParsedTurnTx(ctx, tx, projection, older); err != nil || !reflect.DeepEqual(turn, decoded) {
+		t.Fatalf("a turn saved with inline usage samples changed: err=%v\nwant=%+v\ngot=%+v", err, turn.UsageObservations, decoded.UsageObservations)
+	}
 }

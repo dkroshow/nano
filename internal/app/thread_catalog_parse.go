@@ -55,7 +55,7 @@ func (s *threadCatalogService) prepareTranscriptFile(ctx context.Context, discov
 	}
 	start := int64(0)
 	if hasCheckpoint && !forceRebuild && !transcriptSourceChanged(stored, candidate) && canAppendParsedFile(header, stored, candidate) {
-		checkpoint, exists, loadErr := s.store.LoadTranscriptCheckpoint(ctx, stored.ThreadID)
+		checkpoint, exists, loadErr := s.store.LoadTranscriptCheckpointForAppend(ctx, stored.ThreadID)
 		if loadErr != nil {
 			return nil, loadErr
 		}

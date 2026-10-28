@@ -115,15 +115,18 @@ func ProjectParsedFile(ctx context.Context, req ParsedFileRequest) (_ *ParsedFil
 	}
 	state := parsedFileCheckpoint{Version: parsedFileVersion, Provider: provider, Source: req.Source.Path, Format: req.Format, SeparateCatalog: req.Catalog != nil}
 	metadata := newTranscriptMetadataState(provider, req.Source, nil)
+	var resident *residentContinuation
 	if cp := req.Checkpoint; cp != nil {
-		if cp.Provider != provider || cp.ParserVersion != parser || cp.CompletionRuleVersion != completion || req.Format != "jsonl" || len(cp.ParserState) == 0 {
+		resident = cp.resident
+		if cp.Provider != provider || cp.ParserVersion != parser || cp.CompletionRuleVersion != completion || req.Format != "jsonl" || len(cp.ParserState) == 0 && resident == nil {
 			return nil, ErrTranscriptChanged
 		}
-		state = parsedFileCheckpoint{}
-		if err := json.Unmarshal(cp.ParserState, &state); err != nil {
+		if resident != nil {
+			state = resident.checkpoint
+		} else if err := json.Unmarshal(cp.ParserState, &state); err != nil {
 			return nil, fmt.Errorf("decode file continuation: %w", ErrTranscriptChanged)
 		}
-		if state.Version != parsedFileVersion || state.Provider != provider || state.Source != req.Source.Path || state.ProjectionKey == "" || state.ProjectionKey != cp.ProjectionKey || state.Format != req.Format || state.SeparateCatalog != (req.Catalog != nil) || len(state.Reader) == 0 {
+		if state.Version != parsedFileVersion || state.Provider != provider || state.Source != req.Source.Path || state.ProjectionKey == "" || state.ProjectionKey != cp.ProjectionKey || state.Format != req.Format || state.SeparateCatalog != (req.Catalog != nil) || len(state.Reader) == 0 && resident == nil {
 			return nil, ErrTranscriptChanged
 		}
 		if state.Metadata.Provider != provider {
@@ -136,8 +139,10 @@ func ProjectParsedFile(ctx context.Context, req ParsedFileRequest) (_ *ParsedFil
 			return nil, err
 		}
 	}
-	reader, err := newModuleFileReader(provider, state.Reader)
-	if err != nil {
+	var reader moduleFileReader
+	if resident != nil {
+		reader = newCodexFileReader(resident.reader)
+	} else if reader, err = newModuleFileReader(provider, state.Reader); err != nil {
 		return nil, fmt.Errorf("restore file reader: %w", ErrTranscriptChanged)
 	}
 	input := model.Input{Format: req.Format, Source: model.SourceRef{Label: req.Source.Path, Incarnation: state.ProjectionKey}}
@@ -149,8 +154,8 @@ func ProjectParsedFile(ctx context.Context, req ParsedFileRequest) (_ *ParsedFil
 		return nil, fmt.Errorf("prepare file reader: %w", err)
 	}
 	if cp := req.Checkpoint; cp != nil {
-		_, read, complete, lines, saveErr := reader.save()
-		if saveErr != nil || read != cp.ReadOffset || complete != cp.CompleteOffset || lines != cp.CompleteLines {
+		read, complete, lines := reader.offsets()
+		if read != cp.ReadOffset || complete != cp.CompleteOffset || lines != cp.CompleteLines {
 			return nil, ErrTranscriptChanged
 		}
 	}
@@ -201,10 +206,7 @@ func ProjectParsedFile(ctx context.Context, req ParsedFileRequest) (_ *ParsedFil
 	if err != nil {
 		return nil, fmt.Errorf("parse provider file: %w", err)
 	}
-	raw, readOffset, completeOffset, lines, err := reader.save()
-	if err != nil {
-		return nil, err
-	}
+	readOffset, completeOffset, lines := reader.offsets()
 	if req.Catalog != nil {
 		catalog := req.Catalog
 		if catalog.Reader == nil || catalog.Source.Path == "" || catalog.Source.Root.Provider != provider {
@@ -241,16 +243,37 @@ func ProjectParsedFile(ctx context.Context, req ParsedFileRequest) (_ *ParsedFil
 		return nil, fmt.Errorf("measure parsed spool: %w", err)
 	}
 	result.spoolSize = info.Size()
-	state.Reader, state.Metadata, state.LastActivity, state.IdentityConflicted = raw, metadata.projection, metadata.lastActivity, metadata.identityConflicted
+	state.Reader, state.Metadata, state.LastActivity, state.IdentityConflicted = nil, metadata.projection, metadata.lastActivity, metadata.identityConflicted
 	state.TailStart, state.TailSHA256 = 0, ""
 	if req.File != nil {
 		if start, digest, tailErr := sourceTailDigest(req.File, readOffset); tailErr == nil {
 			state.TailStart, state.TailSHA256 = start, digest
 		}
 	}
-	checkpoint, err := json.Marshal(state)
-	if err != nil {
-		return nil, err
+	var delta *continuationDelta
+	var next *residentContinuation
+	if reader.codex != nil {
+		if resident != nil {
+			var resumed bool
+			if delta, next, resumed, err = codexContinuationDelta(state, reader.codex(), resident); err != nil {
+				return nil, err
+			} else if !resumed {
+				delta, next = nil, nil
+			}
+		}
+		if next == nil {
+			next = &residentContinuation{} // record fills it from the whole save
+		}
+		next.projectionKey, next.readOffset, next.checkpoint, next.reader = state.ProjectionKey, readOffset, state, reader.codex().ForgetChanged()
+	}
+	var checkpoint json.RawMessage
+	if delta == nil {
+		if state.Reader, _, _, _, err = reader.save(); err != nil {
+			return nil, err
+		}
+		if checkpoint, err = json.Marshal(state); err != nil {
+			return nil, err
+		}
 	}
 	// Fallback display facts must not become input facts on the next append.
 	if metadata.projection.UpdatedAt == nil {
@@ -266,7 +289,7 @@ func ProjectParsedFile(ctx context.Context, req ParsedFileRequest) (_ *ParsedFil
 		addDiagnostic(&metadata.diagnostics, &metadata.summary, Diagnostic{Kind: DiagnosticMissingIdentity, Message: "provider file has no durable or filename native identity"})
 	}
 	result.Metadata = ProjectionResult{Projection: metadata.projection, CompleteOffset: completeOffset, CompleteLines: lines, BytesRead: bytesRead, Diagnostics: metadata.diagnostics, Summary: metadata.summary}
-	result.Transcript = TranscriptProjectionResult{ProjectionKey: state.ProjectionKey, ReadOffset: readOffset, CompleteOffset: completeOffset, CompleteLines: lines, BytesRead: bytesRead, ParserState: checkpoint, Diagnostics: diagnostics, Summary: summary, parsedBatches: result.visit, recordSource: req.Source.Path}
+	result.Transcript = TranscriptProjectionResult{ProjectionKey: state.ProjectionKey, ReadOffset: readOffset, CompleteOffset: completeOffset, CompleteLines: lines, BytesRead: bytesRead, ParserState: checkpoint, Diagnostics: diagnostics, Summary: summary, parsedBatches: result.visit, recordSource: req.Source.Path, continuation: delta, residentNext: next}
 	if provider == ProviderGrok && req.Catalog != nil {
 		result.Transcript.sessionUsage = &result.Metadata.Projection.Metadata
 	}
@@ -348,6 +371,10 @@ func recordParsedDiagnostics(batch model.Batch, diagnostics *[]Diagnostic, summa
 type moduleFileReader struct {
 	feed func(model.Input) (model.Batch, error)
 	save func() (json.RawMessage, int64, int64, int, error)
+	// offsets reports what save would, without encoding the state.
+	offsets func() (int64, int64, int)
+	// codex returns a Codex reader's current state; nil for other providers.
+	codex func() parsecodex.State
 	// compact reads nothing, which applies the reader's retention rule to a
 	// stored checkpoint.
 	compact func() error
@@ -378,6 +405,9 @@ func newModuleFileReader(provider Provider, raw json.RawMessage) (moduleFileRead
 				raw, err := json.Marshal(state)
 				return raw, state.Framing.Offset, state.Framing.Checkpoint, completeFileLines(state.Framing.Line), err
 			},
+			offsets: func() (int64, int64, int) {
+				return state.Framing.Offset, state.Framing.Checkpoint, completeFileLines(state.Framing.Line)
+			},
 		}, nil
 	case ProviderCodex:
 		var state parsecodex.State
@@ -388,21 +418,9 @@ func newModuleFileReader(provider Provider, raw json.RawMessage) (moduleFileRead
 			if state.Version == 0 {
 				return moduleFileReader{}, ErrTranscriptChanged
 			}
+			state = state.ForgetChanged()
 		}
-		return moduleFileReader{
-			feed: func(input model.Input) (batch model.Batch, err error) {
-				state, batch, err = parsecodex.ParseFile(state, input)
-				return
-			},
-			compact: func() (err error) {
-				state, _, err = parsecodex.ParseFile(state, model.Input{Source: model.SourceRef{Label: state.Source.Label, Incarnation: state.Source.Incarnation}})
-				return
-			},
-			save: func() (json.RawMessage, int64, int64, int, error) {
-				raw, err := json.Marshal(state)
-				return raw, state.Framing.Offset, state.Framing.Checkpoint, completeFileLines(state.Framing.Line), err
-			},
-		}, nil
+		return newCodexFileReader(state), nil
 	case ProviderGrok:
 		var state parsegrok.State
 		if len(raw) != 0 {
@@ -432,6 +450,12 @@ func newModuleFileReader(provider Provider, raw json.RawMessage) (moduleFileRead
 				}
 				return raw, state.Framing.Offset, state.Framing.Checkpoint, completeFileLines(state.Framing.Line), err
 			},
+			offsets: func() (int64, int64, int) {
+				if state.Format == "json" {
+					return state.DocumentBytes, state.DocumentBytes, 1
+				}
+				return state.Framing.Offset, state.Framing.Checkpoint, completeFileLines(state.Framing.Line)
+			},
 		}, nil
 	default:
 		return moduleFileReader{}, fmt.Errorf("unsupported history provider %q", provider)
@@ -443,4 +467,27 @@ func completeFileLines(next int64) int {
 		return 0
 	}
 	return int(next - 1)
+}
+
+// newCodexFileReader resumes a Codex reader from state, which tracks its
+// changes from this point (State.Changed).
+func newCodexFileReader(state parsecodex.State) moduleFileReader {
+	return moduleFileReader{
+		feed: func(input model.Input) (batch model.Batch, err error) {
+			state, batch, err = parsecodex.ParseFile(state, input)
+			return
+		},
+		compact: func() (err error) {
+			state, _, err = parsecodex.ParseFile(state, model.Input{Source: model.SourceRef{Label: state.Source.Label, Incarnation: state.Source.Incarnation}})
+			return
+		},
+		save: func() (json.RawMessage, int64, int64, int, error) {
+			raw, err := json.Marshal(state)
+			return raw, state.Framing.Offset, state.Framing.Checkpoint, completeFileLines(state.Framing.Line), err
+		},
+		offsets: func() (int64, int64, int) {
+			return state.Framing.Offset, state.Framing.Checkpoint, completeFileLines(state.Framing.Line)
+		},
+		codex: func() parsecodex.State { return state },
+	}
 }

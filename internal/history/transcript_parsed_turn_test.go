@@ -159,7 +159,7 @@ func TestParsedTurnDisplayTimesSurviveAppendAndEvictedAlias(t *testing.T) {
 			t.Fatalf("append/eviction changed display clocks: evicted=%t view=%+v err=%v", evicted, updated, err)
 		}
 	}
-	_, saved, err := loadParsedTranscriptTurnTx(ctx, tx, projection, view.Key)
+	_, saved, err := loadParsedTranscriptTurnTx(ctx, tx, projection, view.Key, true)
 	if err != nil || saved.StartedAt != nil || saved.CompletedAt != nil {
 		t.Fatal("display fallback became a provider-reported model start/end")
 	}

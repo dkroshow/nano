@@ -163,7 +163,7 @@ func (state *State) observeRequestItem(batch *model.Batch, item model.Item, obs 
 	obs = bindObservation(obs, item.Scope)
 	item, diagnostics := assemble.Observe(item, obs)
 	batch.Diagnostics = append(batch.Diagnostics, diagnostics...)
-	state.Items[item.ID] = item
+	state.setItem(item)
 	batch.Observations = append(batch.Observations, obs)
 	batch.Changes = append(batch.Changes, model.Change{Item: &item})
 	if item.TurnKey != "" {

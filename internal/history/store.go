@@ -36,6 +36,8 @@ type Store struct {
 	counts        InteractionCounts
 	countsVersion uint64
 	countsValid   bool
+
+	resident residentContinuations
 }
 
 // Provisional; set from the active-thread copy test.

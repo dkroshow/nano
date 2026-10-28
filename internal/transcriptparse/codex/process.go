@@ -146,7 +146,7 @@ func (state *State) processUpdate(batch *model.Batch, obs model.Observation, met
 		// Exit ends byte assembly even when the captured exit code is unknown.
 		// The emitted result remains with the consumer and keeps its native alias.
 		delete(state.Processes, key)
-		delete(state.Items, output.ItemID)
+		state.dropItem(output.ItemID)
 	} else {
 		state.Processes[key] = output
 	}

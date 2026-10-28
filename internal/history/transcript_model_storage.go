@@ -227,39 +227,6 @@ type storedParsedUsageObservation struct {
 	ObservationRefs []int64                     `json:"o"`
 }
 
-func storeParsedUsageObservationTx(ctx context.Context, tx *sql.Tx, projectionID int64, input model.UsageObservation) (storedParsedUsageObservation, error) {
-	var output storedParsedUsageObservation
-	var err error
-	if input.ID != "" {
-		output.ID, err = internTranscriptValueTx(ctx, tx, projectionID, input.ID)
-		if err != nil {
-			return output, err
-		}
-	}
-	output.Scope, err = internTranscriptValueTx(ctx, tx, projectionID, input.Scope)
-	if err != nil {
-		return output, err
-	}
-	output.Grain = input.Grain
-	if input.SampleID != "" {
-		output.SampleID, err = internTranscriptValueTx(ctx, tx, projectionID, input.SampleID)
-		if err != nil {
-			return output, err
-		}
-	}
-	output.Revision = input.Revision
-	output.Semantics = input.Semantics
-	output.Values = input.Values
-	output.Incomplete = input.Incomplete
-	output.ModelUsage = input.ModelUsage
-	output.ResetEpoch = input.ResetEpoch
-	output.ObservationRefs, err = storeTranscriptRefsTx(ctx, tx, projectionID, input.ObservationRefs)
-	if err != nil {
-		return output, err
-	}
-	return output, nil
-}
-
 func loadParsedUsageObservationTx(ctx context.Context, tx *sql.Tx, projectionID int64, input storedParsedUsageObservation) (model.UsageObservation, error) {
 	var output model.UsageObservation
 	var err error
@@ -521,14 +488,17 @@ func loadParsedItemTx(ctx context.Context, tx *sql.Tx, projectionID int64, input
 }
 
 type storedParsedTurn struct {
-	Capture            model.CaptureState               `json:"c"`
-	Outcome            model.Outcome                    `json:"o"`
-	Scope              int64                            `json:"s"`
-	Completion         []storedParsedCompletionFact     `json:"x,omitempty"`
-	FinalItemRefs      []int64                          `json:"f,omitempty"`
-	Times              []storedTimeFact                 `json:"t,omitempty"`
-	Durations          []storedParsedDuration           `json:"d,omitempty"`
-	UsageObservations  []storedParsedUsageObservation   `json:"u,omitempty"`
+	Capture           model.CaptureState             `json:"c"`
+	Outcome           model.Outcome                  `json:"o"`
+	Scope             int64                          `json:"s"`
+	Completion        []storedParsedCompletionFact   `json:"x,omitempty"`
+	FinalItemRefs     []int64                        `json:"f,omitempty"`
+	Times             []storedTimeFact               `json:"t,omitempty"`
+	Durations         []storedParsedDuration         `json:"d,omitempty"`
+	UsageObservations []storedParsedUsageObservation `json:"u,omitempty"` // turns saved before UsageValues
+	// UsageValues names each usage sample by its interned value, so a turn
+	// rewritten on every token count rewrites ids, not samples.
+	UsageValues        []int64                          `json:"uv,omitempty"`
 	UsageBasis         string                           `json:"b,omitempty"`
 	UsageRefs          []int64                          `json:"r,omitempty"`
 	UsageCoverage      map[string]model.CounterCoverage `json:"cv,omitempty"`
@@ -551,7 +521,11 @@ type storedParsedTurn struct {
 	ServiceTier        string                           `json:"sr,omitempty"`
 }
 
-func storeParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, input model.Turn) (storedParsedTurn, error) {
+// storeParsedTurnTx encodes a turn. known is the UsageValues of the turn as
+// saved, if any: a token count only appends a sample, so when the new list
+// keeps the saved first and last samples, their ids are reused and only the
+// new samples are interned.
+func storeParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, input model.Turn, known []int64) (storedParsedTurn, error) {
 	var output storedParsedTurn
 	var err error
 	output.Capture = input.Capture
@@ -587,9 +561,23 @@ func storeParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, inpu
 		}
 	}
 	if input.UsageObservations != nil {
-		output.UsageObservations = make([]storedParsedUsageObservation, len(input.UsageObservations))
-		for i, value := range input.UsageObservations {
-			output.UsageObservations[i], err = storeParsedUsageObservationTx(ctx, tx, projectionID, value)
+		output.UsageValues = make([]int64, len(input.UsageObservations))
+		reused := 0
+		if k := len(known); k > 0 && k <= len(input.UsageObservations) {
+			first, err := internTranscriptValueTx(ctx, tx, projectionID, input.UsageObservations[0])
+			if err != nil {
+				return output, err
+			}
+			last, err := internTranscriptValueTx(ctx, tx, projectionID, input.UsageObservations[k-1])
+			if err != nil {
+				return output, err
+			}
+			if first == known[0] && last == known[k-1] {
+				reused = copy(output.UsageValues, known)
+			}
+		}
+		for i := reused; i < len(input.UsageObservations); i++ {
+			output.UsageValues[i], err = internTranscriptValueTx(ctx, tx, projectionID, input.UsageObservations[i])
 			if err != nil {
 				return output, err
 			}
@@ -671,7 +659,14 @@ func loadParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, input
 			}
 		}
 	}
-	if input.UsageObservations != nil {
+	if input.UsageValues != nil {
+		output.UsageObservations = make([]model.UsageObservation, len(input.UsageValues))
+		for i, id := range input.UsageValues {
+			if err = loadTranscriptValueTx(ctx, tx, projectionID, id, &output.UsageObservations[i]); err != nil {
+				return output, err
+			}
+		}
+	} else if input.UsageObservations != nil {
 		output.UsageObservations = make([]model.UsageObservation, len(input.UsageObservations))
 		for i, value := range input.UsageObservations {
 			output.UsageObservations[i], err = loadParsedUsageObservationTx(ctx, tx, projectionID, value)
@@ -785,7 +780,13 @@ func decodeParsedItemTx(ctx context.Context, tx *sql.Tx, projectionID int64, raw
 }
 
 func encodeParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, turn model.Turn) ([]byte, error) {
-	saved, err := storeParsedTurnTx(ctx, tx, projectionID, turn)
+	return encodeParsedTurnOverTx(ctx, tx, projectionID, turn, nil)
+}
+
+// encodeParsedTurnOverTx encodes a turn that replaces one saved with the
+// usage values known (see storeParsedTurnTx).
+func encodeParsedTurnOverTx(ctx context.Context, tx *sql.Tx, projectionID int64, turn model.Turn, known []int64) ([]byte, error) {
+	saved, err := storeParsedTurnTx(ctx, tx, projectionID, turn, known)
 	if err != nil {
 		return nil, err
 	}
@@ -799,6 +800,18 @@ func encodeParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, tur
 }
 
 func decodeParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, raw []byte) (model.Turn, error) {
+	return decodeStoredTurnTx(ctx, tx, projectionID, raw, true)
+}
+
+// decodeParsedTurnHeadTx decodes a stored turn without its usage samples and
+// usage references: a long Codex turn holds thousands, and resolving them on
+// every write made each append cost as much as the whole turn. A caller that
+// writes the turn back with them loads it with decodeParsedTurnTx.
+func decodeParsedTurnHeadTx(ctx context.Context, tx *sql.Tx, projectionID int64, raw []byte) (model.Turn, error) {
+	return decodeStoredTurnTx(ctx, tx, projectionID, raw, false)
+}
+
+func decodeStoredTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, raw []byte, usage bool) (model.Turn, error) {
 	raw, err := decodeTranscriptContinuation(raw)
 	if err != nil {
 		return model.Turn{}, err
@@ -812,6 +825,9 @@ func decodeParsedTurnTx(ctx context.Context, tx *sql.Tx, projectionID int64, raw
 			return model.Turn{}, fmt.Errorf("parsed turn has no stored scope")
 		}
 		return model.Turn{}, nil
+	}
+	if !usage {
+		saved.UsageObservations, saved.UsageValues, saved.UsageRefs = nil, nil, nil
 	}
 	return loadParsedTurnTx(ctx, tx, projectionID, saved)
 }

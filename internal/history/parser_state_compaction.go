@@ -83,10 +83,10 @@ func (s *Store) markParserStateVisited(ctx context.Context, projectionID int64) 
 }
 
 func (s *Store) compactParserState(ctx context.Context, projectionID int64) (before, after int64, err error) {
-	var provider, indexedAt string
+	var provider, indexedAt, threadID string
 	var readOffset int64
 	var stored []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT provider, last_indexed_at, read_offset, parser_state_json FROM conversation_projections WHERE id=? AND state='active'`, projectionID).Scan(&provider, &indexedAt, &readOffset, &stored); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT provider, last_indexed_at, read_offset, parser_state_json, thread_id FROM conversation_projections WHERE id=? AND state='active'`, projectionID).Scan(&provider, &indexedAt, &readOffset, &stored, &threadID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, 0, nil // superseded since it was listed
 		}
@@ -152,5 +152,10 @@ func (s *Store) compactParserState(ctx context.Context, projectionID int64) (bef
 	if err := syncContinuationEntries(ctx, tx, projectionID, compacted); err != nil {
 		return 0, 0, err
 	}
-	return before, after, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	// A copy kept in memory no longer describes the rows this rewrote.
+	s.resident.settle(threadID, nil, false)
+	return before, after, nil
 }

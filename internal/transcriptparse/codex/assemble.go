@@ -42,7 +42,7 @@ func (state *State) turn(scope model.Scope, source model.SourceRef, activate, ne
 			if activate {
 				state.ActiveTurns[group] = id
 				state.takePendingSettings(&turn, group)
-				state.Turns[id] = turn
+				state.setTurn(turn)
 			}
 			return turn
 		}
@@ -59,7 +59,7 @@ func (state *State) turn(scope model.Scope, source model.SourceRef, activate, ne
 	if activate || newPrompt {
 		state.takePendingSettings(&turn, group)
 	}
-	state.Turns[turn.Key] = turn
+	state.setTurn(turn)
 	if activate || newPrompt || state.ActiveTurns[group] == "" {
 		state.ActiveTurns[group] = turn.Key
 	}
@@ -74,8 +74,10 @@ func (state *State) takePendingSettings(turn *model.Turn, group string) {
 	}
 }
 func (state *State) putTurn(batch *model.Batch, turn model.Turn) {
-	state.Turns[turn.Key] = turn
+	turn.UsageObservations = nil
+	state.setTurn(turn)
 	batch.Changes = append(batch.Changes, model.Change{Turn: &turn})
+	state.turnChanges = append(state.turnChanges, turnChange{turn: &turn, count: state.UsageCounts[turn.Key]})
 }
 func observation(source model.SourceRef, scope model.Scope, row map[string]json.RawMessage) model.Observation {
 	return model.Observation{ID: sourceKey(source, "row"), Scope: scope, Source: source, Kind: model.ObservationMetadata, Capture: model.CaptureComplete, Detail: mustJSON(row)}
@@ -223,7 +225,7 @@ func (state *State) emit(batch *model.Batch, turn model.Turn, obs model.Observat
 			batch.Diagnostics = append(batch.Diagnostics, diagnostics...)
 		}
 	}
-	state.Items[item.ID] = item
+	state.setItem(item)
 	batch.Changes = append(batch.Changes, model.Change{Item: &item})
 	batch.Observations = append(batch.Observations, obs)
 	turn = state.Turns[turn.Key]
@@ -319,7 +321,7 @@ func (state *State) terminal(batch *model.Batch, turn model.Turn, obs model.Obse
 	if outcome == model.OutcomeCompleted && final.ID != "" {
 		if final.Finality.State != model.FinalityFinal {
 			final.Finality = model.Finality{State: model.FinalityCandidate, Basis: model.BasisDerived, ObservationRefs: []string{obs.ID}}
-			state.Items[final.ID] = final
+			state.setItem(final)
 			batch.Changes = append(batch.Changes, model.Change{Item: &final})
 		}
 		turn.FinalItemRefs = []string{final.ID}
