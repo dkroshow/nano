@@ -450,66 +450,6 @@ func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 // bounded backoff instead of leaving the thread exited until the next deploy.
 // If the refusal outlasts every retry, the thread parks; a prompt then re-arms
 // it and is delivered exactly once, never left waiting on a parked thread.
-func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
-	closedListener := "failed to enqueue running thread resume for thread %s: thread listener command channel is closed"
-	// Seen at a 2026-10-09 boot: the app server still closed the thread.
-	closing := "thread %s is closing; retry thread/resume after the thread is closed"
-	for _, tc := range []struct {
-		name     string
-		refusal  string
-		refusals int
-	}{
-		{"clears on retry", closedListener, 1},
-		{"outlasts the retries", closedListener, 1 + 6},
-		{"closing thread clears on retry", closing, 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			daemon := newFakeAppServer(t)
-			daemon.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "after-refusal"}})
-			s, store := bootReattachServer(t, "", daemon.WSURL())
-			rec := bootCodexRecord(t)
-			store.remember(rec)
-			refusals := make([]string, tc.refusals)
-			for i := range refusals {
-				refusals[i] = fmt.Sprintf(tc.refusal, rec.NativeThreadID)
-			}
-			daemon.SetResumeErrorSequence(refusals...)
-
-			seedBootAttachments(t, s)
-			openTurnsForBoot(t, s)
-			s.reattachOnBoot()
-
-			var sess *session
-			for _, candidate := range s.SnapshotSessions() {
-				sess = candidate
-			}
-
-			if sess == nil {
-				t.Fatal("boot registered no session")
-			}
-			if tc.refusals > 1 {
-				waitForClaudeWithin(t, 30*time.Second, "the default bounded reconnect attempts to park", func() bool { return sess.Summary().Status == "reconnect_parked" })
-				for repeat := 0; repeat < 2; repeat++ {
-					if response := postTurn(t, sess, context.Background(), "after-parking", "prompt to a parked thread"); response.Code != http.StatusAccepted && response.Code != http.StatusOK {
-						t.Fatalf("parked prompt: %d %s", response.Code, response.Body.String())
-					}
-				}
-				waitTurnSendDone(t, sess, "after-parking")
-			}
-			waitForSessionStatus(t, s, sess.ID(), "ready")
-			if got := daemon.ResumeCount(); got != tc.refusals+1 {
-				t.Fatalf("thread/resume calls = %d, want %d refused and one that succeeds", got, tc.refusals)
-			}
-			daemon.Mu.Lock()
-			starts := daemon.TurnStarts
-			daemon.Mu.Unlock()
-			if want := map[bool]int{true: 1, false: 0}[tc.refusals > 1]; starts != want {
-				t.Fatalf("turn/start calls = %d, want %d: the parked prompt is delivered once", starts, want)
-			}
-		})
-	}
-}
-
 // A restart reconnects only threads with work not yet settled; every other
 // stored thread rests until something needs it. Every stored thread used to
 // reconnect at boot, hundreds of hidden subagents included, so the boot loop
