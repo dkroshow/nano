@@ -3,11 +3,53 @@ package codex
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
+
+// A long open turn must not keep every item it has produced: the catalog
+// re-saves the whole continuation on each append, so one worker's turn of
+// about a thousand tool calls held 97 MB and every append took seconds. Rows
+// follow a real rollout's shapes (task_started, custom_tool_call and its
+// output) with invented ids and text. Boundary: the file checkpoint. It also
+// checks that resuming from the checkpoint after every row emits what one
+// pass does, so the smaller continuation changes nothing a consumer stores.
+func TestCodexOpenTurnCheckpointDropsSettledResults(t *testing.T) {
+	rows := []string{`{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":1793149318,"model_context_window":258400}}`}
+	output := strings.Repeat(`command output line\n`, 200)
+	for call := 0; call < 40; call++ {
+		rows = append(rows,
+			fmt.Sprintf(`{"type":"response_item","payload":{"type":"custom_tool_call","id":"ctc_%d","status":"completed","call_id":"call_%d","name":"exec","input":"ls %d"}}`, call, call, call),
+			fmt.Sprintf(`{"type":"response_item","payload":{"type":"custom_tool_call_output","id":"ctco_%d","call_id":"call_%d","output":[{"type":"input_text","text":"%s"}]}}`, call, call, output))
+	}
+	raw := []byte(strings.Join(rows, "\n") + "\n")
+	want, _, err := parseFileView(parsedView{}, inputFor(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, item := range want.Continuation.Items {
+		if item.Type == model.ItemToolResult {
+			t.Fatalf("open turn checkpoint keeps settled result %s", id)
+		}
+	}
+	view := parsedView{}
+	for _, row := range rows {
+		checkpoint, _ := json.Marshal(view)
+		var restored parsedView
+		if err := json.Unmarshal(checkpoint, &restored); err != nil {
+			t.Fatal(err)
+		}
+		if view, _, err = parseFileView(restored, inputFor([]byte(row+"\n"))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !reflect.DeepEqual(view.Items, want.Items) || !reflect.DeepEqual(view.Turns, want.Turns) {
+		t.Fatal("resuming after every row emits different items or turns than one pass")
+	}
+}
 
 // A turn that never completes keeps its whole assembly in the continuation, so
 // encoding that state to measure it must not happen on every frame: one open

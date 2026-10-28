@@ -57,6 +57,7 @@ func (state *State) evictSettled(wire bool) {
 				}
 			}
 		})
+		state.retainRevisable()
 	}
 	for key, id := range state.NativeTurns {
 		if _, exists := state.Turns[id]; !exists {
@@ -112,6 +113,50 @@ func (state *State) retainReemittable(name func(reemit map[string]bool)) {
 		if turn, exists := state.Turns[item.TurnKey]; exists && settledOutcome(turn.Outcome) && !reemit[id] {
 			delete(state.Items, id)
 		}
+	}
+}
+
+// An open turn keeps only the items a later record can still revise: the
+// ones a settled turn keeps (retainReemittable), the newest item of each type
+// (twin matching and the turn's final answer read it), every reasoning item,
+// and whatever an update, a process stream or a request still names. Codex
+// completes a growing reasoning record again under its native id, up to about
+// a thousand records later; other native ids repeat only in the next record
+// or two, and a call's output follows the call, so the rest belongs to the
+// consumer. Without this an open turn kept every
+// item it had produced, and each append re-saved all of them.
+func (state *State) retainRevisable() {
+	keep := map[string]bool{}
+	for _, turn := range state.Turns {
+		for _, id := range turn.FinalItemRefs {
+			keep[id] = true
+		}
+	}
+	for _, index := range []map[string]string{state.Calls, state.NewestItems, state.UpdateItems} {
+		for _, id := range index {
+			keep[id] = true
+		}
+	}
+	for _, ids := range state.Twins {
+		for _, id := range ids {
+			keep[id] = true
+		}
+	}
+	for _, request := range state.Requests {
+		keep[request.ItemID], keep[request.ResultItemID] = true, true
+	}
+	for _, output := range state.Processes {
+		keep[output.ItemID] = true
+	}
+	for id, item := range state.Items {
+		turn, exists := state.Turns[item.TurnKey]
+		if !exists || settledOutcome(turn.Outcome) || keep[id] {
+			continue
+		}
+		if item.Type == model.ItemReasoning || item.Type == model.ItemUserMessage && turn.Scope.NativeTurnID == nil {
+			continue
+		}
+		delete(state.Items, id)
 	}
 }
 
