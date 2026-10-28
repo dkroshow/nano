@@ -516,9 +516,7 @@ func (s *server) handleHostedThreadPresentation(w http.ResponseWriter, r *http.R
 	}
 	if changed {
 		if sess := s.sessionForHostedThread(record.ID); sess != nil {
-			sess.stateMu.Lock()
-			sess.presentationMode = rec.PresentationMode
-			sess.stateMu.Unlock()
+			sess.setPresentation(rec.PresentationMode)
 		}
 		s.notifyRuntime()
 	}
@@ -559,9 +557,7 @@ func (s *server) handleHostedThreadSidebarPlacement(w http.ResponseWriter, r *ht
 	}
 	if changed {
 		if sess := s.sessionForHostedThread(record.ID); sess != nil {
-			sess.stateMu.Lock()
-			sess.sidebarPlacement = rec.SidebarPlacement
-			sess.stateMu.Unlock()
+			sess.setSidebarPlacement(rec.SidebarPlacement)
 		}
 		// Placement changes are structural catalog changes, not runtime
 		// overlay fields. Force every open browser to re-read the sidebar
@@ -1322,10 +1318,7 @@ func (s *server) agentSessionView(id string) agentSessionView {
 		view.ThreadDiagnostics = sum.ThreadDiagnostics
 		view.MetadataDegraded = sum.MetadataDegraded
 		view.Attached = true
-		sess.stateMu.Lock()
-		view.Ready = sess.lifecycleState.State.Connection == lifecycle.Ready
-		view.Working = view.Ready && sess.lifecycleState.State.Work == lifecycle.Working
-		sess.stateMu.Unlock()
+		view.Ready, view.Working = sess.readyAndWorking()
 	} else if _, waiting := s.boot.waitingHosted(id); waiting != "" {
 		view.Status = waiting
 	}
@@ -1554,10 +1547,7 @@ func (s *server) closeAgentSession(sess *session) error {
 		}
 	}
 	err := sess.closeWithResult()
-	sess.stateMu.Lock()
-	closed := sess.closed
-	sess.stateMu.Unlock()
-	if !closed {
+	if !sess.isClosed() {
 		return err
 	}
 	s.removeCurrentSession(sess)

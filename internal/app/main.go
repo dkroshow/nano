@@ -1141,3 +1141,16 @@ func (s *server) handleGrokModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(models)
 }
+
+// detachedSessionView keeps the legacy attachment shape required to locate a
+// resumable provider transport, while exposing hosted facts only through the
+// listed metadata live sessions carry; the full view is a thread's own read.
+// The embedded record is deliberately scrubbed at response construction; old
+// JSON cwd/model/tier values are migration input, not API truth.
+type detachedSessionView struct {
+	attachmentRecord
+	// Status is "starting" while the boot loop has not registered the thread.
+	Status              string          `json:"status,omitempty"`
+	Metadata            *listedMetadata `json:"metadata,omitempty"`
+	MetadataUnavailable bool            `json:"metadataUnavailable,omitempty"`
+}

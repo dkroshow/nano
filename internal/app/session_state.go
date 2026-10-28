@@ -334,3 +334,35 @@ func (sess *session) recordRestartFailure(reason string) {
 		sess.restartFailure(reason)
 	}
 }
+
+// holdHandshakeRelease records the slot held by this attachment until catch-up.
+func (sess *session) holdHandshakeRelease(release func()) {
+	sess.stateMu.Lock()
+	sess.releaseHandshakeSlot = release
+	sess.stateMu.Unlock()
+}
+
+func (sess *session) setPresentation(mode string) {
+	sess.stateMu.Lock()
+	sess.presentationMode = mode
+	sess.stateMu.Unlock()
+}
+
+func (sess *session) setSidebarPlacement(placement string) {
+	sess.stateMu.Lock()
+	sess.sidebarPlacement = placement
+	sess.stateMu.Unlock()
+}
+
+func (sess *session) isClosed() bool {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
+	return sess.closed
+}
+
+func (sess *session) readyAndWorking() (ready, working bool) {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
+	ready = sess.lifecycleState.State.Connection == lifecycle.Ready
+	return ready, ready && sess.lifecycleState.State.Work == lifecycle.Working
+}

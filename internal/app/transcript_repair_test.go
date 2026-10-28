@@ -174,7 +174,7 @@ func TestTranscriptRepairFailsWhenStopDoesNotReachIdle(t *testing.T) {
 	catalog := &repairCatalog{wait: func(<-chan struct{}) bool { return true }}
 	sess := repairSession(t, catalog)
 	sess.lifecycleState = testLifecycleSnapshot("ready", true)
-	_, err := (&server{}).stopDiscardAndRepairWithin(context.Background(), sess, "repair", 50*time.Millisecond)
+	_, err := sess.stopDiscardAndRepairWithin(context.Background(), "repair", 50*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "stop did not reach an idle provider boundary") || catalog.waits.Load() != 0 {
 		t.Fatalf("stop failure = %v after %d catch-ups", err, catalog.waits.Load())
 	}

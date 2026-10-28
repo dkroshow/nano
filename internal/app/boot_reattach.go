@@ -93,9 +93,7 @@ func (c *bootProviderControl) holdHandshakeSlot(sess *session) func() {
 	c.handshakeSlots <- struct{}{}
 	var once sync.Once
 	release := func() { once.Do(func() { <-c.handshakeSlots }) }
-	sess.stateMu.Lock()
-	sess.releaseHandshakeSlot = release
-	sess.stateMu.Unlock()
+	sess.holdHandshakeRelease(release)
 	return release
 }
 
