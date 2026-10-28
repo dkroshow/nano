@@ -413,11 +413,11 @@ func TestTranscriptNoopAppendKeepsTheSavedCopy(t *testing.T) {
 }
 
 // A record after a turn's completion can still add an item to that turn.
-// Found by WI-6423's closure check on a real rollout: thread settings applied
-// just after task_complete, saved by the next append, left the completed
-// turn's end and completion positions one row short of a full rebuild of the
-// same bytes (2 of 547 turns). Boundary: the store's append path against a
-// full rebuild.
+// Found comparing a real rollout's appends with a full rebuild: thread
+// settings applied just after task_complete, saved by the next append, left
+// the completed turn's end and completion positions one row short of a full
+// rebuild of the same bytes (2 of 547 turns). Boundary: the store's append
+// path against a full rebuild.
 func TestTranscriptAppendRefreshesTheTurnALateItemJoins(t *testing.T) {
 	rows := []string{
 		`{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}`,
