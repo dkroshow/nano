@@ -8,19 +8,20 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type fakeTranscriptCatalog struct {
 	fakeThreadCatalog
-	response transcriptResponse
-	query    transcriptListQuery
+	response threadindex.TranscriptResponse
+	query    threadindex.TranscriptQuery
 	threadID string
 	err      error
 }
 
 type fakeTranscriptEvidenceCatalog struct {
 	fakeTranscriptCatalog
-	evidence transcriptEvidenceResponse
+	evidence threadindex.TranscriptEvidenceResponse
 	err      error
 }
 
@@ -34,20 +35,20 @@ func (f *fakeTranscriptBodyCatalog) LoadTranscriptBody(_ context.Context, _, _ s
 	return f.body, f.err
 }
 
-func (f *fakeTranscriptEvidenceCatalog) LoadTranscriptEvidence(_ context.Context, _, _ string) (transcriptEvidenceResponse, error) {
+func (f *fakeTranscriptEvidenceCatalog) LoadTranscriptEvidence(_ context.Context, _, _ string) (threadindex.TranscriptEvidenceResponse, error) {
 	return f.evidence, f.err
 }
 
-func (f *fakeTranscriptCatalog) LoadTranscript(_ context.Context, id string, query transcriptListQuery) (transcriptResponse, error) {
+func (f *fakeTranscriptCatalog) LoadTranscript(_ context.Context, id string, query threadindex.TranscriptQuery) (threadindex.TranscriptResponse, error) {
 	f.threadID = id
 	f.query = query
 	return f.response, f.err
 }
 
 func TestTranscriptNestedRouteAndQueryContract(t *testing.T) {
-	fake := &fakeTranscriptCatalog{response: transcriptResponse{
-		ThreadID: "nth_one", View: defaultThreadTranscriptView,
-		Projection: transcriptProjection{State: "pending", SourceStatus: "present"},
+	fake := &fakeTranscriptCatalog{response: threadindex.TranscriptResponse{
+		ThreadID: "nth_one", View: threadindex.DefaultThreadTranscriptView,
+		Projection: threadindex.TranscriptProjection{State: "pending", SourceStatus: "present"},
 	}}
 	server := &server{catalog: fake}
 	mux := http.NewServeMux()
@@ -58,8 +59,8 @@ func TestTranscriptNestedRouteAndQueryContract(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if fake.threadID != "nth_one" || fake.query.Limit != maxThreadTranscriptLimit ||
-		fake.query.View != defaultThreadTranscriptView || fake.query.Before != "opaque" {
+	if fake.threadID != "nth_one" || fake.query.Limit != threadindex.MaxThreadTranscriptLimit ||
+		fake.query.View != threadindex.DefaultThreadTranscriptView || fake.query.Before != "opaque" {
 		t.Fatalf("thread = %q, query = %#v", fake.threadID, fake.query)
 	}
 	if got := recorder.Header().Get("Cache-Control"); got != "private, max-age=0, must-revalidate" {

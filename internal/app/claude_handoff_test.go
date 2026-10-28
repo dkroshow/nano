@@ -13,6 +13,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -84,13 +85,13 @@ func (h *claudeHandoff) appendSaved(t *testing.T, rows string, wantText string) 
 	file.Close()
 	h.catalog.service.FileChanged(h.path)
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		page, err := h.catalog.service.LoadTranscript(context.Background(), h.threadID, transcriptListQuery{
-			Limit: maxThreadTranscriptLimit, View: "dev", HiddenSpecified: true,
+		page, err := h.catalog.service.LoadTranscript(context.Background(), h.threadID, threadindex.TranscriptQuery{
+			Limit: threadindex.MaxThreadTranscriptLimit, View: "dev", HiddenSpecified: true,
 		})
 		if err != nil {
 			return false
 		}
-		return slices.ContainsFunc(page.Items, func(item transcriptItem) bool { return item.Text == wantText })
+		return slices.ContainsFunc(page.Items, func(item threadindex.TranscriptItem) bool { return item.Text == wantText })
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const historicalClaudeResolverVersion = "claude-docs-2.1.220+nano-1"
@@ -245,7 +246,7 @@ func overlayClaudeThreadResolution(
 	}
 }
 
-func catalogResolved(value catalogValue, source string) resolvedValue {
+func catalogResolved(value threadindex.Value, source string) resolvedValue {
 	if known := knownCatalogValue(value); known != "" {
 		return knownResolved(known, source)
 	}
@@ -613,9 +614,9 @@ func (r *historicalClaudeResolver) WarmCatalog(ctx context.Context, catalog thre
 	seen := map[string]bool{}
 	cursor := ""
 	for {
-		page, err := catalog.ListThreads(ctx, catalogListQuery{
+		page, err := catalog.ListThreads(ctx, threadindex.ListQuery{
 			IncludeSubagents: true, IncludeProgrammatic: true, Archived: archivedIncludeFilter,
-			Limit: maxThreadCatalogLimit, Cursor: cursor,
+			Limit: threadindex.MaxThreadCatalogLimit, Cursor: cursor,
 		})
 		if err != nil {
 			return

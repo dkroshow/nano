@@ -2,10 +2,6 @@ package app
 
 import "github.com/dkroshow/nano/internal/threadindex"
 
-type catalogInteractionCounts = threadindex.InteractionCounts
-type transcriptEvidenceResponse = threadindex.TranscriptEvidenceResponse
-type transcriptAuditReferenceRow = threadindex.AuditReferenceRow
-
 // threadMessagesResponse checks the HTTP wire envelope independently of the
 // index's private response type.
 type threadMessagesResponse struct {
@@ -13,3 +9,13 @@ type threadMessagesResponse struct {
 	Count    int                   `json:"count"`
 	Messages []threadindex.Message `json:"messages"`
 }
+
+// Compatibility names for the hosted tests that move in the other lane.
+type catalogThreadName = threadindex.ThreadName
+type catalogIndexStatus = threadindex.IndexStatus
+type transcriptItem = threadindex.TranscriptItem
+type transcriptResponse = threadindex.TranscriptResponse
+
+const defaultThreadTranscriptView = threadindex.DefaultThreadTranscriptView
+const devThreadTranscriptView = threadindex.DevThreadTranscriptView
+const threadNameEvidence = threadindex.ThreadNameEvidence

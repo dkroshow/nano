@@ -9,11 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-var errSidebarMaterializedUnavailable = errThreadCatalogUnavailable
+var errSidebarMaterializedUnavailable = threadindex.ErrThreadCatalogUnavailable
 
 // sidebarDelta is a complete patch against one prior sidebar revision, except
 // for each row's index time, which no row shows (sidebarComparable): a fresh
@@ -79,7 +80,7 @@ type sidebarMaterializedState struct {
 	updateMu     sync.Mutex
 	mu           sync.RWMutex
 	all          []catalogThread
-	defaultQuery catalogListQuery
+	defaultQuery threadindex.ListQuery
 	active       sidebarActiveResponse
 	nodes        []*sidebarNode
 	version      int64
@@ -132,7 +133,7 @@ func (m *sidebarMaterializedState) defaultNodes() ([]*sidebarNode, bool) {
 	return m.nodes, m.ready
 }
 
-func (m *sidebarMaterializedState) activeSnapshot(query catalogListQuery, useDefault bool) (sidebarActiveResponse, error) {
+func (m *sidebarMaterializedState) activeSnapshot(query threadindex.ListQuery, useDefault bool) (sidebarActiveResponse, error) {
 	if m == nil {
 		return sidebarActiveResponse{}, errSidebarMaterializedUnavailable
 	}
@@ -155,7 +156,7 @@ func (m *sidebarMaterializedState) activeSnapshot(query catalogListQuery, useDef
 	return result, nil
 }
 
-func (m *sidebarMaterializedState) historySnapshot(query catalogListQuery, useDefault bool, parentRef string, cursor *history.ThreadCursor, limit int) (sidebarActiveResponse, error) {
+func (m *sidebarMaterializedState) historySnapshot(query threadindex.ListQuery, useDefault bool, parentRef string, cursor *history.ThreadCursor, limit int) (sidebarActiveResponse, error) {
 	if m == nil {
 		return sidebarActiveResponse{}, errSidebarMaterializedUnavailable
 	}
@@ -178,7 +179,7 @@ func (m *sidebarMaterializedState) historySnapshot(query catalogListQuery, useDe
 	return pageSidebarHistory(nodes, parentRef, cursor, limit, version, revision)
 }
 
-func sameSidebarQuery(a, b catalogListQuery) bool {
+func sameSidebarQuery(a, b threadindex.ListQuery) bool {
 	return sameSidebarTime(a.UpdatedFrom, b.UpdatedFrom) && sameSidebarTime(a.UpdatedTo, b.UpdatedTo)
 }
 
@@ -209,14 +210,14 @@ func (s *server) materializeSidebar(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-func sidebarBaseQuery() catalogListQuery {
-	return catalogListQuery{
+func sidebarBaseQuery() threadindex.ListQuery {
+	return threadindex.ListQuery{
 		IncludeSubagents: true, IncludeProgrammatic: false,
 		Archived: archivedIncludeFilter, Limit: sidebarHistoryDefaultLimit,
 	}
 }
 
-func sidebarDefaultQuery(now time.Time) catalogListQuery {
+func sidebarDefaultQuery(now time.Time) threadindex.ListQuery {
 	query := sidebarBaseQuery()
 	from := now.Add(-30 * 24 * time.Hour)
 	query.UpdatedFrom = &from
@@ -235,7 +236,7 @@ func (s *server) composeCatalogThreads(ctx context.Context, threads []catalogThr
 	s.attachMailOverlay(threads)
 }
 
-func (m *sidebarMaterializedState) replace(all []catalogThread, query catalogListQuery, active sidebarActiveResponse, nodes []*sidebarNode, version int64) {
+func (m *sidebarMaterializedState) replace(all []catalogThread, query threadindex.ListQuery, active sidebarActiveResponse, nodes []*sidebarNode, version int64) {
 	m.mu.Lock()
 	wasReady := m.ready
 	previous := m.active
@@ -447,7 +448,7 @@ func sidebarComparableRows(rows []sidebarThread) []sidebarThread {
 	return out
 }
 
-func projectSidebar(all []catalogThread, query catalogListQuery, version int64) (sidebarActiveResponse, []*sidebarNode) {
+func projectSidebar(all []catalogThread, query threadindex.ListQuery, version int64) (sidebarActiveResponse, []*sidebarNode) {
 	full := indexSidebarThreads(all)
 	selected := map[string]bool{}
 	for _, node := range full.order {
@@ -494,7 +495,7 @@ func projectSidebar(all []catalogThread, query catalogListQuery, version int64) 
 	}, nodes
 }
 
-func sidebarThreadInPopulation(thread catalogThread, query catalogListQuery) bool {
+func sidebarThreadInPopulation(thread catalogThread, query threadindex.ListQuery) bool {
 	if thread.Transient || thread.Runtime != nil || thread.Starred {
 		return true
 	}
@@ -548,7 +549,7 @@ func assembleSidebarThreads(threads []catalogThread) []*sidebarNode {
 func pageSidebarHistory(nodes []*sidebarNode, parentRef string, cursor *history.ThreadCursor, limit int, version int64, revision uint64) (sidebarActiveResponse, error) {
 	parent := findSidebarNode(nodes, parentRef)
 	if parent == nil {
-		return sidebarActiveResponse{}, errCatalogThreadNotFound
+		return sidebarActiveResponse{}, threadindex.ErrCatalogThreadNotFound
 	}
 	descendants := sidebarDescendants(nodes, parent.thread.ID)
 	inactive := make([]*sidebarNode, 0)
@@ -570,7 +571,7 @@ func pageSidebarHistory(nodes []*sidebarNode, parentRef string, cursor *history.
 			}
 		}
 		if start < 0 {
-			return sidebarActiveResponse{}, errInvalidThreadCatalogCursor
+			return sidebarActiveResponse{}, threadindex.ErrInvalidThreadCatalogCursor
 		}
 	}
 	end := start + limit
@@ -636,7 +637,7 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 	if s.sidebar == nil {
 		s.sidebar = newSidebarMaterializedState()
 	}
-	var catalogEvents <-chan catalogChange
+	var catalogEvents <-chan catalog.Change
 	var stopCatalog func()
 	if stream, ok := s.catalog.(threadCatalogStream); ok {
 		catalogEvents, stopCatalog = stream.SubscribeCatalog()
@@ -727,7 +728,7 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 
 // repairSidebarCatalogRows re-reads only the named rows. It reports false when
 // a row is gone, which only a full rebuild can reflect.
-func (s *server) repairSidebarCatalogRows(ctx context.Context, change catalogChange) bool {
+func (s *server) repairSidebarCatalogRows(ctx context.Context, change catalog.Change) bool {
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
 		log.Printf("sidebar catalog repair: %v", err)

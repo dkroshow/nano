@@ -189,12 +189,12 @@ func TestHistoricalClaudeResolverDoesNotRunForMissingCWD(t *testing.T) {
 func testClaudeCatalogThread(cwd, model, permission, sourcePath string) catalogThread {
 	evidence := "native_durable"
 	providerVersion := "2.1.207"
-	sources := []catalogSourceDetail{{Path: sourcePath}}
-	return catalogThread{Thread: threadindex.Thread{Provider: "claude", ProviderVersion: &providerVersion, Metadata: catalogMetadata{
-		CWD:        catalogValue{State: "known", Value: &cwd, Evidence: &evidence},
-		Model:      catalogValue{State: "known", Value: &model, Evidence: &evidence},
-		Effort:     catalogValue{State: "unknown"},
-		Permission: catalogValue{State: "known", Value: &permission, Evidence: &evidence},
+	sources := []threadindex.SourceDetail{{Path: sourcePath}}
+	return catalogThread{Thread: threadindex.Thread{Provider: "claude", ProviderVersion: &providerVersion, Metadata: threadindex.Metadata{
+		CWD:        threadindex.Value{State: "known", Value: &cwd, Evidence: &evidence},
+		Model:      threadindex.Value{State: "known", Value: &model, Evidence: &evidence},
+		Effort:     threadindex.Value{State: "unknown"},
+		Permission: threadindex.Value{State: "known", Value: &permission, Evidence: &evidence},
 	}, Sources: &sources}}
 }
 

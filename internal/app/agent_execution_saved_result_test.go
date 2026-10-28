@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
@@ -290,7 +292,7 @@ WHEN NEW.status = 'completed' BEGIN SELECT RAISE(ABORT, 'disk unavailable'); END
 			}, nil)
 			srv := &server{agentExecutions: store}
 			commit := func() {
-				srv.confirmDurableThread(context.Background(), transcriptChange{ThreadID: "catalog-thread", Provider: "codex", NativeThreadID: "native-thread"})
+				srv.confirmDurableThread(context.Background(), threadindex.TranscriptChange{ThreadID: "catalog-thread", Provider: "codex", NativeThreadID: "native-thread"})
 			}
 			if test.during {
 				<-inRead

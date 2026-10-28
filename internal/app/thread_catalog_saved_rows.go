@@ -6,6 +6,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -26,13 +27,13 @@ func (s *server) savedPromptRows(ctx context.Context, nativeThreadID string, key
 	if s.catalog == nil || nativeThreadID == "" {
 		return nil, history.ErrSavedTranscriptUnavailable
 	}
-	resolver, resolves := s.catalog.(threadReferenceResolver)
+	resolver, resolves := s.catalog.(threadindex.ReferenceResolver)
 	catalog, loads := s.catalog.(savedRowsCatalog)
 	if !resolves || !loads {
 		return nil, history.ErrSavedTranscriptUnavailable
 	}
 	threadID, err := resolver.ResolveThreadReference(ctx, nativeThreadID)
-	if errors.Is(err, errCatalogThreadNotFound) {
+	if errors.Is(err, threadindex.ErrCatalogThreadNotFound) {
 		return nil, history.ErrSavedTranscriptUnavailable
 	}
 	if err != nil {
@@ -48,7 +49,7 @@ func (s *server) savedTurnFinal(ctx context.Context, nativeThreadID, projectionK
 	if s.catalog == nil || nativeThreadID == "" {
 		return "", "", history.ErrSavedTranscriptUnavailable
 	}
-	resolver, resolves := s.catalog.(threadReferenceResolver)
+	resolver, resolves := s.catalog.(threadindex.ReferenceResolver)
 	catalog, loads := s.catalog.(interface {
 		LoadSavedTurnFinal(context.Context, string, string, string) (history.SavedTurnFinal, error)
 		LoadTranscriptBody(context.Context, string, string) (history.TranscriptRetainedBody, error)
@@ -57,7 +58,7 @@ func (s *server) savedTurnFinal(ctx context.Context, nativeThreadID, projectionK
 		return "", "", history.ErrSavedTranscriptUnavailable
 	}
 	threadID, err := resolver.ResolveThreadReference(ctx, nativeThreadID)
-	if errors.Is(err, errCatalogThreadNotFound) {
+	if errors.Is(err, threadindex.ErrCatalogThreadNotFound) {
 		return "", "", history.ErrSavedTranscriptUnavailable
 	}
 	if err != nil {

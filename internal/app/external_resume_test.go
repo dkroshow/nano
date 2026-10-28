@@ -34,16 +34,16 @@ func externalResumeCatalog(t *testing.T, provider, nativeID, cwd string) *fakeTh
 	if err := os.WriteFile(source, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	known := func(value string) catalogValue {
+	known := func(value string) threadindex.Value {
 		evidence := string(history.EvidenceNativeDurable)
-		return catalogValue{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
+		return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 	}
-	row := catalogThread{Thread: threadindex.Thread{ID: "nth_external", Provider: provider, NativeID: nativeID, Kind: "main", Metadata: catalogMetadata{
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_external", Provider: provider, NativeID: nativeID, Kind: "main", Metadata: threadindex.Metadata{
 		CWD: known(cwd), Model: known("gpt-external"), Effort: known("high"),
 		Priority: known("priority"), Permission: known("never"),
-	}, Source: catalogSourceSummary{Status: string(history.SourcePresent)}}}
+	}, Source: threadindex.SourceSummary{Status: string(history.SourcePresent)}}}
 	detail := row
-	detail.Sources = &[]catalogSourceDetail{{
+	detail.Sources = &[]threadindex.SourceDetail{{
 		RootKind: "codex_sessions", Path: source, Status: string(history.SourcePresent),
 		IdentityEvidence: string(history.EvidenceNativeDurable),
 	}}

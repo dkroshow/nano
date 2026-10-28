@@ -22,9 +22,9 @@ import (
 )
 
 type threadCatalog interface {
-	ListThreads(context.Context, catalogListQuery) (catalogPage, error)
+	ListThreads(context.Context, threadindex.ListQuery) (catalogPage, error)
 	LoadThread(context.Context, string) (catalogThread, error)
-	IndexStatus(context.Context) (catalogIndexStatus, error)
+	IndexStatus(context.Context) (threadindex.IndexStatus, error)
 	RequestRefresh() bool
 }
 
@@ -32,7 +32,7 @@ type threadCatalog interface {
 // plus the version-on-connect read. Optional so a catalog without live push
 // (or a stub in tests) simply reports the endpoint unavailable.
 type threadCatalogStream interface {
-	SubscribeCatalog() (<-chan catalogChange, func())
+	SubscribeCatalog() (<-chan catalog.Change, func())
 	CatalogVersion(context.Context) (int64, error)
 }
 
@@ -41,7 +41,7 @@ type threadCatalogStream interface {
 // its validated name remains pending until applyPendingName can persist it.
 func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	namer, ok := s.catalog.(threadCatalogNamer)
+	namer, ok := s.catalog.(threadindex.Namer)
 	if s.catalog == nil || !ok {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
@@ -49,14 +49,14 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	var payload struct {
 		Name string `json:"name"`
 	}
-	body := http.MaxBytesReader(w, r.Body, maxThreadNameRequestBytes)
+	body := http.MaxBytesReader(w, r.Body, threadindex.MaxThreadNameRequestBytes)
 	if err := json.NewDecoder(body).Decode(&payload); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_name", `Request body must be {"name": "..."}`)
 		return
 	}
 	name, err := history.ValidateThreadName(payload.Name)
 	if err != nil {
-		threadindex.WriteThreadNameError(w, threadNameInvalidError{Reason: err.Error()})
+		threadindex.WriteThreadNameError(w, threadindex.NameInvalidError{Reason: err.Error()})
 		return
 	}
 
@@ -103,7 +103,7 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 // assignSpawnName is the session's nameThread closure: best-effort by design —
 // a name that cannot be written must not fail the spawn it was attached to.
 func (s *server) assignSpawnName(provider, nativeThreadID, name string) {
-	namer, ok := s.catalog.(threadCatalogNamer)
+	namer, ok := s.catalog.(threadindex.Namer)
 	if s.catalog == nil || !ok {
 		log.Printf("session name %q for %s/%s dropped: catalog unavailable", name, provider, nativeThreadID)
 		return
@@ -135,7 +135,7 @@ func (s *server) handleCatalogThreads(w http.ResponseWriter, r *http.Request) {
 // rows plus memory, rescue and lineage rows, with the runtime and fleet
 // overlays stamped. The compact sidebar reads a cheaper active graph through
 // GET /api/v1/sidebar/threads instead of paging this full window.
-func (s *server) listCatalogPage(ctx context.Context, query catalogListQuery) (catalogPage, error) {
+func (s *server) listCatalogPage(ctx context.Context, query threadindex.ListQuery) (catalogPage, error) {
 	page, err := s.catalog.ListThreads(ctx, query)
 	if err != nil {
 		return catalogPage{}, err
@@ -235,7 +235,7 @@ const (
 	archivedIncludeFilter = "include"
 )
 
-func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, page []catalogThread, live []sessions.Summary) []catalogThread {
+func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQuery, page []catalogThread, live []sessions.Summary) []catalogThread {
 	if query.Archived == archivedOnlyFilter {
 		return nil
 	}
@@ -295,7 +295,7 @@ func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, 
 func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (map[attachmentKey]catalogThread, error) {
 	found := make(map[attachmentKey]catalogThread, len(keys))
 	for start := 0; start < len(keys); start += history.MaxThreadIdentities {
-		query := catalogListQuery{
+		query := threadindex.ListQuery{
 			Identities:       catalogIdentities(keys[start:min(start+history.MaxThreadIdentities, len(keys))]),
 			IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true, Archived: archivedIncludeFilter,
 		}
@@ -335,13 +335,13 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 func memoryThreadRow(sess sessions.Summary) catalogThread {
 	createdAt := sess.CreatedAt
 	runtime := sessionRuntimeInfo(sess)
-	var name *catalogThreadName
+	var name *threadindex.ThreadName
 	if sess.Name != "" {
-		name = &catalogThreadName{
-			Value: sess.Name, Provenance: "manual", Evidence: threadNameEvidence,
+		name = &threadindex.ThreadName{
+			Value: sess.Name, Provenance: "manual", Evidence: threadindex.ThreadNameEvidence,
 		}
 	}
-	return catalogThread{Thread: threadindex.Thread{ID: memoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: memoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: catalogMetadata{
+	return catalogThread{Thread: threadindex.Thread{ID: memoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: memoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: threadindex.Metadata{
 		CWD: runtimeCatalogValue(sess.Cwd),
 		// The posture cells serve the same unified projection as the
 		// summary and /state (posture_view.go, decision 4) — which is what
@@ -354,22 +354,22 @@ func memoryThreadRow(sess sessions.Summary) catalogThread {
 		Permission:       runtimeCatalogValue(sess.Posture.PermissionMode),
 		HistoricalBranch: unknownCatalogValue(),
 		Origin:           unknownCatalogValue(),
-	}, Interaction: memoryThreadInteraction, Name: name, Source: catalogSourceSummary{}}, HostedThreadID: sess.HostedThreadID, InvokerHostedThreadID: sess.InvokerHostedThreadID, InvokerNativeThreadID: sess.InvokerNativeThreadID, InvokerProvider: sess.InvokerProvider, SidebarPlacement: sess.SidebarPlacement, Transient: true, Runtime: &runtime}
+	}, Interaction: memoryThreadInteraction, Name: name, Source: threadindex.SourceSummary{}}, HostedThreadID: sess.HostedThreadID, InvokerHostedThreadID: sess.InvokerHostedThreadID, InvokerNativeThreadID: sess.InvokerNativeThreadID, InvokerProvider: sess.InvokerProvider, SidebarPlacement: sess.SidebarPlacement, Transient: true, Runtime: &runtime}
 }
 
 // runtimeCatalogValue makes one metadata cell from a live session field: known
 // when the session holds the value, unknown while it is still being learned
 // (claude's model arrives with the init line, after the row can first appear).
-func runtimeCatalogValue(value string) catalogValue {
+func runtimeCatalogValue(value string) threadindex.Value {
 	if value == "" {
 		return unknownCatalogValue()
 	}
 	evidence := runtimeEvidence
-	return catalogValue{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
+	return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 }
 
-func unknownCatalogValue() catalogValue {
-	return catalogValue{State: string(history.MetadataUnknown)}
+func unknownCatalogValue() threadindex.Value {
+	return threadindex.Value{State: string(history.MetadataUnknown)}
 }
 
 // lineageParentRows closes the graph around every worker in a list response:
@@ -378,7 +378,7 @@ func unknownCatalogValue() catalogValue {
 // level at a time with one hosted-record read, one assignment read and one
 // identity read per level, never per row, and returns parents in the order a
 // one-row walk finds them.
-func (s *server) lineageParentRows(ctx context.Context, query catalogListQuery, page []catalogThread) []catalogThread {
+func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQuery, page []catalogThread) []catalogThread {
 	if query.ThreadID != "" {
 		return nil
 	}
@@ -497,13 +497,13 @@ func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID stri
 		setUnknown()
 		return
 	}
-	canonical := func(field string) catalogValue {
+	canonical := func(field string) threadindex.Value {
 		value, ok := hostedvalues.MetadataString(view.Fields[field])
 		if !ok {
 			return unknownCatalogValue()
 		}
 		evidence := "canonical_hosted_metadata"
-		return catalogValue{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
+		return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 	}
 	thread.Metadata.CWD = canonical("cwd")
 	thread.Metadata.Model = canonical(hostedvalues.PostureFieldModel)
@@ -603,7 +603,7 @@ func (s *server) handleCatalogThreadRead(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if thread.Sources == nil {
-		sources := []catalogSourceDetail{}
+		sources := []threadindex.SourceDetail{}
 		thread.Sources = &sources
 	}
 	s.attachRuntimeOverlay(&thread)
@@ -706,13 +706,13 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-	writeCatalogChangeEvent(w, catalogChange{Version: uint64(version), Refresh: true})
+	writeCatalogChangeEvent(w, catalog.Change{Version: uint64(version), Refresh: true})
 	if marker, ok := s.sidebar.marker(version); ok {
 		writeSidebarEvent(w, marker)
 	}
 	flusher.Flush()
 
-	heartbeat := time.NewTicker(catalogEventHeartbeat)
+	heartbeat := time.NewTicker(threadindex.CatalogEventHeartbeat)
 	defer heartbeat.Stop()
 	ctx := r.Context()
 	for {
@@ -767,7 +767,7 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func writeCatalogChangeEvent(w io.Writer, change catalogChange) {
+func writeCatalogChangeEvent(w io.Writer, change catalog.Change) {
 	payload := struct {
 		CatalogVersion int64    `json:"catalogVersion"`
 		ThreadIDs      []string `json:"threadIds,omitempty"`

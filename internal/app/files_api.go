@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/setup"
@@ -161,7 +163,7 @@ func (s *server) fileThreadCwd(ctx context.Context, threadID, sessionID string) 
 // thread, so a request that names only its session still searches its saved
 // history.
 func (s *server) sessionCatalogThreadID(ctx context.Context, sessionID string) string {
-	resolver, ok := s.catalog.(threadReferenceResolver)
+	resolver, ok := s.catalog.(threadindex.ReferenceResolver)
 	if !ok || sessionID == "" {
 		return ""
 	}

@@ -11,14 +11,15 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // fakeMessagesCatalog serves transcript pages keyed by backward cursor, so a
 // test can exercise the tail walk over more than one page.
 type fakeMessagesCatalog struct {
 	fakeThreadCatalog
-	pages     map[string]transcriptResponse
-	queries   []transcriptListQuery
+	pages     map[string]threadindex.TranscriptResponse
+	queries   []threadindex.TranscriptQuery
 	threadID  string
 	resolved  string
 	resolve   func(string) (string, error)
@@ -40,20 +41,20 @@ func (f *fakeMessagesCatalog) LoadTranscriptBody(_ context.Context, _, itemID st
 }
 
 func TestThreadMessagesPrefersNewestBodiesAndKeepsUnavailablePreview(t *testing.T) {
-	page := transcriptResponse{ThreadID: "nth_one", Items: []transcriptItem{
+	page := threadindex.TranscriptResponse{ThreadID: "nth_one", Items: []threadindex.TranscriptItem{
 		{ID: "older", Type: "agent_message", Text: "older preview", ContentRef: "old", OriginalBytes: 150 << 10},
 		{ID: "newer", Type: "agent_message", Text: "newer preview", ContentRef: "new", OriginalBytes: 150 << 10},
 	}}
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": page}, bodies: map[string]history.TranscriptRetainedBody{
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": page}, bodies: map[string]history.TranscriptRetainedBody{
 		"newer": {ItemID: "newer", Text: strings.Repeat("n", 150<<10), StoredBytes: 150 << 10},
 	}}
-	messages, err := collectThreadMessages(context.Background(), fake, "nth_one", threadMessagesQuery{Tail: 2, Roles: map[string]bool{"agent": true}})
+	messages, err := collectThreadMessages(context.Background(), fake, "nth_one", threadindex.MessagesQuery{Tail: 2, Roles: map[string]bool{"agent": true}})
 	if err != nil || len(messages) != 2 || messages[1].Complete != true || messages[0].Complete != false || strings.Join(fake.bodyLoads, ",") != "newer" {
 		t.Fatalf("messages=%#v loads=%v err=%v", messages, fake.bodyLoads, err)
 	}
 }
 
-func (f *fakeMessagesCatalog) LoadTranscript(_ context.Context, id string, query transcriptListQuery) (transcriptResponse, error) {
+func (f *fakeMessagesCatalog) LoadTranscript(_ context.Context, id string, query threadindex.TranscriptQuery) (threadindex.TranscriptResponse, error) {
 	f.threadID = id
 	f.queries = append(f.queries, query)
 	return f.pages[query.Before], f.err
@@ -72,8 +73,8 @@ func stamp(value string) *string { return &value }
 // realShapedTranscript is a transcript page the way the projection actually
 // emits one: user and agent messages interleaved with reasoning, a tool call
 // and its result, and a subagent aside.
-func realShapedTranscript() transcriptResponse {
-	items := []transcriptItem{
+func realShapedTranscript() threadindex.TranscriptResponse {
+	items := []threadindex.TranscriptItem{
 		{ID: "nit_1", ProjectedSeq: 1, TurnID: "ntr_1", Type: "user_message", Category: "messages",
 			Role: "user", Text: "please investigate the failing deploy", CreatedAt: stamp("2026-07-31T12:00:00Z")},
 		{ID: "nit_2", ProjectedSeq: 2, TurnID: "ntr_1", Type: "reasoning", Category: "reasoning",
@@ -92,11 +93,11 @@ func realShapedTranscript() transcriptResponse {
 			Role: "assistant", Text: "Restarted. Want me to verify the hash?", IsFinalAnswer: true,
 			CreatedAt: stamp("2026-07-31T12:01:30Z")},
 	}
-	return transcriptResponse{
-		ThreadID: "nth_one", View: defaultThreadTranscriptView, Items: items,
-		Turns: []transcriptTurn{{ID: "ntr_1", Ordinal: 1, StartSeq: 1, EndSeq: 6}, {ID: "ntr_2", Ordinal: 2, StartSeq: 7, EndSeq: 8}},
-		Page:  transcriptPageInfo{StartSeq: 1, EndSeq: 8, LatestSeq: 8, SnapshotHeadSeq: 8},
-		Projection: transcriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present",
+	return threadindex.TranscriptResponse{
+		ThreadID: "nth_one", View: threadindex.DefaultThreadTranscriptView, Items: items,
+		Turns: []threadindex.TranscriptTurn{{ID: "ntr_1", Ordinal: 1, StartSeq: 1, EndSeq: 6}, {ID: "ntr_2", Ordinal: 2, StartSeq: 7, EndSeq: 8}},
+		Page:  threadindex.TranscriptPageInfo{StartSeq: 1, EndSeq: 8, LatestSeq: 8, SnapshotHeadSeq: 8},
+		Projection: threadindex.TranscriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present",
 			EvidenceAvailable: true, ItemCount: 8},
 	}
 }
@@ -113,7 +114,7 @@ func messagesRequest(t *testing.T, s *server, target string) *httptest.ResponseR
 // TestThreadMessagesTextIsChronologicalUserAndAgentOnly is the endpoint's whole
 // promise: plain text, in order, carrying only what the user and agent said.
 func TestThreadMessagesTextIsChronologicalUserAndAgentOnly(t *testing.T) {
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": realShapedTranscript()}}
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": realShapedTranscript()}}
 	recorder := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages")
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
@@ -144,13 +145,13 @@ func TestThreadMessagesTextIsChronologicalUserAndAgentOnly(t *testing.T) {
 	// The transcript is asked for the message-shaped categories only.
 	if len(fake.queries) != 1 || fake.threadID != "nth_one" ||
 		strings.Join(fake.queries[0].HiddenCategories, ",") != "reasoning,toolCall,toolResult,system" ||
-		!fake.queries[0].HiddenSpecified || fake.queries[0].View != defaultThreadTranscriptView {
+		!fake.queries[0].HiddenSpecified || fake.queries[0].View != threadindex.DefaultThreadTranscriptView {
 		t.Fatalf("transcript query = %#v", fake.queries)
 	}
 }
 
 func TestThreadMessagesTailRolesAndJSONFormat(t *testing.T) {
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": realShapedTranscript()}}
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": realShapedTranscript()}}
 	s := &server{catalog: fake}
 
 	recorder := messagesRequest(t, s, "/api/v1/threads/nth_one/messages?tail=2&format=json")
@@ -164,8 +165,8 @@ func TestThreadMessagesTailRolesAndJSONFormat(t *testing.T) {
 	if response.ThreadID != "nth_one" || response.Count != 2 || len(response.Messages) != 2 {
 		t.Fatalf("json response = %#v", response)
 	}
-	if response.Messages[0].Role != threadMessageRoleUser || response.Messages[0].Text != "restart it" ||
-		response.Messages[1].Role != threadMessageRoleAgent {
+	if response.Messages[0].Role != threadindex.MessageRoleUser || response.Messages[0].Text != "restart it" ||
+		response.Messages[1].Role != threadindex.MessageRoleAgent {
 		t.Fatalf("tail = %#v", response.Messages)
 	}
 
@@ -177,7 +178,7 @@ func TestThreadMessagesTailRolesAndJSONFormat(t *testing.T) {
 		t.Fatalf("user-only tail = %#v", response.Messages)
 	}
 	for _, message := range response.Messages {
-		if message.Role != threadMessageRoleUser {
+		if message.Role != threadindex.MessageRoleUser {
 			t.Fatalf("role filter leaked %q", message.Role)
 		}
 	}
@@ -185,11 +186,11 @@ func TestThreadMessagesTailRolesAndJSONFormat(t *testing.T) {
 
 func TestThreadMessagesUsesFittingRetainedBodyAndLabelsIncompletePreview(t *testing.T) {
 	page := realShapedTranscript()
-	page.Items = []transcriptItem{
+	page.Items = []threadindex.TranscriptItem{
 		{ID: "nit_small", Type: "user_message", Text: "small", ContentRef: "ref-small", OriginalBytes: 20},
-		{ID: "nit_large", Type: "agent_message", Text: "preview", ContentRef: "ref-large", OriginalBytes: maxThreadTranscriptBytes + 1, ContentTruncated: true},
+		{ID: "nit_large", Type: "agent_message", Text: "preview", ContentRef: "ref-large", OriginalBytes: threadindex.MaxThreadTranscriptBytes + 1, ContentTruncated: true},
 	}
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": page}, bodies: map[string]history.TranscriptRetainedBody{
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": page}, bodies: map[string]history.TranscriptRetainedBody{
 		"nit_small": {ItemID: "nit_small", ContentRef: "ref-small", Text: "canonical retained text", OriginalBytes: 20, StoredBytes: 20},
 	}}
 	rec := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages?format=json")
@@ -213,16 +214,16 @@ func TestThreadMessagesUsesFittingRetainedBodyAndLabelsIncompletePreview(t *test
 }
 
 func TestThreadMessagesResponseStaysBoundedWhenBodiesFitIndividually(t *testing.T) {
-	items := make([]transcriptItem, 0, 4)
+	items := make([]threadindex.TranscriptItem, 0, 4)
 	bodies := map[string]history.TranscriptRetainedBody{}
 	for i := 0; i < 4; i++ {
 		id := fmt.Sprintf("nit_%d", i)
-		items = append(items, transcriptItem{ID: id, Type: "agent_message", Text: "preview", ContentRef: "ref" + id, OriginalBytes: 100000})
+		items = append(items, threadindex.TranscriptItem{ID: id, Type: "agent_message", Text: "preview", ContentRef: "ref" + id, OriginalBytes: 100000})
 		bodies[id] = history.TranscriptRetainedBody{ItemID: id, ContentRef: "ref" + id, Text: strings.Repeat("x", 100000), StoredBytes: 100000}
 	}
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": {ThreadID: "nth_one", Items: items}}, bodies: bodies}
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": {ThreadID: "nth_one", Items: items}}, bodies: bodies}
 	rec := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages?format=json")
-	if rec.Code != http.StatusOK || rec.Body.Len() > maxThreadTranscriptBytes {
+	if rec.Code != http.StatusOK || rec.Body.Len() > threadindex.MaxThreadTranscriptBytes {
 		t.Fatalf("bounded response = %d bytes=%d", rec.Code, rec.Body.Len())
 	}
 	var response threadMessagesResponse
@@ -240,8 +241,8 @@ func TestThreadMessagesResponseStaysBoundedWhenBodiesFitIndividually(t *testing.
 
 func TestThreadMessagesLoadsASingleOrdinaryHundredKiBBody(t *testing.T) {
 	const bodyBytes = 100 << 10
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": {
-		ThreadID: "nth_one", Items: []transcriptItem{{ID: "ordinary", Type: "agent_message", Text: "preview", ContentRef: "ordinary-body", OriginalBytes: bodyBytes}},
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": {
+		ThreadID: "nth_one", Items: []threadindex.TranscriptItem{{ID: "ordinary", Type: "agent_message", Text: "preview", ContentRef: "ordinary-body", OriginalBytes: bodyBytes}},
 	}}, bodies: map[string]history.TranscriptRetainedBody{
 		"ordinary": {ItemID: "ordinary", ContentRef: "ordinary-body", Text: strings.Repeat("a", bodyBytes), StoredBytes: bodyBytes, OriginalBytes: bodyBytes},
 	}}
@@ -250,7 +251,7 @@ func TestThreadMessagesLoadsASingleOrdinaryHundredKiBBody(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if recorder.Body.Len() > maxThreadTranscriptBytes || len(response.Messages) != 1 || !response.Messages[0].Complete || len(response.Messages[0].Text) != bodyBytes {
+	if recorder.Body.Len() > threadindex.MaxThreadTranscriptBytes || len(response.Messages) != 1 || !response.Messages[0].Complete || len(response.Messages[0].Text) != bodyBytes {
 		t.Fatalf("ordinary retained body was not complete: bytes=%d message=%#v", recorder.Body.Len(), response.Messages)
 	}
 	if got := strings.Join(fake.bodyLoads, ","); got != "ordinary" {
@@ -260,8 +261,8 @@ func TestThreadMessagesLoadsASingleOrdinaryHundredKiBBody(t *testing.T) {
 
 func TestThreadMessagesFallsBackWhenActualJSONEscapingDoesNotFit(t *testing.T) {
 	const originalBytes = 200 << 10
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": {
-		ThreadID: "nth_one", Items: []transcriptItem{{ID: "escaped-body", Type: "user_message", Text: "preview", ContentRef: "escaped-ref", OriginalBytes: originalBytes}},
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": {
+		ThreadID: "nth_one", Items: []threadindex.TranscriptItem{{ID: "escaped-body", Type: "user_message", Text: "preview", ContentRef: "escaped-ref", OriginalBytes: originalBytes}},
 	}}, bodies: map[string]history.TranscriptRetainedBody{
 		"escaped-body": {ItemID: "escaped-body", ContentRef: "escaped-ref", Text: strings.Repeat("\\\"\nX", originalBytes/4), StoredBytes: originalBytes, OriginalBytes: originalBytes},
 	}}
@@ -271,7 +272,7 @@ func TestThreadMessagesFallsBackWhenActualJSONEscapingDoesNotFit(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := response.Messages[0]
-	if recorder.Body.Len() > maxThreadTranscriptBytes || message.Complete || message.ContentState != "inline_preview" || message.Text != "preview" {
+	if recorder.Body.Len() > threadindex.MaxThreadTranscriptBytes || message.Complete || message.ContentState != "inline_preview" || message.Text != "preview" {
 		t.Fatalf("escaped body did not fall back honestly: bytes=%d message=%#v", recorder.Body.Len(), message)
 	}
 	if got := strings.Join(fake.bodyLoads, ","); got != "escaped-body" {
@@ -280,15 +281,15 @@ func TestThreadMessagesFallsBackWhenActualJSONEscapingDoesNotFit(t *testing.T) {
 }
 
 func TestThreadMessagesRetentionStatesAndWireBounds(t *testing.T) {
-	items := []transcriptItem{
+	items := []threadindex.TranscriptItem{
 		{ID: "small", Type: "user_message", Text: "small"},
 		{ID: "threehundred", Type: "agent_message", Text: "preview", ContentRef: "r300", OriginalBytes: 300 << 10},
 		{ID: "meg", Type: "agent_message", Text: "preview", ContentRef: "rmeg", OriginalBytes: history.MaxTranscriptBodyBytes + 1},
 	}
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": {ThreadID: "nth_one", Items: items}}}
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": {ThreadID: "nth_one", Items: items}}}
 	for _, format := range []string{"json", "text"} {
 		rec := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages?format="+format)
-		if rec.Code != http.StatusOK || rec.Body.Len() > maxThreadTranscriptBytes {
+		if rec.Code != http.StatusOK || rec.Body.Len() > threadindex.MaxThreadTranscriptBytes {
 			t.Fatalf("%s bound=%d status=%d", format, rec.Body.Len(), rec.Code)
 		}
 		if format == "json" {
@@ -301,15 +302,15 @@ func TestThreadMessagesRetentionStatesAndWireBounds(t *testing.T) {
 			}
 		}
 	}
-	escaped := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": {ThreadID: "nth_one", Items: []transcriptItem{{ID: "escaped", Type: "agent_message", Text: strings.Repeat("\\\"\n", maxThreadTranscriptBytes/3)}}}}}
-	if rec := messagesRequest(t, &server{catalog: escaped}, "/api/v1/threads/nth_one/messages?format=json"); rec.Body.Len() > maxThreadTranscriptBytes {
+	escaped := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": {ThreadID: "nth_one", Items: []threadindex.TranscriptItem{{ID: "escaped", Type: "agent_message", Text: strings.Repeat("\\\"\n", threadindex.MaxThreadTranscriptBytes/3)}}}}}
+	if rec := messagesRequest(t, &server{catalog: escaped}, "/api/v1/threads/nth_one/messages?format=json"); rec.Body.Len() > threadindex.MaxThreadTranscriptBytes {
 		t.Fatalf("escaped json=%d", rec.Body.Len())
 	}
 }
 
 func TestThreadMessagesKeepsAnUnavailableSmallBodyAsAnHonestPreview(t *testing.T) {
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": {
-		ThreadID: "nth_one", Items: []transcriptItem{{ID: "missing", Type: "user_message", Text: "inline preview", ContentRef: "body-missing", OriginalBytes: 42}},
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": {
+		ThreadID: "nth_one", Items: []threadindex.TranscriptItem{{ID: "missing", Type: "user_message", Text: "inline preview", ContentRef: "body-missing", OriginalBytes: 42}},
 	}}}
 	recorder := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages?format=json")
 	if recorder.Code != http.StatusOK {
@@ -330,7 +331,7 @@ func TestThreadMessagesKeepsAnUnavailableSmallBodyAsAnHonestPreview(t *testing.T
 
 func TestThreadMessagesKeepsOtherBodyLookupFailuresAsPreviews(t *testing.T) {
 	fake := &fakeMessagesCatalog{
-		pages:   map[string]transcriptResponse{"": {ThreadID: "nth_one", Items: []transcriptItem{{ID: "transient", Type: "user_message", Text: "preview", ContentRef: "body-transient", OriginalBytes: 42}}}},
+		pages:   map[string]threadindex.TranscriptResponse{"": {ThreadID: "nth_one", Items: []threadindex.TranscriptItem{{ID: "transient", Type: "user_message", Text: "preview", ContentRef: "body-transient", OriginalBytes: 42}}}},
 		bodyErr: errors.New("temporary body read failure"),
 	}
 	recorder := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages?format=json")
@@ -347,12 +348,12 @@ func TestThreadMessagesKeepsOtherBodyLookupFailuresAsPreviews(t *testing.T) {
 }
 
 func TestThreadMessagesMarksALoadedRetainedPrefixIncomplete(t *testing.T) {
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": {
-		ThreadID: "nth_one", Items: []transcriptItem{{ID: "prefix", Type: "agent_message", Text: "preview", ContentRef: "body-prefix", OriginalBytes: 100}},
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": {
+		ThreadID: "nth_one", Items: []threadindex.TranscriptItem{{ID: "prefix", Type: "agent_message", Text: "preview", ContentRef: "body-prefix", OriginalBytes: 100}},
 	}}, bodies: map[string]history.TranscriptRetainedBody{
 		"prefix": {ItemID: "prefix", ContentRef: "body-prefix", Text: "retained prefix", Truncated: true, StoredBytes: 100, OriginalBytes: history.MaxTranscriptBodyBytes + 10},
 	}}
-	messages, err := collectThreadMessages(context.Background(), fake, "nth_one", threadMessagesQuery{Tail: 1, Roles: map[string]bool{threadMessageRoleAgent: true}})
+	messages, err := collectThreadMessages(context.Background(), fake, "nth_one", threadindex.MessagesQuery{Tail: 1, Roles: map[string]bool{threadindex.MessageRoleAgent: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,25 +371,25 @@ func TestThreadMessagesMarksALoadedRetainedPrefixIncomplete(t *testing.T) {
 // the transcript already mints.
 func TestThreadMessagesWalksBackwardForAShortPage(t *testing.T) {
 	cursor := "opaque-cursor"
-	head := transcriptResponse{
-		ThreadID: "nth_one", View: defaultThreadTranscriptView,
-		Items: []transcriptItem{
+	head := threadindex.TranscriptResponse{
+		ThreadID: "nth_one", View: threadindex.DefaultThreadTranscriptView,
+		Items: []threadindex.TranscriptItem{
 			{ID: "nit_9", ProjectedSeq: 9, Type: "tool_call", Category: "toolCall", Text: "grep"},
 			{ID: "nit_10", ProjectedSeq: 10, Type: "agent_message", Category: "messages", Text: "newest"},
 		},
-		Page: transcriptPageInfo{StartSeq: 9, EndSeq: 10, LatestSeq: 10, SnapshotHeadSeq: 10,
+		Page: threadindex.TranscriptPageInfo{StartSeq: 9, EndSeq: 10, LatestSeq: 10, SnapshotHeadSeq: 10,
 			HasMoreBefore: true, NextBeforeCursor: &cursor},
-		Projection: transcriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present"},
+		Projection: threadindex.TranscriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present"},
 	}
-	older := transcriptResponse{
-		ThreadID: "nth_one", View: defaultThreadTranscriptView,
-		Items: []transcriptItem{
+	older := threadindex.TranscriptResponse{
+		ThreadID: "nth_one", View: threadindex.DefaultThreadTranscriptView,
+		Items: []threadindex.TranscriptItem{
 			{ID: "nit_7", ProjectedSeq: 7, Type: "user_message", Category: "messages", Text: "older"},
 		},
-		Page:       transcriptPageInfo{StartSeq: 7, EndSeq: 8, LatestSeq: 10, SnapshotHeadSeq: 10},
-		Projection: transcriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present"},
+		Page:       threadindex.TranscriptPageInfo{StartSeq: 7, EndSeq: 8, LatestSeq: 10, SnapshotHeadSeq: 10},
+		Projection: threadindex.TranscriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present"},
 	}
-	fake := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": head, cursor: older}}
+	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": head, cursor: older}}
 	recorder := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages?tail=2")
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
@@ -400,14 +401,14 @@ func TestThreadMessagesWalksBackwardForAShortPage(t *testing.T) {
 		t.Fatalf("backward walk = %#v", fake.queries)
 	}
 	// The walk is bounded: a thread that never fills the tail stops paging.
-	endless := transcriptResponse{
-		ThreadID: "nth_one", View: defaultThreadTranscriptView,
-		Items: []transcriptItem{{ID: "nit_x", ProjectedSeq: 1, Type: "tool_call", Category: "toolCall", Text: "grep"}},
-		Page: transcriptPageInfo{StartSeq: 1, EndSeq: 1, LatestSeq: 1, SnapshotHeadSeq: 1,
+	endless := threadindex.TranscriptResponse{
+		ThreadID: "nth_one", View: threadindex.DefaultThreadTranscriptView,
+		Items: []threadindex.TranscriptItem{{ID: "nit_x", ProjectedSeq: 1, Type: "tool_call", Category: "toolCall", Text: "grep"}},
+		Page: threadindex.TranscriptPageInfo{StartSeq: 1, EndSeq: 1, LatestSeq: 1, SnapshotHeadSeq: 1,
 			HasMoreBefore: true, NextBeforeCursor: &cursor},
-		Projection: transcriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present"},
+		Projection: threadindex.TranscriptProjection{Key: "ntp_one", State: "ready", SourceStatus: "present"},
 	}
-	bounded := &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": endless, cursor: endless}}
+	bounded := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": endless, cursor: endless}}
 	if recorder := messagesRequest(t, &server{catalog: bounded}, "/api/v1/threads/nth_one/messages"); recorder.Body.Len() != 0 {
 		t.Fatalf("bounded walk body = %q", recorder.Body.String())
 	}
@@ -420,7 +421,7 @@ func TestThreadMessagesWalksBackwardForAShortPage(t *testing.T) {
 // durable id, an ambiguous one reports every candidate rather than guessing.
 func TestThreadMessagesResolvesReferences(t *testing.T) {
 	fake := &fakeMessagesCatalog{
-		pages:   map[string]transcriptResponse{"": realShapedTranscript()},
+		pages:   map[string]threadindex.TranscriptResponse{"": realShapedTranscript()},
 		resolve: func(string) (string, error) { return "nth_one", nil },
 	}
 	recorder := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_o/messages")
@@ -430,8 +431,8 @@ func TestThreadMessagesResolvesReferences(t *testing.T) {
 
 	candidates := []string{"nth_alpha", "nth_alpine"}
 	ambiguous := &fakeMessagesCatalog{
-		pages:   map[string]transcriptResponse{"": realShapedTranscript()},
-		resolve: func(string) (string, error) { return "", &ambiguousThreadReferenceError{Candidates: candidates} },
+		pages:   map[string]threadindex.TranscriptResponse{"": realShapedTranscript()},
+		resolve: func(string) (string, error) { return "", &threadindex.AmbiguousReferenceError{Candidates: candidates} },
 	}
 	recorder = messagesRequest(t, &server{catalog: ambiguous}, "/api/v1/threads/nth_al/messages")
 	if recorder.Code != http.StatusBadRequest {
@@ -453,7 +454,7 @@ func TestThreadMessagesResolvesReferences(t *testing.T) {
 		t.Fatalf("an ambiguous reference must never load a transcript: %q", ambiguous.threadID)
 	}
 
-	missing := &fakeMessagesCatalog{resolve: func(string) (string, error) { return "", errCatalogThreadNotFound }}
+	missing := &fakeMessagesCatalog{resolve: func(string) (string, error) { return "", threadindex.ErrCatalogThreadNotFound }}
 	recorder = messagesRequest(t, &server{catalog: missing}, "/api/v1/threads/nowhere/messages")
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("missing status = %d", recorder.Code)
@@ -462,7 +463,7 @@ func TestThreadMessagesResolvesReferences(t *testing.T) {
 }
 
 func TestThreadMessagesRejectsInvalidQueryAndSurfacesBackendErrors(t *testing.T) {
-	s := &server{catalog: &fakeMessagesCatalog{pages: map[string]transcriptResponse{"": realShapedTranscript()}}}
+	s := &server{catalog: &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": realShapedTranscript()}}}
 	for _, target := range []string{
 		"/api/v1/threads/nth_one/messages?tail=0",
 		"/api/v1/threads/nth_one/messages?tail=lots",
@@ -477,11 +478,11 @@ func TestThreadMessagesRejectsInvalidQueryAndSurfacesBackendErrors(t *testing.T)
 	}
 
 	// tail is clamped rather than rejected, so an eager caller still gets an answer.
-	recorder := messagesRequest(t, s, fmt.Sprintf("/api/v1/threads/nth_one/messages?tail=%d&format=json", maxThreadMessagesTail*10))
+	recorder := messagesRequest(t, s, fmt.Sprintf("/api/v1/threads/nth_one/messages?tail=%d&format=json", threadindex.MaxMessagesTail*10))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("clamped tail status = %d", recorder.Code)
 	}
-	if got := s.catalog.(*fakeMessagesCatalog).queries[0].Limit; got != maxThreadMessagesTail {
+	if got := s.catalog.(*fakeMessagesCatalog).queries[0].Limit; got != threadindex.MaxMessagesTail {
 		t.Fatalf("clamped limit = %d", got)
 	}
 

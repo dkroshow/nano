@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	testfixture "github.com/dkroshow/nano/internal/testsupport"
@@ -82,7 +84,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(catalog.Close)
-			catalog.SetTranscriptChanged(func(context.Context, transcriptChange) {})
+			catalog.SetTranscriptChanged(func(context.Context, threadindex.TranscriptChange) {})
 			attached := &pausedAttachedCatalog{threadCatalogService: catalog}
 			if tc.exits {
 				release := attached.pause()

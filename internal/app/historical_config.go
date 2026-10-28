@@ -16,6 +16,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const (
@@ -755,11 +756,11 @@ func readLatestCodexReviewer(path string) string {
 	return ""
 }
 
-func knownCatalogValue(value catalogValue) string {
+func knownCatalogValue(value threadindex.Value) string {
 	return inspection.KnownMetadataValue(value.State, value.Value)
 }
 
-func preferRecorded(recorded catalogValue, configured json.RawMessage) resolvedValue {
+func preferRecorded(recorded threadindex.Value, configured json.RawMessage) resolvedValue {
 	if value := knownCatalogValue(recorded); value != "" {
 		return knownResolved(value, "thread_persisted")
 	}
@@ -868,9 +869,9 @@ func (r *historicalConfigResolver) WarmCatalog(ctx context.Context, catalog thre
 	seen := map[string]bool{}
 	cursor := ""
 	for {
-		page, err := catalog.ListThreads(ctx, catalogListQuery{
+		page, err := catalog.ListThreads(ctx, threadindex.ListQuery{
 			IncludeSubagents: true, IncludeProgrammatic: true, Archived: archivedIncludeFilter,
-			Limit: maxThreadCatalogLimit, Cursor: cursor,
+			Limit: threadindex.MaxThreadCatalogLimit, Cursor: cursor,
 		})
 		if err != nil {
 			return

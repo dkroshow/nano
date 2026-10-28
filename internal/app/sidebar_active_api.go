@@ -163,7 +163,7 @@ func parsePositiveLimit(raw string, fallback int) (int, error) {
 	return value, nil
 }
 
-func parseSidebarActiveQuery(r *http.Request, now time.Time) (catalogListQuery, error) {
+func parseSidebarActiveQuery(r *http.Request, now time.Time) (threadindex.ListQuery, error) {
 	query := sidebarBaseQuery()
 	rawFrom := strings.TrimSpace(r.URL.Query().Get("updatedFrom"))
 	if rawFrom == "" {
@@ -181,16 +181,16 @@ func parseSidebarActiveQuery(r *http.Request, now time.Time) (catalogListQuery, 
 
 func (s *server) sidebarGraphCatalog() (sidebarGraphSource, error) {
 	if s.catalog == nil {
-		return nil, errThreadCatalogUnavailable
+		return nil, threadindex.ErrThreadCatalogUnavailable
 	}
 	source, ok := s.catalog.(sidebarGraphSource)
 	if !ok {
-		return nil, errThreadCatalogUnavailable
+		return nil, threadindex.ErrThreadCatalogUnavailable
 	}
 	return source, nil
 }
 
-func (s *server) loadSidebarPopulation(ctx context.Context, query catalogListQuery, runtime sidebarRuntimeSnapshot, now time.Time) (history.SidebarGraph, []catalogThread, error) {
+func (s *server) loadSidebarPopulation(ctx context.Context, query threadindex.ListQuery, runtime sidebarRuntimeSnapshot, now time.Time) (history.SidebarGraph, []catalogThread, error) {
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
 		return history.SidebarGraph{}, nil, err
@@ -330,7 +330,7 @@ func (s *server) attachRuntimeOverlayBatch(ctx context.Context, threads []catalo
 	}
 	controlAvailable := s.controlMetadata != nil && s.controlMetadataErr == "" && s.controlMetadata.db.PingContext(ctx) == nil
 	assignments := map[string]*orchestrationAssignmentView{}
-	metadata := map[string]catalogMetadata{}
+	metadata := map[string]threadindex.Metadata{}
 	if controlAvailable {
 		assignments = s.controlMetadata.currentAssignmentsByHostedIDs(hostedIDs)
 		metadata = s.controlMetadata.catalogMetadataByHostedIDs(hostedIDs)
@@ -558,8 +558,8 @@ func (s *controlMetadataStore) currentAssignmentsByHostedIDs(ids []string) map[s
 	return out
 }
 
-func (s *controlMetadataStore) catalogMetadataByHostedIDs(ids []string) map[string]catalogMetadata {
-	out := map[string]catalogMetadata{}
+func (s *controlMetadataStore) catalogMetadataByHostedIDs(ids []string) map[string]threadindex.Metadata {
+	out := map[string]threadindex.Metadata{}
 	if s == nil || len(ids) == 0 {
 		return out
 	}
@@ -620,16 +620,16 @@ func (s *controlMetadataStore) catalogMetadataByHostedIDs(ids []string) map[stri
 		}
 		rows.Close()
 	}
-	canonical := func(fields map[string]metadataCurrentView, field string) catalogValue {
+	canonical := func(fields map[string]metadataCurrentView, field string) threadindex.Value {
 		value, ok := hostedvalues.MetadataString(fields[field])
 		if !ok {
 			return unknownCatalogValue()
 		}
 		evidence := sidebarMetadataEvidence
-		return catalogValue{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
+		return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 	}
 	for hostedID, fields := range views {
-		out[hostedID] = catalogMetadata{
+		out[hostedID] = threadindex.Metadata{
 			CWD: canonical(fields, "cwd"), Model: canonical(fields, hostedvalues.PostureFieldModel),
 			Effort: canonical(fields, hostedvalues.PostureFieldEffort), Priority: canonical(fields, hostedvalues.PostureFieldServiceTier),
 			Permission: canonical(fields, hostedvalues.PostureFieldPermissionMode),

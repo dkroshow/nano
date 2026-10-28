@@ -37,7 +37,7 @@ func (s *server) hostedThreadNativeID(hostedID string) (string, bool) {
 
 func (s *server) handleThreadMessages(w http.ResponseWriter, r *http.Request, rawID string) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	if _, ok := s.catalog.(threadTranscriptCatalog); s.catalog == nil || !ok {
+	if _, ok := s.catalog.(threadindex.TranscriptCatalog); s.catalog == nil || !ok {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
 	}
@@ -57,7 +57,7 @@ func (s *server) handleThreadMessages(w http.ResponseWriter, r *http.Request, ra
 	threadindex.NewHandlers(s.catalog).HandleThreadMessages(w, r, rawID)
 }
 func (s *server) resolveThreadReference(ctx context.Context, reference string) (string, error) {
-	resolver, ok := s.catalog.(threadReferenceResolver)
+	resolver, ok := s.catalog.(threadindex.ReferenceResolver)
 	if !ok {
 		return reference, nil
 	}

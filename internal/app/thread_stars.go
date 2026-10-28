@@ -1,20 +1,5 @@
 package app
 
-// thread_stars.go — operator-owned starred threads.
-//
-// Stars are Gmail-style pins for the sidebar: a small durable set of
-// (provider, native_thread_id) keys the compact rail splits above the rest.
-// They are operator truth, not derived catalog data, so they live in a sibling
-// SQLite file (~/.nanod/thread-stars.sqlite, flag -thread-stars-db) rather
-// than history.sqlite. A delete-and-rebuild of the catalog must not forget
-// which threads the operator pinned. The names JSONL is the other operator-owned
-// overlay; stars stay out of it because this feature asked for SQLite.
-//
-// Listings overlay the flag at read time (listCatalogPage, thread detail,
-// session summaries, and GET /api/v1/sidebar/threads). Starred threads are
-// rescued into the active sidebar even when they sit outside the eligibility
-// window.
-
 import (
 	"context"
 	"database/sql"
@@ -28,8 +13,22 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions" // thread_stars.go — operator-owned starred threads.
+	//
+	// Stars are Gmail-style pins for the sidebar: a small durable set of
+	// (provider, native_thread_id) keys the compact rail splits above the rest.
+	// They are operator truth, not derived catalog data, so they live in a sibling
+	// SQLite file (~/.nanod/thread-stars.sqlite, flag -thread-stars-db) rather
+	// than history.sqlite. A delete-and-rebuild of the catalog must not forget
+	// which threads the operator pinned. The names JSONL is the other operator-owned
+	// overlay; stars stay out of it because this feature asked for SQLite.
+	//
+	// Listings overlay the flag at read time (listCatalogPage, thread detail,
+	// session summaries, and GET /api/v1/sidebar/threads). Starred threads are
+	// rescued into the active sidebar even when they sit outside the eligibility
+	// window.
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	"github.com/dkroshow/nano/internal/threadindex"
 	_ "modernc.org/sqlite"
 )
 
@@ -271,7 +270,7 @@ func (s *server) handleThreadStarred(w http.ResponseWriter, r *http.Request, raw
 	var payload struct {
 		Starred *bool `json:"starred"`
 	}
-	body := http.MaxBytesReader(w, r.Body, maxThreadNameRequestBytes)
+	body := http.MaxBytesReader(w, r.Body, threadindex.MaxThreadNameRequestBytes)
 	if err := json.NewDecoder(body).Decode(&payload); err != nil || payload.Starred == nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_starred", `Request body must be {"starred": true} or {"starred": false}`)
 		return

@@ -7,20 +7,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // sidebarTestCatalog wraps the fixture's real catalog so a test can publish
 // catalog changes, count full sidebar graph reads, and fail one read.
 type sidebarTestCatalog struct {
 	*threadCatalogService
-	changes   chan catalogChange
+	changes   chan catalog.Change
 	mu        sync.Mutex
 	fullReads int
 	failNext  bool
 }
 
-func (c *sidebarTestCatalog) SubscribeCatalog() (<-chan catalogChange, func()) {
+func (c *sidebarTestCatalog) SubscribeCatalog() (<-chan catalog.Change, func()) {
 	return c.changes, func() {}
 }
 
@@ -49,7 +51,7 @@ func (c *sidebarTestCatalog) reads() int {
 func startSidebarFixture(t *testing.T) (*server, *sidebarTestCatalog) {
 	t.Helper()
 	s, _ := sidebarActiveFixture(t, time.Now())
-	c := &sidebarTestCatalog{threadCatalogService: s.catalog.(*threadCatalogService), changes: make(chan catalogChange, 1)}
+	c := &sidebarTestCatalog{threadCatalogService: s.catalog.(*threadCatalogService), changes: make(chan catalog.Change, 1)}
 	s.catalog = c
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -86,7 +88,7 @@ func awaitSidebarRow(t *testing.T, s *server, match func(sidebarThread) bool, wi
 }
 
 // publish hands the loop one catalog change and waits until it takes it.
-func (c *sidebarTestCatalog) publish(t *testing.T, change catalogChange) {
+func (c *sidebarTestCatalog) publish(t *testing.T, change catalog.Change) {
 	t.Helper()
 	c.changes <- change
 	deadline := time.Now().Add(time.Second)
@@ -100,7 +102,7 @@ func (c *sidebarTestCatalog) publish(t *testing.T, change catalogChange) {
 
 func activeSidebarRow(t *testing.T, s *server, match func(sidebarThread) bool) (sidebarThread, bool) {
 	t.Helper()
-	snapshot, err := s.sidebar.activeSnapshot(catalogListQuery{}, true)
+	snapshot, err := s.sidebar.activeSnapshot(threadindex.ListQuery{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +123,7 @@ func TestSidebarCatalogBurstSharesOneTrailingRebuild(t *testing.T) {
 	before := c.reads()
 	isLate := seedLateThread(t, c, "late-recent")
 	for range 3 {
-		c.publish(t, catalogChange{Refresh: true})
+		c.publish(t, catalog.Change{Refresh: true})
 	}
 
 	time.Sleep(300 * time.Millisecond)
@@ -140,7 +142,7 @@ func TestSidebarCatalogBurstSharesOneTrailingRebuild(t *testing.T) {
 func TestSidebarFailedRuntimeRebuildKeepsWaitingCatalogRebuild(t *testing.T) {
 	s, c := startSidebarFixture(t)
 	isLate := seedLateThread(t, c, "pending-catalog")
-	c.publish(t, catalogChange{Refresh: true})
+	c.publish(t, catalog.Change{Refresh: true})
 	c.mu.Lock()
 	c.failNext = true
 	c.mu.Unlock()
@@ -255,7 +257,7 @@ func TestSidebarPartialRuntimeDeltaKeepsUnnamedRuntime(t *testing.T) {
 // matching revision.
 func TestSidebarGenerationNamesTheProcess(t *testing.T) {
 	s, _ := startSidebarFixture(t)
-	snapshot, err := s.sidebar.activeSnapshot(catalogListQuery{}, true)
+	snapshot, err := s.sidebar.activeSnapshot(threadindex.ListQuery{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +298,7 @@ func TestSidebarIndexTimeAloneResendsNoRow(t *testing.T) {
 	row := func(indexedAt string, diagnostics int) sidebarThread {
 		var thread sidebarThread
 		thread.ID, thread.Provider, thread.NativeID = "nth_row", "codex", "native-row"
-		thread.Source = catalogSourceSummary{Status: "present", DiagnosticCount: diagnostics, LastIndexedAt: indexedAt}
+		thread.Source = threadindex.SourceSummary{Status: "present", DiagnosticCount: diagnostics, LastIndexedAt: indexedAt}
 		return thread
 	}
 	active := func(item sidebarThread, version int64) sidebarActiveResponse {
@@ -311,17 +313,17 @@ func TestSidebarIndexTimeAloneResendsNoRow(t *testing.T) {
 		}
 	}
 	m := newSidebarMaterializedState()
-	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:00Z", 0), 1), nil, 1)
+	m.replace(nil, threadindex.ListQuery{}, active(row("2026-10-28T20:00:00Z", 0), 1), nil, 1)
 	events := m.events.subscribe()
-	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:05Z", 0), 1), nil, 1)
+	m.replace(nil, threadindex.ListQuery{}, active(row("2026-10-28T20:00:05Z", 0), 1), nil, 1)
 	if delta := next(events); delta != nil {
 		t.Fatalf("a newer index time alone sent a delta: %+v", *delta)
 	}
-	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:10Z", 0), 2), nil, 2)
+	m.replace(nil, threadindex.ListQuery{}, active(row("2026-10-28T20:00:10Z", 0), 2), nil, 2)
 	if delta := next(events); delta == nil || len(delta.Rows) != 0 || delta.CatalogVersion != 2 {
 		t.Fatalf("a newer index time and catalog version sent %+v, want no rows at version 2", delta)
 	}
-	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:15Z", 2), 3), nil, 3)
+	m.replace(nil, threadindex.ListQuery{}, active(row("2026-10-28T20:00:15Z", 2), 3), nil, 3)
 	if delta := next(events); delta == nil || len(delta.Rows) != 1 || delta.Rows[0].Source.DiagnosticCount != 2 {
 		t.Fatalf("a changed diagnostic count sent %+v, want its row", delta)
 	}

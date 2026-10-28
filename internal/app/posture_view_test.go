@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // Item 3 of the live-posture plan: one posture struct serves every surface.
@@ -189,7 +191,7 @@ func TestMemoryThreadRowServesPostureCells(t *testing.T) {
 		Posture: sessionPosture{Model: "opus", Effort: "high", PermissionMode: "plan", ServiceTier: "priority"},
 	}
 	row := memoryThreadRow(sum)
-	cells := map[string]catalogValue{
+	cells := map[string]threadindex.Value{
 		"model":      row.Metadata.Model,
 		"effort":     row.Metadata.Effort,
 		"priority":   row.Metadata.Priority,

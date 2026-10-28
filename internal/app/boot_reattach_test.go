@@ -1420,7 +1420,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	}
 	waitForSessionStatus(t, server, restarted.ID(), "ready")
 	callbackDone := make(chan struct{})
-	service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+	service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 		server.confirmDurableThread(ctx, change)
 		close(callbackDone)
 	})

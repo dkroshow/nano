@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // Duplicate-messages gate.
@@ -228,7 +229,7 @@ func (c *gateCatalog) servedTranscript(t *testing.T, threadID string) []gateRow 
 		if recorder.Code != http.StatusOK {
 			return nil
 		}
-		var response transcriptResponse
+		var response threadindex.TranscriptResponse
 		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 			t.Fatal(err)
 		}
@@ -242,7 +243,7 @@ func (c *gateCatalog) servedTranscript(t *testing.T, threadID string) []gateRow 
 	return nil
 }
 
-func gateTranscriptRows(items []transcriptItem) []gateRow {
+func gateTranscriptRows(items []threadindex.TranscriptItem) []gateRow {
 	rows := make([]gateRow, 0, len(items))
 	for _, item := range items {
 		if item.Category == "messages" || item.Category == "reasoning" {
@@ -294,9 +295,9 @@ func gateMessageRows(rows []gateRow) []gateRow {
 	for _, row := range rows {
 		switch row.Type {
 		case "user_message":
-			messages = append(messages, gateRow{Role: threadMessageRoleUser, Text: row.Text})
+			messages = append(messages, gateRow{Role: threadindex.MessageRoleUser, Text: row.Text})
 		case "agent_message":
-			messages = append(messages, gateRow{Role: threadMessageRoleAgent, Text: row.Text})
+			messages = append(messages, gateRow{Role: threadindex.MessageRoleAgent, Text: row.Text})
 		}
 	}
 	return messages
@@ -352,7 +353,7 @@ func TestDuplicateGateEqualMessagesStaySeparate(t *testing.T) {
 		id := catalog.threadID(t, "dcee0889-2586-5d7b-a5dd-62b2866262ea", 2)
 		var ticks int
 		for _, row := range catalog.servedMessages(t, id) {
-			if row.Role == threadMessageRoleAgent && row.Text == "Running the tick." {
+			if row.Role == threadindex.MessageRoleAgent && row.Text == "Running the tick." {
 				ticks++
 			}
 		}

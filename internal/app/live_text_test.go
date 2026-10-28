@@ -20,6 +20,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -59,7 +60,7 @@ type countingLiveTextCatalog struct {
 	reads, queries *atomic.Int64
 }
 
-func (c *countingLiveTextCatalog) LoadTranscripts(ctx context.Context, id string, queries []transcriptListQuery, matches []history.TranscriptMatch) ([]transcriptResponse, map[string]string, error) {
+func (c *countingLiveTextCatalog) LoadTranscripts(ctx context.Context, id string, queries []threadindex.TranscriptQuery, matches []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
 	c.reads.Add(1)
 	c.queries.Store(int64(len(queries)))
 	return c.threadCatalogService.LoadTranscripts(ctx, id, queries, matches)
@@ -73,10 +74,10 @@ type liveTextViewer struct {
 }
 
 func newLiveTextHarness(t *testing.T) *liveTextHarness {
-	return newLiveTextHarnessWith(t, transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	return newLiveTextHarnessWith(t, threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 }
 
-func newLiveTextHarnessWith(t *testing.T, query transcriptListQuery) *liveTextHarness {
+func newLiveTextHarnessWith(t *testing.T, query threadindex.TranscriptQuery) *liveTextHarness {
 	return newLiveTextHarnessFor(t, "claude", query)
 }
 
@@ -93,11 +94,11 @@ const (
 	codexFixtureReply3  = "msg_e2bc6795bd175cd3834899b1adf128b7"
 )
 
-func newLiveTextHarnessFor(t *testing.T, provider string, query transcriptListQuery) *liveTextHarness {
+func newLiveTextHarnessFor(t *testing.T, provider string, query threadindex.TranscriptQuery) *liveTextHarness {
 	return newLiveTextHarnessForThread(t, provider, query, grokFixtureThread)
 }
 
-func newLiveTextHarnessForThread(t *testing.T, provider string, query transcriptListQuery, grokThread string, configure ...func(*sessionConfig)) *liveTextHarness {
+func newLiveTextHarnessForThread(t *testing.T, provider string, query threadindex.TranscriptQuery, grokThread string, configure ...func(*sessionConfig)) *liveTextHarness {
 	t.Helper()
 	root := t.TempDir()
 	file := filepath.Join(root, "-disposable", liveTextFixtureSession+".jsonl")
@@ -151,7 +152,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query transcript
 	h.projection = cfg.Projection.(*liveProjection)
 	h.queue = cfg.QueuedTurns
 	h.journal = cfg.SendAttempts
-	service.SetTranscriptChanged(func(context.Context, transcriptChange) {
+	service.SetTranscriptChanged(func(context.Context, threadindex.TranscriptChange) {
 		if !h.held.Load() {
 			sess.LiveTextService().Applied()
 		}
@@ -161,7 +162,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query transcript
 }
 
 // open subscribes another pane and waits for its tail.
-func (h *liveTextHarness) open(query transcriptListQuery) *liveTextViewer {
+func (h *liveTextHarness) open(query threadindex.TranscriptQuery) *liveTextViewer {
 	v := &liveTextViewer{t: h.t, pane: newLiveTextPane(query), view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}}
 	liveTextOf(h.sess).subscribe(v.pane)
 	v.expect("tail", func(m liveTextMessage) bool { return m.Type == "tail" })
@@ -178,7 +179,7 @@ func (h *liveTextHarness) release() {
 }
 
 // page reads the catalog directly: the test's own view of what is saved.
-func (h *liveTextHarness) page(query transcriptListQuery) []transcriptItem {
+func (h *liveTextHarness) page(query threadindex.TranscriptQuery) []threadindex.TranscriptItem {
 	h.t.Helper()
 	id, err := h.service.ResolveThreadReference(context.Background(), h.sess.ThreadID())
 	if err != nil {
@@ -200,7 +201,7 @@ func (h *liveTextHarness) waitTurnEnded(nativeTurnID string) {
 		if err != nil {
 			continue // not indexed yet
 		}
-		response, err := h.service.LoadTranscript(context.Background(), id, transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+		response, err := h.service.LoadTranscript(context.Background(), id, threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 		if err != nil {
 			h.t.Fatal(err)
 		}
@@ -217,7 +218,7 @@ func (h *liveTextHarness) waitTurnEnded(nativeTurnID string) {
 func (h *liveTextHarness) waitSaved(nativeID string) {
 	h.t.Helper()
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		for _, row := range h.page(transcriptListQuery{View: devThreadTranscriptView, HiddenSpecified: true, Limit: 40}) {
+		for _, row := range h.page(threadindex.TranscriptQuery{View: threadindex.DevThreadTranscriptView, HiddenSpecified: true, Limit: 40}) {
 			if row.NativeItemID == nativeID {
 				return
 			}
@@ -310,7 +311,7 @@ func (v *liveTextViewer) expect(what string, until func(liveTextMessage) bool) {
 
 // livePaneView is the browser's side, reduced to what continuity needs.
 type livePaneView struct {
-	rows  []transcriptItem
+	rows  []threadindex.TranscriptItem
 	live  []liveTextEntry
 	shown map[string]bool // live entry ids ever shown
 	// expectSaved names prompts the test will save, by their unique text, so
@@ -466,7 +467,7 @@ func TestLiveTextHandsOverToSavedRowsInOneMessage(t *testing.T) {
 	h.hold()
 	h.save(saved[thinkingLine+1:])
 	h.waitSaved(fixtureReply)
-	second := h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	second := h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	if second.view.reply() != nil || !second.view.hasNative(fixtureReply) {
 		t.Fatalf("the second pane shows rows %+v and live text %+v, want the saved reply only as a row", second.view.rows, second.view.live)
 	}
@@ -583,7 +584,7 @@ func TestLiveTextTailNamesPromptsWhoseSavedRowsItHolds(t *testing.T) {
 	settle("in-page", "22222222-3333-4444-8555-666666666666")
 	settle("not-in-page", "99999999-3333-4444-8555-666666666666")
 
-	later := &liveTextViewer{t: t, pane: newLiveTextPane(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}),
+	later := &liveTextViewer{t: t, pane: newLiveTextPane(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}),
 		view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}}
 	liveTextOf(h.sess).subscribe(later.pane)
 	later.expect("its tail names the prompt whose row it holds, and only that one", func(m liveTextMessage) bool {
@@ -608,7 +609,7 @@ func TestLiveTextTailFailsWhenItCannotNameItsSavedPrompts(t *testing.T) {
 	if err := h.queue.Database().Close(); err != nil {
 		t.Fatal(err)
 	}
-	later := &liveTextViewer{t: t, pane: newLiveTextPane(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}),
+	later := &liveTextViewer{t: t, pane: newLiveTextPane(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}),
 		view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}}
 	liveTextOf(h.sess).subscribe(later.pane)
 	later.expect("the pane fails", func(m liveTextMessage) bool {
@@ -662,7 +663,7 @@ func TestLiveTextMergedPromptsLeaveOnTheirSavedRow(t *testing.T) {
 func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 	// A one-row page, and a later turn saved after the reply: the reply is not
 	// on the page.
-	query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 1}
+	query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 1}
 	h := newLiveTextHarnessWith(t, query)
 	later := fixtureLines(t, "claude-tool-error.saved.jsonl")
 	h.save(append(fixtureLines(t, "claude-turn.saved.jsonl"), later...))
@@ -774,7 +775,7 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 
 	// A Codex reply whose start the loop missed, as after a restart, never
 	// shows; finished and never saved, it is still recorded.
-	missed := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	missed := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	var codexTurn [][]byte
 	for _, line := range fixtureLines(t, "codex-turns.wire.jsonl") {
 		if !strings.Contains(string(line), `"item/started","params":{"item":{"type":"agentMessage"`) {
@@ -798,7 +799,7 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 	h.projection.SetClaudeProviderTurnID("claude:" + h.sess.HostedThreadID() + ":1")
 	h.feed(wire)
 	h.expect("finished reply", finished(h))
-	reloaded := h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	reloaded := h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	reloaded.view.neverSaved[reply] = true
 	if reloaded.view.reply() == nil {
 		t.Fatal("a reload hid the unsaved reply")
@@ -987,7 +988,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			h := newLiveTextHarnessForThread(t, "claude", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = store })
+			h := newLiveTextHarnessForThread(t, "claude", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = store })
 			if _, err := store.ensureSession(h.sess.HostedThreadID(), "claude", presentationShared); err != nil {
 				t.Fatal(err)
 			}
@@ -1285,7 +1286,7 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 	// A tail larger than a pane's backlog limit still lands.
 	h.sess.LiveTextService().OutboxChanged(prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "large",
 		Sequence: 3, PresentationText: strings.Repeat("x", liveTextPaneBacklog+1), State: prompts.Queued})
-	reopened := h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	reopened := h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	if !containsEntry(reopened.view.live, "prompt:large") {
 		t.Fatalf("reopened pane live = %d entries, want the large queued prompt", len(reopened.view.live))
 	}
@@ -1369,7 +1370,7 @@ func TestLiveTextShowsQueueInDeliveryOrder(t *testing.T) {
 func TestLiveTextRevisedRowLeavesItsProfile(t *testing.T) {
 	for _, tool := range []string{"Bash", "Read"} {
 		t.Run(tool, func(t *testing.T) {
-			h := newLiveTextHarnessWith(t, transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40, HiddenSpecified: true,
+			h := newLiveTextHarnessWith(t, threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40, HiddenSpecified: true,
 				HiddenCategories: []string{"reasoning", "toolCall", "toolResult", "system", "unclassified"}})
 			saved := fixtureLines(t, "claude-tool-error.saved.jsonl")
 			if tool != "Bash" {
@@ -1381,7 +1382,7 @@ func TestLiveTextRevisedRowLeavesItsProfile(t *testing.T) {
 			ended := lineWith(saved, `"stop_reason":"end_turn"`)
 			h.save(saved[:result+1])
 			for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-				rows := h.page(transcriptListQuery{View: devThreadTranscriptView, HiddenSpecified: true, Limit: 40})
+				rows := h.page(threadindex.TranscriptQuery{View: threadindex.DevThreadTranscriptView, HiddenSpecified: true, Limit: 40})
 				if len(rows) > 0 && rows[len(rows)-1].Type == "tool_result" {
 					break
 				}
@@ -1405,7 +1406,7 @@ func TestLiveTextRevisedRowLeavesItsProfile(t *testing.T) {
 			if tool == "Bash" {
 				// The turn now reads as ended without an answer.
 				for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-					rows := h.page(transcriptListQuery{View: devThreadTranscriptView, HiddenSpecified: true, Limit: 40})
+					rows := h.page(threadindex.TranscriptQuery{View: threadindex.DevThreadTranscriptView, HiddenSpecified: true, Limit: 40})
 					if len(rows) > 0 && rows[len(rows)-1].Type == "reasoning" {
 						break
 					}
@@ -1451,7 +1452,7 @@ func TestLiveTextRevisedRowLeavesItsProfile(t *testing.T) {
 func TestLiveTextCodexHandsOverByTurnAndItem(t *testing.T) {
 	for _, file := range []string{"codex-turns.saved.jsonl", "codex-turns-legacy.saved.jsonl"} {
 		t.Run(file, func(t *testing.T) {
-			query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}
+			query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}
 			h := newLiveTextHarnessFor(t, "codex", query)
 			saved := fixtureLines(t, file)
 			var turns [][][]byte
@@ -1534,7 +1535,7 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			restarted := mode != "live"
 			ctx := context.Background()
-			query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}
+			query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}
 			h := newLiveTextHarnessFor(t, "codex", query)
 			thread, turn := codexFixtureThread, "01a0f63e-0000-7000-8000-00000000a001"
 			accept := func(action, text, event string) prompts.OutboxEntry {
@@ -1631,7 +1632,7 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 // as a reload. A reply first seen mid-stream, as after a restart, shows only
 // once saved.
 func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
-	query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}
+	query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}
 	saved := fixtureLines(t, "codex-turns.saved.jsonl")
 	var turns [][][]byte
 	var frames [][]byte
@@ -1815,7 +1816,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 			}
 			t.Run(name, func(t *testing.T) {
 				ctx := context.Background()
-				h := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+				h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 				sess := h.sess
 				hosted, native := sess.HostedThreadID(), sess.ThreadID()
 				var interrupts atomic.Int32
@@ -1823,7 +1824,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				seedTestSessionRegistry(&h.srv.Registry, map[string]*session{sess.ID(): sess})
 				sess.ConfigureSavedReaders(nil, h.srv.savedPromptsFor(sess), nil, nil, nil)
 				var settledCommits atomic.Int32
-				h.service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+				h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 					sess.LiveTextService().Applied()
 					h.srv.confirmDurableThread(ctx, change)
 					settledCommits.Add(1)
@@ -2038,7 +2039,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	ctx := context.Background()
 	executions := newTestAgentExecutionStore(t, "run")
-	h := newLiveTextHarnessForThread(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = executions })
+	h := newLiveTextHarnessForThread(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = executions })
 	sess := h.sess // a Discard ends any operation the prompt carries
 	hosted, native := sess.HostedThreadID(), sess.ThreadID()
 	const text = "no, budget requests go to me"
@@ -2068,7 +2069,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 		t.Fatalf("discard status = %d, body = %s", discard.Code, discard.Body.String())
 	}
 	h.expect("discarded prompt gone", func(liveTextMessage) bool { return !containsEntry(h.view.live, "prompt:dropped") })
-	if reloaded := h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}); containsEntry(reloaded.view.live, "prompt:dropped") {
+	if reloaded := h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}); containsEntry(reloaded.view.live, "prompt:dropped") {
 		t.Fatal("a reload brought the discarded prompt back")
 	}
 	if record, _, err := sess.PromptStore().Get(ctx, "dropped"); err != nil || record.Outbox.State != prompts.Expired || record.ProviderText != text {
@@ -2151,7 +2152,7 @@ func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin pr
 // Boundary: the settlement pass, the live stream and the journal route.
 func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) {
 	ctx := context.Background()
-	h := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
 	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
 		return h.srv.savedTurnEvidence(ctx, sess, turnID)
@@ -2212,7 +2213,7 @@ func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) 
 // stream and the journal routes, for the same stored prompts.
 func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	ctx := context.Background()
-	h := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
 	hosted, native := sess.HostedThreadID(), sess.ThreadID()
 	submit := func(action string, nextTurn bool) {
@@ -2333,7 +2334,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	h.expect("first two messages saved", func(liveTextMessage) bool {
 		return len(h.view.rows) == 3 && len(h.view.live) == 0
 	})
-	before := append([]transcriptItem(nil), h.view.rows...)
+	before := append([]threadindex.TranscriptItem(nil), h.view.rows...)
 
 	// Lose the old pane/session, as process exit does, but keep the provider
 	// file, history store and transactional delivery journal. Do not close a
@@ -2385,7 +2386,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		t.Fatalf("restored delivery binding: %+v, %+v, %v", restored, attempt, err)
 	}
 	h.sess = fresh
-	h.liveTextViewer = h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	h.liveTextViewer = h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	assertRows := func(want int) {
 		t.Helper()
 		if len(h.view.rows) != want || len(h.view.live) != 0 {
@@ -2445,7 +2446,7 @@ func TestLiveTextEnhancedPaneOmitsDeveloperFields(t *testing.T) {
 	h := newLiveTextHarness(t)
 	h.save(fixtureLines(t, "claude-tool-error.saved.jsonl"))
 	h.expect("saved rows", func(liveTextMessage) bool { return len(h.view.rows) >= 2 })
-	rawTail := func(query transcriptListQuery) string {
+	rawTail := func(query threadindex.TranscriptQuery) string {
 		pane := newLiveTextPane(query)
 		liveTextOf(h.sess).subscribe(pane)
 		defer liveTextOf(h.sess).unsubscribe(pane)
@@ -2464,13 +2465,13 @@ func TestLiveTextEnhancedPaneOmitsDeveloperFields(t *testing.T) {
 		t.Fatal("no tail")
 		return ""
 	}
-	dev := rawTail(transcriptListQuery{View: devThreadTranscriptView, HiddenSpecified: true, Limit: 40})
+	dev := rawTail(threadindex.TranscriptQuery{View: threadindex.DevThreadTranscriptView, HiddenSpecified: true, Limit: 40})
 	for _, field := range []string{`"detail":`, `"filterTags":`, `"config":`} {
 		if !strings.Contains(dev, field) {
 			t.Fatalf("the dev tail lacks %s, so this test cannot show the Enhanced tail dropping it", field)
 		}
 	}
-	enhanced := rawTail(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	enhanced := rawTail(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	for _, field := range []string{`"detail":`, `"filterTags":`, `"synthetic":`, `"config":`, `"nativeTurnId":`, `"finalitySource":`} {
 		if strings.Contains(enhanced, field) {
 			t.Fatalf("the Enhanced tail carries %s", field)

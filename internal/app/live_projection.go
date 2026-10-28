@@ -701,11 +701,11 @@ func (s *server) savedTurnEvidence(ctx context.Context, sess *sessions.Session, 
 		turnID == "" || sess.ThreadID() == "" {
 		return durableTurnEvidence{}, false
 	}
-	resolver, ok := s.catalog.(threadReferenceResolver)
+	resolver, ok := s.catalog.(threadindex.ReferenceResolver)
 	if !ok {
 		return durableTurnEvidence{}, false
 	}
-	catalog, ok := s.catalog.(savedTurnStatusCatalog)
+	catalog, ok := s.catalog.(threadindex.SavedTurnStatusCatalog)
 	if !ok {
 		return durableTurnEvidence{}, false
 	}
@@ -736,7 +736,7 @@ func (s *server) savedTurnEvidence(ctx context.Context, sess *sessions.Session, 
 // resolved; the fallback loads only this catalog thread. It never resolves
 // every attached session through SQLite. Exact native item or call ids are
 // required; transcript text is not a join key.
-func (s *server) confirmDurableThread(ctx context.Context, change transcriptChange) {
+func (s *server) confirmDurableThread(ctx context.Context, change threadindex.TranscriptChange) {
 	if change.ThreadID == "" {
 		return
 	}
@@ -808,8 +808,8 @@ func (p *liveProjection) RetainedTurnEvidence(turnID string) (liveProjectionTurn
 }
 
 func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
-	catalog, ok := s.catalog.(threadTranscriptCatalog)
-	resolver, resolves := s.catalog.(threadReferenceResolver)
+	catalog, ok := s.catalog.(threadindex.TranscriptCatalog)
+	resolver, resolves := s.catalog.(threadindex.ReferenceResolver)
 	if !ok || !resolves || sess == nil || sess.ThreadID() == "" {
 		httpapi.WriteHTTPError(w, "conversation history unavailable", http.StatusServiceUnavailable)
 		return

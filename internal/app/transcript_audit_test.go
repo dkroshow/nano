@@ -15,36 +15,37 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type fakeTranscriptAuditCatalog struct {
 	fakeTranscriptCatalog
-	reference           transcriptAuditReference
+	reference           threadindex.AuditReference
 	referenceErr        error
 	referenceThread     string
 	referenceProjection string
 	referenceHead       int64
 	referenceMin        int64
 	referenceMax        int64
-	referenceScopes     []transcriptAuditScope
+	referenceScopes     []threadindex.AuditScope
 }
 
-func (f *fakeTranscriptAuditCatalog) LoadTranscriptAuditReference(_ context.Context, threadID, projectionKey string, snapshotHead, minSeq, maxSeq int64, scopes []transcriptAuditScope) (transcriptAuditReference, error) {
+func (f *fakeTranscriptAuditCatalog) LoadTranscriptAuditReference(_ context.Context, threadID, projectionKey string, snapshotHead, minSeq, maxSeq int64, scopes []threadindex.AuditScope) (threadindex.AuditReference, error) {
 	f.referenceThread, f.referenceProjection, f.referenceHead = threadID, projectionKey, snapshotHead
 	f.referenceMin, f.referenceMax = minSeq, maxSeq
-	f.referenceScopes = append([]transcriptAuditScope(nil), scopes...)
+	f.referenceScopes = append([]threadindex.AuditScope(nil), scopes...)
 	return f.reference, f.referenceErr
 }
 
 func newTranscriptAuditTestServer() (*server, *fakeTranscriptAuditCatalog) {
 	catalog := &fakeTranscriptAuditCatalog{
-		fakeTranscriptCatalog: fakeTranscriptCatalog{response: transcriptResponse{
-			ThreadID: "nth-one", Projection: transcriptProjection{Key: "projection-1", State: "ready", SourceStatus: "present"},
-			Page: transcriptPageInfo{SnapshotHeadSeq: 3},
+		fakeTranscriptCatalog: fakeTranscriptCatalog{response: threadindex.TranscriptResponse{
+			ThreadID: "nth-one", Projection: threadindex.TranscriptProjection{Key: "projection-1", State: "ready", SourceStatus: "present"},
+			Page: threadindex.TranscriptPageInfo{SnapshotHeadSeq: 3},
 		}},
-		reference: transcriptAuditReference{
+		reference: threadindex.AuditReference{
 			ProjectionKey: "projection-1", SnapshotHeadSeq: 3, StartSeq: 1, EndSeq: 3,
-			Rows: []transcriptAuditReferenceRow{{ID: "a", ProjectedSeq: 1, Category: "messages", Role: "assistant", Text: "private-reference-body"}},
+			Rows: []threadindex.AuditReferenceRow{{ID: "a", ProjectedSeq: 1, Category: "messages", Role: "assistant", Text: "private-reference-body"}},
 		},
 	}
 	return &server{catalog: catalog, transcriptAudits: newTranscriptAuditStore(), transcriptAuditEvents: newTranscriptAuditHub()}, catalog
@@ -84,7 +85,7 @@ func TestTranscriptAuditTargetsExactPaneAndPinsReference(t *testing.T) {
 	events := s.transcriptAuditEvents.subscribe()
 	defer s.transcriptAuditEvents.unsubscribe(events)
 	request := createTranscriptAuditForTest(t, s)
-	if request.Status != "pending" || request.CatalogThreadID != "nth-one" || !slices.Equal(request.Scopes, []transcriptAuditScope{transcriptAuditMessages}) || request.ReferenceProjectionKey != "projection-1" || request.ReferenceSnapshotHead != 3 {
+	if request.Status != "pending" || request.CatalogThreadID != "nth-one" || !slices.Equal(request.Scopes, []threadindex.AuditScope{threadindex.AuditMessages}) || request.ReferenceProjectionKey != "projection-1" || request.ReferenceSnapshotHead != 3 {
 		t.Fatalf("request = %#v", request)
 	}
 	select {
@@ -246,7 +247,7 @@ func TestTranscriptAuditExpiresWithoutBrowserAndCapsConcurrency(t *testing.T) {
 	for index := 0; index < maxTranscriptAuditPending; index++ {
 		_, err := store.create(transcriptAuditRequest{
 			ID: "audit-" + string(rune('a'+index)), ClientActionID: "action-" + string(rune('a'+index)), TabID: "tab", PaneID: "pane",
-			Scopes: []transcriptAuditScope{transcriptAuditMessages}, Status: "pending", deadline: now.Add(time.Second),
+			Scopes: []threadindex.AuditScope{threadindex.AuditMessages}, Status: "pending", deadline: now.Add(time.Second),
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -321,7 +322,7 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := newStoredCatalog(t, store)
-	messages, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, written.ProjectionKey, written.LatestSeq, 1, 999, []transcriptAuditScope{transcriptAuditMessages})
+	messages, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, written.ProjectionKey, written.LatestSeq, 1, 999, []threadindex.AuditScope{threadindex.AuditMessages})
 	if err != nil || !messages.CapReached || messages.CapReason != "rows" || messages.StartSeq != 6 || messages.EndSeq != 105 || len(messages.Rows) != 100 {
 		t.Fatalf("bounded messages = %#v err=%v", messages, err)
 	}
@@ -330,7 +331,7 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 			t.Fatalf("message scope leaked row: %#v", row)
 		}
 	}
-	exactWindow, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, written.ProjectionKey, written.LatestSeq, 20, 30, []transcriptAuditScope{transcriptAuditMessages})
+	exactWindow, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, written.ProjectionKey, written.LatestSeq, 20, 30, []threadindex.AuditScope{threadindex.AuditMessages})
 	if err != nil || exactWindow.CapReached || exactWindow.StartSeq != 20 || exactWindow.EndSeq != 30 || len(exactWindow.Rows) != 11 {
 		t.Fatalf("exact bounded window = %#v err=%v", exactWindow, err)
 	}
@@ -343,7 +344,7 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 		t.Fatalf("resolve catalog = %q, %v", resolvedCatalog, err)
 	}
 	for _, unsupported := range []string{"session-one", "nht_not_a_catalog_id"} {
-		if _, err := service.ResolveThreadReference(ctx, unsupported); !errors.Is(err, errCatalogThreadNotFound) {
+		if _, err := service.ResolveThreadReference(ctx, unsupported); !errors.Is(err, threadindex.ErrCatalogThreadNotFound) {
 			t.Fatalf("unsupported reference %q resolved: %v", unsupported, err)
 		}
 	}
@@ -383,10 +384,10 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, written.ProjectionKey, written.LatestSeq, 0, 0, []transcriptAuditScope{transcriptAuditMessages}); !errors.Is(err, history.ErrTranscriptChanged) {
+	if _, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, written.ProjectionKey, written.LatestSeq, 0, 0, []threadindex.AuditScope{threadindex.AuditMessages}); !errors.Is(err, history.ErrTranscriptChanged) {
 		t.Fatalf("changed projection error = %v", err)
 	}
-	byteDetail, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, byteWritten.ProjectionKey, byteWritten.LatestSeq, 0, 0, []transcriptAuditScope{transcriptAuditMessages})
+	byteDetail, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, byteWritten.ProjectionKey, byteWritten.LatestSeq, 0, 0, []threadindex.AuditScope{threadindex.AuditMessages})
 	if err != nil || !byteDetail.CapReached || byteDetail.CapReason != "bytes" || len(byteDetail.Rows) != 1 || byteDetail.StartSeq != 105 {
 		t.Fatalf("byte-capped detail = %#v err=%v", byteDetail, err)
 	}

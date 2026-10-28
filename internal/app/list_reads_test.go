@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 )
@@ -45,7 +47,7 @@ type countingCatalog struct {
 	lists, names atomic.Int64
 }
 
-func (c *countingCatalog) ListThreads(ctx context.Context, query catalogListQuery) (catalogPage, error) {
+func (c *countingCatalog) ListThreads(ctx context.Context, query threadindex.ListQuery) (catalogPage, error) {
 	c.lists.Add(1)
 	return c.threadCatalogService.ListThreads(ctx, query)
 }

@@ -24,8 +24,8 @@ import (
 type fakeThreadCatalog struct {
 	page      catalogPage
 	thread    catalogThread
-	status    catalogIndexStatus
-	listQuery catalogListQuery
+	status    threadindex.IndexStatus
+	listQuery threadindex.ListQuery
 	loadID    string
 	refreshes int
 	listErr   error
@@ -42,14 +42,14 @@ type fakeThreadCatalog struct {
 	// rescueQueries). rescueErr fails both, and hasErr fails identity reads.
 	rescued         map[string]catalogThread
 	rescueErr       error
-	rescueQueries   []catalogListQuery
-	identityQueries []catalogListQuery
+	rescueQueries   []threadindex.ListQuery
+	identityQueries []threadindex.ListQuery
 	assigned        []struct{ provider, nativeID, name string }
 	names           map[string]string
 	nameSources     map[string]history.ThreadNameProvenance
 }
 
-func (f *fakeThreadCatalog) ListThreads(_ context.Context, q catalogListQuery) (catalogPage, error) {
+func (f *fakeThreadCatalog) ListThreads(_ context.Context, q threadindex.ListQuery) (catalogPage, error) {
 	if len(q.Identities) > 0 {
 		f.identityQueries = append(f.identityQueries, q)
 		if f.hasErr != nil {
@@ -90,7 +90,7 @@ func (f *fakeThreadCatalog) LoadThread(_ context.Context, id string) (catalogThr
 	return f.thread, f.loadErr
 }
 
-func (f *fakeThreadCatalog) IndexStatus(context.Context) (catalogIndexStatus, error) {
+func (f *fakeThreadCatalog) IndexStatus(context.Context) (threadindex.IndexStatus, error) {
 	return f.status, f.statusErr
 }
 
@@ -99,8 +99,8 @@ func (f *fakeThreadCatalog) RequestRefresh() bool {
 	return true
 }
 
-func (f *fakeThreadCatalog) RenameThread(context.Context, string, string) (catalogThreadName, error) {
-	return catalogThreadName{}, nil
+func (f *fakeThreadCatalog) RenameThread(context.Context, string, string) (threadindex.ThreadName, error) {
+	return threadindex.ThreadName{}, nil
 }
 
 func (f *fakeThreadCatalog) ClearThreadName(context.Context, string) error { return nil }
@@ -228,7 +228,7 @@ func TestCatalogListContractAndQuery(t *testing.T) {
 	value := "high"
 	evidence := "native_durable"
 	fake := &fakeThreadCatalog{page: catalogPage{
-		Items:          []catalogThread{{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "subagent", ParentNativeID: "native-parent", Metadata: catalogMetadata{Effort: catalogValue{State: "known", Value: &value, Evidence: &evidence}}}}},
+		Items:          []catalogThread{{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "subagent", ParentNativeID: "native-parent", Metadata: threadindex.Metadata{Effort: threadindex.Value{State: "known", Value: &value, Evidence: &evidence}}}}},
 		CatalogVersion: 7,
 	}}
 	s := &server{catalog: fake}
@@ -287,7 +287,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	if err := control.ClaimNativeID(worker.ID, "claude", "claude-native", false); err != nil {
 		t.Fatal(err)
 	}
-	fake := &fakeThreadCatalog{page: catalogPage{Items: []catalogThread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread", Metadata: catalogMetadata{}}}}}}
+	fake := &fakeThreadCatalog{page: catalogPage{Items: []catalogThread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread", Metadata: threadindex.Metadata{}}}}}}
 	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: newRuntimeHub(), Registry: newSessionRegistry()}
 
 	readCatalog := func() catalogThread {
@@ -365,7 +365,7 @@ func TestCatalogListRejectsInvalidQuery(t *testing.T) {
 }
 
 func TestCatalogDetailNotFoundAndEmptySources(t *testing.T) {
-	fake := &fakeThreadCatalog{loadErr: errCatalogThreadNotFound}
+	fake := &fakeThreadCatalog{loadErr: threadindex.ErrCatalogThreadNotFound}
 	s := &server{catalog: fake}
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/missing", nil))
@@ -391,8 +391,8 @@ func TestCatalogDetailNotFoundAndEmptySources(t *testing.T) {
 }
 
 func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
-	status := catalogIndexStatus{State: "ready", CatalogVersion: 3,
-		InteractionCounts:        catalogInteractionCounts{Interactive: 5, Programmatic: 8, Unclassified: 2},
+	status := threadindex.IndexStatus{State: "ready", CatalogVersion: 3,
+		InteractionCounts:        threadindex.InteractionCounts{Interactive: 5, Programmatic: 8, Unclassified: 2},
 		TranscriptChangeWorkers:  2,
 		TranscriptChangeBacklog:  4,
 		TranscriptChangeInFlight: 2,
@@ -405,7 +405,7 @@ func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	var statusBody catalogIndexStatus
+	var statusBody threadindex.IndexStatus
 	if err := json.Unmarshal(rec.Body.Bytes(), &statusBody); err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +443,7 @@ func TestCatalogBackendErrorsDoNotLeak(t *testing.T) {
 }
 
 func TestCatalogInvalidCursorReturnsBadRequest(t *testing.T) {
-	s := &server{catalog: &fakeThreadCatalog{listErr: errInvalidThreadCatalogCursor}}
+	s := &server{catalog: &fakeThreadCatalog{listErr: threadindex.ErrInvalidThreadCatalogCursor}}
 	rec := httptest.NewRecorder()
 	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads?cursor=bad", nil))
 	if rec.Code != http.StatusBadRequest {
@@ -782,7 +782,7 @@ func TestMemoryThreadRowCarriesDialogNameBeforeDurableIndexing(t *testing.T) {
 		ID: "session-1", Provider: "codex", Name: "sidebar name", CreatedAt: "2026-08-04T12:00:00Z",
 	})
 	if row.Name == nil || row.Name.Value != "sidebar name" ||
-		row.Name.Provenance != "manual" || row.Name.Evidence != threadNameEvidence {
+		row.Name.Provenance != "manual" || row.Name.Evidence != threadindex.ThreadNameEvidence {
 		t.Fatalf("memory row name = %#v", row.Name)
 	}
 }
@@ -1112,11 +1112,11 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 			case "native-1", "nat":
 				return "nth_1", nil
 			case "n":
-				return "", &ambiguousThreadReferenceError{Candidates: []string{"nth_1", "nth_2"}}
+				return "", &threadindex.AmbiguousReferenceError{Candidates: []string{"nth_1", "nth_2"}}
 			}
-			return "", errCatalogThreadNotFound
+			return "", threadindex.ErrCatalogThreadNotFound
 		},
-		pages: map[string]transcriptResponse{"": {Items: []transcriptItem{}, Turns: []transcriptTurn{}}},
+		pages: map[string]threadindex.TranscriptResponse{"": {Items: []threadindex.TranscriptItem{}, Turns: []threadindex.TranscriptTurn{}}},
 	}
 	fake.thread = catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "claude", NativeID: "native-1", Kind: "main"}}
 	s := &server{catalog: fake}

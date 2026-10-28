@@ -48,9 +48,9 @@ func (l *liveTextLoop) RequestPane(r *http.Request) (sessions.Pane, error) {
 
 // RowsPane creates a saved-row pane for a conversation view.
 func (l *liveTextLoop) RowsPane(view conversationView) sessions.Pane {
-	query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 1}
+	query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 1}
 	if view == conversationViewFull {
-		query.View, query.HiddenSpecified = devThreadTranscriptView, true
+		query.View, query.HiddenSpecified = threadindex.DevThreadTranscriptView, true
 	}
 	pane := newLiveTextPane(query)
 	pane.rowsOnly = true
@@ -64,7 +64,7 @@ func (l *liveTextLoop) WriteBackendError(w http.ResponseWriter, err error) {
 
 // ConversationItems reads a bounded page of conversation items.
 func (l *liveTextLoop) ConversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
-	catalog, ok := l.srv.catalog.(threadTranscriptCatalog)
+	catalog, ok := l.srv.catalog.(threadindex.TranscriptCatalog)
 	if !ok {
 		return nil, nil, "", errors.New("catalog unavailable")
 	}
@@ -75,12 +75,12 @@ func (l *liveTextLoop) ConversationItems(ctx context.Context, view conversationV
 	if err != nil {
 		return nil, nil, "", err
 	}
-	query := transcriptListQuery{View: defaultThreadTranscriptView, Before: before, Limit: min(limit, maxThreadTranscriptLimit)}
+	query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Before: before, Limit: min(limit, threadindex.MaxThreadTranscriptLimit)}
 	if view == conversationViewFull {
-		query.View, query.HiddenSpecified = devThreadTranscriptView, true
+		query.View, query.HiddenSpecified = threadindex.DevThreadTranscriptView, true
 	}
 	response, err := catalog.LoadTranscript(ctx, threadID, query)
-	if errors.Is(err, errCatalogThreadNotFound) {
+	if errors.Is(err, threadindex.ErrCatalogThreadNotFound) {
 		return []liveProjectionItem{}, &liveProjectionPage{}, "", nil
 	}
 	if err != nil {

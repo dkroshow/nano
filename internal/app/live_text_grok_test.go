@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -122,7 +123,7 @@ func TestGrokFileLiveHTTPChunkStarts(t *testing.T) {
 	for _, mode := range []string{"thinking then reply", "restart mid-response", "load replay"} {
 		t.Run(mode, func(t *testing.T) {
 			frames := allFrames
-			h := newLiveTextHarnessFor(t, "grok", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+			h := newLiveTextHarnessFor(t, "grok", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 			v := openGrokHTTP(t, h)
 			if mode == "restart mid-response" {
 				frames = frames[3:4]
@@ -232,7 +233,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 			if mode == "task-completed turn" {
 				native = "1247675c-27b4-5553-9b66-4b599cf603ab"
 			}
-			h := newLiveTextHarnessForThread(t, "grok", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, native)
+			h := newLiveTextHarnessForThread(t, "grok", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, native)
 			v := openGrokHTTP(t, h)
 			first := "reply:" + grokFixtureThread + "-1283963"
 			switch mode {
@@ -450,7 +451,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 func waitGrokRows(t *testing.T, h *liveTextHarness, count int) {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		if len(h.page(transcriptListQuery{View: devThreadTranscriptView, HiddenSpecified: true, Limit: 40})) >= count {
+		if len(h.page(threadindex.TranscriptQuery{View: threadindex.DevThreadTranscriptView, HiddenSpecified: true, Limit: 40})) >= count {
 			return
 		}
 	}
@@ -475,7 +476,7 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 			if mode == "captured new response" {
 				native = "d9ef87b3-7f46-5aad-8933-9ed509cbe590"
 			}
-			h := newLiveTextHarnessForThread(t, "grok", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, native)
+			h := newLiveTextHarnessForThread(t, "grok", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, native)
 			frames := fixtureLines(t, "grok-tools.wire.jsonl")
 			if mode == "captured new response" {
 				v := openGrokHTTP(t, h)
@@ -553,7 +554,7 @@ func TestEveryProviderSessionBuildsLiveTextLoop(t *testing.T) {
 
 // The session HTTP pane receives saved rows, unsaved text and runtime together.
 func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
-	h := newLiveTextHarnessFor(t, "grok", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	h := newLiveTextHarnessFor(t, "grok", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	h.save(fixtureLines(t, "grok-turns.saved.jsonl")[:1])
 	waitGrokRows(t, h, 1)
 	h.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-http"})

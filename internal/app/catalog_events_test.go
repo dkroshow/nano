@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/catalog"
 )
 
 // fakeStreamCatalog is a threadCatalog that also exposes the SSE stream surface,
@@ -19,7 +21,7 @@ type fakeStreamCatalog struct {
 	version int64
 }
 
-func (f *fakeStreamCatalog) SubscribeCatalog() (<-chan catalogChange, func()) {
+func (f *fakeStreamCatalog) SubscribeCatalog() (<-chan catalog.Change, func()) {
 	ch := f.hub.Subscribe()
 	return ch, func() { f.hub.Unsubscribe(ch) }
 }
@@ -59,7 +61,7 @@ func TestCatalogEventsStreamDeliversVersionOnConnectAndBump(t *testing.T) {
 	if got := readCatalogVersionEvent(t, reader); got != 5 {
 		t.Fatalf("version-on-connect = %d, want 5", got)
 	}
-	hub.Notify(catalogChange{Version: 6, ThreadIDs: []string{"nth_changed"}})
+	hub.Notify(catalog.Change{Version: 6, ThreadIDs: []string{"nth_changed"}})
 	if got := readCatalogVersionEvent(t, reader); got != 6 {
 		t.Fatalf("bump event = %d, want 6", got)
 	}

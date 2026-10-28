@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
@@ -308,7 +310,7 @@ func newSettlementHarness(t *testing.T, provider string) *settlementHarness {
 		if err != nil {
 			return false
 		}
-		page, err := service.LoadTranscript(ctx, id, transcriptListQuery{Limit: 100, HiddenSpecified: true, View: defaultThreadTranscriptView})
+		page, err := service.LoadTranscript(ctx, id, threadindex.TranscriptQuery{Limit: 100, HiddenSpecified: true, View: threadindex.DefaultThreadTranscriptView})
 		return err == nil && len(page.Turns) == fixture.savedTurns
 	})
 
@@ -888,7 +890,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 		if err != nil {
 			return false
 		}
-		page, err := h.service.LoadTranscript(ctx, id, transcriptListQuery{Limit: 100, HiddenSpecified: true, View: defaultThreadTranscriptView})
+		page, err := h.service.LoadTranscript(ctx, id, threadindex.TranscriptQuery{Limit: 100, HiddenSpecified: true, View: threadindex.DefaultThreadTranscriptView})
 		return err == nil && len(page.Turns) == 2
 	})
 	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.coreStore })
@@ -999,7 +1001,7 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.server.confirmDurableThread(ctx, transcriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
+	h.server.confirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
 	if finished, _ := executions.turn(op.ID); finished.Status != agentTurnCompleted || finished.FinalItemID != "exited-final:0" || finished.FinalResponse != "answered after all" {
 		t.Fatalf("operation after the commit = %+v; want its saved answer", finished)
 	}
@@ -1204,7 +1206,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	if upgrade == "re-read" {
 		reader(current)
 		waitForCatalogWithin(t, time.Minute, func() bool {
-			h.server.confirmDurableThread(ctx, transcriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
+			h.server.confirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
 			got, _ := store.turn(op.ID)
 			return got.Status == agentTurnCompleted
 		})
@@ -1595,7 +1597,7 @@ func TestSavedCommitSettlesPromptsWithoutReattach(t *testing.T) {
 				return savedPrompts(ctx, keys)
 			})
 			seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
-			h.service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+			h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 				running.Add(1)
 				defer running.Add(-1)
 				h.server.confirmDurableThread(ctx, change)
@@ -2059,7 +2061,7 @@ func TestClaudePromptsSettleWithTheirSavedRow(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			page, err := h.service.LoadTranscript(ctx, threadID, transcriptListQuery{Limit: 100, View: defaultThreadTranscriptView, HiddenSpecified: true})
+			page, err := h.service.LoadTranscript(ctx, threadID, threadindex.TranscriptQuery{Limit: 100, View: threadindex.DefaultThreadTranscriptView, HiddenSpecified: true})
 			if err != nil {
 				t.Fatal(err)
 			}

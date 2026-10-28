@@ -14,6 +14,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	liveview "github.com/dkroshow/nano/internal/liveview"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -447,7 +448,7 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 
 	// Transcript notifications use the catalog's nth_ identity, while hosted
 	// sessions retain the provider-native thread identity.
-	s.confirmDurableThread(context.Background(), transcriptChange{
+	s.confirmDurableThread(context.Background(), threadindex.TranscriptChange{
 		ThreadID: "nth_1", Provider: "codex", NativeThreadID: "native-thread",
 	})
 
@@ -544,7 +545,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	service, paths := queuedCatalogFixture(t, "codex", nativeIDs)
 	var callbacks atomic.Int32
 
-	service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+	service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 		callbacks.Add(1)
 		server.confirmDurableThread(ctx, change)
 	})
@@ -656,11 +657,11 @@ func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	nativeThreadID := "native-thread"
 	p := newLiveProjection("codex", "hosted-thread")
 	p.SetNativeThreadID(nativeThreadID)
-	fake := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: transcriptResponse{
+	fake := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: threadindex.TranscriptResponse{
 		ThreadID: "nth-owner",
-		Items:    []transcriptItem{{ID: "durable-0", OwnerItemID: "retained-0", ProjectedSeq: 1, TurnID: "turn-0"}},
-		Turns:    []transcriptTurn{{ID: "turn-0", FinalItemID: "durable-0"}},
-		Page:     transcriptPageInfo{StartSeq: 1, EndSeq: 1},
+		Items:    []threadindex.TranscriptItem{{ID: "durable-0", OwnerItemID: "retained-0", ProjectedSeq: 1, TurnID: "turn-0"}},
+		Turns:    []threadindex.TranscriptTurn{{ID: "turn-0", FinalItemID: "durable-0"}},
+		Page:     threadindex.TranscriptPageInfo{StartSeq: 1, EndSeq: 1},
 	}}}
 	sess := newFixtureSession(sessionConfig{Provider: "codex", Projection: p}, nativeThreadID)
 	recorder := httptest.NewRecorder()
@@ -669,7 +670,7 @@ func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	var response transcriptResponse
+	var response threadindex.TranscriptResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}

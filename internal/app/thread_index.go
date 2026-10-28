@@ -27,7 +27,7 @@ func newThreadCatalogService(ctx context.Context, store *history.Store, options 
 	}
 	return &threadCatalogService{Service: service, store: store}, nil
 }
-func (s *threadCatalogService) ListThreads(ctx context.Context, q catalogListQuery) (catalogPage, error) {
+func (s *threadCatalogService) ListThreads(ctx context.Context, q threadindex.ListQuery) (catalogPage, error) {
 	p, e := s.Service.ListThreads(ctx, q)
 	return catalogPage{Items: catalogRows(p.Items), NextCursor: p.NextCursor, CatalogVersion: p.CatalogVersion}, e
 }
@@ -56,7 +56,7 @@ func catalogRows(rows []threadindex.Thread) []catalogThread {
 	}
 	return out
 }
-func mapCatalogThread(t history.Thread, sources *[]catalogSourceDetail) catalogThread {
+func mapCatalogThread(t history.Thread, sources *[]threadindex.SourceDetail) catalogThread {
 	return catalogThread{Thread: threadindex.MapThread(t, sources)}
 }
 func writeCatalogBackendError(w http.ResponseWriter, err error) {
@@ -84,7 +84,7 @@ type threadMessage struct {
 	preview string
 }
 
-func collectThreadMessages(ctx context.Context, catalog threadTranscriptCatalog, id string, query threadMessagesQuery) ([]threadMessage, error) {
+func collectThreadMessages(ctx context.Context, catalog threadindex.TranscriptCatalog, id string, query threadindex.MessagesQuery) ([]threadMessage, error) {
 	rows, err := threadindex.CollectThreadMessages(ctx, catalog, id, query)
 	if err != nil {
 		return nil, err
@@ -107,6 +107,6 @@ func (s *threadCatalogService) setCreationNameSource(source func(context.Context
 func (s *threadCatalogService) setTranscriptRepairPriority(priority func(history.TranscriptParserBackfillCandidate) int) {
 	s.Service.SetTranscriptRepairPriority(priority)
 }
-func (s *threadCatalogService) setTranscriptChanged(changed func(context.Context, transcriptChange)) {
+func (s *threadCatalogService) setTranscriptChanged(changed func(context.Context, threadindex.TranscriptChange)) {
 	s.Service.SetTranscriptChanged(changed)
 }

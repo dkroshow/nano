@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // Duplicate gate for Codex serialization twins: Codex writes each item twice,
@@ -98,7 +99,7 @@ func TestDuplicateGateCodexTwinSplitAcrossAppendServedOnce(t *testing.T) {
 	file.Close()
 	catalog.service.FileChanged(path)
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		page, err := catalog.service.LoadTranscript(context.Background(), id, transcriptListQuery{Limit: 10, HiddenSpecified: true, View: defaultThreadTranscriptView})
+		page, err := catalog.service.LoadTranscript(context.Background(), id, threadindex.TranscriptQuery{Limit: 10, HiddenSpecified: true, View: threadindex.DefaultThreadTranscriptView})
 		return err == nil && len(page.Turns) == 1 && page.Turns[0].Status == "completed"
 	})
 	assertGateRows(t, "transcript after the response copy", expected, catalog.servedTranscript(t, id))

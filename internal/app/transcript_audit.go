@@ -15,6 +15,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const (
@@ -34,35 +35,35 @@ var (
 )
 
 type transcriptAuditRequest struct {
-	ID                     string                 `json:"auditId"`
-	ClientActionID         string                 `json:"clientActionId"`
-	ThreadID               string                 `json:"threadId"`
-	TabID                  string                 `json:"tabId"`
-	PageID                 string                 `json:"pageId"`
-	PaneID                 string                 `json:"paneId"`
-	Scopes                 []transcriptAuditScope `json:"scopes"`
-	Status                 string                 `json:"status"`
-	RequestedAt            string                 `json:"requestedAt"`
-	Deadline               string                 `json:"deadline"`
-	ExpectedBuild          string                 `json:"expectedBuild,omitempty"`
-	CatalogThreadID        string                 `json:"catalogThreadId"`
-	ReferenceProjectionKey string                 `json:"referenceProjectionKey,omitempty"`
-	ReferenceSnapshotHead  int64                  `json:"referenceSnapshotHeadSeq,omitempty"`
-	ReferenceState         string                 `json:"referenceState,omitempty"`
-	Result                 *transcriptAuditResult `json:"result,omitempty"`
+	ID                     string                   `json:"auditId"`
+	ClientActionID         string                   `json:"clientActionId"`
+	ThreadID               string                   `json:"threadId"`
+	TabID                  string                   `json:"tabId"`
+	PageID                 string                   `json:"pageId"`
+	PaneID                 string                   `json:"paneId"`
+	Scopes                 []threadindex.AuditScope `json:"scopes"`
+	Status                 string                   `json:"status"`
+	RequestedAt            string                   `json:"requestedAt"`
+	Deadline               string                   `json:"deadline"`
+	ExpectedBuild          string                   `json:"expectedBuild,omitempty"`
+	CatalogThreadID        string                   `json:"catalogThreadId"`
+	ReferenceProjectionKey string                   `json:"referenceProjectionKey,omitempty"`
+	ReferenceSnapshotHead  int64                    `json:"referenceSnapshotHeadSeq,omitempty"`
+	ReferenceState         string                   `json:"referenceState,omitempty"`
+	Result                 *transcriptAuditResult   `json:"result,omitempty"`
 	requestedAt            time.Time
 	deadline               time.Time
 }
 
 type transcriptAuditEvent struct {
-	AuditID         string                 `json:"auditId"`
-	ThreadID        string                 `json:"threadId"`
-	CatalogThreadID string                 `json:"catalogThreadId"`
-	TabID           string                 `json:"tabId"`
-	PageID          string                 `json:"pageId"`
-	PaneID          string                 `json:"paneId"`
-	Scopes          []transcriptAuditScope `json:"scopes"`
-	Deadline        string                 `json:"deadline"`
+	AuditID         string                   `json:"auditId"`
+	ThreadID        string                   `json:"threadId"`
+	CatalogThreadID string                   `json:"catalogThreadId"`
+	TabID           string                   `json:"tabId"`
+	PageID          string                   `json:"pageId"`
+	PaneID          string                   `json:"paneId"`
+	Scopes          []threadindex.AuditScope `json:"scopes"`
+	Deadline        string                   `json:"deadline"`
 }
 
 type transcriptAuditDifference struct {
@@ -106,7 +107,7 @@ type transcriptAuditRange struct {
 type transcriptAuditResult struct {
 	Status               string                      `json:"status"`
 	Complete             bool                        `json:"complete"`
-	Scopes               []transcriptAuditScope      `json:"scopes"`
+	Scopes               []threadindex.AuditScope    `json:"scopes"`
 	Counts               transcriptAuditCounts       `json:"counts"`
 	Differences          []transcriptAuditDifference `json:"differences"`
 	DifferencesTruncated bool                        `json:"differencesTruncated"`
@@ -239,17 +240,17 @@ func (h *transcriptAuditHub) notify(event transcriptAuditEvent) {
 }
 
 type transcriptAuditCatalog interface {
-	LoadTranscript(context.Context, string, transcriptListQuery) (transcriptResponse, error)
-	LoadTranscriptAuditReference(context.Context, string, string, int64, int64, int64, []transcriptAuditScope) (transcriptAuditReference, error)
+	LoadTranscript(context.Context, string, threadindex.TranscriptQuery) (threadindex.TranscriptResponse, error)
+	LoadTranscriptAuditReference(context.Context, string, string, int64, int64, int64, []threadindex.AuditScope) (threadindex.AuditReference, error)
 }
 
-func normalizeTranscriptAuditScopes(scopes []transcriptAuditScope) ([]transcriptAuditScope, bool) {
+func normalizeTranscriptAuditScopes(scopes []threadindex.AuditScope) ([]threadindex.AuditScope, bool) {
 	for _, scope := range scopes {
-		if scope != transcriptAuditMessages {
+		if scope != threadindex.AuditMessages {
 			return nil, false
 		}
 	}
-	return []transcriptAuditScope{transcriptAuditMessages}, true
+	return []threadindex.AuditScope{threadindex.AuditMessages}, true
 }
 
 func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Request) {
@@ -265,12 +266,12 @@ func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Requ
 	}
 	defer r.Body.Close()
 	var body struct {
-		ClientActionID string                 `json:"clientActionId"`
-		ThreadRef      string                 `json:"threadRef"`
-		TabID          string                 `json:"tabId"`
-		PageID         string                 `json:"pageId"`
-		PaneID         string                 `json:"paneId"`
-		Scopes         []transcriptAuditScope `json:"scopes"`
+		ClientActionID string                   `json:"clientActionId"`
+		ThreadRef      string                   `json:"threadRef"`
+		TabID          string                   `json:"tabId"`
+		PageID         string                   `json:"pageId"`
+		PaneID         string                   `json:"paneId"`
+		Scopes         []threadindex.AuditScope `json:"scopes"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxTranscriptAuditRequestBytes))
 	decoder.DisallowUnknownFields()
@@ -293,7 +294,7 @@ func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Requ
 		writeThreadReferenceError(w, err)
 		return
 	}
-	pin, err := catalog.LoadTranscript(r.Context(), id, transcriptListQuery{Limit: 1, View: devThreadTranscriptView, HiddenSpecified: true})
+	pin, err := catalog.LoadTranscript(r.Context(), id, threadindex.TranscriptQuery{Limit: 1, View: threadindex.DevThreadTranscriptView, HiddenSpecified: true})
 	if err != nil {
 		writeTranscriptBackendError(w, err)
 		return
@@ -368,7 +369,7 @@ func (s *server) handleTranscriptAuditReference(w http.ResponseWriter, r *http.R
 	}
 	reference, err := catalog.LoadTranscriptAuditReference(r.Context(), request.CatalogThreadID, request.ReferenceProjectionKey, request.ReferenceSnapshotHead, minSeq, maxSeq, request.Scopes)
 	if err != nil {
-		if errors.Is(err, history.ErrTranscriptChanged) || errors.Is(err, errTranscriptAuditReferenceChanged) {
+		if errors.Is(err, history.ErrTranscriptChanged) || errors.Is(err, threadindex.ErrAuditReferenceChanged) {
 			result := inconclusiveTranscriptAudit(request.Scopes, "saved_reference_changed")
 			s.transcriptAudits.finish(request.ID, result)
 			httpapi.WriteHTTPError(w, "transcript audit reference changed", http.StatusConflict)
@@ -451,7 +452,7 @@ func (s *server) handleTranscriptAuditResult(w http.ResponseWriter, r *http.Requ
 	httpapi.WriteJSON(w, finished)
 }
 
-func normalizeTranscriptAuditResult(result transcriptAuditResult, expectedScopes []transcriptAuditScope) (transcriptAuditResult, bool) {
+func normalizeTranscriptAuditResult(result transcriptAuditResult, expectedScopes []threadindex.AuditScope) (transcriptAuditResult, bool) {
 	if result.Status != "match" && result.Status != "mismatch" && result.Status != "inconclusive" {
 		return result, false
 	}
@@ -518,8 +519,8 @@ func parseOptionalTranscriptAuditSeq(value string) (int64, error) {
 	return seq, nil
 }
 
-func inconclusiveTranscriptAudit(scopes []transcriptAuditScope, reason string) transcriptAuditResult {
-	return transcriptAuditResult{Status: "inconclusive", Scopes: append([]transcriptAuditScope(nil), scopes...), Differences: []transcriptAuditDifference{}, Exclusions: []transcriptAuditExclusion{}, Reasons: []string{reason}}
+func inconclusiveTranscriptAudit(scopes []threadindex.AuditScope, reason string) transcriptAuditResult {
+	return transcriptAuditResult{Status: "inconclusive", Scopes: append([]threadindex.AuditScope(nil), scopes...), Differences: []transcriptAuditDifference{}, Exclusions: []transcriptAuditExclusion{}, Reasons: []string{reason}}
 }
 
 func writeTranscriptAuditEvent(w io.Writer, event transcriptAuditEvent) {

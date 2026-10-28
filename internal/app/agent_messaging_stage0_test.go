@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/interact"
 )
@@ -336,7 +338,7 @@ func (c renamedCatalog) ThreadNameFor(context.Context, string, string) (string, 
 	return c.name, true
 }
 
-func (renamedCatalog) ListThreads(context.Context, catalogListQuery) (catalogPage, error) {
+func (renamedCatalog) ListThreads(context.Context, threadindex.ListQuery) (catalogPage, error) {
 	return catalogPage{}, nil
 }
 
@@ -344,8 +346,8 @@ func (renamedCatalog) LoadThread(context.Context, string) (catalogThread, error)
 	return catalogThread{}, nil
 }
 
-func (renamedCatalog) IndexStatus(context.Context) (catalogIndexStatus, error) {
-	return catalogIndexStatus{}, nil
+func (renamedCatalog) IndexStatus(context.Context) (threadindex.IndexStatus, error) {
+	return threadindex.IndexStatus{}, nil
 }
 
 func (renamedCatalog) RequestRefresh() bool { return false }

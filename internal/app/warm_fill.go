@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // The fill rule: a warm pane sends the newest rows whose estimated height
@@ -57,7 +59,7 @@ func parseWarmFill(linesRaw, colsRaw string) (warmFill, error) {
 
 // count is how many of the newest rows of a page (oldest first, as read)
 // fill the window: at least one, every row when they all fit.
-func (f warmFill) count(items []transcriptItem) int {
+func (f warmFill) count(items []threadindex.TranscriptItem) int {
 	height := 0.0
 	for i := len(items) - 1; i >= 0; i-- {
 		height += estimateRowLines(items[i], f.cols)
@@ -80,7 +82,7 @@ var (
 // paragraph gap of a third of a line; a list item, heading, quote or table
 // row starts its own line; a link shows only its text; a fenced code block
 // shows at most warmFillCodeBlockLines lines.
-func estimateRowLines(item transcriptItem, cols int) float64 {
+func estimateRowLines(item threadindex.TranscriptItem, cols int) float64 {
 	if item.Role == "user" {
 		total := 0.0
 		for _, line := range strings.Split(item.Text, "\n") {

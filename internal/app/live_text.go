@@ -1,14 +1,5 @@
 package app
 
-// live_text.go — file-only transcripts. A thread's rows come only from the
-// provider's saved file (the catalog). The live stream adds live text: the
-// reply being streamed and the prompts the outbox holds that the file does
-// not have yet. One loop per thread orders live text, outbox changes and
-// catalog applies, matches saved rows to live text by exact identity, and
-// pushes each pane one ordered stream in which a saved row and the removal of
-// its live text always travel in the same message. The browser matches
-// nothing. Live text is never stored, merged into rows, or served to agents.
-
 import (
 	"context"
 	"crypto/sha256"
@@ -28,7 +19,15 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/liveview"
-	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions" // live_text.go — file-only transcripts. A thread's rows come only from the
+	// provider's saved file (the catalog). The live stream adds live text: the
+	// reply being streamed and the prompts the outbox holds that the file does
+	// not have yet. One loop per thread orders live text, outbox changes and
+	// catalog applies, matches saved rows to live text by exact identity, and
+	// pushes each pane one ordered stream in which a saved row and the removal of
+	// its live text always travel in the same message. The browser matches
+	// nothing. Live text is never stored, merged into rows, or served to agents.
+	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -739,7 +738,7 @@ func (l *liveTextLoop) proofs(matched map[string]string, ended map[string]bool) 
 // Codex Stop leaves no saved reply, so a reload clears the stopped reply's
 // text once the file proves its turn ended; Claude saves a stopped reply and
 // needs none. An agent stream never reloads what the operator sees.
-func (l *liveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPane]bool, responses []transcriptResponse) map[string]bool {
+func (l *liveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPane]bool, responses []threadindex.TranscriptResponse) map[string]bool {
 	ended := map[string]bool{}
 	if l.sess.Provider() != "codex" {
 		return ended
@@ -765,7 +764,7 @@ func (l *liveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPa
 
 // liveTextPane is one open pane: one profile of one thread on one stream.
 type liveTextPane struct {
-	query transcriptListQuery
+	query threadindex.TranscriptQuery
 	// rowsOnly marks a stream of rows, never live text: an agent's, or a warm
 	// stream's.
 	rowsOnly bool
@@ -831,14 +830,14 @@ func newLiveTextQueueWithBacklog(limit int) *liveTextQueue {
 	return &liveTextQueue{limit: limit, ready: make(chan struct{}, 1), done: make(chan struct{})}
 }
 
-func newLiveTextPane(query transcriptListQuery) *liveTextPane {
+func newLiveTextPane(query threadindex.TranscriptQuery) *liveTextPane {
 	query.Before, query.BeforeNativeTurn, query.BeforeTurn, query.TurnLimit = "", "", 0, 0
 	return &liveTextPane{query: query, liveTextQueue: newLiveTextQueue()}
 }
 
 func (p *liveTextPane) send(message liveTextMessage) {
 	message.Ref = p.ref
-	if p.query.View == defaultThreadTranscriptView {
+	if p.query.View == threadindex.DefaultThreadTranscriptView {
 		message.Rows, message.Turns = enhancedRows(message.Rows), enhancedTurns(message.Turns)
 	}
 	raw, err := json.Marshal(message)
@@ -958,16 +957,16 @@ type liveTextMessage struct {
 	Type string `json:"type"`
 	// Ref names the thread of a warm stream's message; Refs, on a warm
 	// stream's set message, every thread it now carries.
-	Ref        string                `json:"ref,omitempty"`
-	Refs       []string              `json:"refs,omitempty"`
-	ThreadID   string                `json:"threadId,omitempty"`
-	Key        string                `json:"key,omitempty"`
-	Rows       []transcriptItem      `json:"rows,omitempty"`
-	Removed    []string              `json:"removed,omitempty"`
-	Turns      []transcriptTurn      `json:"turns,omitempty"`
-	Page       *transcriptPageInfo   `json:"page,omitempty"`
-	Projection *transcriptProjection `json:"projection,omitempty"`
-	Live       *[]liveTextEntry      `json:"live,omitempty"`
+	Ref        string                            `json:"ref,omitempty"`
+	Refs       []string                          `json:"refs,omitempty"`
+	ThreadID   string                            `json:"threadId,omitempty"`
+	Key        string                            `json:"key,omitempty"`
+	Rows       []threadindex.TranscriptItem      `json:"rows,omitempty"`
+	Removed    []string                          `json:"removed,omitempty"`
+	Turns      []threadindex.TranscriptTurn      `json:"turns,omitempty"`
+	Page       *threadindex.TranscriptPageInfo   `json:"page,omitempty"`
+	Projection *threadindex.TranscriptProjection `json:"projection,omitempty"`
+	Live       *[]liveTextEntry                  `json:"live,omitempty"`
 	// Saved names the live text this message removes because its rows arrived.
 	Saved  []string        `json:"saved,omitempty"`
 	ID     string          `json:"id,omitempty"`
@@ -980,11 +979,11 @@ type liveTextMessage struct {
 // fields the Enhanced view draws. The developer view's raw provider copy,
 // tags, provenance and turn config stay on dev panes and the HTTP API; on
 // an Enhanced stream they were over a quarter of every tail.
-func enhancedRows(rows []transcriptItem) []transcriptItem {
+func enhancedRows(rows []threadindex.TranscriptItem) []threadindex.TranscriptItem {
 	if rows == nil {
 		return nil
 	}
-	out := make([]transcriptItem, len(rows))
+	out := make([]threadindex.TranscriptItem, len(rows))
 	for i, row := range rows {
 		row.Detail, row.FilterTags, row.Synthetic, row.ToolName, row.CallID = nil, nil, false, "", ""
 		out[i] = row
@@ -992,11 +991,11 @@ func enhancedRows(rows []transcriptItem) []transcriptItem {
 	return out
 }
 
-func enhancedTurns(turns []transcriptTurn) []transcriptTurn {
+func enhancedTurns(turns []threadindex.TranscriptTurn) []threadindex.TranscriptTurn {
 	if turns == nil {
 		return nil
 	}
-	out := make([]transcriptTurn, len(turns))
+	out := make([]threadindex.TranscriptTurn, len(turns))
 	for i, turn := range turns {
 		turn.Config, turn.NativeTurnID, turn.FinalitySource, turn.FinalityConfidence, turn.CompletionEvidence = nil, "", "", "", ""
 		out[i] = turn
@@ -1071,12 +1070,12 @@ func (l *liveTextLoop) promptMatch(keys []string) history.TranscriptMatch {
 // liveTextCatalog reads pages of a thread and checks exact keys in one
 // catalog transaction.
 type liveTextCatalog interface {
-	LoadTranscripts(context.Context, string, []transcriptListQuery, []history.TranscriptMatch) ([]transcriptResponse, map[string]string, error)
+	LoadTranscripts(context.Context, string, []threadindex.TranscriptQuery, []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error)
 }
 
 var _ liveTextCatalog = (*threadCatalogService)(nil)
 
-func (l *liveTextLoop) read(threadID string, queries []transcriptListQuery, match []history.TranscriptMatch) ([]transcriptResponse, map[string]string, error) {
+func (l *liveTextLoop) read(threadID string, queries []threadindex.TranscriptQuery, match []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
 	catalog, ok := l.srv.catalog.(liveTextCatalog)
 	if !ok {
 		return nil, nil, errors.New("catalog unavailable")
@@ -1087,7 +1086,7 @@ func (l *liveTextLoop) read(threadID string, queries []transcriptListQuery, matc
 var errLiveTextNotIndexed = errors.New("thread not in the catalog yet")
 
 func notIndexed(err error) bool {
-	return errors.Is(err, errLiveTextNotIndexed) || errors.Is(err, errCatalogThreadNotFound)
+	return errors.Is(err, errLiveTextNotIndexed) || errors.Is(err, threadindex.ErrCatalogThreadNotFound)
 }
 
 func (l *liveTextLoop) catalogThreadID() (string, error) {
@@ -1095,12 +1094,12 @@ func (l *liveTextLoop) catalogThreadID() (string, error) {
 		return "", errLiveTextNotIndexed
 	}
 	native := l.sess.ThreadID()
-	resolver, ok := l.srv.catalog.(threadReferenceResolver)
+	resolver, ok := l.srv.catalog.(threadindex.ReferenceResolver)
 	if native == "" || !ok {
 		return "", errLiveTextNotIndexed
 	}
 	id, err := resolver.ResolveThreadReference(context.Background(), native)
-	if errors.Is(err, errCatalogThreadNotFound) {
+	if errors.Is(err, threadindex.ErrCatalogThreadNotFound) {
 		return "", errLiveTextNotIndexed
 	}
 	return id, err
@@ -1132,7 +1131,7 @@ func (l *liveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	if len(panes) == 0 {
 		return // held text is checked when a pane opens
 	}
-	var queries []transcriptListQuery
+	var queries []threadindex.TranscriptQuery
 	page := make([]int, len(panes)) // each pane's index in queries
 	asked := make(map[string]int)
 	for i, pane := range panes {
@@ -1191,7 +1190,7 @@ func (l *liveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	}
 
 	threadID, err := l.catalogThreadID()
-	var responses []transcriptResponse
+	var responses []threadindex.TranscriptResponse
 	var matched map[string]string
 	if err == nil {
 		responses, matched, err = l.read(threadID, queries, match)
@@ -1218,7 +1217,7 @@ func (l *liveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	for i, response := range responses {
 		pages[i] = newLivePage(response)
 	}
-	paneResponses := make([]transcriptResponse, len(panes))
+	paneResponses := make([]threadindex.TranscriptResponse, len(panes))
 	for i := range panes {
 		paneResponses[i] = responses[page[i]]
 	}
@@ -1248,12 +1247,12 @@ func (l *liveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 // livePage is one page read and its rows' digests, computed once per read and
 // shared by every pane that asked for that page.
 type livePage struct {
-	transcriptResponse
+	threadindex.TranscriptResponse
 	digests [][sha256.Size]byte
 }
 
-func newLivePage(response transcriptResponse) livePage {
-	page := livePage{transcriptResponse: response, digests: make([][sha256.Size]byte, len(response.Items))}
+func newLivePage(response threadindex.TranscriptResponse) livePage {
+	page := livePage{TranscriptResponse: response, digests: make([][sha256.Size]byte, len(response.Items))}
 	for i, item := range response.Items {
 		raw, _ := json.Marshal(item)
 		page.digests[i] = sha256.Sum256(raw)
@@ -1263,7 +1262,7 @@ func newLivePage(response transcriptResponse) livePage {
 
 // pageQueryKey names one page query: panes with the same key read the same
 // page.
-func pageQueryKey(query transcriptListQuery) string {
+func pageQueryKey(query threadindex.TranscriptQuery) string {
 	return fmt.Sprintf("%s\x00%s\x00%t\x00%d", query.View, strings.Join(query.HiddenCategories, ","), query.HiddenSpecified, query.Limit)
 }
 
@@ -1343,7 +1342,7 @@ func (l *liveTextLoop) tail(pane *liveTextPane, response livePage, saved map[str
 		// the window's rows outside the range, as an update, and trims to the
 		// window; a row changed or removed in place while it was away makes
 		// the digests differ, and it gets a tail.
-		var held, rows []transcriptItem
+		var held, rows []threadindex.TranscriptItem
 		for _, item := range response.Items {
 			if item.ProjectedSeq < marker.first || item.ProjectedSeq > marker.last {
 				rows = append(rows, item)
@@ -1380,7 +1379,7 @@ func (p *liveTextPane) window(response livePage) livePage {
 	for _, item := range response.Items {
 		inTurns[item.TurnID] = true
 	}
-	turns := make([]transcriptTurn, 0, len(response.Turns))
+	turns := make([]threadindex.TranscriptTurn, 0, len(response.Turns))
 	for _, turn := range response.Turns {
 		if inTurns[turn.ID] {
 			turns = append(turns, turn)
@@ -1400,7 +1399,7 @@ func (l *liveTextLoop) view(pane *liveTextPane) []liveTextEntry {
 
 // needsTail reports that a read replaces the pane rather than patching it: a
 // rebuild, or more new rows than one page holds.
-func (p *liveTextPane) needsTail(response transcriptResponse) bool {
+func (p *liveTextPane) needsTail(response threadindex.TranscriptResponse) bool {
 	gap := len(response.Items) > 0 && response.Page.HasMoreBefore && p.maxSeq > 0 &&
 		response.Items[0].ProjectedSeq > p.maxSeq
 	return response.Projection.Key != p.key || gap
@@ -1413,7 +1412,7 @@ func (p *liveTextPane) needsTail(response transcriptResponse) bool {
 // names a prompt, so a row saved after the page was read names nothing. A
 // Codex prompt with only a turn key is left out: its turn may hold several
 // rows, and the browser's record read covers it.
-func (l *liveTextLoop) promptsSavedIn(rows []transcriptItem) ([]string, error) {
+func (l *liveTextLoop) promptsSavedIn(rows []threadindex.TranscriptItem) ([]string, error) {
 	if l.sess == nil || l.sess.PromptStore() == nil {
 		return nil, nil
 	}
@@ -1511,12 +1510,12 @@ func (l *liveTextLoop) updatePane(pane *liveTextPane, response livePage, saved m
 	if pane.warm {
 		response = pane.window(response)
 	}
-	if pane.needsTail(response.transcriptResponse) {
+	if pane.needsTail(response.TranscriptResponse) {
 		l.tail(pane, response, saved)
 		return
 	}
 	live := l.view(pane)
-	var rows []transcriptItem
+	var rows []threadindex.TranscriptItem
 	start := int64(0)
 	if len(response.Items) > 0 {
 		start = response.Items[0].ProjectedSeq
@@ -1626,9 +1625,9 @@ func (s liveSent) same(live []liveTextEntry, withText bool) bool {
 	return true
 }
 
-func nonNilItems(items []transcriptItem) []transcriptItem {
+func nonNilItems(items []threadindex.TranscriptItem) []threadindex.TranscriptItem {
 	if items == nil {
-		return []transcriptItem{}
+		return []threadindex.TranscriptItem{}
 	}
 	return items
 }
@@ -1645,7 +1644,7 @@ func (s *server) handleHostedThreadLive(w http.ResponseWriter, r *http.Request, 
 	sess.HandleLiveStream(w, r)
 }
 
-func savedConversationItem(row transcriptItem) liveProjectionItem {
+func savedConversationItem(row threadindex.TranscriptItem) liveProjectionItem {
 	itemType := row.Type
 	switch row.Type {
 	case "user_message":

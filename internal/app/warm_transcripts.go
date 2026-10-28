@@ -56,8 +56,8 @@ const (
 
 // warmPaneQuery is the page query a warm pane reads: exactly the Enhanced
 // pane's, so the loop keys both to one read.
-func warmPaneQuery() transcriptListQuery {
-	return transcriptListQuery{View: defaultThreadTranscriptView, HiddenSpecified: true,
+func warmPaneQuery() threadindex.TranscriptQuery {
+	return threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, HiddenSpecified: true,
 		HiddenCategories: append([]string(nil), threadindex.EnhancedHiddenCategories()...), Limit: warmPageRows}
 }
 
@@ -75,7 +75,7 @@ type warmMarker struct {
 // heldDigest: strings as they are, numbers in decimal, booleans as 1 or 0,
 // an absent value as nothing), so any change to a held row made while the
 // page was away is seen without sending the rows.
-func warmHeldDigest(rows []transcriptItem) string {
+func warmHeldDigest(rows []threadindex.TranscriptItem) string {
 	h := fnv.New64a()
 	flag := func(b bool) int {
 		if b {

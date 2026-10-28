@@ -44,7 +44,7 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	if s.catalog == nil {
 		return fmt.Errorf("cannot verify native conversation %s: thread catalog unavailable", req.ThreadID)
 	}
-	page, err := s.catalog.ListThreads(ctx, catalogListQuery{
+	page, err := s.catalog.ListThreads(ctx, threadindex.ListQuery{
 		IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true,
 		Archived: archivedIncludeFilter, ThreadID: req.ThreadID, Limit: 1,
 	})
@@ -95,7 +95,7 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	}
 
 	metadata := map[string]string{}
-	for field, value := range map[string]catalogValue{
+	for field, value := range map[string]threadindex.Value{
 		"cwd":                                  detail.Metadata.CWD,
 		hostedmodel.PostureFieldModel:          detail.Metadata.Model,
 		hostedmodel.PostureFieldEffort:         detail.Metadata.Effort,

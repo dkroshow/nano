@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
@@ -373,7 +373,7 @@ func TestFleetFeedFollowsTheMaterializedSidebar(t *testing.T) {
 	}
 	id := seedSidebarThread(t, c.store, root, "native-feed", "", history.ThreadMain, time.Now(),
 		[]historyCourt{{user: true, text: "go"}})
-	c.publish(t, catalogChange{ThreadIDs: []string{id}})
+	c.publish(t, catalog.Change{ThreadIDs: []string{id}})
 
 	var latest fleetChangesResponse
 	await("the new thread", func() bool {

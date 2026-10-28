@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -242,9 +243,9 @@ func TestAttachmentDismissNudgesRuntime(t *testing.T) {
 func TestRuntimeEventsOnStream(t *testing.T) {
 	fakeCodex := newFakeAppServer(t)
 	hub := newCatalogHub()
-	catalog := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: hub, version: 5}
+	catalogFixture := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: hub, version: 5}
 	s := newResumeTestServer(t, fakeCodex.WSURL())
-	s.catalog = catalog
+	s.catalog = catalogFixture
 
 	srv := httptest.NewServer(http.HandlerFunc(s.handleCatalogIndexEvents))
 	defer srv.Close()
@@ -301,7 +302,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	})
 
 	// An ordinary catalog update carries the row that needs repair.
-	hub.Notify(catalogChange{Version: 6, ThreadIDs: []string{"nth_changed"}})
+	hub.Notify(catalog.Change{Version: 6, ThreadIDs: []string{"nth_changed"}})
 	if event, data := readSSEEvent(t, reader); event != "catalog" || data != `{"catalogVersion":6,"threadIds":["nth_changed"]}` {
 		t.Fatalf("catalog event = %q %q, want named row repair", event, data)
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // lineageFixture is a real catalog and control store for the lineage pass:
@@ -98,7 +99,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 	s.runtime = s
 	f := &lineageFixture{budget: &budgetFixture{server: s, catalog: catalog, now: now}}
 	from := now.Add(-2 * 24 * time.Hour)
-	page, err := catalog.ListThreads(ctx, catalogListQuery{UpdatedFrom: &from, IncludeSubagents: true, Limit: 250})
+	page, err := catalog.ListThreads(ctx, threadindex.ListQuery{UpdatedFrom: &from, IncludeSubagents: true, Limit: 250})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +110,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 func (f *lineageFixture) parents(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	for _, row := range f.budget.server.lineageParentRows(context.Background(), catalogListQuery{}, f.page) {
+	for _, row := range f.budget.server.lineageParentRows(context.Background(), threadindex.ListQuery{}, f.page) {
 		out = append(out, row.Provider+"/"+row.NativeID)
 	}
 	return out

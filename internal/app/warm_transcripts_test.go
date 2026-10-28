@@ -82,7 +82,7 @@ func (r *warmReader) quiet(why string) {
 	}
 }
 
-func rowIDs(rows []transcriptItem) []string {
+func rowIDs(rows []threadindex.TranscriptItem) []string {
 	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
 		ids = append(ids, row.ID)
@@ -90,7 +90,7 @@ func rowIDs(rows []transcriptItem) []string {
 	return ids
 }
 
-func markersParam(t *testing.T, ref, key string, held []transcriptItem) url.Values {
+func markersParam(t *testing.T, ref, key string, held []threadindex.TranscriptItem) url.Values {
 	t.Helper()
 	first, last := held[0].ProjectedSeq, held[len(held)-1].ProjectedSeq
 	raw, err := json.Marshal(map[string]map[string]any{ref: {"key": key, "first": first, "last": last, "digest": warmHeldDigest(held)}})
@@ -221,11 +221,11 @@ func TestWarmStreamMarkerGetsOnlyTheMissingRows(t *testing.T) {
 	// good, since the pane's digests would already match the saved rows. The
 	// change here keeps the text's length, and a second one touches only the
 	// final-answer flag: the digest covers content, not size.
-	for _, change := range []func(*transcriptItem){
-		func(row *transcriptItem) { row.Text = strings.Repeat("z", len(row.Text)) },
-		func(row *transcriptItem) { row.IsFinalAnswer = !row.IsFinalAnswer },
+	for _, change := range []func(*threadindex.TranscriptItem){
+		func(row *threadindex.TranscriptItem) { row.Text = strings.Repeat("z", len(row.Text)) },
+		func(row *threadindex.TranscriptItem) { row.IsFinalAnswer = !row.IsFinalAnswer },
 	} {
-		changed := append([]transcriptItem(nil), held...)
+		changed := append([]threadindex.TranscriptItem(nil), held...)
 		change(&changed[0])
 		edited := openWarm(t, h.srv, []string{ref}, markersParam(t, ref, key, changed))
 		edited.next("set")
@@ -241,7 +241,7 @@ type failOneRead struct {
 	failed bool
 }
 
-func (c *failOneRead) LoadTranscripts(ctx context.Context, id string, queries []transcriptListQuery, matches []history.TranscriptMatch) ([]transcriptResponse, map[string]string, error) {
+func (c *failOneRead) LoadTranscripts(ctx context.Context, id string, queries []threadindex.TranscriptQuery, matches []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
 	if !c.failed {
 		c.failed = true
 		return nil, nil, fmt.Errorf("synthetic read failure")
@@ -285,7 +285,7 @@ func TestWarmStreamIndexingThreadsDoNotBlockTheRest(t *testing.T) {
 	h.srv.Registry = newSessionRegistry()
 	refs := []string{}
 	for i := range warmJoining {
-		pending := newLiveTextHarnessForThread(t, "claude", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) {
+		pending := newLiveTextHarnessForThread(t, "claude", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) {
 			cfg.HostedThreadID = fmt.Sprintf("nht_indexing_%d", i)
 			cfg.ID = fmt.Sprintf("indexing_%d", i)
 		})
@@ -370,7 +370,7 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 		t.Fatalf("tail page = %+v, want startSeq %d and more before", tail.Page, tail.Rows[0].ProjectedSeq)
 	}
 	for _, turn := range tail.Turns {
-		if !slices.ContainsFunc(tail.Rows, func(row transcriptItem) bool { return row.TurnID == turn.ID }) {
+		if !slices.ContainsFunc(tail.Rows, func(row threadindex.TranscriptItem) bool { return row.TurnID == turn.ID }) {
 			t.Fatalf("turn %s is not one of the window's rows' turns", turn.ID)
 		}
 	}
@@ -440,7 +440,7 @@ func TestParseWarmRequest(t *testing.T) {
 // Panes asking for the same page share one read.
 func TestLiveTextSharesIdenticalPageReads(t *testing.T) {
 	h := newLiveTextHarness(t)
-	h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
+	h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	if got := h.lastQueries.Load(); got != 1 {
@@ -455,14 +455,14 @@ func TestLiveTextSharesIdenticalPageReads(t *testing.T) {
 func TestWarmStreamBacklogBoundsTails(t *testing.T) {
 	queue := newLiveTextQueueWithBacklog(warmStreamBacklog)
 	warmPane := func(ref string) *liveTextPane {
-		pane := newLiveTextPane(transcriptListQuery{})
+		pane := newLiveTextPane(threadindex.TranscriptQuery{})
 		pane.rowsOnly, pane.warm, pane.ref, pane.liveTextQueue = true, true, ref, queue
 		return pane
 	}
 	largest := func() liveTextMessage {
-		rows := make([]transcriptItem, warmPageRows)
+		rows := make([]threadindex.TranscriptItem, warmPageRows)
 		for i := range rows {
-			rows[i] = transcriptItem{ID: fmt.Sprintf("row-%d", i), Text: strings.Repeat("x", 8<<10)}
+			rows[i] = threadindex.TranscriptItem{ID: fmt.Sprintf("row-%d", i), Text: strings.Repeat("x", 8<<10)}
 		}
 		return liveTextMessage{Type: "tail", Rows: rows}
 	}

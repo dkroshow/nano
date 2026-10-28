@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // measuredRows is a capture from a served Nano page: forty real Enhanced rows
@@ -37,12 +39,12 @@ func loadMeasuredRows(t *testing.T) measuredRows {
 	return rows
 }
 
-func (m measuredRows) item(i int) transcriptItem {
+func (m measuredRows) item(i int) threadindex.TranscriptItem {
 	role := "assistant"
 	if m.Rows[i].Kind == "user" {
 		role = "user"
 	}
-	return transcriptItem{ID: m.Rows[i].Text[:8], Role: role, Text: m.Rows[i].Text}
+	return threadindex.TranscriptItem{ID: m.Rows[i].Text[:8], Role: role, Text: m.Rows[i].Text}
 }
 
 // An estimate above the rendered height would send too few rows and leave a
@@ -66,7 +68,7 @@ func TestWarmFillEstimateStaysUnderMeasuredHeight(t *testing.T) {
 // fills it alone; a window taller than every row takes them all.
 func TestWarmFillCountFillsTheWindow(t *testing.T) {
 	rows := loadMeasuredRows(t)
-	items := make([]transcriptItem, len(rows.Rows))
+	items := make([]threadindex.TranscriptItem, len(rows.Rows))
 	for i := range rows.Rows {
 		items[i] = rows.item(i)
 	}
@@ -86,8 +88,8 @@ func TestWarmFillCountFillsTheWindow(t *testing.T) {
 			t.Errorf("window of %d lines: sent %d rows, the rendered heights need %d", lines, got, need)
 		}
 	}
-	tall := []transcriptItem{{Role: "user", Text: rows.Rows[0].Text}} // 27 rendered lines
-	if got := (warmFill{lines: 20, cols: 118}).count(append([]transcriptItem{items[1], items[2]}, tall...)); got != 1 {
+	tall := []threadindex.TranscriptItem{{Role: "user", Text: rows.Rows[0].Text}} // 27 rendered lines
+	if got := (warmFill{lines: 20, cols: 118}).count(append([]threadindex.TranscriptItem{items[1], items[2]}, tall...)); got != 1 {
 		t.Fatalf("one row taller than the window: sent %d rows, want 1", got)
 	}
 	if got := (warmFill{lines: 5000, cols: 118}).count(items); got != len(items) {
@@ -117,15 +119,15 @@ func TestParseWarmFill(t *testing.T) {
 // lines look a hundred lines tall, so a tall window got that one small row
 // and a gap under it. Block starts still take their own lines.
 func TestWarmFillEstimateFoldsSoftNewlines(t *testing.T) {
-	prose := transcriptItem{Role: "assistant", Text: strings.Repeat("x\n", 99) + "x"}
+	prose := threadindex.TranscriptItem{Role: "assistant", Text: strings.Repeat("x\n", 99) + "x"}
 	if got := estimateRowLines(prose, 118); got > warmFillAgentChrome+2 {
 		t.Fatalf("a hundred one-character lines estimated %.2f lines, want one two-line paragraph plus chrome", got)
 	}
-	list := transcriptItem{Role: "assistant", Text: "- one\n- two\n- three\n\n| a | b |\n|---|---|\n| 1 | 2 |"}
+	list := threadindex.TranscriptItem{Role: "assistant", Text: "- one\n- two\n- three\n\n| a | b |\n|---|---|\n| 1 | 2 |"}
 	if got := estimateRowLines(list, 118); got < warmFillAgentChrome+6 {
 		t.Fatalf("three list items, a gap and three table rows estimated %.2f lines, want each on its own line", got)
 	}
-	typed := transcriptItem{Role: "user", Text: strings.Repeat("x\n", 9) + "x"}
+	typed := threadindex.TranscriptItem{Role: "user", Text: strings.Repeat("x\n", 9) + "x"}
 	if got := estimateRowLines(typed, 118); got != warmFillUserChrome+10 {
 		t.Fatalf("a user message shows its ten source lines as typed: estimated %.2f", got)
 	}
