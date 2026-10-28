@@ -12,7 +12,7 @@ import (
 // The coordinator may initialize from New or install Transition's result.
 // Copies of that snapshot cannot become a second mutable status/work owner.
 func TestSessionLifecycleHasOneMutationBoundary(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("..", "app", "*.go"))
+	paths, err := filepath.Glob(filepath.Join("..", "sessions", "*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestSessionLifecycleHasOneMutationBoundary(t *testing.T) {
 			if typeDecl, ok := declaration.(*ast.GenDecl); ok {
 				for _, spec := range typeDecl.Specs {
 					typ, ok := spec.(*ast.TypeSpec)
-					if !ok || typ.Name.Name != "session" {
+					if !ok || typ.Name.Name != "Session" {
 						continue
 					}
 					for _, field := range typ.Type.(*ast.StructType).Fields.List {
@@ -56,7 +56,7 @@ func TestSessionLifecycleHasOneMutationBoundary(t *testing.T) {
 					if !writesLifecycleSnapshot(lhs) {
 						continue
 					}
-					if filepath.Base(path) == "session.go" && fn.Name.Name == "spawnSession" && len(assignment.Rhs) == 1 {
+					if filepath.Base(path) == "session_construction.go" && fn.Name.Name == "InitializeBinding" && len(assignment.Rhs) == 1 {
 						if call, ok := assignment.Rhs[0].(*ast.CallExpr); ok {
 							if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
 								if name, ok := selector.X.(*ast.Ident); ok && name.Name == "lifecycle" && selector.Sel.Name == "New" {
