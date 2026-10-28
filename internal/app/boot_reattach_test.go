@@ -1932,8 +1932,8 @@ func TestResumeAnswerWithOlderTerminalTurnsNotifiesNobody(t *testing.T) {
 // TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce catches a
 // completion reported twice, or refused as a conflict, when resume sees a turn
 // the live wire already completed. Boundary: the live turn/completed path, the
-// resume path recording the same turn again, the completed-turn feed and the
-// subscription poller.
+// reconnect path, the completed-turn feed and the subscription poller. The
+// same-named sessions test forces the re-record race at the receiver.
 func TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce(t *testing.T) {
 	s, daemon, rec, client, dispatcher := subscribedCodexServer(t, `[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`)
 	op, _, err := s.agentExecutions.beginTurn(rec.HostedThreadID, "action-live", "complete while live")
