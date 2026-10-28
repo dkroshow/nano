@@ -74,3 +74,35 @@ func (sess *session) queuedPrompts(nativeID string) []queuedTurnRecord {
 	}
 	return sess.queuedTurns.ListThread(sess.provider, nativeID, sess.hostedThreadID)
 }
+
+// hasDeliveryEvidence reads this attachment's journal and queue, using the
+// application's stores only when that source is absent on the attachment.
+func (sess *session) hasDeliveryEvidence(actionID string, queue sessionQueue, journal sessionJournal) bool {
+	if sess != nil {
+		if sess.queuedTurns != nil {
+			queue = sess.queuedTurns
+		}
+		if sess.sendAttempts != nil {
+			journal = sess.sendAttempts
+		}
+	}
+	if queue != nil {
+		if _, found := queue.Get(actionID); found {
+			return true
+		}
+	}
+	if journal != nil {
+		if _, found := journal.Get(actionID); found {
+			return true
+		}
+	}
+	return false
+}
+
+// queuePositionOr reads this attachment's queue or the application fallback.
+func (sess *session) queuePositionOr(actionID string, fallback sessionQueue) int {
+	if sess != nil && sess.queuedTurns != nil {
+		fallback = sess.queuedTurns
+	}
+	return fallback.Position(actionID)
+}

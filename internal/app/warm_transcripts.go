@@ -341,7 +341,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 			sess := s.sessionForHostedThread(ref)
 			reason := ""
 			switch {
-			case sess == nil || sess.liveText == nil:
+			case sess == nil || sess.liveTextService() == nil:
 				reason = "no live session holds this thread"
 			case !s.warm.admit(ref):
 				reason = "the warm budget is spent"

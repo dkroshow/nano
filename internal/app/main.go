@@ -398,7 +398,7 @@ func construct(cfg config.Config) *application {
 		transcriptAudits:      newTranscriptAuditStore(),
 		transcriptAuditEvents: newTranscriptAuditHub(),
 		usageLimits:           usageLimits,
-		sessionRegistry:       sessionRegistry{sessions: map[string]*session{}},
+		sessionRegistry:       newSessionRegistry(),
 	}
 	s.deliveryExpiries = newDeliveryExpiries(deliveryExpiryWindow, s.publishProviderRuntime)
 	if agentExecutions != nil {
@@ -859,20 +859,20 @@ func (s *server) listedSessions(sessions []*session) []listedSession {
 	}
 	hostedIDs := make([]string, 0, len(sessions))
 	for _, sess := range sessions {
-		if sess.hostedThreadID != "" {
-			hostedIDs = append(hostedIDs, sess.hostedThreadID)
+		if sess.HostedThreadID() != "" {
+			hostedIDs = append(hostedIDs, sess.HostedThreadID())
 		}
 	}
 	views, viewsErr := s.controlMetadata.viewsFrom(summaryDB, hostedIDs)
 	needsAttention := s.agentExecutions.sessionsNeedingAttention()
 	summaries := make([]sessionSummary, 0, len(sessions))
 	for _, sess := range sessions {
-		view, found := views[sess.hostedThreadID]
+		view, found := views[sess.HostedThreadID()]
 		viewErr := viewsErr
 		if viewErr == nil && !found {
 			viewErr = sql.ErrNoRows
 		}
-		sum := sess.summaryWith(view, viewErr, sess.hostedThreadID != "" && needsAttention[sess.hostedThreadID])
+		sum := sess.summaryWith(view, viewErr, sess.HostedThreadID() != "" && needsAttention[sess.HostedThreadID()])
 		summaries = append(summaries, sum)
 	}
 	s.attachStarredOnSessions(summaries)
@@ -1017,7 +1017,7 @@ func (s *server) handleSessionClose(w http.ResponseWriter, _ *http.Request, sess
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	log.Printf("closed %s session %s", sess.provider, sess.id)
+	log.Printf("closed %s session %s", sess.Provider(), sess.ID())
 	httpapi.WriteJSON(w, map[string]bool{"closed": true})
 }
 

@@ -240,3 +240,8 @@ func (s *sessionRegistry) checkRetiredReferences(retired map[string]bool, checkD
 	}
 	return checkDetached()
 }
+
+// newSessionRegistry constructs the live membership owner.
+func newSessionRegistry() sessionRegistry {
+	return sessionRegistry{sessions: map[string]*session{}}
+}

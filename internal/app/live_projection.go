@@ -694,7 +694,7 @@ type durableTurnEvidence = liveview.DurableTurnEvidence
 // native turn id. Claude saved turns carry no id the live turn shares, so a
 // Claude turn settles only from live evidence.
 func (s *server) savedTurnEvidence(ctx context.Context, sess *session, turnID string) (durableTurnEvidence, bool) {
-	if s.catalog == nil || sess == nil || (sess.provider != "codex" && sess.provider != "grok") ||
+	if s.catalog == nil || sess == nil || (sess.Provider() != "codex" && sess.Provider() != "grok") ||
 		turnID == "" || sess.ThreadID() == "" {
 		return durableTurnEvidence{}, false
 	}

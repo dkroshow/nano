@@ -271,7 +271,7 @@ func (s *agentExecutionStore) finishSavedResult(id string, rec agentTurnRecord, 
 
 func (s *server) savedOperationResultFinished(hostedID string) {
 	if sess := s.sessionForHostedThread(hostedID); sess != nil {
-		if sess.provider == "claude" {
+		if sess.Provider() == "claude" {
 			sess.requestMemberStep()
 		}
 		return

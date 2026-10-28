@@ -483,6 +483,6 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 	// Codex turn overrides (service tier included) are re-seeded by the
 	// shared resume seam — seedCodexTurnOverrides via startCodexSession —
 	// so boot and click-resume converge; no boot-only patching here.
-	log.Printf("boot re-attach %s/%s registered session %s", rec.Provider, rec.NativeThreadID, sess.id)
+	log.Printf("boot re-attach %s/%s registered session %s", rec.Provider, rec.NativeThreadID, sess.ID())
 	return bootReattachRegistered
 }

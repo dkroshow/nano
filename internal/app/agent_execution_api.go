@@ -116,7 +116,7 @@ func (s *server) handleAgentSessionsList(w http.ResponseWriter, _ *http.Request)
 	// every record a thread ever had.
 	attached := make(map[string]bool)
 	for _, sess := range s.snapshotSessions() {
-		attached[sess.hostedThreadID] = true
+		attached[sess.HostedThreadID()] = true
 	}
 	records := s.agentExecutions.listSessions()
 	items := make([]agentSessionView, 0, len(records))
@@ -268,7 +268,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(s.agentSessionView(sess.hostedThreadID))
+	_ = json.NewEncoder(w).Encode(s.agentSessionView(sess.HostedThreadID()))
 }
 
 func (s *server) hostedThreadOperation(handler func(http.ResponseWriter, *http.Request, agentSessionRecord)) http.HandlerFunc {
@@ -657,7 +657,7 @@ func (s *server) handleHostedThreadDetach(w http.ResponseWriter, _ *http.Request
 	}
 	if sess := s.sessionForHostedThread(record.ID); sess != nil {
 		sess.close()
-		s.removeSession(sess.id)
+		s.removeSession(sess.ID())
 		s.notifyRuntime()
 	}
 	// The attachment record survives — that is the difference from close:
@@ -1010,7 +1010,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 				return err
 			}
 			op, responseStatus, reason, err := sess.queueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
-			result, replay, err = s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+			result, replay, err = s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 			return err
 		})
 		if reason != "" {
@@ -1041,7 +1041,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 		return record, !created, errHostedThreadNotAttached
 	}
 	op, responseStatus, reason, err := sess.queueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
-	return s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
 func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub hostedTurnSubmission, hash string) (agentTurnRecord, bool, error) {
@@ -1087,10 +1087,10 @@ func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub h
 		return record, true, errHostedThreadNotAttached
 	}
 	op, responseStatus, reason, err := sess.queueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
-	return s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
-func (s *server) finishHostedTurnSubmission(sess *session, record agentTurnRecord, created bool, op *turnSendOperation, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
+func (s *server) finishHostedTurnSubmission(sess *session, record agentTurnRecord, created bool, started bool, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
 	if err != nil {
 		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnFailed, &agentExecutionError{Source: "delivery", Message: err.Error()})
 		sess.notifyRuntime()
@@ -1098,7 +1098,7 @@ func (s *server) finishHostedTurnSubmission(sess *session, record agentTurnRecor
 	}
 	if responseStatus == http.StatusAccepted && reason == "queued_for_next_turn" {
 		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnQueued, nil)
-	} else if responseStatus != 0 || op == nil {
+	} else if responseStatus != 0 || !started {
 		state := agentTurnDeliveryUnknown
 		if responseStatus >= http.StatusBadRequest {
 			state = agentTurnFailed
@@ -1122,27 +1122,8 @@ func (s *server) needsTurnSubmissionReconciliation(record agentTurnRecord) bool 
 	if record.Status != agentTurnDeliveryPending {
 		return false
 	}
-	var queue sessionQueue = s.queuedTurns
-	var attempts sessionJournal = s.sendAttempts
-	if sess := s.sessionForHostedThread(record.HostedThreadID); sess != nil {
-		if sess.queuedTurns != nil {
-			queue = sess.queuedTurns
-		}
-		if sess.sendAttempts != nil {
-			attempts = sess.sendAttempts
-		}
-	}
-	if queue != nil {
-		if _, ok := queue.Get(record.TransportActionID); ok {
-			return false
-		}
-	}
-	if attempts != nil {
-		if _, ok := attempts.Get(record.TransportActionID); ok {
-			return false
-		}
-	}
-	return true
+	sess := s.sessionForHostedThread(record.HostedThreadID)
+	return !sess.hasDeliveryEvidence(record.TransportActionID, s.queuedTurns, s.sendAttempts)
 }
 
 func (s *server) turnSubmissionDeliveryUnknown(record agentTurnRecord) bool {
@@ -1394,12 +1375,9 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
 		Interactions: []pendingInteraction{},
 	}
-	var queue sessionQueue = s.queuedTurns
-	if sess := s.sessionForHostedThread(rec.HostedThreadID); sess != nil {
-		if sess.queuedTurns != nil {
-			queue = sess.queuedTurns
-		}
-		view.NanoSessionID = sess.id
+	sess := s.sessionForHostedThread(rec.HostedThreadID)
+	if sess != nil {
+		view.NanoSessionID = sess.ID()
 		if threadID := sess.ThreadID(); threadID != "" {
 			view.NativeThreadID = threadID
 		}
@@ -1412,7 +1390,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 		}
 	}
 	if rec.Status == agentTurnQueued {
-		view.QueuePosition = queue.Position(rec.TransportActionID)
+		view.QueuePosition = sess.queuePositionOr(rec.TransportActionID, s.queuedTurns)
 	}
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
 		assignment, err := s.controlMetadata.operationOrchestrationAssignment(rec.AssignmentEventID)
@@ -1516,9 +1494,9 @@ func (s *server) closeAgentSession(sess *session) error {
 	var attachment attachmentRecord
 	var remembered bool
 	if s.attachments != nil {
-		attachment, remembered = s.attachments.get(sess.provider, sess.ThreadID())
+		attachment, remembered = s.attachments.get(sess.Provider(), sess.ThreadID())
 	}
-	if remembered && sess.provider == "claude" {
+	if remembered && sess.Provider() == "claude" {
 		if c := sess.claudeHandle(); c != nil {
 			if tr, ok := c.tr.(*claudeShimTransport); ok && attachment.ShimSessionID != tr.shimSessionID {
 				return errors.New("Claude attachment changed; close refused")

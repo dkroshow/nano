@@ -223,8 +223,8 @@ func (s *server) runtimeDeltaSnapshot() runtimeDelta {
 		sessions[sum.ID] = ""
 	}
 	for _, sess := range s.snapshotSessions() {
-		if _, live := sessions[sess.id]; !live {
-			sessions[sess.id] = sessionStatusExited
+		if _, live := sessions[sess.ID()]; !live {
+			sessions[sess.ID()] = sessionStatusExited
 		}
 	}
 
@@ -306,8 +306,8 @@ func (d runtimeDelta) bounded() runtimeDelta {
 func (s *server) attachSessionChanges(delta *runtimeDelta, before, after map[string]string, summaries []sessionSummary) {
 	var changed []*session
 	for _, sess := range s.snapshotSessions() {
-		if state, ok := after[sess.id]; ok {
-			if previous, ok := before[sess.id]; !ok || previous != state {
+		if state, ok := after[sess.ID()]; ok {
+			if previous, ok := before[sess.ID()]; !ok || previous != state {
 				changed = append(changed, sess)
 			}
 		}

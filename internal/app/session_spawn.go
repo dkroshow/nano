@@ -91,7 +91,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 			s.forgetAttachment("claude", req.retiredClaudeHandle)
 		}
 		if existing := s.liveSessionForResume(req.Provider, req.ThreadID, req.HostedThreadID); existing != nil {
-			return nil, &threadAttachedError{ExistingSessionID: existing.id}
+			return nil, &threadAttachedError{ExistingSessionID: existing.ID()}
 		}
 	}
 	hostedThreadID := req.HostedThreadID

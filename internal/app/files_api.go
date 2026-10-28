@@ -146,7 +146,7 @@ func (s *server) fileThreadCwd(ctx context.Context, threadID, sessionID string) 
 	if sessionID != "" {
 		session := s.lookupSession(sessionID)
 		if session != nil {
-			if dir := filemodel.CleanDir(session.cwd); dir != "" {
+			if dir := filemodel.CleanDir(session.CWD()); dir != "" {
 				return dir
 			}
 		}
@@ -188,10 +188,10 @@ func (s *server) liveFileEvidence(ctx context.Context, sessionID string) []strin
 		return nil
 	}
 	session := s.lookupSession(sessionID)
-	if session == nil || session.liveText == nil {
+	if session == nil || session.liveTextService() == nil {
 		return nil
 	}
-	texts := session.liveText.CurrentTexts(ctx)
+	texts := session.liveTextService().CurrentTexts(ctx)
 	var blobs []string
 	total := 0
 	for index := len(texts) - 1; index >= 0 && total < fileEvidenceMaxBytes; index-- {

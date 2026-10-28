@@ -1769,7 +1769,7 @@ func (d *deliveryExpiries) recentLocked(provider string) []time.Time {
 // provider, so each pane sees that provider's delivery expiry count.
 func (s *server) publishProviderRuntime(provider string) {
 	for _, sess := range s.snapshotSessions() {
-		if sess.provider == provider {
+		if sess.Provider() == provider {
 			sess.publishProjectionRuntime()
 		}
 	}

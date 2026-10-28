@@ -31,3 +31,6 @@ func (sess *session) PersistedOperation(ctx context.Context, actionID string) (a
 	}
 	return sess.agentExecutions.PersistedTurnForTransportAction(ctx, sess.hostedThreadID, actionID)
 }
+
+// CWD returns the working directory retained by this attachment.
+func (sess *session) CWD() string { return sess.cwd }
