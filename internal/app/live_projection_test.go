@@ -456,13 +456,13 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 	}
 }
 
-// A parser-version bump can make every stored transcript changed at once. The
-// dispatcher must bound that recovery, retain a change that arrives while the
-// same thread is running, and leave hosted control admission responsive.
+// A small parser-recovery backlog must leave hosted control responsive and
+// reconcile every attached session once, plus a change received in flight.
+// The index package separately tests the 5,000-change dispatcher backlog.
 func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *testing.T) {
 	const (
-		changedTranscripts = 5000
 		attachedSessions   = 100
+		changedTranscripts = attachedSessions
 	)
 	dir := t.TempDir()
 	executions, err := newAgentExecutionStore(filepath.Join(dir, "executions.sqlite"), "run-1")
@@ -542,13 +542,9 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 		nativeIDs[i] = fmt.Sprintf("native-%d", i)
 	}
 	service, paths := queuedCatalogFixture(t, "codex", nativeIDs)
-	var callbacks, active, maxActive atomic.Int32
+	var callbacks atomic.Int32
 
 	service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
-		current := active.Add(1)
-		for current > maxActive.Load() && !maxActive.CompareAndSwap(maxActive.Load(), current) {
-		}
-		defer active.Add(-1)
 		callbacks.Add(1)
 		server.confirmDurableThread(ctx, change)
 	})
@@ -559,11 +555,8 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 			t.Fatal("transcript workers did not start")
 		}
 	}
-	// One update lands while nth_0 is in flight and must run again. Repeated
-	// updates to a still-queued thread coalesce into its pending run.
+	// One update lands while the first session is in flight and must run again.
 	appendCallbackFixture(t, service, paths[0])
-	appendCallbackFixture(t, service, paths[changedTranscripts-1])
-	appendCallbackFixture(t, service, paths[changedTranscripts-1])
 	waitForCatalog(t, func() bool { status := service.IngestStatus(); return status.Queued == 0 && status.InFlight == 0 })
 	if status, err := service.IndexStatus(context.Background()); err != nil || status.TranscriptChangeBacklog != changedTranscripts || status.TranscriptChangeInFlight != transcriptChangeWorkerCount {
 		t.Fatalf("storm status = %#v, %v", status, err)
@@ -641,14 +634,11 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if maxActive.Load() > transcriptChangeWorkerCount {
-		t.Fatalf("callback concurrency = %d, workers=%d", maxActive.Load(), transcriptChangeWorkerCount)
-	}
 	if callbacks.Load() != changedTranscripts+1 {
-		t.Fatalf("callbacks = %d, want %d (one in-flight replay, queued duplicates coalesced)", callbacks.Load(), changedTranscripts+1)
+		t.Fatalf("callbacks = %d, want %d (one in-flight replay)", callbacks.Load(), changedTranscripts+1)
 	}
 	// Every session reads its open turn once, the prompt target included (its
-	// prompt's turn is open when its change runs); nth_0 runs twice.
+	// prompt's turn is open when its change runs); the first session runs twice.
 	if durableCalls.Load() != attachedSessions+1 {
 		t.Fatalf("attached session reconciliations = %d, want %d", durableCalls.Load(), attachedSessions+1)
 	}
