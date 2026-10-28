@@ -368,9 +368,7 @@ while :; do sleep 1; done
 	if second.Code != http.StatusConflict {
 		t.Fatalf("second Grok Resume status=%d body=%s, want conflict", second.Code, second.Body.String())
 	}
-
 	firstSession := s.LookupSession(first.ID)
-
 	if firstSession == nil {
 		t.Fatal("first Grok session disappeared during blocked handshake")
 	}

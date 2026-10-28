@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -261,7 +261,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 	stream := s.warm.open(request.fill)
 	defer s.warm.close(stream)
 	type member struct {
-		sess     *sessionruntime.Session
+		sess     *sessions.Session
 		pane     *liveTextPane
 		joining  bool // its first message is not written yet
 		joinedAt time.Time

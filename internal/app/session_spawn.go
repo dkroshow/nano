@@ -8,7 +8,7 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -22,7 +22,7 @@ import (
 // kinds now follow the contract resume has had since Slice R3 — status
 // "starting", the card visible immediately, failure surfaced through failSpawn
 // on the session rather than as an HTTP error nobody is still looking at.
-func (s *server) spawnSession(req spawnRequest) (*sessionruntime.Session, error) {
+func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	if s.agentExecutions == nil || s.controlMetadata == nil || s.executionControlErr != "" || s.controlMetadataErr != "" {
 		return nil, errHostedControlUnavailable
 	}
@@ -48,7 +48,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessionruntime.Session, error)
 			return nil, err
 		}
 		failRegistration := func(cause error) error {
-			if updateErr := s.agentExecutions.UpdateSession(record.ID, "", "", sessionruntime.StatusExited, cause.Error()); updateErr != nil {
+			if updateErr := s.agentExecutions.UpdateSession(record.ID, "", "", sessions.StatusExited, cause.Error()); updateErr != nil {
 				return fmt.Errorf("%w (also failed to mark hosted thread %s retryable: %v)", cause, record.ID, updateErr)
 			}
 			return cause
@@ -92,7 +92,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessionruntime.Session, error)
 			s.forgetAttachment("claude", req.retiredClaudeHandle)
 		}
 		if existing := s.LiveSessionForResume(req.Provider, req.ThreadID, req.HostedThreadID); existing != nil {
-			return nil, &sessionruntime.ThreadAttachedError{ExistingSessionID: existing.ID()}
+			return nil, &sessions.ThreadAttachedError{ExistingSessionID: existing.ID()}
 		}
 	}
 	hostedThreadID := req.HostedThreadID
@@ -133,12 +133,12 @@ func (s *server) spawnSession(req spawnRequest) (*sessionruntime.Session, error)
 			displayName = durableName
 		}
 	}
-	nanoSessionID := sessionruntime.NewID()
-	var journal sessionruntime.Journal
+	nanoSessionID := sessions.NewID()
+	var journal sessions.Journal
 	if s.sendAttempts != nil {
 		journal = s.sendAttempts
 	}
-	var queue sessionruntime.Queue
+	var queue sessions.Queue
 	if s.queuedTurns != nil {
 		queue = s.queuedTurns
 	}
@@ -146,7 +146,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessionruntime.Session, error)
 	if s.completedTurns != nil && s.completedTurns.store != nil {
 		completed = s.completedTurns.store.coreStore
 	}
-	sess := sessionruntime.New(sessionruntime.Config{
+	sess := sessions.New(sessions.Config{
 		ID:                    nanoSessionID,
 		Provider:              req.Provider,
 		HostedThreadID:        hostedThreadID,
@@ -253,7 +253,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessionruntime.Session, error)
 // was registered before the attempt (so a concurrent close could reach it), so
 // registration has to be undone with it, and the spool file removed — nothing
 // will ever read it.
-func (s *server) discardSpawn(sess *sessionruntime.Session) {
+func (s *server) discardSpawn(sess *sessions.Session) {
 	s.RemoveSession(sess.ID())
 	sess.DiscardSpawnResources()
 	s.notifyRuntime()

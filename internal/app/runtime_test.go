@@ -293,7 +293,6 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	}
 
 	// turnActive flip.
-
 	fakeCodex.EmitThreadNotification(threadID, map[string]any{"method": "turn/started", "params": map[string]any{"threadId": threadID}})
 	readRuntimeUntil(t, reader, "turnActive", func(delta runtimeDelta) bool {
 		return !delta.Refresh && len(delta.Rows) == 1 && delta.Rows[0].Runtime != nil && delta.Rows[0].Runtime.TurnActive

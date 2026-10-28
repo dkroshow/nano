@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // resolveSpawn fills flag defaults and absolutizes cwd — the single place
@@ -254,7 +254,7 @@ func (s *server) resolveCodexResume(req spawnRequest) (spawnRequest, error) {
 func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 	req.ClaudeShimWS = s.defaults.claudeShimWS
 	req.ClaudeShimSpools = s.defaults.claudeShimSpools
-	if sessionruntime.NativeThreadIDProvisional("claude", req.ThreadID) && req.HostedThreadID != "" {
+	if sessions.NativeThreadIDProvisional("claude", req.ThreadID) && req.HostedThreadID != "" {
 		// An interrupted re-key can leave the handle's record beside the one it
 		// wrote for the resolved native. The native's record is the current
 		// one, with the anchor of any later turn: resume it. spawnSession
@@ -288,7 +288,7 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 	req.ClaudeArgs = rec.Args
 	req.ClaudeAnchor = rec
 	if req.ClaudeBin == "" {
-		req.ClaudeBin = sessionruntime.ResolveClaudeBin(s.defaults.claudeBin)
+		req.ClaudeBin = sessions.ResolveClaudeBin(s.defaults.claudeBin)
 	}
 	if len(req.ClaudeArgs) == 0 {
 		// No stored transport command exists, so rebuild one from the request's
@@ -298,13 +298,13 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 		if !req.ExternalResumePosture && req.AllowedTools == "" && req.PermissionMode != "bypassPermissions" {
 			req.AllowedTools = s.defaults.allowedTools
 		}
-		req.ClaudeArgs = sessionruntime.ClaudeArgs(req.ProviderRequest)
+		req.ClaudeArgs = sessions.ClaudeArgs(req.ProviderRequest)
 	}
 	// A stored command supplies the stream transport baseline. A record-less
 	// historical resume rebuilds that baseline above. Only after either source
 	// exists may canonical hosted posture and identity replace stale values.
 	if req.HostedThreadID != "" {
-		req.ClaudeArgs = sessionruntime.ClaudeCanonicalResumeArgs(req.ClaudeArgs, req.ProviderRequest)
+		req.ClaudeArgs = sessions.ClaudeCanonicalResumeArgs(req.ClaudeArgs, req.ProviderRequest)
 	}
 	return req, nil
 }

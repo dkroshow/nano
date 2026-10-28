@@ -364,9 +364,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte(summary.HostedThreadID)) {
 		t.Fatalf("hosted-thread list status = %d, body %s", listed.Code, listed.Body.String())
 	}
-
 	sess := s.LookupSession(summary.ID)
-
 	t.Cleanup(sess.Close)
 	deadline := time.Now().Add(time.Second)
 	for sess.Summary().Status != "ready" && time.Now().Before(deadline) {
@@ -751,7 +749,6 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 		t.Fatalf("interaction scopes = old:%#v current:%#v", oldView.Interactions, currentView.Interactions)
 	}
 }
-
 func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 	dir := t.TempDir()
 	executions, err := newAgentExecutionStore(filepath.Join(dir, "executions.sqlite"), "run-1")

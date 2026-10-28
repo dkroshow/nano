@@ -53,7 +53,6 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 					t.Fatal(err)
 				}
 				waitForClaude(t, "failed boot attachment discarded", func() bool {
-
 					return s.LookupSession(sess.ID()) == nil || len(shim.CallsOf(shimMethodStart)) > 0
 				})
 			}

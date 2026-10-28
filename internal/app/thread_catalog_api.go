@@ -18,7 +18,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -256,7 +256,7 @@ type threadCatalogNamer interface {
 // handleSessionName renames a live session before or after its native thread
 // is indexed. A fresh Claude session has no native id until its first turn, so
 // its validated name remains pending until applyPendingName can persist it.
-func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess *sessionruntime.Session) {
+func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	namer, ok := s.catalog.(threadCatalogNamer)
 	if s.catalog == nil || !ok {
@@ -580,7 +580,7 @@ const (
 	archivedIncludeFilter = "include"
 )
 
-func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, page []catalogThread, live []sessionruntime.Summary) []catalogThread {
+func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, page []catalogThread, live []sessions.Summary) []catalogThread {
 	if query.Archived == archivedOnlyFilter {
 		return nil
 	}
@@ -677,7 +677,7 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 // a memory row is attached by construction, and a session still starting has no
 // native id for the (provider, nativeId) lookup to match. The later overlay pass
 // leaves a stamped row alone.
-func memoryThreadRow(sess sessionruntime.Summary) catalogThread {
+func memoryThreadRow(sess sessions.Summary) catalogThread {
 	createdAt := sess.CreatedAt
 	runtime := sessionRuntimeInfo(sess)
 	var name *catalogThreadName

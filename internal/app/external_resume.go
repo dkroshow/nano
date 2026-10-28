@@ -12,7 +12,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 type externalResumeSourceVerifier interface {
@@ -257,7 +257,7 @@ func (s *agentExecutionStore) ensureExternalResumeSession(req spawnRequest) (age
 	if historical != 0 {
 		return agentSessionRecord{}, fmt.Errorf("native conversation %s was previously hosted by Nano; refusing a duplicate registration", req.ThreadID)
 	}
-	if sessionruntime.ProviderLifecycleCapabilities(req.Provider).NativeRecovery {
+	if sessions.ProviderLifecycleCapabilities(req.Provider).NativeRecovery {
 		var held int
 		if err := tx.QueryRow(`SELECT count(*) FROM hosted_native_recoveries WHERE
 			(old_native_id=? AND new_native_id<>'' AND state IN ('bound_pending_activation','activated')) OR

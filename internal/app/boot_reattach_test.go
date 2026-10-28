@@ -136,12 +136,10 @@ func TestBootReattachResumesClaudeThroughLiveShim(t *testing.T) {
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
-
 	sessions := make([]*session, 0, len(s.SnapshotSessions()))
 	for _, sess := range s.SnapshotSessions() {
 		sessions = append(sessions, sess)
 	}
-
 	if len(sessions) != 1 {
 		t.Fatalf("sessions after boot = %d, want 1", len(sessions))
 	}
@@ -188,12 +186,10 @@ func TestBootReattachKeepsRunningButIdleClaudeSessionIdle(t *testing.T) {
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
-
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
-
 	if sess == nil {
 		t.Fatal("boot did not register the idle Claude session")
 	}
@@ -228,7 +224,6 @@ func TestBootReattachUsesRetainedClaudeHistorySeam(t *testing.T) {
 	s.reattachOnBoot()
 	var sess *session
 	waitForClaude(t, "retained-history Claude attach", func() bool {
-
 		for _, candidate := range s.SnapshotSessions() {
 			sess = candidate
 		}
@@ -268,12 +263,10 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
-
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
-
 	if sess == nil {
 		t.Fatal("boot did not register the provisional Claude session")
 	}
@@ -320,12 +313,10 @@ func TestBootReattachReloadsCanonicalCreationNameWhenAttachmentDroppedIt(t *test
 	s.catalog = catalog
 
 	s.reattachOnBoot()
-
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
-
 	if sess == nil {
 		t.Fatal("boot did not register the named Claude session")
 	}
@@ -368,12 +359,10 @@ func TestBootReattachPendingRenameDoesNotBecomeCreationName(t *testing.T) {
 	s.catalog = catalog
 
 	s.reattachOnBoot()
-
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
-
 	if sess == nil {
 		t.Fatal("boot left renamed thread detached")
 	}
@@ -397,9 +386,7 @@ func TestBootReattachResumesCodexThread(t *testing.T) {
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
-
 	count := len(s.SnapshotSessions())
-
 	if count != 1 {
 		t.Fatalf("sessions after boot = %d, want 1", count)
 	}
@@ -595,9 +582,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 	registered := 0
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-
 		registered = len(s.SnapshotSessions())
-
 		if registered == sessionCount {
 			break
 		}
@@ -959,9 +944,7 @@ func TestBootReattachRegistersAllShellsBeforeSlowClaudeHandshake(t *testing.T) {
 	allRegistered := false
 	deadline := time.Now().Add(150 * time.Millisecond)
 	for time.Now().Before(deadline) {
-
 		allRegistered = len(s.SnapshotSessions()) == 2
-
 		if allRegistered {
 			break
 		}
@@ -980,12 +963,10 @@ func TestBootReattachRegistersAllShellsBeforeSlowClaudeHandshake(t *testing.T) {
 	deadline = time.Now().Add(time.Second)
 	allReady := false
 	for time.Now().Before(deadline) {
-
 		allReady = len(s.SnapshotSessions()) == 2
 		for _, sess := range s.SnapshotSessions() {
 			allReady = allReady && sess.Summary().Status == "ready"
 		}
-
 		if allReady {
 			break
 		}
@@ -1020,12 +1001,10 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	time.Sleep(50 * time.Millisecond)
-
 	sessions := make([]*session, 0, len(s.SnapshotSessions()))
 	for _, sess := range s.SnapshotSessions() {
 		sessions = append(sessions, sess)
 	}
-
 	if len(sessions) != sessionCount {
 		t.Fatalf("registered Grok shells = %d, want %d", len(sessions), sessionCount)
 	}
@@ -1125,9 +1104,7 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 		t.Fatal("one more Claude handshake exceeded the bound")
 	case <-time.After(75 * time.Millisecond):
 	}
-
 	shells := len(s.SnapshotSessions())
-
 	if shells != sessionCount {
 		close(release)
 		t.Fatalf("registered Claude shells = %d, want %d", shells, sessionCount)
@@ -1140,7 +1117,6 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 		t.Fatalf("maximum concurrent Claude handshakes = %d, want %d", gotMaximum, providerLifecycleCapabilities("claude").BootHandshakeLimit)
 	}
 	waitForClaude(t, "all bounded Claude handshakes", func() bool {
-
 		if len(s.SnapshotSessions()) != sessionCount {
 			return false
 		}
@@ -1210,12 +1186,10 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
-
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
-
 	if sess == nil {
 		t.Fatal("zero-turn attachment did not create a boot session")
 	}
@@ -1376,12 +1350,10 @@ func TestBootReattachFailureLeavesRecordDetachedAndContinues(t *testing.T) {
 	var sessions []*session
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-
 		sessions = sessions[:0]
 		for _, sess := range s.SnapshotSessions() {
 			sessions = append(sessions, sess)
 		}
-
 		if len(sessions) == 1 && sessions[0].Provider() == "codex" {
 			break
 		}
@@ -1603,7 +1575,6 @@ func TestPromptToAStartingThreadRegistersItOnceAndQueues(t *testing.T) {
 	daemon.Mu.Unlock()
 
 	count := len(s.SnapshotSessions())
-
 	if resumes := daemon.ResumeCount(); resumes != 1 || turnStarts != 1 || count != 1 {
 		t.Fatalf("resumes = %d, turn starts = %d, sessions = %d; want one of each", resumes, turnStarts, count)
 	}
@@ -1657,9 +1628,7 @@ waitingForPublish:
 		t.Fatalf("prioritize a registered thread = %s", got)
 	}
 	s.reattachOnBoot()
-
 	count := len(s.SnapshotSessions())
-
 	if resumes := daemon.ResumeCount(); resumes != 1 || count != 1 {
 		t.Fatalf("provider resumes = %d, sessions = %d; want one of each", resumes, count)
 	}
@@ -1709,9 +1678,7 @@ func TestBootLoopSkipsAThreadForgottenWhileStarting(t *testing.T) {
 	s, daemon, rec := startingCodexServer(t)
 	s.forgetAttachment(rec.Provider, rec.NativeThreadID)
 	s.reattachOnBoot()
-
 	count := len(s.SnapshotSessions())
-
 	if count != 0 || daemon.ResumeCount() != 0 {
 		t.Fatalf("sessions = %d, provider resumes = %d; want the forgotten thread left alone", count, daemon.ResumeCount())
 	}

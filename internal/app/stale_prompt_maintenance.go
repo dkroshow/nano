@@ -18,7 +18,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -220,14 +220,14 @@ func (s *server) settleStaleThread(ctx context.Context, hosted string, records [
 		// native thread, which a newer prompt than these may record.
 		current := ""
 		for _, record := range all {
-			if record.NativeThreadID != "" && !sessionruntime.ClaudeNativeIDProvisional(record.NativeThreadID) {
+			if record.NativeThreadID != "" && !sessions.ClaudeNativeIDProvisional(record.NativeThreadID) {
 				current = record.NativeThreadID
 			}
 		}
 		saved := func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 			return s.savedPromptRows(ctx, current, keys)
 		}
-		_, err = sessionruntime.SettleThreadPrompts(ctx, s.turns, saved, hosted, string(records[0].Provider), current)
+		_, err = sessions.SettleThreadPrompts(ctx, s.turns, saved, hosted, string(records[0].Provider), current)
 	}
 	if errors.Is(err, history.ErrSavedTranscriptUnavailable) {
 		return nil

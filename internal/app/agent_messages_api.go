@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 var agentMessageRefKindPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)
@@ -307,7 +307,7 @@ func (s *server) handleAgentMessageDisposition(w http.ResponseWriter, r *http.Re
 	}
 	name := strings.TrimSpace(s.displayNameForHosted(context.Background(), actor.Provider, actor.ID, actor.NativeThreadID))
 	native := strings.TrimSpace(actor.NativeThreadID)
-	if sessionruntime.NativeThreadIDProvisional(actor.Provider, native) {
+	if sessions.NativeThreadIDProvisional(actor.Provider, native) {
 		native = ""
 	}
 	message, feedback, err := s.mail.DispositionMessage(messageID, actor.ID, name, native, req.Status, req.Note, time.Now().UTC())

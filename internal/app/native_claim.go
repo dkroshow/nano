@@ -9,7 +9,7 @@ import (
 	"time"
 
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 var (
@@ -193,7 +193,7 @@ func (s *server) transferNativeClaim(targetHostedID, provider, nativeID string) 
 			return errNativeClaimLive
 		}
 	}
-	return control.transferNativeClaim(targetHostedID, provider, nativeID, sessionruntime.NativeThreadIDProvisional(provider, nativeID))
+	return control.transferNativeClaim(targetHostedID, provider, nativeID, sessions.NativeThreadIDProvisional(provider, nativeID))
 }
 
 // resolveResumeHostedIdentity is a read-only routing decision. An exact active
@@ -227,7 +227,7 @@ func (s *server) resolveResumeHostedIdentity(req *spawnRequest) error {
 		// the handle still resumes, and resumeClaudeSession finishes the re-key,
 		// but only while the recorded native is that thread's current one and
 		// nobody else owns it.
-		if sessionruntime.NativeThreadIDProvisional(req.Provider, nativeID) {
+		if sessions.NativeThreadIDProvisional(req.Provider, nativeID) {
 			resolvedOwner, err := control.resolvedHandleOwner(context.Background(), named, req.Provider, nativeID)
 			if err != nil {
 				return err

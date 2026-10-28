@@ -248,12 +248,10 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	ensureClaudeTestSpool(t, s, "claude", current.ID)
 	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
-
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
-
 	if sess == nil {
 		t.Fatal("boot left the revived record detached")
 	}

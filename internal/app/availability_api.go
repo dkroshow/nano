@@ -6,7 +6,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // Availability: hard facts only, read-only. It answers
@@ -58,7 +58,7 @@ func (s *server) availabilityFor(hostedThreadID string, now time.Time) availabil
 	}
 	view.Facts.LastHumanMessageAt = record.LastHumanPromptAt
 	sess := s.SessionForHostedThread(hostedThreadID)
-	if sess == nil && record.Status == sessionruntime.StatusExited {
+	if sess == nil && record.Status == sessions.StatusExited {
 		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityUnreachable, "exited", record.Status
 		view.Reasons = append(view.Reasons, "exited")
 		return view

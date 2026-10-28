@@ -23,7 +23,7 @@ import (
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/protocol"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -126,7 +126,7 @@ type liveProjection struct {
 
 	// liveText receives each frame's parsed changes for a file-only thread;
 	// set once before wire activity.
-	liveText sessionruntime.LiveTextObserver
+	liveText sessions.LiveTextObserver
 }
 
 // codexAgentTextDelta reports an agent-message delta, or the empty
@@ -305,7 +305,7 @@ func (p *liveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at t
 		}
 		if json.Unmarshal(line, &envelope) == nil {
 			claudeTurnOpened = (dir == protocol.Send && envelope.Type == "user") ||
-				(live && dir == protocol.Recv && sessionruntime.ClaudeExecutionEvidence(line))
+				(live && dir == protocol.Recv && sessions.ClaudeExecutionEvidence(line))
 			claudeTurnClosed = dir == protocol.Recv && envelope.Type == "result"
 		}
 	}
@@ -346,7 +346,7 @@ func (p *liveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at t
 		id := providerTurnID
 		turn := cloneTurn(p.turns[id])
 		if turn != nil {
-			turn.Status, turn.Error = sessionruntime.ClaudeProjectionTerminal(line)
+			turn.Status, turn.Error = sessions.ClaudeProjectionTerminal(line)
 			turn.CompletedAtMs = at.UnixMilli()
 			if turn.StartedAtMs > 0 {
 				turn.DurationMS = turn.CompletedAtMs - turn.StartedAtMs
@@ -449,7 +449,7 @@ func (p *liveProjection) latestTurnInProgressLocked() bool {
 func (p *liveProjection) trimTurnsLocked() {
 	completed := make([]string, 0, len(p.turnOrder))
 	for _, turnID := range p.turnOrder {
-		if turn := p.turns[turnID]; turn != nil && sessionruntime.CodexResumeTurnTerminal(turn.Status) {
+		if turn := p.turns[turnID]; turn != nil && sessions.CodexResumeTurnTerminal(turn.Status) {
 			completed = append(completed, turnID)
 		}
 	}
@@ -695,7 +695,7 @@ type durableTurnEvidence = liveview.DurableTurnEvidence
 // savedTurnEvidence reads the saved status of a Codex or Grok turn by exact
 // native turn id. Claude saved turns carry no id the live turn shares, so a
 // Claude turn settles only from live evidence.
-func (s *server) savedTurnEvidence(ctx context.Context, sess *sessionruntime.Session, turnID string) (durableTurnEvidence, bool) {
+func (s *server) savedTurnEvidence(ctx context.Context, sess *sessions.Session, turnID string) (durableTurnEvidence, bool) {
 	if s.catalog == nil || sess == nil || (sess.Provider() != "codex" && sess.Provider() != "grok") ||
 		turnID == "" || sess.ThreadID() == "" {
 		return durableTurnEvidence{}, false
@@ -779,7 +779,7 @@ func (s *server) transcriptRepairPriority(candidate history.TranscriptParserBack
 	return 2
 }
 
-func (s *server) confirmDurableItems(ctx context.Context, sess *sessionruntime.Session) {
+func (s *server) confirmDurableItems(ctx context.Context, sess *sessions.Session) {
 	if sess == nil {
 		return
 	}
@@ -806,7 +806,7 @@ func (p *liveProjection) RetainedTurnEvidence(turnID string) (liveProjectionTurn
 	return *turn, latest, version, true
 }
 
-func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Request, sess *sessionruntime.Session) {
+func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
 	catalog, ok := s.catalog.(threadTranscriptCatalog)
 	resolver, resolves := s.catalog.(threadReferenceResolver)
 	if !ok || !resolves || sess == nil || sess.ThreadID() == "" {
@@ -981,7 +981,7 @@ func (p *liveProjection) ProviderName() string {
 func (p *liveProjection) DropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
 
 // SetLiveText connects the observer of ordered parsed evidence.
-func (p *liveProjection) SetLiveText(observer sessionruntime.LiveTextObserver) { p.liveText = observer }
+func (p *liveProjection) SetLiveText(observer sessions.LiveTextObserver) { p.liveText = observer }
 
 // TurnActive reports whether the projected turn is active.
 func (p *liveProjection) TurnActive() bool {

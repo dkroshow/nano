@@ -92,12 +92,10 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *attachmentStore
 	}
 	s.runtime = s
 	t.Cleanup(func() {
-
 		sessions := make([]*session, 0, len(s.SnapshotSessions()))
 		for _, sess := range s.SnapshotSessions() {
 			sessions = append(sessions, sess)
 		}
-
 		for _, sess := range sessions {
 			sess.Close()
 		}
@@ -229,9 +227,7 @@ func waitForResumedThreadID(t *testing.T, s *server, sessionID, want string) ses
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-
 		sess := s.LookupSession(sessionID)
-
 		if sess == nil {
 			t.Fatalf("session %s disappeared while waiting for native id %q", sessionID, want)
 		}
@@ -388,9 +384,7 @@ func TestClaudeHistoricalHostedResumeCompletesNewPrompt(t *testing.T) {
 	}
 	waitForResumedThreadID(t, s, sum.ID, "native-2")
 	waitForClaude(t, "historical resumed prompt completion", func() bool {
-
 		sess := s.LookupSession(sum.ID)
-
 		if sess == nil || sess.Summary().TurnActive {
 			return false
 		}

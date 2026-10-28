@@ -17,7 +17,7 @@ import (
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	interactmodel "github.com/dkroshow/nano/internal/interact"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -124,11 +124,11 @@ func (s *server) handleAgentSessionsList(w http.ResponseWriter, _ *http.Request)
 	records := s.agentExecutions.listSessions()
 	items := make([]agentSessionView, 0, len(records))
 	for _, record := range records {
-		if _, waiting := s.boot.waitingHosted(record.ID); record.Status == sessionruntime.StatusExited && !attached[record.ID] && waiting == "" {
+		if _, waiting := s.boot.waitingHosted(record.ID); record.Status == sessions.StatusExited && !attached[record.ID] && waiting == "" {
 			continue
 		}
 		view := s.agentSessionView(record.ID)
-		if view.Status != sessionruntime.StatusExited {
+		if view.Status != sessions.StatusExited {
 			items = append(items, view)
 		}
 	}
@@ -191,7 +191,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 		httpapi.WriteHTTPError(w, "invokerThreadRef does not resolve to a hosted thread", http.StatusBadRequest)
 		return
 	}
-	if invoker.Status == sessionruntime.StatusExited {
+	if invoker.Status == sessions.StatusExited {
 		httpapi.WriteHTTPError(w, "invokerThreadRef resolves to a closed hosted thread", http.StatusConflict)
 		return
 	}
@@ -235,7 +235,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !created {
-		if record.Status == sessionruntime.StatusExited {
+		if record.Status == sessions.StatusExited {
 			httpapi.WriteJSON(w, s.agentSessionView(record.ID))
 			return
 		}
@@ -261,7 +261,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 	resolved.HostedThreadID = record.ID
 	sess, err := s.spawnSession(resolved)
 	if err != nil {
-		_ = s.agentExecutions.UpdateSession(record.ID, "", record.NativeThreadID, sessionruntime.StatusExited, err.Error())
+		_ = s.agentExecutions.UpdateSession(record.ID, "", record.NativeThreadID, sessions.StatusExited, err.Error())
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -341,7 +341,7 @@ func (s *server) handleHostedThreadClose(w http.ResponseWriter, _ *http.Request,
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.agentExecutions.UpdateSession(record.ID, "", "", sessionruntime.StatusExited, "closed"); err != nil {
+	if err := s.agentExecutions.UpdateSession(record.ID, "", "", sessions.StatusExited, "closed"); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -862,7 +862,7 @@ type hostedTurnSubmission struct {
 func (s *server) turnAttributionFor(sender agentSessionRecord) (turnAttribution, error) {
 	provider := strings.TrimSpace(sender.Provider)
 	native := strings.TrimSpace(sender.NativeThreadID)
-	if sender.ID == "" || provider == "" || native == "" || sessionruntime.NativeThreadIDProvisional(provider, native) {
+	if sender.ID == "" || provider == "" || native == "" || sessions.NativeThreadIDProvisional(provider, native) {
 		return turnAttribution{}, errors.New("senderThreadRef resolves to a hosted thread without a confirmed provider-native thread identity")
 	}
 	identity, err := s.resolveIdentity(context.Background(), sender.ID)
@@ -964,9 +964,9 @@ func (e *hostedTurnAdmissionError) Error() string { return "target is not idle: 
 
 func hostedTurnPromptHash(prompt string, requireIdle bool) string {
 	if !requireIdle {
-		return sessionruntime.SendTextHash(prompt)
+		return sessions.SendTextHash(prompt)
 	}
-	return sessionruntime.SendTextHash(prompt + "\x00requireIdle")
+	return sessions.SendTextHash(prompt + "\x00requireIdle")
 }
 
 func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hostedTurnSubmission) (agentTurnRecord, bool, error) {
@@ -983,7 +983,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 	sub.Attribution.Origin = sub.Origin
 	hash := hostedTurnPromptHash(prompt, requireIdle)
 	if sub.NextTurn {
-		hash = sessionruntime.TurnRequestHash(prompt, true)
+		hash = sessions.TurnRequestHash(prompt, true)
 	}
 	_, waited := s.boot.waitingHosted(hostedThreadID)
 	s.reattachWaitingHosted(hostedThreadID)
@@ -1093,7 +1093,7 @@ func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub h
 	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
-func (s *server) finishHostedTurnSubmission(sess *sessionruntime.Session, record agentTurnRecord, created bool, started bool, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
+func (s *server) finishHostedTurnSubmission(sess *sessions.Session, record agentTurnRecord, created bool, started bool, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
 	if err != nil {
 		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnFailed, &agentExecutionError{Source: "delivery", Message: err.Error()})
 		sess.NotifyRuntime()
@@ -1253,14 +1253,14 @@ func (s *server) cancelQueuedAgentTurn(w http.ResponseWriter, operationID string
 	}
 	var err error
 	if sess := s.SessionForHostedThread(rec.HostedThreadID); sess != nil {
-		_, err = sess.CancelQueuedTurnAction(rec.TransportActionID, sessionruntime.DiscardedByCaller)
+		_, err = sess.CancelQueuedTurnAction(rec.TransportActionID, sessions.DiscardedByCaller)
 	} else {
-		_, err = sessionruntime.CancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.TransportActionID, sessionruntime.DiscardedByCaller)
+		_, err = sessions.CancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.TransportActionID, sessions.DiscardedByCaller)
 	}
 	if err != nil {
 		status := http.StatusInternalServerError
-		var refused *sessionruntime.PromptActionRefused
-		if errors.Is(err, sessionruntime.ErrQueuedTurnNotFound) || errors.Is(err, sessionruntime.ErrQueuedTurnDelivering) || errors.Is(err, sessionruntime.ErrPromptEnded) || errors.As(err, &refused) {
+		var refused *sessions.PromptActionRefused
+		if errors.Is(err, sessions.ErrQueuedTurnNotFound) || errors.Is(err, sessions.ErrQueuedTurnDelivering) || errors.Is(err, sessions.ErrPromptEnded) || errors.As(err, &refused) {
 			status = http.StatusConflict
 		}
 		httpapi.WriteHTTPError(w, err.Error(), status)
@@ -1293,7 +1293,7 @@ func (s *server) agentSessionView(id string) agentSessionView {
 	} else if _, waiting := s.boot.waitingHosted(id); waiting != "" {
 		view.Status = waiting
 	}
-	view.NativeThreadIDProvisional = sessionruntime.NativeThreadIDProvisional(view.Provider, view.NativeThreadID)
+	view.NativeThreadIDProvisional = sessions.NativeThreadIDProvisional(view.Provider, view.NativeThreadID)
 	view.Attachment = s.hostedAttachmentState(id)
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
 		if metadata, err := s.controlMetadata.View(id); err == nil {
@@ -1406,7 +1406,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 
 // hostedSessionForRequest is sessionForHostedThread for a request that needs
 // the thread live: a thread still starting after a restart is registered first.
-func (s *server) hostedSessionForRequest(id string) *sessionruntime.Session {
+func (s *server) hostedSessionForRequest(id string) *sessions.Session {
 	s.reattachWaitingHosted(id)
 	return s.SessionForHostedThread(id)
 }
@@ -1462,7 +1462,7 @@ func (s *server) closeHostedThreadForRecordCore(record agentSessionRecord) error
 	// public close and bulk-close handlers repeat this update with their own
 	// reason, but doing it here prevents a concurrent attachment from slipping
 	// into the detached-close gap.
-	return s.agentExecutions.UpdateSession(record.ID, "", "", sessionruntime.StatusExited, "closed")
+	return s.agentExecutions.UpdateSession(record.ID, "", "", sessions.StatusExited, "closed")
 }
 
 // dropQueuedTurns removes undelivered queued prompts for the thread: an
@@ -1480,13 +1480,13 @@ func (s *server) dropQueuedTurns(record agentSessionRecord) error {
 		if rec.ClientActionID == "" {
 			return nil
 		}
-		if _, err := sessionruntime.CancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.ClientActionID, sessionruntime.DiscardedByCaller); err != nil {
+		if _, err := sessions.CancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.ClientActionID, sessions.DiscardedByCaller); err != nil {
 			return err
 		}
 	}
 }
 
-func (s *server) closeAgentSession(sess *sessionruntime.Session) error {
+func (s *server) closeAgentSession(sess *sessions.Session) error {
 	if sess == nil {
 		return nil
 	}

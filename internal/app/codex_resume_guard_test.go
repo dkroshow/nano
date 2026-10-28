@@ -36,12 +36,10 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 	// Session handshakes run in background. Tear them down before the temporary
 	// control.sqlite cleanup so a late provider reply cannot query a closed DB.
 	t.Cleanup(func() {
-
 		sessions := make([]*session, 0, len(s.SnapshotSessions()))
 		for _, sess := range s.SnapshotSessions() {
 			sessions = append(sessions, sess)
 		}
-
 		for _, sess := range sessions {
 			sess.Close()
 		}
@@ -64,9 +62,7 @@ func waitForSessionStatus(t *testing.T, s *server, sessionID, want string) sessi
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-
 		sess := s.LookupSession(sessionID)
-
 		if sess == nil {
 			t.Fatalf("session %s disappeared while waiting for status %q", sessionID, want)
 		}
@@ -104,7 +100,6 @@ func TestCodexDaemonReconnectsExistingSessionsWithoutAnotherRPC(t *testing.T) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
 
 			sess := s.LookupSession(spawned.ID)
-
 			if sess != nil {
 				sess.Close()
 			}
@@ -133,7 +128,6 @@ func TestCodexDaemonReconnectOwnsResumeFailureFromDroppedSocket(t *testing.T) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
 
 			sess := s.LookupSession(spawned.ID)
-
 			if sess != nil {
 				sess.Close()
 			}
@@ -145,9 +139,7 @@ func TestCodexDaemonReconnectOwnsResumeFailureFromDroppedSocket(t *testing.T) {
 }
 
 func waitSessionStatus(s *server, sessionID string) string {
-
 	sess := s.LookupSession(sessionID)
-
 	if sess == nil {
 		return "missing"
 	}
@@ -280,9 +272,7 @@ func TestCodexResumeDurableTerminalTurnEndsIdleAfterHandshake(t *testing.T) {
 	rec := postResume(t, s, threadID)
 	spawned := decodeSummary(t, rec)
 	waitForWireMethod(t, s, spawned.ID, "thread/resume")
-
 	sess := s.LookupSession(spawned.ID)
-
 	if sess == nil {
 		t.Fatal("resumed session missing")
 	}
@@ -580,7 +570,6 @@ func TestResumeHandshakeHydratesConversationProjection(t *testing.T) {
 			{"id":"agent-2","type":"agentMessage","text":"partial answer"}
 		]}
 	]`))
-
 	projection := newLiveProjection("codex")
 	resumeCodexFixture(t, runtimeFixtureConfig(t, sessionConfig{ID: "resume-hydrate", Provider: "codex", HostedThreadID: "hydrate", Projection: projection}), threadID, fake)
 	snapshot := projectionStateForTest(projection)
@@ -611,9 +600,7 @@ func TestResumeWireReplyOmitsHistoricalTurns(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForSessionStatus(t, s, sum.ID, "ready")
-
 	sess := s.LookupSession(sum.ID)
-
 	if sess == nil {
 		t.Fatal("resumed session missing")
 	}
@@ -779,9 +766,7 @@ func TestCloseDuringStartHandshakeLeavesNoZombieRouting(t *testing.T) {
 	}
 
 	time.Sleep(handshakeDelay + 300*time.Millisecond) // let the delayed handshake land
-
 	listed := s.LookupSession(sum.ID) != nil
-
 	if listed {
 		t.Fatal("closed session came back into the session list")
 	}

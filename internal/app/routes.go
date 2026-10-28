@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 type applicationRoute struct {
@@ -17,7 +17,7 @@ type applicationRoute struct {
 }
 
 func applicationRoutes(s *server) []applicationRoute {
-	sessionRoute := func(operation func(http.ResponseWriter, *http.Request, *sessionruntime.Session)) http.HandlerFunc {
+	sessionRoute := func(operation func(http.ResponseWriter, *http.Request, *sessions.Session)) http.HandlerFunc {
 		return s.sessionOperation(operation)
 	}
 	routes := []applicationRoute{
@@ -26,68 +26,68 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPost, "/api/sessions", "sessions.create", s.handleSessionCreate},
 		{http.MethodPost, "/api/sessions/preview", "sessions.preview", s.handleSpawnPreview},
 		{http.MethodDelete, "/api/sessions/{sessionId}", "sessions.close", sessionRoute(s.handleSessionClose)},
-		{http.MethodGet, "/api/sessions/{sessionId}/events", "sessions.events.stream", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) { value.HandleEvents(w, r) })},
-		{http.MethodGet, "/api/sessions/{sessionId}/events/page", "sessions.events.page", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/events", "sessions.events.stream", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleEvents(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/events/page", "sessions.events.page", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleEventsPage(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/conversation", "sessions.conversation.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/conversation", "sessions.conversation.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleConversation(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/conversation/history", "sessions.conversation.history", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/conversation/history", "sessions.conversation.history", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			s.handleConversationHistory(w, r, value)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/conversation/transcript", "sessions.conversation.transcript", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/conversation/transcript", "sessions.conversation.transcript", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			s.handleConversationHistory(w, r, value)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/conversation/events", "sessions.conversation.events", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/conversation/events", "sessions.conversation.events", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleConversationEvents(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files", "sessions.instructions.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files", "sessions.instructions.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleInstructionFiles(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files/read", "sessions.instructions.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files/read", "sessions.instructions.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleInstructionFileRead(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files/mtime", "sessions.instructions.mtime", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files/mtime", "sessions.instructions.mtime", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleInstructionFileMtime(w, r)
 		})},
-		{http.MethodPut, "/api/sessions/{sessionId}/instruction-files/write", "sessions.instructions.write", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodPut, "/api/sessions/{sessionId}/instruction-files/write", "sessions.instructions.write", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleInstructionFileWrite(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/state", "sessions.state.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) { value.HandleState(w, r) })},
-		{http.MethodGet, "/api/sessions/{sessionId}/mcp", "sessions.mcp.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/state", "sessions.state.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleState(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/mcp", "sessions.mcp.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleMCPServers(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) { value.HandleSkills(w, r) })},
-		{http.MethodPut, "/api/sessions/{sessionId}/name", "sessions.name.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleSkills(w, r) })},
+		{http.MethodPut, "/api/sessions/{sessionId}/name", "sessions.name.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			s.handleSessionName(w, r, value)
 		})},
-		{http.MethodPost, "/api/sessions/{sessionId}/turn", "sessions.turn.submit", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) { value.HandleTurn(w, r) })},
-		{http.MethodGet, "/api/sessions/{sessionId}/turn-delivery", "sessions.turnDelivery.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodPost, "/api/sessions/{sessionId}/turn", "sessions.turn.submit", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleTurn(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/turn-delivery", "sessions.turnDelivery.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTurnDeliveryList(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}", "sessions.turnDelivery.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}", "sessions.turnDelivery.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTurnDeliveryRead(w, r, r.PathValue("clientActionId"))
 		})},
-		{http.MethodDelete, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}", "sessions.turnDelivery.cancel", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodDelete, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}", "sessions.turnDelivery.cancel", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTurnDeliveryCancel(w, r, r.PathValue("clientActionId"))
 		})},
-		{http.MethodPost, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}/resend", "sessions.turnDelivery.resend", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodPost, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}/resend", "sessions.turnDelivery.resend", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTurnDeliveryResend(w, r, r.PathValue("clientActionId"))
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodGet, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTurnOptionsRead(w, r)
 		})},
-		{http.MethodPost, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodPost, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTurnOptionsUpdate(w, r)
 		})},
-		{http.MethodPost, "/api/sessions/{sessionId}/interrupt", "sessions.turn.interrupt", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodPost, "/api/sessions/{sessionId}/interrupt", "sessions.turn.interrupt", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleInterrupt(w, r)
 		})},
-		{http.MethodPost, "/api/sessions/{sessionId}/transcript-repair", "sessions.transcript.repair", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodPost, "/api/sessions/{sessionId}/transcript-repair", "sessions.transcript.repair", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			s.handleTranscriptRepair(w, r, value)
 		})},
-		{http.MethodPost, "/api/sessions/{sessionId}/interactions/{requestId}", "sessions.interactions.answer", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessionruntime.Session) {
+		{http.MethodPost, "/api/sessions/{sessionId}/interactions/{requestId}", "sessions.interactions.answer", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleInteraction(w, r, r.PathValue("requestId"))
 		})},
 		{http.MethodGet, "/api/codex/models", "models.codex.list", s.handleCodexModels},

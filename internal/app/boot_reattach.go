@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // bootReattach is one boot's set of stored attachments that are not live yet.
@@ -33,7 +33,7 @@ import (
 // that thread at once through the same code.
 type bootReattach struct {
 	order    []attachmentRecord
-	controls map[string]*sessionruntime.BootControl
+	controls map[string]*sessions.BootControl
 
 	mu       sync.Mutex
 	pending  map[attachmentKey]bool
@@ -53,7 +53,7 @@ func (s *server) prepareBootReattach() {
 	}
 	records := s.attachments.detachedExcept(nil)
 	boot := &bootReattach{
-		controls: map[string]*sessionruntime.BootControl{},
+		controls: map[string]*sessions.BootControl{},
 		pending:  make(map[attachmentKey]bool, len(records)),
 		resting:  map[attachmentKey]bool{},
 		byHosted: make(map[string]attachmentRecord, len(records)),
@@ -66,7 +66,7 @@ func (s *server) prepareBootReattach() {
 			boot.byHosted[rec.HostedThreadID] = rec
 		}
 		if boot.controls[rec.Provider] == nil {
-			control := sessionruntime.NewBootControl(sessionruntime.ProviderLifecycleCapabilities(rec.Provider).BootHandshakeLimit)
+			control := sessions.NewBootControl(sessions.ProviderLifecycleCapabilities(rec.Provider).BootHandshakeLimit)
 			boot.controls[rec.Provider] = control
 		}
 	}
@@ -450,18 +450,20 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 			presentationMode = canonical
 		}
 	}
-	sess, err := s.spawnSession(spawnRequest{ProviderRequest: sessionruntime.ProviderRequest{Provider: rec.Provider,
-		Mode:           "resume",
-		ThreadID:       rec.NativeThreadID,
-		HostedThreadID: rec.HostedThreadID,
-
-		CodexZeroTurnResume: sessionruntime.ProviderLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
-		BootReattach:        boot.controls[rec.Provider]}, InvokerHostedThreadID: rec.InvokerHostedThreadID,
-		InvokerNativeThreadID: rec.InvokerNativeThreadID,
-		InvokerProvider:       rec.InvokerProvider,
-		PresentationMode:      presentationMode,
-		PendingName:           rec.PendingName,
-
+	sess, err := s.spawnSession(spawnRequest{
+		ProviderRequest: sessions.ProviderRequest{
+			Provider:            rec.Provider,
+			Mode:                "resume",
+			ThreadID:            rec.NativeThreadID,
+			HostedThreadID:      rec.HostedThreadID,
+			CodexZeroTurnResume: sessions.ProviderLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
+			BootReattach:        boot.controls[rec.Provider],
+		},
+		InvokerHostedThreadID:   rec.InvokerHostedThreadID,
+		InvokerNativeThreadID:   rec.InvokerNativeThreadID,
+		InvokerProvider:         rec.InvokerProvider,
+		PresentationMode:        presentationMode,
+		PendingName:             rec.PendingName,
 		immediateRuntimePublish: immediateRuntimePublish,
 		restart:                 restart,
 		// A thread the sidebar does not show catches up after the visible
@@ -469,7 +471,7 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 		// (immediateRuntimePublish) does not wait.
 		catalogBackground: !immediateRuntimePublish && restart.hiddenAtBoot(),
 	})
-	var attached *sessionruntime.ThreadAttachedError
+	var attached *sessions.ThreadAttachedError
 	switch {
 	case errors.As(err, &attached):
 		return bootReattachSettled // the winning resume carries the entry

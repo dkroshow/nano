@@ -81,9 +81,7 @@ func TestClaudeStartReturnsStartingWhileTransportComesUp(t *testing.T) {
 	}
 	// Listed from the moment the POST returns: the card is on screen while the
 	// child is still coming up.
-
 	sess := s.LookupSession(sum.ID)
-
 	if sess == nil {
 		t.Fatal("a starting session is not listed")
 	}
@@ -118,9 +116,7 @@ func TestClaudeStartTransportFailureLandsOnTheSession(t *testing.T) {
 	if sum.Status != "starting" {
 		t.Fatalf("summary = %#v, want the failure to land on the session rather than the POST", sum)
 	}
-
 	sess := s.LookupSession(sum.ID)
-
 	waitForClaude(t, "the spawn failure to reach the session", func() bool {
 		return strings.Contains(sess.Summary().Error, "starting claude")
 	})
@@ -150,9 +146,7 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	migrateTestControl(t, s.controlMetadata) // the init resolves the provisional handle, as on the real schema
 
 	sum := spawnedSummary(t, postClaudeStart(t, s))
-
 	sess := s.LookupSession(sum.ID)
-
 	if sess == nil {
 		t.Fatal("a starting session is not listed")
 	}
@@ -162,9 +156,7 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("unconfirmed close status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-
 	retained := s.LookupSession(sum.ID) == sess
-
 	if !retained || len(shim.CallsOf(shimMethodClose)) != 0 {
 		t.Fatal("unconfirmed close removed the session or attempted an unidentified stop")
 	}
@@ -187,9 +179,7 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	if got := sess.Summary().Error; got != "" {
 		t.Fatalf("closing a starting session reported a spawn failure: %q", got)
 	}
-
 	listed := s.LookupSession(sum.ID) != nil
-
 	if listed {
 		t.Fatal("the closed session came back into the session list")
 	}

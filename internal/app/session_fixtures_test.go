@@ -7,114 +7,114 @@ import (
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	protocolmodel "github.com/dkroshow/nano/internal/protocol"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	timemodel "time"
 )
 
-var addSavedUserKey = sessionruntime.AddSavedUserKey
+var addSavedUserKey = sessions.AddSavedUserKey
 
-type attachedSourceCatalog = sessionruntime.AttachedCatalog
-type bootProviderControl = sessionruntime.BootControl
+type attachedSourceCatalog = sessions.AttachedCatalog
+type bootProviderControl = sessions.BootControl
 
-var cancelQueuedTurnStores = sessionruntime.CancelQueuedTurnStores
+var cancelQueuedTurnStores = sessions.CancelQueuedTurnStores
 
-type claudeAnswer = sessionruntime.ClaudeAnswer
-type claudeAnswers = sessionruntime.ClaudeAnswers
+type claudeAnswer = sessions.ClaudeAnswer
+type claudeAnswers = sessions.ClaudeAnswers
 
-var claudeArgs = sessionruntime.ClaudeArgs
-var claudeCanonicalResumeArgs = sessionruntime.ClaudeCanonicalResumeArgs
-var claudeCommand = sessionruntime.ClaudeCommand
-var claudeExecutionEvidence = sessionruntime.ClaudeExecutionEvidence
+var claudeArgs = sessions.ClaudeArgs
+var claudeCanonicalResumeArgs = sessions.ClaudeCanonicalResumeArgs
+var claudeCommand = sessions.ClaudeCommand
+var claudeExecutionEvidence = sessions.ClaudeExecutionEvidence
 
-const claudeMemberBatch = sessionruntime.ClaudeMemberBatch
+const claudeMemberBatch = sessions.ClaudeMemberBatch
 
-var claudeNativeIDProvisional = sessionruntime.ClaudeNativeIDProvisional
-var claudeProjectionTerminal = sessionruntime.ClaudeProjectionTerminal
-var claudeSettlementEntry = sessionruntime.ClaudeSettlementEntry
-var closeDetachedClaude = sessionruntime.CloseDetachedClaude
+var claudeNativeIDProvisional = sessions.ClaudeNativeIDProvisional
+var claudeProjectionTerminal = sessions.ClaudeProjectionTerminal
+var claudeSettlementEntry = sessions.ClaudeSettlementEntry
+var closeDetachedClaude = sessions.CloseDetachedClaude
 
-type codexDaemon = sessionruntime.CodexDaemon
+type codexDaemon = sessions.CodexDaemon
 
-var codexResumeTurnTerminal = sessionruntime.CodexResumeTurnTerminal
-var codexSessionRequest = sessionruntime.CodexSessionRequest
-var codexTurnOverrides = sessionruntime.CodexTurnOverrides
+var codexResumeTurnTerminal = sessions.CodexResumeTurnTerminal
+var codexSessionRequest = sessions.CodexSessionRequest
+var codexTurnOverrides = sessions.CodexTurnOverrides
 
-type deliveryExpiries = sessionruntime.DeliveryExpiries
+type deliveryExpiries = sessions.DeliveryExpiries
 
-const discardedByCaller = sessionruntime.DiscardedByCaller
+const discardedByCaller = sessions.DiscardedByCaller
 
-var errPromptEnded = sessionruntime.ErrPromptEnded
-var errQueuedTurnDelivering = sessionruntime.ErrQueuedTurnDelivering
-var errQueuedTurnNotFound = sessionruntime.ErrQueuedTurnNotFound
-var exactClaudeNative = sessionruntime.ExactClaudeNative
-var fetchGrokModels = sessionruntime.FetchGrokModels
-var grokCommand = sessionruntime.GrokCommand
+var errPromptEnded = sessions.ErrPromptEnded
+var errQueuedTurnDelivering = sessions.ErrQueuedTurnDelivering
+var errQueuedTurnNotFound = sessions.ErrQueuedTurnNotFound
+var exactClaudeNative = sessions.ExactClaudeNative
+var fetchGrokModels = sessions.FetchGrokModels
+var grokCommand = sessions.GrokCommand
 
-const grokJSONRPCVersion = sessionruntime.GrokJSONRPCVersion
+const grokJSONRPCVersion = sessions.GrokJSONRPCVersion
 
-var grokProbeCwd = sessionruntime.GrokProbeCwd
-var grokProcessEnv = sessionruntime.GrokProcessEnv
+var grokProbeCwd = sessions.GrokProbeCwd
+var grokProcessEnv = sessions.GrokProcessEnv
 
-const grokProtocolVersion = sessionruntime.GrokProtocolVersion
+const grokProtocolVersion = sessions.GrokProtocolVersion
 
-var grokSessionRequest = sessionruntime.GrokSessionRequest
+var grokSessionRequest = sessions.GrokSessionRequest
 
-type liveTextObserver = sessionruntime.LiveTextObserver
+type liveTextObserver = sessions.LiveTextObserver
 
-var nativeThreadIDProvisional = sessionruntime.NativeThreadIDProvisional
-var newBootProviderControl = sessionruntime.NewBootControl
-var newClaudeAnswers = sessionruntime.NewClaudeAnswers
+var nativeThreadIDProvisional = sessions.NativeThreadIDProvisional
+var newBootProviderControl = sessions.NewBootControl
+var newClaudeAnswers = sessions.NewClaudeAnswers
 
 // The scripted provider owns this test process, so a lost connection must not start the installed CLI.
 func newCodexDaemon(url, label string) *codexDaemon {
-	return sessionruntime.NewCodexDaemon(url, label, func() bool { return true })
+	return sessions.NewCodexDaemon(url, label, func() bool { return true })
 }
 
-var newDeliveryExpiries = sessionruntime.NewDeliveryExpiries
-var newSession = sessionruntime.New
-var newSessionID = sessionruntime.NewID
-var newSessionRegistry = sessionruntime.NewRegistry
-var prepareWireSpoolDir = sessionruntime.PrepareWireSpoolDir
+var newDeliveryExpiries = sessions.NewDeliveryExpiries
+var newSession = sessions.New
+var newSessionID = sessions.NewID
+var newSessionRegistry = sessions.NewRegistry
+var prepareWireSpoolDir = sessions.PrepareWireSpoolDir
 
-type promptActionRefused = sessionruntime.PromptActionRefused
+type promptActionRefused = sessions.PromptActionRefused
 
-var promptPresentation = sessionruntime.PromptPresentation
-var providerLifecycleCapabilities = sessionruntime.ProviderLifecycleCapabilities
+var promptPresentation = sessions.PromptPresentation
+var providerLifecycleCapabilities = sessions.ProviderLifecycleCapabilities
 
-type providerRequest = sessionruntime.ProviderRequest
+type providerRequest = sessions.ProviderRequest
 
-var resolveClaudeBin = sessionruntime.ResolveClaudeBin
-var resolveGrokBin = sessionruntime.ResolveGrokBin
+var resolveClaudeBin = sessions.ResolveClaudeBin
+var resolveGrokBin = sessions.ResolveGrokBin
 
-type savedPromptReader = sessionruntime.SavedPromptReader
+type savedPromptReader = sessions.SavedPromptReader
 
-var savedRowsGeneration = sessionruntime.SavedRowsGeneration
-var savedRowsOf = sessionruntime.SavedRowsOf
-var sendTextHash = sessionruntime.SendTextHash
+var savedRowsGeneration = sessions.SavedRowsGeneration
+var savedRowsOf = sessions.SavedRowsOf
+var sendTextHash = sessions.SendTextHash
 
-type session = sessionruntime.Session
-type sessionAvailability = sessionruntime.Availability
-type sessionConfig = sessionruntime.Config
-type sessionExecutions = sessionruntime.Executions
-type sessionJournal = sessionruntime.Journal
-type sessionLiveText = sessionruntime.LiveText
-type sessionMetadata = sessionruntime.Metadata
-type sessionPane = sessionruntime.Pane
-type sessionProjection = sessionruntime.Projection
-type sessionQueue = sessionruntime.Queue
-type sessionRegistry = sessionruntime.Registry
+type session = sessions.Session
+type sessionAvailability = sessions.Availability
+type sessionConfig = sessions.Config
+type sessionExecutions = sessions.Executions
+type sessionJournal = sessions.Journal
+type sessionLiveText = sessions.LiveText
+type sessionMetadata = sessions.Metadata
+type sessionPane = sessions.Pane
+type sessionProjection = sessions.Projection
+type sessionQueue = sessions.Queue
+type sessionRegistry = sessions.Registry
 
-const sessionStatusExited = sessionruntime.StatusExited
+const sessionStatusExited = sessions.StatusExited
 
-type sessionSummary = sessionruntime.Summary
+type sessionSummary = sessions.Summary
 
-var settleThreadPrompts = sessionruntime.SettleThreadPrompts
-var slowDeliveryAt = sessionruntime.SlowDeliveryAt
-var submissionEventID = sessionruntime.SubmissionEventID
+var settleThreadPrompts = sessions.SettleThreadPrompts
+var slowDeliveryAt = sessions.SlowDeliveryAt
+var submissionEventID = sessions.SubmissionEventID
 
-type threadAttachedError = sessionruntime.ThreadAttachedError
+type threadAttachedError = sessions.ThreadAttachedError
 
-var turnRequestHash = sessionruntime.TurnRequestHash
+var turnRequestHash = sessions.TurnRequestHash
 
 type pendingInteraction = interactmodel.PendingInteraction
 type permissionEvent = hostedmodel.PermissionEvent
@@ -142,7 +142,7 @@ type wireEvent = protocolmodel.Event
 // Expected Claude CLI spelling at the application spawn boundary.
 const claudeIdentityFlag = "--append-system-prompt"
 
-type transcriptRepairResponse = sessionruntime.TranscriptRepairResponse
+type transcriptRepairResponse = sessions.TranscriptRepairResponse
 
 type postureEntry = hostedmodel.PostureEntry
 

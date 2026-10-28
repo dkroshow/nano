@@ -14,7 +14,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -325,7 +325,7 @@ func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Requ
 	}
 	now := time.Now().UTC()
 	request := transcriptAuditRequest{
-		ID: "tau_" + sessionruntime.NewID(), ClientActionID: body.ClientActionID, ThreadID: body.ThreadRef,
+		ID: "tau_" + sessions.NewID(), ClientActionID: body.ClientActionID, ThreadID: body.ThreadRef,
 		TabID: body.TabID, PageID: body.PageID, PaneID: body.PaneID, Scopes: scopes, Status: "pending",
 		RequestedAt: now.Format(time.RFC3339Nano), Deadline: now.Add(transcriptAuditTTL).Format(time.RFC3339Nano),
 		ExpectedBuild: embeddedBundleName(), ReferenceProjectionKey: pin.Projection.Key,

@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 var errNativeRecoveryConflict = errors.New("native recovery conflict")
 
 func (s *controlMetadataStore) nativeRecoveryResumeGuard(ctx context.Context, hostedID, provider, nativeID string) error {
-	if !sessionruntime.ProviderLifecycleCapabilities(provider).NativeRecovery {
+	if !sessions.ProviderLifecycleCapabilities(provider).NativeRecovery {
 		return nil
 	}
 	var count int

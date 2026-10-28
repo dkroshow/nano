@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // liveTextOf recovers the application-owned loop at application composition sites.
-func liveTextOf(sess *sessionruntime.Session) *liveTextLoop {
+func liveTextOf(sess *sessions.Session) *liveTextLoop {
 	if sess == nil || sess.LiveTextService() == nil {
 		return nil
 	}
@@ -37,7 +37,7 @@ func (s *liveTextStream) ReadyChannel() <-chan struct{} { return s.pane.ready }
 func (s *liveTextStream) Take() [][]byte { return s.pane.take() }
 
 // RequestPane creates a pane for the validated request parameters.
-func (l *liveTextLoop) RequestPane(r *http.Request) (sessionruntime.Pane, error) {
+func (l *liveTextLoop) RequestPane(r *http.Request) (sessions.Pane, error) {
 	query, err := parseTranscriptListQuery(r)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (l *liveTextLoop) RequestPane(r *http.Request) (sessionruntime.Pane, error)
 }
 
 // RowsPane creates a saved-row pane for a conversation view.
-func (l *liveTextLoop) RowsPane(view conversationView) sessionruntime.Pane {
+func (l *liveTextLoop) RowsPane(view conversationView) sessions.Pane {
 	query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 1}
 	if view == conversationViewFull {
 		query.View, query.HiddenSpecified = devThreadTranscriptView, true
@@ -93,7 +93,7 @@ func (l *liveTextLoop) ConversationItems(ctx context.Context, view conversationV
 	return items, page, response.Projection.Key, nil
 }
 
-func newLiveTextLoop(srv *server, sess *sessionruntime.Session) *liveTextLoop {
+func newLiveTextLoop(srv *server, sess *sessions.Session) *liveTextLoop {
 	loop := &liveTextLoop{srv: srv, wake: make(chan struct{}, 1)}
 	if sess != nil {
 		loop.sess = sess

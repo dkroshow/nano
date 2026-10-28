@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func (s *server) handleHeartbeatAttachmentsList(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.
 		httpapi.WriteHTTPError(w, "targetHostedThreadId does not resolve to a hosted thread", http.StatusBadRequest)
 		return
 	}
-	if target.Status == sessionruntime.StatusExited {
+	if target.Status == sessions.StatusExited {
 		httpapi.WriteHTTPError(w, "targetHostedThreadId resolves to a closed hosted thread", http.StatusBadRequest)
 		return
 	}

@@ -5,14 +5,14 @@ import (
 	"net/http"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 type transcriptRepairRequest struct {
 	ClientActionID string `json:"clientActionId"`
 }
 
-func (s *server) handleTranscriptRepair(w http.ResponseWriter, r *http.Request, sess *sessionruntime.Session) {
+func (s *server) handleTranscriptRepair(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
 	var request transcriptRepairRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
 	decoder.DisallowUnknownFields()

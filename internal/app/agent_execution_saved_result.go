@@ -9,7 +9,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -296,8 +296,8 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 	entry := prompt.Outbox
 	claude := rec.Provider == string(model.ProviderClaude)
 	if claude {
-		entry = sessionruntime.ClaudeSettlementEntry(entry, prompt.NativeThreadID, rec.NativeThreadID, nil)
-		if native, ok := sessionruntime.ExactClaudeNative(entry); !ok || native != rec.NativeThreadID {
+		entry = sessions.ClaudeSettlementEntry(entry, prompt.NativeThreadID, rec.NativeThreadID, nil)
+		if native, ok := sessions.ExactClaudeNative(entry); !ok || native != rec.NativeThreadID {
 			return "", "", history.ErrSavedTranscriptUnavailable
 		}
 		answer, err := s.claudeAnswers(rec.HostedThreadID).Answer(ctx, entry)
@@ -330,16 +330,16 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 		}
 	}
 	var keys history.SavedUserKeys
-	sessionruntime.AddSavedUserKey(&keys, binding, rec.Provider)
+	sessions.AddSavedUserKey(&keys, binding, rec.Provider)
 	rows, err := s.savedPromptRows(ctx, rec.NativeThreadID, keys)
 	if err != nil {
 		return "", "", err
 	}
-	generation, ok := sessionruntime.SavedRowsGeneration(rows)
+	generation, ok := sessions.SavedRowsGeneration(rows)
 	if !ok && len(rows) > 0 {
 		return "", "", history.ErrSavedGenerationChanged // rows from two generations: a rebuild is in flight
 	}
-	settlement, turn := transcript.SavedSettlementTurn(entry, stored, sessionruntime.SavedRowsOf(rows))
+	settlement, turn := transcript.SavedSettlementTurn(entry, stored, sessions.SavedRowsOf(rows))
 	if !ok || settlement != transcript.SettlementSettled {
 		return "", "", history.ErrSavedTranscriptUnavailable
 	}

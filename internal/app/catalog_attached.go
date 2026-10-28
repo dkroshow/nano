@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 )
 
@@ -415,7 +415,7 @@ func (s *threadCatalogService) attachedSourcePaths(ctx context.Context, provider
 	switch {
 	case nativeID == "":
 		return nil, unresolvedAwaitingIdentity
-	case sessionruntime.NativeThreadIDProvisional(provider, nativeID):
+	case sessions.NativeThreadIDProvisional(provider, nativeID):
 		return nil, unresolvedProvisional
 	}
 	switch provider {

@@ -23,7 +23,7 @@ import (
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/hosted"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threads"
 	_ "modernc.org/sqlite"
@@ -723,7 +723,7 @@ func (s *controlMetadataStore) ClaimNativeIDResolving(hostedID, provider, native
 	if currentNative != "" && currentNative != nativeID {
 		err := tx.QueryRow(`SELECT provisional FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND provider=? AND native_thread_id=? AND retired_at IS NULL`, hostedID, provider, currentNative).Scan(&currentProvisional)
 		switch {
-		case err == sql.ErrNoRows && sessionruntime.NativeThreadIDProvisional(provider, currentNative):
+		case err == sql.ErrNoRows && sessions.NativeThreadIDProvisional(provider, currentNative):
 			// No active claim says what this handle is; it is not authority
 			// to retire it.
 			return fmt.Errorf("%w: current %s has no active claim", errUnresolvedProvisional, currentNative)

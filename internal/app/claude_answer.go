@@ -7,15 +7,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
 // claudeAnswers is the rule for a hosted thread, read with the server's own
 // stores and saved readers: an operation's answer, attached or not, and a
 // thread with no session.
-func (s *server) claudeAnswers(hosted string) sessionruntime.ClaudeAnswers {
-	return sessionruntime.NewClaudeAnswers(hosted, s.turns, s.agentExecutions, s.savedPromptRows, s.savedTurnFinal)
+func (s *server) claudeAnswers(hosted string) sessions.ClaudeAnswers {
+	return sessions.NewClaudeAnswers(hosted, s.turns, s.agentExecutions, s.savedPromptRows, s.savedTurnFinal)
 }
 
 // claudeOwedRun keeps one detached owed pass per hosted thread: a request
@@ -85,15 +85,15 @@ func (s *server) claudeOwedPass(hosted string) {
 	}
 	answers := s.claudeAnswers(hosted)
 	for from := uint64(0); ctx.Err() == nil; {
-		batch, err := s.turns.Owed(ctx, hosted, from, sessionruntime.ClaudeMemberBatch)
+		batch, err := s.turns.Owed(ctx, hosted, from, sessions.ClaudeMemberBatch)
 		if err != nil {
 			log.Printf("Claude owed prompts of %s unreadable: %v", hosted, err)
 			return
 		}
 		for _, record := range batch {
-			answers.FinishOwed(ctx, store, record, sessionruntime.ClaudeSettlementEntry(record.Outbox, record.NativeThreadID, "", resolve))
+			answers.FinishOwed(ctx, store, record, sessions.ClaudeSettlementEntry(record.Outbox, record.NativeThreadID, "", resolve))
 		}
-		if len(batch) < sessionruntime.ClaudeMemberBatch {
+		if len(batch) < sessions.ClaudeMemberBatch {
 			return
 		}
 		from = batch[len(batch)-1].Outbox.Sequence

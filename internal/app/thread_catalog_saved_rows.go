@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/dkroshow/nano/internal/history"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -22,7 +22,7 @@ func (s *threadCatalogService) LoadSavedTurnFinal(ctx context.Context, threadID,
 	return s.store.ReadSavedTurnFinal(ctx, threadID, projectionKey, turnKey)
 }
 
-func (s *server) savedPromptsFor(sess *sessionruntime.Session) sessionruntime.SavedPromptReader {
+func (s *server) savedPromptsFor(sess *sessions.Session) sessions.SavedPromptReader {
 	return func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 		return s.savedPromptRows(ctx, sess.ThreadID(), keys)
 	}

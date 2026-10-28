@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // Explicit operator escape: forget bookkeeping only, never claim termination
@@ -19,7 +19,7 @@ func (s *server) forgetUnconfirmedClaude(attachment attachmentRecord, shimID, at
 
 // All helpers require relationshipMu. Legacy UI endpoints use the hosted
 // lifecycle when possible, including heartbeat pause.
-func (s *server) closeExplicitSession(sess *sessionruntime.Session) error {
+func (s *server) closeExplicitSession(sess *sessions.Session) error {
 	current := s.LookupSession(sess.ID())
 	if current != sess {
 		return fmt.Errorf("session attachment changed; refresh before closing")
@@ -57,7 +57,7 @@ func (s *server) closeExplicitAttachment(attachment attachmentRecord) error {
 
 func (s *server) closeDetachedAttachment(attachment attachmentRecord) error {
 	if attachment.Provider == "claude" {
-		if err := sessionruntime.CloseDetachedClaude(s.defaults.claudeShimWS, attachment.ShimSessionID); err != nil {
+		if err := sessions.CloseDetachedClaude(s.defaults.claudeShimWS, attachment.ShimSessionID); err != nil {
 			return fmt.Errorf("Claude stop unconfirmed; attachment retained (heartbeat may be paused): %w", err)
 		}
 	}
