@@ -262,6 +262,7 @@ func claudeTestSession(t *testing.T) (*session, *attachmentRecorder) {
 		hostedThreadID:       hostedID,
 		cwd:                  t.TempDir(),
 		createdAt:            time.Now(),
+		processStarted:       processStarted,
 		subs:                 map[chan wireEvent]struct{}{},
 		state:                map[string]json.RawMessage{},
 		rememberAttachment:   recorder.remember,

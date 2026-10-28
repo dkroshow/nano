@@ -52,8 +52,7 @@ const (
 
 // startLiveText builds the file-only loop for every session constructor.
 func (s *server) startLiveText(sess *session) {
-	sess.liveText = newLiveTextLoop(s, sess)
-	sess.projection.SetLiveText(sess.liveText)
+	sess.attachLiveText(newLiveTextLoop(s, sess))
 }
 
 // liveTextEntry is one piece of live text as panes see it.

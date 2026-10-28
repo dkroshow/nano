@@ -33,6 +33,8 @@ type session struct {
 	// available.
 	permissionMode string
 	createdAt      time.Time
+	// processStarted is the immutable application start supplied at construction.
+	processStarted time.Time
 	// spawnMode is how this session came into being — "start" (a thread that
 	// did not exist until now) or "resume" (attaching to one that does). Written
 	// once at spawn and never mutated, because it describes the request, not the

@@ -2,14 +2,12 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/dkroshow/nano/internal/lifecycle"
+	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -135,7 +133,19 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		}
 	}
 	nanoSessionID := newSessionID()
-	sess := &session{
+	var journal sessionJournal
+	if s.sendAttempts != nil {
+		journal = s.sendAttempts
+	}
+	var queue sessionQueue
+	if s.queuedTurns != nil {
+		queue = s.queuedTurns
+	}
+	var completed func(context.Context) (*coreturns.Store, error)
+	if s.completedTurns != nil && s.completedTurns.store != nil {
+		completed = s.completedTurns.store.coreStore
+	}
+	sess := newSession(sessionConfig{
 		id:                    nanoSessionID,
 		provider:              req.Provider,
 		hostedThreadID:        hostedThreadID,
@@ -148,8 +158,6 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		permissionMode:        threadvalues.FirstNonEmpty(req.PermissionMode, req.Approval),
 		createdAt:             time.Now(),
 		spawnMode:             req.Mode,
-		subs:                  map[chan wireEvent]struct{}{},
-		state:                 map[string]json.RawMessage{},
 		reasoningSummary:      s.defaults.reasoningSummary,
 		projection:            s.newSessionProjection(req.Provider, hostedThreadID),
 		turnEffort:            req.Effort,
@@ -160,41 +168,33 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		creationName: func() string {
 			return s.creationNameForHosted(hostedThreadID)
 		},
-		metadataName:         s.durableThreadNameRef,
-		skills:               s.skills,
-		catalogRefresh:       s.catalogRefresh,
-		runtimeNotify:        s.notifyRuntime,
-		rememberAttachment:   s.rememberAttachment,
-		forgetAttachment:     s.forgetAttachment,
-		updateTurnAnchor:     s.setAttachmentTurnAnchor,
-		updateShimSession:    s.setAttachmentShimSession,
-		turns:                s.turns,
-		agentExecutions:      s.agentExecutions,
-		metadata:             s.controlMetadata,
-		appendUnread:         s.notices.Append,
-		pendingTurnCausation: []turnCausationEntry{},
-		lastSettingsEvidence: map[string]turnCausationEntry{},
-		sendOps:              map[string]*turnSendOperation{},
-		nanoStopping:         &s.stopping,
-		deliveryExpiries:     s.deliveryExpiries,
-	}
-	if s.sendAttempts != nil {
-		sess.sendAttempts = s.sendAttempts
-	}
-	if s.queuedTurns != nil {
-		sess.queuedTurns = s.queuedTurns
-	}
-	if s.completedTurns != nil && s.completedTurns.store != nil {
-		sess.completedTurns = s.completedTurns.store.coreStore
-	}
+		metadataName:       s.durableThreadNameRef,
+		skills:             s.skills,
+		catalogRefresh:     s.catalogRefresh,
+		runtimeNotify:      s.notifyRuntime,
+		rememberAttachment: s.rememberAttachment,
+		forgetAttachment:   s.forgetAttachment,
+		updateTurnAnchor:   s.setAttachmentTurnAnchor,
+		updateShimSession:  s.setAttachmentShimSession,
+		turns:              s.turns,
+		agentExecutions:    s.agentExecutions,
+		metadata:           s.controlMetadata,
+		appendUnread:       s.notices.Append,
+		nanoStopping:       &s.stopping,
+		deliveryExpiries:   s.deliveryExpiries,
+		processStarted:     processStarted,
+		sendAttempts:       journal,
+		queuedTurns:        queue,
+		completedTurns:     completed,
+	})
+
 	// Reserve a resumed native identity before the shell becomes visible or any
 	// asynchronous provider work begins. Claude and Grok do not have Codex's
 	// daemon claim table, so sessionForThread is their duplicate-attachment
 	// guard. A background handshake may confirm or succeed this identity later,
 	// but it must never leave a window where a second Resume sees no owner.
 	if req.Mode == "resume" && (req.Provider == "claude" || req.Provider == "grok") {
-		sess.threadID = req.ThreadID
-		sess.setProjectionThreadID(req.ThreadID)
+		sess.reserveNativeID(req.ThreadID)
 	}
 	if s.controlMetadata != nil {
 		if err := s.controlMetadata.ensureHostedThread(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider); err != nil {
@@ -204,9 +204,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		if err != nil {
 			return nil, fmt.Errorf("begin hosted transport binding: %w", err)
 		}
-		sess.attachmentGeneration = generation
-		sess.lifecycleState, err = lifecycle.New(uint64(generation))
-		if err != nil {
+		if err := sess.initializeBinding(generation); err != nil {
 			return nil, err
 		}
 	}
@@ -214,48 +212,21 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	// Runtime posture hydration lives at the provider seams —
 	// seedCodexTurnOverrides and the Claude resume overlay — because what
 	// "re-applying posture" means is provider mechanics.
-	sess.savedTurn = func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
+	sess.configureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
 		return s.savedTurnEvidence(ctx, sess, turnID)
-	}
-	sess.savedPrompts = s.savedPromptsFor(sess)
-	sess.savedPromptsIn = s.savedPromptRows
-	sess.savedTurnFinal = s.savedTurnFinal
-	sess.subscriptionSweep = s.sweepSubscriptions
-	spool, err := newWireSpool(s.spoolDir, sess.id)
-	if err != nil {
+	}, s.savedPromptsFor(sess), s.savedPromptRows, s.savedTurnFinal, s.sweepSubscriptions)
+	if err := sess.openWireSpool(s.spoolDir); err != nil {
 		return nil, fmt.Errorf("create wire spool: %w", err)
 	}
-	sess.spool = spool
 
 	// Registered BEFORE any provider work: a close arriving while the handshake
 	// is still in flight has to be able to reach this session, and the card has
 	// to appear at once rather than when the provider answers. Bind: the session
 	// is now visible to the catalog's runtime overlay.
-	sess.restartProgress = req.restart.at
-	sess.restartFailure = req.restart.fail
-	sess.catalogBackground = req.catalogBackground
-	if s.catalogSources != nil {
-		sess.catalogSources = s.catalogSources
-	}
+	sess.configureRegistration(req.restart.at, req.restart.fail, req.catalogBackground, s.catalogSources)
 	s.registerSession(sess)
-	sess.bindCatalogSource(sess.ThreadID())
-	sess.recordRestartStep(restartRegistered)
-	if sess.agentExecutions != nil {
-		// presentationMode is mutable under stateMu once the session is
-		// resolvable by the presentation endpoint, which it is as of the
-		// registration above.
-		sess.stateMu.Lock()
-		presentationMode, status, threadID := sess.presentationMode, sess.connectionStatusLocked(), sess.threadID
-		sess.stateMu.Unlock()
-		if err := sess.agentExecutions.BindSession(
-			sess.hostedThreadID, sess.id, threadID, status, presentationMode,
-		); err != nil {
-			log.Printf("bind hosted thread %s: %v", sess.hostedThreadID, err)
-		}
-	}
-	// Asynchronous: a prompt notice that prepares this thread holds the
-	// dispatcher while it waits for this registration.
-	sess.subscriptionSweep(sess.hostedThreadID)
+	sess.didRegister()
+
 	if req.immediateRuntimePublish {
 		s.publishRuntime(false)
 	} else {
@@ -264,11 +235,11 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	if req.Provider == "codex" {
 		// Boot can register dozens of panes at once. Start the shared cwd refresh
 		// now, without waiting for a browser to ask each session for /state.
-		sess.skills.Current(req.Cwd)
+		sess.warmSkills()
 	}
 
 	if req.Mode != "resume" {
-		sess.recordPosture(creationPostureEntries(req.providerRequest), metadataFreshnessLive)
+		sess.recordCreationPosture(req.providerRequest)
 	}
 	if err := sess.beginProviderSpawn(req.providerRequest, s.codex, func() { s.discardSpawn(sess) }); err != nil {
 		s.discardSpawn(sess)
@@ -283,11 +254,6 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 // will ever read it.
 func (s *server) discardSpawn(sess *session) {
 	s.removeSession(sess.ID())
-	sess.releaseCatalogSource()
-	if sess.spool != nil {
-		if err := sess.spool.close(true); err != nil {
-			log.Printf("close wire spool %s: %v", sess.id, err)
-		}
-	}
+	sess.discardSpawnResources()
 	s.notifyRuntime()
 }

@@ -1157,7 +1157,7 @@ func (l *liveSettlement) turnEnded(ctx context.Context, record prompts.Record) b
 	if l == nil || l.sess.savedTurn == nil || binding == nil || binding.Scope.NativeTurnID == nil {
 		return false
 	}
-	if created, err := time.Parse(time.RFC3339Nano, record.CreatedAt); err != nil || created.Before(processStarted) {
+	if created, err := time.Parse(time.RFC3339Nano, record.CreatedAt); err != nil || created.Before(l.sess.processStarted) {
 		return false
 	}
 	saved, found := l.sess.savedTurn(ctx, *binding.Scope.NativeTurnID)

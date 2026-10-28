@@ -8,10 +8,10 @@ import (
 
 // liveTextOf recovers the application-owned loop at application composition sites.
 func liveTextOf(sess *session) *liveTextLoop {
-	if sess == nil || sess.liveText == nil {
+	if sess == nil || sess.liveTextService() == nil {
 		return nil
 	}
-	return sess.liveText.(*liveTextLoop)
+	return sess.liveTextService().(*liveTextLoop)
 }
 
 type liveTextStream struct {
