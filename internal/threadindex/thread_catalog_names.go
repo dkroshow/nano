@@ -275,6 +275,7 @@ func (s *Service) NamedThreads(ctx context.Context, name string) ([]Thread, erro
 	return rows, nil
 }
 
+// RenameThread writes the operator name to the truth file and queues its projection.
 func (s *Service) RenameThread(ctx context.Context, id, name string) (ThreadName, error) {
 	validated, err := history.ValidateThreadName(name)
 	if err != nil {

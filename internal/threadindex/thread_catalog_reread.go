@@ -85,6 +85,7 @@ func (s *Service) enqueueTranscriptReread(threadID string) {
 	}
 }
 
+// DeferredTranscriptReread reports whether a saved transcript is queued or rebuilding.
 func (s *Service) DeferredTranscriptReread(threadID string) bool {
 	s.rereadMu.Lock()
 	defer s.rereadMu.Unlock()

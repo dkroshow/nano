@@ -22,6 +22,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 )
 
+// ListThreads returns a bounded window of saved catalog rows.
 func (s *Service) ListThreads(ctx context.Context, query ListQuery) (Page, error) {
 	params := catalogQueryParams(query)
 	params.ThreadID = query.ThreadID
@@ -54,14 +55,17 @@ func (s *Service) ListThreads(ctx context.Context, query ListQuery) (Page, error
 	return result, nil
 }
 
+// SearchConversationItems searches the canonical retained conversation index.
 func (s *Service) SearchConversationItems(ctx context.Context, query history.ConversationSearchQuery) (history.ConversationSearchPage, error) {
 	return s.store.SearchConversationItems(ctx, query)
 }
 
+// ConversationSearchStatus reports readiness of the saved conversation search modes.
 func (s *Service) ConversationSearchStatus(ctx context.Context) ([]history.ConversationSearchStatus, error) {
 	return s.store.ConversationSearchStatus(ctx)
 }
 
+// LoadThread returns saved metadata, sources and native duration totals for one thread.
 func (s *Service) LoadThread(ctx context.Context, id string) (Thread, error) {
 	detail, err := s.store.GetThread(ctx, id)
 	if errors.Is(err, history.ErrThreadNotFound) {
@@ -103,6 +107,7 @@ func (s *Service) LoadThread(ctx context.Context, id string) (Thread, error) {
 	return thread, nil
 }
 
+// LoadThreadUsage returns a bounded page of native turn usage.
 func (s *Service) LoadThreadUsage(ctx context.Context, id string, afterOrdinal, limit int) (history.ThreadUsagePage, error) {
 	page, err := s.store.ThreadTurnUsage(ctx, id, afterOrdinal, limit)
 	if errors.Is(err, history.ErrThreadNotFound) {
@@ -111,14 +116,17 @@ func (s *Service) LoadThreadUsage(ctx context.Context, id string, afterOrdinal, 
 	return page, err
 }
 
+// ListThreadUsageTotals returns the saved usage totals for matching threads.
 func (s *Service) ListThreadUsageTotals(ctx context.Context, query history.ThreadUsageListQuery) (history.ThreadUsageListPage, error) {
 	return s.store.ListThreadUsageTotals(ctx, query)
 }
 
+// ReadSavedTurnStatus reads a native turn’s committed status evidence.
 func (s *Service) ReadSavedTurnStatus(ctx context.Context, threadID, nativeTurnID string) (history.SavedTurnStatus, bool, error) {
 	return s.store.ReadSavedTurnStatus(ctx, threadID, nativeTurnID)
 }
 
+// LoadCompletedTranscriptTurn returns one complete saved native turn within the byte budget.
 func (s *Service) LoadCompletedTranscriptTurn(ctx context.Context, id, nativeTurnID string) (TranscriptResponse, error) {
 	page, err := s.store.ReadCompletedTranscriptTurn(ctx, id, nativeTurnID)
 	if errors.Is(err, history.ErrTranscriptChanged) {
@@ -144,6 +152,7 @@ func (s *Service) LoadCompletedTranscriptTurn(ctx context.Context, id, nativeTur
 	return response, nil
 }
 
+// LoadTranscript returns one stable, bounded saved-transcript window.
 func (s *Service) LoadTranscript(ctx context.Context, id string, query TranscriptQuery) (TranscriptResponse, error) {
 	responses, _, err := s.LoadTranscripts(ctx, id, []TranscriptQuery{query}, nil)
 	if err != nil {
@@ -295,6 +304,7 @@ func transcriptResponseFor(id string, query TranscriptQuery, page history.Transc
 	return response, nil
 }
 
+// LoadTranscriptBody returns the canonical retained body of one saved item.
 func (s *Service) LoadTranscriptBody(ctx context.Context, threadID, itemID string) (history.TranscriptRetainedBody, error) {
 	body, err := s.store.LoadTranscriptBody(ctx, threadID, itemID)
 	switch {
@@ -311,6 +321,7 @@ func (s *Service) LoadTranscriptBody(ctx context.Context, threadID, itemID strin
 	}
 }
 
+// LoadTranscriptEvidence reads and verifies the original provider evidence for one saved item.
 func (s *Service) LoadTranscriptEvidence(ctx context.Context, threadID, itemID string) (TranscriptEvidenceResponse, error) {
 	ref, err := s.store.LoadTranscriptEvidenceRef(ctx, threadID, itemID)
 	switch {
@@ -579,6 +590,7 @@ func (s *Service) publishCatalogVersion(version uint64) {
 	s.publishCatalogChange(catalogChange{Version: version, Refresh: true})
 }
 
+// CatalogVersion converts an unsigned catalog revision to the API’s bounded signed representation.
 func CatalogVersion(value uint64) int64 {
 	if value > math.MaxInt64 {
 		return math.MaxInt64
@@ -655,6 +667,7 @@ type threadCatalogCursor struct {
 	ID string  `json:"id"`
 }
 
+// EncodeThreadCatalogCursor encodes the shared list-order position for continuation.
 func EncodeThreadCatalogCursor(cursor *history.ThreadCursor) (string, error) {
 	value := threadCatalogCursor{ID: cursor.ID, V: formatCatalogTime(cursor.UpdatedAt)}
 	encoded, err := json.Marshal(value)
@@ -664,6 +677,7 @@ func EncodeThreadCatalogCursor(cursor *history.ThreadCursor) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(encoded), nil
 }
 
+// DecodeThreadCatalogCursor validates and decodes a catalog continuation position.
 func DecodeThreadCatalogCursor(encoded string) (*history.ThreadCursor, error) {
 	if len(encoded) == 0 || len(encoded) > maxThreadCatalogCursorBytes {
 		return nil, ErrInvalidThreadCatalogCursor
