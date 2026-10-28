@@ -322,6 +322,24 @@ describe('sidebar events patch the active list', () => {
     expect(activeFetches()).toHaveLength(1)
   })
 
+  // The server stops resending a row whose only change is its index time,
+  // which no row shows; it still sends the newer catalog version. Rebuilding
+  // the sidebar for such an event cost every open page a full sidebar pass
+  // per event while typing waited. Boundary: the store applying one event.
+  it('an event naming no row moves the version and leaves the rows', async () => {
+    const es = await openAtRevision(5, [rowA, rowB])
+    const active = explorer.activeItems
+    const shown = explorer.dataset
+    es.emit('sidebar', { data: JSON.stringify({ revision: 6, rows: [], removedIds: [], historicalCount: 0, catalogVersion: 9 }) })
+    expect(explorer.catalogVersion).toBe(9)
+    expect(explorer.activeItems).toBe(active)
+    expect(explorer.dataset).toBe(shown)
+    es.emit('sidebar', { data: JSON.stringify({ revision: 7, rows: [], removedIds: ['nth_a'], historicalCount: 1, catalogVersion: 10 }) })
+    expect(explorer.activeItems.map((row) => row.id)).toEqual(['nth_b'])
+    await vi.advanceTimersByTimeAsync(250)
+    expect(activeFetches()).toHaveLength(1)
+  })
+
   it('a skipped revision or a marker past the known one reads once; a marker at it does not', async () => {
     const es = await openAtRevision(5, [rowA])
     es.emit('sidebar', { data: JSON.stringify({ revision: 5, refresh: true }) })

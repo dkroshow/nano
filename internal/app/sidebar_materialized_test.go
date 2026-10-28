@@ -284,3 +284,48 @@ func TestSidebarGenerationNamesTheProcess(t *testing.T) {
 		t.Fatal("two processes share one generation")
 	}
 }
+
+// A newer index time alone is not a row change: about two thirds of the
+// sidebar events a busy fleet sent resent a row whose only change was
+// source.lastIndexedAt, which no row shows, and each made every open page
+// rebuild its sidebar while typing waited. The event still carries the new
+// catalog version, so pages keep skipping the catalog patches it covers. A
+// changed diagnostic count still resends the row, because rows show it.
+// Boundary: the materialized sidebar's published deltas.
+func TestSidebarIndexTimeAloneResendsNoRow(t *testing.T) {
+	row := func(indexedAt string, diagnostics int) sidebarThread {
+		var thread sidebarThread
+		thread.ID, thread.Provider, thread.NativeID = "nth_row", "codex", "native-row"
+		thread.Source = catalogSourceSummary{Status: "present", DiagnosticCount: diagnostics, LastIndexedAt: indexedAt}
+		return thread
+	}
+	active := func(item sidebarThread, version int64) sidebarActiveResponse {
+		return sidebarActiveResponse{Items: []sidebarThread{item}, Roots: []string{item.ID}, CatalogVersion: version}
+	}
+	next := func(events chan sidebarDelta) *sidebarDelta {
+		select {
+		case delta := <-events:
+			return &delta
+		default:
+			return nil
+		}
+	}
+	m := newSidebarMaterializedState()
+	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:00Z", 0), 1), nil, 1)
+	events := m.events.subscribe()
+	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:05Z", 0), 1), nil, 1)
+	if delta := next(events); delta != nil {
+		t.Fatalf("a newer index time alone sent a delta: %+v", *delta)
+	}
+	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:10Z", 0), 2), nil, 2)
+	if delta := next(events); delta == nil || len(delta.Rows) != 0 || delta.CatalogVersion != 2 {
+		t.Fatalf("a newer index time and catalog version sent %+v, want no rows at version 2", delta)
+	}
+	m.replace(nil, catalogListQuery{}, active(row("2026-10-28T20:00:15Z", 2), 3), nil, 3)
+	if delta := next(events); delta == nil || len(delta.Rows) != 1 || delta.Rows[0].Source.DiagnosticCount != 2 {
+		t.Fatalf("a changed diagnostic count sent %+v, want its row", delta)
+	}
+	if m.active.Items[0].Source.LastIndexedAt != "2026-10-28T20:00:15Z" {
+		t.Fatalf("a full read would return index time %q", m.active.Items[0].Source.LastIndexedAt)
+	}
+}

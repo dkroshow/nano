@@ -14,8 +14,10 @@ import (
 
 var errSidebarMaterializedUnavailable = errThreadCatalogUnavailable
 
-// sidebarDelta is a complete patch against one prior sidebar revision. Slow
-// stream consumers receive Refresh instead of an unsafe partial merge.
+// sidebarDelta is a complete patch against one prior sidebar revision, except
+// for each row's index time, which no row shows (sidebarComparable): a fresh
+// read may carry a newer one at the same revision. Slow stream consumers
+// receive Refresh instead of an unsafe partial merge.
 // Generation names the process whose revisions these are: revisions count
 // from 1 again after a restart, so a browser compares both.
 type sidebarDelta struct {
@@ -404,7 +406,7 @@ func diffSidebar(previous, next sidebarActiveResponse) *sidebarDelta {
 	}
 	rows := make([]sidebarThread, 0)
 	for _, row := range next.Items {
-		if before, ok := old[row.ID]; !ok || !reflect.DeepEqual(before, row) {
+		if before, ok := old[row.ID]; !ok || !reflect.DeepEqual(sidebarComparable(before), sidebarComparable(row)) {
 			rows = append(rows, row)
 		}
 		delete(old, row.ID)
@@ -424,7 +426,24 @@ func diffSidebar(previous, next sidebarActiveResponse) *sidebarDelta {
 func sidebarResponsesEqual(left, right sidebarActiveResponse) bool {
 	left.Generation, left.Revision = "", 0
 	right.Generation, right.Revision = "", 0
+	left.Items, right.Items = sidebarComparableRows(left.Items), sidebarComparableRows(right.Items)
 	return reflect.DeepEqual(left, right)
+}
+
+// sidebarComparable drops the index time, which no sidebar row shows: about
+// two thirds of sidebar events changed only that, and each made every open
+// page rebuild its sidebar. A full read still returns the current value.
+func sidebarComparable(row sidebarThread) sidebarThread {
+	row.Source.LastIndexedAt = ""
+	return row
+}
+
+func sidebarComparableRows(rows []sidebarThread) []sidebarThread {
+	out := make([]sidebarThread, len(rows))
+	for i, row := range rows {
+		out[i] = sidebarComparable(row)
+	}
+	return out
 }
 
 func projectSidebar(all []catalogThread, query catalogListQuery, version int64) (sidebarActiveResponse, []*sidebarNode) {

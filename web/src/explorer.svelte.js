@@ -210,20 +210,25 @@ function commitActiveSidebar(body, epoch) {
 
 // applySidebarDelta patches the active list with one `sidebar` event: the rows
 // it carries replace or join the list, and its removed ids leave it. Rows the
-// event does not name are unchanged.
+// event does not name are unchanged. An event that names no row (the server
+// sends one when only the catalog version moved) updates the counts and
+// version and leaves the rows, so the sidebar is not rebuilt for it.
 function applySidebarDelta(payload) {
   const removed = new Set(payload.removedIds ?? [])
   const incoming = payload.rows ?? []
-  const byId = new Map(incoming.map((row) => [row.id, row]))
-  const next = explorer.activeItems.filter((row) => !removed.has(row.id)).map((row) => byId.get(row.id) ?? row)
-  const present = new Set(next.map((row) => row.id))
-  for (const row of incoming) if (!present.has(row.id)) next.push(row)
-  explorer.activeItems = next
+  const rowsChanged = incoming.length > 0 || removed.size > 0
+  if (rowsChanged) {
+    const byId = new Map(incoming.map((row) => [row.id, row]))
+    const next = explorer.activeItems.filter((row) => !removed.has(row.id)).map((row) => byId.get(row.id) ?? row)
+    const present = new Set(next.map((row) => row.id))
+    for (const row of incoming) if (!present.has(row.id)) next.push(row)
+    explorer.activeItems = next
+  }
   sidebarRevision = Number(payload.revision)
-  commitActiveSidebarCounts(payload)
+  commitActiveSidebarCounts(payload, rowsChanged)
 }
 
-function commitActiveSidebarCounts(body) {
+function commitActiveSidebarCounts(body, rowsChanged = true) {
   explorer.historicalCount = Number(body?.historicalCount) || 0
   // A full-history window owns its own repair version. Advancing it from an
   // active-only response could make a same-version event for a window-only row
@@ -231,7 +236,7 @@ function commitActiveSidebarCounts(body) {
   if (body?.catalogVersion != null && explorer.datasetScope !== 'window') {
     explorer.catalogVersion = Number(body.catalogVersion)
   }
-  rebuildRenderDataset()
+  if (rowsChanged) rebuildRenderDataset()
 }
 
 // On (re-)entering the explorer view: fetch only if nothing is cached yet.
