@@ -26,6 +26,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	liveview "github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/providers"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
@@ -3050,7 +3051,7 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 	running := history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", "running")}}
 	waitForCatalogWithin(t, time.Minute, func() bool {
 		rows, err := saved(context.Background(), running)
-		return err == nil && len(rows) > 0 && durableTerminalStatus(string(rows[0].TurnStatus))
+		return err == nil && len(rows) > 0 && liveview.DurableTerminalStatus(string(rows[0].TurnStatus))
 	})
 	// Only each competing pass's first settlement read is held, found by the
 	// pass's own context; the member step's reads run under a context of

@@ -17,7 +17,6 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 type agentSessionView struct {
@@ -1396,18 +1395,6 @@ func (s *server) hostedAttachmentState(id string) hostedAttachmentView {
 	return hostedAttachmentView{State: state, Provenance: "execution_record", Error: rec.Error}
 }
 
-// nativeThreadIDProvisional reports whether a recorded native id is a Claude
-// shim stand-in (cs_<hex>, minted in cmd/claude-shim) rather than a provider
-// id. The provisional handle survives in durable records when a thread never
-// completes its first prompt, and a field named nativeThreadId must not pass
-// one off as real (slice-1 design, ID-disambiguation directive).
-func nativeThreadIDProvisional(provider, nativeID string) bool {
-	if provisional := lifecycleProviders[provider].provisional; provisional != nil {
-		return provisional(nativeID)
-	}
-	return false
-}
-
 func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 	view := agentTurnView{
 		ID: rec.ID, HostedThreadID: rec.HostedThreadID, ClientActionID: rec.ClientActionID,
@@ -1567,44 +1554,4 @@ func (s *server) closeAgentSession(sess *session) error {
 	}
 	sess.confirmClaudeClose()
 	return nil
-}
-
-func providerTurnIDFromStart(result json.RawMessage) string {
-	var body struct {
-		Turn struct {
-			ID string `json:"id"`
-		} `json:"turn"`
-	}
-	if json.Unmarshal(result, &body) != nil {
-		return ""
-	}
-	return body.Turn.ID
-}
-
-func providerEventIDFromStart(result json.RawMessage) string {
-	var body struct {
-		Event struct {
-			ID string `json:"id"`
-		} `json:"event"`
-	}
-	if json.Unmarshal(result, &body) != nil {
-		return ""
-	}
-	return body.Event.ID
-}
-
-func deliveryExecutionError(err error) *agentExecutionError {
-	if err == nil {
-		return nil
-	}
-	code := "delivery_unknown"
-	if errors.Is(err, context.DeadlineExceeded) {
-		code = "delivery_timeout"
-	} else {
-		var rpcErr *protocol.RPCError
-		if errors.As(err, &rpcErr) {
-			code = "delivery_refused"
-		}
-	}
-	return &agentExecutionError{Source: "delivery", Code: code, Message: err.Error()}
 }

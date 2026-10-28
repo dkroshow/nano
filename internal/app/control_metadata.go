@@ -1023,28 +1023,7 @@ func (s *controlMetadataStore) Posture(hostedID string) sessionPosture {
 	if err != nil {
 		return sessionPosture{}
 	}
-	return postureFromFields(view.Fields)
-}
-
-func postureFromFields(fields map[string]metadataCurrentView) sessionPosture {
-	p := sessionPosture{}
-	for field, entry := range fields {
-		var decoded string
-		if len(entry.DisplayValue) == 0 || json.Unmarshal(entry.DisplayValue, &decoded) != nil {
-			continue
-		}
-		switch field {
-		case postureFieldModel:
-			p.Model = decoded
-		case postureFieldEffort:
-			p.Effort = decoded
-		case postureFieldPermissionMode:
-			p.PermissionMode = decoded
-		case postureFieldServiceTier:
-			p.ServiceTier = decoded
-		}
-	}
-	return p
+	return hosted.PostureFromFields(view.Fields)
 }
 
 // View reads one thread's committed metadata from the read pool. It is a

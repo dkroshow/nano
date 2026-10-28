@@ -22,6 +22,7 @@ import (
 	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	liveview "github.com/dkroshow/nano/internal/liveview"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -1085,7 +1086,7 @@ func classifySavedPrompts(ctx context.Context, records []prompts.Record, savedIn
 			return nil, fmt.Errorf("saved rows unavailable: %w", err)
 		}
 		for _, row := range rows {
-			savedRows = append(savedRows, transcript.SavedRow{Item: row.Item, Terminal: durableTerminalStatus(string(row.TurnStatus))})
+			savedRows = append(savedRows, transcript.SavedRow{Item: row.Item, Terminal: liveview.DurableTerminalStatus(string(row.TurnStatus))})
 		}
 	}
 	for _, entry := range candidates {
@@ -1160,7 +1161,7 @@ func (l *liveSettlement) turnEnded(ctx context.Context, record prompts.Record) b
 		return false
 	}
 	saved, found := l.sess.savedTurn(ctx, *binding.Scope.NativeTurnID)
-	return found && (saved.Newer || durableTerminalStatus(saved.Turn.Status))
+	return found && (saved.Newer || liveview.DurableTerminalStatus(saved.Turn.Status))
 }
 
 // stoppedTurn reports a prompt delivered to a turn the operator stopped. It is

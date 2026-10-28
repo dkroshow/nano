@@ -8,6 +8,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	liveview "github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/protocol"
 )
 
@@ -119,11 +120,11 @@ func (sess *session) reconcileDurableTurn(ctx context.Context) {
 		return
 	}
 	exact, found := sess.savedTurn(ctx, turnID)
-	if !durableTerminalAuthoritative(exact, found, wireEvidenceAtMs) {
+	if !liveview.DurableTerminalAuthoritative(exact, found, wireEvidenceAtMs) {
 		return
 	}
 	status := exact.Turn.Status
-	if !durableTerminalStatus(status) {
+	if !liveview.DurableTerminalStatus(status) {
 		status = "completed"
 	}
 

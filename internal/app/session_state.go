@@ -167,7 +167,7 @@ func (sess *session) summaryWith(view hostedMetadataView, viewErr error, needsAt
 	}
 	view.Attachment = hostedAttachmentView{State: summary.Status, Provenance: "live_session", Error: summary.Error}
 	view.Name = displayMetadataName(summary.Name)
-	summary.Posture = postureFromFields(view.Fields)
+	summary.Posture = hostedvalues.PostureFromFields(view.Fields)
 	summary.Metadata = &view
 	summary.Model = summary.Posture.Model
 	if cwd, ok := hostedvalues.MetadataString(view.Fields["cwd"]); ok {

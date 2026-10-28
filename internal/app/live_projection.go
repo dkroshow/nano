@@ -15,7 +15,6 @@ import (
 	"log"
 	"net/http"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -534,46 +533,6 @@ func (p *liveProjection) NudgeMetaRefresh() {
 	p.mu.Unlock()
 }
 
-func wireNudgesProjectionMeta(provider string, dir protocol.Direction, line []byte) bool {
-	if dir != protocol.Recv {
-		return false
-	}
-	if provider == "grok" {
-		if _, _, _, ok := grokTerminalFromWire(line); ok {
-			return true
-		}
-		var envelope struct {
-			Method string `json:"method"`
-		}
-		if json.Unmarshal(line, &envelope) != nil {
-			return false
-		}
-		return envelope.Method == "_x.ai/models/update" || envelope.Method == "_x.ai/settings/update"
-	}
-	if provider == "claude" {
-		var message struct {
-			Type    string `json:"type"`
-			Subtype string `json:"subtype"`
-		}
-		if json.Unmarshal(line, &message) != nil {
-			return false
-		}
-		return message.Type == "result" || (message.Type == "system" && message.Subtype == "init")
-	}
-	var envelope struct {
-		Method string `json:"method"`
-	}
-	if json.Unmarshal(line, &envelope) != nil {
-		return false
-	}
-	switch envelope.Method {
-	case "turn/completed", "skills/changed", "mcpServer/startupStatus/updated":
-		return true
-	default:
-		return false
-	}
-}
-
 // UpdateCompletedTurn records terminal evidence for a projected turn.
 func (p *liveProjection) UpdateCompletedTurn(turnID, status string, durationMS int64, completedAtMs int64, turnError ...json.RawMessage) {
 	p.mu.Lock()
@@ -826,30 +785,6 @@ func (s *server) confirmDurableItems(ctx context.Context, sess *session) {
 	sess.settleWaitingPrompts(ctx)
 }
 
-func durableTerminalStatus(status string) bool {
-	switch status {
-	case "completed", "interrupted", "truncated":
-		return true
-	default:
-		return false
-	}
-}
-
-// durableTerminalAuthoritative is deliberately small. A later catalog turn is
-// conclusive. Otherwise the catalog may settle the exact turn only when the
-// current projection carries no later wire evidence; catalog completion is
-// provisional while live traffic still advances that same turn.
-func durableTerminalAuthoritative(exact durableTurnEvidence, found bool, wireEvidenceAtMs int64) bool {
-	if !found {
-		return false
-	}
-	if exact.Newer {
-		return true
-	}
-	return durableTerminalStatus(exact.Turn.Status) && exact.Turn.CompletedAtMs > 0 &&
-		wireEvidenceAtMs <= exact.Turn.CompletedAtMs
-}
-
 // RetainedTurnEvidence is a retained turn, the time of its newest start, end
 // or live work, and its work counter.
 func (p *liveProjection) RetainedTurnEvidence(turnID string) (liveProjectionTurn, int64, uint64, bool) {
@@ -981,25 +916,6 @@ var liveItemPayloadKeys = []string{
 	"type", "name", "command", "aggregatedOutput", "output", "inputJson", "input",
 	"isError", "exitCode", "changes", "server", "tool", "arguments", "query", "text",
 	"detail", "toolUseId", "phase", "status",
-}
-
-func claudeProjectionTerminal(line []byte) (string, json.RawMessage) {
-	var message map[string]json.RawMessage
-	if json.Unmarshal(line, &message) != nil {
-		return agentTurnFailed, json.RawMessage(`{"message":"invalid Claude result"}`)
-	}
-	reason := protocol.String(message["terminal_reason"])
-	if strings.HasPrefix(reason, "aborted") {
-		return agentTurnInterrupted, nil
-	}
-	if protocol.Bool(message["is_error"]) {
-		detail, _ := json.Marshal(map[string]any{
-			"message":        threads.FirstNonEmpty(protocol.String(message["result"]), protocol.String(message["subtype"]), "Claude turn failed"),
-			"terminalReason": reason,
-		})
-		return agentTurnFailed, detail
-	}
-	return agentTurnCompleted, nil
 }
 
 func cloneLiveItem(item *liveProjectionItem) *liveProjectionItem {

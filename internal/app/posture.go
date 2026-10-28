@@ -3,20 +3,18 @@ package app
 import "github.com/dkroshow/nano/internal/hosted"
 
 const (
-	postureFieldModel          = "model"
-	postureFieldEffort         = "effort"
-	postureFieldPermissionMode = "permissionMode"
-	postureFieldServiceTier    = "serviceTier"
-
-	postureSourceCreation = "creation"
-	postureSourceOperator = "operator"
-	postureSourceProvider = "provider"
-
-	postureEvidenceSpawnRequest  = "spawn_request"
-	postureEvidenceSystemInit    = "system.init"
-	postureEvidenceSetModel      = "set_model"
-	postureEvidenceTurnOptions   = "turn_options"
-	postureEvidenceResumeOverlay = "resume_overlay"
+	postureFieldModel            = hosted.PostureFieldModel
+	postureFieldEffort           = hosted.PostureFieldEffort
+	postureFieldPermissionMode   = hosted.PostureFieldPermissionMode
+	postureFieldServiceTier      = hosted.PostureFieldServiceTier
+	postureSourceCreation        = hosted.PostureSourceCreation
+	postureSourceOperator        = hosted.PostureSourceOperator
+	postureSourceProvider        = hosted.PostureSourceProvider
+	postureEvidenceSpawnRequest  = hosted.PostureEvidenceSpawnRequest
+	postureEvidenceSystemInit    = hosted.PostureEvidenceSystemInit
+	postureEvidenceSetModel      = hosted.PostureEvidenceSetModel
+	postureEvidenceTurnOptions   = hosted.PostureEvidenceTurnOptions
+	postureEvidenceResumeOverlay = hosted.PostureEvidenceResumeOverlay
 )
 
 // postureEntry is one canonical posture decision written to control.sqlite.

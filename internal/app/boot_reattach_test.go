@@ -1793,7 +1793,12 @@ func TestCodexTurnFinishedWhileNanoWasDownReachesTheCompletedTurnFeed(t *testing
 	}
 	var feed []completedTurn
 	waitForClaude(t, "the completed-turn feed", func() bool {
-		feed, err = s.completedTurns.after(rec.HostedThreadID, "", 10)
+		completed, openErr := sess.completedTurns(context.Background())
+		if openErr != nil {
+			err = openErr
+			return false
+		}
+		feed, err = completed.After(context.Background(), rec.HostedThreadID, "", 10)
 		return err == nil && len(feed) > 0
 	})
 	if len(feed) != 1 || feed[0].TurnID != "turn-down" || feed[0].Outcome != agentTurnCompleted {

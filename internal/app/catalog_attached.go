@@ -22,23 +22,6 @@ import (
 // until close, detach or failed spawn; ownership is keyed by attachment
 // generation, so a late event from an old attachment cannot re-establish it.
 
-// attachedSourceCatalog is the catalog side of an attachment's file holds.
-// An owner is a Nano session id: each session is exactly one attachment
-// generation, and a re-attach is a new session.
-type attachedSourceCatalog interface {
-	// bindAttachedSource holds the owner's native files. With background,
-	// their catch-up pass waits behind foreground sources, for a bounded time.
-	BindAttachedSource(owner, provider, nativeID, cwd, known string, background bool)
-	// ReleaseAttachedSource releases the attachment’s catalog file holds.
-	ReleaseAttachedSource(owner string)
-	// awaitAttachedCurrent waits until the owner's saved files are proven
-	// current, and reports false when the owner is released or cancel closes
-	// first. With fresh, proof taken before the call does not count.
-	// neverPrompted, when set, reads the caller's evidence that its Grok
-	// session was never prompted.
-	AwaitAttachedCurrent(owner string, fresh bool, neverPrompted func() bool, cancel <-chan struct{}) bool
-}
-
 // attachedOwner is one attachment's hold. An unresolved attachment holds no
 // file and keeps the reason, so monitoring still counts it. changed closes
 // when the hold is replaced or released.

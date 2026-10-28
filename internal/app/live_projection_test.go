@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	liveview "github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -131,7 +132,7 @@ func TestDurableTerminalAuthority(t *testing.T) {
 		if tc.name == "missing completion timestamp fails safe" {
 			exact.Turn.CompletedAtMs = 0
 		}
-		if got := durableTerminalAuthoritative(exact, tc.exact, tc.wireAt); got != tc.want {
+		if got := liveview.DurableTerminalAuthoritative(exact, tc.exact, tc.wireAt); got != tc.want {
 			t.Fatalf("%s = %v, want %v", tc.name, got, tc.want)
 		}
 	}

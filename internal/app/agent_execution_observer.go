@@ -13,6 +13,7 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/history"
+	liveview "github.com/dkroshow/nano/internal/liveview"
 	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
@@ -188,10 +189,12 @@ func (sess *session) observeGrokAgentTerminal(sessionID, promptID, status, code 
 	if status == agentTurnCompleted && sess.projection != nil {
 		itemID = sess.projection.FinalAgentItemID(promptID)
 	}
-	if err := sess.agentExecutions.MarkTurnTerminal(
-		"grok", sessionID, promptID, status, executionErr, "", itemID, agentResultMeta{},
-	); err != nil {
-		log.Printf("record Grok terminal turn %s: %v", promptID, err)
+	if sess.agentExecutions != nil {
+		if err := sess.agentExecutions.MarkTurnTerminal(
+			"grok", sessionID, promptID, status, executionErr, "", itemID, agentResultMeta{},
+		); err != nil {
+			log.Printf("record Grok terminal turn %s: %v", promptID, err)
+		}
 	}
 	if status != agentTurnCompleted {
 		sess.notifyRuntime()
@@ -378,7 +381,7 @@ func savedRowsGeneration(rows []history.SavedUserRow) (string, bool) {
 func savedRowsOf(rows []history.SavedUserRow) []transcript.SavedRow {
 	saved := make([]transcript.SavedRow, len(rows))
 	for i, row := range rows {
-		saved[i] = transcript.SavedRow{Item: row.Item, Terminal: durableTerminalStatus(string(row.TurnStatus))}
+		saved[i] = transcript.SavedRow{Item: row.Item, Terminal: liveview.DurableTerminalStatus(string(row.TurnStatus))}
 	}
 	return saved
 }

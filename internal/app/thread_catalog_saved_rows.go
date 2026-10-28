@@ -21,17 +21,6 @@ func (s *threadCatalogService) LoadSavedTurnFinal(ctx context.Context, threadID,
 	return s.store.ReadSavedTurnFinal(ctx, threadID, projectionKey, turnKey)
 }
 
-// savedPromptReader reads saved user rows by delivered prompts' exact
-// identities, from the session's current native thread only.
-type savedPromptReader func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error)
-
-// savedPromptNativeReader reads saved user rows of a named native thread.
-type savedPromptNativeReader func(context.Context, string, history.SavedUserKeys) ([]history.SavedUserRow, error)
-
-// savedTurnFinalReader reads the final answer text and its native message id
-// of one saved turn of a named native thread at one projection generation.
-type savedTurnFinalReader func(ctx context.Context, nativeThreadID, projectionKey, turnKey string) (string, string, error)
-
 func (s *server) savedPromptsFor(sess *session) savedPromptReader {
 	return func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 		return s.savedPromptRows(ctx, sess.currentThreadID(), keys)
