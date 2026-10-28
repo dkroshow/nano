@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 // The monitor endpoint exposes Nano process and active-turn state to operator
@@ -221,23 +222,13 @@ func tailJSONLines(path string, tail int64) ([]json.RawMessage, error) {
 	return lines, nil
 }
 
-type monitorTurn struct {
-	Provider        string `json:"provider"`
-	ThreadID        string `json:"threadId"`
-	HostedThreadID  string `json:"hostedThreadId,omitempty"`
-	Name            string `json:"name,omitempty"`
-	TurnStartedAtMs int64  `json:"turnStartedAtMs,omitempty"`
-}
-
 func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
 	sessions := s.snapshotSessions()
 	turns := []monitorTurn{}
 	for _, sess := range sessions {
-		sess.stateMu.Lock()
-		if sess.workActiveLocked() {
-			turns = append(turns, monitorTurn{Provider: sess.provider, ThreadID: sess.threadID, HostedThreadID: sess.hostedThreadID, Name: sess.displayName, TurnStartedAtMs: sess.turnStartedAtMs})
+		if turn, active := sess.activeTurnSnapshot(); active {
+			turns = append(turns, turn)
 		}
-		sess.stateMu.Unlock()
 	}
 	file, newest, err := s.hostMonitor.newestSnapshot()
 	if err != nil {
@@ -304,3 +295,5 @@ func (s *server) handleIngestReceipts(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	httpapi.WriteJSON(w, map[string]any{"receipts": catalog.ingestReceipts()})
 }
+
+type monitorTurn = observability.ActiveTurn

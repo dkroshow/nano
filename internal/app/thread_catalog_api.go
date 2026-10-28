@@ -278,17 +278,12 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// A native id, once present, is immutable for the hosted session. Holding
 	// the lock while merely recording a pre-bind name lets applyPendingName see
 	// exactly this value when the provider announces its identity.
-	sess.stateMu.Lock()
-	provider, nativeID := sess.provider, sess.threadID
-	if nativeID == "" {
-		sess.pendingName = name
-		sess.displayName = name
-		sess.stateMu.Unlock()
+	provider, nativeID, staged := sess.stageNameBeforeBinding(name)
+	if staged {
 		s.notifyRuntimeRefresh()
 		httpapi.WriteJSON(w, sess.summary())
 		return
 	}
-	sess.stateMu.Unlock()
 
 	// A provisional Claude identity is the shim handle standing in for a native
 	// id that has not been announced yet (attachmentRecord.provisional). A
@@ -300,29 +295,22 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// under stateMu before it consumes pendingName, so an unchanged threadID
 	// proves the staged value will still be picked up.
 	if rec, ok := s.attachmentFor(provider, nativeID); ok && rec.provisional() {
-		sess.stateMu.Lock()
-		if sess.threadID == nativeID {
-			sess.pendingName = name
-			sess.displayName = name
-			sess.stateMu.Unlock()
+		var staged bool
+		nativeID, staged = sess.stageProvisionalName(nativeID, name)
+		if staged {
 			s.setAttachmentPendingName(provider, nativeID, name)
 			s.notifyRuntimeRefresh()
 			httpapi.WriteJSON(w, sess.summary())
 			return
 		}
 		// The real id landed while we probed; assign under it normally.
-		nativeID = sess.threadID
-		sess.stateMu.Unlock()
 	}
 
 	if err := namer.AssignThreadName(provider, nativeID, name); err != nil {
 		writeThreadNameError(w, err)
 		return
 	}
-	sess.stateMu.Lock()
-	sess.pendingName = ""
-	sess.displayName = name
-	sess.stateMu.Unlock()
+	sess.setDisplayName(name)
 	s.notifyRuntimeRefresh()
 	httpapi.WriteJSON(w, sess.summary())
 }

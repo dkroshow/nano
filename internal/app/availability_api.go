@@ -79,15 +79,13 @@ func (s *server) availabilityFor(hostedThreadID string, now time.Time) availabil
 		return view
 	}
 	view.Facts.Attachment = "live"
-	sess.stateMu.Lock()
-	status, active, waiting := sess.connectionStatusLocked(), sess.workActiveLocked(), sess.waitingLocked()
-	permission := sess.lifecyclePermissionLocked()
-	lastHuman := sess.lastHumanPromptAt
-	sess.stateMu.Unlock()
+	state := sess.availabilityState()
+	status, active, waiting := state.Status, state.Active, state.Waiting
+	permission, lastHuman := state.Permission, state.LastHumanPromptAt
 	view.Facts.SessionStatus = status
 	view.Facts.TurnActive = active
 	pending := sess.corePromptInFlight()
-	view.Facts.QueuedPrompts = sess.queuedTurns.queuedCount(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
+	view.Facts.QueuedPrompts = sess.queuedPromptCount()
 	view.Facts.PendingInteraction = waiting
 	if !lastHuman.IsZero() && (view.Facts.LastHumanMessageAt == "" || lastHuman.Format(time.RFC3339Nano) > view.Facts.LastHumanMessageAt) {
 		view.Facts.LastHumanMessageAt = lastHuman.UTC().Format(time.RFC3339Nano)
