@@ -247,12 +247,12 @@ func (h *liveTextHarness) feed(lines [][]byte) {
 			Type string `json:"type"`
 		}
 		if json.Unmarshal(line, &frame) == nil && frame.Type == "result" {
-			h.sess.projection.mu.Lock()
-			turn := h.sess.projection.claudeTurnID
-			h.sess.projection.mu.Unlock()
+			h.sess.projection.(*liveProjection).mu.Lock()
+			turn := h.sess.projection.(*liveProjection).claudeTurnID
+			h.sess.projection.(*liveProjection).mu.Unlock()
 			h.sess.projection.setClaudeResultTurnID(turn)
 		}
-		h.sess.projection.applyWireLive(protocol.Recv, line, time.Now(), true, false)
+		h.sess.projection.(*liveProjection).applyWireLive(protocol.Recv, line, time.Now(), true, false)
 	}
 }
 
@@ -674,9 +674,9 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 	// counted, so it is not exact.
 	wire := fixtureLines(t, "claude-turn.wire.jsonl")
 	h.feed(wire)
-	h.sess.projection.adapterMu.Lock()
-	h.sess.projection.adapter = newClaudeLiveAdapter()
-	h.sess.projection.adapterMu.Unlock()
+	h.sess.projection.(*liveProjection).adapterMu.Lock()
+	h.sess.projection.(*liveProjection).adapter = newClaudeLiveAdapter()
+	h.sess.projection.(*liveProjection).adapterMu.Unlock()
 	for _, line := range wire {
 		if strings.HasPrefix(string(line), `{"type": "assistant"`) && strings.Contains(string(line), `"type": "text"`) {
 			h.feed([][]byte{line})

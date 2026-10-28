@@ -250,7 +250,7 @@ func (sess *session) recordWireWith(gate func() error, prepare func(), dir proto
 		if gate == nil && prepare == nil && live && !replay && sess.provider == "codex" &&
 			dir == protocol.Recv && sess.projection != nil {
 			if delta, ok := parseQueuedCodexDelta(frame); ok &&
-				(delta.method != "item/agentMessage/delta" || !sess.projection.dropLiveTextDeltas) {
+				(delta.method != "item/agentMessage/delta" || !sess.projection.dropsLiveTextDeltas()) {
 				delta.at = at
 				delta.event = evt
 				delta.wireSeq = sequence

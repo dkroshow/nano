@@ -25,7 +25,8 @@ type liveFixtureLine struct {
 
 // projectionStateForTest is the projection's native thread, turns, runtime and
 // pending questions, as one snapshot without rows.
-func projectionStateForTest(p *liveProjection) liveProjectionSnapshot {
+func projectionStateForTest(view sessionProjection) liveProjectionSnapshot {
+	p := view.(*liveProjection)
 	status := p.status()
 	p.mu.Lock()
 	native := p.nativeThread
@@ -212,7 +213,7 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 	started := time.Now().Add(-time.Minute)
 	saved := durableTurnEvidence{Turn: liveProjectionTurn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}
 	work := func(sess *session, at time.Time) {
-		sess.projection.applyWire(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
+		sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
 	}
 	for _, tc := range []struct {
 		name    string
@@ -233,11 +234,11 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 			sess.stateMu.Unlock()
 		}, true},
 		// Hiding Codex text deltas hides text, not the work they are.
-		{"same-turn hidden text delta during the read", func(sess *session) { sess.projection.dropLiveTextDeltas = true }, func(sess *session) {
-			sess.projection.applyWire(protocol.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
+		{"same-turn hidden text delta during the read", func(sess *session) { sess.projection.(*liveProjection).dropLiveTextDeltas = true }, func(sess *session) {
+			sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
 		}, true},
 		{"replayed old output during the read", nil, func(sess *session) {
-			sess.projection.applyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
+			sess.projection.(*liveProjection).applyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
 		}, false},
 		{"nothing since the saved completion", nil, nil, false},
 	} {
@@ -338,7 +339,7 @@ func TestCodexResumeSeedsFiveCompleteTurnsAndActiveTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.seedCodexResume(decodedCodexResume(response))
+	seedCodexResume(p, decodedCodexResume(response))
 	turnsAfter := p.turnList()
 
 	if got, want := len(turnsAfter), 6; got != want {

@@ -195,7 +195,7 @@ type liveProjection struct {
 
 	// liveText receives each frame's parsed changes for a file-only thread;
 	// set once before wire activity.
-	liveText *liveTextLoop
+	liveText liveTextObserver
 }
 
 // codexAgentTextDelta reports an agent-message delta, or the empty
@@ -1233,4 +1233,21 @@ func cloneUpdate(update liveProjectionUpdate) liveProjectionUpdate {
 		out.Snapshot = &snapshot
 	}
 	return out
+}
+
+func (p *liveProjection) providerName() string {
+	if p == nil {
+		return ""
+	}
+	return p.provider
+}
+
+func (p *liveProjection) dropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
+
+func (p *liveProjection) setLiveText(observer liveTextObserver) { p.liveText = observer }
+
+func (p *liveProjection) turnActive() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.runtime.TurnActive
 }

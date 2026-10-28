@@ -52,7 +52,7 @@ const (
 // startLiveText builds the file-only loop for every session constructor.
 func (s *server) startLiveText(sess *session) {
 	sess.liveText = newLiveTextLoop(s, sess)
-	sess.projection.liveText = sess.liveText
+	sess.projection.setLiveText(sess.liveText)
 }
 
 // liveTextEntry is one piece of live text as panes see it.
@@ -342,9 +342,7 @@ func (l *liveTextLoop) sessionWorking() bool {
 	if l.sess == nil || l.sess.projection == nil {
 		return false
 	}
-	l.sess.projection.mu.Lock()
-	defer l.sess.projection.mu.Unlock()
-	return l.sess.projection.runtime.TurnActive
+	return l.sess.projection.turnActive()
 }
 
 func (l *liveTextLoop) reset() {

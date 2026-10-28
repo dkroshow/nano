@@ -337,8 +337,10 @@ func (sess *session) handleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var journal promptJournal = sess.sendAttempts.turns
-	if pool := sess.metadata.readPool(); pool != nil {
-		journal = prompts.NewJournal(pool)
+	if sess.metadata != nil {
+		if pool := sess.metadata.readPool(); pool != nil {
+			journal = prompts.NewJournal(pool)
+		}
 	}
 	rows, err := journal.ListThreadAttempts(r.Context(), model.Provider(sess.provider), threadID)
 	if err != nil {

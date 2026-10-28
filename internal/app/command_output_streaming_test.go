@@ -103,9 +103,9 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 		sess.projection.finalAgentItemID("stream-turn") != "agent-1" {
 		t.Fatalf("final message mismatch: present=%t text=%q done=%t", found, final.Text, final.Complete)
 	}
-	sess.projection.adapterMu.Lock()
-	semanticFrames := sess.projection.adapter.(*codexLiveAdapter).reader.Frame
-	sess.projection.adapterMu.Unlock()
+	sess.projection.(*liveProjection).adapterMu.Lock()
+	semanticFrames := sess.projection.(*liveProjection).adapter.(*codexLiveAdapter).reader.Frame
+	sess.projection.(*liveProjection).adapterMu.Unlock()
 	if semanticFrames >= int64(commandOutputIncidentChunks/2) {
 		t.Fatalf("command deltas were not coalesced before semantic application: frames=%d rawChunks=%d", semanticFrames, commandOutputIncidentChunks)
 	}
@@ -170,9 +170,9 @@ func TestQueuedCodexCommandOutputBatchesWithoutCrossingBoundaries(t *testing.T) 
 	if outputs["command-a"] != "onetwothreefourfive" || outputs["command-b"] != "boundary" {
 		t.Fatalf("command outputs crossed a boundary: %#v", outputs)
 	}
-	sess.projection.adapterMu.Lock()
-	semanticFrames := sess.projection.adapter.(*codexLiveAdapter).reader.Frame
-	sess.projection.adapterMu.Unlock()
+	sess.projection.(*liveProjection).adapterMu.Lock()
+	semanticFrames := sess.projection.(*liveProjection).adapter.(*codexLiveAdapter).reader.Frame
+	sess.projection.(*liveProjection).adapterMu.Unlock()
 	if semanticFrames != int64(len(frames)-2) {
 		t.Fatalf("semantic frames=%d, want %d after two adjacent pair merges", semanticFrames, len(frames)-2)
 	}
@@ -228,7 +228,8 @@ func TestCommandOutputBoundedBaselineComparison(t *testing.T) {
 // and its tool output. Output deltas read before their item/started carry no
 // turn, so the reader can hold two items for one command; the one holding the
 // longest output is the one under test.
-func liveReaderItemForTest(p *liveProjection, nativeID string) (model.Item, string, bool) {
+func liveReaderItemForTest(view sessionProjection, nativeID string) (model.Item, string, bool) {
+	p := view.(*liveProjection)
 	p.adapterMu.Lock()
 	defer p.adapterMu.Unlock()
 	var found model.Item

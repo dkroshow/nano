@@ -41,11 +41,11 @@ type session struct {
 	// absent thread id.
 	spawnMode string
 
-	codex            *codexDaemon    // codex provider: shared daemon client
-	claude           *claudeSession  // claude provider
-	grok             *grokSession    // grok provider: stdio proxy to the durable native leader
-	reasoningSummary string          // codex: turn/start summary level
-	projection       *liveProjection // normalized live transcript, one per session
+	codex            *codexDaemon      // codex provider: shared daemon client
+	claude           *claudeSession    // claude provider
+	grok             *grokSession      // grok provider: stdio proxy to the durable native leader
+	reasoningSummary string            // codex: turn/start summary level
+	projection       sessionProjection // normalized live transcript, one per session
 	completedTurns   *completedTurnSource
 	// savedTurn reads the saved status of one turn by exact native turn id,
 	// to settle a live turn whose terminal event was lost.

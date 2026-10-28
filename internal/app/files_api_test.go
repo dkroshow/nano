@@ -159,7 +159,7 @@ func TestGeneralFileWriteConflictForcePermissionsAndNoCreation(t *testing.T) {
 func liveEvidenceSession(texts ...string) *session {
 	sess := &session{id: "session-1", provider: "codex", projection: newLiveProjection("codex")}
 	sess.liveText = newLiveTextLoop(&server{}, sess)
-	sess.projection.liveText = sess.liveText
+	sess.projection.(*liveProjection).liveText = sess.liveText
 	for _, text := range texts {
 		addLiveEvidence(sess, text)
 	}
@@ -173,7 +173,7 @@ func addLiveEvidence(sess *session, text string) {
 	for _, method := range []string{"item/started", "item/completed"} {
 		frame, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"turnId": "turn-1",
 			"item": map[string]any{"id": id, "type": "agentMessage", "text": text}}})
-		sess.projection.applyWire(protocol.Recv, frame, time.Now())
+		sess.projection.(*liveProjection).applyWire(protocol.Recv, frame, time.Now())
 	}
 }
 

@@ -25,7 +25,9 @@ func (sess *session) volatileSummary(needsAttention bool) (sessionSummary, bool)
 	if summary.Status == sessionStatusExited {
 		return sessionSummary{}, false
 	}
-	summary.ThreadDiagnostics = sess.projection.threadDiagnosticsSnapshot()
+	if sess.projection != nil {
+		summary.ThreadDiagnostics = sess.projection.threadDiagnosticsSnapshot()
+	}
 	summary.NeedsAttention = needsAttention
 	return summary, true
 }

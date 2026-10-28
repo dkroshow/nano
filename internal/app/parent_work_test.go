@@ -14,7 +14,7 @@ func TestChildLaunchDoesNotBecomeParentWork(t *testing.T) {
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"background-tool","name":"Agent","input":{}}]}}`,
 		`{"type":"user","message":{"content":[{"tool_use_id":"background-tool","type":"tool_result","content":"Async agent launched successfully. agentId: child-1"}]}}`,
 	} {
-		sess.projection.applyWireLive(protocol.Recv, []byte(line), at, true, false)
+		sess.projection.(*liveProjection).applyWireLive(protocol.Recv, []byte(line), at, true, false)
 	}
 	sess.hostedThreadID = "hosted-parent"
 	app := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"parent": sess}}}

@@ -41,7 +41,8 @@ func liveTextDeltaTurnCompleted(status string) []byte {
 
 // liveTextDeltaAgentTexts is the agent text the live reader holds: what live
 // text and the turn's answer are built from.
-func liveTextDeltaAgentTexts(t *testing.T, p *liveProjection) []string {
+func liveTextDeltaAgentTexts(t *testing.T, view sessionProjection) []string {
+	p := view.(*liveProjection)
 	t.Helper()
 	p.adapterMu.Lock()
 	defer p.adapterMu.Unlock()

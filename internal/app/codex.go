@@ -1235,7 +1235,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *session, daemon 
 		// returned user item promotes the same logical row instead of duplicating
 		// it. The outbox is scrubbed only after durable/provider confirmation.
 		sess.restoreSubmissionOutbox()
-		sess.projection.seedCodexResume(decoded)
+		seedCodexResume(sess.projection, decoded)
 		sess.observeCodexResume(decoded)
 		// A resume payload is explicitly lossy and can lag the active rollout.
 		// Settle the open turn from its saved copy; later catalog changes

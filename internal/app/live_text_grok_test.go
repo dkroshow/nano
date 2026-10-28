@@ -169,7 +169,7 @@ func TestGrokFileLiveHTTPChunkStarts(t *testing.T) {
 					p["_meta"].(map[string]any)["isReplay"] = true
 					line, _ = json.Marshal(msg)
 				}
-				h.sess.projection.applyWireLive(protocol.Recv, line, time.Now(), true, false)
+				h.sess.projection.(*liveProjection).applyWireLive(protocol.Recv, line, time.Now(), true, false)
 			}
 			// An outbox change follows all frames and is the stream's ordered barrier.
 			h.sess.liveText.outboxChanged(prompts.OutboxEntry{ActionID: "barrier", PresentationText: "Barrier.", State: prompts.Uncertain})
@@ -602,7 +602,7 @@ func TestEveryProviderSessionBuildsLiveTextLoop(t *testing.T) {
 		srv := &server{}
 		sess := &session{provider: provider, projection: newLiveProjection(provider)}
 		srv.startLiveText(sess)
-		if sess.liveText == nil || sess.projection.liveText != sess.liveText {
+		if sess.liveText == nil || sess.projection.(*liveProjection).liveText != sess.liveText {
 			t.Fatalf("%s session has no file-only loop", provider)
 		}
 	}

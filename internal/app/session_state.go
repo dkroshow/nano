@@ -152,7 +152,9 @@ func (sess *session) summaryWith(view hostedMetadataView, viewErr error, needsAt
 	}
 	sess.stateMu.Unlock()
 	summary.RunningTurnInput = sess.acceptsRunningTurnInput()
-	summary.ThreadDiagnostics = sess.projection.threadDiagnosticsSnapshot()
+	if sess.projection != nil {
+		summary.ThreadDiagnostics = sess.projection.threadDiagnosticsSnapshot()
+	}
 	summary.NeedsAttention = needsAttention
 	summary.FileTranscript = true
 	// A hosted session's facts are served exclusively from the canonical view.

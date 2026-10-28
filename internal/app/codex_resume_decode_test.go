@@ -19,7 +19,7 @@ func BenchmarkCodexResumeConsumers(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := newLiveProjection("codex")
 		response := decodedCodexResume(raw)
-		p.seedCodexResume(response)
+		seedCodexResume(p, response)
 		response.inFlightTurn()
 		response.compact()
 		(codexLifecycleAdapter{epoch: 1, sequence: 1, response: response, nativeID: "native", settled: true}).Current()
