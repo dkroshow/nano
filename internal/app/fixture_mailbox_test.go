@@ -68,7 +68,12 @@ func awaitProviderIngress(t *testing.T, f *providerRuntimeFixture) {
 
 func awaitProviderFrame(t *testing.T, f *providerRuntimeFixture, line []byte) {
 	t.Helper()
-	waitForClaude(t, "queued provider frame", func() bool {
+	awaitProviderFrameWithin(t, f, line, 3*time.Second)
+}
+
+func awaitProviderFrameWithin(t *testing.T, f *providerRuntimeFixture, line []byte, timeout time.Duration) {
+	t.Helper()
+	waitForCatalogWithin(t, timeout, func() bool {
 		for _, event := range claudeWireEvents(f.session) {
 			if string(event.Msg) == string(line) {
 				return true

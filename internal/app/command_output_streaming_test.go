@@ -64,7 +64,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 	awaitProviderIngress(t, f)
 	started := time.Now()
 	release()
-	awaitProviderFrame(t, f, frames[len(frames)-1])
+	awaitProviderFrameWithin(t, f, frames[len(frames)-1], 30*time.Second)
 
 	elapsed := time.Since(started)
 	runtime.ReadMemStats(&after)

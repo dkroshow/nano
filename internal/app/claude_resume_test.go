@@ -907,6 +907,11 @@ func TestClaudeResumeFallsBackToDirectChildWhenShimUnreachable(t *testing.T) {
 	dead.Close()
 
 	logs := &syncBuffer{}
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("direct fallback logs: %s", logs.String())
+		}
+	})
 	log.SetOutput(logs)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 

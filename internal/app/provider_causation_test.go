@@ -75,7 +75,7 @@ func emitCausation(t *testing.T, sess *session, fake *fakeAppServer, payload jso
 	t.Helper()
 	line := append([]byte(`{"method":"thread/settings/updated","params":`), payload...)
 	line = append(line, '}')
-	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, line)
+	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndDrain(t, line)
 }
 func startCausationResponse(t *testing.T, sess *session, request providerRequest, values map[string]any, before func(json.RawMessage)) {
 	t.Helper()
@@ -112,7 +112,7 @@ func finishCausationTurn(t *testing.T, sess *session, fake *fakeAppServer, actio
 		t.Fatalf("accepted turn %q has no provider identity: %+v %v", actionID, record, err)
 	}
 	line, _ := json.Marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": sess.ThreadID(), "turn": map[string]any{"id": record.ProviderTurnID, "status": "completed"}}})
-	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, line)
+	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndDrain(t, line)
 }
 
 func TestCreationRequestPriorityExistsBeforeImmediateThreadStartResponse(t *testing.T) {
@@ -337,7 +337,7 @@ func TestClaudeReplayCannotSettleNewDesiredButFreshInitSettlesOwnRequest(t *test
 	sess.Close()
 	sess = newCausationClaudeAttachment(t, store, sess.HostedThreadID())
 	fresh := startCausationClaude(t, sess, "new")
-	fresh.emitAndWait(t, []byte(`{"type":"system","subtype":"init","session_id":"claude-native","model":"new","permissionMode":""}`))
+	fresh.emitAndDrain(t, []byte(`{"type":"system","subtype":"init","session_id":"claude-native","model":"new","permissionMode":""}`))
 	f, _, effective := fieldStrings(t, store, sess.HostedThreadID(), postureFieldModel)
 	if f.DesiredDisposition != metadataDispositionConfirmed || effective != "new" {
 		t.Fatalf("fresh init did not settle its request: %+v effective=%q", f, effective)
@@ -364,7 +364,7 @@ func TestCaptureInitReplayAndFreshLaunchUseImmutableSnapshots(t *testing.T) {
 	requested(t, sess, store, postureFieldModel, "old")
 	fresh := startCausationClaude(t, sess, "old")
 	newID = requested(t, sess, store, postureFieldModel, "new")
-	fresh.emitAndWait(t, line)
+	fresh.emitAndDrain(t, line)
 	f, desired, effective := fieldStrings(t, store, sess.HostedThreadID(), postureFieldModel)
 	if f.DesiredEventID == nil || *f.DesiredEventID != newID || f.DesiredDisposition != metadataDispositionRequested || desired != "new" || effective != "old" {
 		t.Fatalf("fresh child borrowed newer desired causation: %+v desired=%q effective=%q", f, desired, effective)
@@ -375,7 +375,7 @@ func TestClaudeReplayLiveBoundaryKeepsCanonicalMetadataReadable(t *testing.T) {
 	sess, store := causationTestSessionForProvider(t, "nht_claude_replay_live_boundary", "claude")
 	line := []byte(`{"type":"system","subtype":"init","session_id":"claude-native","model":"claude-fable-5","permissionMode":"bypassPermissions"}`)
 	f := replayCausationClaude(t, sess, line)
-	f.emitAndWait(t, line)
+	f.emitAndDrain(t, line)
 	if summary := sess.Summary(); summary.MetadataUnavailable || summary.Metadata == nil {
 		t.Fatalf("healthy canonical state hidden after replay/live boundary: %+v", summary)
 	}

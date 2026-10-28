@@ -342,3 +342,16 @@ func (f *providerRuntimeFixture) completeTurn(t *testing.T, turn, action string)
 	}
 	f.emitAndWait(t, line)
 }
+
+// emitAndDrain waits past provider-side state capture as well as raw publication.
+// A subsequent frame on the same reader cannot arrive until the prior callback
+// returns; its raw event also passes the session's ordered consumer.
+func (f *providerRuntimeFixture) emitAndDrain(t *testing.T, line []byte) {
+	t.Helper()
+	f.emitAndWait(t, line)
+	if f.codex != nil {
+		f.emitAndWait(t, []byte(`{"method":"fixture/provider-state-drained","params":{"threadId":"`+f.session.ThreadID()+`"}}`))
+		return
+	}
+	f.emitAndWait(t, []byte(`{"type":"fixture_provider_state_drained"}`))
+}

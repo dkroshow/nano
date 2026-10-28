@@ -695,7 +695,7 @@ func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
 		t.Fatalf("runtime notification preceded committed current state: view=%+v err=%v", view, err)
 	}
 	evidence := []byte(`{"method":"thread/settings/updated","params":{"threadId":"native-notify","threadSettings":{"serviceTier":"priority"}}}`)
-	f.emitAndWait(t, evidence)
+	f.emitAndDrain(t, evidence)
 	if got := notified.Load() - before; got != 2 {
 		t.Fatalf("provider runtime notifications = %d, want post-commit notification", got)
 	}
@@ -703,12 +703,12 @@ func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
 	if err != nil || view.Fields[postureFieldServiceTier].EffectiveDisposition != metadataDispositionConfirmed {
 		t.Fatalf("provider notification preceded committed effective state: view=%+v err=%v", view, err)
 	}
-	f.emitAndWait(t, evidence)
+	f.emitAndDrain(t, evidence)
 	if got := notified.Load() - before; got != 2 {
 		t.Fatalf("duplicate provider evidence notified %d times, want 2", got)
 	}
 	metadata.fail.Store(true)
-	f.emitAndWait(t, []byte(`{"method":"thread/settings/updated","params":{"threadId":"native-notify","threadSettings":{"serviceTier":"default"}}}`))
+	f.emitAndDrain(t, []byte(`{"method":"thread/settings/updated","params":{"threadId":"native-notify","threadSettings":{"serviceTier":"default"}}}`))
 	if got := notified.Load() - before; got != 3 || !sess.Summary().MetadataDegraded {
 		t.Fatalf("failed provider observation did not publish degraded state: notifications=%d degraded=%v", got, sess.Summary().MetadataDegraded)
 	}
