@@ -140,7 +140,8 @@ func TestRestartRecordTakesLiveAndFailureFromTheLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sess := &session{lifecycleState: snapshot, restart: tracker.thread(attachmentKey{provider: "claude", nativeThreadID: "thread"})}
+		thread := tracker.thread(attachmentKey{provider: "claude", nativeThreadID: "thread"})
+		sess := &session{lifecycleState: snapshot, restartProgress: thread.at, restartFailure: thread.fail}
 		sess.stateMu.Lock()
 		for _, event := range tc.events {
 			sess.transitionLifecycleLocked(event)

@@ -57,15 +57,15 @@ func (sess *session) applyLifecycleObservationLocked(observation lifecycle.Obser
 	if after := out.Snapshot.State.Connection; after != before.State.Connection {
 		switch after {
 		case lifecycle.Ready:
-			sess.restart.at(restartLive)
+			sess.recordRestartStep(restartLive)
 		case lifecycle.Unreachable:
-			sess.restart.fail("reconnect_failed")
+			sess.recordRestartFailure("reconnect_failed")
 		case lifecycle.Parked:
-			sess.restart.fail("reconnect_parked")
+			sess.recordRestartFailure("reconnect_parked")
 		case lifecycle.Exited:
-			sess.restart.fail("exited")
+			sess.recordRestartFailure("exited")
 		case lifecycle.Detached:
-			sess.restart.fail("detached")
+			sess.recordRestartFailure("detached")
 		}
 	}
 	if core := sess.coreSession(); core != nil {

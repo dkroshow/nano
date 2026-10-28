@@ -84,7 +84,7 @@ func (sess *session) nextEvidenceSequenceLocked() uint64 {
 // transport closes or the session ends first. neverPrompted, when set, reads
 // the evidence that the thread was never prompted (catalog_attached.go).
 func (sess *session) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted func() bool) bool {
-	sess.restart.at(restartAttached)
+	sess.recordRestartStep(restartAttached)
 	sess.stateMu.Lock()
 	release, fresh := sess.releaseHandshakeSlot, sess.savedCaughtUp
 	sess.savedCaughtUp = true

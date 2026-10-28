@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 const (
@@ -43,7 +44,7 @@ const (
 // offsets count from it.
 var processStarted = time.Now()
 
-type restartStep int
+type restartStep = observability.RestartStep
 
 const (
 	restartStatePending = "pending"
@@ -55,11 +56,11 @@ const (
 )
 
 const (
-	restartPicked restartStep = iota
-	restartLock
-	restartRegistered
-	restartAttached
-	restartLive
+	restartPicked     = observability.RestartPicked
+	restartLock       = observability.RestartLock
+	restartRegistered = observability.RestartRegistered
+	restartAttached   = observability.RestartAttached
+	restartLive       = observability.RestartLive
 )
 
 type restartRecord struct {

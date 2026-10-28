@@ -1228,7 +1228,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *session, daemon 
 	sess.setProjectionThreadID(thread.Thread.ID)
 	if method == "thread/resume" {
 		// Boot and recovery resumes both pass here, before readiness.
-		sess.restart.at(restartAttached)
+		sess.recordRestartStep(restartAttached)
 	}
 	if method == "thread/resume" && sess.projection != nil {
 		// Restore action-bearing rows before the lossy provider baseline so a

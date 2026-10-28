@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -225,7 +224,8 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	// is still in flight has to be able to reach this session, and the card has
 	// to appear at once rather than when the provider answers. Bind: the session
 	// is now visible to the catalog's runtime overlay.
-	sess.restart = req.restart
+	sess.restartProgress = req.restart.at
+	sess.restartFailure = req.restart.fail
 	sess.catalogBackground = req.catalogBackground
 	if s.catalogSources != nil {
 		sess.catalogSources = s.catalogSources
@@ -234,7 +234,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	s.sessions[sess.id] = sess
 	s.mu.Unlock()
 	sess.bindCatalogSource(sess.currentThreadID())
-	sess.restart.at(restartRegistered)
+	sess.recordRestartStep(restartRegistered)
 	if sess.agentExecutions != nil {
 		// presentationMode is mutable under stateMu once the session is
 		// resolvable by the presentation endpoint, which it is as of the
@@ -265,112 +265,11 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	if req.Mode != "resume" {
 		sess.recordPosture(creationPostureEntries(req), metadataFreshnessLive)
 	}
-	if err := s.beginProviderSpawn(sess, req); err != nil {
+	if err := sess.beginProviderSpawn(req, s.codex, func() { s.discardSpawn(sess) }); err != nil {
 		s.discardSpawn(sess)
 		return nil, err
 	}
 	return sess, nil
-}
-
-// beginProviderSpawn hands the session to its provider. What it returns is what
-// the POST answers with, so only the failures a caller can act on — an
-// already-attached thread, a resume ladder that found nothing to attach to —
-// come back as errors here. Handshake failures land on the session itself.
-func (s *server) beginProviderSpawn(sess *session, req spawnRequest) error {
-	if err := sess.ensureCoreSession(); err != nil {
-		return err
-	}
-	if req.Provider == "claude" && req.Mode == "resume" {
-		// Claude attach waits for replay to pass through the session mailbox.
-		// Run its orchestration outside that mailbox so it can make progress.
-		// Manual resumes still return their synchronous HTTP refusal errors;
-		// boot and external resumes retain their existing asynchronous shells.
-		return s.beginProviderSpawnLegacy(sess, req)
-	}
-	operation := func(context.Context) error { return s.beginProviderSpawnLegacy(sess, req) }
-	if req.Mode == "resume" {
-		return sess.core.ResumeLegacy(context.Background(), operation)
-	}
-	return sess.core.StartLegacy(context.Background(), operation)
-}
-
-// beginProviderSpawnLegacy is the c2: asynchronous attachment shim. Provider
-// adapters replace it when their Start and Resume operations return evidence.
-func (s *server) beginProviderSpawnLegacy(sess *session, req spawnRequest) error {
-	if req.Provider == "codex" {
-		return startCodexSession(sess, s.codex, req)
-	}
-	if req.Provider == "grok" {
-		startGrokSession(sess, req)
-		return nil
-	}
-	if req.Mode == "resume" {
-		if req.bootReattach != nil {
-			go func() {
-				defer req.bootReattach.holdHandshakeSlot(sess)()
-				sess.stateMu.Lock()
-				closed := sess.closed
-				sess.stateMu.Unlock()
-				if closed {
-					sess.restart.fail("closed")
-					return
-				}
-				if err := s.resumeClaudeForSpawn(sess, req); err != nil {
-					if errors.Is(err, errSpawnSessionClosed) {
-						sess.restart.fail("closed")
-						log.Printf("claude boot session %s was closed before its transport came up", sess.id)
-						return
-					}
-					sess.restart.fail("handshake_failed")
-					log.Printf("boot re-attach %s/%s failed (left detached): %v", req.Provider, req.ThreadID, err)
-					s.discardSpawn(sess)
-				}
-			}()
-			return nil
-		}
-		if req.externalResumePosture {
-			go func() {
-				if err := s.resumeClaudeForSpawn(sess, req); err != nil {
-					if errors.Is(err, errSpawnSessionClosed) {
-						return
-					}
-					sess.failSpawn(err.Error())
-				}
-			}()
-			return nil
-		}
-		return s.resumeClaudeForSpawn(sess, req)
-	}
-	go func() {
-		if _, err := startClaudeSession(sess, req); err != nil {
-			if errors.Is(err, errSpawnSessionClosed) {
-				log.Printf("claude session %s was closed before its transport came up", sess.id)
-				return // closed by the operator: reporting a failure would resurrect it
-			}
-			log.Printf("start claude session %s: %v", sess.id, err)
-			sess.failSpawn(err.Error())
-		}
-	}()
-	return nil
-}
-
-func (s *server) resumeClaudeForSpawn(sess *session, req spawnRequest) error {
-	// The manual path calls this synchronously because its rungs decide WHICH
-	// session the operator gets (attach, respawn, or refuse), and the refusal is
-	// the frozen 409 the frontend routes on. Boot runs the same work behind its
-	// already-registered shell because no HTTP caller is waiting for that choice.
-	_, err := resumeClaudeSession(sess, req)
-	if err == nil {
-		sess.restart.at(restartAttached)
-	}
-	if errors.Is(err, errClaudeProvisionalGone) {
-		// The never-prompted thread's child is gone and it has no transcript
-		// to come back from. Retire the record: an empty conversation lost is
-		// nothing lost, while a surviving record would sit in the sidebar as
-		// a detached row that can never resume.
-		s.forgetAttachment("claude", req.ThreadID)
-	}
-	return err
 }
 
 // discardSpawn unwinds a session whose provider refused it outright. The shell

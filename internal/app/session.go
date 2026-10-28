@@ -11,6 +11,7 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/providers"
 	"github.com/dkroshow/nano/internal/setup"
 )
@@ -175,8 +176,9 @@ type session struct {
 	// provider transport binds. Provider seams stamp their evidence with it.
 	attachmentGeneration int64
 	subscriptionSweep    func(string)
-	restart              *restartThread // set while a restart record tracks it; nil-safe
-	catalogBackground    bool           // hidden at boot: its catalog holds wait behind foreground ones, bounded
+	restartProgress      func(observability.RestartStep)
+	restartFailure       func(string)
+	catalogBackground    bool // hidden at boot: its catalog holds wait behind foreground ones, bounded
 	sendMu               sync.Mutex
 	sendOps              map[string]*turnSendOperation
 	// nanoStopping is the server's stop flag. Once it is set, no delivery

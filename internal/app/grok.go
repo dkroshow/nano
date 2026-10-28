@@ -262,7 +262,7 @@ func startGrokSession(sess *session, req spawnRequest) {
 	go func() {
 		defer req.bootReattach.holdHandshakeSlot(sess)()
 		if grokSessionClosed(sess) {
-			sess.restart.fail("closed")
+			sess.recordRestartFailure("closed")
 			return
 		}
 		err := runGrokHandshake(sess, req)
@@ -270,11 +270,11 @@ func startGrokSession(sess *session, req spawnRequest) {
 			err = retryGrokBootLoad(sess, req, err)
 		}
 		if err == nil {
-			sess.restart.at(restartAttached)
+			sess.recordRestartStep(restartAttached)
 		}
 		if err != nil {
 			if errors.Is(err, errSpawnSessionClosed) {
-				sess.restart.fail("closed")
+				sess.recordRestartFailure("closed")
 				return
 			}
 			log.Printf("start grok session %s: %v", sess.id, err)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 // close tears down the session's provider attachment.
@@ -195,7 +196,7 @@ func displayMetadataName(displayName string) hostedMetadataName {
 // the UI can show what went wrong, with status exited and the message
 // surfaced as "error" on the summary and /state (frozen R3 contract).
 func (sess *session) failSpawn(message string) {
-	sess.restart.fail("handshake_failed")
+	sess.recordRestartFailure("handshake_failed")
 	sess.stateMu.Lock()
 	wasActive := sess.workActiveLocked()
 	sess.spawnError = message
@@ -316,4 +317,18 @@ func (sess *session) rememberDurableAttachment(rec attachmentRecord) {
 	rec.PresentationMode = sess.presentationMode
 	sess.stateMu.Unlock()
 	sess.rememberAttachment(rec)
+}
+
+// recordRestartStep reports progress without owning the restart record.
+func (sess *session) recordRestartStep(step observability.RestartStep) {
+	if sess.restartProgress != nil {
+		sess.restartProgress(step)
+	}
+}
+
+// recordRestartFailure reports the provider outcome to the restart owner.
+func (sess *session) recordRestartFailure(reason string) {
+	if sess.restartFailure != nil {
+		sess.restartFailure(reason)
+	}
 }
