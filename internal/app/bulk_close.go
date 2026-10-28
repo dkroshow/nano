@@ -231,7 +231,7 @@ func (s *server) handleBulkCloseTree(w http.ResponseWriter, r *http.Request, roo
 		member := treeMember.record
 		if s.threadStars.isStarred(member.Provider, member.NativeThreadID) {
 			starred[member.ID] = true
-			toUnstar = append(toUnstar, attachmentKey{provider: member.Provider, nativeThreadID: member.NativeThreadID})
+			toUnstar = append(toUnstar, attachmentKey{Provider: member.Provider, NativeThreadID: member.NativeThreadID})
 		}
 	}
 	if request.StarredPolicy == bulkCloseRemoveStars && len(toUnstar) > 0 {

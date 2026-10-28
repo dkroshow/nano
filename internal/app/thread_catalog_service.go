@@ -2158,7 +2158,7 @@ func (s *threadCatalogService) ListThreads(ctx context.Context, query catalogLis
 	params := catalogQueryParams(query)
 	params.ThreadID = query.ThreadID
 	for _, key := range query.Identities {
-		params.Identities = append(params.Identities, history.ThreadIdentity{Provider: history.Provider(key.provider), NativeThreadID: key.nativeThreadID})
+		params.Identities = append(params.Identities, history.ThreadIdentity{Provider: history.Provider(key.Provider), NativeThreadID: key.NativeThreadID})
 	}
 	params.Limit = query.Limit
 	if query.Cursor != "" {

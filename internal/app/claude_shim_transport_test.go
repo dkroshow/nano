@@ -203,7 +203,7 @@ func (r *attachmentRecorder) remember(rec attachmentRecord) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, existing := range r.records {
-		if existing.key() == rec.key() {
+		if existing.Key() == rec.Key() {
 			r.records[i] = rec
 			return
 		}
@@ -214,10 +214,10 @@ func (r *attachmentRecorder) remember(rec attachmentRecord) {
 func (r *attachmentRecorder) forget(provider, nativeThreadID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := attachmentKey{provider: provider, nativeThreadID: nativeThreadID}
+	key := attachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
 	kept := r.records[:0]
 	for _, rec := range r.records {
-		if rec.key() != key {
+		if rec.Key() != key {
 			kept = append(kept, rec)
 		}
 	}
@@ -375,7 +375,7 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 	if len(recs) != 1 || !reflect.DeepEqual(recs[0], want) {
 		t.Fatalf("attachments = %+v, want the one provisional record %+v", recs, want)
 	}
-	if !recs[0].provisional() {
+	if !recs[0].Provisional() {
 		t.Fatalf("record %+v should read as provisional", recs[0])
 	}
 }

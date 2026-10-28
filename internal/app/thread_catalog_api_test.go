@@ -58,10 +58,10 @@ func (f *fakeThreadCatalog) ListThreads(_ context.Context, q catalogListQuery) (
 		}
 		var items []catalogThread
 		for _, key := range q.Identities {
-			if row, ok := f.rescued[key.nativeThreadID]; ok && row.Provider == key.provider {
+			if row, ok := f.rescued[key.NativeThreadID]; ok && row.Provider == key.Provider {
 				items = append(items, row)
-			} else if f.indexed[key.provider+"/"+key.nativeThreadID] {
-				items = append(items, catalogThread{ID: "nth_" + key.nativeThreadID, Provider: key.provider, NativeID: key.nativeThreadID})
+			} else if f.indexed[key.Provider+"/"+key.NativeThreadID] {
+				items = append(items, catalogThread{ID: "nth_" + key.NativeThreadID, Provider: key.Provider, NativeID: key.NativeThreadID})
 			}
 		}
 		return catalogPage{Items: items}, nil
@@ -883,7 +883,7 @@ func TestCatalogLivenessRescuesFilteredRows(t *testing.T) {
 		t.Fatalf("identity reads = %#v, point lookups = %#v", fake.identityQueries, fake.rescueQueries)
 	}
 	q := fake.identityQueries[0]
-	want := []attachmentKey{{provider: "claude", nativeThreadID: "native-prog"}, {provider: "codex", nativeThreadID: "native-sub"}}
+	want := []attachmentKey{{Provider: "claude", NativeThreadID: "native-prog"}, {Provider: "codex", NativeThreadID: "native-sub"}}
 	if !reflect.DeepEqual(q.Identities, want) {
 		t.Fatalf("identity read = %#v, want %#v", q.Identities, want)
 	}
@@ -958,7 +958,7 @@ func TestCatalogWorkerIncludesSupervisorOutsideWindow(t *testing.T) {
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_worker", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want worker plus supervisor context", got)
 	}
-	assertOneLineageRead(t, fake, attachmentKey{provider: "claude", nativeThreadID: "parent-session"})
+	assertOneLineageRead(t, fake, attachmentKey{Provider: "claude", NativeThreadID: "parent-session"})
 }
 
 func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T) {
@@ -991,7 +991,7 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want child plus cross-provider invoker", got)
 	}
-	assertOneLineageRead(t, fake, attachmentKey{provider: "codex", nativeThreadID: "native-parent"})
+	assertOneLineageRead(t, fake, attachmentKey{Provider: "codex", NativeThreadID: "native-parent"})
 }
 
 func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
@@ -1058,7 +1058,7 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_new"}) {
 		t.Fatalf("row ids = %v, want child plus current visual parent", got)
 	}
-	assertOneLineageRead(t, fake, attachmentKey{provider: "claude", nativeThreadID: "native-new"})
+	assertOneLineageRead(t, fake, attachmentKey{Provider: "claude", NativeThreadID: "native-new"})
 }
 
 func assertCatalogErrorCode(t *testing.T, rec *httptest.ResponseRecorder, want string) {

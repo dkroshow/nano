@@ -68,7 +68,7 @@ func seedBootAttachments(t *testing.T, s *server) {
 		if _, err := s.agentExecutions.ensureSessionWithIdentity(record.HostedThreadID, record.Provider, presentationShared, record.InvokerHostedThreadID, record.InvokerNativeThreadID, record.InvokerProvider); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.controlMetadata.claimNativeID(record.HostedThreadID, record.Provider, record.NativeThreadID, record.provisional()); err != nil {
+		if err := s.controlMetadata.claimNativeID(record.HostedThreadID, record.Provider, record.NativeThreadID, record.Provisional()); err != nil {
 			t.Fatal(err)
 		}
 		generation, err := s.controlMetadata.beginTransportBinding(record.HostedThreadID)
@@ -427,7 +427,7 @@ func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	s.prepareBootReattach()
-	s.restart.rank(map[attachmentKey]bootRank{records["visible"].key(): {tier: bootTierStarred, visible: true}}, s.boot.order)
+	s.restart.rank(map[attachmentKey]bootRank{records["visible"].Key(): {tier: bootTierStarred, visible: true}}, s.boot.order)
 
 	s.reattachStored(records["visible"], false)
 	s.reattachStored(records["hidden"], false)
@@ -594,7 +594,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		t.Fatalf("boot registered %v, want %v", got, want)
 	}
 	for _, native := range []string{"child-idle", "child-wake", "child-quiet"} {
-		if state := s.boot.state(attachmentKey{provider: "codex", nativeThreadID: native}); state != "resting" {
+		if state := s.boot.state(attachmentKey{Provider: "codex", NativeThreadID: native}); state != "resting" {
 			t.Fatalf("%s after boot = %q, want resting", native, state)
 		}
 	}
@@ -621,7 +621,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	if _, _, err := s.submitHostedTurnWithOptions("nht_child-wake", "nano:test:idle-wake", "scheduled wake", true); err != nil {
 		t.Fatalf("idle-only wake to a resting thread = %v", err)
 	}
-	if state := s.boot.state(attachmentKey{provider: "codex", nativeThreadID: "child-quiet"}); state != "resting" {
+	if state := s.boot.state(attachmentKey{Provider: "codex", NativeThreadID: "child-quiet"}); state != "resting" {
 		t.Fatalf("an unrelated resting thread after the prompts = %q, want resting", state)
 	}
 }
@@ -904,8 +904,8 @@ func TestBootOrderPutsVisibleThreadsBeforeTiedHiddenOnes(t *testing.T) {
 	hidden := attachmentRecord{Provider: "codex", NativeThreadID: "hidden"}
 	visible := attachmentRecord{Provider: "codex", NativeThreadID: "visible"}
 	ranks := map[attachmentKey]bootRank{
-		hidden.key():  {tier: bootTierTopLevel},
-		visible.key(): {tier: bootTierTopLevel, visible: true},
+		hidden.Key():  {tier: bootTierTopLevel},
+		visible.Key(): {tier: bootTierTopLevel, visible: true},
 	}
 	if got := bootOrder([]attachmentRecord{hidden, visible}, ranks); got[0].NativeThreadID != "visible" {
 		t.Fatalf("boot order = %s, %s; want the visible thread first", got[0].NativeThreadID, got[1].NativeThreadID)

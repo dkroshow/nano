@@ -9,15 +9,16 @@ import (
 	"time"
 
 	appstate "github.com/dkroshow/nano/internal/app/persistence"
+	"github.com/dkroshow/nano/internal/hosted"
 )
 
 const (
-	permissionEventRequested = appstate.PermissionEventRequested
-	permissionEventResolved  = appstate.PermissionEventResolved
+	permissionEventRequested = hosted.PermissionEventRequested
+	permissionEventResolved  = hosted.PermissionEventResolved
 )
 
-type permissionEvent = appstate.PermissionEvent
-type permissionEventPage = appstate.PermissionEventPage
+type permissionEvent = hosted.PermissionEvent
+type permissionEventPage = hosted.PermissionEventPage
 
 func (s *controlMetadataStore) appendPermissionEvent(event permissionEvent) error {
 	if s == nil {

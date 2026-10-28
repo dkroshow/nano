@@ -140,7 +140,7 @@ func TestRestartRecordTakesLiveAndFailureFromTheLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		thread := tracker.thread(attachmentKey{provider: "claude", nativeThreadID: "thread"})
+		thread := tracker.thread(attachmentKey{Provider: "claude", NativeThreadID: "thread"})
 		sess := &session{lifecycleState: snapshot, restartProgress: thread.at, restartFailure: thread.fail}
 		sess.stateMu.Lock()
 		for _, event := range tc.events {
@@ -178,7 +178,7 @@ func TestRestartRecordIsCompleteOnlyOnceWritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), restartsFileName)
 	tracker := newRestartTracker(path, "test-stamp", "boot-test", time.Now())
 	tracker.addThreads([]attachmentRecord{{Provider: "claude", NativeThreadID: "thread"}})
-	th := tracker.thread(attachmentKey{provider: "claude", nativeThreadID: "thread"})
+	th := tracker.thread(attachmentKey{Provider: "claude", NativeThreadID: "thread"})
 	th.at(restartRegistered)
 	th.at(restartLive)
 	tracker.markBootLoopDone()
@@ -203,8 +203,8 @@ func TestRestartRecordWaitsForAnOnDemandAttach(t *testing.T) {
 	rec := attachmentRecord{Provider: "codex", NativeThreadID: "resting", HostedThreadID: "nht_resting"}
 	tracker.addThreads([]attachmentRecord{rec})
 	tracker.rest([]attachmentRecord{rec})
-	tracker.thread(rec.key()).at(restartPicked)
-	tracker.thread(rec.key()).at(restartRegistered)
+	tracker.thread(rec.Key()).at(restartPicked)
+	tracker.thread(rec.Key()).at(restartRegistered)
 	tracker.markBootLoopDone()
 	tracker.mu.Lock()
 	record := tracker.recordLocked(true)
@@ -212,7 +212,7 @@ func TestRestartRecordWaitsForAnOnDemandAttach(t *testing.T) {
 	if record.Complete || record.Pending != 1 || record.Resting != 0 {
 		t.Fatalf("record during an on-demand attach = complete %v, pending %d, resting %d; want pending, not complete", record.Complete, record.Pending, record.Resting)
 	}
-	tracker.thread(rec.key()).at(restartLive)
+	tracker.thread(rec.Key()).at(restartLive)
 	tracker.mu.Lock()
 	record = tracker.recordLocked(true)
 	tracker.mu.Unlock()
@@ -230,8 +230,8 @@ func TestRestartRecordWaitsForBrowsersWhileThreadsRest(t *testing.T) {
 	tracker.addThreads([]attachmentRecord{shown})
 	tracker.rest([]attachmentRecord{shown})
 	tracker.markBootLoopDone()
-	tracker.thread(shown.key()).at(restartPicked) // a browser shows it after the loop
-	tracker.thread(shown.key()).at(restartLive)
+	tracker.thread(shown.Key()).at(restartPicked) // a browser shows it after the loop
+	tracker.thread(shown.Key()).at(restartLive)
 	tracker.mu.Lock()
 	written, record := tracker.written, tracker.recordLocked(true)
 	tracker.mu.Unlock()
@@ -265,18 +265,18 @@ func TestRestartRecordTimerReweighsLaterMarks(t *testing.T) {
 		defer tracker.mu.Unlock()
 		return tracker.written
 	}
-	tracker.thread(first.key()).at(restartPicked)
-	tracker.thread(first.key()).at(restartLive) // its attached mark is on its way
+	tracker.thread(first.Key()).at(restartPicked)
+	tracker.thread(first.Key()).at(restartLive) // its attached mark is on its way
 	if fire() {
 		t.Fatal("written before the first attach's attached mark, within its grace")
 	}
-	tracker.thread(second.key()).at(restartPicked) // a browser shows the second
-	tracker.thread(first.key()).at(restartAttached)
+	tracker.thread(second.Key()).at(restartPicked) // a browser shows the second
+	tracker.thread(first.Key()).at(restartAttached)
 	if fire() {
 		t.Fatal("written while the second attach is pending")
 	}
-	tracker.thread(second.key()).at(restartLive)
-	tracker.thread(second.key()).at(restartAttached)
+	tracker.thread(second.Key()).at(restartLive)
+	tracker.thread(second.Key()).at(restartAttached)
 	fire()
 	tracker.mu.Lock()
 	written, record := tracker.written, tracker.recordLocked(true)

@@ -831,7 +831,7 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 	live := make(map[attachmentKey]bool, len(listed))
 	for _, sum := range listed {
 		if sum.ThreadID != "" && sum.Status != sessionStatusExited {
-			live[attachmentKey{provider: sum.Provider, nativeThreadID: sum.ThreadID}] = true
+			live[attachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}] = true
 		}
 	}
 	httpapi.WriteJSON(w, map[string]any{
@@ -913,7 +913,7 @@ func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionVi
 	detached := []detachedSessionView{}
 	for _, record := range records {
 		view := detachedSessionView{attachmentRecord: record}
-		if state := s.boot.state(record.key()); state != "" {
+		if state := s.boot.state(record.Key()); state != "" {
 			view.Status = state
 		}
 		// These retired JSON fields must never leak back into a hosted

@@ -172,8 +172,8 @@ func (s *threadStarsStore) unstarMany(identities []attachmentKey) error {
 	defer tx.Rollback()
 	keys := make([]string, 0, len(identities))
 	for _, identity := range identities {
-		provider := strings.TrimSpace(identity.provider)
-		nativeID := strings.TrimSpace(identity.nativeThreadID)
+		provider := strings.TrimSpace(identity.Provider)
+		nativeID := strings.TrimSpace(identity.NativeThreadID)
 		if provider == "" || nativeID == "" {
 			return errThreadStarIdentityMissing
 		}
@@ -224,7 +224,7 @@ func (s *threadStarsStore) starredIdentities() []attachmentKey {
 		if !ok || provider == "" || nativeID == "" {
 			continue
 		}
-		out = append(out, attachmentKey{provider: provider, nativeThreadID: nativeID})
+		out = append(out, attachmentKey{Provider: provider, NativeThreadID: nativeID})
 	}
 	return out
 }

@@ -300,7 +300,7 @@ func (sess *session) rememberDurableAttachment(rec attachmentRecord) {
 	// the real native id and applyPendingName can write the ordinary name
 	// overlay. Real attachment records must not retain this staging value: a
 	// later manual rename is authoritative and must never be overwritten at boot.
-	if rec.provisional() {
+	if rec.Provisional() {
 		sess.stateMu.Lock()
 		rec.PendingName = sess.pendingName
 		sess.stateMu.Unlock()

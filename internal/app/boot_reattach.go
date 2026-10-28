@@ -59,7 +59,7 @@ func (s *server) prepareBootReattach() {
 	for i := len(records) - 1; i >= 0; i-- { // oldest attach first: bootOrder's order for ties
 		rec := records[i]
 		boot.order = append(boot.order, rec)
-		boot.pending[rec.key()] = true
+		boot.pending[rec.Key()] = true
 		if rec.HostedThreadID != "" {
 			boot.byHosted[rec.HostedThreadID] = rec
 		}
@@ -109,7 +109,7 @@ func (b *bootReattach) waitingHosted(hostedThreadID string) (attachmentRecord, s
 	if !ok {
 		return attachmentRecord{}, ""
 	}
-	return rec, b.stateLocked(rec.key())
+	return rec, b.stateLocked(rec.Key())
 }
 
 // rest leaves records for something to need them.
@@ -117,21 +117,21 @@ func (b *bootReattach) rest(records []attachmentRecord) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, rec := range records {
-		b.resting[rec.key()] = true
+		b.resting[rec.Key()] = true
 	}
 }
 
 // wake ends a thread's rest as its attach begins, so it reports starting.
 func (b *bootReattach) wake(rec attachmentRecord) {
 	b.mu.Lock()
-	delete(b.resting, rec.key())
+	delete(b.resting, rec.Key())
 	b.mu.Unlock()
 }
 
 func (b *bootReattach) settle(rec attachmentRecord) {
 	b.mu.Lock()
-	delete(b.pending, rec.key())
-	delete(b.resting, rec.key())
+	delete(b.pending, rec.Key())
+	delete(b.resting, rec.Key())
 	b.mu.Unlock()
 }
 
@@ -177,7 +177,7 @@ func (s *server) reattachOnBoot() {
 	ordered := bootOrder(boot.order, ranks)
 	s.restart.rank(ranks, ordered)
 	order, resting := bootQueue(ordered, func(rec attachmentRecord) bool {
-		return ranks[rec.key()].visible || s.bootWorkOpen(rec)
+		return ranks[rec.Key()].visible || s.bootWorkOpen(rec)
 	})
 	boot.rest(resting)
 	s.restart.rest(resting)
@@ -207,7 +207,7 @@ func (s *server) reattachOnBoot() {
 			defer queued.Done()
 			waiting := true
 			for _, rec := range records {
-				if waiting && !ranks[rec.key()].visible {
+				if waiting && !ranks[rec.Key()].visible {
 					waiting = false
 					visiblePending.Done()
 					<-hidden.Done()
@@ -268,7 +268,7 @@ var bootTierNames = [...]string{"starred", "top_level", "nested", "unseen"}
 // relies on.
 func bootOrder(records []attachmentRecord, ranks map[attachmentKey]bootRank) []attachmentRecord {
 	rankOf := func(rec attachmentRecord) bootRank {
-		if r, ok := ranks[rec.key()]; ok {
+		if r, ok := ranks[rec.Key()]; ok {
 			return r
 		}
 		return bootRank{tier: bootTierUnseen}
@@ -345,12 +345,12 @@ func (s *server) sidebarBootRanks(stored []attachmentRecord) (map[attachmentKey]
 	}
 	isStored := make(map[attachmentKey]bool, len(stored))
 	for _, rec := range stored {
-		isStored[rec.key()] = true
+		isStored[rec.Key()] = true
 	}
 	ranks := make(map[attachmentKey]bootRank, len(nodes))
 	var topLevel []attachmentKey
 	for _, node := range nodes {
-		key := attachmentKey{provider: node.thread.Provider, nativeThreadID: node.thread.NativeID}
+		key := attachmentKey{Provider: node.thread.Provider, NativeThreadID: node.thread.NativeID}
 		r := bootRank{tier: bootTierNested}
 		if updated := parseCatalogTimePtr(node.thread.UpdatedAt); updated != nil {
 			r.updated = *updated
@@ -418,7 +418,7 @@ func (s *server) handleHostedThreadPrioritize(w http.ResponseWriter, _ *http.Req
 // the first register, and the second sees the live session.
 func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bool) bootReattachOutcome {
 	boot := s.boot
-	if !boot.waiting(rec.key()) {
+	if !boot.waiting(rec.Key()) {
 		return bootReattachSettled
 	}
 	// Settle only after the attempt, so no view sees the thread as neither
@@ -432,7 +432,7 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 		}
 	}()
 	boot.wake(rec)
-	restart := s.restart.thread(rec.key())
+	restart := s.restart.thread(rec.Key())
 	restart.at(restartPicked)
 	if _, stored := s.attachments.get(rec.Provider, rec.NativeThreadID); !stored {
 		restart.fail("no_longer_stored")

@@ -418,7 +418,7 @@ func resumeClaudeSession(sess *session, req providerRequest) (*claudeSession, er
 	// shim handle: keep its restored New Window title pending until the first
 	// turn's init supplies the native id, or we would persist the name under an
 	// identity the catalog will immediately retire.
-	if !req.ClaudeAnchor.provisional() {
+	if !req.ClaudeAnchor.Provisional() {
 		sess.applyPendingName(req.ThreadID)
 	}
 	if shimURL := strings.TrimSpace(req.ClaudeShimWS); shimURL != "" {
@@ -460,7 +460,7 @@ func resumeClaudeSession(sess *session, req providerRequest) (*claudeSession, er
 			// failure must leave it available for retry, not create a second writer.
 			return nil, err
 		}
-		if req.ClaudeAnchor.provisional() {
+		if req.ClaudeAnchor.Provisional() {
 			// The thread was never prompted, so no native transcript exists and
 			// the `--resume` rung below does not apply. The shim either answered
 			// that the child is gone (its own restart took it — the empty
@@ -490,7 +490,7 @@ func resumeClaudeSession(sess *session, req providerRequest) (*claudeSession, er
 		}
 		log.Printf("claude thread %s: shim attach failed (%v) — falling back to %s", req.ThreadID, err, claudeResumeFlag)
 	} else {
-		if req.ClaudeAnchor.provisional() {
+		if req.ClaudeAnchor.Provisional() {
 			return nil, fmt.Errorf("claude thread %s was never prompted and can only be re-attached via the shim, which is disabled", req.ThreadID)
 		}
 		if req.externalResumePosture {

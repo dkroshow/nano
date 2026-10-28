@@ -103,7 +103,7 @@ func (s *server) RuntimeFor(provider, nativeThreadID string) (runtimeInfo, bool)
 		return sessionRuntimeInfo(sess.summary()), true
 	}
 	if rec, remembered := s.attachmentFor(provider, nativeThreadID); remembered {
-		return s.detachedRuntimeInfos([]attachmentRecord{rec})[rec.key()], true
+		return s.detachedRuntimeInfos([]attachmentRecord{rec})[rec.Key()], true
 	}
 	return runtimeInfo{}, false
 }
@@ -128,8 +128,8 @@ func (s *server) detachedRuntimeInfos(records []attachmentRecord) map[attachment
 			mode = canonical
 		}
 		info := runtimeInfo{Detached: true, PresentationMode: mode}
-		info.Status = s.boot.state(rec.key())
-		infos[rec.key()] = info
+		info.Status = s.boot.state(rec.Key())
+		infos[rec.Key()] = info
 	}
 	return infos
 }
@@ -209,7 +209,7 @@ func (s *server) runtimeOverlays(summaries []sessionSummary) map[attachmentKey]r
 		if sum.ThreadID == "" {
 			continue
 		}
-		key := attachmentKey{provider: sum.Provider, nativeThreadID: sum.ThreadID}
+		key := attachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}
 		live[key] = true
 		info := sessionRuntimeInfo(sum)
 		if sum.HostedThreadID != "" {
@@ -275,14 +275,14 @@ func (s *server) runtimeDeltaSnapshot() runtimeDelta {
 		}
 		runtimeCopy := runtime
 		rows = append(rows, runtimeDeltaRow{
-			Provider: key.provider,
-			NativeID: key.nativeThreadID,
+			Provider: key.Provider,
+			NativeID: key.NativeThreadID,
 			Runtime:  &runtimeCopy,
 		})
 	}
 	for key := range previous {
 		if _, ok := current[key]; !ok {
-			rows = append(rows, runtimeDeltaRow{Provider: key.provider, NativeID: key.nativeThreadID})
+			rows = append(rows, runtimeDeltaRow{Provider: key.Provider, NativeID: key.NativeThreadID})
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -357,7 +357,7 @@ func liveKeys(summaries []sessionSummary) map[attachmentKey]bool {
 	live := make(map[attachmentKey]bool, len(summaries))
 	for _, sum := range summaries {
 		if sum.ThreadID != "" && sum.Status != sessionStatusExited {
-			live[attachmentKey{provider: sum.Provider, nativeThreadID: sum.ThreadID}] = true
+			live[attachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}] = true
 		}
 	}
 	return live
@@ -374,7 +374,7 @@ func (s *server) detachedChanges(live map[attachmentKey]bool) ([]attachmentRecor
 	current := make(map[attachmentKey]string, len(records))
 	for _, record := range records {
 		state, _ := json.Marshal(record)
-		current[record.key()] = string(state) + "|" + s.boot.state(record.key())
+		current[record.Key()] = string(state) + "|" + s.boot.state(record.Key())
 	}
 	s.runtimeSnapshotMu.Lock()
 	previous := s.runtimeDetached
@@ -382,14 +382,14 @@ func (s *server) detachedChanges(live map[attachmentKey]bool) ([]attachmentRecor
 	s.runtimeSnapshotMu.Unlock()
 	var changed []attachmentRecord
 	for _, record := range records {
-		if before, ok := previous[record.key()]; !ok || before != current[record.key()] {
+		if before, ok := previous[record.Key()]; !ok || before != current[record.Key()] {
 			changed = append(changed, record)
 		}
 	}
 	var removed []string
 	for key := range previous {
 		if _, ok := current[key]; !ok {
-			removed = append(removed, key.provider+":"+key.nativeThreadID)
+			removed = append(removed, key.Provider+":"+key.NativeThreadID)
 		}
 	}
 	sort.Strings(removed)
@@ -751,10 +751,10 @@ func mergeSessionChanges(merged *runtimeDelta, earlier, later runtimeDelta) {
 func mergeRuntimeDeltas(earlier, later runtimeDelta) runtimeDelta {
 	byKey := make(map[attachmentKey]runtimeDeltaRow, len(earlier.Rows)+len(later.Rows))
 	for _, row := range earlier.Rows {
-		byKey[attachmentKey{provider: row.Provider, nativeThreadID: row.NativeID}] = row
+		byKey[attachmentKey{Provider: row.Provider, NativeThreadID: row.NativeID}] = row
 	}
 	for _, row := range later.Rows {
-		byKey[attachmentKey{provider: row.Provider, nativeThreadID: row.NativeID}] = row
+		byKey[attachmentKey{Provider: row.Provider, NativeThreadID: row.NativeID}] = row
 	}
 	// A rebuild still needed keeps that need through the merge; a later star
 	// update that applied cleanly cannot mask it.

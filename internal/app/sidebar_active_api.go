@@ -277,12 +277,12 @@ func (s *server) sidebarRescueKeys() []history.SidebarGraphKey {
 	}
 	if s.attachments != nil {
 		for _, rec := range s.attachments.detachedExcept(nil) {
-			add(rec.key().provider, rec.key().nativeThreadID)
+			add(rec.Key().Provider, rec.Key().NativeThreadID)
 		}
 	}
 	if s.threadStars != nil {
 		for _, key := range s.threadStars.starredIdentities() {
-			add(key.provider, key.nativeThreadID)
+			add(key.Provider, key.NativeThreadID)
 		}
 	}
 	return keys
@@ -318,7 +318,7 @@ func (s *server) attachRuntimeOverlayBatch(ctx context.Context, threads []catalo
 		threads[i].Assignment = nil
 		threads[i].AssignmentUnavailable = false
 		if runtime.batched {
-			if info, ok := runtime.overlays[attachmentKey{provider: threads[i].Provider, nativeThreadID: threads[i].NativeID}]; ok {
+			if info, ok := runtime.overlays[attachmentKey{Provider: threads[i].Provider, NativeThreadID: threads[i].NativeID}]; ok {
 				threads[i].Runtime = &info
 			}
 		} else if s.runtime != nil {
@@ -428,7 +428,7 @@ func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRe
 			continue
 		}
 		if thread.Provider != "" && thread.NativeID != "" {
-			requested[attachmentKey{provider: thread.Provider, nativeThreadID: thread.NativeID}] = true
+			requested[attachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeID}] = true
 		}
 	}
 
@@ -445,7 +445,7 @@ func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRe
 				rows.Close()
 				return records, found
 			}
-			key := attachmentKey{provider: provider, nativeThreadID: nativeID}
+			key := attachmentKey{Provider: provider, NativeThreadID: nativeID}
 			if requested[key] {
 				claims[key] = hostedID
 			}
@@ -459,7 +459,7 @@ func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRe
 
 	fallback := map[attachmentKey]agentSessionRecord{}
 	for _, record := range store.sessions {
-		key := attachmentKey{provider: record.Provider, nativeThreadID: record.NativeThreadID}
+		key := attachmentKey{Provider: record.Provider, NativeThreadID: record.NativeThreadID}
 		if !requested[key] {
 			continue
 		}
@@ -479,7 +479,7 @@ func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRe
 		if found[i] || thread.Provider == "" || thread.NativeID == "" {
 			continue
 		}
-		key := attachmentKey{provider: thread.Provider, nativeThreadID: thread.NativeID}
+		key := attachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeID}
 		if hostedID, claimed := claims[key]; claimed {
 			records[i], found[i] = store.sessions[hostedID]
 			if records[i].ID == "" {
@@ -682,12 +682,12 @@ func (s *server) memorySidebarThreadRows(durable []catalogThread, live []session
 	onPage := make(map[attachmentKey]bool, len(durable))
 	for _, item := range durable {
 		if item.NativeID != "" {
-			onPage[attachmentKey{provider: item.Provider, nativeThreadID: item.NativeID}] = true
+			onPage[attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
 		}
 	}
 	rows := make([]catalogThread, 0)
 	for _, sess := range live {
-		if sess.ThreadID != "" && onPage[attachmentKey{provider: sess.Provider, nativeThreadID: sess.ThreadID}] {
+		if sess.ThreadID != "" && onPage[attachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}] {
 			continue
 		}
 		rows = append(rows, memoryThreadRow(sess))

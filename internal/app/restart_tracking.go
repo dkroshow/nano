@@ -179,7 +179,7 @@ func (t *restartTracker) addThreads(records []attachmentRecord) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for i, rec := range records {
-		if t.byKey[rec.key()] != nil {
+		if t.byKey[rec.Key()] != nil {
 			continue
 		}
 		th := &restartThread{tracker: t, restartThreadRecord: restartThreadRecord{
@@ -187,7 +187,7 @@ func (t *restartTracker) addThreads(records []attachmentRecord) {
 			Tier: bootTierNames[bootTierUnseen], Order: i, State: restartStatePending,
 		}}
 		t.threads = append(t.threads, th)
-		t.byKey[rec.key()] = th
+		t.byKey[rec.Key()] = th
 	}
 }
 
@@ -200,8 +200,8 @@ func (t *restartTracker) rank(ranks map[attachmentKey]bootRank, ordered []attach
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for i, rec := range ordered {
-		if th := t.byKey[rec.key()]; th != nil {
-			r, known := ranks[rec.key()]
+		if th := t.byKey[rec.Key()]; th != nil {
+			r, known := ranks[rec.Key()]
 			if !known {
 				r.tier = bootTierUnseen
 			}
@@ -218,7 +218,7 @@ func (t *restartTracker) rest(records []attachmentRecord) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, rec := range records {
-		if th := t.byKey[rec.key()]; th != nil && th.State == restartStatePending && th.PickedMs == nil {
+		if th := t.byKey[rec.Key()]; th != nil && th.State == restartStatePending && th.PickedMs == nil {
 			th.State = restartStateResting // a thread a request already picked stays pending
 		}
 	}

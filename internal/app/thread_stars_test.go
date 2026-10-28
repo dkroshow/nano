@@ -80,8 +80,8 @@ func TestThreadStarsUnstarManyIsAtomicAndUpdatesCache(t *testing.T) {
 		}
 	}
 	if err := store.unstarMany([]attachmentKey{
-		{provider: "codex", nativeThreadID: "native-a"},
-		{provider: "codex", nativeThreadID: "native-b"},
+		{Provider: "codex", NativeThreadID: "native-a"},
+		{Provider: "codex", NativeThreadID: "native-b"},
 	}); err != nil {
 		t.Fatal(err)
 	}

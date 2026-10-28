@@ -1252,7 +1252,7 @@ func (s *controlMetadataStore) reconcileLegacyAttachmentClaims(records []attachm
 				retiredAt = nil
 			}
 			if _, err := tx.Exec(`INSERT INTO hosted_thread_native_ids(hosted_thread_id,provider,native_thread_id,provisional,retired_at,first_seen_at,last_seen_at)
-				VALUES(?,?,?,?,?,?,?) ON CONFLICT(hosted_thread_id,provider,native_thread_id) DO UPDATE SET provisional=excluded.provisional,retired_at=excluded.retired_at,last_seen_at=excluded.last_seen_at`, record.HostedThreadID, group.provider, group.nativeID, record.provisional(), retiredAt, observedAt, observedAt); err != nil {
+				VALUES(?,?,?,?,?,?,?) ON CONFLICT(hosted_thread_id,provider,native_thread_id) DO UPDATE SET provisional=excluded.provisional,retired_at=excluded.retired_at,last_seen_at=excluded.last_seen_at`, record.HostedThreadID, group.provider, group.nativeID, record.Provisional(), retiredAt, observedAt, observedAt); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(`UPDATE hosted_threads SET current_native_id=? WHERE hosted_thread_id=?`, group.nativeID, record.HostedThreadID); err != nil {

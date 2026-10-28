@@ -357,7 +357,7 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 				}
 				app := &server{controlMetadata: control, agentExecutions: store,
 					attachments: &attachmentStore{byKey: map[attachmentKey]attachmentRecord{
-						{provider: provider, nativeThreadID: revivedNativeID}: {Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID},
+						{Provider: provider, NativeThreadID: revivedNativeID}: {Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID},
 					}},
 				}
 				req := spawnRequest{providerRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: revivedNativeID}}

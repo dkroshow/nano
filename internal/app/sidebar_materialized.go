@@ -307,7 +307,7 @@ func (m *sidebarMaterializedState) applyRuntimeDelta(delta runtimeDelta) {
 	defer m.updateMu.Unlock()
 	overlays := make(map[attachmentKey]*runtimeInfo, len(delta.Rows))
 	for _, row := range delta.Rows {
-		overlays[attachmentKey{provider: row.Provider, nativeThreadID: row.NativeID}] = row.Runtime
+		overlays[attachmentKey{Provider: row.Provider, NativeThreadID: row.NativeID}] = row.Runtime
 	}
 	m.mu.RLock()
 	if !m.ready {
@@ -321,7 +321,7 @@ func (m *sidebarMaterializedState) applyRuntimeDelta(delta runtimeDelta) {
 	for i := range all {
 		// A delta names only the threads whose runtime changed; the rest keep
 		// theirs. A named nil overlay is a thread Nano no longer holds.
-		runtime, named := overlays[attachmentKey{provider: all[i].Provider, nativeThreadID: all[i].NativeID}]
+		runtime, named := overlays[attachmentKey{Provider: all[i].Provider, NativeThreadID: all[i].NativeID}]
 		if !named {
 			continue
 		}

@@ -28,7 +28,7 @@ func attach(id, cwd, at string) attachmentRecord {
 func liveCodex(ids ...string) map[attachmentKey]bool {
 	live := map[attachmentKey]bool{}
 	for _, id := range ids {
-		live[attachmentKey{provider: "codex", nativeThreadID: id}] = true
+		live[attachmentKey{Provider: "codex", NativeThreadID: id}] = true
 	}
 	return live
 }
@@ -334,7 +334,7 @@ func TestAttachmentProviderScopedIdentity(t *testing.T) {
 
 	// A live claude session hides only the claude record.
 	got := store.detachedExcept(map[attachmentKey]bool{
-		{provider: "claude", nativeThreadID: "shared"}: true,
+		{Provider: "claude", NativeThreadID: "shared"}: true,
 	})
 	if len(got) != 1 || got[0].Provider != "codex" {
 		t.Fatalf("detached = %+v, want only the codex record", got)

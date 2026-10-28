@@ -294,7 +294,7 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// Nano restart in this window keeps the rename. captureInit updates threadID
 	// under stateMu before it consumes pendingName, so an unchanged threadID
 	// proves the staged value will still be picked up.
-	if rec, ok := s.attachmentFor(provider, nativeID); ok && rec.provisional() {
+	if rec, ok := s.attachmentFor(provider, nativeID); ok && rec.Provisional() {
 		var staged bool
 		nativeID, staged = sess.stageProvisionalName(nativeID, name)
 		if staged {
@@ -585,13 +585,13 @@ func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, 
 	covered := make(map[attachmentKey]bool, len(page))
 	for _, item := range page {
 		if item.NativeID != "" {
-			covered[attachmentKey{provider: item.Provider, nativeThreadID: item.NativeID}] = true
+			covered[attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
 		}
 	}
 	attached := make(map[attachmentKey]bool, len(live))
 	var wanted []attachmentKey
 	for _, sess := range live {
-		key := attachmentKey{provider: sess.Provider, nativeThreadID: sess.ThreadID}
+		key := attachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}
 		if sess.ThreadID == "" || attached[key] || (query.ThreadID != "" && sess.ThreadID != query.ThreadID) {
 			continue
 		}
@@ -602,7 +602,7 @@ func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, 
 	}
 	if query.ThreadID == "" && s.attachments != nil {
 		for _, rec := range s.attachments.detachedExcept(attached) {
-			if key := rec.key(); !covered[key] {
+			if key := rec.Key(); !covered[key] {
 				wanted = append(wanted, key)
 			}
 		}
@@ -616,7 +616,7 @@ func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, 
 		if query.ThreadID != "" && sess.ThreadID != query.ThreadID {
 			continue
 		}
-		key := attachmentKey{provider: sess.Provider, nativeThreadID: sess.ThreadID}
+		key := attachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}
 		if _, found := indexed[key]; sess.ThreadID == "" || (err == nil && !covered[key] && !found) {
 			rows = append(rows, memoryThreadRow(sess))
 		}
@@ -649,7 +649,7 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 				return found, err
 			}
 			for _, item := range page.Items {
-				key := attachmentKey{provider: item.Provider, nativeThreadID: item.NativeID}
+				key := attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}
 				if _, seen := found[key]; !seen {
 					found[key] = item
 				}
@@ -748,7 +748,7 @@ func (s *server) lineageParentRows(ctx context.Context, query catalogListQuery, 
 	covered, visited := make(map[attachmentKey]bool, len(page)), map[attachmentKey]bool{}
 	for _, item := range page {
 		if item.NativeID != "" {
-			covered[attachmentKey{provider: item.Provider, nativeThreadID: item.NativeID}] = true
+			covered[attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
 		}
 	}
 	var parents []catalogThread
@@ -805,12 +805,12 @@ func (s *server) lineageParentKeys(rows []catalogThread) []attachmentKey {
 				parentID = records[i].InvokerHostedThreadID
 			}
 			if parent, ok := s.agentExecutions.session(parentID); ok && parent.Provider != "" && parent.NativeThreadID != "" {
-				keys = append(keys, attachmentKey{provider: parent.Provider, nativeThreadID: parent.NativeThreadID})
+				keys = append(keys, attachmentKey{Provider: parent.Provider, NativeThreadID: parent.NativeThreadID})
 				continue
 			}
 		}
 		if parentID == "" && row.Kind == string(history.ThreadSubagent) && row.ParentNativeID != "" {
-			keys = append(keys, attachmentKey{provider: row.Provider, nativeThreadID: row.ParentNativeID})
+			keys = append(keys, attachmentKey{Provider: row.Provider, NativeThreadID: row.ParentNativeID})
 		}
 	}
 	return keys

@@ -402,13 +402,13 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 
 	keys := make([]attachmentKey, 1200)
 	for i := range keys {
-		keys[i] = attachmentKey{provider: "codex", nativeThreadID: fmt.Sprintf("absent-%04d", i)}
+		keys[i] = attachmentKey{Provider: "codex", NativeThreadID: fmt.Sprintf("absent-%04d", i)}
 	}
-	keys[0] = attachmentKey{provider: "codex", nativeThreadID: "shared-native"}
-	keys[600] = attachmentKey{provider: "claude", nativeThreadID: "shared-native"}
-	keys[1199] = attachmentKey{provider: "codex", nativeThreadID: "codex-only"}
-	keys[1198] = attachmentKey{provider: "grok", nativeThreadID: "codex-only"}
-	keys[900] = attachmentKey{provider: "codex", nativeThreadID: "guardian-native"}
+	keys[0] = attachmentKey{Provider: "codex", NativeThreadID: "shared-native"}
+	keys[600] = attachmentKey{Provider: "claude", NativeThreadID: "shared-native"}
+	keys[1199] = attachmentKey{Provider: "codex", NativeThreadID: "codex-only"}
+	keys[1198] = attachmentKey{Provider: "grok", NativeThreadID: "codex-only"}
+	keys[900] = attachmentKey{Provider: "codex", NativeThreadID: "guardian-native"}
 	found, err := s.threadsByIdentity(ctx, keys)
 	if err != nil {
 		t.Fatal(err)
@@ -421,8 +421,8 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 	}
 	// A live guardian is found too, as the former point read found it.
 	for _, key := range []attachmentKey{keys[0], keys[600], keys[900], keys[1199]} {
-		if row, ok := found[key]; !ok || row.Provider != key.provider || row.NativeID != key.nativeThreadID {
-			t.Errorf("%s/%s = %#v, %v", key.provider, key.nativeThreadID, row, ok)
+		if row, ok := found[key]; !ok || row.Provider != key.Provider || row.NativeID != key.NativeThreadID {
+			t.Errorf("%s/%s = %#v, %v", key.Provider, key.NativeThreadID, row, ok)
 		}
 	}
 	// The read itself is keyed by provider: asking for the claude copy returns
@@ -541,7 +541,7 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 		rebooting := attachmentRecord{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
-		f.server.boot = &bootReattach{pending: map[attachmentKey]bool{rebooting.key(): true},
+		f.server.boot = &bootReattach{pending: map[attachmentKey]bool{rebooting.Key(): true},
 			byHosted: map[string]attachmentRecord{"nht_rebooting": rebooting}}
 		var body map[string]any
 		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.handleAgentSessionsList, "/api/v1/hosted-threads") })
