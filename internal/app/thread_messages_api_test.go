@@ -506,3 +506,23 @@ func TestThreadMessagesRejectsInvalidQueryAndSurfacesBackendErrors(t *testing.T)
 		t.Fatalf("POST status = %d", recorder.Code)
 	}
 }
+
+// Invalid query parameters must win over hosted-reference lookup failures,
+// whether the hosted thread is missing or has not acquired a native id yet.
+func TestThreadMessagesValidatesQueryBeforeHostedLookup(t *testing.T) {
+	_, executions := newTestHostedControl(t)
+	if _, err := executions.ensureSessionWithIdentity("nht_unbound", "codex", presentationBackground, "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{catalog: &fakeMessagesCatalog{}, agentExecutions: executions}
+	for _, id := range []string{"nht_unknown", "nht_unbound"} {
+		t.Run(id, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			s.handleThreadMessages(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/"+id+"/messages?tail=abc", nil), id)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("invalid query status=%d body=%s", rec.Code, rec.Body.String())
+			}
+			assertCatalogErrorCode(t, rec, "invalid_query")
+		})
+	}
+}

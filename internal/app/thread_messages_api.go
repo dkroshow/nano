@@ -43,6 +43,11 @@ func (s *server) handleThreadMessages(w http.ResponseWriter, r *http.Request, ra
 	}
 	reference, err := url.PathUnescape(rawID)
 	if err == nil && hostedThreadReferencePattern.MatchString(reference) {
+		// Query errors precede hosted lookup errors, as for native references.
+		if _, err := threadindex.ParseMessagesQuery(r); err != nil {
+			httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", err.Error())
+			return
+		}
 		nativeID, ok := s.hostedThreadNativeID(reference)
 		if !ok {
 			httpapi.WriteError(w, http.StatusNotFound, "thread_not_found", "Unknown hosted thread")

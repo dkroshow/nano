@@ -92,7 +92,7 @@ func (s *Handlers) HandleThreadMessages(w http.ResponseWriter, r *http.Request, 
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_thread_id", "Invalid thread id")
 		return
 	}
-	query, err := parseThreadMessagesQuery(r)
+	query, err := ParseMessagesQuery(r)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", err.Error())
 		return
@@ -132,7 +132,8 @@ func (s *Handlers) resolveThreadReference(ctx context.Context, reference string)
 	return resolver.ResolveThreadReference(ctx, reference)
 }
 
-func parseThreadMessagesQuery(r *http.Request) (MessagesQuery, error) {
+// ParseMessagesQuery validates a conversational-tail query before reference resolution.
+func ParseMessagesQuery(r *http.Request) (MessagesQuery, error) {
 	q := r.URL.Query()
 	query := MessagesQuery{
 		Tail:   DefaultMessagesTail,
