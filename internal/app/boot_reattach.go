@@ -203,7 +203,9 @@ func (s *server) reattachOnBoot() {
 	}
 	ordered := bootOrder(boot.order, ranks)
 	s.restart.rank(ranks, ordered)
-	order, resting := bootQueue(ordered, s.bootWorkOpen)
+	order, resting := bootQueue(ordered, func(rec attachmentRecord) bool {
+		return ranks[rec.key()].visible || s.bootWorkOpen(rec)
+	})
 	boot.rest(resting)
 	s.restart.rest(resting)
 	log.Printf("boot re-attach: %d threads queued, %d resting until needed", len(order), len(resting))
@@ -313,12 +315,13 @@ func bootOrder(records []attachmentRecord, ranks map[attachmentKey]bootRank) []a
 }
 
 // bootQueue splits ordered records into the ones the boot loop registers, the
-// threads with work not yet settled, and the ones left resting. What a person
-// sees comes back through the browser, which asks for every resting thread it
-// shows; the server's sidebar estimate is not what any browser shows.
-func bootQueue(ordered []attachmentRecord, workOpen func(attachmentRecord) bool) (queue, resting []attachmentRecord) {
+// threads the sidebar shows first and the threads with work not yet settled,
+// and the ones left resting. The sidebar estimate brings back what a person
+// sees without waiting for a browser; a browser still asks for any resting
+// thread it shows that the estimate missed, such as an expanded subagent.
+func bootQueue(ordered []attachmentRecord, needed func(attachmentRecord) bool) (queue, resting []attachmentRecord) {
 	for _, rec := range ordered {
-		if workOpen(rec) {
+		if needed(rec) {
 			queue = append(queue, rec)
 		} else {
 			resting = append(resting, rec)

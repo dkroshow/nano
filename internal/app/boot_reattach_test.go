@@ -520,7 +520,9 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 // ran for minutes. Failure caught: a thread with open work of any kind (an
 // operation, a queued browser prompt, a provider turn started and not
 // finished) left resting, so its work
-// never settles; an idle thread reconnected at boot; a prompt or an idle-only
+// never settles; a thread the sidebar shows (starred, or a visible top-level
+// row) left waiting for a browser to ask, so what the operator sees comes back
+// late; an idle hidden subagent reconnected at boot; a prompt or an idle-only
 // wake to a resting thread refused or lost. Boundary: the boot loop over the
 // stores and the materialized sidebar, then the hosted turn API.
 func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
@@ -528,11 +530,11 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	s, store := bootReattachServer(t, "", daemon.wsURL())
 	s.completedTurns = newCompletedTurnSource(&completedTurnStore{db: s.queuedTurns.db})
 	now := time.Now().UTC()
-	natives := []string{"starred-idle", "root-idle", "child-idle", "operation-open", "prompt-queued", "provider-turn-open"}
+	natives := []string{"starred-idle", "root-idle", "child-idle", "child-wake", "child-quiet", "operation-open", "prompt-queued", "provider-turn-open"}
 	for i, native := range natives {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		if native == "child-idle" {
+		if strings.HasPrefix(native, "child-") {
 			rec.InvokerHostedThreadID, rec.InvokerNativeThreadID, rec.InvokerProvider = "nht_root-idle", "root-idle", "codex"
 		}
 		rec.AttachedAt = now.Add(-time.Duration(i) * time.Minute).Format(time.RFC3339)
@@ -566,6 +568,8 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		{ID: "nth_starred", Provider: "codex", NativeID: "starred-idle", HostedThreadID: "nht_starred-idle", Starred: true, UpdatedAt: updated(40 * 24 * time.Hour)},
 		{ID: "nth_root", Provider: "codex", NativeID: "root-idle", HostedThreadID: "nht_root-idle", UpdatedAt: updated(time.Hour)},
 		{ID: "nth_child", Provider: "codex", NativeID: "child-idle", HostedThreadID: "nht_child-idle", UpdatedAt: updated(time.Minute)},
+		{ID: "nth_child_wake", Provider: "codex", NativeID: "child-wake", HostedThreadID: "nht_child-wake", UpdatedAt: updated(time.Minute)},
+		{ID: "nth_child_quiet", Provider: "codex", NativeID: "child-quiet", HostedThreadID: "nht_child-quiet", UpdatedAt: updated(time.Minute)},
 	}
 	s.attachRuntimeOverlayBatch(ctx, threads, s.sidebarRuntimeSnapshot())
 	query := sidebarDefaultQuery(now)
@@ -586,15 +590,15 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		}
 	}
 	slices.Sort(got)
-	if want := []string{"operation-open", "prompt-queued", "provider-turn-open"}; !slices.Equal(got, want) {
+	if want := []string{"operation-open", "prompt-queued", "provider-turn-open", "root-idle", "starred-idle"}; !slices.Equal(got, want) {
 		t.Fatalf("boot registered %v, want %v", got, want)
 	}
-	for _, native := range []string{"starred-idle", "root-idle", "child-idle"} {
+	for _, native := range []string{"child-idle", "child-wake", "child-quiet"} {
 		if state := s.boot.state(attachmentKey{provider: "codex", nativeThreadID: native}); state != "resting" {
 			t.Fatalf("%s after boot = %q, want resting", native, state)
 		}
 	}
-	waitForClaude(t, "the boot loop's thread/resume calls", func() bool { return daemon.resumeCount() == 3 })
+	waitForClaude(t, "the boot loop's thread/resume calls", func() bool { return daemon.resumeCount() == 5 })
 
 	body := `{"prompt":"sent while resting","clientActionId":"nano:test:resting","origin":"system"}`
 	recorder := httptest.NewRecorder()
@@ -614,10 +618,10 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	// An idle-only wake (a heartbeat) to a resting thread is admitted while
 	// the thread attaches, not refused as not ready.
 	daemon.setReplyDelay("thread/resume", time.Second)
-	if _, _, err := s.submitHostedTurnWithOptions("nht_root-idle", "nano:test:idle-wake", "scheduled wake", true); err != nil {
+	if _, _, err := s.submitHostedTurnWithOptions("nht_child-wake", "nano:test:idle-wake", "scheduled wake", true); err != nil {
 		t.Fatalf("idle-only wake to a resting thread = %v", err)
 	}
-	if state := s.boot.state(attachmentKey{provider: "codex", nativeThreadID: "starred-idle"}); state != "resting" {
+	if state := s.boot.state(attachmentKey{provider: "codex", nativeThreadID: "child-quiet"}); state != "resting" {
 		t.Fatalf("an unrelated resting thread after the prompts = %q, want resting", state)
 	}
 }

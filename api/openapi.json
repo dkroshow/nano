@@ -2913,7 +2913,7 @@
           "status": {
             "type": "string",
             "enum": ["creating", "starting", "resting", "ready", "reconnecting", "detached", "creation_unknown", "exited"],
-            "description": "resting: after a restart Nano left the thread unattached because nothing showed it and no turn was open; any request that needs it live (a prompt, an operation, an open pane) attaches it first."
+            "description": "resting: after a restart Nano left the thread unattached because the sidebar did not show it and no turn was open; any request that needs it live (a prompt, an operation, an open pane) attaches it first."
           },
           "error": {
             "type": "string"

@@ -47,13 +47,13 @@ recency among the rows the active sidebar shows once the restart is done
 (rows it shows already, and stored threads, which show once attached).
 Browsers also group and filter rows locally, so this approximates one screen.
 
-The boot loop queues only threads with work not yet settled: a hosted
-operation, a queued prompt, or a provider turn that started and has no
-outcome. Every other stored thread is left `resting` and comes back when
-something needs it: a sidebar row or pane that shows it (the browser's
-`prioritize`), or an agent's turn, operation or read that needs it live. So
-`visible` here is the server's estimate of what a browser shows, not what was
-reconnected at boot. A resting thread counts as settled; one picked for an
+The boot loop queues the sidebar-visible threads, then hidden threads with
+work not yet settled: a hosted operation, a queued prompt, or a provider turn
+that started and has no outcome. Every other stored thread is left `resting`
+and comes back when something needs it: a sidebar row or pane that shows it
+(the browser's `prioritize`, which covers what the estimate misses, such as an
+expanded subagent), or an agent's turn, operation or read that needs it live.
+A resting thread counts as settled; one picked for an
 attach before the line is written is pending again until it is live or
 failed. While threads rest, the line waits until no attach has settled for a
 minute, so the attaches browsers ask for right after the restart count.
