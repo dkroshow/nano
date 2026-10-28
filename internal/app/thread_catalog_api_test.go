@@ -908,7 +908,7 @@ func TestCatalogLivenessRescuesFilteredRows(t *testing.T) {
 		t.Fatalf("identity reads = %#v, point lookups = %#v", fake.identityQueries, fake.rescueQueries)
 	}
 	q := fake.identityQueries[0]
-	want := []attachmentKey{{Provider: "claude", NativeThreadID: "native-prog"}, {Provider: "codex", NativeThreadID: "native-sub"}}
+	want := []history.ThreadIdentity{{Provider: "claude", NativeThreadID: "native-prog"}, {Provider: "codex", NativeThreadID: "native-sub"}}
 	if !reflect.DeepEqual(q.Identities, want) {
 		t.Fatalf("identity read = %#v, want %#v", q.Identities, want)
 	}
@@ -978,7 +978,7 @@ func TestCatalogWorkerIncludesSupervisorOutsideWindow(t *testing.T) {
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_worker", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want worker plus supervisor context", got)
 	}
-	assertOneLineageRead(t, fake, attachmentKey{Provider: "claude", NativeThreadID: "parent-session"})
+	assertOneLineageRead(t, fake, history.ThreadIdentity{Provider: "claude", NativeThreadID: "parent-session"})
 }
 
 func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T) {
@@ -1009,7 +1009,7 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want child plus cross-provider invoker", got)
 	}
-	assertOneLineageRead(t, fake, attachmentKey{Provider: "codex", NativeThreadID: "native-parent"})
+	assertOneLineageRead(t, fake, history.ThreadIdentity{Provider: "codex", NativeThreadID: "native-parent"})
 }
 
 func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
@@ -1074,7 +1074,7 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_new"}) {
 		t.Fatalf("row ids = %v, want child plus current visual parent", got)
 	}
-	assertOneLineageRead(t, fake, attachmentKey{Provider: "claude", NativeThreadID: "native-new"})
+	assertOneLineageRead(t, fake, history.ThreadIdentity{Provider: "claude", NativeThreadID: "native-new"})
 }
 
 func assertCatalogErrorCode(t *testing.T, rec *httptest.ResponseRecorder, want string) {
@@ -1163,7 +1163,7 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 
 // assertOneLineageRead checks that the lineage pass read its one parent level
 // in a single identity read naming exactly want.
-func assertOneLineageRead(t *testing.T, fake *fakeThreadCatalog, want ...attachmentKey) {
+func assertOneLineageRead(t *testing.T, fake *fakeThreadCatalog, want ...history.ThreadIdentity) {
 	t.Helper()
 	if len(fake.identityQueries) != 1 || !reflect.DeepEqual(fake.identityQueries[0].Identities, want) {
 		t.Fatalf("lineage reads = %#v, want one read of %#v", fake.identityQueries, want)
