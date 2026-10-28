@@ -28,6 +28,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/liveview"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -1660,6 +1661,6 @@ func savedConversationItem(row transcriptItem) liveProjectionItem {
 	}
 	return liveProjectionItem{ID: row.ID, DurableItemID: row.ID, NativeItemID: row.NativeItemID, ProjectedSeq: row.ProjectedSeq,
 		TurnID: row.TurnID, Type: itemType, Category: row.Category, Role: row.Role, Phase: row.Phase, Text: row.Text,
-		Status: firstNonEmpty(row.Status, "completed"), Done: true, CreatedAt: createdAt, ToolName: row.ToolName, CallID: row.CallID,
+		Status: threadvalues.FirstNonEmpty(row.Status, "completed"), Done: true, CreatedAt: createdAt, ToolName: row.ToolName, CallID: row.CallID,
 		ContentRef: row.ContentRef, ContentTruncated: row.ContentTruncated, OriginalBytes: int(row.OriginalBytes)}
 }

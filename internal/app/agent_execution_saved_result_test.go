@@ -12,6 +12,7 @@ import (
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -91,7 +92,7 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := store.turn(op.ID); return agentTurnTerminal(rec.Status) })
+			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := store.turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
 			request := httptest.NewRequest("GET", "/api/v1/turn-operations/"+op.ID, nil)
 			request.SetPathValue("operationId", op.ID)
 			response := httptest.NewRecorder()
@@ -141,7 +142,7 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 		t.Fatal("saved read did not start")
 	}
 	pending, _ := store.turn(op.ID)
-	if pending.Status != agentTurnAwaitingSaved || pending.FinalResponse != "" || agentTurnTerminal(pending.Status) {
+	if pending.Status != agentTurnAwaitingSaved || pending.FinalResponse != "" || threadvalues.TurnTerminal(pending.Status) {
 		t.Fatalf("premature result: %+v", pending)
 	}
 	h.appendSaved(t, `{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-late"}}
@@ -149,7 +150,7 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 {"type":"response_item","payload":{"type":"message","id":"late-answer","role":"assistant","content":[{"type":"output_text","text":"complete saved answer"}]}}
 {"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-late"}}
 `)
-	waitForCatalogWithin(t, 5*time.Second, func() bool { rec, _ := store.turn(op.ID); return agentTurnTerminal(rec.Status) })
+	waitForCatalogWithin(t, 5*time.Second, func() bool { rec, _ := store.turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
 	result, _ := store.turn(op.ID)
 	if result.Status != agentTurnCompleted || result.FinalResponse != "complete saved answer" || result.FinalItemID != "late-answer" {
 		t.Fatalf("late saved result: %+v", result)
@@ -231,7 +232,7 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 			restarted.useSavedResults(h.server.savedOperationResult, nil)
-			waitForCatalogWithin(t, savedResultLastRead+time.Second, func() bool { rec, _ := restarted.turn(op.ID); return agentTurnTerminal(rec.Status) })
+			waitForCatalogWithin(t, savedResultLastRead+time.Second, func() bool { rec, _ := restarted.turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
 			result, _ := restarted.turn(op.ID)
 			if result.Status != test.status || result.FinalResponse != test.response || result.FinalItemID != test.item ||
 				test.status == agentTurnFailed && (result.Error == nil || result.Error.Code != "result_not_saved") {
@@ -357,7 +358,7 @@ WHEN NEW.status = 'completed' BEGIN SELECT RAISE(ABORT, 'disk unavailable'); END
 			})
 			result, _ := store.turn(op.ID)
 			if test.status == agentTurnCompleted && (result.FinalResponse != "saved answer" || result.FinalItemID != "final-answer" || result.Error != nil) ||
-				test.status == agentTurnFailed && !answerNotSaved(result) {
+				test.status == agentTurnFailed && !threadvalues.AnswerNotSaved(result) {
 				t.Fatalf("late result: %+v", result)
 			}
 		})

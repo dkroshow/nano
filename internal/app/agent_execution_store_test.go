@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 func newTestAgentExecutionStore(t *testing.T, runID string) *agentExecutionStore {
@@ -197,7 +199,7 @@ func TestPersistedTurnForTransportActionReadsCommittedRowsNotTheCache(t *testing
 		t.Fatal("the reset cache still showed the operation; the case needs it gone")
 	}
 	persisted, found, err := store.persistedTurnForTransportAction(ctx, hosted.ID, op.TransportActionID)
-	if err != nil || !found || persisted.ID != op.ID || agentTurnTerminal(persisted.Status) {
+	if err != nil || !found || persisted.ID != op.ID || threadvalues.TurnTerminal(persisted.Status) {
 		t.Fatalf("persisted read = %+v found=%v err=%v; want the open operation", persisted, found, err)
 	}
 	if _, found, err := store.persistedTurnForTransportAction(ctx, hosted.ID, "never-delivered"); err != nil || found {
@@ -930,7 +932,7 @@ func TestAgentExecutionStoreSettlesOpenTurnsWhenSessionEnds(t *testing.T) {
 		t.Fatal(err)
 	}
 	interrupted, _ := store.turn(second.ID)
-	if interrupted.Status != agentTurnInterrupted || !agentTurnTerminal(interrupted.Status) {
+	if interrupted.Status != agentTurnInterrupted || !threadvalues.TurnTerminal(interrupted.Status) {
 		t.Fatalf("caller close = %#v", interrupted)
 	}
 }
@@ -1093,7 +1095,7 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range ids {
-		if got, _ := store.turn(id); agentTurnTerminal(got.Status) {
+		if got, _ := store.turn(id); threadvalues.TurnTerminal(got.Status) {
 			t.Fatalf("terminal frame finished %s of a shared turn without its own proof: %#v", got.ClientActionID, got)
 		}
 	}
@@ -1106,7 +1108,7 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 			t.Fatalf("joined operation %s = %#v", got.ClientActionID, got)
 		}
 	}
-	if got, _ := store.turn(ids[2]); agentTurnTerminal(got.Status) {
+	if got, _ := store.turn(ids[2]); threadvalues.TurnTerminal(got.Status) {
 		t.Fatalf("an operation never proven to join finished: %#v", got)
 	}
 	// A late member takes the answer only from a member of the same native

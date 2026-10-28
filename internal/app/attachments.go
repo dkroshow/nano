@@ -21,6 +21,7 @@ import (
 
 	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/hosted"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 type attachmentRecord = hosted.Attachment
@@ -302,7 +303,7 @@ func (s *attachmentStore) detachedExcept(live map[attachmentKey]bool) []attachme
 			out = append(out, r)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return timestampBefore(out[j].AttachedAt, out[i].AttachedAt) })
+	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[j].AttachedAt, out[i].AttachedAt) })
 	return out
 }
 

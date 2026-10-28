@@ -8,13 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/core/prompts"
-	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/hosted"
-	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/lifecycle"
-	"github.com/dkroshow/nano/internal/transcript"
-	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	"log"
 	"maps"
 	"net/http"
@@ -23,6 +16,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/lifecycle"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/transcript"
+	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
 const (
@@ -101,7 +103,7 @@ func (s *sendAttemptStore) listThread(provider, nativeThreadID string) []sendAtt
 		record := prompts.Record{Outbox: prompts.OutboxEntry{State: entry.OutboxState}}
 		rows = append(rows, sendAttemptRecordFromTransactional(record, entry.Attempt))
 	}
-	sort.Slice(rows, func(i, j int) bool { return timestampBefore(rows[j].UpdatedAt, rows[i].UpdatedAt) })
+	sort.Slice(rows, func(i, j int) bool { return threadvalues.TimestampBefore(rows[j].UpdatedAt, rows[i].UpdatedAt) })
 	return rows
 }
 
@@ -355,7 +357,7 @@ func (sess *session) handleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 		view.Text = texts[row.Attempt.ActionID]
 		views = append(views, view)
 	}
-	sort.Slice(views, func(i, j int) bool { return timestampBefore(views[j].UpdatedAt, views[i].UpdatedAt) })
+	sort.Slice(views, func(i, j int) bool { return threadvalues.TimestampBefore(views[j].UpdatedAt, views[i].UpdatedAt) })
 	httpapi.WriteJSON(w, map[string]any{"operations": views})
 }
 

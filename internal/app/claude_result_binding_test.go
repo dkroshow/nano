@@ -14,6 +14,7 @@ import (
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/protocol"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -189,7 +190,7 @@ func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
 		if _, err := sess.settlePrompts(ctx); err == nil {
 			done := true
 			for _, p := range order {
-				if op, _ := executions.turn(p.op); !agentTurnTerminal(op.Status) {
+				if op, _ := executions.turn(p.op); !threadvalues.TurnTerminal(op.Status) {
 					done = false
 				}
 			}

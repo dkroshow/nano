@@ -37,6 +37,7 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/providers"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -694,7 +695,7 @@ func (sess *session) drainPendingInteractions() []pendingInteraction {
 			sess.projection.removeInteraction(interaction.ID)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return timestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
+	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
 	if len(out) > 0 {
 		sess.notifyRuntime()
 		if sess.agentExecutions != nil && sess.hostedThreadID != "" {
@@ -715,7 +716,7 @@ func (sess *session) pendingInteractionList() []pendingInteraction {
 		out = append(out, p)
 	}
 	sess.stateMu.Unlock()
-	sort.Slice(out, func(i, j int) bool { return timestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
+	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
 	return out
 }
 

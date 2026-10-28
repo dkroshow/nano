@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 )
 
 var (
@@ -272,10 +274,10 @@ func (s *controlMetadataStore) inheritMissingDesiredPosture(targetID, sourceID s
 		return fmt.Errorf("read target metadata %s: %w", targetID, err)
 	}
 	for _, field := range []string{"cwd", postureFieldModel, postureFieldEffort, postureFieldPermissionMode} {
-		if _, ok := canonicalResumeString(target.Fields[field]); ok {
+		if _, ok := hostedvalues.ResumeString(target.Fields[field]); ok {
 			continue
 		}
-		value, ok := canonicalResumeString(source.Fields[field])
+		value, ok := hostedvalues.ResumeString(source.Fields[field])
 		if !ok {
 			continue
 		}
@@ -300,7 +302,7 @@ func (s *controlMetadataStore) persistMissingResumeCwd(hostedID, cwd string) err
 	if err != nil {
 		return err
 	}
-	if _, ok := canonicalResumeString(view.Fields["cwd"]); ok {
+	if _, ok := hostedvalues.ResumeString(view.Fields["cwd"]); ok {
 		return nil
 	}
 	key := fmt.Sprintf("resume-cwd:%s:%s", hostedID, cwd)

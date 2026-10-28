@@ -13,6 +13,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/history"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -185,7 +186,7 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 		}
 		return
 	}
-	if (!agentTurnTerminal(op.Status) || answerNotSaved(op)) && record.Outbox.State == prompts.Confirmed && owns {
+	if (!threadvalues.TurnTerminal(op.Status) || threadvalues.AnswerNotSaved(op)) && record.Outbox.State == prompts.Confirmed && owns {
 		// The answer is already read: it finishes the operation now, with no
 		// saved-result wait whose later commit no pass would revisit.
 		if err := a.ops.finishResolvedTurn(op.ID, record.ProviderTurnID, answer.outcome, executionErr, answer.text, answer.finalID); err != nil {
@@ -197,8 +198,8 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 			return
 		}
 	}
-	holdsAnswer := op.Status == normalizeAgentTerminalStatus(answer.outcome) && (answer.outcome != agentTurnCompleted || op.FinalItemID == answer.finalID)
-	decidedElsewhere := agentTurnTerminal(op.Status) && !answerNotSaved(op)
+	holdsAnswer := op.Status == threadvalues.NormalizeTerminalStatus(answer.outcome) && (answer.outcome != agentTurnCompleted || op.FinalItemID == answer.finalID)
+	decidedElsewhere := threadvalues.TurnTerminal(op.Status) && !threadvalues.AnswerNotSaved(op)
 	if holdsAnswer || decidedElsewhere {
 		a.clearOwed(ctx, record)
 	}

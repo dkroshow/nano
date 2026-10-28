@@ -2,10 +2,12 @@ package app
 
 import (
 	"encoding/json"
+	"time"
+
 	"github.com/dkroshow/nano/internal/lifecycle"
+	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/grok"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
-	"time"
 )
 
 func grokWorkEvidence(dir protocol.Direction, line []byte) (active bool, turnID string, startedAtMs int64, ok bool) {
@@ -111,7 +113,7 @@ func grokRuntimeEvidence(sess *session, dir protocol.Direction, line []byte, at 
 		duration := int64(0)
 		var usageBody map[string]json.RawMessage
 		if json.Unmarshal(usage, &usageBody) == nil {
-			duration = rawInt64(usageBody["apiDurationMs"])
+			duration = wirevalue.Int64(usageBody["apiDurationMs"])
 		}
 		sess.projection.updateCompletedTurn(promptID, status, duration, at.UnixMilli())
 		return

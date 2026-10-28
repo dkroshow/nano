@@ -36,6 +36,7 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/setup"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/web"
 )
 
@@ -875,7 +876,9 @@ func (s *server) listedSessions(sessions []*session) []listedSession {
 		summaries = append(summaries, sum)
 	}
 	s.attachStarredOnSessions(summaries)
-	sort.Slice(summaries, func(i, j int) bool { return timestampBefore(summaries[i].CreatedAt, summaries[j].CreatedAt) })
+	sort.Slice(summaries, func(i, j int) bool {
+		return threadvalues.TimestampBefore(summaries[i].CreatedAt, summaries[j].CreatedAt)
+	})
 	listed := make([]listedSession, len(summaries))
 	for i, sum := range summaries {
 		listed[i] = listedSession{sessionSummary: sum, Metadata: listMetadata(sum.Metadata)}

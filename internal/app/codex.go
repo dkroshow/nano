@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/config"
+	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -960,7 +961,7 @@ func (sess *session) seedCodexCanonicalOverrides(view hostedMetadataView) {
 	// override from an earlier attachment generation.
 	sess.turnModel, sess.turnEffort, sess.turnServiceTier = "", "", ""
 	for field, current := range view.Fields {
-		value, ok := canonicalResumeString(current)
+		value, ok := hostedvalues.ResumeString(current)
 		if !ok {
 			continue
 		}

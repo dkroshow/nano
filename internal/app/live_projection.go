@@ -383,7 +383,7 @@ func (p *liveProjection) recordTurnWorkLocked(batch model.Batch, providerTurnID 
 			if item.Type == model.ItemAgentMessage && item.Scope.NativeParentCallID == nil && !item.Sidechain &&
 				(item.Scope.NativeThreadID == nil || p.nativeThread == "" || *item.Scope.NativeThreadID == p.nativeThread) &&
 				(item.Complete || p.provider == "grok" && item.Synthetic) {
-				answer, final = firstNonEmpty(item.NativeItemID, item.ID), item.Phase == "final_answer" || item.IsFinalAnswer
+				answer, final = threads.FirstNonEmpty(item.NativeItemID, item.ID), item.Phase == "final_answer" || item.IsFinalAnswer
 			}
 			if answer != "" && p.provider == "claude" {
 				p.claudeRun.lastAnswer = answer
@@ -396,7 +396,7 @@ func (p *liveProjection) recordTurnWorkLocked(batch model.Batch, providerTurnID 
 		default:
 			continue
 		}
-		if turnID = firstNonEmpty(turnID, providerTurnID); turnID == "" || !live && answer == "" {
+		if turnID = threads.FirstNonEmpty(turnID, providerTurnID); turnID == "" || !live && answer == "" {
 			continue
 		}
 		work := p.turnWorkLocked(turnID)
@@ -619,7 +619,7 @@ func (p *liveProjection) latestTerminalTurnID() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for index := len(p.turnOrder) - 1; index >= 0; index-- {
-		if turn := p.turns[p.turnOrder[index]]; turn != nil && agentTurnTerminal(turn.Status) {
+		if turn := p.turns[p.turnOrder[index]]; turn != nil && threads.TurnTerminal(turn.Status) {
 			return turn.ID
 		}
 	}
@@ -638,7 +638,7 @@ func (p *liveProjection) finalAgentItemID(turnID string) string {
 // newest finished answer. Callers hold mu.
 func (p *liveProjection) finalAnswerIDLocked(turnID string) string {
 	if work := p.turnWork[turnID]; work != nil {
-		return firstNonEmpty(work.finalAnswer, work.lastAnswer)
+		return threads.FirstNonEmpty(work.finalAnswer, work.lastAnswer)
 	}
 	return ""
 }
@@ -659,27 +659,6 @@ func (p *liveProjection) turnList() []liveProjectionTurn {
 func cloneRuntimePtr(runtime liveProjectionRuntime) *liveProjectionRuntime {
 	out := liveview.CloneRuntime(runtime)
 	return &out
-}
-
-func rawInt64(raw json.RawMessage) int64 {
-	var value int64
-	if len(raw) > 0 && json.Unmarshal(raw, &value) == nil {
-		return value
-	}
-	var number float64
-	if len(raw) > 0 && json.Unmarshal(raw, &number) == nil {
-		return int64(number)
-	}
-	return 0
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func (p *liveProjection) upsertInteraction(interaction pendingInteraction) {
@@ -723,7 +702,9 @@ func (p *liveProjection) interactionsLocked() []pendingInteraction {
 	for _, interaction := range p.interactions {
 		interactions = append(interactions, liveview.CloneInteraction(interaction))
 	}
-	sort.Slice(interactions, func(i, j int) bool { return timestampBefore(interactions[i].CreatedAt, interactions[j].CreatedAt) })
+	sort.Slice(interactions, func(i, j int) bool {
+		return threads.TimestampBefore(interactions[i].CreatedAt, interactions[j].CreatedAt)
+	})
 	return interactions
 }
 
@@ -991,45 +972,18 @@ var liveItemPayloadKeys = []string{
 	"detail", "toolUseId", "phase", "status",
 }
 
-func rawString(values ...json.RawMessage) string {
-	for _, raw := range values {
-		var value string
-		if len(raw) > 0 && json.Unmarshal(raw, &value) == nil {
-			return value
-		}
-	}
-	return ""
-}
-
-func rawTokenString(raw json.RawMessage) string {
-	if value := rawString(raw); value != "" {
-		return value
-	}
-	var number json.Number
-	if len(raw) > 0 && json.Unmarshal(raw, &number) == nil {
-		return number.String()
-	}
-	return ""
-}
-
-func rawBool(raw json.RawMessage) bool {
-	var value bool
-	_ = json.Unmarshal(raw, &value)
-	return value
-}
-
 func claudeProjectionTerminal(line []byte) (string, json.RawMessage) {
 	var message map[string]json.RawMessage
 	if json.Unmarshal(line, &message) != nil {
 		return agentTurnFailed, json.RawMessage(`{"message":"invalid Claude result"}`)
 	}
-	reason := rawString(message["terminal_reason"])
+	reason := protocol.String(message["terminal_reason"])
 	if strings.HasPrefix(reason, "aborted") {
 		return agentTurnInterrupted, nil
 	}
-	if rawBool(message["is_error"]) {
+	if protocol.Bool(message["is_error"]) {
 		detail, _ := json.Marshal(map[string]any{
-			"message":        firstNonEmpty(rawString(message["result"]), rawString(message["subtype"]), "Claude turn failed"),
+			"message":        threads.FirstNonEmpty(protocol.String(message["result"]), protocol.String(message["subtype"]), "Claude turn failed"),
 			"terminalReason": reason,
 		})
 		return agentTurnFailed, detail

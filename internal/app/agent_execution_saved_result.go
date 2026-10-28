@@ -9,6 +9,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -44,7 +45,7 @@ func (s *agentExecutionStore) useSavedResults(read func(context.Context, agentTu
 		switch {
 		case rec.Status == agentTurnAwaitingSaved:
 			s.startSavedResultLocked(id)
-		case answerNotSaved(rec):
+		case threadvalues.AnswerNotSaved(rec):
 			s.savedResultJobs[id] = &savedResultJob{provider: rec.Provider, nativeThreadID: rec.NativeThreadID}
 			s.readSavedResultLocked(id)
 		}
@@ -53,7 +54,7 @@ func (s *agentExecutionStore) useSavedResults(read func(context.Context, agentTu
 
 func (s *agentExecutionStore) awaitSavedResultLocked(id, itemID string) bool {
 	rec, ok := s.turns[id]
-	if !ok || agentTurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
+	if !ok || threadvalues.TurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
 		return false
 	}
 	prior := rec.Status
@@ -96,7 +97,7 @@ func (s *agentExecutionStore) savedTranscriptApplied(provider, nativeThreadID st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, job := range s.savedResultJobs {
-		if rec, ok := s.turns[id]; !job.reading && (!ok || !answerNotSaved(rec)) {
+		if rec, ok := s.turns[id]; !job.reading && (!ok || !threadvalues.AnswerNotSaved(rec)) {
 			delete(s.savedResultJobs, id) // pruned, or finished another way
 			continue
 		}
@@ -116,7 +117,7 @@ func (s *agentExecutionStore) savedTranscriptApplied(provider, nativeThreadID st
 func (s *agentExecutionStore) readSavedResultLocked(id string) {
 	job := s.savedResultJobs[id]
 	rec, ok := s.turns[id]
-	if !ok || !answerNotSaved(rec) {
+	if !ok || !threadvalues.AnswerNotSaved(rec) {
 		delete(s.savedResultJobs, id)
 		return
 	}
@@ -142,7 +143,7 @@ func (s *agentExecutionStore) readLateSavedResult(id string, rec agentTurnRecord
 		}
 		s.mu.Lock()
 		current, ok := s.turns[id]
-		if s.savedResultJobs[id] != job || !ok || !answerNotSaved(current) {
+		if s.savedResultJobs[id] != job || !ok || !threadvalues.AnswerNotSaved(current) {
 			if s.savedResultJobs[id] == job {
 				delete(s.savedResultJobs, id)
 			}
@@ -171,12 +172,6 @@ func savedAnswerFinishes(rec agentTurnRecord, itemID string) bool {
 // exact answer, as opposed to one a busy or changing catalog cut short.
 func savedAnswerAbsent(err error) bool {
 	return errors.Is(err, history.ErrSavedTranscriptUnavailable) || errors.Is(err, history.ErrTranscriptBodyUnavailable)
-}
-
-// answerNotSaved reports an operation whose saved answer was not found within
-// its wait: the one terminal outcome a later saved answer may still replace.
-func answerNotSaved(rec agentTurnRecord) bool {
-	return rec.Status == agentTurnFailed && rec.Error != nil && rec.Error.Source == "saved" && rec.Error.Code == "result_not_saved"
 }
 
 // runSavedResult reads one pending operation's saved answer until it is found
@@ -234,7 +229,7 @@ func (s *agentExecutionStore) commitSavedResult(id string, rec agentTurnRecord, 
 func (s *agentExecutionStore) finishSavedResult(id string, rec agentTurnRecord, found bool, text, itemID string) error {
 	s.mu.Lock()
 	current, ok := s.turns[id]
-	if !ok || current.Status != agentTurnAwaitingSaved && !(found && answerNotSaved(current)) {
+	if !ok || current.Status != agentTurnAwaitingSaved && !(found && threadvalues.AnswerNotSaved(current)) {
 		delete(s.savedResultJobs, id)
 		s.mu.Unlock()
 		return nil

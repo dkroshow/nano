@@ -26,6 +26,7 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -1368,7 +1369,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 		return err == nil && record.Outcome == agentTurnCompleted
 	})
 	open, _ := s.agentExecutions.turn(operation.ID)
-	if agentTurnTerminal(open.Status) || open.ProviderTurnID != "turn-zero-1" || open.CandidateItemID != "final-zero-1" {
+	if threadvalues.TurnTerminal(open.Status) || open.ProviderTurnID != "turn-zero-1" || open.CandidateItemID != "final-zero-1" {
 		t.Fatalf("operation after the wire completed its turn = %+v; want it open with the turn's final answer as candidate", open)
 	}
 	prompt, _, err := sess.turns.Get(ctx, open.TransportActionID)

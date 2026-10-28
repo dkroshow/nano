@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/observability"
 )
@@ -169,7 +170,7 @@ func (sess *session) summaryWith(view hostedMetadataView, viewErr error, needsAt
 	summary.Posture = postureFromFields(view.Fields)
 	summary.Metadata = &view
 	summary.Model = summary.Posture.Model
-	if cwd, ok := canonicalMetadataString(view.Fields["cwd"]); ok {
+	if cwd, ok := hostedvalues.MetadataString(view.Fields["cwd"]); ok {
 		summary.Cwd = cwd
 	}
 	return summary

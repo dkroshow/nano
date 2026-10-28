@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 )
 
 func TestNativeRecoveryRetiredAliasCannotResume(t *testing.T) {
@@ -215,7 +217,7 @@ func TestInheritMissingCwdFromPredecessor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotCwd, ok := canonicalResumeString(view.Fields["cwd"])
+	gotCwd, ok := hostedvalues.ResumeString(view.Fields["cwd"])
 	if !ok || gotCwd != cwd {
 		t.Fatalf("inherited cwd = %q ok=%v", gotCwd, ok)
 	}

@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -471,7 +473,7 @@ func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRe
 		recordOpen := record.Status != sessionStatusExited
 		// Compared as times: RFC3339Nano trims trailing zeros, so as text
 		// ".2374Z" sorts after the later ".237401Z".
-		if best.ID == "" || (recordOpen != bestOpen && recordOpen) || (recordOpen == bestOpen && timestampBefore(best.UpdatedAt, record.UpdatedAt)) {
+		if best.ID == "" || (recordOpen != bestOpen && recordOpen) || (recordOpen == bestOpen && threadvalues.TimestampBefore(best.UpdatedAt, record.UpdatedAt)) {
 			fallback[key] = record
 		}
 	}
@@ -631,7 +633,7 @@ func (s *controlMetadataStore) catalogMetadataByHostedIDs(ids []string) map[stri
 		rows.Close()
 	}
 	canonical := func(fields map[string]metadataCurrentView, field string) catalogValue {
-		value, ok := canonicalMetadataString(fields[field])
+		value, ok := hostedvalues.MetadataString(fields[field])
 		if !ok {
 			return unknownCatalogValue()
 		}

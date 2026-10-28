@@ -3,10 +3,12 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/dkroshow/nano/internal/httpapi"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -129,7 +131,7 @@ func (s *server) currentRelationshipTree(rootID string) ([]relationshipTreeMembe
 	}
 	for parentID := range children {
 		sort.Slice(children[parentID], func(i, j int) bool {
-			if a, b := parseIdentityTime(children[parentID][i].CreatedAt), parseIdentityTime(children[parentID][j].CreatedAt); !a.Equal(b) {
+			if a, b := threadvalues.ParseTimestamp(children[parentID][i].CreatedAt), threadvalues.ParseTimestamp(children[parentID][j].CreatedAt); !a.Equal(b) {
 				return a.Before(b)
 			}
 			return children[parentID][i].ID < children[parentID][j].ID

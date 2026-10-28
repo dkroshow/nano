@@ -10,6 +10,7 @@ import (
 
 	appstate "github.com/dkroshow/nano/internal/app/persistence"
 	"github.com/dkroshow/nano/internal/hosted"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -135,7 +136,7 @@ func (sess *session) permissionModeForEvent() string {
 func (sess *session) permissionEvent(p pendingInteraction, eventKind, decision, source, outcome string) permissionEvent {
 	toolName, summary, digest := permissionRequestDetails(p)
 	return permissionEvent{
-		HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: firstNonEmpty(p.ThreadID, sess.currentThreadID()),
+		HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, sess.currentThreadID()),
 		NanoSessionID: sess.id, AttachmentGeneration: sess.attachmentGeneration,
 		ProviderRequestID: p.ID, TurnID: p.TurnID, ItemID: p.ItemID, Method: p.Method,
 		InteractionKind: p.Kind, ToolName: toolName, EventKind: eventKind,

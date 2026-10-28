@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/lifecycle"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 // spawnSession registers a session shell and hands it back as soon as the
@@ -127,7 +128,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		creationName = creationRequestName
 	}
 	pendingName := strings.TrimSpace(req.PendingName)
-	displayName := firstNonEmpty(pendingName, creationName)
+	displayName := threadvalues.FirstNonEmpty(pendingName, creationName)
 	if req.Mode == "resume" {
 		if durableName, ok := s.durableThreadName(req.Provider, req.ThreadID); ok {
 			displayName = durableName
@@ -144,7 +145,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		presentationMode:      req.PresentationMode,
 		sidebarPlacement:      req.SidebarPlacement,
 		cwd:                   req.Cwd,
-		permissionMode:        firstNonEmpty(req.PermissionMode, req.Approval),
+		permissionMode:        threadvalues.FirstNonEmpty(req.PermissionMode, req.Approval),
 		createdAt:             time.Now(),
 		spawnMode:             req.Mode,
 		subs:                  map[chan wireEvent]struct{}{},

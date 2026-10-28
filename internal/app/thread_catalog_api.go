@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
+	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 const (
@@ -861,7 +862,7 @@ func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID stri
 		return
 	}
 	canonical := func(field string) catalogValue {
-		value, ok := canonicalMetadataString(view.Fields[field])
+		value, ok := hostedvalues.MetadataString(view.Fields[field])
 		if !ok {
 			return unknownCatalogValue()
 		}

@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"net/url"
 	"os"
@@ -23,30 +22,28 @@ import (
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/hosted"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threads"
-
 	_ "modernc.org/sqlite"
+)
+
+const (
+	metadataDispositionRequested = hosted.DispositionRequested
+	metadataDispositionConfirmed = hosted.DispositionConfirmed
+	metadataDispositionRejected  = hosted.DispositionRejected
+	metadataDispositionCleared   = hosted.DispositionCleared
+	metadataDispositionObserved  = hosted.DispositionObserved
+	metadataDispositionUnknown   = hosted.DispositionUnknown
+	metadataFreshnessLive        = hosted.FreshnessLive
+	metadataFreshnessHistorical  = hosted.FreshnessHistorical
+	metadataFreshnessReplayed    = hosted.FreshnessReplayed
+	metadataSourceMigration      = hosted.SourceMigration
 )
 
 const controlSchemaVersion = state.LegacySchemaVersion
 const metadataEventWarningThreshold = 256
 const metadataEventInventoryLimit = 8
-
-const (
-	metadataDispositionRequested = "requested"
-	metadataDispositionConfirmed = "confirmed"
-	metadataDispositionRejected  = "rejected"
-	metadataDispositionCleared   = "cleared"
-	metadataDispositionObserved  = "observed"
-	metadataDispositionUnknown   = "unknown"
-
-	metadataFreshnessLive       = "live"
-	metadataFreshnessHistorical = "historical"
-	metadataFreshnessReplayed   = "replayed"
-
-	metadataSourceMigration = "migration"
-)
 
 type metadataEvent = hosted.MetadataEvent
 

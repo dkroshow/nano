@@ -16,6 +16,8 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	wirevalue "github.com/dkroshow/nano/internal/protocol"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 	wiregrok "github.com/dkroshow/nano/internal/wire/grok"
 )
@@ -433,7 +435,7 @@ func runGrokHandshake(sess *session, req providerRequest) error {
 	}
 	providerModel := grokCurrentModel(sessionResult)
 	selectedEffort, effortErr := grokVerifyRequestedEffort(req, sessionResult)
-	model := firstNonEmpty(providerModel, grokCurrentModel(initialize), req.grokResumeModel, req.Model)
+	model := threadvalues.FirstNonEmpty(providerModel, grokCurrentModel(initialize), req.grokResumeModel, req.Model)
 
 	sess.stateMu.Lock()
 	if sess.closed {
@@ -528,25 +530,25 @@ func grokSessionID(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &body) != nil {
 		return ""
 	}
-	if id := rawString(body["sessionId"]); id != "" {
+	if id := wirevalue.String(body["sessionId"]); id != "" {
 		return id
 	}
 	// session/load puts its identity in _meta; session/new uses the top level.
 	var meta map[string]json.RawMessage
 	if json.Unmarshal(body["_meta"], &meta) == nil {
-		if id := rawString(meta["sessionId"]); id != "" {
+		if id := wirevalue.String(meta["sessionId"]); id != "" {
 			return id
 		}
 		var detail map[string]json.RawMessage
 		if json.Unmarshal(meta["x.ai/sessionDetail"], &detail) == nil {
-			if id := rawString(detail["sessionId"]); id != "" {
+			if id := wirevalue.String(detail["sessionId"]); id != "" {
 				return id
 			}
 		}
 	}
 	var info map[string]json.RawMessage
 	if json.Unmarshal(body["info"], &info) == nil {
-		return rawString(info["id"])
+		return wirevalue.String(info["id"])
 	}
 	return ""
 }
@@ -565,7 +567,7 @@ func grokCurrentModel(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &body) != nil {
 		return ""
 	}
-	if model := firstNonEmpty(body.Meta.ModelState.CurrentModelID, body.Models.CurrentModelID); model != "" {
+	if model := threadvalues.FirstNonEmpty(body.Meta.ModelState.CurrentModelID, body.Models.CurrentModelID); model != "" {
 		return model
 	}
 	var top map[string]json.RawMessage
@@ -573,7 +575,7 @@ func grokCurrentModel(raw json.RawMessage) string {
 	var detail map[string]json.RawMessage
 	if json.Unmarshal(raw, &top) == nil && json.Unmarshal(top["_meta"], &meta) == nil &&
 		json.Unmarshal(meta["x.ai/sessionDetail"], &detail) == nil {
-		return rawString(detail["currentModelId"])
+		return wirevalue.String(detail["currentModelId"])
 	}
 	return ""
 }
@@ -609,12 +611,12 @@ func normalizeGrokModelCatalog(initialize json.RawMessage) json.RawMessage {
 	if json.Unmarshal(initialize, &top) != nil || json.Unmarshal(top["_meta"], &meta) != nil || json.Unmarshal(meta["modelState"], &state) != nil {
 		return json.RawMessage(`{"data":[]}`)
 	}
-	current := rawString(state["currentModelId"])
+	current := wirevalue.String(state["currentModelId"])
 	var available []map[string]json.RawMessage
 	_ = json.Unmarshal(state["availableModels"], &available)
 	data := make([]map[string]any, 0, len(available))
 	for _, model := range available {
-		id := firstNonEmpty(rawString(model["modelId"]), rawString(model["model"]), rawString(model["id"]))
+		id := threadvalues.FirstNonEmpty(wirevalue.String(model["modelId"]), wirevalue.String(model["model"]), wirevalue.String(model["id"]))
 		if id == "" {
 			continue
 		}
@@ -625,22 +627,22 @@ func normalizeGrokModelCatalog(initialize json.RawMessage) json.RawMessage {
 			_ = json.Unmarshal(model["reasoningEfforts"], &rawEfforts)
 		}
 		efforts := make([]map[string]any, 0, len(rawEfforts))
-		defaultEffort := firstNonEmpty(rawString(modelMeta["reasoningEffort"]), rawString(model["reasoningEffort"]))
+		defaultEffort := threadvalues.FirstNonEmpty(wirevalue.String(modelMeta["reasoningEffort"]), wirevalue.String(model["reasoningEffort"]))
 		for _, rawEffort := range rawEfforts {
-			effort := firstNonEmpty(rawString(rawEffort["reasoningEffort"]), rawString(rawEffort["id"]), rawString(rawEffort["value"]))
+			effort := threadvalues.FirstNonEmpty(wirevalue.String(rawEffort["reasoningEffort"]), wirevalue.String(rawEffort["id"]), wirevalue.String(rawEffort["value"]))
 			if effort == "" {
 				continue
 			}
 			efforts = append(efforts, map[string]any{
 				"reasoningEffort": effort,
-				"label":           firstNonEmpty(rawString(rawEffort["label"]), rawString(rawEffort["name"]), effort),
+				"label":           threadvalues.FirstNonEmpty(wirevalue.String(rawEffort["label"]), wirevalue.String(rawEffort["name"]), effort),
 			})
-			if defaultEffort == "" && (rawBool(rawEffort["isDefault"]) || rawBool(rawEffort["default"])) {
+			if defaultEffort == "" && (wirevalue.Bool(rawEffort["isDefault"]) || wirevalue.Bool(rawEffort["default"])) {
 				defaultEffort = effort
 			}
 		}
 		data = append(data, map[string]any{
-			"model": id, "displayName": firstNonEmpty(rawString(model["name"]), rawString(model["displayName"]), id),
+			"model": id, "displayName": threadvalues.FirstNonEmpty(wirevalue.String(model["name"]), wirevalue.String(model["displayName"]), id),
 			"isDefault": id == current, "defaultReasoningEffort": defaultEffort,
 			"supportedReasoningEfforts": efforts,
 		})
@@ -659,7 +661,7 @@ func grokRunningPromptID(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &top) != nil || json.Unmarshal(top["_meta"], &meta) != nil {
 		return ""
 	}
-	return rawString(meta["x.ai/runningPromptId"])
+	return wirevalue.String(meta["x.ai/runningPromptId"])
 }
 
 func (sess *session) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {
@@ -1127,7 +1129,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 			// answers by question text, the same dialect as claude.
 			kind = kindUserInput
 		default:
-			name := firstNonEmpty(body.ToolCall.Meta.Tool.Label, body.ToolCall.Meta.Tool.Name, body.ToolCall.Title)
+			name := threadvalues.FirstNonEmpty(body.ToolCall.Meta.Tool.Label, body.ToolCall.Meta.Tool.Name, body.ToolCall.Title)
 			visible["tool_name"] = body.ToolCall.Meta.Tool.Name
 			visible["display_name"] = name
 			visible["description"] = body.ToolCall.Title
@@ -1144,7 +1146,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 	}
 	pending := pendingInteraction{
 		ID: requestID, Method: method, Kind: kind,
-		ThreadID: body.SessionID, ItemID: firstNonEmpty(body.ToolCall.ToolCallID, body.ToolCallID),
+		ThreadID: body.SessionID, ItemID: threadvalues.FirstNonEmpty(body.ToolCall.ToolCallID, body.ToolCallID),
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		Params:    visibleParams,
 	}

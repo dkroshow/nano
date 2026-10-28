@@ -22,27 +22,24 @@ import (
 )
 
 const (
-	presentationShared         = "shared"
-	presentationBackground     = "background"
-	sidebarPlacementInvoker    = "invoker"
-	sidebarPlacementStandalone = "standalone"
-
-	agentSessionCreating        = "creating"
-	agentSessionCreationUnknown = "creation_unknown"
-	agentSessionDetached        = "detached"
-
-	agentTurnQueued          = "queued"
-	agentTurnDeliveryPending = "delivery_pending"
-	agentTurnDeliveryUnknown = "delivery_unknown"
-	agentTurnRunning         = "running"
-	agentTurnWaiting         = "waiting_for_input"
-	agentTurnAwaitingSaved   = "awaiting_saved"
-	agentTurnCompleted       = "completed"
-	agentTurnFailed          = "failed"
-	agentTurnInterrupted     = "interrupted"
-
-	maxAgentResultBytes = 8 << 20
-	maxAgentTurns       = 100
+	presentationShared          = threads.PresentationShared
+	presentationBackground      = threads.PresentationBackground
+	sidebarPlacementInvoker     = threads.SidebarPlacementInvoker
+	sidebarPlacementStandalone  = threads.SidebarPlacementStandalone
+	agentSessionCreating        = threads.AgentSessionCreating
+	agentSessionCreationUnknown = threads.AgentSessionCreationUnknown
+	agentSessionDetached        = threads.AgentSessionDetached
+	agentTurnQueued             = threads.AgentTurnQueued
+	agentTurnDeliveryPending    = threads.AgentTurnDeliveryPending
+	agentTurnDeliveryUnknown    = threads.AgentTurnDeliveryUnknown
+	agentTurnRunning            = threads.AgentTurnRunning
+	agentTurnWaiting            = threads.AgentTurnWaiting
+	agentTurnAwaitingSaved      = threads.AgentTurnAwaitingSaved
+	agentTurnCompleted          = threads.AgentTurnCompleted
+	agentTurnFailed             = threads.AgentTurnFailed
+	agentTurnInterrupted        = threads.AgentTurnInterrupted
+	maxAgentResultBytes         = 8 << 20
+	maxAgentTurns               = 100
 )
 
 var (
@@ -562,7 +559,7 @@ func (s *agentExecutionStore) bindSession(id, nanoSessionID, nativeThreadID, sta
 	s.sessions[id] = rec
 	for turnID := range s.turnsByHosted[id] {
 		turn := s.turns[turnID]
-		if agentTurnTerminal(turn.Status) {
+		if threads.TurnTerminal(turn.Status) {
 			continue
 		}
 		turn.NanoSessionID = nanoSessionID
@@ -710,7 +707,7 @@ func (s *agentExecutionStore) updateSession(id, nanoSessionID, nativeThreadID, s
 	}
 	for turnID := range s.turnsByHosted[id] {
 		turn := s.turns[turnID]
-		if agentTurnTerminal(turn.Status) {
+		if threads.TurnTerminal(turn.Status) {
 			continue
 		}
 		native := turn.NativeThreadID
@@ -742,7 +739,7 @@ func (s *agentExecutionStore) hasNonTerminalTurns(sessionID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, rec := range s.turns {
-		if rec.HostedThreadID == sessionID && !agentTurnTerminal(rec.Status) {
+		if rec.HostedThreadID == sessionID && !threads.TurnTerminal(rec.Status) {
 			return true
 		}
 	}
@@ -957,7 +954,7 @@ func (s *agentExecutionStore) nativeIDsForHosted(hostedID string) ([]string, err
 		}
 		// Most recently seen first, by time: SQL would order the text.
 		sort.Slice(natives, func(i, j int) bool {
-			if a, b := parseIdentityTime(natives[i].lastSeen), parseIdentityTime(natives[j].lastSeen); !a.Equal(b) {
+			if a, b := threads.ParseTimestamp(natives[i].lastSeen), threads.ParseTimestamp(natives[j].lastSeen); !a.Equal(b) {
 				return b.Before(a)
 			}
 			return natives[i].id < natives[j].id
@@ -1020,7 +1017,7 @@ func (s *agentExecutionStore) listSessions() []agentSessionRecord {
 		rows = append(rows, rec)
 	}
 	sort.Slice(rows, func(i, j int) bool {
-		if a, b := parseIdentityTime(rows[i].CreatedAt), parseIdentityTime(rows[j].CreatedAt); !a.Equal(b) {
+		if a, b := threads.ParseTimestamp(rows[i].CreatedAt), threads.ParseTimestamp(rows[j].CreatedAt); !a.Equal(b) {
 			return a.Before(b)
 		}
 		return rows[i].ID < rows[j].ID
@@ -1099,7 +1096,7 @@ func (s *agentExecutionStore) beginTurnAttributedGuarded(sessionID, actionID, pr
 			}
 		}
 		sort.Slice(existing, func(i, j int) bool {
-			if a, b := parseIdentityTime(existing[i].CreatedAt), parseIdentityTime(existing[j].CreatedAt); !a.Equal(b) {
+			if a, b := threads.ParseTimestamp(existing[i].CreatedAt), threads.ParseTimestamp(existing[j].CreatedAt); !a.Equal(b) {
 				return a.Before(b)
 			}
 			return existing[i].ID < existing[j].ID
@@ -1228,7 +1225,7 @@ func (s *agentExecutionStore) turnsForHosted(hostedID string) []agentTurnRecord 
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
-		if a, b := parseIdentityTime(result[i].CreatedAt), parseIdentityTime(result[j].CreatedAt); !a.Equal(b) {
+		if a, b := threads.ParseTimestamp(result[i].CreatedAt), threads.ParseTimestamp(result[j].CreatedAt); !a.Equal(b) {
 			return a.Before(b)
 		}
 		return result[i].ID < result[j].ID
@@ -1414,7 +1411,7 @@ func (s *agentExecutionStore) openTurnsForProviderTurn(hostedThreadID, provider,
 	var open []agentTurnRecord
 	for _, rec := range s.turns {
 		if rec.HostedThreadID == hostedThreadID && rec.ProviderTurnID == providerTurnID &&
-			(provider == "" || rec.Provider == provider) && !agentTurnTerminal(rec.Status) {
+			(provider == "" || rec.Provider == provider) && !threads.TurnTerminal(rec.Status) {
 			open = append(open, rec)
 		}
 	}
@@ -1445,7 +1442,7 @@ func (s *agentExecutionStore) resumedTurnMatches(hostedThreadID, provider, nativ
 		if m == nil || rec.Provider != provider {
 			continue
 		}
-		open := hostedThreadID != "" && rec.HostedThreadID == hostedThreadID && !agentTurnTerminal(rec.Status)
+		open := hostedThreadID != "" && rec.HostedThreadID == hostedThreadID && !threads.TurnTerminal(rec.Status)
 		if open {
 			m.OpenOperations = append(m.OpenOperations, rec)
 		}
@@ -1453,7 +1450,7 @@ func (s *agentExecutionStore) resumedTurnMatches(hostedThreadID, provider, nativ
 		if bound {
 			m.BoundOperations = append(m.BoundOperations, id)
 		}
-		if (open || bound) && !agentTurnTerminal(rec.Status) {
+		if (open || bound) && !threads.TurnTerminal(rec.Status) {
 			m.Live = true
 		}
 	}
@@ -1480,7 +1477,7 @@ func (s *agentExecutionStore) markResumedTurnsTerminal(hostedThreadID, provider,
 		m := matches[i]
 		for _, op := range m.OpenOperations {
 			if rec, found := s.turns[op.ID]; found && rec.HostedThreadID == hostedThreadID && rec.Provider == provider &&
-				rec.ProviderTurnID == turn.ProviderTurnID && !agentTurnTerminal(rec.Status) {
+				rec.ProviderTurnID == turn.ProviderTurnID && !threads.TurnTerminal(rec.Status) {
 				endedWhileDown[i] = true
 			}
 		}
@@ -1524,7 +1521,7 @@ func (s *agentExecutionStore) refreshAttentionLocked(hostedID string) {
 		rec := s.turns[id]
 		// Compared as times: RFC3339Nano trims trailing zeros, so as text
 		// ".2374Z" sorts after the later ".237401Z".
-		at := parseIdentityTime(rec.CreatedAt)
+		at := threads.ParseTimestamp(rec.CreatedAt)
 		if latest.ID == "" || at.After(latestAt) || (at.Equal(latestAt) && rec.ID > latest.ID) {
 			latest, latestAt = rec, at
 		}
@@ -1581,7 +1578,7 @@ func (s *agentExecutionStore) markTurnDeliveryWith(operationID, providerTurnID, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.turns[operationID]
-	if !ok || agentTurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
+	if !ok || threads.TurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
 		if with == nil {
 			return nil
 		}
@@ -1621,7 +1618,7 @@ func (s *agentExecutionStore) observeCandidate(provider, nativeThreadID, provide
 
 func (s *agentExecutionStore) observeCandidateLocked(id, itemID, phase, response string) bool {
 	rec, found := s.turns[id]
-	if !found || response == "" || agentTurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved || rec.CandidatePhase == "final_answer" && phase != "final_answer" {
+	if !found || response == "" || threads.TurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved || rec.CandidatePhase == "final_answer" && phase != "final_answer" {
 		return false
 	}
 	rec.CandidateItemID = itemID
@@ -1661,7 +1658,7 @@ func (s *agentExecutionStore) markTurnTerminal(provider, nativeThreadID, provide
 
 func (s *agentExecutionStore) markTurnTerminalLocked(id, status string, executionErr *agentExecutionError, response, itemID string, resultMeta ...agentResultMeta) bool {
 	rec, found := s.turns[id]
-	if !found || agentTurnTerminal(rec.Status) {
+	if !found || threads.TurnTerminal(rec.Status) {
 		return false
 	}
 	meta := agentResultMeta{}
@@ -1719,7 +1716,7 @@ func (s *agentExecutionStore) finishTurnLocked(id, status string, executionErr *
 }
 
 func (s *agentExecutionStore) applyTurnFinishLocked(id, status string, executionErr *agentExecutionError, response, itemID string, meta agentResultMeta) bool {
-	if s.savedResultRead != nil && normalizeAgentTerminalStatus(status) == agentTurnCompleted {
+	if s.savedResultRead != nil && threads.NormalizeTerminalStatus(status) == agentTurnCompleted {
 		return s.awaitSavedResultLocked(id, itemID)
 	}
 	return s.applyResolvedTurnFinishLocked(id, status, executionErr, response, itemID, meta)
@@ -1727,11 +1724,11 @@ func (s *agentExecutionStore) applyTurnFinishLocked(id, status string, execution
 
 func (s *agentExecutionStore) applyResolvedTurnFinishLocked(id, status string, executionErr *agentExecutionError, response, itemID string, meta agentResultMeta) bool {
 	rec, found := s.turns[id]
-	if !found || agentTurnTerminal(rec.Status) && !(answerNotSaved(rec) && status == agentTurnCompleted) {
+	if !found || threads.TurnTerminal(rec.Status) && !(threads.AnswerNotSaved(rec) && status == agentTurnCompleted) {
 		return false
 	}
 	oldStatus := rec.Status
-	rec.Status = normalizeAgentTerminalStatus(status)
+	rec.Status = threads.NormalizeTerminalStatus(status)
 	rec.Error = executionErr
 	if rec.Status == agentTurnCompleted {
 		if meta.Truncated {
@@ -1759,13 +1756,13 @@ func (s *agentExecutionStore) markWaiting(sessionID, providerTurnID string, wait
 	defer s.mu.Unlock()
 	var chosen string
 	for id, rec := range s.turns {
-		if rec.HostedThreadID != sessionID || agentTurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
+		if rec.HostedThreadID != sessionID || threads.TurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
 			continue
 		}
 		if providerTurnID != "" && rec.ProviderTurnID != providerTurnID {
 			continue
 		}
-		if chosen == "" || timestampBefore(s.turns[chosen].CreatedAt, rec.CreatedAt) {
+		if chosen == "" || threads.TimestampBefore(s.turns[chosen].CreatedAt, rec.CreatedAt) {
 			chosen = id
 		}
 	}
@@ -1793,13 +1790,13 @@ func (s *agentExecutionStore) markSessionTurns(sessionID, status string, executi
 	defer s.mu.Unlock()
 	changed := false
 	for _, rec := range s.turns {
-		if rec.HostedThreadID != sessionID || agentTurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
+		if rec.HostedThreadID != sessionID || threads.TurnTerminal(rec.Status) || rec.Status == agentTurnAwaitingSaved {
 			continue
 		}
 		oldStatus := rec.Status
 		rec.Status = status
 		rec.Error = executionErr
-		if agentTurnTerminal(status) {
+		if threads.TurnTerminal(status) {
 			rec.CandidateItemID, rec.CandidatePhase, rec.CandidateResponse = "", "", ""
 			rec.CandidateBytes, rec.CandidateTruncated = 0, false
 		}
@@ -1881,21 +1878,6 @@ func (s *agentExecutionStore) waitTurn(ctx context.Context, id string, afterRevi
 		case <-ch:
 		}
 	}
-}
-
-func normalizeAgentTerminalStatus(status string) string {
-	switch status {
-	case agentTurnCompleted:
-		return agentTurnCompleted
-	case agentTurnInterrupted, "aborted", "cancelled", "canceled":
-		return agentTurnInterrupted
-	default:
-		return agentTurnFailed
-	}
-}
-
-func agentTurnTerminal(status string) bool {
-	return status == agentTurnCompleted || status == agentTurnFailed || status == agentTurnInterrupted
 }
 
 func boundAgentResult(value string) (string, int, bool) {
@@ -1988,14 +1970,14 @@ func (s *agentExecutionStore) persistControlLocked(with func(*sql.Tx) error) err
 			if rec.Revision != s.turnBaseline[id] {
 				changed = true
 			}
-			if agentTurnTerminal(rec.Status) {
+			if threads.TurnTerminal(rec.Status) {
 				records = append(records, rec)
 			}
 		}
 		if !changed || len(records) <= maxAgentTurns {
 			continue
 		}
-		sort.Slice(records, func(i, j int) bool { return timestampBefore(records[j].UpdatedAt, records[i].UpdatedAt) })
+		sort.Slice(records, func(i, j int) bool { return threads.TimestampBefore(records[j].UpdatedAt, records[i].UpdatedAt) })
 		surplus := records[maxAgentTurns:]
 		for start := 0; start < len(surplus); start += maxPruneEligibleBatch {
 			chunk := surplus[start:min(start+maxPruneEligibleBatch, len(surplus))]
@@ -2151,7 +2133,7 @@ func (s *agentExecutionStore) noteHumanPrompt(hostedThreadID string, at time.Tim
 	// Compared as times: RFC3339Nano trims trailing zeros, so as text ".2374Z"
 	// sorts after the later ".237401Z". This store is the column's only writer
 	// and loads it at start, so the record here decides.
-	if rec.LastHumanPromptAt != "" && !parseIdentityTime(rec.LastHumanPromptAt).Before(at) {
+	if rec.LastHumanPromptAt != "" && !threads.ParseTimestamp(rec.LastHumanPromptAt).Before(at) {
 		return nil
 	}
 	stamp := at.UTC().Format(time.RFC3339Nano)

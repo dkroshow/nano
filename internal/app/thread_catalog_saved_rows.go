@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/dkroshow/nano/internal/history"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 // savedRowsCatalog reads a thread's saved user rows by exact identity.
@@ -85,7 +86,7 @@ func (s *server) savedTurnFinal(ctx context.Context, nativeThreadID, projectionK
 		return "", "", err
 	}
 	if !final.Truncated {
-		return final.Text, firstNonEmpty(final.NativeItemID, final.ItemID), nil
+		return final.Text, threadvalues.FirstNonEmpty(final.NativeItemID, final.ItemID), nil
 	}
 	body, err := catalog.LoadTranscriptBody(ctx, threadID, final.ItemID)
 	if err != nil {
@@ -94,7 +95,7 @@ func (s *server) savedTurnFinal(ctx context.Context, nativeThreadID, projectionK
 	if body.ProjectionKey != projectionKey || body.ItemID != final.ItemID || body.Truncated {
 		return "", "", history.ErrTranscriptBodyUnavailable
 	}
-	return body.Text, firstNonEmpty(final.NativeItemID, final.ItemID), nil
+	return body.Text, threadvalues.FirstNonEmpty(final.NativeItemID, final.ItemID), nil
 }
 
 var _ savedRowsCatalog = (*threadCatalogService)(nil)

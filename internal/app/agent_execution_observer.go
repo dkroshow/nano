@@ -13,6 +13,8 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/history"
+	wirevalue "github.com/dkroshow/nano/internal/protocol"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/codex"
 	"github.com/dkroshow/nano/internal/transcriptparse/grok"
@@ -71,8 +73,8 @@ func (sess *session) observeAgentExecutionWire(dir protocol.Direction, line []by
 	if json.Unmarshal(line, &envelope) != nil {
 		return
 	}
-	threadID := rawString(envelope.Params["threadId"])
-	turnID := rawString(envelope.Params["turnId"])
+	threadID := wirevalue.String(envelope.Params["threadId"])
+	turnID := wirevalue.String(envelope.Params["turnId"])
 	switch envelope.Method {
 	case "item/completed":
 		_, batch, err := codex.ParseWire(codex.State{}, model.Input{Bytes: line,
@@ -96,8 +98,8 @@ func (sess *session) observeAgentExecutionWire(dir protocol.Direction, line []by
 		if json.Unmarshal(envelope.Params["turn"], &turn) != nil {
 			return
 		}
-		turnID = rawString(turn["id"])
-		status := rawString(turn["status"])
+		turnID = wirevalue.String(turn["id"])
+		status := wirevalue.String(turn["status"])
 		var executionErr *agentExecutionError
 		if status != agentTurnCompleted {
 			executionErr = codexExecutionError(turn["error"], status)
@@ -147,7 +149,7 @@ func (sess *session) observeGrokAgentWire(line []byte) {
 				}
 			}
 		}
-		text, itemID := parsed.Text, firstNonEmpty(parsed.CallID, candidate+"/agentMessage")
+		text, itemID := parsed.Text, threadvalues.FirstNonEmpty(parsed.CallID, candidate+"/agentMessage")
 		if err := sess.agentExecutions.observeCandidate("grok", sessionID, promptID, itemID, "final_answer", text); err != nil {
 			log.Printf("record Grok response candidate %s: %v", promptID, err)
 		}
@@ -198,7 +200,7 @@ func (sess *session) observeGrokAgentTerminal(sessionID, promptID, status, code 
 
 func (sess *session) observeClaudeAgentResult(line []byte) {
 	var message map[string]json.RawMessage
-	if json.Unmarshal(line, &message) != nil || rawString(message["type"]) != "result" {
+	if json.Unmarshal(line, &message) != nil || wirevalue.String(message["type"]) != "result" {
 		return
 	}
 	// The turn of the prompt the result names (claudeAnsweredTurn), on every
@@ -207,12 +209,12 @@ func (sess *session) observeClaudeAgentResult(line []byte) {
 	status, detail := claudeProjectionTerminal(line)
 	var executionErr *agentExecutionError
 	if status == agentTurnFailed {
-		messageText := firstNonEmpty(rawString(message["result"]), rawString(message["subtype"]), "Claude turn failed")
-		executionErr = &agentExecutionError{Source: "provider", Code: rawString(message["terminal_reason"]), Message: messageText, Details: detail}
+		messageText := threadvalues.FirstNonEmpty(wirevalue.String(message["result"]), wirevalue.String(message["subtype"]), "Claude turn failed")
+		executionErr = &agentExecutionError{Source: "provider", Code: wirevalue.String(message["terminal_reason"]), Message: messageText, Details: detail}
 	}
 	response := ""
 	if status == agentTurnCompleted {
-		response = rawString(message["result"])
+		response = wirevalue.String(message["result"])
 	}
 	itemID := ""
 	if sess.projection != nil {
@@ -237,7 +239,7 @@ func codexExecutionError(raw json.RawMessage, status string) *agentExecutionErro
 	message := "Codex turn " + status
 	var detail map[string]json.RawMessage
 	if json.Unmarshal(raw, &detail) == nil {
-		message = firstNonEmpty(rawString(detail["message"]), message)
+		message = threadvalues.FirstNonEmpty(wirevalue.String(detail["message"]), message)
 	}
 	return &agentExecutionError{
 		Source: "provider", Code: status, Message: message,

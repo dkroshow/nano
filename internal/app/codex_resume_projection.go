@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/codex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -68,7 +69,7 @@ func seedCodexResume(p resumeProjection, resp *codexResumeResponse) {
 			if !found || parsed.Type != model.ItemAgentMessage {
 				continue
 			}
-			fallbackFinal = firstNonEmpty(parsed.NativeItemID, parsed.ID)
+			fallbackFinal = threadvalues.FirstNonEmpty(parsed.NativeItemID, parsed.ID)
 			if parsed.Phase == "final_answer" {
 				projectedTurn.FinalItemID = fallbackFinal
 			}

@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"database/sql"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/dkroshow/nano/internal/httpapi"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 const maxIdentityRefBytes = 1024
@@ -284,7 +286,7 @@ func (s *server) currentHostedIdentity(ctx context.Context, hostedID string) (id
 			if candidate.nativeThreadID == "" {
 				candidate.nativeThreadID = rec.NativeThreadID
 			}
-			if recUpdated := parseIdentityTime(rec.UpdatedAt); recUpdated.After(candidate.updatedAt) {
+			if recUpdated := threadvalues.ParseTimestamp(rec.UpdatedAt); recUpdated.After(candidate.updatedAt) {
 				candidate.updatedAt = recUpdated
 			}
 			if candidate.provider == "" {
@@ -303,7 +305,7 @@ func (s *server) currentHostedIdentity(ctx context.Context, hostedID string) (id
 		nativeThreadID: native,
 		hostedThreadID: rec.ID,
 		provider:       rec.Provider,
-		updatedAt:      parseIdentityTime(rec.UpdatedAt),
+		updatedAt:      threadvalues.ParseTimestamp(rec.UpdatedAt),
 	}, true
 }
 
@@ -364,9 +366,9 @@ func (s *server) catalogNameForNative(ctx context.Context, provider, nativeID st
 }
 
 func identityFromLive(live sessionSummary) identityCandidate {
-	updated := parseIdentityTime(live.LastTurnEndedAt)
+	updated := threadvalues.ParseTimestamp(live.LastTurnEndedAt)
 	if updated.IsZero() {
-		updated = parseIdentityTime(live.CreatedAt)
+		updated = threadvalues.ParseTimestamp(live.CreatedAt)
 	}
 	return identityCandidate{
 		displayName:    live.Name,
@@ -391,7 +393,7 @@ func identityFromCatalog(row catalogThread) identityCandidate {
 		nativeThreadID: row.NativeID,
 		hostedThreadID: row.HostedThreadID,
 		provider:       row.Provider,
-		updatedAt:      parseIdentityTime(updated),
+		updatedAt:      threadvalues.ParseTimestamp(updated),
 	}
 }
 
@@ -465,25 +467,6 @@ func identityNewer(a, b identityCandidate) bool {
 	return a.nativeThreadID > b.nativeThreadID
 }
 
-// timestampBefore orders two stored RFC3339Nano times as times. As text they
-// misorder within a second: the format trims trailing zeros, so ".2374Z" sorts
-// after the later ".237401Z".
-func timestampBefore(a, b string) bool { return parseIdentityTime(a).Before(parseIdentityTime(b)) }
-
-func parseIdentityTime(value string) time.Time {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return time.Time{}
-	}
-	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
-		return parsed
-	}
-	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
-		return parsed
-	}
-	return time.Time{}
-}
-
 // The native-id resolver and retirement verification share this canonical read.
 // Accepting a transaction lets maintenance prove the post-delete identity before
 // commit. History/name fallback stays with the public resolver; it cannot prove
@@ -507,7 +490,7 @@ func resolveCanonicalNativeIdentity(ctx context.Context, reader interface {
 		if err := rows.Scan(&candidate.hostedThreadID, &candidate.provider, &candidate.nativeThreadID, &updated); err != nil {
 			return identityResolveResponse{}, err
 		}
-		candidate.updatedAt = parseIdentityTime(updated)
+		candidate.updatedAt = threadvalues.ParseTimestamp(updated)
 		candidates = append(candidates, candidate)
 	}
 	if err := rows.Err(); err != nil {

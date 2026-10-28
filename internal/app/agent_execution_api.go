@@ -15,6 +15,7 @@ import (
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -1410,7 +1411,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 	view := agentTurnView{
 		ID: rec.ID, HostedThreadID: rec.HostedThreadID, ClientActionID: rec.ClientActionID,
 		Provider: rec.Provider, NanoSessionID: rec.NanoSessionID, NativeThreadID: rec.NativeThreadID,
-		ProviderTurnID: rec.ProviderTurnID, Status: rec.Status, Terminal: agentTurnTerminal(rec.Status),
+		ProviderTurnID: rec.ProviderTurnID, Status: rec.Status, Terminal: threadvalues.TurnTerminal(rec.Status),
 		Error: rec.Error, FinalItemID: rec.FinalItemID, FinalResponse: rec.FinalResponse,
 		FinalResponseTruncated: rec.FinalResponseTruncated, FinalResponseBytes: rec.FinalResponseBytes,
 		Origin: rec.Origin, SenderHostedThreadID: rec.SenderHostedThreadID, SenderNativeThreadID: rec.SenderNativeThreadID,
@@ -1427,7 +1428,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 		if threadID := sess.currentThreadID(); threadID != "" {
 			view.NativeThreadID = threadID
 		}
-		if !agentTurnTerminal(rec.Status) {
+		if !threadvalues.TurnTerminal(rec.Status) {
 			for _, interaction := range sess.pendingInteractionList() {
 				if interaction.TurnID == "" || rec.ProviderTurnID == "" || interaction.TurnID == rec.ProviderTurnID {
 					view.Interactions = append(view.Interactions, interaction)

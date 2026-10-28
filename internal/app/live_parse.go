@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/codex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -37,7 +38,7 @@ func liveParseInput(dir protocol.Direction, line []byte, at time.Time) model.Inp
 // The current browser DTO keeps its native card type and bounded native detail.
 // Text, identity, completion and outcome come from the module's typed item.
 func parsedLiveItem(parsed model.Item, at time.Time) *liveProjectionItem {
-	id := firstNonEmpty(parsed.NativeItemID, parsed.ID)
+	id := threadvalues.FirstNonEmpty(parsed.NativeItemID, parsed.ID)
 	types := map[model.ItemType]string{
 		model.ItemUserMessage: "userMessage", model.ItemAgentMessage: "agentMessage", model.ItemReasoning: "reasoning",
 		model.ItemCommand: "commandExecution", model.ItemToolCall: "toolUse", model.ItemToolResult: "toolResult",

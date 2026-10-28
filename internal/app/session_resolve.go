@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 )
 
 func newSessionID() string {
@@ -177,42 +178,11 @@ func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
 		{postureFieldServiceTier, func(value string) { req.ServiceTier = value }},
 		{"cwd", func(value string) { req.Cwd = value }},
 	} {
-		if value, ok := canonicalResumeString(view.Fields[field.name]); ok {
+		if value, ok := hostedvalues.ResumeString(view.Fields[field.name]); ok {
 			field.set(value)
 		}
 	}
 	return nil
-}
-
-// canonicalMetadataString consumes the server-authored display projection.
-// It deliberately returns no value for unknown rather than choosing a process
-// default. Resume uses canonicalResumeString instead because it intentionally
-// preserves historical desired intent.
-func canonicalMetadataString(current metadataCurrentView) (string, bool) {
-	var value string
-	if len(current.DisplayValue) == 0 || json.Unmarshal(current.DisplayValue, &value) != nil || value == "" {
-		return "", false
-	}
-	return value, true
-}
-
-// canonicalResumeString preserves an explicit operator/creation choice across
-// a new attachment, including a provider-confirmed or rejected attempt. A
-// cleared choice deliberately sends no override. Only a field with no desired
-// event falls back to the provider's effective value.
-func canonicalResumeString(current metadataCurrentView) (string, bool) {
-	encoded := current.EffectiveValue
-	if current.DesiredEventID != nil {
-		if current.DesiredDisposition == metadataDispositionCleared {
-			return "", false
-		}
-		encoded = current.DesiredValue
-	}
-	var value string
-	if len(encoded) == 0 || json.Unmarshal(encoded, &value) != nil || value == "" {
-		return "", false
-	}
-	return value, true
 }
 
 // resolveGrokResume restores only the attachment's identity and cwd. The

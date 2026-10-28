@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 // Turn lifecycle wire vocabulary, verified against
@@ -715,7 +717,7 @@ func mergeSessionChanges(merged *runtimeDelta, earlier, later runtimeDelta) {
 		merged.Sessions = append(merged.Sessions, row)
 	}
 	sort.Slice(merged.Sessions, func(i, j int) bool {
-		return timestampBefore(merged.Sessions[i].CreatedAt, merged.Sessions[j].CreatedAt)
+		return threadvalues.TimestampBefore(merged.Sessions[i].CreatedAt, merged.Sessions[j].CreatedAt)
 	})
 	for id := range removed {
 		merged.RemovedSessions = append(merged.RemovedSessions, id)

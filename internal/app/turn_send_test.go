@@ -27,6 +27,7 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/providers"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -1717,7 +1718,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 				if op, _ := executions.turn(sent["correction"].op); op.Status != agentTurnCompleted {
 					t.Fatalf("answered operation = %+v; want it finished on its own saved proof", op)
 				}
-				if op, _ := executions.turn(sent["starter"].op); agentTurnTerminal(op.Status) {
+				if op, _ := executions.turn(sent["starter"].op); threadvalues.TurnTerminal(op.Status) {
 					t.Fatalf("starter operation finished before its prompt was accepted: %+v", op)
 				}
 				starter := sent["starter"]
@@ -1859,13 +1860,13 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 			return false
 		}
 		op, _ := executions.turn(sent["answerer"].op)
-		return agentTurnTerminal(op.Status)
+		return threadvalues.TurnTerminal(op.Status)
 	})
 	if shared, err := core.Get(ctx, "hosted", "claude:shim:400"); err != nil || shared.Outcome != "" || shared.UsageInputTokens != nil {
 		t.Fatalf("the twice-claimed turn = %+v, %v; want it unfinished and uncounted", shared, err)
 	}
 	for _, name := range []string{"twin-a", "twin-b"} {
-		if op, _ := executions.turn(sent[name].op); agentTurnTerminal(op.Status) {
+		if op, _ := executions.turn(sent[name].op); threadvalues.TurnTerminal(op.Status) {
 			t.Fatalf("%s operation completed on a shared turn: %+v", name, op)
 		}
 	}
@@ -3559,7 +3560,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	sess.observeCodexResume(decodedCodexResume([]byte(resumed)))
 	waitForClaude(t, "both operations finished", func() bool {
 		for _, op := range ops {
-			if got, _ := s.agentExecutions.turn(op.ID); !agentTurnTerminal(got.Status) {
+			if got, _ := s.agentExecutions.turn(op.ID); !threadvalues.TurnTerminal(got.Status) {
 				return false
 			}
 		}
@@ -3645,7 +3646,7 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 		feed, err := s.completedTurns.after(rec.HostedThreadID, "", 10)
 		return err == nil && len(feed) == 1
 	})
-	if got, _ := s.agentExecutions.turn(op.ID); agentTurnTerminal(got.Status) {
+	if got, _ := s.agentExecutions.turn(op.ID); threadvalues.TurnTerminal(got.Status) {
 		t.Fatalf("operation finished with the turn although its own row was never saved: %#v", got)
 	}
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -84,7 +85,7 @@ func waitGrokOperation(t *testing.T, store *agentExecutionStore, id string) agen
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		rec, _ := store.turn(id)
-		if agentTurnTerminal(rec.Status) || time.Now().After(deadline) {
+		if threadvalues.TurnTerminal(rec.Status) || time.Now().After(deadline) {
 			return rec
 		}
 		time.Sleep(5 * time.Millisecond)
