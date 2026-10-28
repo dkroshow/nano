@@ -41,14 +41,14 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 			name: "attached idle", provider: "codex", stale: []string{"running", "unproven", "unanswered"}, candidate: 3,
 			setup: func(t *testing.T, h *settlementHarness) {
 				idle = h.attach("codex", nil)
-				idle.liveText = newLiveTextLoop(h.server, idle)
+				idle.AttachLiveText(newLiveTextLoop(h.server, idle))
 				liveTextOf(idle).running = true // the test runs the loop's steps itself
 				liveTextOf(idle).reset()
 				liveTextOf(idle).seedOutbox()
 				if live := liveTextOf(idle).visible(); len(live) == 0 {
 					t.Fatal("the open pane shows none of the stale prompts")
 				}
-				h.server.sessions = map[string]*session{idle.id: idle}
+				seedTestSessionRegistry(&h.server.Registry, map[string]*session{idle.ID(): idle})
 			},
 			after: func(t *testing.T) {
 				l := liveTextOf(idle)
@@ -67,8 +67,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 			setup: func(t *testing.T, h *settlementHarness) {
 				seedAcceptedTransactionalTurn(t, h.prompts, "busy", model.ProviderCodex, "busy-native", "busy", "turn-busy", "busy prompt")
 				seedAcceptedTransactionalTurn(t, h.prompts, "hosted", model.ProviderCodex, h.fixture.native, "recent", "turn-recent", "recent prompt")
-				h.server.sessions = map[string]*session{"busy-session": {id: "busy-session", provider: "codex", hostedThreadID: "busy", threadID: "busy-native",
-					lifecycleState: testLifecycleSnapshot("ready", true)}}
+				seedTestSessionRegistry(&h.server.Registry, map[string]*session{"busy-session": configuredFixtureSession(t, sessionConfig{ID: "busy-session", Provider: "codex", HostedThreadID: "busy"}, "busy-native", "ready", "", true)})
 			},
 			want: map[string]turns.DeliveryState{"old": turns.Confirmed, "new": turns.Confirmed, "running": turns.Expired,
 				"unproven": turns.Expired, "unanswered": turns.Expired, "busy": turns.Accepted, "recent": turns.Accepted},
@@ -85,10 +84,10 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 			name: "attached unreadable", provider: "codex", stale: []string{"running", "unproven", "unanswered"}, candidate: 3,
 			setup: func(t *testing.T, h *settlementHarness) {
 				sess := h.attach("codex", nil)
-				sess.savedPrompts = func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) {
+				h.setSavedReader(sess, func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) {
 					return nil, errors.New("catalog read failed")
-				}
-				h.server.sessions = map[string]*session{sess.id: sess}
+				})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
 			},
 			want: map[string]turns.DeliveryState{"running": turns.Accepted, "unproven": turns.Accepted, "unanswered": turns.Uncertain},
 		},
@@ -98,14 +97,12 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 			name: "attached turn starts", provider: "codex", stale: []string{"running", "unproven", "unanswered"}, candidate: 3,
 			setup: func(t *testing.T, h *settlementHarness) {
 				sess := h.attach("codex", nil)
-				saved := sess.savedPrompts
-				sess.savedPrompts = func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-					sess.stateMu.Lock()
-					sess.lifecycleState = testLifecycleSnapshot("ready", true)
-					sess.stateMu.Unlock()
+				saved := h.savedReader(sess)
+				h.setSavedReader(sess, func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
+					h.runtimes[sess].emitAndWait(t, []byte(`{"method":"turn/started","params":{"threadId":"`+sess.ThreadID()+`","turn":{"id":"new-work"}}}`))
 					return saved(ctx, keys)
-				}
-				h.server.sessions = map[string]*session{sess.id: sess}
+				})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
 			},
 			want: map[string]turns.DeliveryState{"running": turns.Accepted, "unproven": turns.Accepted, "unanswered": turns.Uncertain},
 		},
@@ -122,27 +119,22 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				})
 				t.Cleanup(func() {
 					close(release)
-					sess.sendMu.Lock()
-					op := sess.sendOps["later"]
-					sess.sendMu.Unlock()
-					if op != nil {
-						<-op.done // finish before the stores close
-					}
+					for _, done := range sess.InFlightDeliveries() {
+						<-done
+					} // finish before the stores close
 				})
-				saved := sess.savedPrompts
-				sess.savedPrompts = func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
+				saved := h.savedReader(sess)
+				h.setSavedReader(sess, func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 					go postTurn(t, sess, context.Background(), "later", "later prompt")
 					for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
-						sess.sendMu.Lock()
-						sending := sess.sendOps["later"] != nil
-						sess.sendMu.Unlock()
+						sending := len(sess.InFlightDeliveries()) > 0
 						if sending {
 							break
 						}
 					}
 					return saved(ctx, keys)
-				}
-				h.server.sessions = map[string]*session{sess.id: sess}
+				})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
 			},
 			want: map[string]turns.DeliveryState{"running": turns.Accepted, "unproven": turns.Accepted, "unanswered": turns.Uncertain},
 		},
@@ -154,7 +146,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				test.setup(t, h)
 			}
 			for _, action := range test.stale {
-				if _, err := h.queue.db.Exec(`UPDATE queued_turns SET created_at='2026-09-01T00:00:00Z' WHERE client_action_id=?`, action); err != nil {
+				if _, err := h.queue.Database().Exec(`UPDATE queued_turns SET created_at='2026-09-01T00:00:00Z' WHERE client_action_id=?`, action); err != nil {
 					t.Fatal(err)
 				}
 			}

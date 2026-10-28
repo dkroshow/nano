@@ -17,13 +17,13 @@ func TestQueuedTurnStoreBindProviderTurnPersistsAcceptedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.putSubmission(queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
 		ClientActionID: "action-1", Provider: "codex", NativeThreadID: "native-thread",
 		Text: "hello", TextHash: sendTextHash("hello"), State: submissionDelivering,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindProviderTurn("action-1", "turn-1"); err != nil {
+	if err := QueueBindProviderTurn(store, "action-1", "turn-1"); err != nil {
 		t.Fatal(err)
 	}
 	got, ok := store.Get("action-1")
@@ -79,14 +79,14 @@ func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.putSubmission(queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
 		ClientActionID: "bound", Provider: "codex", NativeThreadID: "native-thread",
 		Text: "hello", TextHash: sendTextHash("hello"), State: submissionDelivering,
 		ProviderTurnID: "turn-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindProviderTurn("bound", "turn-1"); err != nil {
+	if err := QueueBindProviderTurn(store, "bound", "turn-1"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := store.ByProviderTurn("codex", "native-thread", "", "turn-1"); !ok {
@@ -99,13 +99,13 @@ func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
 		t.Fatal("specified other provider must not match")
 	}
 
-	if _, _, err := store.putSubmission(queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
 		ClientActionID: "unthreaded", Provider: "codex", NativeThreadID: "keep-me",
 		Text: "later", TextHash: sendTextHash("later"), State: submissionDelivering,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`UPDATE queued_turns SET native_thread_id='', provider_turn_id='turn-empty-native' WHERE client_action_id='unthreaded'`); err != nil {
+	if _, err := store.Database().Exec(`UPDATE queued_turns SET native_thread_id='', provider_turn_id='turn-empty-native' WHERE client_action_id='unthreaded'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := store.ByProviderTurn("codex", "native-thread", "", "turn-empty-native"); ok {
@@ -118,16 +118,16 @@ func TestQueuedTurnBindProviderTurnFailureLeavesPreviousState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.putSubmission(queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
 		ClientActionID: "action-fail", Provider: "codex", NativeThreadID: "native-thread",
 		Text: "hello", TextHash: sendTextHash("hello"), State: submissionDelivering,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`CREATE TRIGGER fail_legacy_bind BEFORE DELETE ON queued_turns BEGIN SELECT RAISE(FAIL,'synthetic bind failure'); END`); err != nil {
+	if _, err := store.Database().Exec(`CREATE TRIGGER fail_legacy_bind BEFORE DELETE ON queued_turns BEGIN SELECT RAISE(FAIL,'synthetic bind failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindProviderTurn("action-fail", "turn-1"); err == nil {
+	if err := QueueBindProviderTurn(store, "action-fail", "turn-1"); err == nil {
 		t.Fatal("expected bind persist failure")
 	}
 	got, ok := store.Get("action-fail")

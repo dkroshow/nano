@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 )
 
 const orchestrationAssignmentField = "orchestrationAssignment"
@@ -172,7 +174,7 @@ func (s *controlMetadataStore) orchestrationAssignmentActionExists(hostedID, act
 	if err != nil {
 		return false, err
 	}
-	if priorHostedID != hostedID || field != orchestrationAssignmentField || priorValue != string(value) || priorDisposition != disposition || source != postureSourceOperator {
+	if priorHostedID != hostedID || field != orchestrationAssignmentField || priorValue != string(value) || priorDisposition != disposition || source != hostedmodel.PostureSourceOperator {
 		return false, fmt.Errorf("%w: assignment action %q has different content", errAssignmentIdempotencyConflict, actionID)
 	}
 	return true, nil
@@ -252,7 +254,7 @@ func appendInitialOrchestrationAssignmentTx(tx *sql.Tx, hostedID string, assignm
 	if err != nil {
 		return 0, 0, err
 	}
-	result, err := tx.Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,value_json,disposition,source,evidence,attachment_generation,evidence_freshness,source_event_key,observed_at,committed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, hostedID, orchestrationAssignmentField, string(raw), metadataDispositionConfirmed, postureSourceCreation, "", 0, metadataFreshnessLive, nil, now, now)
+	result, err := tx.Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,value_json,disposition,source,evidence,attachment_generation,evidence_freshness,source_event_key,observed_at,committed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, hostedID, orchestrationAssignmentField, string(raw), metadataDispositionConfirmed, hostedmodel.PostureSourceCreation, "", 0, metadataFreshnessLive, nil, now, now)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -264,7 +266,7 @@ func appendInitialOrchestrationAssignmentTx(tx *sql.Tx, hostedID string, assignm
 	if err := tx.QueryRow(`UPDATE hosted_threads SET revision=revision+1,updated_at=? WHERE hosted_thread_id=? RETURNING revision`, now, hostedID).Scan(&revision); err != nil {
 		return 0, 0, err
 	}
-	_, err = tx.Exec(`INSERT INTO thread_metadata_current(hosted_thread_id,field,desired_value_json,desired_disposition,desired_source,desired_event_id,desired_settlement_event_id,effective_value_json,effective_disposition,effective_source,effective_event_id,thread_revision,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, hostedID, orchestrationAssignmentField, string(raw), metadataDispositionConfirmed, postureSourceCreation, eventID, nil, string(raw), metadataDispositionConfirmed, postureSourceCreation, eventID, revision, now)
+	_, err = tx.Exec(`INSERT INTO thread_metadata_current(hosted_thread_id,field,desired_value_json,desired_disposition,desired_source,desired_event_id,desired_settlement_event_id,effective_value_json,effective_disposition,effective_source,effective_event_id,thread_revision,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, hostedID, orchestrationAssignmentField, string(raw), metadataDispositionConfirmed, hostedmodel.PostureSourceCreation, eventID, nil, string(raw), metadataDispositionConfirmed, hostedmodel.PostureSourceCreation, eventID, revision, now)
 	return eventID, revision, err
 }
 
@@ -273,5 +275,5 @@ func (s *controlMetadataStore) appendOrchestrationAssignment(hostedID, actionID 
 	if assignment == nil {
 		disposition = metadataDispositionCleared
 	}
-	return s.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: orchestrationAssignmentField, Value: assignmentEventValue(assignment), Disposition: disposition, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + hostedID + ":" + actionID, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
+	return s.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: orchestrationAssignmentField, Value: assignmentEventValue(assignment), Disposition: disposition, Source: hostedmodel.PostureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + hostedID + ":" + actionID, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
 }

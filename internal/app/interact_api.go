@@ -10,6 +10,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/interact"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -110,7 +111,7 @@ func (s *server) publicCompletedTurn(ctx context.Context, hosted string, row com
 		return native
 	}
 	record := claims[0]
-	answer, err := s.claudeAnswers(hosted).answer(ctx, claudeSettlementEntry(record.Outbox, record.NativeThreadID, "", resolve))
+	answer, err := s.claudeAnswers(hosted).Answer(ctx, sessionruntime.ClaudeSettlementEntry(record.Outbox, record.NativeThreadID, "", resolve))
 	switch {
 	case err == nil:
 		item.FinalMessageID, item.Outcome, item.NativeThreadID, item.SavedTurnID = answer.FinalID, answer.Outcome, answer.NativeID, answer.TurnID

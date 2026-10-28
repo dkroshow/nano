@@ -36,7 +36,7 @@ func newIdentityServer(t *testing.T, rows []catalogThread) (*server, *agentExecu
 	return &server{
 		catalog:         &fakeThreadCatalog{page: catalogPage{Items: rows}},
 		agentExecutions: store,
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
+		Registry:        newSessionRegistry(),
 	}, store
 }
 
@@ -211,12 +211,7 @@ func TestIdentityResolveFollowsClaudeRespawn(t *testing.T) {
 func TestIdentityResolveLivePendingName(t *testing.T) {
 	s, store := newIdentityServer(t, nil)
 	record := createIdentityHosted(t, store, "claude", "")
-	s.sessions["live"] = &session{id: "live",
-		provider:       "claude",
-		hostedThreadID: record.ID,
-		displayName:    "draft name",
-		createdAt:      time.Now(),
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	s.RegisterSession(configuredFixtureSession(t, sessionConfig{ID: "live", Provider: "claude", HostedThreadID: record.ID, DisplayName: "draft name", CreatedAt: time.Now()}, "", "ready", ""))
 
 	status, body, raw := resolveIdentity(t, s, "draft%20name")
 	if status != http.StatusOK || body.HostedThreadID != record.ID || body.DisplayName != "draft name" {

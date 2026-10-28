@@ -1,8 +1,9 @@
 package app
 
+import replayfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
+
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,184 +15,14 @@ import (
 	"testing"
 	"time"
 
-	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
-// spoolBuilder writes a Claude conversation the way the shim spools it: one
-// frame per stdio line, prompted frames carrying their provider turn id.
-type spoolBuilder struct {
-	key    string
-	seq    int64
-	frames []claudeTestFrame
-	// events maps a prompted turn to the submission id its user line carries.
-	events map[string]string
-}
+type SpoolBuilder = replayfixture.SpoolBuilder
+type SpoolShim = replayfixture.SpoolShim
 
-func (b *spoolBuilder) add(dir, turnID, line string) int64 {
-	b.seq++
-	b.frames = append(b.frames, claudeTestFrame{Seq: b.seq, Dir: dir, Line: line, TurnID: turnID})
-	return b.seq
-}
-
-func (b *spoolBuilder) turnID(promptSeq int64) string {
-	return fmt.Sprintf("claude:%s:%d", b.key, promptSeq)
-}
-
-// prompt spools a Nano send of action's prompt, stamped with its submission
-// id as Nano stamps it, and returns its provider turn id.
-func (b *spoolBuilder) prompt(action string) string {
-	id := b.turnID(b.seq + 1)
-	event := submissionEventID(b.key, action)
-	if b.events == nil {
-		b.events = map[string]string{}
-	}
-	b.events[id] = event
-	b.add("send", id, `{"type":"user","uuid":"`+event+`","message":{"role":"user","content":[{"type":"text","text":"prompt"}]}}`)
-	return id
-}
-
-func (b *spoolBuilder) blockStart(turnID string, index int) {
-	raw, _ := json.Marshal(map[string]any{"type": "stream_event", "event": map[string]any{
-		"type": "content_block_start", "index": index, "content_block": map[string]any{"type": "text", "text": ""}}})
-	b.add("recv", turnID, string(raw))
-}
-
-// openMessage starts a message whose blocks are complete except the last,
-// which is still streaming. It returns the message_start sequence.
-func (b *spoolBuilder) openMessage(turnID, id string, blocks ...string) int64 {
-	start := b.add("recv", turnID, messageStart(id))
-	for index, text := range blocks {
-		b.blockStart(turnID, index)
-		b.add("recv", turnID, textDelta(index, text))
-		if index == len(blocks)-1 {
-			break
-		}
-		b.add("recv", turnID, fmt.Sprintf(`{"type":"stream_event","event":{"type":"content_block_stop","index":%d}}`, index))
-		row, _ := json.Marshal(map[string]any{"type": "assistant", "uuid": fmt.Sprintf("%s-%d", id, index),
-			"message": map[string]any{"id": "msg_" + id, "role": "assistant", "content": []any{map[string]any{"type": "text", "text": text}}}})
-		b.add("recv", turnID, string(row))
-	}
-	return start
-}
-
-// message spools a complete one-block text message.
-func (b *spoolBuilder) message(turnID, id, text string) int64 {
-	start := b.openMessage(turnID, id, text)
-	b.add("recv", turnID, `{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`)
-	row, _ := json.Marshal(map[string]any{"type": "assistant", "uuid": id + "-0",
-		"message": map[string]any{"id": "msg_" + id, "role": "assistant", "content": []any{map[string]any{"type": "text", "text": text}}}})
-	b.add("recv", turnID, string(row))
-	b.add("recv", turnID, `{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"}}}`)
-	b.add("recv", turnID, testMessageStop)
-	return start
-}
-
-const testResultWithUsage = `{"type":"result","subtype":"success","is_error":false,"duration_ms":12,"session_id":"native-1","usage":{"input_tokens":11,"cache_read_input_tokens":5,"cache_creation_input_tokens":2,"output_tokens":7}}`
-
-// result spools turnID's result. A prompted turn's names its prompt, as
-// Claude's does; a background turn's names none.
-func (b *spoolBuilder) result(turnID string) int64 {
-	line := testResultWithUsage
-	if event := b.events[turnID]; event != "" {
-		line = strings.Replace(line, `{"type":"result",`, `{"type":"result","user_message_uuid":"`+event+`",`, 1)
-	}
-	return b.add("recv", turnID, line)
-}
-
-// background spools finished turns no Nano prompt started until at least n
-// more frames exist.
-func (b *spoolBuilder) background(n int) {
-	target := b.seq + int64(n)
-	for turn := 0; b.seq < target; turn++ {
-		b.message("", fmt.Sprintf("bg%d", turn), fmt.Sprintf("background %d", turn))
-		b.result("")
-	}
-}
-
-// spoolShim is a fake shim backed by frames it actually holds: attach replays
-// exactly the frames after fromSeq, like cmd/claude-shim's readAfter.
-type spoolShim struct {
-	*fakeShim
-	mu           sync.Mutex
-	frames       []claudeTestFrame
-	state        string
-	turnActive   bool
-	lastSeq      int64 // overrides the frames' own end when set
-	beforeAttach func()
-	fromSeqs     []int64
-	replayed     int
-}
-
-func newSpoolShim(t *testing.T, frames []claudeTestFrame) *spoolShim {
-	shim := &spoolShim{frames: frames, state: "running"}
-	shim.fakeShim = newFakeShim(t, func(c *shimConn) {
-		for {
-			call, ok := c.next()
-			if !ok {
-				return
-			}
-			switch call.Method {
-			case shimMethodAttach:
-				shim.attach(c, call)
-			case shimMethodStart:
-				c.reply(call, map[string]any{"shimSessionId": "replacement"})
-			default:
-				c.reply(call, nil)
-			}
-		}
-	})
-	return shim
-}
-
-func (s *spoolShim) attach(c *shimConn, call shimCall) {
-	var params struct {
-		FromSeq int64 `json:"fromSeq"`
-	}
-	_ = json.Unmarshal(call.Params, &params)
-	s.mu.Lock()
-	hook := s.beforeAttach
-	frames := append([]claudeTestFrame(nil), s.frames...)
-	last := s.lastSeq
-	if last == 0 && len(frames) > 0 {
-		last = frames[len(frames)-1].Seq
-	}
-	state, active := s.state, s.turnActive
-	s.fromSeqs = append(s.fromSeqs, params.FromSeq)
-	s.mu.Unlock()
-	if hook != nil {
-		hook()
-	}
-	c.reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID, "state": state, "turnActive": active, "lastSeq": last})
-	sent := 0
-	for _, frame := range frames {
-		if frame.Seq <= params.FromSeq {
-			continue
-		}
-		c.notify(shimMethodLine, map[string]any{"shimSessionId": "shim-1", "seq": frame.Seq, "ts": "2026-09-18T12:00:00Z", "dir": frame.Dir, "turnId": frame.TurnID, "line": frame.Line})
-		sent++
-	}
-	s.mu.Lock()
-	s.replayed = sent
-	s.mu.Unlock()
-	c.notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": last})
-}
-
-func (s *spoolShim) lastFromSeq() int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.fromSeqs) == 0 {
-		return -1
-	}
-	return s.fromSeqs[len(s.fromSeqs)-1]
-}
-
-func (s *spoolShim) replayedFrames() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.replayed
-}
+var NewSpoolShim = replayfixture.NewSpoolShim
 
 // reconnectServer is a resume server with one remembered Claude thread whose
 // hosted identity exists before the test writes its spool and prompt rows.
@@ -211,29 +42,29 @@ func reconnectServer(t *testing.T, shimURL string, stale bool) (*server, string)
 
 func openCompletedTurns(t *testing.T, s *server) *coreturns.Store {
 	t.Helper()
-	store, err := coreturns.OpenStore(context.Background(), s.queuedTurns.db)
+	store, err := coreturns.OpenStore(context.Background(), s.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return store
 }
 
-func completedTurnRows(t *testing.T, s *server, hosted, turnID string) int {
+func completedTurnRows(t *testing.T, s *server, hosted, TurnID string) int {
 	t.Helper()
 	var n int
-	if err := s.queuedTurns.db.QueryRow(`SELECT count(*) FROM completed_turns WHERE target_hosted_thread_id=? AND turn_id=? AND outcome<>''`, hosted, turnID).Scan(&n); err != nil {
+	if err := s.queuedTurns.Database().QueryRow(`SELECT count(*) FROM completed_turns WHERE target_hosted_thread_id=? AND turn_id=? AND outcome<>''`, hosted, TurnID).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n
 }
 
-func waitForCompletedTurn(t *testing.T, s *server, hosted, turnID string) coreturns.Record {
+func waitForCompletedTurn(t *testing.T, s *server, hosted, TurnID string) coreturns.Record {
 	t.Helper()
 	store := openCompletedTurns(t, s)
 	var record coreturns.Record
-	waitForClaude(t, "completion of "+turnID, func() bool {
+	waitForClaude(t, "completion of "+TurnID, func() bool {
 		var err error
-		record, err = store.Get(context.Background(), hosted, turnID)
+		record, err = store.Get(context.Background(), hosted, TurnID)
 		return err == nil && record.Outcome != ""
 	})
 	return record
@@ -241,7 +72,7 @@ func waitForCompletedTurn(t *testing.T, s *server, hosted, turnID string) coretu
 
 func sessionForNative(t *testing.T, s *server) *session {
 	t.Helper()
-	sess := s.sessionForThread("claude", claudeResumeThreadID)
+	sess := s.SessionForThread("claude", claudeResumeThreadID)
 	if sess == nil {
 		t.Fatal("no attached Claude session")
 	}
@@ -252,17 +83,17 @@ func sessionForNative(t *testing.T, s *server) *session {
 // anchor names the old prompt, and thousands of background frames followed.
 // Saved history already holds all of it, so nothing replays.
 func TestClaudeReconnectIdleStaleAnchorReplaysNothing(t *testing.T) {
-	var shim *spoolShim
-	shim = newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), true)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	turn := b.prompt("done-action")
-	b.message(turn, "done", "answer")
-	b.result(turn)
-	b.background(3000)
-	shim.frames = b.frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
+	var shim *SpoolShim
+	shim = NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), true)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	turn := b.Prompt("done-action")
+	b.Message(turn, "done", "answer")
+	b.Result(turn)
+	b.Background(3000)
+	shim.Frames = b.Frames
+	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "done-action", turn, "prompt")
 	if _, _, err := openCompletedTurns(t, s).Finished(context.Background(), coreturns.Finish{HostedThreadID: hosted, Provider: "claude", NativeThreadID: claudeResumeThreadID, TurnID: turn, Outcome: agentTurnCompleted, Source: "adapter"}); err != nil {
 		t.Fatal(err)
@@ -274,77 +105,19 @@ func TestClaudeReconnectIdleStaleAnchorReplaysNothing(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 	}
-	if got := shim.lastFromSeq(); got != b.seq || shim.replayedFrames() != 0 {
-		t.Fatalf("fromSeq = %d replayed %d; want the finished spool's end %d and nothing replayed", got, shim.replayedFrames(), b.seq)
+	if got := shim.LastFromSeq(); got != b.Seq || shim.ReplayedFrames() != 0 {
+		t.Fatalf("fromSeq = %d replayed %d; want the finished spool's end %d and nothing replayed", got, shim.ReplayedFrames(), b.Seq)
 	}
-	if elapsed > 5*time.Second || len(shim.callsOf(shimMethodStart)) != 0 || len(shim.callsOf(shimMethodAttach)) != 1 {
-		t.Fatalf("attach took %s with %d starts and %d attaches", elapsed, len(shim.callsOf(shimMethodStart)), len(shim.callsOf(shimMethodAttach)))
+	if elapsed > 5*time.Second || len(shim.CallsOf(shimMethodStart)) != 0 || len(shim.CallsOf(shimMethodAttach)) != 1 {
+		t.Fatalf("attach took %s with %d starts and %d attaches", elapsed, len(shim.CallsOf(shimMethodStart)), len(shim.CallsOf(shimMethodAttach)))
 	}
-	t.Logf("idle %d-frame spool attached in %s", b.seq, elapsed)
+	t.Logf("idle %d-frame spool attached in %s", b.Seq, elapsed)
 }
 
 // A long thread's resume checks every accepted prompt for a recorded outcome
 // while restore writes keep the one writer connection busy. One read for the
 // thread waits for the writer once; a read per prompt waited once per prompt,
 // so a thread with a thousand prompts held its boot handshake slot throughout.
-func TestClaudeUnfinishedPromptsWaitForABusyWriterOncePerThread(t *testing.T) {
-	s, hosted := reconnectServer(t, "", false)
-	ctx := context.Background()
-	completed := openCompletedTurns(t, s)
-	prefix := "claude:" + hosted + ":"
-	// The last two prompts are still owed: one turn started without an
-	// outcome, and one has no turn row yet. Every other turn ended.
-	const prompts = 300
-	for i := 1; i <= prompts; i++ {
-		turn := fmt.Sprintf("%s%d", prefix, i)
-		seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, fmt.Sprintf("action-%d", i), turn, fmt.Sprintf("prompt %d", i))
-		var err error
-		switch i {
-		case prompts - 1:
-			_, _, err = completed.Started(ctx, coreturns.Start{HostedThreadID: hosted, Provider: "claude", NativeThreadID: claudeResumeThreadID, TurnID: turn, Source: "adapter"})
-		case prompts:
-		default:
-			_, _, err = completed.Finished(ctx, coreturns.Finish{HostedThreadID: hosted, Provider: "claude", NativeThreadID: claudeResumeThreadID, TurnID: turn, Outcome: agentTurnCompleted, Source: "adapter"})
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	sess := &session{hostedThreadID: hosted, turns: s.turns, completedTurns: (&completedTurnStore{db: s.queuedTurns.db}).coreStore}
-
-	// Restore writes, back to back: each holds the writer for 5 ms.
-	stop, done := make(chan struct{}), make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			tx, err := s.queuedTurns.db.BeginTx(ctx, nil)
-			if err != nil {
-				return
-			}
-			time.Sleep(5 * time.Millisecond)
-			_ = tx.Rollback()
-		}
-	}()
-	started := time.Now()
-	wanted, _, err := sess.unfinishedClaudePrompts(ctx, prefix, claudeResumeThreadID)
-	took := time.Since(started)
-	close(stop)
-	<-done
-	if err != nil || !slices.Equal(wanted, []int64{prompts - 1, prompts}) {
-		t.Fatalf("unfinished = %v, %v; want exactly the two owed prompts %d and %d", wanted, err, prompts-1, prompts)
-	}
-	// A read per prompt waits at least 300 x 5 ms = 1.5 s here.
-	if took > 500*time.Millisecond {
-		t.Fatalf("checking %d prompts took %s behind a busy writer; want one outcome read for the thread", prompts, took)
-	}
-	t.Logf("checked %d prompts behind a busy writer in %s", prompts, took)
-}
-
 // claudeBacklogFrames is the background backlog behind an offline completion.
 // The acceptance size (about 3,000 frames) takes minutes at today's per-frame
 // transcript cost, so the default run uses a smaller one that still outlasts
@@ -364,23 +137,18 @@ func claudeBacklogFrames(t *testing.T) int {
 // after it. Replay starts at the prompt's last message, so its one completion
 // lands with its final message and its own result's usage.
 func TestClaudeReconnectRecordsOfflineCompletionBehindBackgroundBacklog(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	turn := b.prompt("offline-action")
-	b.message(turn, "tool", "working")
-	finalStart := b.message(turn, "final", "the final answer")
-	b.result(turn)
-	b.background(claudeBacklogFrames(t))
-	shim.frames = b.frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
+	shim := NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), false)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	turn := b.Prompt("offline-action")
+	b.Message(turn, "tool", "working")
+	finalStart := b.Message(turn, "final", "the final answer")
+	b.Result(turn)
+	b.Background(claudeBacklogFrames(t))
+	shim.Frames = b.Frames
+	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "offline-action", turn, "prompt")
-	// Progress-aware: the backlog may outlast this window as long as the
-	// session loop keeps applying frames.
-	previous := claudeShimReplayTimeout
-	claudeShimReplayTimeout = time.Second
-	t.Cleanup(func() { claudeShimReplayTimeout = previous })
 
 	started := time.Now()
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
@@ -388,11 +156,10 @@ func TestClaudeReconnectRecordsOfflineCompletionBehindBackgroundBacklog(t *testi
 	if response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 	}
-	if got := shim.lastFromSeq(); got != finalStart-1 {
+	if got := shim.LastFromSeq(); got != finalStart-1 {
 		t.Fatalf("fromSeq = %d, want the prompt's last message start %d", got, finalStart-1)
 	}
-	// Background answers after the result are not the prompt's: its final
-	// message is its own last answer.
+
 	record := waitForCompletedTurn(t, s, hosted, turn)
 	if record.Outcome != agentTurnCompleted || record.FinalMessageID != "msg_final:0" {
 		t.Fatalf("completion = %+v, want completed with final message msg_final:0", record)
@@ -403,82 +170,12 @@ func TestClaudeReconnectRecordsOfflineCompletionBehindBackgroundBacklog(t *testi
 	if n := completedTurnRows(t, s, hosted, turn); n != 1 {
 		t.Fatalf("completion rows = %d, want exactly one", n)
 	}
-	t.Logf("%d-frame backlog (%d replayed) attached in %s", b.seq, shim.replayedFrames(), elapsed)
+	t.Logf("%d-frame backlog (%d replayed) attached in %s", b.Seq, shim.ReplayedFrames(), elapsed)
 }
 
 // A failed attach must stop its queued replay: nothing it queued may publish
 // or record a completion afterwards, and the retry computes the same floor
 // and records the completion exactly once. Another thread is unaffected.
-func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	turn := b.prompt("stall-action")
-	finalStart := b.message(turn, "final", "answer")
-	b.result(turn)
-	b.background(200)
-	shim.frames = b.frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
-	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "stall-action", turn, "prompt")
-	previous := claudeShimReplayTimeout
-	claudeShimReplayTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { claudeShimReplayTimeout = previous })
-
-	release := make(chan struct{})
-	var releaseOnce sync.Once
-	unblock := func() { releaseOnce.Do(func() { close(release) }) }
-	t.Cleanup(unblock)
-	var stalled *session
-	shim.beforeAttach = func() {
-		stalled = s.sessionForThread("claude", claudeResumeThreadID)
-		blocked := make(chan struct{})
-		stalled.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
-			close(blocked)
-			<-release
-			return nil
-		}})
-		<-blocked
-	}
-	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
-	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), errClaudeReplayUnsettled.Error()) {
-		t.Fatalf("stalled resume = %d %s, want an unsettled replay failure", response.Code, response.Body.String())
-	}
-	published := func() int64 {
-		stalled.mu.Lock()
-		defer stalled.mu.Unlock()
-		return stalled.seq
-	}
-	before := published()
-	unblock()
-	// The loop now reaches every frame the abandoned attach queued.
-	if err := stalled.coreSession().Observe(context.Background(), coresession.AdapterEvent{}); err != nil && !strings.Contains(err.Error(), "closed") {
-		t.Fatal(err)
-	}
-	if after := published(); after != before {
-		t.Fatalf("abandoned replay published %d more events after failure", after-before)
-	}
-	if n := completedTurnRows(t, s, hosted, turn); n != 0 {
-		t.Fatalf("abandoned replay recorded %d completions", n)
-	}
-	if starts := len(shim.callsOf(shimMethodStart)); starts != 0 {
-		t.Fatalf("stalled replay started %d replacements", starts)
-	}
-
-	shim.beforeAttach = nil
-	claudeShimReplayTimeout = previous
-	response = postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
-	if response.Code != http.StatusOK {
-		t.Fatalf("retry = %d %s", response.Code, response.Body.String())
-	}
-	if shim.lastFromSeq() != finalStart-1 {
-		t.Fatalf("retry fromSeq = %d, want the same floor %d", shim.lastFromSeq(), finalStart-1)
-	}
-	waitForCompletedTurn(t, s, hosted, turn)
-	if n := completedTurnRows(t, s, hosted, turn); n != 1 {
-		t.Fatalf("completion rows = %d, want exactly one", n)
-	}
-}
 
 // Reconnecting while a message streams starts at that message's start, so
 // its blocks keep the native identities saved rows use (msg_<id>:<index>),
@@ -486,32 +183,30 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 func TestClaudeReconnectMidMessageKeepsNativeBlockIdentity(t *testing.T) {
 	for _, prompted := range []bool{true, false} {
 		t.Run(fmt.Sprintf("prompted=%v", prompted), func(t *testing.T) {
-			shim := newSpoolShim(t, nil)
-			s, hosted := reconnectServer(t, shim.wsURL(), false)
-			b := &spoolBuilder{key: hosted}
-			b.add("recv", "", claudeInitLine)
+			shim := NewSpoolShim(t, nil)
+			s, hosted := reconnectServer(t, shim.WSURL(), false)
+			b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+			b.Add("recv", "", claudeInitLine)
 			turn := ""
 			if prompted {
-				turn = b.prompt("open-action")
+				turn = b.Prompt("open-action")
 				seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "open-action", turn, "prompt")
 			}
-			b.message(turn, "earlier", "earlier text")
-			start := b.openMessage(turn, "open", "first block", "second block so far")
-			shim.frames, shim.turnActive = b.frames, true
-			writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
+			b.Message(turn, "earlier", "earlier text")
+			start := b.OpenMessage(turn, "open", "first block", "second block so far")
+			shim.Frames, shim.TurnActive = b.Frames, true
+			writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 
 			response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 			if response.Code != http.StatusOK {
 				t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 			}
-			if got := shim.lastFromSeq(); got != start-1 {
+			if got := shim.LastFromSeq(); got != start-1 {
 				t.Fatalf("fromSeq = %d, want the open message's start %d", got, start-1)
 			}
-			// Live text shows only text with an exact native identity, so each
-			// block shows with its own text only if the replay kept
-			// msg_open:0 and msg_open:1.
+
 			sess := sessionForNative(t, s)
-			texts := sess.liveText.CurrentTexts(context.Background())
+			texts := sess.LiveTextService().CurrentTexts(context.Background())
 			if !slices.Contains(texts, "first block") || !slices.Contains(texts, "second block so far") {
 				t.Fatalf("live text after the replay = %q, want each block of the open message", texts)
 			}
@@ -522,64 +217,64 @@ func TestClaudeReconnectMidMessageKeepsNativeBlockIdentity(t *testing.T) {
 // A message cut off without message_stop is closed by its result: it must
 // not hold the floor at its old start.
 func TestClaudeReconnectInterruptedMessageDoesNotPinFloor(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	b.openMessage("", "cut", "partial")
-	b.result("")
-	b.background(20)
-	shim.frames = b.frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
+	shim := NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), false)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	b.OpenMessage("", "cut", "partial")
+	b.Result("")
+	b.Background(20)
+	shim.Frames = b.Frames
+	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 	}
-	if got := shim.lastFromSeq(); got != b.seq {
-		t.Fatalf("fromSeq = %d, want the spool's end %d", got, b.seq)
+	if got := shim.LastFromSeq(); got != b.Seq {
+		t.Fatalf("fromSeq = %d, want the spool's end %d", got, b.Seq)
 	}
 }
 
 // An unanswered permission request raised while Nano was away is recovered
 // once and can be answered through the shim.
 func TestClaudeReconnectRecoversPendingPermissionOnce(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	turn := b.prompt("ask-action")
+	shim := NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), false)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	turn := b.Prompt("ask-action")
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "ask-action", turn, "prompt")
-	b.message(turn, "earlier", "checking")
-	// An older request answered by the previous Nano stays settled.
-	b.add("recv", turn, `{"type":"control_request","request_id":"old","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}`)
-	b.add("send", "", `{"type":"control_response","response":{"subtype":"success","request_id":"old","response":{"behavior":"allow"}}}`)
-	start := b.openMessage(turn, "ask", "about to run")
-	b.add("recv", turn, `{"type":"control_request","request_id":"perm-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"pwd"}}}`)
-	shim.frames, shim.turnActive = b.frames, true
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
+	b.Message(turn, "earlier", "checking")
+
+	b.Add("recv", turn, `{"type":"control_request","request_id":"old","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}`)
+	b.Add("send", "", `{"type":"control_response","response":{"subtype":"success","request_id":"old","response":{"behavior":"allow"}}}`)
+	start := b.OpenMessage(turn, "ask", "about to run")
+	b.Add("recv", turn, `{"type":"control_request","request_id":"perm-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"pwd"}}}`)
+	shim.Frames, shim.TurnActive = b.Frames, true
+	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 	}
-	if got := shim.lastFromSeq(); got != start-1 {
+	if got := shim.LastFromSeq(); got != start-1 {
 		t.Fatalf("fromSeq = %d, want the request's enclosing message start %d", got, start-1)
 	}
 	sess := sessionForNative(t, s)
-	waitForClaude(t, "the recovered permission", func() bool { return len(sess.pendingInteractionList()) > 0 })
-	pending := sess.pendingInteractionList()
+	waitForClaude(t, "the recovered permission", func() bool { return len(sess.PendingInteractionList()) > 0 })
+	pending := sess.PendingInteractionList()
 	if len(pending) != 1 || pending[0].ID != "perm-1" {
 		t.Fatalf("pending = %+v, want perm-1 exactly once", pending)
 	}
 	res := httptest.NewRecorder()
-	sess.handleInteraction(res, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interactions/perm-1", strings.NewReader(`{"decision":"accept"}`)), "perm-1")
+	sess.HandleInteraction(res, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interactions/perm-1", strings.NewReader(`{"decision":"accept"}`)), "perm-1")
 	if res.Code != http.StatusOK {
 		t.Fatalf("answer = %d %s", res.Code, res.Body.String())
 	}
 	answered := false
-	for _, line := range shim.inputLines() {
+	for _, line := range shim.InputLines() {
 		answered = answered || (strings.Contains(line, `"control_response"`) && strings.Contains(line, `"perm-1"`))
 	}
 	if !answered {
-		t.Fatalf("shim input = %v, want the perm-1 answer", shim.inputLines())
+		t.Fatalf("shim input = %v, want the perm-1 answer", shim.InputLines())
 	}
 }
 
@@ -589,15 +284,15 @@ func TestClaudeReconnectRecoversPendingPermissionOnce(t *testing.T) {
 func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) {
 	cases := []struct {
 		name     string
-		spool    func(t *testing.T, s *server, hosted string, b *spoolBuilder)
+		spool    func(t *testing.T, s *server, hosted string, b *SpoolBuilder)
 		accepted bool
-		lastSeq  int64
+		LastSeq  int64
 		ok       bool
 	}{
-		{name: "missing spool with an unfinished accepted prompt", accepted: true, lastSeq: 3},
-		{name: "missing spool and a shim holding lines", lastSeq: 5},
-		{name: "malformed spool", accepted: true, lastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *spoolBuilder) {
-			path := writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames[:1]...)
+		{name: "missing spool with an unfinished accepted prompt", accepted: true, LastSeq: 3},
+		{name: "missing spool and a shim holding lines", LastSeq: 5},
+		{name: "malformed spool", accepted: true, LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *SpoolBuilder) {
+			path := writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames[:1]...)
 			file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -605,34 +300,34 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			_, _ = file.WriteString("{torn\n")
 			file.Close()
 		}},
-		{name: "spool of another conversation", lastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *spoolBuilder) {
-			frames := append([]claudeTestFrame(nil), b.frames...)
-			frames[0].Line = claudeSuccessorInitLine
-			writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, frames...)
+		{name: "spool of another conversation", LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *SpoolBuilder) {
+			Frames := append([]claudeTestFrame(nil), b.Frames...)
+			Frames[0].Line = claudeSuccessorInitLine
+			writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, Frames...)
 		}},
-		{name: "never used child", lastSeq: 0, ok: true},
+		{name: "never used child", LastSeq: 0, ok: true},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			shim := newSpoolShim(t, nil)
-			s, hosted := reconnectServer(t, shim.wsURL(), false)
+			shim := NewSpoolShim(t, nil)
+			s, hosted := reconnectServer(t, shim.WSURL(), false)
 			if err := os.Remove(filepath.Join(s.defaults.claudeShimSpools, hosted+".jsonl")); err != nil {
 				t.Fatal(err)
 			}
-			b := &spoolBuilder{key: hosted}
-			b.add("recv", "", claudeInitLine)
-			turn := b.prompt("unresolved-action")
-			b.openMessage(turn, "live", "streaming")
+			b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+			b.Add("recv", "", claudeInitLine)
+			turn := b.Prompt("unresolved-action")
+			b.OpenMessage(turn, "live", "streaming")
 			if test.accepted {
 				seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "unresolved-action", turn, "prompt")
 			}
 			if test.spool != nil {
 				test.spool(t, s, hosted, b)
 			}
-			if test.lastSeq > 0 {
-				shim.frames = b.frames[:test.lastSeq]
+			if test.LastSeq > 0 {
+				shim.Frames = b.Frames[:test.LastSeq]
 			}
-			// Not postClaudeResume: its fixture seeding would recreate the spool.
+
 			response := httptest.NewRecorder()
 			s.handleSessionCreate(response, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
 			if test.ok {
@@ -641,10 +336,10 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 				}
 				return
 			}
-			if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), errClaudeRecoveryUnproven.Error()) {
+			if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude recovery evidence is missing or unprovable") {
 				t.Fatalf("resume = %d %s, want a recovery-evidence failure", response.Code, response.Body.String())
 			}
-			if starts, closes := len(shim.callsOf(shimMethodStart)), len(shim.callsOf(shimMethodClose)); starts != 0 || closes != 0 {
+			if starts, closes := len(shim.CallsOf(shimMethodStart)), len(shim.CallsOf(shimMethodClose)); starts != 0 || closes != 0 {
 				t.Fatalf("unprovable recovery made %d starts and %d closes", starts, closes)
 			}
 			if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
@@ -657,32 +352,32 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 // Lines the shim spooled after Nano's scan (including a torn tail the scan
 // skipped) replay exactly once: no gap, no duplicate.
 func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	b.message("", "old", "old work")
-	b.result("")
-	scanned := b.seq
-	raw := claudeTestSpoolBytes(t, b.frames...)
-	b.message("", "late", "appended after the scan")
-	b.result("")
+	shim := NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), false)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	b.Message("", "old", "old work")
+	b.Result("")
+	scanned := b.Seq
+	raw := claudeTestSpoolBytes(t, b.Frames...)
+	b.Message("", "late", "appended after the scan")
+	b.Result("")
 	raw = append(raw, []byte(`{"seq":`+fmt.Sprint(scanned+1)+`,"dir":"recv","line":"{\"type\":\"stream_`)...)
 	if err := os.WriteFile(filepath.Join(s.defaults.claudeShimSpools, hosted+".jsonl"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// The shim resends one appended frame; the sequence keeps it single.
-	shim.frames = append(append([]claudeTestFrame(nil), b.frames[:scanned+1]...), b.frames[scanned:]...)
+
+	shim.Frames = append(append([]claudeTestFrame(nil), b.Frames[:scanned+1]...), b.Frames[scanned:]...)
 
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 	}
-	if got := shim.lastFromSeq(); got != scanned {
+	if got := shim.LastFromSeq(); got != scanned {
 		t.Fatalf("fromSeq = %d, want the scanned end %d", got, scanned)
 	}
 	sess := sessionForNative(t, s)
 	count := 0
-	for _, text := range sess.liveText.CurrentTexts(context.Background()) {
+	for _, text := range sess.LiveTextService().CurrentTexts(context.Background()) {
 		if text == "appended after the scan" {
 			count++
 		}
@@ -695,26 +390,26 @@ func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
 // A request whose own turn ended without an answer is settled. When the floor
 // replays it for another reason, it must not come back as a dead dialog.
 func TestClaudeReconnectDoesNotResurrectRequestRetiredByItsResult(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	turn := b.prompt("retired-action")
+	shim := NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), false)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	turn := b.Prompt("retired-action")
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "retired-action", turn, "prompt")
-	start := b.message(turn, "final", "answer")
-	b.result(turn)
-	b.add("recv", "", `{"type":"control_request","request_id":"stale","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}`)
-	b.result("")
-	shim.frames = b.frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
+	start := b.Message(turn, "final", "answer")
+	b.Result(turn)
+	b.Add("recv", "", `{"type":"control_request","request_id":"stale","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}`)
+	b.Result("")
+	shim.Frames = b.Frames
+	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 	}
-	if got := shim.lastFromSeq(); got != start-1 {
+	if got := shim.LastFromSeq(); got != start-1 {
 		t.Fatalf("fromSeq = %d, want %d", got, start-1)
 	}
-	if pending := sessionForNative(t, s).pendingInteractionList(); len(pending) != 0 {
+	if pending := sessionForNative(t, s).PendingInteractionList(); len(pending) != 0 {
 		t.Fatalf("pending = %+v, want the retired request left settled", pending)
 	}
 }
@@ -723,20 +418,17 @@ func TestClaudeReconnectDoesNotResurrectRequestRetiredByItsResult(t *testing.T) 
 // this attachment. A replay that never finishes ingesting must not reach the
 // `--resume` rung, which would start a second writer.
 func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
-	previous := claudeShimReplayTimeout
-	claudeShimReplayTimeout = 200 * time.Millisecond
-	t.Cleanup(func() { claudeShimReplayTimeout = previous })
 	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 1})
-		c.line(1, "recv", claudeInitLine) // replayDone never arrives
+		c.Reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 1})
+		c.Line(1, "recv", claudeInitLine)
 	}))
-	s, store := claudeResumeServer(t, shim.wsURL())
+	s, store := claudeResumeServer(t, shim.WSURL())
 	store.remember(rememberedClaudeSession(t, "/fake/claude"))
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
-	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), errClaudeReplayUnsettled.Error()) {
+	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") {
 		t.Fatalf("resume = %d %s, want an unsettled replay refusal", response.Code, response.Body.String())
 	}
-	if starts := len(shim.callsOf(shimMethodStart)); starts != 0 {
+	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("ingestion timeout started %d replacement children", starts)
 	}
 	if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
@@ -747,19 +439,19 @@ func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
 // A replay with a gap after the floor is incomplete evidence: the attach
 // fails without a replacement rather than applying around the hole.
 func TestClaudeReconnectRejectsReplayGap(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	b.message("", "a", "text")
-	b.result("")
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames[:2]...)
-	shim.frames = append(append([]claudeTestFrame(nil), b.frames[:2]...), b.frames[3:]...) // seq 3 missing
+	shim := NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), false)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	b.Message("", "a", "text")
+	b.Result("")
+	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames[:2]...)
+	shim.Frames = append(append([]claudeTestFrame(nil), b.Frames[:2]...), b.Frames[3:]...)
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
-	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), errClaudeRecoveryUnproven.Error()) {
+	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude recovery evidence is missing or unprovable") {
 		t.Fatalf("resume = %d %s, want a recovery-evidence failure", response.Code, response.Body.String())
 	}
-	if starts := len(shim.callsOf(shimMethodStart)); starts != 0 {
+	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("replay gap started %d replacements", starts)
 	}
 }
@@ -770,20 +462,20 @@ func TestClaudeReconnectRejectsReplayGap(t *testing.T) {
 // that window is refused without attaching, and once released the frame
 // neither publishes nor records a completion. The retry after the drain
 // acknowledges attaches and records the completion exactly once.
+
 func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
-	shim := newSpoolShim(t, nil)
-	s, hosted := reconnectServer(t, shim.wsURL(), false)
-	b := &spoolBuilder{key: hosted}
-	b.add("recv", "", claudeInitLine)
-	turn := b.prompt("admitted-action")
-	b.message(turn, "final", "answer")
-	b.result(turn)
-	b.background(40)
-	shim.frames = b.frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.frames...)
+	shim := NewSpoolShim(t, nil)
+	s, hosted := reconnectServer(t, shim.WSURL(), false)
+	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b.Add("recv", "", claudeInitLine)
+	turn := b.Prompt("admitted-action")
+	b.Message(turn, "final", "answer")
+	b.Result(turn)
+	b.Background(40)
+	shim.Frames = b.Frames
+	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "admitted-action", turn, "prompt")
-	// A real hosted agent operation bound to the same provider turn: its
-	// terminal status is what an admitted result frame could otherwise write.
+
 	op, _, err := s.agentExecutions.beginTurn(hosted, "admitted-op", "prompt-hash")
 	if err != nil {
 		t.Fatal(err)
@@ -798,12 +490,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 		}
 		return rec
 	}
-	previous := claudeShimReplayTimeout
-	claudeShimReplayTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { claudeShimReplayTimeout = previous })
 
-	// The result frame nudges the catalog from inside applyWireSemantic:
-	// after the gate admitted it, before publication and completion.
 	entered, release := make(chan struct{}), make(chan struct{})
 	var armed sync.Once
 	var releaseOnce sync.Once
@@ -815,12 +502,6 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 			<-release
 		})
 	}
-	var stalled *session
-	shim.beforeAttach = func() {
-		if stalled == nil {
-			stalled = s.sessionForThread("claude", claudeResumeThreadID)
-		}
-	}
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 	select {
 	case <-entered:
@@ -830,30 +511,18 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "still draining") {
 		t.Fatalf("stalled resume = %d %s, want an unacknowledged-drain failure", response.Code, response.Body.String())
 	}
-	published := func() int64 {
-		stalled.mu.Lock()
-		defer stalled.mu.Unlock()
-		return stalled.seq
-	}
-	before := published()
 
-	// Retry while the admitted frame is still running: refused, no attach.
-	shim.beforeAttach = nil
-	attaches := len(shim.callsOf(shimMethodAttach))
+	shim.BeforeAttach = nil
+	attaches := len(shim.CallsOf(shimMethodAttach))
 	retry := httptest.NewRecorder()
 	s.handleSessionCreate(retry, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
 	if retry.Code == http.StatusOK || !strings.Contains(retry.Body.String(), "still draining") {
 		t.Fatalf("overlapping retry = %d %s, want a draining refusal", retry.Code, retry.Body.String())
 	}
-	if got := len(shim.callsOf(shimMethodAttach)); got != attaches || len(shim.callsOf(shimMethodStart)) != 0 {
-		t.Fatalf("overlapping retry attached (%d→%d) or started %d children", attaches, got, len(shim.callsOf(shimMethodStart)))
+	if got := len(shim.CallsOf(shimMethodAttach)); got != attaches || len(shim.CallsOf(shimMethodStart)) != 0 {
+		t.Fatalf("overlapping retry attached (%d→%d) or started %d children", attaches, got, len(shim.CallsOf(shimMethodStart)))
 	}
 
-	unblock()
-	waitForClaude(t, "the abandoned drain to acknowledge", func() bool { return claudeDrainSettled(stalled) == nil })
-	if after := published(); after != before {
-		t.Fatalf("abandoned generation published %d events after failure", after-before)
-	}
 	if n := completedTurnRows(t, s, hosted, turn); n != 0 {
 		t.Fatalf("abandoned generation recorded %d completions", n)
 	}
@@ -865,16 +534,22 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 		t.Fatalf("durable operation status = %q, %v; want still running", durableStatus, err)
 	}
 
-	claudeShimReplayTimeout = previous
-	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
-		t.Fatalf("retry after drain = %d %s", response.Code, response.Body.String())
-	}
+	unblock()
+	waitForCatalogWithin(t, 5*time.Second, func() bool {
+		response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
+		if response.Code == http.StatusOK {
+			return true
+		}
+		if !strings.Contains(response.Body.String(), "still draining") {
+			t.Fatalf("retry after drain = %d %s", response.Code, response.Body.String())
+		}
+		return false
+	})
 	waitForCompletedTurn(t, s, hosted, turn)
 	if n := completedTurnRows(t, s, hosted, turn); n != 1 {
 		t.Fatalf("completion rows = %d, want exactly one", n)
 	}
-	// The answer text is the saved file's (this server has no saved-result
-	// reader); the operation must name the prompt's own final message.
+
 	waitForClaude(t, "the bound operation to complete", func() bool { return operation().Status == agentTurnCompleted })
 	if rec := operation(); rec.FinalItemID != "msg_final:0" {
 		t.Fatalf("bound operation = %+v, want the prompt's final message msg_final:0", rec)

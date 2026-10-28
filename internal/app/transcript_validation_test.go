@@ -22,9 +22,9 @@ func TestTranscriptRepairPriorityUsesFreshVisibleValidation(t *testing.T) {
 	}) {
 		t.Fatal("validation put failed")
 	}
-	server := &server{transcriptValidations: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"attached": {provider: "codex", threadID: "native-attached"},
-	}}}
+	server := testServerWithSessions(&server{transcriptValidations: store, Registry: newSessionRegistry()}, map[string]*session{
+		"attached": newFixtureSession(sessionConfig{ID: "attached", Provider: "codex"}, "native-attached"),
+	})
 	if got := server.transcriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-open"}); got != 0 {
 		t.Fatalf("open priority=%d", got)
 	}

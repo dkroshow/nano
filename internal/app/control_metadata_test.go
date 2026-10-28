@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -477,7 +479,7 @@ func TestHostedMetadataAPIReadsCanonicalCurrentState(t *testing.T) {
 	if _, err := executions.ensureSession("nht_api", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: store}
+	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: store}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata", nil))
 	if rec.Code != http.StatusOK {
@@ -508,7 +510,7 @@ func TestHostedMetadataAPIBaseMissingCanonicalRecordReturnsNotFound(t *testing.T
 	if _, err := executions.ensureSession("nht_missing_metadata", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: metadata}
+	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: metadata}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_missing_metadata/metadata", nil))
 	if rec.Code != http.StatusNotFound {
@@ -541,7 +543,7 @@ func TestHostedMetadataEventsAPIUsesPublicFilteredCursorContract(t *testing.T) {
 	if _, err := executions.ensureSession("nht_event_api", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: store}
+	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: store}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_event_api/metadata/events?after=0&limit=1&field=serviceTier&freshness=live", nil))
 	if rec.Code != http.StatusOK {
@@ -584,7 +586,7 @@ func TestHostedMetadataAPIDegradedModeDoesNotServePartialCurrent(t *testing.T) {
 	if _, err := executions.ensureSession("nht_metadata_degraded", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: store, controlMetadataErr: "legacy import checksum failed"}
+	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: store, controlMetadataErr: "legacy import checksum failed"}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_metadata_degraded/metadata", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "legacy import checksum failed") {
@@ -593,7 +595,7 @@ func TestHostedMetadataAPIDegradedModeDoesNotServePartialCurrent(t *testing.T) {
 }
 
 func TestExecutionControlDegradedModeRejectsHostedMutations(t *testing.T) {
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, executionControlErr: "control.sqlite is corrupt"}
+	server := &server{Registry: newSessionRegistry(), executionControlErr: "control.sqlite is corrupt"}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_unavailable", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "control.sqlite is corrupt") {
@@ -602,7 +604,7 @@ func TestExecutionControlDegradedModeRejectsHostedMutations(t *testing.T) {
 }
 
 func TestSessionsRouteDegradedModeKeepsReadsButRejectsNewHostedSession(t *testing.T) {
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, executionControlErr: "control.sqlite is corrupt"}
+	server := &server{Registry: newSessionRegistry(), executionControlErr: "control.sqlite is corrupt"}
 	get := httptest.NewRecorder()
 	server.handleSessionsList(get, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	if get.Code != http.StatusOK {
@@ -618,20 +620,18 @@ func TestSessionsRouteDegradedModeKeepsReadsButRejectsNewHostedSession(t *testin
 func TestRecordPostureFailureSeparatesDegradedIngestionFromReadAvailability(t *testing.T) {
 	store := newTestControlMetadata(t)
 	notified := 0
-	sess := &session{hostedThreadID: "nht_missing",
-		id:             "nano-1",
-		metadata:       store,
-		state:          map[string]json.RawMessage{},
-		runtimeNotify:  func() { notified++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.recordPosture([]postureEntry{{Field: postureFieldServiceTier, Value: "priority", Source: postureSourceCreation}}, metadataFreshnessLive)
+	sess := newSession(sessionConfig{HostedThreadID: "nht_missing", ID: "nano-1", Metadata: store, RuntimeNotify: func() { notified++ }})
+	if err := sess.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
 	if notified != 1 {
 		t.Fatalf("runtime notifications = %d", notified)
 	}
-	if !sess.summary().MetadataUnavailable {
+	if !sess.Summary().MetadataUnavailable {
 		t.Fatal("missing canonical record was not unavailable in summary")
 	}
-	if !sess.summary().MetadataDegraded {
+	if !sess.Summary().MetadataDegraded {
 		t.Fatal("failed metadata ingestion was not degraded in summary")
 	}
 }
@@ -645,20 +645,17 @@ func TestIngestionFailureKeepsLastCommittedCanonicalStateVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := &session{hostedThreadID: "nht_degraded_readable",
-		provider:             "codex",
-		id:                   "nano-1",
-		metadata:             store,
-		attachmentGeneration: generation,
-		state:                map[string]json.RawMessage{},
-		lifecycleState:       testLifecycleSnapshot("ready", false)}
-	sess.recordPosture([]postureEntry{{Field: postureFieldServiceTier, Value: "priority", Source: postureSourceCreation}}, metadataFreshnessLive)
-	// An unsupported newer observation fails before commit. It must degrade
-	// ingestion without allowing the ephemeral session to veto the healthy
-	// canonical record already in SQLite.
-	sess.recordPosture([]postureEntry{{Field: "unsupported", Value: "bad", Source: postureSourceProvider}}, metadataFreshnessLive)
+	metadata := &failingMetadataAppend{controlMetadataStore: store}
+	sess := newSession(sessionConfig{HostedThreadID: "nht_degraded_readable", Provider: "codex", ID: "nano-1", Metadata: metadata})
+	if err := sess.InitializeBinding(generation); err != nil {
+		t.Fatal(err)
+	}
+	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
+	// A rejected newer append must not hide the healthy committed view.
+	metadata.fail = true
+	sess.RecordCreationPosture(providerRequest{ServiceTier: "bad"})
 
-	summary := sess.summary()
+	summary := sess.Summary()
 	if summary.MetadataUnavailable || !summary.MetadataDegraded || summary.Metadata == nil {
 		t.Fatalf("degraded readable summary = %+v", summary)
 	}
@@ -669,51 +666,64 @@ func TestIngestionFailureKeepsLastCommittedCanonicalStateVisible(t *testing.T) {
 
 func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
 	store := newTestControlMetadata(t)
-	if err := store.ensureHostedThread("nht_runtime_commit", "codex", presentationShared, "", "", ""); err != nil {
+	const hosted = "nht_runtime_commit"
+	if err := store.ensureHostedThread(hosted, "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	generation, err := store.beginTransportBinding("nht_runtime_commit")
-	if err != nil {
+	if _, err := store.beginTransportBinding(hosted); err != nil {
 		t.Fatal(err)
 	}
-	notified := 0
-	sess := &session{hostedThreadID: "nht_runtime_commit",
-		id:                   "nano-1",
-		metadata:             store,
-		attachmentGeneration: generation,
-		state:                map[string]json.RawMessage{},
-		runtimeNotify:        func() { notified++ },
-		lifecycleState:       testLifecycleSnapshot("ready", false)}
-	sess.recordPosture([]postureEntry{{Field: postureFieldServiceTier, Value: "priority", Source: postureSourceOperator}}, metadataFreshnessLive)
-	if notified != 1 {
-		t.Fatalf("runtime notifications = %d, want one committed mutation", notified)
+	metadata := &atomicFailMetadataAppend{sessionMetadata: store}
+	var notified atomic.Int32
+	ready := make(chan struct{})
+	var readyOnce sync.Once
+	var sess *session
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted, Metadata: metadata, RuntimeNotify: func() {
+		notified.Add(1)
+		if sess != nil && sess.Summary().Status == "ready" {
+			readyOnce.Do(func() { close(ready) })
+		}
+	}}, "native-notify", "", func(f *providerRuntimeFixture) { sess = f.session })
+	<-ready
+	before := notified.Load()
+	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
+	if got := notified.Load() - before; got != 1 {
+		t.Fatalf("runtime notifications = %d, want one committed mutation", got)
 	}
-	view, err := store.View("nht_runtime_commit")
+	view, err := store.View(hosted)
 	if err != nil || view.Fields[postureFieldServiceTier].DesiredDisposition != metadataDispositionRequested {
 		t.Fatalf("runtime notification preceded committed current state: view=%+v err=%v", view, err)
 	}
-	snapshot := sess.snapshotProviderCausation(map[string]string{postureFieldServiceTier: "priority"})
-	sess.recordProviderEvidence("test_provider", map[string]string{postureFieldServiceTier: "priority"}, metadataFreshnessLive, snapshot)
-	if notified != 2 {
-		t.Fatalf("provider runtime notifications = %d, want post-commit notification", notified)
+	evidence := []byte(`{"method":"thread/settings/updated","params":{"threadId":"native-notify","threadSettings":{"serviceTier":"priority"}}}`)
+	f.emitAndWait(t, evidence)
+	if got := notified.Load() - before; got != 2 {
+		t.Fatalf("provider runtime notifications = %d, want post-commit notification", got)
 	}
-	view, err = store.View("nht_runtime_commit")
+	view, err = store.View(hosted)
 	if err != nil || view.Fields[postureFieldServiceTier].EffectiveDisposition != metadataDispositionConfirmed {
 		t.Fatalf("provider notification preceded committed effective state: view=%+v err=%v", view, err)
 	}
-	// A retry is a semantic no-op: it must not make every other browser tab
-	// refetch an unchanged hosted revision.
-	sess.recordProviderEvidence("test_provider", map[string]string{postureFieldServiceTier: "priority"}, metadataFreshnessLive, snapshot)
-	if notified != 2 {
-		t.Fatalf("duplicate provider evidence notified %d times, want 2", notified)
+	f.emitAndWait(t, evidence)
+	if got := notified.Load() - before; got != 2 {
+		t.Fatalf("duplicate provider evidence notified %d times, want 2", got)
 	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
+	metadata.fail.Store(true)
+	f.emitAndWait(t, []byte(`{"method":"thread/settings/updated","params":{"threadId":"native-notify","threadSettings":{"serviceTier":"default"}}}`))
+	if got := notified.Load() - before; got != 3 || !sess.Summary().MetadataDegraded {
+		t.Fatalf("failed provider observation did not publish degraded state: notifications=%d degraded=%v", got, sess.Summary().MetadataDegraded)
 	}
-	sess.recordProviderRejection("test_rejection", providerCausationSnapshot{postureFieldServiceTier: snapshot[postureFieldServiceTier]})
-	if notified != 3 || !sess.metadataDegraded {
-		t.Fatalf("failed provider rejection did not publish degraded state: notifications=%d degraded=%v", notified, sess.metadataDegraded)
+}
+
+type atomicFailMetadataAppend struct {
+	sessionMetadata
+	fail atomic.Bool
+}
+
+func (m *atomicFailMetadataAppend) AppendEvent(event metadataEvent) (metadataEvent, error) {
+	if m.fail.Load() {
+		return metadataEvent{}, errors.New("injected metadata append failure")
 	}
+	return m.sessionMetadata.AppendEvent(event)
 }
 
 func TestMetadataChangesAreMonotonicAndRecoverableByCurrentRefetch(t *testing.T) {
@@ -764,7 +774,7 @@ func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
 	if _, err := exec.ensureSession("nht_hint", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: exec, controlMetadata: store}
+	server := &server{Registry: newSessionRegistry(), agentExecutions: exec, controlMetadata: store}
 	good := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(good, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=2", nil))
 	if good.Code != http.StatusOK || !containsAll(good.Body.String(), `"currentRevision":3`, `"refetchRequired":false`) {
@@ -1031,11 +1041,9 @@ func TestSessionListCarriesDisplayedMetadataOnly(t *testing.T) {
 	if err := metadata.ensureHostedThread("nht_listed", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	sess := &session{id: "session-listed", provider: "codex", hostedThreadID: "nht_listed", threadID: "native-listed",
-		createdAt: time.Now(), state: map[string]json.RawMessage{}, metadata: metadata, runtimeNotify: func() {},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.recordPosture([]postureEntry{{Field: postureFieldServiceTier, Value: "priority", Source: postureSourceCreation}}, metadataFreshnessLive)
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, controlMetadata: metadata}
+	sess := configuredFixtureSession(t, sessionConfig{ID: "session-listed", Provider: "codex", HostedThreadID: "nht_listed", CreatedAt: time.Now(), Metadata: metadata, RuntimeNotify: func() {}}, "native-listed", "ready", "")
+	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
+	server := testServerWithSessions(&server{Registry: newSessionRegistry(), controlMetadata: metadata}, map[string]*session{sess.ID(): sess})
 	rec := httptest.NewRecorder()
 	server.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {
@@ -1258,30 +1266,36 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 	if err := exec.UpdateSession("nht_attachment_api", "", "", agentSessionDetached, ""); err != nil {
 		t.Fatal(err)
 	}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: exec, controlMetadata: store}
+	s := &server{Registry: newSessionRegistry(), agentExecutions: exec, controlMetadata: store}
 	before, _ := store.View("nht_attachment_api")
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_attachment_api/metadata", nil))
 	if rec.Code != http.StatusOK || !containsAll(rec.Body.String(), `"attachment":{"state":"detached","provenance":"execution_record"`) {
 		t.Fatalf("detached metadata = %d %s", rec.Code, rec.Body.String())
 	}
-	live := &session{id: "live",
-		hostedThreadID:  "nht_attachment_api",
-		state:           map[string]json.RawMessage{},
-		agentExecutions: exec,
-		metadata:        store,
-		lifecycleState:  testLifecycleSnapshot("starting", false)}
-	s.sessions[live.id] = live
+	live := newSession(runtimeFixtureConfig(t, sessionConfig{ID: "live", Provider: "codex", HostedThreadID: "nht_attachment_api", Projection: newLiveProjection("codex")}))
+	if err := live.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	live.ReserveNativeID("native-attachment-view")
+	t.Cleanup(live.Close)
+
+	s.RegisterSession(live)
 	rec = httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_attachment_api/metadata", nil))
 	if rec.Code != http.StatusOK || !containsAll(rec.Body.String(), `"state":"starting"`, `"provenance":"live_session"`) {
 		t.Fatalf("starting metadata = %d %s", rec.Code, rec.Body.String())
 	}
-	live.lifecycleState = testLifecycleSnapshot("ready", live.workActiveLocked())
+	fake := newFakeAppServer(t)
+	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": live.ThreadID()}})
+	if err := live.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: live.ThreadID()}, fake.daemon(), func() {}); err != nil {
+		t.Fatal(err)
+	}
+	waitForClaudeStatus(t, live, "ready")
 	if got := s.hostedAttachmentState("nht_attachment_api"); got.State != "ready" || got.Provenance != "live_session" {
 		t.Fatalf("ready attachment = %+v", got)
 	}
-	delete(s.sessions, live.id)
+	s.RemoveSession(live.ID())
 	if err := exec.UpdateSession("nht_attachment_api", "", "", sessionStatusExited, "provider failed"); err != nil {
 		t.Fatal(err)
 	}
@@ -1441,4 +1455,17 @@ func TestMetadataReobservationAtNewGenerationAddsNoEvent(t *testing.T) {
 	if field.DesiredDisposition != metadataDispositionConfirmed || field.DesiredSettlementEventID == nil || *field.DesiredSettlementEventID != settled.ID {
 		t.Fatalf("request not settled by the causal confirmation: %+v", field)
 	}
+}
+
+// failingMetadataAppend injects a write failure without changing canonical reads.
+type failingMetadataAppend struct {
+	*controlMetadataStore
+	fail bool
+}
+
+func (m *failingMetadataAppend) AppendEvent(event metadataEvent) (metadataEvent, error) {
+	if m.fail {
+		return metadataEvent{}, errors.New("injected append failure")
+	}
+	return m.controlMetadataStore.AppendEvent(event)
 }

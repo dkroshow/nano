@@ -121,7 +121,7 @@ func TestHeartbeatScriptAPIIsReadOnly(t *testing.T) {
 }
 
 func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
-	s, _, _, _, target, _ := stage0Server(t)
+	s, _, _, _, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
 	s.heartbeat = newHeartbeatService(s, store, true, nil)
 	body, _ := json.Marshal(map[string]any{

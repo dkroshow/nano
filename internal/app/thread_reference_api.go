@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 var nativeThreadReferencePattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -203,15 +204,11 @@ func historicalReferenceTarget(row catalogThread, hostedID string) threadReferen
 	}
 }
 
-func (s *server) liveHostedSession(hostedID string) (sessionSummary, bool) {
-	oldest := liveHostedThreadSession(s.hostedThreadSessions(hostedID))
-	if oldest == nil {
-		return sessionSummary{}, false
-	}
-	return oldest.volatileSummary(s.agentExecutions.SessionNeedsAttention(hostedID))
+func (s *server) liveHostedSession(hostedID string) (sessionruntime.Summary, bool) {
+	return s.LiveHostedSummary(hostedID, s.agentExecutions.SessionNeedsAttention)
 }
 
-func (s *server) liveNativeSession(nativeID string) *sessionSummary {
+func (s *server) liveNativeSession(nativeID string) *sessionruntime.Summary {
 	for _, summary := range s.volatileSessionSummaries() {
 		if summary.ThreadID == nativeID {
 			return &summary

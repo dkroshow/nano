@@ -194,13 +194,11 @@ func TestCompletionSubscriptionReactsToFinishedTurnsWithoutPolling(t *testing.T)
 	dispatcher.Start()
 	s.reattachWaitingHosted(rec.HostedThreadID)
 	waitForClaude(t, "the live turn", func() bool {
-		sess := s.sessionForHostedThread(rec.HostedThreadID)
+		sess := s.SessionForHostedThread(rec.HostedThreadID)
 		if sess == nil {
 			return false
 		}
-		sess.stateMu.Lock()
-		defer sess.stateMu.Unlock()
-		return sess.workActiveLocked()
+		return sess.Summary().TurnActive
 	})
 
 	settled, _ := client.counts()
@@ -209,7 +207,7 @@ func TestCompletionSubscriptionReactsToFinishedTurnsWithoutPolling(t *testing.T)
 		t.Fatalf("completed-turn feed read %d times while no turn finished", reads-settled)
 	}
 
-	daemon.emitThreadNotification(rec.NativeThreadID, map[string]any{"method": "turn/completed", "params": map[string]any{
+	daemon.EmitThreadNotification(rec.NativeThreadID, map[string]any{"method": "turn/completed", "params": map[string]any{
 		"threadId": rec.NativeThreadID, "turn": map[string]any{"id": "turn-live", "status": "completed", "completedAt": 1787600100},
 	}})
 	waitForClaude(t, "the parent's inbox notice", func() bool {
@@ -236,9 +234,9 @@ func (c *preparingSubscriptionClient) SubmitPrompt(ctx context.Context, request 
 // dispatcher, so delivery and registration waited on each other forever.
 func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing.T) {
 	daemon := newFakeAppServer(t)
-	daemon.setResumeTurns(json.RawMessage(`[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`))
-	s, store := bootReattachServer(t, "", daemon.wsURL())
-	s.completedTurns = newCompletedTurnSource(&completedTurnStore{db: s.queuedTurns.db})
+	daemon.SetResumeTurns(json.RawMessage(`[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`))
+	s, store := bootReattachServer(t, "", daemon.WSURL())
+	s.completedTurns = newCompletedTurnSource(&completedTurnStore{db: s.queuedTurns.Database()})
 	parent, _, err := s.agentExecutions.beginSession("parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
@@ -261,22 +259,20 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 
 	s.reattachWaitingHosted(child.ID)
 	waitForClaude(t, "the child's live turn", func() bool {
-		sess := s.sessionForHostedThread(child.ID)
+		sess := s.SessionForHostedThread(child.ID)
 		if sess == nil {
 			return false
 		}
-		sess.stateMu.Lock()
-		defer sess.stateMu.Unlock()
-		return sess.workActiveLocked()
+		return sess.Summary().TurnActive
 	})
-	daemon.emitThreadNotification(childRec.NativeThreadID, map[string]any{"method": "turn/completed", "params": map[string]any{
+	daemon.EmitThreadNotification(childRec.NativeThreadID, map[string]any{"method": "turn/completed", "params": map[string]any{
 		"threadId": childRec.NativeThreadID, "turn": map[string]any{"id": "turn-live", "status": "completed", "completedAt": 1787600100},
 	}})
 	waitForClaude(t, "the notice to the prepared parent", func() bool {
 		client.mu.Lock()
 		delivered := len(client.prompts) == 1
 		client.mu.Unlock()
-		return delivered && s.sessionForHostedThread(parent.ID) != nil
+		return delivered && s.SessionForHostedThread(parent.ID) != nil
 	})
 }
 

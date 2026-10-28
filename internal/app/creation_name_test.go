@@ -82,23 +82,17 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 
 	catalog := &fakeThreadCatalog{names: map[string]string{}}
 	server := &server{catalog: catalog}
-	sess := &session{
-		provider:       "claude",
-		hostedThreadID: hosted.ID,
-		creationName: func() string {
-			name, _ := control.creationName(hosted.ID)
-			return name
-		},
-		nameThread: server.assignSpawnName,
-		publishCreationName: func(provider, nativeID, name string) {
-			if err := catalog.PublishCreationNames(context.Background(), []creationNameProjectionRecord{{
-				Provider: provider, NativeThreadID: nativeID, Name: name,
-			}}); err != nil {
-				t.Fatal(err)
-			}
-		},
-	}
-	sess.applyPendingName("native-after-restart")
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "creation-name", Provider: "claude", HostedThreadID: hosted.ID, CreationName: func() string {
+		name, _ := control.creationName(hosted.ID)
+		return name
+	}, NameThread: server.assignSpawnName, PublishCreationName: func(provider, nativeID, name string) {
+		if err := catalog.PublishCreationNames(context.Background(), []creationNameProjectionRecord{{
+			Provider: provider, NativeThreadID: nativeID, Name: name,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}}, "native-after-restart", "")
+	sess := fixture.session
 	key := "claude\x00native-after-restart"
 	if got := catalog.names[key]; got != "creation name" {
 		t.Fatalf("bind name = %q, want creation name", got)
@@ -110,7 +104,7 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 	if err := catalog.AssignThreadName("claude", "native-after-restart", "operator rename"); err != nil {
 		t.Fatal(err)
 	}
-	sess.applyPendingName("native-after-restart")
+	emitClaudeInit(t, sess, fixture.claude, fixture.seq+1, "native-after-restart", "")
 	if got := catalog.names[key]; got != "operator rename" {
 		t.Fatalf("later bind restored %q over operator rename", got)
 	}

@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
-	"github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/testsupport"
 )
 
 func TestBootFailsClosedWhenTransactionalTurnStoreOpenFails(t *testing.T) {
@@ -102,95 +101,6 @@ func isRequiredSchemaFatal(expression ast.Expr) bool {
 	message, messageOK := call.Args[0].(*ast.BasicLit)
 	return packageOK && packageName.Name == "log" && (selector.Sel.Name == "Fatal" || selector.Sel.Name == "Fatalf") &&
 		messageOK && strings.Contains(message.Value, "required schema %d turns store unavailable")
-}
-
-// Existing delivery fixtures name a queue/journal path. Both now resolve to
-// one disposable SQLite file in that fixture directory, just as startup does.
-var (
-	transactionalTurnFixtureOnce sync.Once
-	transactionalTurnFixtureData []byte
-	transactionalTurnFixtureErr  error
-)
-
-func testTurnDatabase(t *testing.T, legacyPath string) (*sql.DB, string, error) {
-	t.Helper()
-	path := filepath.Join(filepath.Dir(legacyPath), "nano_threads.sqlite")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		data, err := transactionalTurnFixture()
-		if err != nil {
-			return nil, path, err
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			return nil, path, err
-		}
-		if err := os.WriteFile(path, data, 0600); err != nil {
-			return nil, path, err
-		}
-	} else if err != nil {
-		return nil, path, err
-	}
-	db, err := statedb.Open(context.Background(), path)
-	if err != nil {
-		return nil, path, err
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	var version int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		return nil, path, err
-	}
-	if version != turns.TurnSchemaVersion {
-		return nil, path, fmt.Errorf("schema %d is not current schema %d", version, turns.TurnSchemaVersion)
-	}
-	return db, path, nil
-}
-
-func transactionalTurnFixture() ([]byte, error) {
-	transactionalTurnFixtureOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "nano-schema21-")
-		if err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		defer os.RemoveAll(dir)
-		path := filepath.Join(dir, "source.sqlite")
-		db, err := statedb.Open(context.Background(), path)
-		if err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		defer db.Close()
-		if err := state.MigrateLegacySchema(db, statewiring.Migrations()); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateTurnRecords(context.Background(), db, turns.LegacyTurnPaths{}, filepath.Join(dir, "v19-backup")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateTurnTransactions(context.Background(), db, filepath.Join(dir, "v20.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := coreturns.MigrateCompletedTurnUsage(context.Background(), db, filepath.Join(dir, "v21.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateMemberRecovery(context.Background(), db, filepath.Join(dir, "v22.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateParkedDiscard(context.Background(), db, filepath.Join(dir, "v23.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		backup := filepath.Join(dir, "schema24.sqlite")
-		if err := threads.Backup(context.Background(), db, backup); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		transactionalTurnFixtureData, transactionalTurnFixtureErr = os.ReadFile(backup)
-	})
-	return transactionalTurnFixtureData, transactionalTurnFixtureErr
 }
 
 func TestTurnDatabaseFixtureRefusesExistingLegacySchema(t *testing.T) {
@@ -285,7 +195,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 					t.Fatalf("later schema reimported changed control facts: %v", err)
 				}
 			case "queued-turns.json":
-				if rows := resumed.queue.snapshot(); len(rows) != 0 {
+				if rows := QueueSnapshot(resumed.queue); len(rows) != 0 {
 					t.Fatalf("later schema reimported changed queue: %+v", rows)
 				}
 			case "send-attempts.json":
@@ -299,22 +209,6 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 			}
 		})
 	}
-}
-func newTestQueuedTurnStore(t *testing.T, path string) (*queuedTurnStore, error) {
-	t.Helper()
-	db, path, err := testTurnDatabase(t, path)
-	if err != nil {
-		return nil, err
-	}
-	return newQueuedTurnStore(db, path, testPromptStore(t, db))
-}
-func newTestSendAttemptStore(t *testing.T, path, runID string) (*sendAttemptStore, error) {
-	t.Helper()
-	db, path, err := testTurnDatabase(t, path)
-	if err != nil {
-		return nil, err
-	}
-	return newSendAttemptStore(db, path, runID, testPromptStore(t, db))
 }
 
 func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
@@ -359,10 +253,10 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stores.control.Close()
-	if stores.queue.db != stores.control.db || stores.attempts.db != stores.control.db || stores.completed.db != stores.control.db {
+	if stores.queue.Database() != stores.control.db || stores.attempts.Database() != stores.control.db || stores.completed.db != stores.control.db {
 		t.Fatal("hosted writers use separate databases")
 	}
-	if got := stores.queue.snapshot(); len(got) != 1 || got[0] != queued {
+	if got := QueueSnapshot(stores.queue); len(got) != 1 || got[0] != queued {
 		t.Fatalf("runtime queue changed imported evidence: %+v", got)
 	}
 	if got, ok := stores.attempts.Get("action"); !ok || got != attempt {
@@ -416,7 +310,7 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 		t.Fatal(err)
 	}
 	var queueRows []queuedTurnRecord
-	for i := 0; i < maxQueuedTurns; i++ {
+	for i := 0; i < testsupport.MaxQueuedTurns; i++ {
 		queueRows = append(queueRows, queuedTurnRecord{ClientActionID: fmt.Sprint(i), Provider: "codex", NativeThreadID: "native", Text: "retained text", State: submissionAccepted})
 	}
 	if err := turns.SaveQueuedTurns(context.Background(), db, queueRows); err != nil {
@@ -426,12 +320,12 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := queue.enqueue(queuedTurnRecord{ClientActionID: "overflow", Provider: "codex", NativeThreadID: "native", Text: "new text"}); err == nil {
+	if _, _, err := QueueEnqueue(queue, queuedTurnRecord{ClientActionID: "overflow", Provider: "codex", NativeThreadID: "native", Text: "new text"}); err == nil {
 		t.Fatal("queue capacity silently expired retained prompts")
 	}
 	var attempts []sendAttemptRecord
 	for _, native := range []string{"native", "other"} {
-		for i := 0; i < maxSendAttempts+5; i++ {
+		for i := 0; i < testsupport.MaxLegacySendAttempts+5; i++ {
 			attempts = append(attempts, sendAttemptRecord{ClientActionID: fmt.Sprintf("%s-%03d", native, i), Provider: "codex", NativeThreadID: native, Status: sendAttemptFailed, UpdatedAt: time.Unix(int64(i), 0).UTC().Format(time.RFC3339Nano)})
 		}
 	}
@@ -445,17 +339,17 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(journal.snapshot()) != len(attempts) {
+	if len(JournalSnapshot(journal)) != len(attempts) {
 		t.Fatal("opening journal silently pruned imported records")
 	}
-	if err := journal.put(sendAttemptRecord{ClientActionID: "new-queued", Provider: "codex", NativeThreadID: "native", Status: sendAttemptQueued}); err != nil {
+	if err := JournalPut(journal, sendAttemptRecord{ClientActionID: "new-queued", Provider: "codex", NativeThreadID: "native", Status: sendAttemptQueued}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := turns.LoadSendAttempts(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2*maxSendAttempts+6 {
+	if len(rows) != 2*testsupport.MaxLegacySendAttempts+6 {
 		t.Fatalf("retention count = %d", len(rows))
 	}
 	for _, id := range []string{sendAttemptQueued, sendAttemptSending, sendAttemptTimeout, "unknown", "parked", "native-104", "other-104"} {
@@ -467,7 +361,7 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 		t.Fatal("old terminal history was not bounded")
 	}
 	retained, err := turns.LoadQueuedTurns(context.Background(), db)
-	if err != nil || len(retained) != maxQueuedTurns {
+	if err != nil || len(retained) != testsupport.MaxQueuedTurns {
 		t.Fatal("journal retention changed queued text")
 	}
 }

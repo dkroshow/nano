@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -81,8 +82,8 @@ type runtimeSource interface {
 // thread reads detached — exactly the post-crash reality the sidebar must
 // show, with re-attach as the offered action.
 func (s *server) RuntimeFor(provider, nativeThreadID string) (runtimeInfo, bool) {
-	if sess := s.sessionForThread(provider, nativeThreadID); sess != nil {
-		return sessionRuntimeInfo(sess.summary()), true
+	if sess := s.SessionForThread(provider, nativeThreadID); sess != nil {
+		return sessionRuntimeInfo(sess.Summary()), true
 	}
 	if rec, remembered := s.attachmentFor(provider, nativeThreadID); remembered {
 		return s.detachedRuntimeInfos([]attachmentRecord{rec})[rec.Key()], true
@@ -120,7 +121,7 @@ func (s *server) detachedRuntimeInfos(records []attachmentRecord) map[attachment
 // overlay shape. Shared by RuntimeFor and the catalog's synthetic memory rows
 // so the two paths cannot drift about what "attached" carries — the memory-row
 // bug class the unified catalog already learned once.
-func sessionRuntimeInfo(sum sessionSummary) runtimeInfo {
+func sessionRuntimeInfo(sum sessionruntime.Summary) runtimeInfo {
 	return runtimeInfo{
 		Attached:          true,
 		SessionID:         sum.ID,
@@ -184,7 +185,7 @@ type runtimeDelta struct {
 // detached attachments. The runtime delta and the materialized sidebar both
 // read it, so a sidebar rebuild agrees with the last delta about every row.
 // When they disagreed on one field, each rebuild republished every row.
-func (s *server) runtimeOverlays(summaries []sessionSummary) map[attachmentKey]runtimeInfo {
+func (s *server) runtimeOverlays(summaries []sessionruntime.Summary) map[attachmentKey]runtimeInfo {
 	overlays := make(map[attachmentKey]runtimeInfo)
 	live := make(map[attachmentKey]bool)
 	for _, sum := range summaries {
@@ -222,9 +223,9 @@ func (s *server) runtimeDeltaSnapshot() runtimeDelta {
 		}
 		sessions[sum.ID] = ""
 	}
-	for _, sess := range s.snapshotSessions() {
+	for _, sess := range s.SnapshotSessions() {
 		if _, live := sessions[sess.ID()]; !live {
-			sessions[sess.ID()] = sessionStatusExited
+			sessions[sess.ID()] = sessionruntime.StatusExited
 		}
 	}
 
@@ -303,9 +304,9 @@ func (d runtimeDelta) bounded() runtimeDelta {
 // attachSessionChanges fills a delta's session fields from the change between
 // two snapshots of the live session set and
 // the detached set since the last change.
-func (s *server) attachSessionChanges(delta *runtimeDelta, before, after map[string]string, summaries []sessionSummary) {
-	var changed []*session
-	for _, sess := range s.snapshotSessions() {
+func (s *server) attachSessionChanges(delta *runtimeDelta, before, after map[string]string, summaries []sessionruntime.Summary) {
+	var changed []*sessionruntime.Session
+	for _, sess := range s.SnapshotSessions() {
 		if state, ok := after[sess.ID()]; ok {
 			if previous, ok := before[sess.ID()]; !ok || previous != state {
 				changed = append(changed, sess)
@@ -335,10 +336,10 @@ func (s *server) attachSessionChanges(delta *runtimeDelta, before, after map[str
 }
 
 // liveKeys names the threads of live sessions, which no detached row repeats.
-func liveKeys(summaries []sessionSummary) map[attachmentKey]bool {
+func liveKeys(summaries []sessionruntime.Summary) map[attachmentKey]bool {
 	live := make(map[attachmentKey]bool, len(summaries))
 	for _, sum := range summaries {
-		if sum.ThreadID != "" && sum.Status != sessionStatusExited {
+		if sum.ThreadID != "" && sum.Status != sessionruntime.StatusExited {
 			live[attachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}] = true
 		}
 	}

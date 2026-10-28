@@ -91,11 +91,7 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 
 	projection := newLiveProjection(queued.Provider, queued.HostedThreadID, "nano-fixture")
 	projection.SetNativeThreadID(queued.NativeThreadID)
-	sess := &session{
-		provider: queued.Provider, hostedThreadID: queued.HostedThreadID,
-		threadID: queued.NativeThreadID, projection: projection, queuedTurns: stores.queue,
-	}
-	sess.restoreQueuedTurnBootDiagnostics()
+	newProviderRuntimeFixture(t, sessionConfig{ID: "nano-fixture", Provider: queued.Provider, HostedThreadID: queued.HostedThreadID, Projection: projection, QueuedTurns: stores.queue, SendAttempts: stores.attempts, Turns: stores.turns}, queued.NativeThreadID, "")
 	diagnostics := projection.ThreadDiagnosticsSnapshot()
 	if len(diagnostics) != 1 || diagnostics[0].Code != "boot_incomplete_outbox" ||
 		diagnostics[0].Source != "turn-store-boot" || diagnostics[0].ActionID != stage5BadQueuedAction ||

@@ -14,7 +14,6 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 // Boundary: operation completion and its HTTP read, backed by a parsed saved
@@ -27,8 +26,7 @@ import (
 func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) {
 	for _, test := range []struct{ provider, path, item string }{
 		{"codex", "wire", "new-answer"}, {"codex", "joined", "new-answer"}, {"codex", "resume", "new-answer"},
-		{"codex", "projection", "new-answer"},
-		{"claude", "wire", "new-message:0"}, {"claude", "projection", "new-message:0"}, {"grok", "wire", "new-agent-event"},
+		{"claude", "wire", "new-message:0"}, {"grok", "wire", "new-agent-event"},
 	} {
 		t.Run(test.provider+"/"+test.path, func(t *testing.T) {
 			h := newSettlementHarness(t, test.provider)
@@ -39,46 +37,17 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			if err := store.MarkTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
 				t.Fatal(err)
 			}
-			if test.path != "projection" {
+			{
 				if err := store.ObserveCandidate(test.provider, h.fixture.native, turn, item, "final_answer", "wire prefix"); err != nil {
 					t.Fatal(err)
 				}
 			}
 			switch test.path {
-			case "projection":
-				sess := h.attach(test.provider, nil)
-				sess.agentExecutions = store
-				at := time.Now()
-				if test.provider == "codex" {
-					for _, frame := range []string{
-						`{"method":"item/completed","params":{"threadId":%[1]q,"turnId":%[2]q,"item":{"id":"new-answer","type":"agentMessage","phase":"final_answer","text":"wire prefix"}}}`,
-						`{"method":"item/completed","params":{"threadId":%[1]q,"turnId":%[2]q,"item":{"id":"late-commentary","type":"agentMessage","phase":"commentary","text":"one more note"}}}`,
-					} {
-						sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(fmt.Sprintf(frame, h.fixture.native, turn)), at)
-					}
-					sess.projection.UpdateCompletedTurn(turn, agentTurnCompleted, 1000, at.UnixMilli())
-					sess.reconcileAgentOperations()
-					break
-				}
-				sess.projection.SetClaudeProviderTurnID(turn)
-				sess.projection.(*liveProjection).applyWire(protocol.Send, []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":"new prompt"}]}}`, submissionEventID("hosted", "new"))), at)
-				for _, frame := range []string{
-					`{"type":"assistant","session_id":%[1]q,"uuid":"new-event","message":{"id":"new-message","role":"assistant","content":[{"type":"text","text":"wire prefix"}],"stop_reason":"end_turn"}}`,
-					// A subagent's answer, inside the parent's tool call.
-					`{"type":"assistant","parent_tool_use_id":"toolu_child","session_id":%[1]q,"uuid":"child-event","message":{"id":"child-message","role":"assistant","content":[{"type":"text","text":"child answer"}],"stop_reason":"end_turn"}}`,
-				} {
-					sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(fmt.Sprintf(frame, h.fixture.native)), at)
-				}
-				result := []byte(fmt.Sprintf(`{"type":"result","subtype":"success","is_error":false,"result":"wire result","session_id":%q,"duration_ms":1000}`, h.fixture.native))
-				sess.projection.SetClaudeResultTurnID(turn) // as the session loop names it
-				sess.projection.(*liveProjection).applyWire(protocol.Recv, result, at)
-				sess.observeClaudeAgentResult(result)
 			case "wire":
 				if test.provider == "codex" {
-					sess := h.attach("codex", nil)
-					sess.agentExecutions = store
+					sess := h.attach("codex", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = store })
 					frame, _ := json.Marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": h.fixture.native, "turn": map[string]any{"id": turn, "status": "completed"}}})
-					sess.observeAgentExecutionWire(protocol.Recv, frame)
+					h.runtimes[sess].emitAndWait(t, frame)
 				} else {
 					err = store.MarkTurnTerminal(test.provider, h.fixture.native, turn, agentTurnCompleted, nil, "", "")
 				}

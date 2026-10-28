@@ -24,14 +24,7 @@ func TestNativeRecoveryRetiredAliasKeepsHistoricalRouteWhileReplacementLive(t *t
 	if _, err := store.control.db.Exec(`INSERT INTO hosted_native_recoveries(hosted_thread_id,old_native_id,new_native_id,state,record_json,client_recovery_id) VALUES(?,?,?,'activated','{}','reader-test')`, record.ID, threadReferenceUUID, replacement); err != nil {
 		t.Fatal(err)
 	}
-	s.sessions[sessionID] = &session{id: sessionID,
-		hostedThreadID:  record.ID,
-		provider:        "codex",
-		threadID:        replacement,
-		agentExecutions: store,
-		metadata:        store.control,
-		createdAt:       time.Now(),
-		lifecycleState:  testLifecycleSnapshot("ready", false)}
+	s.RegisterSession(configuredFixtureSession(t, sessionConfig{ID: sessionID, HostedThreadID: record.ID, Provider: "codex", AgentExecutions: store, Metadata: store.control, CreatedAt: time.Now()}, replacement, "ready", ""))
 	status, body := resolveReference(t, s, threadReferenceUUID)
 	if status != http.StatusOK || body.State != "resolved" || body.Target == nil || body.Target.Route != "historical" || body.Target.NativeThreadID != threadReferenceUUID || body.Target.HostedThreadID != record.ID {
 		t.Fatalf("retired native must retain historical route while replacement is live: HTTP=%d response=%+v target=%+v", status, body, body.Target)
@@ -52,7 +45,7 @@ func newThreadReferenceServer(t *testing.T, rows []catalogThread) (*server, *age
 	return &server{
 		catalog:         &fakeThreadCatalog{page: catalogPage{Items: rows}},
 		agentExecutions: store,
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
+		Registry:        newSessionRegistry(),
 	}, store
 }
 
@@ -136,12 +129,7 @@ func TestThreadReferenceResultsAreNotStored(t *testing.T) {
 func TestThreadReferenceNativeLiveHostedContinuation(t *testing.T) {
 	s, store := newThreadReferenceServer(t, nil)
 	record := createReferenceHostedRecord(t, store, threadReferenceUUID)
-	s.sessions["live-session"] = &session{id: "live-session",
-		provider:       "codex",
-		threadID:       threadReferenceUUID,
-		hostedThreadID: record.ID,
-		createdAt:      time.Now(),
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	s.RegisterSession(configuredFixtureSession(t, sessionConfig{ID: "live-session", Provider: "codex", HostedThreadID: record.ID, CreatedAt: time.Now()}, threadReferenceUUID, "ready", ""))
 	store.mu.Lock()
 	store.sessions = map[string]agentSessionRecord{}
 	store.mu.Unlock()

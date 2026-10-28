@@ -87,7 +87,7 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	if err := turns.SaveSendAttempts(ctx, control.db, []sendAttemptRecord{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
 		t.Fatal(err)
 	}
-	return retirementServerFixture{server: &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}, old: old, owner: owner, child: child, oldTurn: oldTurn, childTurn: childTurn}
+	return retirementServerFixture{server: &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, Registry: newSessionRegistry()}, old: old, owner: owner, child: child, oldTurn: oldTurn, childTurn: childTurn}
 }
 func retirementHTTP(t *testing.T, s *server, body string) (retiredHostedReceipt, int) {
 	t.Helper()
@@ -146,7 +146,7 @@ func TestRetiredHostedHTTPKeepsCachesAndResolverConsistent(t *testing.T) {
 			}
 			// Exercise later ordinary writes: stale maps must not restore deleted facts
 			// or undo either owner-column update.
-			if _, _, err := s.queuedTurns.enqueue(queuedTurnRecord{ClientActionID: "later", Provider: "codex", HostedThreadID: f.child.ID, Text: "later evidence"}); err != nil {
+			if _, _, err := QueueEnqueue(s.queuedTurns, queuedTurnRecord{ClientActionID: "later", Provider: "codex", HostedThreadID: f.child.ID, Text: "later evidence"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.agentExecutions.UpdateSession(f.child.ID, "", "", "detached", ""); err != nil {
@@ -217,9 +217,9 @@ func TestRetiredHostedRefusesRuntimeAndAttachmentReferences(t *testing.T) {
 			s := f.server
 			switch kind {
 			case "runtime-owner":
-				s.sessions["live"] = &session{hostedThreadID: f.old.ID}
+				s.RegisterSession(newFixtureSession(sessionConfig{HostedThreadID: f.old.ID}, ""))
 			case "runtime-invoker":
-				s.sessions["live"] = &session{hostedThreadID: f.child.ID, invokerHostedThreadID: f.old.ID}
+				s.RegisterSession(newFixtureSession(sessionConfig{HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}, ""))
 			case "attachment-owner":
 				s.attachments = &attachmentStore{byKey: map[attachmentKey]attachmentRecord{{}: {HostedThreadID: f.old.ID}}}
 			case "attachment-invoker":

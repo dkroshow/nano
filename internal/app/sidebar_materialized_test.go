@@ -171,8 +171,8 @@ func TestSidebarRuntimeRefreshMarkerKeepsOtherRuntime(t *testing.T) {
 // not wait for a paced rebuild beside a stale memory row.
 func TestSidebarNativeBindShowsAtOnce(t *testing.T) {
 	s, _ := sidebarActiveFixture(t, time.Now())
-	sess := memorySession("pending-bind", "codex", "", "starting", "/fixture", "gpt-test", time.Now())
-	s.sessions[sess.id] = sess
+	sess := memorySession(t, "pending-bind", "codex", "", "starting", "/fixture", "gpt-test", time.Now())
+	s.RegisterSession(sess)
 	s.catalog.(*threadCatalogService).hub = newCatalogHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -183,9 +183,7 @@ func TestSidebarNativeBindShowsAtOnce(t *testing.T) {
 	events := s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
 
-	sess.stateMu.Lock()
-	sess.threadID = "native-bound"
-	sess.stateMu.Unlock()
+	sess.ReserveNativeID("native-bound")
 	s.notifyRuntime()
 	select {
 	case <-events:

@@ -21,13 +21,18 @@ func stoppingServer(t *testing.T) (*server, *session, *turns.Store, chan struct{
 	t.Helper()
 	release := make(chan struct{})
 	var sends atomic.Int32
-	sess, store := readyTransactionalSendTestSession(t, func(context.Context, string) (json.RawMessage, error) {
-		sends.Add(1)
-		<-release
-		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
+	s := &server{}
+	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "nano-session", Provider: "codex", HostedThreadID: "hosted-thread", NanoStopping: &s.stopping})
+	s.turns, s.queuedTurns, s.sendAttempts = cfg.Turns, cfg.QueuedTurns.(*queuedTurnStore), cfg.SendAttempts.(*sendAttemptStore)
+	fixture := newProviderRuntimeFixture(t, cfg, "native-thread", "", func(f *providerRuntimeFixture) {
+		f.send = func(context.Context, string) (json.RawMessage, error) {
+			sends.Add(1)
+			<-release
+			return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
+		}
 	})
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
-	sess.nanoStopping = &s.stopping
+	sess, store := fixture.session, cfg.Turns
+	seedTestSessionRegistry(&s.Registry, map[string]*session{sess.ID(): sess})
 	return s, sess, store, release, &sends
 }
 
@@ -85,8 +90,10 @@ func TestStopWaitsBoundedlyForInFlightDeliveries(t *testing.T) {
 // with the session's send lock held by another caller.
 func TestStopEndsByItsDeadlineWhenAStepBlocks(t *testing.T) {
 	s, sess, _, _, _ := stoppingServer(t)
-	sess.sendMu.Lock()
-	t.Cleanup(sess.sendMu.Unlock)
+	entered, release := make(chan struct{}), make(chan struct{})
+	go func() { sess.WithIdleDelivery(false, func() error { close(entered); <-release; return nil }) }()
+	<-entered
+	t.Cleanup(func() { close(release) })
 	started := time.Now()
 	report := s.stop(time.Second, 200*time.Millisecond)
 	if !report.deadlineReached || time.Since(started) > 500*time.Millisecond {
@@ -105,7 +112,7 @@ func TestStoppingNanoQueuesInternalSendsForTheNextProcess(t *testing.T) {
 	s, sess, store, release, sends := stoppingServer(t)
 	close(release)
 	s.stopping.Store(true)
-	op, status, reason, err := sess.queueOrStartTurnSendPrepared("during-stop", "sent while stopping", "", turnOriginAgent)
+	op, status, reason, err := sess.QueueOrStartTurnSendPreparedPresentation("during-stop", "sent while stopping", "sent while stopping", "", turnOriginAgent, false)
 	if err != nil || op != nil || status != http.StatusAccepted || reason != "queued_for_next_turn" {
 		t.Fatalf("send during stop = %v, %d, %q, %v; want queued", op, status, reason, err)
 	}
@@ -114,15 +121,13 @@ func TestStoppingNanoQueuesInternalSendsForTheNextProcess(t *testing.T) {
 		t.Fatalf("stored %+v (%v), provider calls %d; want queued and undelivered", record.Outbox, err, sends.Load())
 	}
 
-	projection := newLiveProjection("codex", "hosted-thread")
-	projection.SetNativeThreadID("native-thread")
-	next := &session{
-		id: "next-process", provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
-		projection: projection, turns: sess.turns, sendAttempts: sess.sendAttempts, queuedTurns: sess.queuedTurns,
-		sendOps: map[string]*turnSendOperation{}, turnSender: sess.turnSender,
-		lifecycleState: testLifecycleSnapshot("ready", false),
-	}
-	next.drainQueuedTurn()
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "next-process", Provider: "codex", HostedThreadID: "hosted-thread", Turns: store, SendAttempts: s.sendAttempts, QueuedTurns: s.queuedTurns}, "native-thread", "", func(f *providerRuntimeFixture) {
+		f.send = func(context.Context, string) (json.RawMessage, error) {
+			sends.Add(1)
+			return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
+		}
+	})
+	next := fixture.session
 	waitTurnSendDone(t, next, "during-stop")
 	if sends.Load() != 1 {
 		t.Fatalf("the next process delivered the queued prompt %d times, want once", sends.Load())
@@ -141,7 +146,7 @@ func TestStoppingNanoRefusesWritesInsideTheSecurityGuards(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = authStore.Close() })
 	const remoteHost = "nano.example.ts.net:7690"
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{Registry: newSessionRegistry()}
 	app := &application{server: s, remoteAuth: remoteauth.New(authStore, remoteHost)}
 	local, remote := app.mount()
 	s.stopping.Store(true)
@@ -191,8 +196,7 @@ func TestStoppingNanoRefusesWritesInsideTheSecurityGuards(t *testing.T) {
 // requireIdle promise that a refusal creates no operation. Boundary: the
 // hosted turn API, called in process as those features call it.
 func TestStoppingNanoRefusesRequireIdleSubmissions(t *testing.T) {
-	s, _, _, _, target, prompts := stage0Server(t)
-	s.sessionForHostedThread(target.ID).nanoStopping = &s.stopping
+	s, _, _, _, target, prompts, _ := stage0Server(t)
 	s.stopping.Store(true)
 	body, _ := json.Marshal(map[string]any{
 		"prompt": "continue", "clientActionId": "nano:heartbeat:stop:1", "origin": "system", "requireIdle": true,

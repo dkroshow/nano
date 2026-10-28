@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -21,7 +22,7 @@ import (
 // kinds now follow the contract resume has had since Slice R3 — status
 // "starting", the card visible immediately, failure surfaced through failSpawn
 // on the session rather than as an HTTP error nobody is still looking at.
-func (s *server) spawnSession(req spawnRequest) (*session, error) {
+func (s *server) spawnSession(req spawnRequest) (*sessionruntime.Session, error) {
 	if s.agentExecutions == nil || s.controlMetadata == nil || s.executionControlErr != "" || s.controlMetadataErr != "" {
 		return nil, errHostedControlUnavailable
 	}
@@ -47,7 +48,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 			return nil, err
 		}
 		failRegistration := func(cause error) error {
-			if updateErr := s.agentExecutions.UpdateSession(record.ID, "", "", sessionStatusExited, cause.Error()); updateErr != nil {
+			if updateErr := s.agentExecutions.UpdateSession(record.ID, "", "", sessionruntime.StatusExited, cause.Error()); updateErr != nil {
 				return fmt.Errorf("%w (also failed to mark hosted thread %s retryable: %v)", cause, record.ID, updateErr)
 			}
 			return cause
@@ -90,8 +91,8 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		if req.retiredClaudeHandle != "" {
 			s.forgetAttachment("claude", req.retiredClaudeHandle)
 		}
-		if existing := s.liveSessionForResume(req.Provider, req.ThreadID, req.HostedThreadID); existing != nil {
-			return nil, &threadAttachedError{ExistingSessionID: existing.ID()}
+		if existing := s.LiveSessionForResume(req.Provider, req.ThreadID, req.HostedThreadID); existing != nil {
+			return nil, &sessionruntime.ThreadAttachedError{ExistingSessionID: existing.ID()}
 		}
 	}
 	hostedThreadID := req.HostedThreadID
@@ -132,12 +133,12 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 			displayName = durableName
 		}
 	}
-	nanoSessionID := newSessionID()
-	var journal sessionJournal
+	nanoSessionID := sessionruntime.NewID()
+	var journal sessionruntime.Journal
 	if s.sendAttempts != nil {
 		journal = s.sendAttempts
 	}
-	var queue sessionQueue
+	var queue sessionruntime.Queue
 	if s.queuedTurns != nil {
 		queue = s.queuedTurns
 	}
@@ -145,47 +146,47 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	if s.completedTurns != nil && s.completedTurns.store != nil {
 		completed = s.completedTurns.store.coreStore
 	}
-	sess := newSession(sessionConfig{
-		id:                    nanoSessionID,
-		provider:              req.Provider,
-		hostedThreadID:        hostedThreadID,
-		invokerHostedThreadID: req.InvokerHostedThreadID,
-		invokerNativeThreadID: req.InvokerNativeThreadID,
-		invokerProvider:       req.InvokerProvider,
-		presentationMode:      req.PresentationMode,
-		sidebarPlacement:      req.SidebarPlacement,
-		cwd:                   req.Cwd,
-		permissionMode:        threadvalues.FirstNonEmpty(req.PermissionMode, req.Approval),
-		createdAt:             time.Now(),
-		spawnMode:             req.Mode,
-		reasoningSummary:      s.defaults.reasoningSummary,
-		projection:            s.newSessionProjection(req.Provider, hostedThreadID),
-		turnEffort:            req.Effort,
-		pendingName:           pendingName,
-		displayName:           displayName,
-		nameThread:            s.assignSpawnName,
-		publishCreationName:   s.publishCreationName,
-		creationName: func() string {
+	sess := sessionruntime.New(sessionruntime.Config{
+		ID:                    nanoSessionID,
+		Provider:              req.Provider,
+		HostedThreadID:        hostedThreadID,
+		InvokerHostedThreadID: req.InvokerHostedThreadID,
+		InvokerNativeThreadID: req.InvokerNativeThreadID,
+		InvokerProvider:       req.InvokerProvider,
+		PresentationMode:      req.PresentationMode,
+		SidebarPlacement:      req.SidebarPlacement,
+		CWD:                   req.Cwd,
+		PermissionMode:        threadvalues.FirstNonEmpty(req.PermissionMode, req.Approval),
+		CreatedAt:             time.Now(),
+		SpawnMode:             req.Mode,
+		ReasoningSummary:      s.defaults.reasoningSummary,
+		Projection:            s.newSessionProjection(req.Provider, hostedThreadID),
+		TurnEffort:            req.Effort,
+		PendingName:           pendingName,
+		DisplayName:           displayName,
+		NameThread:            s.assignSpawnName,
+		PublishCreationName:   s.publishCreationName,
+		CreationName: func() string {
 			return s.creationNameForHosted(hostedThreadID)
 		},
-		metadataName:       s.durableThreadNameRef,
-		skills:             s.skills,
-		catalogRefresh:     s.catalogRefresh,
-		runtimeNotify:      s.notifyRuntime,
-		rememberAttachment: s.rememberAttachment,
-		forgetAttachment:   s.forgetAttachment,
-		updateTurnAnchor:   s.setAttachmentTurnAnchor,
-		updateShimSession:  s.setAttachmentShimSession,
-		turns:              s.turns,
-		agentExecutions:    s.agentExecutions,
-		metadata:           s.controlMetadata,
-		appendUnread:       s.notices.Append,
-		nanoStopping:       &s.stopping,
-		deliveryExpiries:   s.deliveryExpiries,
-		processStarted:     processStarted,
-		sendAttempts:       journal,
-		queuedTurns:        queue,
-		completedTurns:     completed,
+		MetadataName:       s.durableThreadNameRef,
+		Skills:             s.skills,
+		CatalogRefresh:     s.catalogRefresh,
+		RuntimeNotify:      s.notifyRuntime,
+		RememberAttachment: s.rememberAttachment,
+		ForgetAttachment:   s.forgetAttachment,
+		UpdateTurnAnchor:   s.setAttachmentTurnAnchor,
+		UpdateShimSession:  s.setAttachmentShimSession,
+		Turns:              s.turns,
+		AgentExecutions:    s.agentExecutions,
+		Metadata:           s.controlMetadata,
+		AppendUnread:       s.notices.Append,
+		NanoStopping:       &s.stopping,
+		DeliveryExpiries:   s.deliveryExpiries,
+		ProcessStarted:     processStarted,
+		SendAttempts:       journal,
+		QueuedTurns:        queue,
+		CompletedTurns:     completed,
 	})
 
 	// Reserve a resumed native identity before the shell becomes visible or any
@@ -194,7 +195,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	// guard. A background handshake may confirm or succeed this identity later,
 	// but it must never leave a window where a second Resume sees no owner.
 	if req.Mode == "resume" && (req.Provider == "claude" || req.Provider == "grok") {
-		sess.reserveNativeID(req.ThreadID)
+		sess.ReserveNativeID(req.ThreadID)
 	}
 	if s.controlMetadata != nil {
 		if err := s.controlMetadata.ensureHostedThread(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider); err != nil {
@@ -204,7 +205,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		if err != nil {
 			return nil, fmt.Errorf("begin hosted transport binding: %w", err)
 		}
-		if err := sess.initializeBinding(generation); err != nil {
+		if err := sess.InitializeBinding(generation); err != nil {
 			return nil, err
 		}
 	}
@@ -212,10 +213,10 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	// Runtime posture hydration lives at the provider seams —
 	// seedCodexTurnOverrides and the Claude resume overlay — because what
 	// "re-applying posture" means is provider mechanics.
-	sess.configureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
+	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
 		return s.savedTurnEvidence(ctx, sess, turnID)
 	}, s.savedPromptsFor(sess), s.savedPromptRows, s.savedTurnFinal, s.sweepSubscriptions)
-	if err := sess.openWireSpool(s.spoolDir); err != nil {
+	if err := sess.OpenWireSpool(s.spoolDir); err != nil {
 		return nil, fmt.Errorf("create wire spool: %w", err)
 	}
 
@@ -223,9 +224,9 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	// is still in flight has to be able to reach this session, and the card has
 	// to appear at once rather than when the provider answers. Bind: the session
 	// is now visible to the catalog's runtime overlay.
-	sess.configureRegistration(req.restart.at, req.restart.fail, req.catalogBackground, s.catalogSources)
-	s.registerSession(sess)
-	sess.didRegister()
+	sess.ConfigureRegistration(req.restart.at, req.restart.fail, req.catalogBackground, s.catalogSources)
+	s.RegisterSession(sess)
+	sess.DidRegister()
 
 	if req.immediateRuntimePublish {
 		s.publishRuntime(false)
@@ -235,13 +236,13 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	if req.Provider == "codex" {
 		// Boot can register dozens of panes at once. Start the shared cwd refresh
 		// now, without waiting for a browser to ask each session for /state.
-		sess.warmSkills()
+		sess.WarmSkills()
 	}
 
 	if req.Mode != "resume" {
-		sess.recordCreationPosture(req.providerRequest)
+		sess.RecordCreationPosture(req.ProviderRequest)
 	}
-	if err := sess.beginProviderSpawn(req.providerRequest, s.codex, func() { s.discardSpawn(sess) }); err != nil {
+	if err := sess.BeginProviderSpawn(req.ProviderRequest, s.codex, func() { s.discardSpawn(sess) }); err != nil {
 		s.discardSpawn(sess)
 		return nil, err
 	}
@@ -252,8 +253,8 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 // was registered before the attempt (so a concurrent close could reach it), so
 // registration has to be undone with it, and the spool file removed — nothing
 // will ever read it.
-func (s *server) discardSpawn(sess *session) {
-	s.removeSession(sess.ID())
-	sess.discardSpawnResources()
+func (s *server) discardSpawn(sess *sessionruntime.Session) {
+	s.RemoveSession(sess.ID())
+	sess.DiscardSpawnResources()
 	s.notifyRuntime()
 }

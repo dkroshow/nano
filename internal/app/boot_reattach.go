@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 // bootReattach is one boot's set of stored attachments that are not live yet.
@@ -31,7 +33,7 @@ import (
 // that thread at once through the same code.
 type bootReattach struct {
 	order    []attachmentRecord
-	controls map[string]*bootProviderControl
+	controls map[string]*sessionruntime.BootControl
 
 	mu       sync.Mutex
 	pending  map[attachmentKey]bool
@@ -51,7 +53,7 @@ func (s *server) prepareBootReattach() {
 	}
 	records := s.attachments.detachedExcept(nil)
 	boot := &bootReattach{
-		controls: map[string]*bootProviderControl{},
+		controls: map[string]*sessionruntime.BootControl{},
 		pending:  make(map[attachmentKey]bool, len(records)),
 		resting:  map[attachmentKey]bool{},
 		byHosted: make(map[string]attachmentRecord, len(records)),
@@ -64,7 +66,7 @@ func (s *server) prepareBootReattach() {
 			boot.byHosted[rec.HostedThreadID] = rec
 		}
 		if boot.controls[rec.Provider] == nil {
-			control := newBootProviderControl(providerLifecycleCapabilities(rec.Provider).BootHandshakeLimit)
+			control := sessionruntime.NewBootControl(sessionruntime.ProviderLifecycleCapabilities(rec.Provider).BootHandshakeLimit)
 			boot.controls[rec.Provider] = control
 		}
 	}
@@ -448,13 +450,13 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 			presentationMode = canonical
 		}
 	}
-	sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: rec.Provider,
+	sess, err := s.spawnSession(spawnRequest{ProviderRequest: sessionruntime.ProviderRequest{Provider: rec.Provider,
 		Mode:           "resume",
 		ThreadID:       rec.NativeThreadID,
 		HostedThreadID: rec.HostedThreadID,
 
-		codexZeroTurnResume: providerLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
-		bootReattach:        boot.controls[rec.Provider]}, InvokerHostedThreadID: rec.InvokerHostedThreadID,
+		CodexZeroTurnResume: sessionruntime.ProviderLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
+		BootReattach:        boot.controls[rec.Provider]}, InvokerHostedThreadID: rec.InvokerHostedThreadID,
 		InvokerNativeThreadID: rec.InvokerNativeThreadID,
 		InvokerProvider:       rec.InvokerProvider,
 		PresentationMode:      presentationMode,
@@ -467,7 +469,7 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 		// (immediateRuntimePublish) does not wait.
 		catalogBackground: !immediateRuntimePublish && restart.hiddenAtBoot(),
 	})
-	var attached *threadAttachedError
+	var attached *sessionruntime.ThreadAttachedError
 	switch {
 	case errors.As(err, &attached):
 		return bootReattachSettled // the winning resume carries the entry

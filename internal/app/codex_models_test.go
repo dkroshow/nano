@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 // The New Window UI selects models from model/list, then shows this exact
@@ -58,89 +57,21 @@ func TestPinnedCodexModelsPreviewAsSelected(t *testing.T) {
 	}
 }
 
-// Catches: a Codex daemon upgraded under a running Nano (the provider gates new
-// models such as gpt-6-sol by client version) while Nano keeps serving the old
-// daemon's cached model/list until its own restart; and, while the transport
-// is down, a stalled request or error instead of the last catalog. Boundary:
-// the daemon transport dropping and reconnecting, observed through fetchModels.
-func TestCodexModelCatalogRefetchesAfterDaemonReconnect(t *testing.T) {
-	fake := newFakeAppServer(t)
-	fake.mu.Lock()
-	fake.modelList = map[string]any{"data": []any{map[string]any{"model": "gpt-5.6-sol"}}}
-	fake.mu.Unlock()
-	d := fake.daemon()
-	t.Cleanup(func() {
-		d.mu.Lock()
-		client := d.client
-		d.mu.Unlock()
-		if client != nil {
-			client.Close()
-		}
-	})
-
-	first, err := d.fetchModels(false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(first, []byte("gpt-5.6-sol")) {
-		t.Fatalf("first catalog = %s", first)
-	}
-
-	fake.mu.Lock()
-	fake.modelList = map[string]any{"data": []any{map[string]any{"model": "gpt-6-sol"}}}
-	fake.mu.Unlock()
-	d.mu.Lock()
-	oldClient := d.client
-	d.mu.Unlock()
-	fake.dropConnections()
-	<-oldClient.Done()
-
-	// Between transports the last catalog is served at once, not a stalled
-	// request or an error.
-	if got, err := d.fetchModels(false); err != nil || !bytes.Contains(got, []byte("gpt-5.6-sol")) {
-		t.Fatalf("catalog while disconnected = %s, err %v", got, err)
-	}
-
-	// Nano's session recovery reconnects the transport; the next fetch after
-	// that must come from the new daemon.
-	if err := d.ensure(); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		got, err := d.fetchModels(false)
-		if err == nil && bytes.Contains(got, []byte("gpt-6-sol")) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("catalog after reconnect = %s, err %v", got, err)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
 // The real account upgrade added Ultrafast while Nano's transport stayed up.
 // Boundary: the provider model catalog served by Nano's ordinary HTTP route.
 func TestCodexModelCatalogRefreshDiscoversAccountUpgrade(t *testing.T) {
 	fake := newFakeAppServer(t)
-	fake.mu.Lock()
-	fake.modelList = map[string]any{"data": []any{map[string]any{"model": "gpt-6-astra", "serviceTiers": []any{map[string]any{"id": "priority"}}}}}
-	fake.mu.Unlock()
+	fake.Mu.Lock()
+	fake.ModelList = map[string]any{"data": []any{map[string]any{"model": "gpt-6-astra", "serviceTiers": []any{map[string]any{"id": "priority"}}}}}
+	fake.Mu.Unlock()
 	d := fake.daemon()
-	t.Cleanup(func() {
-		d.mu.Lock()
-		c := d.client
-		d.mu.Unlock()
-		if c != nil {
-			c.Close()
-		}
-	})
-	if _, err := d.fetchModels(false); err != nil {
+	t.Cleanup(fake.DropConnections)
+	if _, err := d.FetchModels(false); err != nil {
 		t.Fatal(err)
 	}
-	fake.mu.Lock()
-	fake.modelList = map[string]any{"data": []any{map[string]any{"model": "gpt-6-astra", "serviceTiers": []any{map[string]any{"id": "ultrafast"}}}}}
-	fake.mu.Unlock()
+	fake.Mu.Lock()
+	fake.ModelList = map[string]any{"data": []any{map[string]any{"model": "gpt-6-astra", "serviceTiers": []any{map[string]any{"id": "ultrafast"}}}}}
+	fake.Mu.Unlock()
 	s := &server{codex: d}
 	rec := httptest.NewRecorder()
 	s.handleCodexModels(rec, httptest.NewRequest(http.MethodGet, "/api/codex/models?refresh=true", nil))

@@ -129,7 +129,7 @@ func TestBulkTurnOperationStatusToleratesMissingIDs(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller", "hash", "claude", presentationBackground)
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store}
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store}
 
 	rec := httptest.NewRecorder()
 	s.handleTurnOperationsCollection(rec, httptest.NewRequest(http.MethodGet,
@@ -172,7 +172,7 @@ func TestBulkTurnOperationStatusToleratesMissingIDs(t *testing.T) {
 // silently returning an unfiltered feed.
 func TestTurnOperationChangesRejectsUnknownInvoker(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store}
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store}
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
 		"/api/v1/turn-operations/changes?invoker=nobody", nil))

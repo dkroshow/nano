@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 type externalResumeSourceVerifier interface {
@@ -133,11 +135,11 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 
 	metadata := map[string]string{}
 	for field, value := range map[string]catalogValue{
-		"cwd":                      detail.Metadata.CWD,
-		postureFieldModel:          detail.Metadata.Model,
-		postureFieldEffort:         detail.Metadata.Effort,
-		postureFieldServiceTier:    detail.Metadata.Priority,
-		postureFieldPermissionMode: detail.Metadata.Permission,
+		"cwd":                                  detail.Metadata.CWD,
+		hostedmodel.PostureFieldModel:          detail.Metadata.Model,
+		hostedmodel.PostureFieldEffort:         detail.Metadata.Effort,
+		hostedmodel.PostureFieldServiceTier:    detail.Metadata.Priority,
+		hostedmodel.PostureFieldPermissionMode: detail.Metadata.Permission,
 	} {
 		if known := knownCatalogValue(value); known != "" {
 			metadata[field] = known
@@ -170,14 +172,14 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	}
 
 	req.externalResume = true
-	req.externalResumePosture = true
+	req.ExternalResumePosture = true
 	req.externalResumeCatalog = detail.ID
 	req.externalResumeMetadata = metadata
 	req.Cwd = metadata["cwd"]
-	req.Model = metadata[postureFieldModel]
-	req.Effort = metadata[postureFieldEffort]
-	req.ServiceTier = metadata[postureFieldServiceTier]
-	req.PermissionMode = metadata[postureFieldPermissionMode]
+	req.Model = metadata[hostedmodel.PostureFieldModel]
+	req.Effort = metadata[hostedmodel.PostureFieldEffort]
+	req.ServiceTier = metadata[hostedmodel.PostureFieldServiceTier]
+	req.PermissionMode = metadata[hostedmodel.PostureFieldPermissionMode]
 	return nil
 }
 
@@ -255,7 +257,7 @@ func (s *agentExecutionStore) ensureExternalResumeSession(req spawnRequest) (age
 	if historical != 0 {
 		return agentSessionRecord{}, fmt.Errorf("native conversation %s was previously hosted by Nano; refusing a duplicate registration", req.ThreadID)
 	}
-	if providerLifecycleCapabilities(req.Provider).NativeRecovery {
+	if sessionruntime.ProviderLifecycleCapabilities(req.Provider).NativeRecovery {
 		var held int
 		if err := tx.QueryRow(`SELECT count(*) FROM hosted_native_recoveries WHERE
 			(old_native_id=? AND new_native_id<>'' AND state IN ('bound_pending_activation','activated')) OR
@@ -269,7 +271,7 @@ func (s *agentExecutionStore) ensureExternalResumeSession(req spawnRequest) (age
 	}
 
 	fields := make([]string, 0, len(req.externalResumeMetadata))
-	for _, field := range []string{"cwd", postureFieldModel, postureFieldEffort, postureFieldServiceTier, postureFieldPermissionMode} {
+	for _, field := range []string{"cwd", hostedmodel.PostureFieldModel, hostedmodel.PostureFieldEffort, hostedmodel.PostureFieldServiceTier, hostedmodel.PostureFieldPermissionMode} {
 		if strings.TrimSpace(req.externalResumeMetadata[field]) != "" {
 			fields = append(fields, field)
 		}
@@ -288,13 +290,13 @@ func (s *agentExecutionStore) ensureExternalResumeSession(req spawnRequest) (age
 		value, _ := json.Marshal(req.externalResumeMetadata[field])
 		key := fmt.Sprintf("external-resume:%s:%s:%s", req.Provider, req.ThreadID, field)
 		result, err := tx.Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,value_json,disposition,source,evidence,native_thread_id,nano_session_id,attachment_generation,evidence_freshness,causation_event_id,source_event_key,observed_at,committed_at)
-			VALUES(?,?,?,?,?,?,?,NULL,0,?,NULL,?,?,?)`, hostedID, field, string(value), metadataDispositionObserved, postureSourceProvider, "external_resume_catalog:"+req.externalResumeCatalog, req.ThreadID, metadataFreshnessHistorical, key, now, now)
+			VALUES(?,?,?,?,?,?,?,NULL,0,?,NULL,?,?,?)`, hostedID, field, string(value), metadataDispositionObserved, hostedmodel.PostureSourceProvider, "external_resume_catalog:"+req.externalResumeCatalog, req.ThreadID, metadataFreshnessHistorical, key, now, now)
 		if err != nil {
 			return agentSessionRecord{}, err
 		}
 		eventID, _ := result.LastInsertId()
 		if _, err := tx.Exec(`INSERT INTO thread_metadata_current(hosted_thread_id,field,desired_value_json,desired_disposition,desired_source,desired_event_id,desired_settlement_event_id,effective_value_json,effective_disposition,effective_source,effective_event_id,thread_revision,updated_at)
-			VALUES(?,?,NULL,?,NULL,NULL,NULL,?,?,?,?,?,?)`, hostedID, field, metadataDispositionUnknown, string(value), metadataDispositionObserved, postureSourceProvider, eventID, revision, now); err != nil {
+			VALUES(?,?,NULL,?,NULL,NULL,NULL,?,?,?,?,?,?)`, hostedID, field, metadataDispositionUnknown, string(value), metadataDispositionObserved, hostedmodel.PostureSourceProvider, eventID, revision, now); err != nil {
 			return agentSessionRecord{}, err
 		}
 	}

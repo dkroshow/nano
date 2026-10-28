@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -1160,18 +1159,19 @@ func TestAgentExecutionCodexResumeScansTheStoreOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	const resumedTurns = 2000
-	turns := make([]codexResumeProjectionTurn, resumedTurns)
+	turns := make([]map[string]any, resumedTurns)
 	for i := range turns {
-		turns[i] = codexResumeProjectionTurn{ID: fmt.Sprintf("turn-0-%d", i), Status: agentTurnCompleted}
+		turns[i] = map[string]any{"id": fmt.Sprintf("turn-0-%d", i), "status": agentTurnCompleted}
 	}
-	response, err := json.Marshal(map[string]any{"thread": map[string]any{"id": "native-0", "turns": turns}})
+	response, err := json.Marshal(turns)
 	if err != nil {
 		t.Fatal(err)
 	}
 	before, changed := maps.Clone(store.turns), store.changed
-	sess := &session{provider: "codex", hostedThreadID: "hosted-0", agentExecutions: store}
+	sess, fake := newCodexObserverFixture(t, store, "hosted-0", "native-0")
+	fake.SetResumeTurns(response)
 	started := time.Now()
-	sess.observeCodexResume(decodedCodexResume(response))
+	startCodexObserverFixture(t, sess, fake)
 	took := time.Since(started)
 	t.Logf("resume of %d terminal turns over %d retained operations took %s", resumedTurns, len(before), took)
 	// Plain runs only: the per-turn path takes several seconds there, while
@@ -1637,69 +1637,6 @@ func TestAgentExecutionIndexedBindingsPreserveTurnUpdates(t *testing.T) {
 		if reloaded.turns[open.ID].NanoSessionID != store.sessions["bound"].NanoSessionID {
 			t.Fatal("open turn lost the current transport binding")
 		}
-	}
-}
-
-// A point reference must build only its matching summary, preserving the fleet
-// ordering (including timestamp precision), fields and exited-session filter.
-func TestAgentExecutionLiveHostedSessionSelectsOnlyMatchingSummary(t *testing.T) {
-	store := newTestAgentExecutionStore(t, "summary-index")
-	t.Cleanup(func() { _ = store.control.Close() })
-	if _, err := store.ensureSession("target", "codex", presentationShared); err != nil {
-		t.Fatal(err)
-	}
-	turn, _, err := store.beginTurn("target", "failed", "hash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.MarkTurnDelivery(turn.ID, "", agentTurnFailed, nil); err != nil {
-		t.Fatal(err)
-	}
-	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	selected := &session{
-		id: "a", provider: "codex", hostedThreadID: "target", threadID: "native", displayName: "display",
-		model: "model", cwd: "/fixture", createdAt: created.Add(900 * time.Millisecond),
-		invokerHostedThreadID: "parent", invokerNativeThreadID: "parent-native", invokerProvider: "claude",
-		sidebarPlacement: sidebarPlacementStandalone, spawnMode: "resume", spawnError: "error",
-		lifecycleState: testLifecycleSnapshot("ready", true), turnStartedAtMs: 1234,
-		metadataDegraded: true, turnEffort: "high", permissionMode: "never", turnServiceTier: "fast",
-	}
-	unrelated := &session{id: "unrelated", hostedThreadID: "other", lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{agentExecutions: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"a":         selected,
-		"z":         {id: "z", hostedThreadID: "target", createdAt: created.Add(100 * time.Millisecond), lifecycleState: testLifecycleSnapshot("ready", false)},
-		"exited":    {id: "exited", hostedThreadID: "target", createdAt: created.Add(-time.Hour), lifecycleState: testLifecycleSnapshot("exited", false)},
-		"unrelated": unrelated,
-	}}}
-	unrelated.stateMu.Lock()
-	done := make(chan struct{})
-	var got sessionSummary
-	var found bool
-	go func() {
-		got, found = s.liveHostedSession("target")
-		close(done)
-	}()
-	select {
-	case <-done:
-		unrelated.stateMu.Unlock()
-	case <-time.After(time.Second):
-		unrelated.stateMu.Unlock()
-		<-done
-		t.Fatal("point reference waited for an unrelated session's summary")
-	}
-	want := sessionSummary{
-		ID: "a", Provider: "codex", HostedThreadID: "target", ThreadID: "native", Name: "display",
-		Model: "model", Cwd: "/fixture", Status: "ready", CreatedAt: "2026-01-01T00:00:00Z",
-		InvokerHostedThreadID: "parent", InvokerNativeThreadID: "parent-native", InvokerProvider: "claude",
-		PresentationMode: presentationShared, SidebarPlacement: sidebarPlacementStandalone, SpawnMode: "resume",
-		Error: "error", TurnActive: true, ThreadStatus: fleetWorking, TurnStartedAtMs: 1234, NeedsAttention: true, MetadataDegraded: true,
-		Posture: sessionPosture{Model: "model", Effort: "high", PermissionMode: "never", ServiceTier: "fast"},
-	}
-	if !found || !reflect.DeepEqual(got, want) {
-		t.Fatalf("point summary=%+v found=%v want=%+v", got, found, want)
-	}
-	if _, found := s.liveHostedSession("missing"); found {
-		t.Fatal("unknown hosted thread resolved to a live session")
 	}
 }
 

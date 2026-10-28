@@ -8,7 +8,7 @@ import (
 )
 
 func TestExplicitCloseSelfPausesHeartbeat(t *testing.T) {
-	s, _, _, _, target, _ := stage0Server(t)
+	s, _, _, _, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
 	s.heartbeat = newHeartbeatService(s, store, true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())

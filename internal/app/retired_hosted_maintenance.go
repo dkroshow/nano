@@ -5,13 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	state "github.com/dkroshow/nano/internal/app/statestore"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 type retiredHostedReceipt struct {
@@ -55,7 +56,7 @@ func (s *server) handleRetiredHostedRecords(w http.ResponseWriter, r *http.Reque
 func (s *server) retireHostedRecords(ctx context.Context, request state.RetirementRequest) retiredHostedReceipt {
 	result := retiredHostedReceipt{Resolutions: []identityResolveResponse{}}
 	control := s.controlStore()
-	if control == nil || s.agentExecutions == nil || s.queuedTurns == nil || s.agentExecutions.control != control || s.queuedTurns.db != control.db {
+	if control == nil || s.agentExecutions == nil || s.queuedTurns == nil || s.agentExecutions.control != control || s.queuedTurns.Database() != control.db {
 		result.Error = "canonical retirement stores are unavailable"
 		return result
 	}
@@ -72,7 +73,7 @@ func (s *server) retireHostedRecords(ctx context.Context, request state.Retireme
 		}
 		// Runtime/attachment edges require a wider operation. Historical duplicate
 		// cleanup must not detach a provider or rewrite an attachment file.
-		return s.checkRetiredReferences(retired, func() error {
+		return s.CheckRetiredReferences(retired, func() error {
 			if s.attachments != nil {
 				s.attachments.mu.Lock()
 				defer s.attachments.mu.Unlock()
@@ -106,7 +107,7 @@ func (s *server) retireHostedRecords(ctx context.Context, request state.Retireme
 	}
 	backupPath := ""
 	if request.Apply {
-		parent := filepath.Join(filepath.Dir(s.queuedTurns.path), "threads-maintenance-backups")
+		parent := filepath.Join(filepath.Dir(s.queuedTurns.Path()), "threads-maintenance-backups")
 		if err := os.MkdirAll(parent, 0700); err != nil {
 			result.Error = err.Error()
 			return result

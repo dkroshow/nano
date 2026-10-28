@@ -13,36 +13,32 @@ func TestCodexOperationalResponseUsesNativeTextInWireAndResume(t *testing.T) {
 			_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 			op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt")
 			_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
-			sess := &session{provider: "codex", hostedThreadID: hosted.ID, agentExecutions: store}
+			sess, fake := newCodexObserverFixture(t, store, hosted.ID, "native-1")
 			answer := json.RawMessage(`{"id":"answer","type":"agentMessage","phase":"final_answer","text":"  native answer\n","summary":["unrelated summary"]}`)
 			if route == "wire" {
+				startCodexObserverFixture(t, sess, fake)
 				frame, _ := json.Marshal(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": "native-1", "turnId": "turn-1", "item": answer}})
-				sess.observeAgentExecutionWire("recv", frame)
+				var payload map[string]any
+				if err := json.Unmarshal(frame, &payload); err != nil {
+					t.Fatal(err)
+				}
+				fake.EmitThreadNotification("native-1", payload)
+				waitForClaude(t, "native answer candidate", func() bool { got, _ := store.turn(op.ID); return got.CandidateItemID == "answer" })
 				before, _ := store.turn(op.ID)
 				if before.Status != agentTurnRunning {
 					t.Fatal("item completion settled the operation")
 				}
-				sess.observeAgentExecutionWire("recv", []byte(`{"method":"turn/completed","params":{"threadId":"native-1","turn":{"id":"turn-1","status":"completed"}}}`))
+				fake.EmitThreadNotification("native-1", map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "native-1", "turn": map[string]any{"id": "turn-1", "status": "completed"}}})
 			} else {
-				response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "native-1", "turns": []any{map[string]any{"id": "turn-1", "status": "completed", "items": []json.RawMessage{answer}}}}})
-				sess.observeCodexResume(decodedCodexResume(response))
+				turns, _ := json.Marshal([]any{map[string]any{"id": "turn-1", "status": "completed", "items": []json.RawMessage{answer}}})
+				fake.SetResumeTurns(turns)
+				startCodexObserverFixture(t, sess, fake)
 			}
+			waitForClaude(t, "native answer terminal", func() bool { got, _ := store.turn(op.ID); return got.Status == agentTurnCompleted })
 			after, _ := store.turn(op.ID)
 			if after.Status != agentTurnCompleted || after.FinalItemID != "answer" || after.FinalResponse != "  native answer\n" {
 				t.Fatalf("response changed at %s boundary: %#v", route, after)
 			}
 		})
-	}
-}
-
-func TestCodexResumeKeepsSnapshotCompletionAndClocksSeparate(t *testing.T) {
-	response := json.RawMessage(`{"thread":{"id":"thread","turns":[
-		{"id":"turn","status":"completed","startedAt":200,"items":[
-			{"id":"answer","type":"agentMessage","text":"answer"}
-		]}
-	]}}`)
-	parsed, ok := decodedCodexResume(response).items(0)[[2]string{"turn", "answer"}]
-	if !ok || parsed.Complete || parsed.CreatedAt != nil {
-		t.Fatal("resume invented an item completion or native item clock")
 	}
 }

@@ -144,7 +144,7 @@ func (s *server) fileThreadCwd(ctx context.Context, threadID, sessionID string) 
 		return ""
 	}
 	if sessionID != "" {
-		session := s.lookupSession(sessionID)
+		session := s.LookupSession(sessionID)
 		if session != nil {
 			if dir := filemodel.CleanDir(session.CWD()); dir != "" {
 				return dir
@@ -169,7 +169,7 @@ func (s *server) sessionCatalogThreadID(ctx context.Context, sessionID string) s
 	if !ok || sessionID == "" {
 		return ""
 	}
-	session := s.lookupSession(sessionID)
+	session := s.LookupSession(sessionID)
 	if session == nil || session.ThreadID() == "" {
 		return ""
 	}
@@ -187,11 +187,11 @@ func (s *server) liveFileEvidence(ctx context.Context, sessionID string) []strin
 	if sessionID == "" {
 		return nil
 	}
-	session := s.lookupSession(sessionID)
-	if session == nil || session.liveTextService() == nil {
+	session := s.LookupSession(sessionID)
+	if session == nil || session.LiveTextService() == nil {
 		return nil
 	}
-	texts := session.liveTextService().CurrentTexts(ctx)
+	texts := session.LiveTextService().CurrentTexts(ctx)
 	var blobs []string
 	total := 0
 	for index := len(texts) - 1; index >= 0 && total < fileEvidenceMaxBytes; index-- {

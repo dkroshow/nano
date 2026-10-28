@@ -47,13 +47,12 @@ func newClaudeHandoff(t *testing.T) *claudeHandoff {
 
 	h.projection = newLiveProjection("claude", "hosted-handoff")
 	h.projection.SetNativeThreadID(handoffNative)
-	h.session = &session{id: "session-handoff", threadID: handoffNative, provider: "claude",
-		hostedThreadID: "hosted-handoff", projection: h.projection}
+	h.session = newFixtureSession(sessionConfig{ID: "session-handoff", Provider: "claude", HostedThreadID: "hosted-handoff", Projection: h.projection}, handoffNative)
 	server := h.catalog.server
-	server.sessions = map[string]*session{h.session.id: h.session}
-	h.session.savedTurn = func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
+	seedTestSessionRegistry(&server.Registry, map[string]*session{h.session.ID(): h.session})
+	h.session.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
 		return server.savedTurnEvidence(ctx, h.session, turnID)
-	}
+	}, nil, nil, nil, nil)
 	return h
 }
 
@@ -108,7 +107,7 @@ func (h *claudeHandoff) submit(t *testing.T, action, providerTurn, text string) 
 			Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &providerTurn,
 		}},
 	}
-	h.session.publishTransactionalOutbox(entry)
+	h.session.PublishLiveOutbox(entry)
 	h.projection.SetClaudeProviderTurnID(providerTurn)
 	eventID := submissionEventID("hosted-handoff", action)
 	h.projection.applyWire(protocol.Send, []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":%q}]}}`, eventID, text)), time.Now())

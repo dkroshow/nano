@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -365,7 +366,7 @@ func (s *server) catalogNameForNative(ctx context.Context, provider, nativeID st
 	return ""
 }
 
-func identityFromLive(live sessionSummary) identityCandidate {
+func identityFromLive(live sessionruntime.Summary) identityCandidate {
 	updated := threadvalues.ParseTimestamp(live.LastTurnEndedAt)
 	if updated.IsZero() {
 		updated = threadvalues.ParseTimestamp(live.CreatedAt)
@@ -423,7 +424,7 @@ func pickIdentity(candidates []identityCandidate) identityResolveResponse {
 	return identityResolveResponse{
 		DisplayName:               best.displayName,
 		NativeThreadID:            best.nativeThreadID,
-		NativeThreadIDProvisional: nativeThreadIDProvisional(best.provider, best.nativeThreadID),
+		NativeThreadIDProvisional: sessionruntime.NativeThreadIDProvisional(best.provider, best.nativeThreadID),
 		HostedThreadID:            best.hostedThreadID,
 		Provider:                  best.provider,
 		MatchCount:                len(byKey),

@@ -14,7 +14,10 @@ import (
 
 	prompts "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
+	interactmodel "github.com/dkroshow/nano/internal/interact"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -58,33 +61,33 @@ type agentSessionView struct {
 }
 
 type agentTurnView struct {
-	ID                     string                       `json:"id"`
-	HostedThreadID         string                       `json:"hostedThreadId"`
-	ClientActionID         string                       `json:"clientActionId"`
-	Provider               string                       `json:"provider"`
-	NanoSessionID          string                       `json:"nanoSessionId,omitempty"`
-	NativeThreadID         string                       `json:"nativeThreadId,omitempty"`
-	ProviderTurnID         string                       `json:"providerTurnId,omitempty"`
-	Status                 string                       `json:"status"`
-	Terminal               bool                         `json:"terminal"`
-	Error                  *agentExecutionError         `json:"error,omitempty"`
-	FinalItemID            string                       `json:"finalItemId,omitempty"`
-	FinalResponse          string                       `json:"finalResponse,omitempty"`
-	FinalResponseTruncated bool                         `json:"finalResponseTruncated"`
-	FinalResponseBytes     int                          `json:"finalResponseBytes,omitempty"`
-	QueuePosition          int                          `json:"queuePosition,omitempty"`
-	Origin                 string                       `json:"origin,omitempty"`
-	SenderHostedThreadID   string                       `json:"senderHostedThreadId,omitempty"`
-	SenderNativeThreadID   string                       `json:"senderNativeThreadId,omitempty"`
-	SenderProvider         string                       `json:"senderProvider,omitempty"`
-	SenderName             string                       `json:"senderName,omitempty"`
-	SenderSubmittedAt      string                       `json:"senderSubmittedAt,omitempty"`
-	Interactions           []pendingInteraction         `json:"interactions"`
-	Assignment             *orchestrationAssignmentView `json:"assignment,omitempty"`
-	AssignmentUnavailable  bool                         `json:"assignmentUnavailable,omitempty"`
-	CreatedAt              string                       `json:"createdAt"`
-	UpdatedAt              string                       `json:"updatedAt"`
-	Revision               int64                        `json:"revision"`
+	ID                     string                             `json:"id"`
+	HostedThreadID         string                             `json:"hostedThreadId"`
+	ClientActionID         string                             `json:"clientActionId"`
+	Provider               string                             `json:"provider"`
+	NanoSessionID          string                             `json:"nanoSessionId,omitempty"`
+	NativeThreadID         string                             `json:"nativeThreadId,omitempty"`
+	ProviderTurnID         string                             `json:"providerTurnId,omitempty"`
+	Status                 string                             `json:"status"`
+	Terminal               bool                               `json:"terminal"`
+	Error                  *agentExecutionError               `json:"error,omitempty"`
+	FinalItemID            string                             `json:"finalItemId,omitempty"`
+	FinalResponse          string                             `json:"finalResponse,omitempty"`
+	FinalResponseTruncated bool                               `json:"finalResponseTruncated"`
+	FinalResponseBytes     int                                `json:"finalResponseBytes,omitempty"`
+	QueuePosition          int                                `json:"queuePosition,omitempty"`
+	Origin                 string                             `json:"origin,omitempty"`
+	SenderHostedThreadID   string                             `json:"senderHostedThreadId,omitempty"`
+	SenderNativeThreadID   string                             `json:"senderNativeThreadId,omitempty"`
+	SenderProvider         string                             `json:"senderProvider,omitempty"`
+	SenderName             string                             `json:"senderName,omitempty"`
+	SenderSubmittedAt      string                             `json:"senderSubmittedAt,omitempty"`
+	Interactions           []interactmodel.PendingInteraction `json:"interactions"`
+	Assignment             *orchestrationAssignmentView       `json:"assignment,omitempty"`
+	AssignmentUnavailable  bool                               `json:"assignmentUnavailable,omitempty"`
+	CreatedAt              string                             `json:"createdAt"`
+	UpdatedAt              string                             `json:"updatedAt"`
+	Revision               int64                              `json:"revision"`
 }
 
 type assignmentMutationView struct {
@@ -115,17 +118,17 @@ func (s *server) handleAgentSessionsList(w http.ResponseWriter, _ *http.Request)
 	// record is left out before its view costs any reads; the store keeps
 	// every record a thread ever had.
 	attached := make(map[string]bool)
-	for _, sess := range s.snapshotSessions() {
+	for _, sess := range s.SnapshotSessions() {
 		attached[sess.HostedThreadID()] = true
 	}
 	records := s.agentExecutions.listSessions()
 	items := make([]agentSessionView, 0, len(records))
 	for _, record := range records {
-		if _, waiting := s.boot.waitingHosted(record.ID); record.Status == sessionStatusExited && !attached[record.ID] && waiting == "" {
+		if _, waiting := s.boot.waitingHosted(record.ID); record.Status == sessionruntime.StatusExited && !attached[record.ID] && waiting == "" {
 			continue
 		}
 		view := s.agentSessionView(record.ID)
-		if view.Status != sessionStatusExited {
+		if view.Status != sessionruntime.StatusExited {
 			items = append(items, view)
 		}
 	}
@@ -188,7 +191,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 		httpapi.WriteHTTPError(w, "invokerThreadRef does not resolve to a hosted thread", http.StatusBadRequest)
 		return
 	}
-	if invoker.Status == sessionStatusExited {
+	if invoker.Status == sessionruntime.StatusExited {
 		httpapi.WriteHTTPError(w, "invokerThreadRef resolves to a closed hosted thread", http.StatusConflict)
 		return
 	}
@@ -232,7 +235,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !created {
-		if record.Status == sessionStatusExited {
+		if record.Status == sessionruntime.StatusExited {
 			httpapi.WriteJSON(w, s.agentSessionView(record.ID))
 			return
 		}
@@ -258,7 +261,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 	resolved.HostedThreadID = record.ID
 	sess, err := s.spawnSession(resolved)
 	if err != nil {
-		_ = s.agentExecutions.UpdateSession(record.ID, "", record.NativeThreadID, sessionStatusExited, err.Error())
+		_ = s.agentExecutions.UpdateSession(record.ID, "", record.NativeThreadID, sessionruntime.StatusExited, err.Error())
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -338,7 +341,7 @@ func (s *server) handleHostedThreadClose(w http.ResponseWriter, _ *http.Request,
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.agentExecutions.UpdateSession(record.ID, "", "", sessionStatusExited, "closed"); err != nil {
+	if err := s.agentExecutions.UpdateSession(record.ID, "", "", sessionruntime.StatusExited, "closed"); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -515,8 +518,8 @@ func (s *server) handleHostedThreadPresentation(w http.ResponseWriter, r *http.R
 		return
 	}
 	if changed {
-		if sess := s.sessionForHostedThread(record.ID); sess != nil {
-			sess.setPresentation(rec.PresentationMode)
+		if sess := s.SessionForHostedThread(record.ID); sess != nil {
+			sess.SetPresentation(rec.PresentationMode)
 		}
 		s.notifyRuntime()
 	}
@@ -556,8 +559,8 @@ func (s *server) handleHostedThreadSidebarPlacement(w http.ResponseWriter, r *ht
 		return
 	}
 	if changed {
-		if sess := s.sessionForHostedThread(record.ID); sess != nil {
-			sess.setSidebarPlacement(rec.SidebarPlacement)
+		if sess := s.SessionForHostedThread(record.ID); sess != nil {
+			sess.SetSidebarPlacement(rec.SidebarPlacement)
 		}
 		// Placement changes are structural catalog changes, not runtime
 		// overlay fields. Force every open browser to re-read the sidebar
@@ -655,9 +658,9 @@ func (s *server) handleHostedThreadDetach(w http.ResponseWriter, _ *http.Request
 		httpapi.WriteJSON(w, s.agentSessionView(record.ID))
 		return
 	}
-	if sess := s.sessionForHostedThread(record.ID); sess != nil {
-		sess.close()
-		s.removeSession(sess.ID())
+	if sess := s.SessionForHostedThread(record.ID); sess != nil {
+		sess.Close()
+		s.RemoveSession(sess.ID())
 		s.notifyRuntime()
 	}
 	// The attachment record survives — that is the difference from close:
@@ -672,7 +675,7 @@ func (s *server) handleHostedThreadConversation(w http.ResponseWriter, r *http.R
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.handleConversationView(w, r, conversationViewMessages)
+	sess.HandleConversationView(w, r, conversationViewMessages)
 }
 
 func (s *server) handleHostedThreadConversationEvents(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
@@ -681,7 +684,7 @@ func (s *server) handleHostedThreadConversationEvents(w http.ResponseWriter, r *
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.handleConversationEventsView(w, r, conversationViewMessages)
+	sess.HandleConversationEventsView(w, r, conversationViewMessages)
 }
 
 func (s *server) handleHostedThreadInteraction(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
@@ -690,7 +693,7 @@ func (s *server) handleHostedThreadInteraction(w http.ResponseWriter, r *http.Re
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.handleInteraction(w, r, r.PathValue("requestId"))
+	sess.HandleInteraction(w, r, r.PathValue("requestId"))
 }
 
 func (s *server) handleHostedThreadInterrupt(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
@@ -699,14 +702,14 @@ func (s *server) handleHostedThreadInterrupt(w http.ResponseWriter, r *http.Requ
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.handleInterrupt(w, r)
+	sess.HandleInterrupt(w, r)
 }
 
 func validMetadataEventFilter(filter metadataEventFilter) bool {
-	if filter.Field != "" && filter.Field != postureFieldModel && filter.Field != postureFieldEffort && filter.Field != postureFieldPermissionMode && filter.Field != postureFieldServiceTier && filter.Field != "cwd" && filter.Field != "subscriptions" && filter.Field != orchestrationAssignmentField {
+	if filter.Field != "" && filter.Field != hostedmodel.PostureFieldModel && filter.Field != hostedmodel.PostureFieldEffort && filter.Field != hostedmodel.PostureFieldPermissionMode && filter.Field != hostedmodel.PostureFieldServiceTier && filter.Field != "cwd" && filter.Field != "subscriptions" && filter.Field != orchestrationAssignmentField {
 		return false
 	}
-	if filter.Source != "" && filter.Source != postureSourceCreation && filter.Source != postureSourceOperator && filter.Source != postureSourceProvider && filter.Source != metadataSourceMigration {
+	if filter.Source != "" && filter.Source != hostedmodel.PostureSourceCreation && filter.Source != hostedmodel.PostureSourceOperator && filter.Source != hostedmodel.PostureSourceProvider && filter.Source != metadataSourceMigration {
 		return false
 	}
 	if filter.Disposition != "" && filter.Disposition != metadataDispositionRequested && filter.Disposition != metadataDispositionConfirmed && filter.Disposition != metadataDispositionRejected && filter.Disposition != metadataDispositionCleared && filter.Disposition != metadataDispositionObserved {
@@ -859,7 +862,7 @@ type hostedTurnSubmission struct {
 func (s *server) turnAttributionFor(sender agentSessionRecord) (turnAttribution, error) {
 	provider := strings.TrimSpace(sender.Provider)
 	native := strings.TrimSpace(sender.NativeThreadID)
-	if sender.ID == "" || provider == "" || native == "" || nativeThreadIDProvisional(provider, native) {
+	if sender.ID == "" || provider == "" || native == "" || sessionruntime.NativeThreadIDProvisional(provider, native) {
 		return turnAttribution{}, errors.New("senderThreadRef resolves to a hosted thread without a confirmed provider-native thread identity")
 	}
 	identity, err := s.resolveIdentity(context.Background(), sender.ID)
@@ -961,9 +964,9 @@ func (e *hostedTurnAdmissionError) Error() string { return "target is not idle: 
 
 func hostedTurnPromptHash(prompt string, requireIdle bool) string {
 	if !requireIdle {
-		return sendTextHash(prompt)
+		return sessionruntime.SendTextHash(prompt)
 	}
-	return sendTextHash(prompt + "\x00requireIdle")
+	return sessionruntime.SendTextHash(prompt + "\x00requireIdle")
 }
 
 func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hostedTurnSubmission) (agentTurnRecord, bool, error) {
@@ -980,12 +983,12 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 	sub.Attribution.Origin = sub.Origin
 	hash := hostedTurnPromptHash(prompt, requireIdle)
 	if sub.NextTurn {
-		hash = turnRequestHash(prompt, true)
+		hash = sessionruntime.TurnRequestHash(prompt, true)
 	}
 	_, waited := s.boot.waitingHosted(hostedThreadID)
 	s.reattachWaitingHosted(hostedThreadID)
 	_, found := s.agentExecutions.turnForAction(hostedThreadID, actionID)
-	if !found && s.sessionForHostedThread(hostedThreadID) == nil {
+	if !found && s.SessionForHostedThread(hostedThreadID) == nil {
 		if requireIdle {
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
 		}
@@ -994,7 +997,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 	if found {
 		return s.submitExistingHostedTurn(hostedThreadID, actionID, sub, hash)
 	}
-	sess := s.sessionForHostedThread(hostedThreadID)
+	sess := s.SessionForHostedThread(hostedThreadID)
 	if sess == nil {
 		if requireIdle {
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
@@ -1004,12 +1007,12 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 	if requireIdle {
 		var result agentTurnRecord
 		var replay bool
-		reason, err := sess.withIdleDelivery(waited == "resting", func() error {
+		reason, err := sess.WithIdleDelivery(waited == "resting", func() error {
 			record, created, err := s.agentExecutions.beginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
 			if err != nil {
 				return err
 			}
-			op, responseStatus, reason, err := sess.queueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
+			op, responseStatus, reason, err := sess.QueueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
 			result, replay, err = s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 			return err
 		})
@@ -1036,11 +1039,11 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 	if !created && !s.needsTurnSubmissionReconciliation(record) {
 		return record, true, nil
 	}
-	sess = s.sessionForHostedThread(hostedThreadID)
+	sess = s.SessionForHostedThread(hostedThreadID)
 	if sess == nil {
 		return record, !created, errHostedThreadNotAttached
 	}
-	op, responseStatus, reason, err := sess.queueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
+	op, responseStatus, reason, err := sess.QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
 	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
@@ -1065,8 +1068,8 @@ func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub h
 				}
 			}
 		}
-		if sess := s.sessionForHostedThread(hostedThreadID); sess != nil {
-			if queued, ok := sess.queuedPrompt(record.TransportActionID); ok && queued.Text != "" {
+		if sess := s.SessionForHostedThread(hostedThreadID); sess != nil {
+			if queued, ok := sess.QueuedPrompt(record.TransportActionID); ok && queued.Text != "" {
 				sub.Delivered = queued.Text
 			}
 		}
@@ -1082,18 +1085,18 @@ func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub h
 	if !created && !s.needsTurnSubmissionReconciliation(record) {
 		return record, true, nil
 	}
-	sess := s.sessionForHostedThread(hostedThreadID)
+	sess := s.SessionForHostedThread(hostedThreadID)
 	if sess == nil {
 		return record, true, errHostedThreadNotAttached
 	}
-	op, responseStatus, reason, err := sess.queueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
+	op, responseStatus, reason, err := sess.QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
 	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
-func (s *server) finishHostedTurnSubmission(sess *session, record agentTurnRecord, created bool, started bool, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
+func (s *server) finishHostedTurnSubmission(sess *sessionruntime.Session, record agentTurnRecord, created bool, started bool, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
 	if err != nil {
 		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnFailed, &agentExecutionError{Source: "delivery", Message: err.Error()})
-		sess.notifyRuntime()
+		sess.NotifyRuntime()
 		return record, false, err
 	}
 	if responseStatus == http.StatusAccepted && reason == "queued_for_next_turn" {
@@ -1109,7 +1112,7 @@ func (s *server) finishHostedTurnSubmission(sess *session, record agentTurnRecor
 		}
 		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", state, &agentExecutionError{Source: "delivery", Code: code, Message: reason})
 		if state == agentTurnFailed {
-			sess.notifyRuntime()
+			sess.NotifyRuntime()
 		}
 	}
 	latest, _ := s.agentExecutions.turn(record.ID)
@@ -1122,16 +1125,16 @@ func (s *server) needsTurnSubmissionReconciliation(record agentTurnRecord) bool 
 	if record.Status != agentTurnDeliveryPending {
 		return false
 	}
-	sess := s.sessionForHostedThread(record.HostedThreadID)
-	return !sess.hasDeliveryEvidence(record.TransportActionID, s.queuedTurns, s.sendAttempts)
+	sess := s.SessionForHostedThread(record.HostedThreadID)
+	return !sess.HasDeliveryEvidence(record.TransportActionID, s.queuedTurns, s.sendAttempts)
 }
 
 func (s *server) turnSubmissionDeliveryUnknown(record agentTurnRecord) bool {
 	if record.Status != agentTurnDeliveryPending || record.RunID == s.agentExecutions.runID {
 		return false
 	}
-	sess := s.sessionForHostedThread(record.HostedThreadID)
-	return sess.deliveryWasAttempted(record.TransportActionID, s.sendAttempts)
+	sess := s.SessionForHostedThread(record.HostedThreadID)
+	return sess.DeliveryWasAttempted(record.TransportActionID, s.sendAttempts)
 }
 
 func (s *server) turnOperationID(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -1249,15 +1252,15 @@ func (s *server) cancelQueuedAgentTurn(w http.ResponseWriter, operationID string
 		return
 	}
 	var err error
-	if sess := s.sessionForHostedThread(rec.HostedThreadID); sess != nil {
-		_, err = sess.cancelQueuedTurnAction(rec.TransportActionID, discardedByCaller)
+	if sess := s.SessionForHostedThread(rec.HostedThreadID); sess != nil {
+		_, err = sess.CancelQueuedTurnAction(rec.TransportActionID, sessionruntime.DiscardedByCaller)
 	} else {
-		_, err = cancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.TransportActionID, discardedByCaller)
+		_, err = sessionruntime.CancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.TransportActionID, sessionruntime.DiscardedByCaller)
 	}
 	if err != nil {
 		status := http.StatusInternalServerError
-		var refused *promptActionRefused
-		if errors.Is(err, errQueuedTurnNotFound) || errors.Is(err, errQueuedTurnDelivering) || errors.Is(err, errPromptEnded) || errors.As(err, &refused) {
+		var refused *sessionruntime.PromptActionRefused
+		if errors.Is(err, sessionruntime.ErrQueuedTurnNotFound) || errors.Is(err, sessionruntime.ErrQueuedTurnDelivering) || errors.Is(err, sessionruntime.ErrPromptEnded) || errors.As(err, &refused) {
 			status = http.StatusConflict
 		}
 		httpapi.WriteHTTPError(w, err.Error(), status)
@@ -1279,18 +1282,18 @@ func (s *server) agentSessionView(id string) agentSessionView {
 		Status:        rec.Status, Error: rec.Error, CreatedAt: rec.CreatedAt,
 		UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
 	}
-	if sess := s.sessionForHostedThread(id); sess != nil {
-		sum := sess.summary()
+	if sess := s.SessionForHostedThread(id); sess != nil {
+		sum := sess.Summary()
 		view.NanoSessionID, view.NativeThreadID, view.Status = sum.ID, sum.ThreadID, sum.Status
 		view.Error, view.TurnActive, view.Waiting = sum.Error, sum.TurnActive, sum.Waiting
 		view.ThreadDiagnostics = sum.ThreadDiagnostics
 		view.MetadataDegraded = sum.MetadataDegraded
 		view.Attached = true
-		view.Ready, view.Working = sess.readyAndWorking()
+		view.Ready, view.Working = sess.ReadyAndWorking()
 	} else if _, waiting := s.boot.waitingHosted(id); waiting != "" {
 		view.Status = waiting
 	}
-	view.NativeThreadIDProvisional = nativeThreadIDProvisional(view.Provider, view.NativeThreadID)
+	view.NativeThreadIDProvisional = sessionruntime.NativeThreadIDProvisional(view.Provider, view.NativeThreadID)
 	view.Attachment = s.hostedAttachmentState(id)
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
 		if metadata, err := s.controlMetadata.View(id); err == nil {
@@ -1334,8 +1337,8 @@ func (s *server) decorateHostedMetadata(metadata hostedMetadataView, attachment 
 // normalized execution record. It deliberately does not write hosted_threads:
 // attachment liveness is volatile and must not manufacture a metadata revision.
 func (s *server) hostedAttachmentState(id string) hostedAttachmentView {
-	if sess := s.sessionForHostedThread(id); sess != nil {
-		sum := sess.summary()
+	if sess := s.SessionForHostedThread(id); sess != nil {
+		sum := sess.Summary()
 		state := sum.Status
 		if state == "" {
 			state = "attached"
@@ -1369,16 +1372,16 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 		Origin: rec.Origin, SenderHostedThreadID: rec.SenderHostedThreadID, SenderNativeThreadID: rec.SenderNativeThreadID,
 		SenderProvider: rec.SenderProvider, SenderName: rec.SenderName, SenderSubmittedAt: rec.SenderSubmittedAt,
 		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
-		Interactions: []pendingInteraction{},
+		Interactions: []interactmodel.PendingInteraction{},
 	}
-	sess := s.sessionForHostedThread(rec.HostedThreadID)
+	sess := s.SessionForHostedThread(rec.HostedThreadID)
 	if sess != nil {
 		view.NanoSessionID = sess.ID()
 		if threadID := sess.ThreadID(); threadID != "" {
 			view.NativeThreadID = threadID
 		}
 		if !threadvalues.TurnTerminal(rec.Status) {
-			for _, interaction := range sess.pendingInteractionList() {
+			for _, interaction := range sess.PendingInteractionList() {
 				if interaction.TurnID == "" || rec.ProviderTurnID == "" || interaction.TurnID == rec.ProviderTurnID {
 					view.Interactions = append(view.Interactions, interaction)
 				}
@@ -1386,7 +1389,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 		}
 	}
 	if rec.Status == agentTurnQueued {
-		view.QueuePosition = sess.queuePositionOr(rec.TransportActionID, s.queuedTurns)
+		view.QueuePosition = sess.QueuePositionOr(rec.TransportActionID, s.queuedTurns)
 	}
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
 		assignment, err := s.controlMetadata.operationOrchestrationAssignment(rec.AssignmentEventID)
@@ -1403,9 +1406,9 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 
 // hostedSessionForRequest is sessionForHostedThread for a request that needs
 // the thread live: a thread still starting after a restart is registered first.
-func (s *server) hostedSessionForRequest(id string) *session {
+func (s *server) hostedSessionForRequest(id string) *sessionruntime.Session {
 	s.reattachWaitingHosted(id)
-	return s.sessionForHostedThread(id)
+	return s.SessionForHostedThread(id)
 }
 
 // resolveHostedThreadRecord accepts the durable hosted-thread id, an optional
@@ -1416,7 +1419,7 @@ func (s *server) resolveHostedThreadRecord(ref string) (agentSessionRecord, bool
 	if record, ok := s.agentExecutions.resolveSession(ref); ok {
 		return record, true
 	}
-	return s.resolveLiveHostedThreadRecord(ref, s.agentExecutions.session)
+	return s.ResolveLiveHostedThreadRecord(ref, s.agentExecutions.session)
 }
 
 // closeHostedThreadForRecord ends a hosted thread's attachment whether or not
@@ -1436,7 +1439,7 @@ func (s *server) closeHostedThreadForRecord(record agentSessionRecord) error {
 // closeHostedThreadForRecordCore closes only the provider attachment while
 // callers hold any feature-specific lifecycle locks.
 func (s *server) closeHostedThreadForRecordCore(record agentSessionRecord) error {
-	if sess := s.sessionForHostedThread(record.ID); sess != nil {
+	if sess := s.SessionForHostedThread(record.ID); sess != nil {
 		return s.closeAgentSession(sess)
 	}
 	if s.attachments != nil && record.NativeThreadID != "" {
@@ -1459,7 +1462,7 @@ func (s *server) closeHostedThreadForRecordCore(record agentSessionRecord) error
 	// public close and bulk-close handlers repeat this update with their own
 	// reason, but doing it here prevents a concurrent attachment from slipping
 	// into the detached-close gap.
-	return s.agentExecutions.UpdateSession(record.ID, "", "", sessionStatusExited, "closed")
+	return s.agentExecutions.UpdateSession(record.ID, "", "", sessionruntime.StatusExited, "closed")
 }
 
 // dropQueuedTurns removes undelivered queued prompts for the thread: an
@@ -1477,13 +1480,13 @@ func (s *server) dropQueuedTurns(record agentSessionRecord) error {
 		if rec.ClientActionID == "" {
 			return nil
 		}
-		if _, err := cancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.ClientActionID, discardedByCaller); err != nil {
+		if _, err := sessionruntime.CancelQueuedTurnStores(s.queuedTurns, s.agentExecutions, rec.ClientActionID, sessionruntime.DiscardedByCaller); err != nil {
 			return err
 		}
 	}
 }
 
-func (s *server) closeAgentSession(sess *session) error {
+func (s *server) closeAgentSession(sess *sessionruntime.Session) error {
 	if sess == nil {
 		return nil
 	}
@@ -1493,15 +1496,15 @@ func (s *server) closeAgentSession(sess *session) error {
 		attachment, remembered = s.attachments.get(sess.Provider(), sess.ThreadID())
 	}
 	if remembered && sess.Provider() == "claude" {
-		if err := sess.verifyClaudeAttachment(attachment.ShimSessionID); err != nil {
+		if err := sess.VerifyClaudeAttachment(attachment.ShimSessionID); err != nil {
 			return err
 		}
 	}
-	err := sess.closeWithResult()
-	if !sess.isClosed() {
+	err := sess.CloseWithResult()
+	if !sess.IsClosed() {
 		return err
 	}
-	s.removeCurrentSession(sess)
+	s.RemoveCurrentSession(sess)
 	defer s.notifyRuntime()
 	if err != nil {
 		return fmt.Errorf("Claude stop unconfirmed; attachment retained for retry: %w", err)
@@ -1511,6 +1514,6 @@ func (s *server) closeAgentSession(sess *session) error {
 			return err
 		}
 	}
-	sess.confirmClaudeClose()
+	sess.ConfirmClaudeClose()
 	return nil
 }

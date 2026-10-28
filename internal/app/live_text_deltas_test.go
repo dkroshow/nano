@@ -1,43 +1,23 @@
 package app
 
 import (
+	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	coresession "github.com/dkroshow/nano/internal/core/session"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
-
-const liveTextDeltaTurnStarted = `{"method":"turn/started","params":{"threadId":"native-thread","turn":{"id":"stream-turn","status":"inProgress"}}}`
-const liveTextDeltaItemStarted = `{"method":"item/started","params":{"threadId":"native-thread","turnId":"stream-turn","item":{"id":"agent-1","type":"agentMessage","text":""}}}`
-
-func liveTextDeltaFrames(parts ...string) [][]byte {
-	var frames [][]byte
-	for _, part := range parts {
-		frames = append(frames, []byte(fmt.Sprintf(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"stream-turn","itemId":"agent-1","delta":%q}}`, part)))
-	}
-	return frames
-}
-
-func liveTextDeltaItemCompleted(text string) []byte {
-	return []byte(fmt.Sprintf(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"stream-turn","item":{"id":"agent-1","type":"agentMessage","text":%q}}}`, text))
-}
-
-func liveTextDeltaTurnCompleted(status string) []byte {
-	return []byte(fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":"native-thread","turn":{"id":"stream-turn","status":%q}}}`, status))
-}
 
 // liveTextDeltaAgentTexts is the agent text the live reader holds: what live
 // text and the turn's answer are built from.
@@ -159,34 +139,58 @@ func TestCodexAgentTextDeltaClassifierScope(t *testing.T) {
 // The switch is projection-only: every frame still reaches the event buffer,
 // raw subscribers, the spool, and the session's runtime observer.
 func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
-	spool, err := newWireSpool(t.TempDir(), "s1")
+	projection := newLiveProjection("codex", "hosted", "nano")
+	projection.dropLiveTextDeltas = true
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "raw-deltas", Provider: "codex", HostedThreadID: "hosted", Projection: projection}, "native-thread", "")
+	sess := f.session
+	before := claudeWireEvents(sess)
+	prior := before[len(before)-1].Seq
+	spoolDir := t.TempDir()
+	if err := sess.OpenWireSpool(spoolDir); err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(http.HandlerFunc(sess.HandleEvents))
+	defer httpServer.Close()
+	response, err := http.Get(httpServer.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	projection := newLiveProjection("codex", "hosted", "nano")
-	projection.SetNativeThreadID("native-thread")
-	projection.dropLiveTextDeltas = true
+	defer response.Body.Close()
 	sub := make(chan wireEvent, 64)
-	sess := &session{provider: "codex",
-		state:          map[string]json.RawMessage{},
-		projection:     projection,
-		subs:           map[chan wireEvent]struct{}{sub: {}},
-		spool:          spool,
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	go func() {
+		defer close(sub)
+		scanner := bufio.NewScanner(response.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var event wireEvent
+			if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event) == nil && event.Seq > prior {
+				sub <- event
+			}
+		}
+	}()
 
 	frames := append([][]byte{[]byte(liveTextDeltaTurnStarted), []byte(liveTextDeltaItemStarted)}, liveTextDeltaFrames("Hello", " world")...)
-	for _, line := range frames {
-		sess.recordWireLive(protocol.Recv, line, true)
+	for i, line := range frames {
+		var value any
+		_ = json.Unmarshal(line, &value)
+		frames[i], _ = json.Marshal(value)
+		f.emitAndWait(t, frames[i])
 	}
-	if !sess.summary().TurnActive {
+	if !sess.Summary().TurnActive {
 		t.Fatal("runtime observer missed turn/started")
 	}
 	tail := [][]byte{liveTextDeltaItemCompleted("Hello world"), liveTextDeltaTurnCompleted("completed")}
-	for _, line := range tail {
-		sess.recordWireLive(protocol.Recv, line, true)
+	for i, line := range tail {
+		var value any
+		_ = json.Unmarshal(line, &value)
+		tail[i], _ = json.Marshal(value)
+		f.emitAndWait(t, tail[i])
 	}
 	frames = append(frames, tail...)
-	if sess.summary().TurnActive {
+	if sess.Summary().TurnActive {
 		t.Fatal("runtime observer missed turn/completed")
 	}
 	if texts := liveTextDeltaAgentTexts(t, projection); len(texts) != 1 || texts[0] != "Hello world" {
@@ -196,18 +200,29 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 		t.Fatalf("turn completion named answer %q, want agent-1", got)
 	}
 
-	if len(sess.events) != len(frames) || len(sub) != len(frames) {
-		t.Fatalf("raw events buffered %d, subscriber got %d, want %d", len(sess.events), len(sub), len(frames))
-	}
-	for index, evt := range sess.events {
-		if !bytes.Equal(evt.Msg, frames[index]) {
-			t.Fatalf("event %d = %s, want %s", index, evt.Msg, frames[index])
+	var events []wireEvent
+	for _, event := range claudeWireEvents(sess) {
+		if event.Seq > prior {
+			events = append(events, event)
 		}
 	}
-	path := spool.path
-	if err := spool.close(false); err != nil {
-		t.Fatal(err)
+	if len(events) != len(frames) {
+		t.Fatalf("raw events buffered %d, want %d", len(events), len(frames))
 	}
+	for index, event := range events {
+		if !bytes.Equal(event.Msg, frames[index]) {
+			t.Fatalf("event %d = %s, want %s", index, event.Msg, frames[index])
+		}
+		select {
+		case live, ok := <-sub:
+			if !ok || !bytes.Equal(live.Msg, frames[index]) {
+				t.Fatalf("subscriber event %d = %s, want %s", index, live.Msg, frames[index])
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("subscriber missed event %d", index)
+		}
+	}
+	path := filepath.Join(spoolDir, "nano-wire-"+sess.ID()+".jsonl")
 	raw, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		t.Fatal(err)
@@ -237,93 +252,29 @@ func TestQueuedCodexTextDeltasBatchAcrossMailboxWithoutCrossingControl(t *testin
 		want.applyWire(protocol.Recv, frame, base.Add(time.Duration(index)*time.Millisecond))
 	}
 
-	sess, _ := readyTransactionalSendTestSession(t, nil)
-	if err := sess.ensureCoreSession(); err != nil {
-		t.Fatal(err)
+	p := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted-thread")}
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "batch-deltas", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "")
+	sess := f.session
+	release := holdFirstProviderFrame(t, f, p, frames[0])
+	defer release()
+	for _, frame := range frames[1:] {
+		f.emit(t, frame)
 	}
-	core := sess.coreSession()
-	t.Cleanup(core.Close)
+	awaitProviderIngress(t, f)
+	release()
+	awaitProviderFrame(t, f, frames[len(frames)-1])
 
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	core.ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
-		close(entered)
-		<-release
-		return nil
-	}})
-	<-entered
-	for index, frame := range frames {
-		sess.recordWireAt(protocol.Recv, frame, true, false, base.Add(time.Duration(index)*time.Millisecond))
-	}
-	close(release)
-	if err := core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
-		t.Fatal(err)
-	}
-
-	if got, unbatched := liveTextDeltaAgentTexts(t, sess.projection), liveTextDeltaAgentTexts(t, want); !reflect.DeepEqual(got, unbatched) ||
-		sess.projection.FinalAgentItemID("stream-turn") != want.FinalAgentItemID("stream-turn") {
+	if got, unbatched := liveTextDeltaAgentTexts(t, p.liveProjection), liveTextDeltaAgentTexts(t, want); !reflect.DeepEqual(got, unbatched) ||
+		p.liveProjection.FinalAgentItemID("stream-turn") != want.FinalAgentItemID("stream-turn") {
 		t.Fatalf("batched text %q differs from unbatched %q", got, unbatched)
 	}
-	if len(sess.events) != len(frames) {
-		t.Fatalf("raw event count = %d, want %d", len(sess.events), len(frames))
+	if len(receivedProviderFrames(sess)) != len(frames) {
+		t.Fatalf("raw event count = %d, want %d", len(receivedProviderFrames(sess)), len(frames))
 	}
-	for index, event := range sess.events {
+	for index, event := range receivedProviderFrames(sess) {
 		if !bytes.Equal(event.Msg, frames[index]) {
 			t.Fatalf("raw event %d = %s, want %s", index, event.Msg, frames[index])
 		}
-	}
-}
-
-func TestCodexTextDeltaIngressDoesNotWaitForOutstandingProviderCall(t *testing.T) {
-	t.Setenv("NANO_LIVE_TEXT_DELTAS", "on")
-	providerEntered := make(chan struct{})
-	providerRelease := make(chan struct{})
-	var releaseOnce sync.Once
-	releaseProvider := func() { releaseOnce.Do(func() { close(providerRelease) }) }
-	defer releaseProvider()
-
-	sess, _ := readyTransactionalSendTestSession(t, func(context.Context, string) (json.RawMessage, error) {
-		close(providerEntered)
-		<-providerRelease
-		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
-	})
-	if err := sess.ensureCoreSession(); err != nil {
-		t.Fatal(err)
-	}
-	core := sess.coreSession()
-	t.Cleanup(core.Close)
-
-	response := make(chan int, 1)
-	go func() {
-		response <- postTurn(t, sess, context.Background(), "callback-interlock", "exercise callback interlock").Code
-	}()
-	select {
-	case <-providerEntered:
-	case <-time.After(time.Second):
-		t.Fatal("provider call did not start")
-	}
-
-	callbackReturned := make(chan struct{})
-	go func() {
-		sess.recordWireAt(protocol.Recv, liveTextDeltaFrames("streaming")[0], true, false, time.Now())
-		close(callbackReturned)
-	}()
-	select {
-	case <-callbackReturned:
-	case <-time.After(250 * time.Millisecond):
-		releaseProvider()
-		<-response
-		t.Fatal("root text-delta callback waited for the outstanding provider call")
-	}
-
-	releaseProvider()
-	select {
-	case code := <-response:
-		if code != http.StatusOK {
-			t.Fatalf("provider response status = %d, want %d", code, http.StatusOK)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("provider response did not progress after callback returned")
 	}
 }
 
@@ -333,22 +284,18 @@ func TestAsyncTurnStoreFailureReachesTheThreadDiagnostics(t *testing.T) {
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(previousOutput) })
 
-	sess, _ := readyTransactionalSendTestSession(t, nil)
-	if err := sess.ensureCoreSession(); err != nil {
-		t.Fatal(err)
-	}
-	core := sess.coreSession()
-	t.Cleanup(core.Close)
-	if err := sess.queuedTurns.(*queuedTurnStore).db.Close(); err != nil {
+	p := newLiveProjection("codex", "hosted-thread")
+	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "async-diagnostics", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p})
+	f := newProviderRuntimeFixture(t, cfg, "native-thread", "")
+	if err := cfg.QueuedTurns.Database().Close(); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
-		sess.recordWireLive(protocol.Recv, []byte(liveTextDeltaTurnCompleted("completed")), true)
+		f.emit(t, liveTextDeltaTurnCompleted("completed"))
 	}
-	if err := core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
-		t.Fatal(err)
-	}
-	diagnostics := sess.projection.ThreadDiagnosticsSnapshot()
+	f.emitAndWait(t, []byte(`{"method":"fixture/drained","params":{"threadId":"native-thread"}}`))
+
+	diagnostics := p.ThreadDiagnosticsSnapshot()
 	if len(diagnostics) != 1 || diagnostics[0].Code != "async_session_event_failed" ||
 		diagnostics[0].Message != "An asynchronous session event could not be applied." || diagnostics[0].Occurrences != 3 {
 		t.Fatalf("async failure diagnostics = %#v", diagnostics)

@@ -19,7 +19,6 @@ import (
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
@@ -30,39 +29,25 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 				t.Fatal(err)
 			}
 			queue := mustQueuedTurnStore(t)
-			attempts, err := newSendAttemptStore(queue.db, queue.path, "run-1", testPromptStore(t, queue.db))
+			attempts, err := newSendAttemptStore(queue.Database(), queue.Path(), "run-1", testPromptStore(t, queue.Database()))
 			if err != nil {
 				t.Fatal(err)
 			}
-			turnStore, err := turns.OpenStore(context.Background(), queue.db)
+			turnStore, err := turns.OpenStore(context.Background(), queue.Database())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := turnStore.AdoptLegacy(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			queue.turns, attempts.turns = turnStore, turnStore
+			queue.BindTransactionStore(turnStore)
+			attempts.BindTransactionStore(turnStore)
 			clientID := provider + "-caller-session"
 			hosted, _, _ := store.beginSession(clientID, "request-hash", provider, presentationBackground)
 			_ = store.BindSession(hosted.ID, "nano-1", provider+"-native", "ready", presentationBackground)
-			sess := &session{id: "nano-1",
-				provider:         provider,
-				hostedThreadID:   hosted.ID,
-				presentationMode: presentationBackground,
-				threadID:         provider + "-native",
-				createdAt:        time.Now(),
-				interactions:     map[string]pendingInteraction{},
-				projection:       newLiveProjection(provider),
-				agentExecutions:  store,
-				turns:            turnStore,
-				sendOps:          map[string]*turnSendOperation{},
-				queuedTurns:      queue,
-				sendAttempts:     attempts,
-				lifecycleState:   testLifecycleSnapshot("ready", false)}
-			sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-				return json.RawMessage(`{"turn":{"id":"provider-turn-1"}}`), nil
-			}
-			s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
+			fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: provider, HostedThreadID: hosted.ID, PresentationMode: presentationBackground, CreatedAt: time.Now(), Projection: newLiveProjection(provider), AgentExecutions: store, Turns: turnStore, QueuedTurns: queue, SendAttempts: attempts}, provider+"-native", "")
+			sess := fixture.session
+			s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
 			sender := confirmedTestSender(t, s, provider)
 
 			body, err := json.Marshal(map[string]string{"prompt": "inspect only", "clientActionId": "action-1", "senderThreadRef": sender})
@@ -121,7 +106,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 }
 
 func TestGuardedHostedTurnAdmissionRejectsWithoutSideEffectsAndPreservesReplay(t *testing.T) {
-	s, store, sess, _, worker, prompts := stage0Server(t)
+	s, store, sess, _, worker, prompts, _ := stage0Server(t)
 	rejected := errors.New("superseded by newer input")
 	actionID := "nano:guarded-admission"
 	if record, _, err := s.submitHostedTurnGuardedWithOptions(worker.ID, actionID, "continue owner work", true, func([]agentTurnRecord) error {
@@ -132,11 +117,11 @@ func TestGuardedHostedTurnAdmissionRejectsWithoutSideEffectsAndPreservesReplay(t
 	if operation, found := store.turnForAction(worker.ID, actionID); found {
 		t.Fatalf("guarded rejection created operation %#v", operation)
 	}
-	if queued, found := sess.queuedTurns.First(sess.provider, sess.ThreadID(), sess.hostedThreadID); found {
+	if queued, found := s.queuedTurns.First(sess.Provider(), sess.ThreadID(), sess.HostedThreadID()); found {
 		t.Fatalf("guarded rejection created queue row %#v", queued)
 	}
-	if len(sess.sendOps) != 0 {
-		t.Fatalf("guarded rejection created send attempt %#v", sess.sendOps)
+	if inFlight := sess.InFlightDeliveries(); len(inFlight) != 0 {
+		t.Fatalf("guarded rejection created send attempts %#v", inFlight)
 	}
 	select {
 	case prompt := <-prompts:
@@ -177,42 +162,29 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	hosted, _, _ := store.beginSession("codex-caller-session", "request-hash", "codex", presentationBackground)
 	_ = store.BindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationBackground)
 	queue := mustQueuedTurnStore(t)
-	attempts, err := newSendAttemptStore(queue.db, queue.path, "run-1", testPromptStore(t, queue.db))
+	attempts, err := newSendAttemptStore(queue.Database(), queue.Path(), "run-1", testPromptStore(t, queue.Database()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	turnStore, err := turns.OpenStore(context.Background(), queue.db)
+	turnStore, err := turns.OpenStore(context.Background(), queue.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := turnStore.AdoptLegacy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	queue.turns, attempts.turns = turnStore, turnStore
+	queue.BindTransactionStore(turnStore)
+	attempts.BindTransactionStore(turnStore)
 	projection := newLiveProjection("codex", hosted.ID)
 	projection.SetNativeThreadID("codex-native")
-	sess := &session{id: "nano-1",
-		provider:         "codex",
-		hostedThreadID:   hosted.ID,
-		presentationMode: presentationBackground,
-		threadID:         "codex-native",
-		createdAt:        time.Now(),
-		interactions:     map[string]pendingInteraction{},
-		projection:       projection,
-		agentExecutions:  store,
-		turns:            turnStore,
-		sendOps:          map[string]*turnSendOperation{},
-		queuedTurns:      queue,
-		sendAttempts:     attempts,
-		lifecycleState:   testLifecycleSnapshot("ready", false)}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		return json.RawMessage(`{"turn":{"id":"provider-turn-bind-fail"}}`), nil
-	}
-	if _, err := queue.db.Exec(`CREATE TRIGGER fail_transactional_bind BEFORE UPDATE OF provider_turn_id ON queued_turns
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, CreatedAt: time.Now(), Projection: projection, AgentExecutions: store, Turns: turnStore, QueuedTurns: queue, SendAttempts: attempts}, "codex-native", "")
+	sess := fixture.session
+	fixture.codex.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-bind-fail"}})
+	if _, err := queue.Database().Exec(`CREATE TRIGGER fail_transactional_bind BEFORE UPDATE OF provider_turn_id ON queued_turns
 		WHEN NEW.provider_turn_id='provider-turn-bind-fail' BEGIN SELECT RAISE(FAIL,'synthetic bind failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
 	sender := confirmedTestSender(t, s, "codex")
 	body, err := json.Marshal(map[string]string{"prompt": "keep this text", "clientActionId": "action-bind-fail", "senderThreadRef": sender})
 	if err != nil {
@@ -247,23 +219,19 @@ func TestAgentExecutionObserverUsesGrokPromptCompleteEvidence(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("grok-caller", "request-hash", "grok", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "grok", HostedThreadID: hosted.ID, AgentExecutions: store, Projection: newLiveProjection("grok")}, "native-1", "")
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
 	_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
-	sess := &session{provider: "grok",
-		hostedThreadID:  hosted.ID,
-		threadID:        "native-1",
-		agentExecutions: store,
-		projection:      newLiveProjection("grok"),
-		lifecycleState:  testLifecycleSnapshot("ready", false)}
 
-	sess.observeAgentExecutionWire("recv", []byte(`{
+	fixture.emit(t, []byte(`{
       "jsonrpc":"2.0","method":"session/update",
       "params":{"sessionId":"native-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"done"}},"_meta":{"promptId":"turn-1","eventId":"event-1"}}
     }`))
-	sess.observeAgentExecutionWire("recv", []byte(`{
+	fixture.emit(t, []byte(`{
       "jsonrpc":"2.0","method":"_x.ai/session/prompt_complete",
       "params":{"sessionId":"native-1","promptId":"turn-1","stopReason":"end_turn"}
     }`))
+	waitForClaude(t, "terminal operation", func() bool { got, _ := store.turn(op.ID); return got.Status == agentTurnCompleted })
 	after, _ := store.turn(op.ID)
 	if after.Status != agentTurnCompleted || after.FinalResponse != "done" {
 		t.Fatalf("Grok terminal operation = %#v", after)
@@ -276,24 +244,22 @@ func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
 	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
 	_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
-	sess := &session{provider: "codex",
-		hostedThreadID:  hosted.ID,
-		threadID:        "native-1",
-		agentExecutions: store,
-		lifecycleState:  testLifecycleSnapshot("ready", false)}
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store}, "native-1", "")
 
-	sess.observeAgentExecutionWire("recv", []byte(`{
+	fixture.emit(t, []byte(`{
       "method":"item/completed",
       "params":{"threadId":"native-1","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}
     }`))
+	waitForClaude(t, "candidate answer", func() bool { got, _ := store.turn(op.ID); return got.CandidateItemID == "answer-1" })
 	before, _ := store.turn(op.ID)
 	if before.Status != agentTurnRunning {
 		t.Fatalf("assistant message ended operation: %#v", before)
 	}
-	sess.observeAgentExecutionWire("recv", []byte(`{
+	fixture.emit(t, []byte(`{
       "method":"turn/completed",
       "params":{"threadId":"native-1","turn":{"id":"turn-1","status":"completed"}}
     }`))
+	waitForClaude(t, "terminal operation", func() bool { got, _ := store.turn(op.ID); return got.Status == agentTurnCompleted })
 	after, _ := store.turn(op.ID)
 	if after.Status != agentTurnCompleted || after.FinalItemID != "answer-1" || after.FinalResponse != "done" {
 		t.Fatalf("terminal operation = %#v", after)
@@ -303,8 +269,8 @@ func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
 func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	s := &server{
-		defaults:        sessionDefaults{cwd: t.TempDir()},
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store,
+		defaults: sessionDefaults{cwd: t.TempDir()},
+		Registry: newSessionRegistry(), agentExecutions: store,
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent-sessions", bytes.NewReader([]byte(`{
@@ -322,8 +288,8 @@ func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testi
 func TestAgentCreatedHostedThreadRequiresKnownInvoker(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	s := &server{
-		defaults:        sessionDefaults{cwd: t.TempDir()},
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store,
+		defaults: sessionDefaults{cwd: t.TempDir()},
+		Registry: newSessionRegistry(), agentExecutions: store,
 	}
 	for name, body := range map[string]string{
 		"missing": `{"clientSessionId":"worker-missing","provider":"codex","mode":"start"}`,
@@ -350,14 +316,14 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	}
 	provider := newFakeAppServer(t)
 	queue := mustQueuedTurnStore(t)
-	attempts, err := newSendAttemptStore(queue.db, queue.path, "run-1", testPromptStore(t, queue.db))
+	attempts, err := newSendAttemptStore(queue.Database(), queue.Path(), "run-1", testPromptStore(t, queue.Database()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	s := &server{
 		defaults: sessionDefaults{cwd: t.TempDir()}, codex: provider.daemon(),
-		spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control,
+		spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
 	}
 
@@ -399,20 +365,19 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatalf("hosted-thread list status = %d, body %s", listed.Code, listed.Body.String())
 	}
 
-	s.mu.Lock()
-	sess := s.sessions[summary.ID]
-	s.mu.Unlock()
-	t.Cleanup(sess.close)
+	sess := s.LookupSession(summary.ID)
+
+	t.Cleanup(sess.Close)
 	deadline := time.Now().Add(time.Second)
-	for sess.summary().Status != "ready" && time.Now().Before(deadline) {
+	for sess.Summary().Status != "ready" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if got := sess.summary().Status; got != "ready" {
+	if got := sess.Summary().Status; got != "ready" {
 		t.Fatalf("human-created session status = %q", got)
 	}
-	provider.mu.Lock()
-	startParams := append([]byte(nil), provider.startParams...)
-	provider.mu.Unlock()
+	provider.Mu.Lock()
+	startParams := append([]byte(nil), provider.StartParams...)
+	provider.Mu.Unlock()
 	if !bytes.Contains(startParams, []byte(`"serviceTier":"priority"`)) {
 		t.Fatalf("thread/start params omitted priority: %s", startParams)
 	}
@@ -423,9 +388,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if resolved, ok := s.resolveHostedThreadRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
 		t.Fatalf("resolve human-created native id = %#v, present=%v", resolved, ok)
 	}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		return json.RawMessage(`{"turn":{"id":"provider-turn-human"}}`), nil
-	}
+	provider.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-human"}})
 
 	// Address the ordinary thread by its current Nano session id. The handler
 	// resolves that reference to the same durable hostedThreadId used by an
@@ -467,14 +430,14 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	}
 	provider := newFakeAppServer(t)
 	queue := mustQueuedTurnStore(t)
-	attempts, err := newSendAttemptStore(queue.db, queue.path, "run-1", testPromptStore(t, queue.db))
+	attempts, err := newSendAttemptStore(queue.Database(), queue.Path(), "run-1", testPromptStore(t, queue.Database()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	s := &server{
 		defaults: sessionDefaults{cwd: t.TempDir()}, codex: provider.daemon(),
-		spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control,
+		spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
 	}
 
@@ -509,27 +472,25 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	if err := json.Unmarshal(duplicate.Body.Bytes(), &retried); err != nil || retried.ID != hosted.ID {
 		t.Fatalf("normalized invoker retry = %#v, err=%v", retried, err)
 	}
-	sess := s.sessionForHostedThread(hosted.ID)
+	sess := s.SessionForHostedThread(hosted.ID)
 	if sess == nil {
 		t.Fatal("API-created hosted thread did not enter the ordinary session registry")
 	}
-	t.Cleanup(sess.close)
+	t.Cleanup(sess.Close)
 	deadline := time.Now().Add(time.Second)
-	for sess.summary().Status != "ready" && time.Now().Before(deadline) {
+	for sess.Summary().Status != "ready" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if summary := sess.summary(); summary.Status != "ready" || summary.HostedThreadID != hosted.ID || summary.InvokerHostedThreadID != parent.ID {
+	if summary := sess.Summary(); summary.Status != "ready" || summary.HostedThreadID != hosted.ID || summary.InvokerHostedThreadID != parent.ID {
 		t.Fatalf("ordinary session summary = %#v", summary)
 	}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		return json.RawMessage(`{"turn":{"id":"provider-turn-api"}}`), nil
-	}
+	provider.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-api"}})
 
 	// The legacy browser/New Window control path accepts the API-created thread
 	// because creation origin is not represented in the runtime session type.
 	turn := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(turn, httptest.NewRequest(http.MethodPost,
-		"/api/sessions/"+sess.id+"/turn",
+		"/api/sessions/"+sess.ID()+"/turn",
 		bytes.NewReader([]byte(`{"text":"ordinary follow up","clientActionId":"browser-action-1"}`))))
 	if turn.Code != http.StatusOK {
 		t.Fatalf("ordinary session turn status = %d, body %s", turn.Code, turn.Body.String())
@@ -549,16 +510,11 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	projection.mu.Lock()
 	projection.runtime.TurnActive = true
 	projection.mu.Unlock()
-	sess := &session{id: "nano-1",
-		provider:       "codex",
-		hostedThreadID: hosted.ID,
-		threadID:       "native-1",
-		projection:     projection,
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, Projection: projection}, "native-1", "ready", "")
 	saved := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: transcriptResponse{
 		Items: []transcriptItem{{ID: "saved-message-1", Type: "agent_message", Text: "working on it"}},
 	}}}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store, catalog: saved}
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store, catalog: saved}, map[string]*session{"nano-1": sess})
 	s.startLiveText(sess)
 
 	read := func(path string) (liveProjectionSnapshot, int) {
@@ -602,7 +558,7 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 // durable record and operations erased — the contract the docs always
 // published. Close-meaning callers use POST {ref}/close (tests below).
 func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) { c.answerRest() })
+	shim := newFakeShim(t, func(c *shimConn) { c.AnswerRest() })
 	control, store := newTestHostedControl(t)
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
@@ -616,8 +572,8 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 		ShimSessionID:    "shim-delete-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: attachments, controlMetadata: control}
-	s.defaults.claudeShimWS = shim.wsURL()
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments, controlMetadata: control}
+	s.defaults.claudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agent-sessions/caller-session", nil)
 	applicationHandler(s).ServeHTTP(rec, req)
@@ -647,7 +603,7 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 // bug is fixed: a non-terminal operation on an unattached thread settles as
 // interrupted instead of dangling forever.
 func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) { c.answerRest() })
+	shim := newFakeShim(t, func(c *shimConn) { c.AnswerRest() })
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
@@ -658,8 +614,8 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 		ShimSessionID:    "shim-close-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: attachments}
-	s.defaults.claudeShimWS = shim.wsURL()
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
+	s.defaults.claudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil)
 	applicationHandler(s).ServeHTTP(rec, req)
@@ -697,7 +653,7 @@ func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 	_ = store.MarkTurnDelivery(waiting.ID, "claude:1", agentTurnRunning, nil)
 	_ = store.MarkWaiting(hosted.ID, "claude:1", true)
 
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: newTestStore(t)}
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: newTestStore(t)}
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil))
 	if rec.Code != http.StatusOK {
@@ -723,7 +679,7 @@ func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 // Claude detach keeps the durable thread, but now shares the confirmed stop
 // path. An open operation still makes detach refuse.
 func TestAgentSessionDetach(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) { c.answerRest() })
+	shim := newFakeShim(t, func(c *shimConn) { c.AnswerRest() })
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
@@ -733,8 +689,8 @@ func TestAgentSessionDetach(t *testing.T) {
 		ShimSessionID:    "shim-detach-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: attachments}
-	s.defaults.claudeShimWS = shim.wsURL()
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
+	s.defaults.claudeShimWS = shim.WSURL()
 
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
 	rec := httptest.NewRecorder()
@@ -784,81 +740,18 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	_ = store.MarkTurnTerminal("codex", "native-1", "turn-old", agentTurnCompleted, nil, "done", "item-old")
 	current, _, _ := store.beginTurn(hosted.ID, "current-action", "current-prompt")
 	_ = store.MarkTurnDelivery(current.ID, "turn-current", agentTurnWaiting, nil)
-	sess := &session{id: "nano-1",
-		provider:       "codex",
-		hostedThreadID: hosted.ID,
-		threadID:       "native-1",
-		interactions: map[string]pendingInteraction{
-			"request-1": {ID: "request-1", TurnID: "turn-current"},
-		},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID}, "native-1", "")
+	sess := f.session
+	f.codex.EmitNotification(map[string]any{"id": 1, "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "native-1", "turnId": "turn-current"}})
+	waitForClaude(t, "the current turn's interaction", func() bool { return len(sess.PendingInteractionList()) == 1 })
+
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
 	oldRecord, _ := store.turn(old.ID)
 	currentRecord, _ := store.turn(current.ID)
 	oldView := s.agentTurnView(oldRecord)
 	currentView := s.agentTurnView(currentRecord)
-	if len(oldView.Interactions) != 0 || len(currentView.Interactions) != 1 || currentView.Interactions[0].ID != "request-1" {
+	if len(oldView.Interactions) != 0 || len(currentView.Interactions) != 1 || currentView.Interactions[0].ID != "1" {
 		t.Fatalf("interaction scopes = old:%#v current:%#v", oldView.Interactions, currentView.Interactions)
-	}
-}
-
-func TestDeliveryErrorsDistinguishRefusalFromUncertainty(t *testing.T) {
-	unknown := deliveryExecutionError(errors.New("socket closed"))
-	if unknown.Code != "delivery_unknown" {
-		t.Fatalf("transport error code = %q", unknown.Code)
-	}
-	refused := deliveryExecutionError(&protocol.RPCError{Code: -32602, Message: "bad request"})
-	if refused.Code != "delivery_refused" {
-		t.Fatalf("provider refusal code = %q", refused.Code)
-	}
-}
-
-func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testing.T) {
-	executions := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, err := executions.beginSession("lock-boundary", "request-hash", "codex", presentationShared)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := executions.BindSession(hosted.ID, "nano-lock-boundary", "native-lock-boundary", "ready", presentationShared); err != nil {
-		t.Fatal(err)
-	}
-	sess := &session{id: "nano-lock-boundary",
-		hostedThreadID: hosted.ID,
-		provider:       "codex",
-		threadID:       "native-live-only",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions}
-
-	// Block the downstream lookup and prove the server lock is already free.
-	lookupStarted := make(chan struct{})
-	releaseLookup := make(chan struct{})
-	resolved := make(chan agentSessionRecord, 1)
-	go func() {
-		record, _ := s.resolveLiveHostedThreadRecord("native-live-only", func(id string) (agentSessionRecord, bool) {
-			close(lookupStarted)
-			<-releaseLookup
-			return executions.session(id)
-		})
-		resolved <- record
-	}()
-	select {
-	case <-lookupStarted:
-	case <-time.After(time.Second):
-		t.Fatal("resolver never reached the control-store lookup")
-	}
-	if !s.mu.TryLock() {
-		close(releaseLookup)
-		t.Fatal("server lock stayed held while control-store read was blocked")
-	}
-	s.mu.Unlock()
-	close(releaseLookup)
-	select {
-	case record := <-resolved:
-		if record.ID != hosted.ID {
-			t.Fatalf("resolved record = %#v", record)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("resolver did not finish after control store unblocked")
 	}
 }
 
@@ -880,26 +773,19 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 	hosted, _, _ := executions.beginSession("queue-active", "request-hash", "codex", presentationBackground)
 	_ = executions.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationBackground)
 	var providerCalls atomic.Int32
-	sess := &session{id: "nano-1",
-		provider:         "codex",
-		hostedThreadID:   hosted.ID,
-		threadID:         "native-1",
-		presentationMode: presentationBackground,
-		agentExecutions:  executions,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("ready", true)}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		providerCalls.Add(1)
-		return json.RawMessage(`{"turn":{"id":"provider-queued-turn"}}`), nil
-	}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
+	var sess *session
+	runtimeFixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-1", "", func(f *providerRuntimeFixture) {
+		f.send = func(context.Context, string) (json.RawMessage, error) {
+			providerCalls.Add(1)
+			return json.RawMessage(`{"turn":{"id":"provider-queued-turn"}}`), nil
+		}
+	})
+	sess = runtimeFixture.session
+	runtimeFixture.activate(t)
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{"nano-1": sess})
 
 	submitted := submitHostedTurn(t, s, hosted.ID, "queued-action", "send after the active turn")
 	if submitted.Code != http.StatusAccepted {
@@ -916,7 +802,7 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 		t.Fatalf("provider calls before drain = %d", providerCalls.Load())
 	}
 
-	sess.setTurnActive(false, "", 0, true)
+	runtimeFixture.finishTurn(t)
 	latest := waitForAgentTurnStatus(t, executions, queued.ID, agentTurnRunning)
 	if latest.ProviderTurnID != "provider-queued-turn" {
 		t.Fatalf("drained operation = %#v", latest)
@@ -973,26 +859,18 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	var providerCalls atomic.Int32
-	sess := &session{id: "nano-after-restart",
-		provider:         "claude",
-		hostedThreadID:   hosted.ID,
-		threadID:         "native-restart-stale",
-		presentationMode: presentationBackground,
-		agentExecutions:  executions,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("ready", false)}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		providerCalls.Add(1)
-		return json.RawMessage(`{"turn":{"id":"claude:fresh"}}`), nil
-	}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
+	var sess *session
+	runtimeFixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-after-restart", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-restart-stale", "", func(f *providerRuntimeFixture) {
+		f.send = func(context.Context, string) (json.RawMessage, error) {
+			providerCalls.Add(1)
+			return json.RawMessage(`{"turn":{"id":"claude:fresh"}}`), nil
+		}
+	})
+	sess = runtimeFixture.session
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{sess.ID(): sess})
 
 	submitted := submitHostedTurn(t, s, hosted.ID, "fresh-after-restart", "dispatch after restart")
 	if submitted.Code != http.StatusAccepted {
@@ -1034,26 +912,19 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 		t.Fatal(err)
 	}
 	var providerCalls atomic.Int32
-	sess := &session{id: "nano-claude-active",
-		provider:         "claude",
-		hostedThreadID:   hosted.ID,
-		threadID:         "native-claude-active",
-		presentationMode: presentationBackground,
-		agentExecutions:  executions,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("ready", true)}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		providerCalls.Add(1)
-		return json.RawMessage(`{"turn":{"id":"claude:followup"}}`), nil
-	}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
+	var sess *session
+	runtimeFixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-claude-active", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-claude-active", "", func(f *providerRuntimeFixture) {
+		f.send = func(context.Context, string) (json.RawMessage, error) {
+			providerCalls.Add(1)
+			return json.RawMessage(`{"turn":{"id":"claude:followup"}}`), nil
+		}
+	})
+	sess = runtimeFixture.session
+	runtimeFixture.activate(t)
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{sess.ID(): sess})
 
 	submitted := submitHostedTurn(t, s, hosted.ID, "claude-followup", "queue behind the first turn")
 	if submitted.Code != http.StatusAccepted {
@@ -1067,7 +938,7 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 		t.Fatalf("follow-up did not wait behind active turn: operation=%#v calls=%d", queued, providerCalls.Load())
 	}
 
-	sess.setTurnActive(false, "", 0, true)
+	runtimeFixture.finishTurn(t)
 	running := waitForAgentTurnStatus(t, executions, queued.ID, agentTurnRunning)
 	if running.ProviderTurnID != "claude:followup" || providerCalls.Load() != 1 {
 		t.Fatalf("follow-up did not drain after completion: operation=%#v calls=%d", running, providerCalls.Load())
@@ -1097,26 +968,18 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var providerCalls atomic.Int32
-	sess := &session{id: "nano-accepted-first",
-		provider:         "claude",
-		hostedThreadID:   hosted.ID,
-		threadID:         "native-accepted-first",
-		presentationMode: presentationBackground,
-		agentExecutions:  executions,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("ready", false)}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		n := providerCalls.Add(1)
-		return json.RawMessage(`{"turn":{"id":"claude:` + strconv.Itoa(int(n)) + `"}}`), nil
-	}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
+	var sess *session
+	runtimeFixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-accepted-first", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-accepted-first", "", func(f *providerRuntimeFixture) {
+		f.send = func(context.Context, string) (json.RawMessage, error) {
+			n := providerCalls.Add(1)
+			return json.RawMessage(`{"turn":{"id":"claude:` + strconv.Itoa(int(n)) + `"}}`), nil
+		}
+	})
+	sess = runtimeFixture.session
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{sess.ID(): sess})
 
 	first := submitHostedTurn(t, s, hosted.ID, "first", "prompt one")
 	if first.Code != http.StatusAccepted {
@@ -1133,7 +996,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if err := executions.MarkTurnTerminal("claude", "native-accepted-first", "claude:1", agentTurnCompleted, nil, "done", "item-1"); err != nil {
 		t.Fatal(err)
 	}
-	sess.setTurnActive(false, "", 0, true)
+	runtimeFixture.finishTurn(t)
 	record, _, err := turnStore.Get(context.Background(), running.TransportActionID)
 	if err != nil {
 		t.Fatal(err)
@@ -1159,7 +1022,6 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 			}
 			return
 		}
-		sess.kickQueuedTurnDrain()
 		time.Sleep(10 * time.Millisecond)
 	}
 	op, _ := executions.turn(secondView.ID)
@@ -1201,26 +1063,18 @@ func TestHostedClaudeAcceptedPromptDoesNotHoldFollowupClaim(t *testing.T) {
 	}
 	seedAcceptedTransactionalTurn(t, turnStore, hosted.ID, model.ProviderClaude, "native-held-mismatch", operation.TransportActionID, "claude:1", "held prompt")
 	var providerCalls atomic.Int32
-	sess := &session{id: "nano-held-mismatch",
-		provider:         "claude",
-		hostedThreadID:   hosted.ID,
-		threadID:         "native-held-mismatch",
-		presentationMode: presentationBackground,
-		agentExecutions:  executions,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("ready", false)}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		providerCalls.Add(1)
-		return json.RawMessage(`{"turn":{"id":"claude:2"}}`), nil
-	}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
+	var sess *session
+	runtimeFixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-held-mismatch", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-held-mismatch", "", func(f *providerRuntimeFixture) {
+		f.send = func(context.Context, string) (json.RawMessage, error) {
+			providerCalls.Add(1)
+			return json.RawMessage(`{"turn":{"id":"claude:2"}}`), nil
+		}
+	})
+	sess = runtimeFixture.session
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{sess.ID(): sess})
 
 	second := submitHostedTurn(t, s, hosted.ID, "second", "prompt two")
 	if second.Code != http.StatusAccepted {
@@ -1255,25 +1109,41 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	hosted, _, _ := executions.beginSession("queue-starting", "request-hash", "claude", presentationBackground)
 	var providerCalls atomic.Int32
-	sess := &session{id: "nano-1",
-		provider:         "claude",
-		hostedThreadID:   hosted.ID,
-		presentationMode: presentationBackground,
-		agentExecutions:  executions,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("starting", false)}
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		providerCalls.Add(1)
-		return json.RawMessage(`{"turn":{"id":"claude:1"}}`), nil
-	}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: newLiveProjection("claude"), AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "", "starting", "")
+	shim := newFakeShim(t, func(c *shimConn) {
+		start, ok := c.Next()
+		if !ok {
+			return
+		}
+		c.Reply(start, map[string]any{"shimSessionId": "native-after-start"})
+		for {
+			call, ok := c.Next()
+			if !ok {
+				return
+			}
+			if call.Method == shimMethodInput {
+				var params struct {
+					Line string `json:"line"`
+				}
+				_ = json.Unmarshal(call.Params, &params)
+				var input struct {
+					Type string `json:"type"`
+				}
+				_ = json.Unmarshal([]byte(params.Line), &input)
+				if input.Type == "user" {
+					providerCalls.Add(1)
+					c.Reply(call, map[string]any{"turnId": "claude:1"})
+					continue
+				}
+			}
+			c.Reply(call, map[string]any{})
+		}
+	})
+
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{"nano-1": sess})
 
 	submitted := submitHostedTurn(t, s, hosted.ID, "startup-action", "send once ready")
 	if submitted.Code != http.StatusAccepted {
@@ -1292,10 +1162,12 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 		t.Fatalf("pre-identity queue record = %#v, present=%v", queuedRecord, ok)
 	}
 
-	sess.stateMu.Lock()
-	sess.threadID = "native-after-start"
-	sess.stateMu.Unlock()
-	sess.setStatus("ready")
+	sess.ReserveNativeID("native-after-start")
+	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sess.Close)
+
 	latest := waitForAgentTurnStatus(t, executions, queued.ID, agentTurnRunning)
 	if latest.ProviderTurnID != "claude:1" {
 		t.Fatalf("startup drain = %#v", latest)
@@ -1327,30 +1199,13 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if err := executions.BindSession(hosted.ID, "nano-1", "cs_fast_start", "starting", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
-	sess := &session{id: "nano-1",
-		provider:         "claude",
-		hostedThreadID:   hosted.ID,
-		threadID:         "cs_fast_start",
-		presentationMode: presentationBackground,
-		projection:       newLiveProjection("claude"),
-		agentExecutions:  executions,
-		metadata:         executions.control,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		state:            map[string]json.RawMessage{},
-		subs:             map[chan wireEvent]struct{}{},
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("starting", false)}
-	sess.setProjectionThreadID("cs_fast_start")
-	claude := newClaudeSession(sess, "cs_fast_start")
-	transport := &fastStartingClaudeTransport{owner: claude, base: time.Now(), includeResult: true}
-	claude.tr = transport
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
+	projection := newLiveProjection("claude")
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.control, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_fast_start", "starting", "")
+
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{"nano-1": sess})
 
 	submitted := submitHostedTurn(t, s, hosted.ID, "claude-fast-action", "finish before the input ack returns")
 	if submitted.Code != http.StatusAccepted {
@@ -1367,47 +1222,28 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if !ok {
 		t.Fatal("queued public operation disappeared")
 	}
-	if !claude.markTransportReady() {
-		t.Fatal("synthetic Claude transport did not become ready")
-	}
-	deadline := time.Now().Add(time.Second)
-	for {
-		sess.sendMu.Lock()
-		sendOperation := sess.sendOps[queuedOperation.TransportActionID]
-		sess.sendMu.Unlock()
-		if sendOperation != nil {
-			select {
-			case <-sendOperation.done:
-			case <-time.After(time.Second):
-				t.Fatal("fresh Claude send did not finish")
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("fresh Claude send did not start")
-		}
-		time.Sleep(time.Millisecond)
-	}
+	startFastClaudeFixture(t, sess, true)
+	waitForTurnSendDone(t, sess, queuedOperation.TransportActionID)
 
 	// The operation binds to the turn and native the child announced. It
 	// finishes only on its own prompt's saved proof, which this fixture never
 	// writes, so it stays running.
 	waitForCatalogWithin(t, 5*time.Second, func() bool {
-		turns := projectionStateForTest(sess.projection).Turns
+		turns := projectionStateForTest(projection).Turns
 		return len(turns) == 1 && turns[0].Status == agentTurnCompleted
 	})
 	latest, _ := executions.turn(operation.ID)
 	if latest.ProviderTurnID != "shim-turn-fast-1" || latest.NativeThreadID != "native-fast-start" || latest.Status != agentTurnRunning {
 		t.Fatalf("bound public operation = %#v", latest)
 	}
-	snapshot := projectionStateForTest(sess.projection)
+	snapshot := projectionStateForTest(projection)
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].ID != "shim-turn-fast-1" || snapshot.Turns[0].Status != agentTurnCompleted {
 		t.Fatalf("Claude projection turns = %#v", snapshot.Turns)
 	}
 	if snapshot.Turns[0].DurationMS < 0 {
 		t.Fatalf("Claude projection duration = %dms", snapshot.Turns[0].DurationMS)
 	}
-	seedAcceptedTransactionalTurn(t, sess.turns, "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-action", "claude:9", "leave me alone")
+	seedAcceptedTransactionalTurn(t, sess.PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-action", "claude:9", "leave me alone")
 
 	(&server{}).confirmDurableItems(context.Background(), sess)
 	if accepted, ok := queue.Get(queuedOperation.TransportActionID); !ok || accepted.State != submissionAccepted || accepted.Text == "" {
@@ -1452,6 +1288,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
+	migrateTestControl(t, executions.control)
 	hosted, _, err := executions.beginSession("claude-output-first", "request-hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
@@ -1461,30 +1298,13 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if err := executions.BindSession(hosted.ID, "nano-output-first", "cs_output_first", "starting", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
-	sess := &session{id: "nano-output-first",
-		provider:         "claude",
-		hostedThreadID:   hosted.ID,
-		threadID:         "cs_output_first",
-		presentationMode: presentationBackground,
-		projection:       newLiveProjection("claude"),
-		agentExecutions:  executions,
-		metadata:         executions.control,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		state:            map[string]json.RawMessage{},
-		subs:             map[chan wireEvent]struct{}{},
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("starting", false)}
-	sess.setProjectionThreadID("cs_output_first")
-	claude := newClaudeSession(sess, "cs_output_first")
-	transport := &fastStartingClaudeTransport{owner: claude, base: time.Now()}
-	claude.tr = transport
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
+	projection := newLiveProjection("claude")
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-output-first", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.control, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_output_first", "starting", "")
+
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{sess.ID(): sess})
 
 	submitted := submitHostedTurn(t, s, hosted.ID, "claude-output-first-action", "finish without a result line")
 	if submitted.Code != http.StatusAccepted {
@@ -1498,27 +1318,8 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if !ok || operation.Status != agentTurnQueued {
 		t.Fatalf("startup operation = %#v, durable=%#v, present=%v", operation, queuedOperation, ok)
 	}
-	if !claude.markTransportReady() {
-		t.Fatal("synthetic Claude transport did not become ready")
-	}
-	deadline := time.Now().Add(time.Second)
-	for {
-		sess.sendMu.Lock()
-		sendOperation := sess.sendOps[queuedOperation.TransportActionID]
-		sess.sendMu.Unlock()
-		if sendOperation != nil {
-			select {
-			case <-sendOperation.done:
-			case <-time.After(time.Second):
-				t.Fatal("fresh Claude send did not finish")
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("fresh Claude send did not start")
-		}
-		time.Sleep(time.Millisecond)
-	}
+	startFastClaudeFixture(t, sess, false)
+	waitForTurnSendDone(t, sess, queuedOperation.TransportActionID)
 
 	running, ok := executions.turn(operation.ID)
 	if !ok || running.Status != agentTurnRunning || running.ProviderTurnID != "shim-turn-fast-1" || running.NativeThreadID != "native-fast-start" {
@@ -1532,6 +1333,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if !ok || exactAttempt.Status != sendAttemptAccepted || exactAttempt.Confirmed || exactAttempt.ProviderTurnID != "shim-turn-fast-1" {
 		t.Fatalf("output-first send attempt = %#v, present=%v", exactAttempt, ok)
 	}
+
 	// Delivery completion closes before every projection callback from the same
 	// provider response has necessarily applied. This test-only 50ms headroom
 	// lets the synthetic asynchronous callback queue drain; production has no timer.
@@ -1539,7 +1341,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	startedDeadline := time.Now().Add(time.Second)
 	var snapshot liveProjectionSnapshot
 	for time.Now().Before(startedDeadline) {
-		snapshot = projectionStateForTest(sess.projection)
+		snapshot = projectionStateForTest(projection)
 		if len(snapshot.Turns) == 1 && snapshot.Turns[0].StartedAtMs != 0 {
 			break
 		}
@@ -1551,7 +1353,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if snapshot.Turns[0].FinalItemID != "" {
 		t.Fatalf("result-free projection claimed a terminal item: %#v", snapshot.Turns[0])
 	}
-	seedAcceptedTransactionalTurn(t, sess.turns, "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-output-first", "claude:9", "leave me alone")
+	seedAcceptedTransactionalTurn(t, sess.PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-output-first", "claude:9", "leave me alone")
 
 	s.confirmDurableItems(context.Background(), sess)
 	if current, _ := executions.turn(operation.ID); current.Status != agentTurnRunning {
@@ -1582,65 +1384,79 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	}
 	// Claude saved turns share no id with the live turn, so a catalog change
 	// never settles it; only the live result does.
-	snapshot = projectionStateForTest(sess.projection)
+	snapshot = projectionStateForTest(projection)
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].ID != "shim-turn-fast-1" || snapshot.Turns[0].Status != "in_progress" {
 		t.Fatalf("a catalog change settled the live Claude turn: %#v", snapshot.Turns)
 	}
 }
 
-type fastStartingClaudeTransport struct {
-	owner         *claudeSession
-	base          time.Time
-	includeResult bool
-	turnOrdinal   int
-}
-
-func (t *fastStartingClaudeTransport) sendLine(line []byte) error {
-	return t.emitCompletionBeforeAck(line)
-}
-
-func (t *fastStartingClaudeTransport) sendLineContext(_ context.Context, line []byte) error {
-	return t.emitCompletionBeforeAck(line)
-}
-
-// emitCompletionBeforeAck answers the prompt line before its write returns.
-// Its result names the prompt by the user line's uuid, as Claude's does.
-func (t *fastStartingClaudeTransport) emitCompletionBeforeAck(prompt []byte) error {
-	var user struct {
-		UUID string `json:"uuid"`
+// The peer sends the native identity and result before acknowledging input,
+// exposing the same early-completion race across the real shim transport.
+func startFastClaudeFixture(t *testing.T, sess *session, includeResult bool) {
+	t.Helper()
+	f := &providerRuntimeFixture{session: sess}
+	provisional := sess.ThreadID()
+	sess.ReserveNativeID("")
+	base := time.Now()
+	ordinal := 0
+	shim := newFakeShim(t, func(c *shimConn) {
+		f.claude = c
+		start, ok := c.Next()
+		if !ok {
+			return
+		}
+		c.Reply(start, map[string]any{"shimSessionId": provisional})
+		for {
+			call, ok := c.Next()
+			if !ok {
+				return
+			}
+			if call.Method != shimMethodInput {
+				c.Reply(call, map[string]any{})
+				continue
+			}
+			var params struct {
+				Line string `json:"line"`
+			}
+			_ = json.Unmarshal(call.Params, &params)
+			var user struct {
+				Type string `json:"type"`
+				UUID string `json:"uuid"`
+			}
+			_ = json.Unmarshal([]byte(params.Line), &user)
+			if user.Type != "user" {
+				c.Reply(call, map[string]any{})
+				continue
+			}
+			ordinal++
+			turn := fmt.Sprintf("shim-turn-fast-%d", ordinal)
+			lines := []struct {
+				at   time.Time
+				line string
+			}{
+				{base.Add(time.Millisecond), `{"type":"system","subtype":"init","session_id":"native-fast-start","model":"claude-test","permissionMode":"bypassPermissions"}`},
+				{base.Add(3 * time.Millisecond), `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-fast"}}}`},
+				{base.Add(4 * time.Millisecond), `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text"}}}`},
+				{base.Add(5 * time.Millisecond), `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"done"}}}`},
+				{base.Add(6 * time.Millisecond), `{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`},
+			}
+			if includeResult {
+				lines = append(lines, struct {
+					at   time.Time
+					line string
+				}{base.Add(2 * time.Millisecond), `{"type":"result","subtype":"success","is_error":false,"result":"done","user_message_uuid":"` + user.UUID + `"}`})
+			}
+			for _, entry := range lines {
+				f.emitAt(t, []byte(entry.line), entry.at, turn)
+			}
+			c.Reply(call, map[string]any{"turnId": turn})
+		}
+	})
+	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+		t.Fatal(err)
 	}
-	_ = json.Unmarshal(prompt, &user)
-	t.turnOrdinal++
-	t.owner.sess.projection.SetClaudeProviderTurnID(fmt.Sprintf("shim-turn-fast-%d", t.turnOrdinal))
-	lines := []struct {
-		at   time.Time
-		line string
-	}{
-		{t.base.Add(time.Millisecond), `{"type":"system","subtype":"init","session_id":"native-fast-start","model":"claude-test","permissionMode":"bypassPermissions"}`},
-		{t.base.Add(3 * time.Millisecond), `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-fast"}}}`},
-		{t.base.Add(4 * time.Millisecond), `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text"}}}`},
-		{t.base.Add(5 * time.Millisecond), `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"done"}}}`},
-		{t.base.Add(6 * time.Millisecond), `{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`},
-	}
-	if t.includeResult {
-		// The shim timestamp can be sampled before Nano finishes handling an
-		// earlier frame. Projection time must remain monotonic in wire order.
-		lines = append(lines, struct {
-			at   time.Time
-			line string
-		}{t.base.Add(2 * time.Millisecond), `{"type":"result","subtype":"success","is_error":false,"result":"done","user_message_uuid":"` + user.UUID + `"}`})
-	}
-	for index, entry := range lines {
-		t.owner.deliverLine(t, protocol.Recv, []byte(entry.line), int64(index+1), entry.at)
-	}
-	return nil
-}
-
-func (t *fastStartingClaudeTransport) isReplaying() bool { return false }
-func (t *fastStartingClaudeTransport) lastSeq() int64    { return 0 }
-func (t *fastStartingClaudeTransport) close() error      { return nil }
-func (t *fastStartingClaudeTransport) durableAttachment(nativeThreadID, model string) (attachmentRecord, bool) {
-	return attachmentRecord{ShimSessionID: "cs_fast_start", NativeThreadID: nativeThreadID, Model: model}, true
+	waitForClaudeStatus(t, sess, "ready")
+	t.Cleanup(sess.Close)
 }
 
 func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
@@ -1655,22 +1471,11 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	executions, attempts, queue, turnStore := stores.executions, stores.attempts, stores.queue, stores.turns
 	hosted, _, _ := executions.beginSession("queue-cancel", "request-hash", "codex", presentationShared)
 	_ = executions.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
-	sess := &session{id: "nano-1",
-		provider:         "codex",
-		hostedThreadID:   hosted.ID,
-		threadID:         "native-1",
-		presentationMode: presentationShared,
-		agentExecutions:  executions,
-		turns:            turnStore,
-		sendAttempts:     attempts,
-		queuedTurns:      queue,
-		sendOps:          map[string]*turnSendOperation{},
-		interactions:     map[string]pendingInteraction{},
-		lifecycleState:   testLifecycleSnapshot("ready", true)}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationShared, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-1", "ready", "", true)
+	s := testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
-	}
+	}, map[string]*session{"nano-1": sess})
 
 	firstResponse := submitHostedTurn(t, s, hosted.ID, "queue-first", "first")
 	secondResponse := submitHostedTurn(t, s, hosted.ID, "queue-second", "second")
@@ -1683,7 +1488,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 
 	// Cancellation addresses the durable queue directly when Nano is between
 	// attachments, so callers do not need a process-local session id.
-	s.sessions = map[string]*session{}
+	s.Registry = newSessionRegistry()
 	canceled := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(canceled, httptest.NewRequest(http.MethodDelete, "/api/v1/turn-operations/"+second.ID, nil))
 	if canceled.Code != http.StatusOK {
@@ -1697,17 +1502,6 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	firstRecord, _ := executions.turn(first.ID)
 	if got := s.agentTurnView(firstRecord).QueuePosition; got != 1 {
 		t.Fatalf("first queue position after cancel = %d", got)
-	}
-}
-
-func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
-	sess := &session{lifecycleState: testLifecycleSnapshot("ready", false)}
-	if sess.summary().TurnActive {
-		t.Fatal("local reservation asserted work")
-	}
-	sess.acceptProviderTurn("accepted-turn")
-	if summary := sess.summary(); !summary.TurnActive {
-		t.Fatalf("accepted provider turn summary = %#v", summary)
 	}
 }
 
@@ -1763,20 +1557,7 @@ func waitForAgentTurnStatus(t *testing.T, store *agentExecutionStore, operationI
 	}
 }
 
-func waitForTurnSendDone(t *testing.T, sess *session, actionID string) {
-	t.Helper()
-	sess.sendMu.Lock()
-	op := sess.sendOps[actionID]
-	sess.sendMu.Unlock()
-	if op == nil {
-		t.Fatalf("missing send operation %s", actionID)
-	}
-	select {
-	case <-op.done:
-	case <-time.After(time.Second):
-		t.Fatalf("send operation %s did not finish", actionID)
-	}
-}
+var waitForTurnSendDone = waitTurnSendDone
 
 // PUT {threadRef}/presentation: explicit-mode validation, live-session sync,
 // and idempotency. The route resolves refs the same way as every scoped verb,
@@ -1788,19 +1569,8 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	}
 	hosted, _, _ := store.beginSession("caller-1", "request-hash", "codex", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationShared)
-	sess := &session{id: "nano-1",
-		provider:         "codex",
-		hostedThreadID:   hosted.ID,
-		presentationMode: presentationShared,
-		threadID:         "codex-native",
-		createdAt:        time.Now(),
-		interactions:     map[string]pendingInteraction{},
-		projection:       newLiveProjection("codex"),
-		agentExecutions:  store,
-		sendOps:          map[string]*turnSendOperation{},
-		queuedTurns:      mustQueuedTurnStore(t),
-		lifecycleState:   testLifecycleSnapshot("ready", false)}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationShared, CreatedAt: time.Now(), Projection: newLiveProjection("codex"), AgentExecutions: store, QueuedTurns: mustQueuedTurnStore(t)}, "codex-native", "ready", "")
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
 
 	put := func(ref, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -1826,7 +1596,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || view.PresentationMode != presentationBackground {
 		t.Fatalf("view mode = %q err=%v", view.PresentationMode, err)
 	}
-	if sess.summary().PresentationMode != presentationBackground {
+	if sess.Summary().PresentationMode != presentationBackground {
 		t.Fatal("live session summary did not flip")
 	}
 	if got, ok := store.presentationModeFor(hosted.ID); !ok || got != presentationBackground {
@@ -1840,7 +1610,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	if rec := put("nano-1", `{"presentationMode":"shared"}`); rec.Code != http.StatusOK {
 		t.Fatalf("flip back = %d", rec.Code)
 	}
-	if sess.summary().PresentationMode != presentationShared {
+	if sess.Summary().PresentationMode != presentationShared {
 		t.Fatal("flip back did not reach the live session")
 	}
 
@@ -1867,7 +1637,7 @@ func TestHostedThreadSidebarPlacementEndpoint(t *testing.T) {
 	hub := newRuntimeHub()
 	changes := hub.subscribe()
 	t.Cleanup(func() { hub.unsubscribe(changes) })
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control, runtimeEvents: hub}
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control, runtimeEvents: hub}
 	put := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+hosted.ID+"/sidebar-placement", strings.NewReader(body))
@@ -1910,7 +1680,7 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control}
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
 	request := func(method, ref, suffix, body string) *httptest.ResponseRecorder {
 		out := httptest.NewRecorder()
 		applicationHandler(s).ServeHTTP(out, httptest.NewRequest(method, "/api/v1/hosted-threads/"+ref+suffix, strings.NewReader(body)))
@@ -2027,32 +1797,6 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 	}
 }
 
-// Failure caught: after a failed boot resume left an exited session beside the
-// one that replaced it, the lookup returned the first match in map order, so
-// most prompts to that hosted thread bound to the exited session and failed
-// with "session is exited". Boundary: the session a hosted thread's
-// operations use.
-func TestHostedThreadOperationsUseItsLiveSessionNotAnExitedOne(t *testing.T) {
-	sessions := map[string]*session{
-		"dead": {id: "dead", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot(sessionStatusExited, false)},
-		"live": {id: "live", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot("ready", false)},
-	}
-	for i := range 20 { // more entries, so map order varies between lookups
-		id := fmt.Sprintf("other-%d", i)
-		sessions[id] = &session{id: id, hostedThreadID: id, lifecycleState: testLifecycleSnapshot("ready", false)}
-	}
-	s := &server{agentExecutions: newTestAgentExecutionStore(t, "run"), sessionRegistry: sessionRegistry{sessions: sessions}}
-	for range 200 {
-		if got := s.sessionForHostedThread("target"); got == nil || got.id != "live" {
-			id := "none"
-			if got != nil {
-				id = got.id
-			}
-			t.Fatalf("hosted thread session = %s, want the live session every time", id)
-		}
-	}
-}
-
 // Failure caught: a person's Discard ended an agent's prompt but not the
 // operation that sent it, so the sender's operation stayed queued or running
 // for good. Whoever ends the prompt, the operation ends interrupted, saying
@@ -2076,13 +1820,13 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, target := interactTestServer(t, true)
-			sess := s.sessionForHostedThread(target)
+			sess := s.SessionForHostedThread(target)
 			op, _, err := s.agentExecutions.beginTurn(target, "worker-ask", "hash-ask")
 			if err != nil {
 				t.Fatal(err)
 			}
 			action := op.TransportActionID
-			if _, _, err := sess.turns.Submit(ctx, turns.Submission{HostedThreadID: target, Provider: model.ProviderCodex, NativeThreadID: "native-target", ActionID: action,
+			if _, _, err := sess.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: target, Provider: model.ProviderCodex, NativeThreadID: "native-target", ActionID: action,
 				ProviderText: "ask", PresentationText: "ask", TextHash: sendTextHash("ask"), RequestHash: sendTextHash("ask"), Origin: turns.AgentOrigin}); err != nil {
 				t.Fatal(err)
 			}
@@ -2092,10 +1836,10 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			if test.uncertain {
-				if _, claimed, err := sess.turns.Claim(ctx, turns.ClaimRequest{HostedThreadID: target, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+				if _, claimed, err := sess.PromptStore().Claim(ctx, turns.ClaimRequest{HostedThreadID: target, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 					t.Fatalf("claim = %v, %v", claimed, err)
 				}
-				if _, err := sess.turns.Uncertain(ctx, turns.Uncertainty{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
+				if _, err := sess.PromptStore().Uncertain(ctx, turns.Uncertainty{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
 					t.Fatal(err)
 				}
 				if err := s.agentExecutions.MarkTurnDelivery(op.ID, "", agentTurnDeliveryUnknown, nil); err != nil {
@@ -2107,11 +1851,11 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				if test.byCaller {
 					s.cancelQueuedAgentTurn(rec, op.ID)
 				} else {
-					sess.handleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.id+"/turn-delivery/"+action, nil), action)
+					sess.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/"+action, nil), action)
 				}
 				return rec
 			}
-			before, _, err := sess.turns.Get(ctx, action)
+			before, _, err := sess.PromptStore().Get(ctx, action)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2123,7 +1867,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			if rec := discard(); rec.Code != http.StatusInternalServerError {
 				t.Fatalf("discard with a failing operation write = %d %s; want 500", rec.Code, rec.Body.String())
 			}
-			kept, _, err := sess.turns.Get(ctx, action)
+			kept, _, err := sess.PromptStore().Get(ctx, action)
 			if opKept, _ := s.agentExecutions.turn(op.ID); err != nil || kept.Outbox.State != before.Outbox.State || opKept.Status != opBefore.Status {
 				t.Fatalf("after a failed discard: prompt %s, operation %s, %v; want %s and %s unchanged", kept.Outbox.State, opKept.Status, err, before.Outbox.State, opBefore.Status)
 			}
@@ -2137,7 +1881,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			if ended.Status != agentTurnInterrupted || ended.Error == nil || ended.Error.Source != test.source || ended.Error.Code != test.code {
 				t.Fatalf("operation = %s %+v; want interrupted by %s with %s", ended.Status, ended.Error, test.source, test.code)
 			}
-			if after, _, err := sess.turns.Get(ctx, action); err != nil || after.Outbox.State != test.ended {
+			if after, _, err := sess.PromptStore().Get(ctx, action); err != nil || after.Outbox.State != test.ended {
 				t.Fatalf("prompt = %s, %v; want %s", after.Outbox.State, err, test.ended)
 			}
 		})

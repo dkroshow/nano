@@ -4,13 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -18,347 +15,28 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
-
-// TestTurnActiveTransition pins the wire vocabulary that drives turnActive:
-// codex turn/started sets, turn/completed clears (failure and interruption
-// arrive as turn/completed per the v2 schema); claude's sent user line or
-// received execution evidence sets, and the received result line clears.
-func TestTurnActiveTransition(t *testing.T) {
-	cases := []struct {
-		name       string
-		provider   string
-		dir        protocol.Direction
-		line       string
-		active, ok bool
-		turnID     string
-	}{
-		{"codex turn started", "codex", protocol.Recv, `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"turn_1"}}}`, true, true, "turn_1"},
-		{"codex turn completed", "codex", protocol.Recv, `{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"turn_1","status":"completed"}}}`, false, true, "turn_1"},
-		{"codex turn completed failed", "codex", protocol.Recv, `{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"turn_1","status":"failed"}}}`, false, true, "turn_1"},
-		{"codex turn started without id", "codex", protocol.Recv, `{"method":"turn/started","params":{"threadId":"t1"}}`, true, true, ""},
-		{"codex item completed", "codex", protocol.Recv, `{"method":"item/completed","params":{"threadId":"t1"}}`, false, false, ""},
-		{"codex sent turn/start request", "codex", protocol.Send, `{"id":1,"method":"turn/start","params":{"threadId":"t1"}}`, false, false, ""},
-		{"codex request not notification", "codex", protocol.Recv, `{"id":9,"method":"turn/started","params":{"threadId":"t1"}}`, false, false, ""},
-		{"codex malformed", "codex", protocol.Recv, `{"method":`, false, false, ""},
-		{"claude sent user line", "claude", protocol.Send, `{"type":"user","message":{"role":"user"}}`, true, true, ""},
-		{"claude received result line", "claude", protocol.Recv, `{"type":"result","subtype":"success"}`, false, true, ""},
-		{"claude received task notification", "claude", protocol.Recv, `{"type":"user","origin":{"kind":"task-notification"},"message":{"role":"user"}}`, true, true, ""},
-		{"claude received assistant", "claude", protocol.Recv, `{"type":"assistant","message":{"role":"assistant"}}`, true, true, ""},
-		{"claude partial stream event", "claude", protocol.Recv, `{"type":"stream_event","event":{}}`, true, true, ""},
-		{"claude init is inert", "claude", protocol.Recv, `{"type":"system","subtype":"init"}`, false, false, ""},
-		{"unknown provider", "gemini", protocol.Recv, `{"method":"turn/started","params":{}}`, false, false, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			active, turnID, _, ok := turnActiveTransition(tc.provider, tc.dir, []byte(tc.line))
-			if active != tc.active || ok != tc.ok || turnID != tc.turnID {
-				t.Fatalf("turnActiveTransition = (%v, %q, %v), want (%v, %q, %v)",
-					active, turnID, ok, tc.active, tc.turnID, tc.ok)
-			}
-		})
-	}
-}
-
-func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *testing.T) {
-	sess := &session{id: "blocked-summary",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
-	sess.stateMu.Lock()
-	done := make(chan struct{})
-	go func() {
-		s.volatileSessionSummaries()
-		close(done)
-	}()
-
-	locked := make(chan struct{})
-	go func() {
-		s.mu.Lock()
-		s.mu.Unlock()
-		close(locked)
-	}()
-	select {
-	case <-locked:
-	case <-time.After(250 * time.Millisecond):
-		sess.stateMu.Unlock()
-		t.Fatal("server lock stayed held while session summary was blocked")
-	}
-	sess.stateMu.Unlock()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("live summaries did not finish after session summary unblocked")
-	}
-}
 
 // A harness notification can wake Claude without Nano sending a user line.
 // The first provider execution line must open a fresh runtime/projection turn,
 // and the ordinary result line remains the single terminal authority.
 func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing.T) {
-	sess := &session{provider: "claude",
-		subs:           map[chan wireEvent]struct{}{},
-		projection:     newLiveProjection("claude"),
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-
-	sess.observeClaudeShimEvent(claudeShimEvent{Kind: claudeShimAccepted, ProviderTurnID: "claude:notification:1"})
-	sess.recordWire(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"message_start","message":{"id":"notification-turn"}}}`))
-	if sum := sess.summary(); !sum.TurnActive || sum.TurnStartedAtMs == 0 {
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "notification", Provider: "claude"}, "notification-native", "claude-test")
+	sess := fixture.session
+	fixture.emitAt(t, []byte(`{"type":"stream_event","event":{"type":"message_start","message":{"id":"notification-turn"}}}`), time.Time{}, "claude:notification:1")
+	waitReconnectCondition(t, func() bool { return sess.Summary().TurnActive })
+	if sum := sess.Summary(); !sum.TurnActive || sum.TurnStartedAtMs == 0 {
 		t.Fatalf("execution evidence summary = %+v, want an anchored active turn", sum)
 	}
-	snapshot := projectionStateForTest(sess.projection)
+	snapshot := projectionStateForTest(fixture.projection)
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Status != "in_progress" || !snapshot.Runtime.TurnActive {
 		t.Fatalf("execution evidence projection = turns %+v runtime %+v", snapshot.Turns, snapshot.Runtime)
 	}
 
-	sess.recordWire(protocol.Recv, []byte(`{"type":"result","subtype":"success"}`))
-	if sum := sess.summary(); sum.TurnActive {
+	fixture.emitAt(t, []byte(`{"type":"result","subtype":"success"}`), time.Time{}, "claude:notification:1")
+	waitReconnectCondition(t, func() bool { return !sess.Summary().TurnActive })
+	if sum := sess.Summary(); sum.TurnActive {
 		t.Fatalf("terminal result left notification-started turn active: %+v", sum)
-	}
-}
-
-// TestSessionTracksTurnID proves the id an interrupt needs is learned from
-// turn/started and dropped again on turn/completed — a session with no turn in
-// flight must have nothing to address, or the stop affordance could interrupt
-// a turn that already ended.
-func TestSessionTracksTurnID(t *testing.T) {
-	sess := &session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.threadID = "thread_a"
-
-	if _, turnID := sess.activeTurn(); turnID != "" {
-		t.Fatalf("idle session already has turn %q", turnID)
-	}
-	sess.recordWire(protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"thread_a","turn":{"id":"turn_7"}}}`))
-	threadID, turnID := sess.activeTurn()
-	if threadID != "thread_a" || turnID != "turn_7" {
-		t.Fatalf("activeTurn = (%q, %q), want (thread_a, turn_7)", threadID, turnID)
-	}
-	sess.recordWire(protocol.Recv, []byte(`{"method":"turn/completed","params":{"threadId":"thread_a","turn":{"id":"turn_7","status":"completed"}}}`))
-	if _, turnID := sess.activeTurn(); turnID != "" {
-		t.Fatalf("completed turn still addressable as %q", turnID)
-	}
-}
-
-// TestHandleInterruptWithoutTurn pins the quiet-degradation contract: asking to
-// stop a session with no turn in flight is a 200 saying nothing was
-// interrupted, not an error the operator has to read.
-func TestHandleInterruptWithoutTurn(t *testing.T) {
-	sess := &session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.threadID = "thread_a"
-
-	rec := httptest.NewRecorder()
-	sess.handleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Interrupted bool   `json:"interrupted"`
-		Reason      string `json:"reason"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Interrupted || body.Reason == "" {
-		t.Fatalf("body = %+v, want interrupted:false with a reason", body)
-	}
-}
-
-// TestInterruptRaceReason pins how a lost interrupt race is classified. The
-// app-server does not answer a turn/interrupt for a turn that already ended
-// (probed 2026-07-30), so the deadline — not an error object — is the shape the
-// race actually takes, and it must read as a non-event.
-func TestInterruptRaceReason(t *testing.T) {
-	if reason, raced := interruptRaceReason(fmt.Errorf("wrapped: %w", context.DeadlineExceeded)); !raced || reason == "" {
-		t.Fatalf("deadline = (%q, %v), want a quiet reason", reason, raced)
-	}
-	if reason, raced := interruptRaceReason(&protocol.RPCError{Code: -32602, Message: "unknown turn"}); !raced || reason != "unknown turn" {
-		t.Fatalf("rpc error = (%q, %v), want (unknown turn, true)", reason, raced)
-	}
-	if _, raced := interruptRaceReason(errors.New("websocket: connection closed")); raced {
-		t.Fatal("a dead daemon must not be reported as a completion race")
-	}
-}
-
-// TestHandleTurnOptions proves the per-turn overrides round-trip and that an
-// omitted field is left alone while an explicit empty string clears it.
-func TestHandleTurnOptions(t *testing.T) {
-	sess := &session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.model = "gpt-5.6-sol"
-	sess.threadID = "native-1"
-
-	post := func(body string) map[string]any {
-		rec := httptest.NewRecorder()
-		sess.handleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/x/turn-options", strings.NewReader(body)))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
-		}
-		var out map[string]any
-		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-			t.Fatal(err)
-		}
-		return out
-	}
-
-	got := post(`{"model":"gpt-5.6-luna","effort":"high","serviceTier":"priority"}`)
-	if got["model"] != "gpt-5.6-luna" || got["effort"] != "high" || got["serviceTier"] != "priority" || got["threadModel"] != "gpt-5.6-sol" {
-		t.Fatalf("after set: %+v", got)
-	}
-	if model, effort, tier := sess.turnOptions(); model != "gpt-5.6-luna" || effort != "high" || tier != "priority" {
-		t.Fatalf("session overrides = (%q, %q, %q)", model, effort, tier)
-	}
-	// Effort alone: the model override must survive an untouched field.
-	if got := post(`{"effort":"low"}`); got["model"] != "gpt-5.6-luna" || got["effort"] != "low" || got["serviceTier"] != "priority" {
-		t.Fatalf("after partial update: %+v", got)
-	}
-	// Standard is explicit, not an empty/inherit alias: a user whose config
-	// defaults to priority must still be able to turn priority off.
-	if got := post(`{"serviceTier":"default"}`); got["serviceTier"] != "default" {
-		t.Fatalf("after standard: %+v", got)
-	}
-	// Explicit empty clears back to the thread's own model.
-	if got := post(`{"model":""}`); got["model"] != "" || got["effort"] != "low" {
-		t.Fatalf("after clear: %+v", got)
-	}
-	if overrides := codexTurnOverrides(sess.turnModel, sess.turnEffort, sess.turnServiceTier, "detailed"); overrides["model"] != nil || overrides["serviceTier"] != "default" {
-		t.Fatalf("cleared model still rides the wire: %+v", overrides)
-	}
-}
-
-// TestSessionTurnActiveFromWire proves recordWire maintains turnActive and
-// that only real flips notify the runtime stream — a repeated turn/started is
-// silent, and exit clears a stale in-flight flag.
-func TestSessionTurnActiveFromWire(t *testing.T) {
-	var nudges int
-	sess := &session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
-		runtimeNotify:  func() { nudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
-	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
-
-	sess.recordWire(protocol.Recv, started)
-	if sum := sess.summary(); !sum.TurnActive || nudges != 1 {
-		t.Fatalf("after turn/started: turnActive = %v nudges = %d", sum.TurnActive, nudges)
-	}
-	sess.recordWire(protocol.Recv, started)
-	if nudges != 1 {
-		t.Fatalf("repeated turn/started nudged again: nudges = %d", nudges)
-	}
-	sess.recordWire(protocol.Recv, completed)
-	if sum := sess.summary(); sum.TurnActive || sum.LastTurnEndedAt == "" || nudges != 2 {
-		t.Fatalf("after turn/completed: turnActive = %v nudges = %d", sum.TurnActive, nudges)
-	}
-
-	sess.recordWire(protocol.Recv, started)
-	sess.setStatus("exited")
-	if sum := sess.summary(); sum.TurnActive {
-		t.Fatal("exit left turnActive set")
-	}
-}
-
-// A Nano restart replays Claude's complete shim spool before following live
-// output. Historical prompt/result edges must rebuild the final state without
-// making the sidebar promote and demote the same row for every old turn.
-func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
-	nudges := 0
-	sess := &session{provider: "claude",
-		state:          map[string]json.RawMessage{},
-		projection:     newLiveProjection("claude"),
-		runtimeNotify:  func() { nudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.beginTurnRestore()
-
-	user := []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"old prompt"}]}}`)
-	result := []byte(`{"type":"result","subtype":"success"}`)
-	sess.recordWireLive(protocol.Send, user, false)
-	if sess.summary().TurnActive || nudges != 0 {
-		t.Fatalf("replayed prompt = publicly active %v, nudges %d; want private reconstruction", sess.summary().TurnActive, nudges)
-	}
-	sess.recordWireLive(protocol.Recv, result, false)
-	if sess.summary().TurnActive || nudges != 0 {
-		t.Fatalf("replayed result = active %v, nudges %d; want reconstructed but unpublished", sess.summary().TurnActive, nudges)
-	}
-	// A second historical turn proves this is not accidental one-slot SSE
-	// conflation: no intermediate edge reaches the runtime hub at all.
-	sess.recordWireLive(protocol.Send, user, false)
-	sess.recordWireLive(protocol.Recv, result, false)
-	if nudges != 0 {
-		t.Fatalf("historical turn sequence published %d runtime nudges, want 0", nudges)
-	}
-
-	sess.settleRestoredTurnState()
-	if sess.summary().TurnActive || nudges != 1 {
-		t.Fatalf("settled replay = active %v, nudges %d; want one idle publication", sess.summary().TurnActive, nudges)
-	}
-
-	activeNudges := 0
-	active := &session{provider: "claude",
-		state:          map[string]json.RawMessage{},
-		projection:     newLiveProjection("claude"),
-		runtimeNotify:  func() { activeNudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	active.beginTurnRestore()
-	active.recordWireLive(protocol.Send, user, false)
-	if active.summary().TurnActive || activeNudges != 0 {
-		t.Fatalf("open replayed turn = publicly active %v, nudges %d; want private reconstruction", active.summary().TurnActive, activeNudges)
-	}
-	active.settleRestoredTurnState()
-	if !active.summary().TurnActive || activeNudges != 1 {
-		t.Fatalf("settled active replay = active %v, nudges %d; want one active publication", active.summary().TurnActive, activeNudges)
-	}
-}
-
-func TestClaudeRestoreDefersGenuineLiveCompletionUntilSettlement(t *testing.T) {
-	nudges := 0
-	sess := &session{provider: "claude",
-		state:          map[string]json.RawMessage{},
-		projection:     newLiveProjection("claude"),
-		runtimeNotify:  func() { nudges++ },
-		lifecycleState: testLifecycleSnapshot("starting", false)}
-	sess.beginTurnRestore()
-	sess.setTurnActive(true, "live-during-restore", 100, true)
-	sess.setTurnActive(false, "", 0, true)
-	if nudges != 0 {
-		t.Fatalf("pre-settlement runtime = nudges %d; want deferred", nudges)
-	}
-	sess.settleRestoredTurnState()
-	if nudges != 1 || sess.summary().TurnActive {
-		t.Fatalf("settled runtime = active %v, nudges %d; want one idle publication", sess.summary().TurnActive, nudges)
-	}
-}
-
-// A shim-replayed turn close reconstructs state but the turn did not end NOW:
-// stamping arrival time rewrote every reattached thread's "last turn ended"
-// to the deploy moment on each nano restart (2026-08-06, 14 threads sharing
-// one restart minute). Replay flips the flag; only a live close stamps.
-func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
-	sess := &session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
-	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
-
-	sess.recordWireLive(protocol.Recv, started, false)
-	sess.recordWireLive(protocol.Recv, completed, false)
-	sum := sess.summary()
-	if sum.TurnActive {
-		t.Fatal("replayed close left turnActive set — state must still reconstruct")
-	}
-	if sum.LastTurnEndedAt != "" {
-		t.Fatalf("replayed close stamped lastTurnEndedAt = %q, want absent (the turn ended before this process existed)", sum.LastTurnEndedAt)
-	}
-
-	sess.recordWireLive(protocol.Recv, started, true)
-	sess.recordWireLive(protocol.Recv, completed, true)
-	if sum := sess.summary(); sum.LastTurnEndedAt == "" {
-		t.Fatal("live close no longer stamps lastTurnEndedAt")
 	}
 }
 
@@ -374,12 +52,12 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 		}},
 		thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"},
 	}
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{catalog: fake, Registry: newSessionRegistry()}
 	s.runtime = s
-	s.sessions["s1"] = &session{id: "s1",
-		provider:       "codex",
-		threadID:       "native-live",
-		lifecycleState: testLifecycleSnapshot("ready", true)}
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "native-live", "model")
+	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"inProgress"}}}`))
+	waitReconnectCondition(t, func() bool { return fixture.session.Summary().TurnActive })
+	s.RegisterSession(fixture.session)
 
 	assertRuntime := func(t *testing.T, raw json.RawMessage, wantTurnActive bool) {
 		t.Helper()
@@ -417,7 +95,8 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	assertRuntime(t, detail["runtime"], true)
 
 	// turnActive flips are reflected on the next response.
-	s.sessions["s1"].setTurnActive(false, "", 0, true)
+	fixture.emit(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"completed"}}}`))
+	waitReconnectCondition(t, func() bool { return !fixture.session.Summary().TurnActive })
 	rec = httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	detail = nil
@@ -427,7 +106,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	assertRuntime(t, detail["runtime"], false)
 
 	// Detached (session closed): the field disappears entirely.
-	delete(s.sessions, "s1")
+	s.RemoveSession("s1")
 	rec = httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	detail = nil
@@ -443,10 +122,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	// list request left (the real service builds fresh items per call).
 	s.runtime = nil
 	fake.page.Items[0].Runtime = nil
-	s.sessions["s1"] = &session{id: "s1",
-		provider:       "codex",
-		threadID:       "native-live",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	s.RegisterSession(fixture.session)
 	rec = httptest.NewRecorder()
 	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	list.Items = nil
@@ -470,14 +146,15 @@ func TestRuntimeForThreeStates(t *testing.T) {
 	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
 	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-exited", Cwd: "/c", AttachedAt: "2026-07-27T12:00:00Z"})
 
-	s := &server{attachments: attachments, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"s1": {id: "s1", provider: "codex", threadID: "codex-live", lifecycleState: testLifecycleSnapshot("ready", true)},
-		"s2": {id: "s2", provider: "claude", threadID: "claude-live", lifecycleState: testLifecycleSnapshot("starting", false)},
-		// Exited, but its attachment record is still there: detached.
-		"s3": {id: "s3", provider: "claude", threadID: "claude-exited", lifecycleState: testLifecycleSnapshot("exited", false)},
-		// Exited with no record at all: no overlay whatsoever.
-		"s4": {id: "s4", provider: "codex", threadID: "codex-gone", lifecycleState: testLifecycleSnapshot("exited", false)},
-	}}}
+	active := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "codex-live", "model")
+	active.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"codex-live","turn":{"id":"turn-1","status":"inProgress","startedAt":1787600000}}}`))
+	waitReconnectCondition(t, func() bool { return active.session.Summary().TurnActive })
+	s := testServerWithSessions(&server{attachments: attachments, Registry: newSessionRegistry()}, map[string]*session{
+		"s1": active.session,
+		"s2": memorySession(t, "s2", "claude", "claude-live", "starting", "", "", time.Time{}),
+		"s3": memorySession(t, "s3", "claude", "claude-exited", "exited", "", "", time.Time{}),
+		"s4": memorySession(t, "s4", "codex", "codex-gone", "exited", "", "", time.Time{}),
+	})
 	s.runtime = s
 
 	cases := []struct {
@@ -487,7 +164,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 		want     runtimeInfo
 		wantOK   bool
 	}{
-		{"codex attached working", "codex", "codex-live", runtimeInfo{Attached: true, SessionID: "s1", Status: "ready", TurnActive: true, ThreadStatus: fleetWorking, PresentationMode: presentationShared}, true},
+		{"codex attached working", "codex", "codex-live", runtimeInfo{Attached: true, SessionID: "s1", Status: "ready", TurnActive: true, TurnStartedAtMs: 1787600000000, ThreadStatus: fleetWorking, PresentationMode: presentationShared}, true},
 		{"claude attached starting", "claude", "claude-live", runtimeInfo{Attached: true, SessionID: "s2", Status: "starting", ThreadStatus: fleetIdle, PresentationMode: presentationShared}, true},
 		{"codex detached", "codex", "codex-detached", runtimeInfo{Detached: true}, true},
 		{"claude detached", "claude", "claude-detached", runtimeInfo{Detached: true}, true},
@@ -507,7 +184,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 	}
 
 	// A server without an attachment store simply has no detached state.
-	bare := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	bare := &server{Registry: newSessionRegistry()}
 	if info, ok := bare.RuntimeFor("codex", "codex-detached"); ok || !reflect.DeepEqual(info, runtimeInfo{}) {
 		t.Fatalf("nil attachment store = %#v, %v", info, ok)
 	}
@@ -520,9 +197,9 @@ func TestDetachedOverlayJSON(t *testing.T) {
 	attachments := newTestStore(t)
 	attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	s := &server{
-		catalog:         &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}},
-		attachments:     attachments,
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
+		catalog:     &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}},
+		attachments: attachments,
+		Registry:    newSessionRegistry(),
 	}
 	s.runtime = s
 
@@ -541,7 +218,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 // runtime overlay, so open Explorers must be told to refetch — the same nudge
 // bind and unbind fire.
 func TestAttachmentDismissNudgesRuntime(t *testing.T) {
-	s := &server{attachments: newTestStore(t), runtimeEvents: newRuntimeHub(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{attachments: newTestStore(t), runtimeEvents: newRuntimeHub(), Registry: newSessionRegistry()}
 	s.attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "t-1", AttachedAt: "2026-07-27T10:00:00Z"})
 	nudges := s.runtimeEvents.subscribe()
 
@@ -564,7 +241,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	fakeCodex := newFakeAppServer(t)
 	hub := newCatalogHub()
 	catalog := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: hub, version: 5}
-	s := newResumeTestServer(t, fakeCodex.wsURL())
+	s := newResumeTestServer(t, fakeCodex.WSURL())
 	s.catalog = catalog
 
 	srv := httptest.NewServer(http.HandlerFunc(s.handleCatalogIndexEvents))
@@ -590,7 +267,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	// is still in flight (async spawn, status starting). The reply delay
 	// separates the bind nudge from the starting→ready nudge deterministically.
 	const threadID = "0199a213-abcd-7000-8000-00000000000a"
-	fakeCodex.setReplyDelay("thread/resume", 200*time.Millisecond)
+	fakeCodex.SetReplyDelay("thread/resume", 200*time.Millisecond)
 	rec := postResume(t, s, threadID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resume status = %d, body = %s", rec.Code, rec.Body.String())
@@ -616,10 +293,8 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	}
 
 	// turnActive flip.
-	s.mu.Lock()
-	sess := s.sessions[sum.ID]
-	s.mu.Unlock()
-	sess.recordWire(protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"`+threadID+`"}}`))
+
+	fakeCodex.EmitThreadNotification(threadID, map[string]any{"method": "turn/started", "params": map[string]any{"threadId": threadID}})
 	readRuntimeUntil(t, reader, "turnActive", func(delta runtimeDelta) bool {
 		return !delta.Refresh && len(delta.Rows) == 1 && delta.Rows[0].Runtime != nil && delta.Rows[0].Runtime.TurnActive
 	})
@@ -746,12 +421,12 @@ func TestRuntimeHubPreservesPendingRefresh(t *testing.T) {
 // delta. One thread re-attaching sends its own row and key, not the list.
 func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	now := time.Now()
-	s := &server{attachments: newTestStore(t), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{attachments: newTestStore(t), Registry: newSessionRegistry()}
 	for i := range 40 {
 		s.attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: fmt.Sprintf("parked-%02d", i), AttachedAt: "2026-07-27T10:00:00Z"})
 	}
 	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
-	s.sessions["s-0"] = memorySession("s-0", "codex", "parked-00", "ready", "/w", "gpt-5.6-sol", now)
+	s.RegisterSession(memorySession(t, "s-0", "codex", "parked-00", "ready", "/w", "gpt-5.6-sol", now))
 	attached := s.runtimeDeltaSnapshot()
 	if attached.Refresh || len(attached.DetachedRows) != 0 || !slices.Equal(attached.RemovedDetached, []string{"codex:parked-00"}) {
 		t.Fatalf("one re-attach = refresh:%v detached rows %d removed %v, want only codex:parked-00 removed", attached.Refresh, len(attached.DetachedRows), attached.RemovedDetached)
@@ -773,7 +448,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	}
 	for i := 1; i <= 33; i++ {
 		id := fmt.Sprintf("r-%d", i)
-		s.sessions[id] = memorySession(id, "codex", fmt.Sprintf("parked-%02d", i), "ready", "/w", "gpt-5.6-sol", now)
+		s.RegisterSession(memorySession(t, id, "codex", fmt.Sprintf("parked-%02d", i), "ready", "/w", "gpt-5.6-sol", now))
 	}
 	// Published by a star update (already current for its own change), the
 	// re-attach still needs the sidebar rebuilt.
@@ -784,7 +459,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	}
 	for i := 1; i <= runtimeChangeLimit+1; i++ {
 		id := fmt.Sprintf("s-%d", i)
-		s.sessions[id] = memorySession(id, "codex", fmt.Sprintf("burst-%02d", i), "ready", "/w", "gpt-5.6-sol", now)
+		s.RegisterSession(memorySession(t, id, "codex", fmt.Sprintf("burst-%02d", i), "ready", "/w", "gpt-5.6-sol", now))
 	}
 	s.publishRuntimeDelta(false, false)
 	if burst := <-browser; !emptyRefresh(burst) {
@@ -867,7 +542,7 @@ func TestRuntimeHubMergesSessionChanges(t *testing.T) {
 	slow := hub.subscribe()
 	defer hub.unsubscribe(slow)
 
-	row := func(id string) listedSession { return listedSession{sessionSummary: sessionSummary{ID: id}} }
+	row := func(id string) listedSession { return listedSession{Summary: sessionSummary{ID: id}} }
 	detached := func(native string) detachedSessionView {
 		return detachedSessionView{attachmentRecord: attachmentRecord{Provider: "codex", NativeThreadID: native}}
 	}
@@ -927,21 +602,31 @@ func readSSEEvent(t *testing.T, reader *bufio.Reader) (event, data string) {
 // carries that session's list row instead of asking every browser to re-read
 // every session.
 func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
-	pending := &session{id: "pending", lifecycleState: testLifecycleSnapshot("starting", false)}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	pending := newFixtureSession(runtimeFixtureConfig(t, sessionConfig{ID: "pending", Provider: "codex", HostedThreadID: "fixture-pending"}), "")
+	if err := pending.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{Registry: newSessionRegistry()}
 	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
 
 	carries := func(delta runtimeDelta) bool {
 		return !delta.Refresh && len(delta.Sessions) == 1 && delta.Sessions[0].ID == "pending"
 	}
-	s.sessions[pending.id] = pending
+	s.RegisterSession(pending)
 	if joined := s.runtimeDeltaSnapshot(); !carries(joined) {
 		t.Fatalf("a new session without a native id = %+v, want its list row and no re-read", joined)
 	}
 	if same := s.runtimeDeltaSnapshot(); len(same.Sessions) != 0 || same.Refresh || len(same.DetachedRows) != 0 {
 		t.Fatalf("an unchanged session set = %+v, want nothing", same)
 	}
-	pending.lifecycleState = testLifecycleSnapshot("ready", false)
+	fake := newFakeAppServer(t)
+	fake.SetStartResult(map[string]any{"thread": map[string]any{"id": "temporary-native"}})
+	if err := pending.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pending.Close)
+	waitReconnectCondition(t, func() bool { return pending.Summary().Status == "ready" })
+	pending.ReserveNativeID("")
 	if changed := s.runtimeDeltaSnapshot(); !carries(changed) || changed.Sessions[0].Status != "ready" {
 		t.Fatalf("a status change of a session without a native id = %+v, want its new row", changed)
 	}
@@ -951,13 +636,22 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 // its error (failSpawn's contract). Carried as a removal, the page dropped the
 // row and detached its tab, losing the only place the error shows.
 func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
-	pending := &session{id: "pending", lifecycleState: testLifecycleSnapshot("starting", false)}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"pending": pending}}}
+	pending := newFixtureSession(runtimeFixtureConfig(t, sessionConfig{ID: "pending", Provider: "codex", HostedThreadID: "fixture-pending"}), "")
+	if err := pending.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"pending": pending})
 	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
 
-	pending.failSpawn("handshake failed")
+	fake := newFakeAppServer(t)
+	fake.SetStartError("handshake failed")
+	if err := pending.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pending.Close)
+	waitReconnectCondition(t, func() bool { return pending.Summary().Status == "exited" })
 	failed := s.runtimeDeltaSnapshot()
-	if len(failed.RemovedSessions) != 0 || len(failed.Sessions) != 1 || failed.Sessions[0].Status != sessionStatusExited || failed.Sessions[0].Error != "handshake failed" {
+	if len(failed.RemovedSessions) != 0 || len(failed.Sessions) != 1 || failed.Sessions[0].Status != sessionStatusExited || failed.Sessions[0].Error != "thread/start: rpc error -32000: handshake failed" {
 		t.Fatalf("failed spawn delta = sessions %+v removed %v, want its exited row with the error", failed.Sessions, failed.RemovedSessions)
 	}
 	if again := s.runtimeDeltaSnapshot(); len(again.Sessions) != 0 || len(again.RemovedSessions) != 0 {
@@ -1030,121 +724,27 @@ func TestRuntimeSnapshotWaitsForTheExecutionStoreOnce(t *testing.T) {
 	}
 }
 
-// compactionLine is one provider line of a captured compaction, with the time
-// Nano received it.
-type compactionLine struct {
-	at   time.Time
-	line []byte
-}
-
-// compactionFixture reads testdata/compaction/<provider>.jsonl: scrubbed lines
-// captured from real compactions (Codex from Nano's wire spool, Claude from
-// the shim's spool), ids replaced.
-func compactionFixture(t *testing.T, provider string) []compactionLine {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", "compaction", provider+".jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var lines []compactionLine
-	for _, text := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
-		var entry struct {
-			TS   time.Time       `json:"ts"`
-			Line json.RawMessage `json:"line"`
-		}
-		if err := json.Unmarshal([]byte(text), &entry); err != nil {
-			t.Fatal(err)
-		}
-		lines = append(lines, compactionLine{at: entry.TS, line: entry.Line})
-	}
-	return lines
-}
-
-// While a provider compacts a turn's context, the pane's status and the
-// rail's runtime both carry when it began, from the provider's own signals:
-// Codex's contextCompaction item start (its startedAtMs) until the item
-// completes; Claude's first "compacting" status line, kept through the
-// repeats, until a status line without it. Claude's compacting is the turn's
-// work, so it shows even when it comes before anything else in the turn. The
-// turn's end clears it too. Boundary: Nano's wire ingress, on captured
-// compaction lines.
-func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
-	codex, claude := compactionFixture(t, "codex"), compactionFixture(t, "claude")
-	for _, test := range []struct {
-		provider string
-		start    []compactionLine // the turn's start, then compaction starting
-		end      []compactionLine // compaction ending
-		turnEnd  []byte
-		since    int64
-	}{
-		{
-			provider: "codex",
-			start:    []compactionLine{{line: []byte(`{"method":"turn/started","params":{"threadId":"16952569-d518-579a-914e-2c422f5d5946","turn":{"id":"893574cb-2552-53b8-bbd1-667ea32ac097","status":"inProgress"}}}`)}, codex[0]},
-			end:      codex[1:],
-			turnEnd:  []byte(`{"method":"turn/completed","params":{"threadId":"16952569-d518-579a-914e-2c422f5d5946","turn":{"id":"893574cb-2552-53b8-bbd1-667ea32ac097","status":"interrupted"}}}`),
-			since:    1791514710947,
-		},
-		{
-			provider: "claude",
-			start:    claude[:4], // requesting, then three compacting lines 30 s apart
-			end:      claude[4:],
-			turnEnd:  []byte(`{"type":"result","subtype":"success","is_error":false,"duration_ms":1000}`),
-			since:    claude[1].at.UnixMilli(),
-		},
-	} {
-		t.Run(test.provider, func(t *testing.T) {
-			sess := &session{provider: test.provider, subs: map[chan wireEvent]struct{}{},
-				lifecycleState: testLifecycleSnapshot("ready", false),
-				projection:     newLiveProjection(test.provider, "hosted")}
-			sess.threadID = "16952569-d518-579a-914e-2c422f5d5946"
-			apply := func(lines []compactionLine) {
-				for _, l := range lines {
-					sess.recordWireAt(protocol.Recv, l.line, true, false, l.at)
-				}
-			}
-			shown := func() (pane, rail int64) {
-				summary, _ := sess.volatileSummary(false)
-				return sess.projection.Status().Runtime.CompactingSinceMs, sessionRuntimeInfo(summary).CompactingSinceMs
-			}
-			apply(test.start)
-			if pane, rail := shown(); pane != test.since || rail != test.since {
-				t.Fatalf("compacting since: pane %d, rail %d; want %d", pane, rail, test.since)
-			}
-			apply(test.end)
-			if pane, rail := shown(); pane != 0 || rail != 0 {
-				t.Fatalf("after compaction ended: pane %d, rail %d; want none", pane, rail)
-			}
-			apply(test.start[len(test.start)-1:])
-			if pane, _ := shown(); pane == 0 {
-				t.Fatal("a second compaction did not show")
-			}
-			sess.recordWire(protocol.Recv, test.turnEnd)
-			if pane, rail := shown(); pane != 0 || rail != 0 {
-				t.Fatalf("after the turn ended: pane %d, rail %d; want none", pane, rail)
-			}
-		})
-	}
-}
-
 // Every delta used to carry every held thread. A delta names only the threads whose runtime changed, and
 // names a thread Nano released with no overlay.
 func TestRuntimeDeltaCarriesOnlyChangedRows(t *testing.T) {
 	now := time.Now()
-	a := memorySession("sess-a", "codex", "thread-a", "ready", "/w/a", "gpt-5.6-sol", now)
-	b := memorySession("sess-b", "codex", "thread-b", "ready", "/w/b", "gpt-5.6-sol", now)
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"sess-a": a, "sess-b": b}}}
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "sess-a", Provider: "codex", CWD: "/w/a", CreatedAt: now}, "thread-a", "gpt-5.6-sol")
+	a := fixture.session
+	b := memorySession(t, "sess-b", "codex", "thread-b", "ready", "/w/b", "gpt-5.6-sol", now)
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"sess-a": a, "sess-b": b})
 	if first := s.runtimeDeltaSnapshot(); len(first.Rows) != 2 {
 		t.Fatalf("first delta rows = %d, want every held thread", len(first.Rows))
 	}
 	if same := s.runtimeDeltaSnapshot(); len(same.Rows) != 0 {
 		t.Fatalf("an unchanged runtime produced %d rows", len(same.Rows))
 	}
-	a.lifecycleState = testLifecycleSnapshot("ready", true)
+	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"thread-a","turn":{"id":"turn-a","status":"inProgress"}}}`))
+	waitReconnectCondition(t, func() bool { return a.Summary().TurnActive })
 	flip := s.runtimeDeltaSnapshot()
 	if len(flip.Rows) != 1 || flip.Rows[0].NativeID != "thread-a" || flip.Rows[0].Runtime == nil || !flip.Rows[0].Runtime.TurnActive {
 		t.Fatalf("turnActive flip delta = %#v, want only thread-a", flip.Rows)
 	}
-	delete(s.sessions, "sess-b")
+	s.RemoveSession("sess-b")
 	gone := s.runtimeDeltaSnapshot()
 	if gone.Refresh || !slices.Equal(gone.RemovedSessions, []string{"sess-b"}) || len(gone.Rows) != 1 || gone.Rows[0].NativeID != "thread-b" || gone.Rows[0].Runtime != nil {
 		t.Fatalf("release delta = refresh:%v removed:%v %#v, want sess-b removed and thread-b with no overlay", gone.Refresh, gone.RemovedSessions, gone.Rows)

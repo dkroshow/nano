@@ -23,6 +23,7 @@ import (
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/hosted"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threads"
 	_ "modernc.org/sqlite"
@@ -330,20 +331,20 @@ type hostedMetadataName = hosted.MetadataName
 type hostedNativeIDView = hosted.NativeIDView
 
 func validateMetadataEvent(event metadataEvent) error {
-	if event.Field != postureFieldModel && event.Field != postureFieldEffort && event.Field != postureFieldPermissionMode && event.Field != postureFieldServiceTier && event.Field != "cwd" && event.Field != orchestrationAssignmentField && event.Field != threads.CreationNameField {
+	if event.Field != hosted.PostureFieldModel && event.Field != hosted.PostureFieldEffort && event.Field != hosted.PostureFieldPermissionMode && event.Field != hosted.PostureFieldServiceTier && event.Field != "cwd" && event.Field != orchestrationAssignmentField && event.Field != threads.CreationNameField {
 		return fmt.Errorf("unsupported metadata field %q", event.Field)
 	}
 	if event.Disposition != metadataDispositionRequested && event.Disposition != metadataDispositionConfirmed && event.Disposition != metadataDispositionRejected && event.Disposition != metadataDispositionCleared && event.Disposition != metadataDispositionObserved {
 		return fmt.Errorf("invalid metadata disposition %q", event.Disposition)
 	}
-	if event.Source != postureSourceCreation && event.Source != postureSourceOperator && event.Source != postureSourceProvider && event.Source != metadataSourceMigration {
+	if event.Source != hosted.PostureSourceCreation && event.Source != hosted.PostureSourceOperator && event.Source != hosted.PostureSourceProvider && event.Source != metadataSourceMigration {
 		return fmt.Errorf("invalid metadata source %q", event.Source)
 	}
 	if event.Freshness != metadataFreshnessLive && event.Freshness != metadataFreshnessHistorical && event.Freshness != metadataFreshnessReplayed {
 		return fmt.Errorf("invalid metadata freshness %q", event.Freshness)
 	}
 	if event.Field == threads.CreationNameField {
-		if event.Source != postureSourceCreation || event.Disposition != metadataDispositionConfirmed || event.Freshness != metadataFreshnessLive {
+		if event.Source != hosted.PostureSourceCreation || event.Disposition != metadataDispositionConfirmed || event.Freshness != metadataFreshnessLive {
 			return fmt.Errorf("creation name must be a live confirmed creation fact")
 		}
 		name, ok := event.Value.(string)
@@ -356,7 +357,7 @@ func validateMetadataEvent(event metadataEvent) error {
 		return nil
 	}
 	if event.Field == orchestrationAssignmentField {
-		if event.Source != postureSourceCreation && event.Source != postureSourceOperator {
+		if event.Source != hosted.PostureSourceCreation && event.Source != hosted.PostureSourceOperator {
 			return fmt.Errorf("orchestration assignment source must be creation or operator")
 		}
 		if event.Disposition == metadataDispositionCleared {
@@ -390,14 +391,14 @@ func validateMetadataEvent(event metadataEvent) error {
 	if event.Disposition == metadataDispositionCleared && value != "" {
 		return fmt.Errorf("cleared metadata value must be empty")
 	}
-	if event.Field == postureFieldServiceTier && (len(value) > 64 || strings.TrimSpace(value) != value) {
+	if event.Field == hosted.PostureFieldServiceTier && (len(value) > 64 || strings.TrimSpace(value) != value) {
 		return fmt.Errorf("invalid service tier %q", value)
 	}
 	// A bounded legacy fold may deliberately establish an empty observed
 	// baseline. In particular, an old clear must not revive an earlier effort
 	// value simply because the legacy event has no provider source.
 	legacyEmptyFold := event.Source == metadataSourceMigration && event.Evidence == "legacy_fold_baseline" && event.Disposition == metadataDispositionObserved
-	if event.Field == postureFieldEffort && value == "" && event.Disposition != metadataDispositionCleared && !legacyEmptyFold {
+	if event.Field == hosted.PostureFieldEffort && value == "" && event.Disposition != metadataDispositionCleared && !legacyEmptyFold {
 		return fmt.Errorf("empty effort requires cleared disposition")
 	}
 	return nil
@@ -600,7 +601,7 @@ func (s *controlMetadataStore) setSubscriptions(hostedID string, choices subscri
 	if err != nil {
 		return 0, false, err
 	}
-	if _, err := tx.Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,value_json,disposition,source,evidence,attachment_generation,evidence_freshness,observed_at,committed_at) VALUES(?,?,?,?,?,?,0,?,?,?)`, hostedID, "subscriptions", string(value), metadataDispositionConfirmed, postureSourceOperator, "hosted_thread_subscriptions_put", metadataFreshnessLive, now, now); err != nil {
+	if _, err := tx.Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,value_json,disposition,source,evidence,attachment_generation,evidence_freshness,observed_at,committed_at) VALUES(?,?,?,?,?,?,0,?,?,?)`, hostedID, "subscriptions", string(value), metadataDispositionConfirmed, hosted.PostureSourceOperator, "hosted_thread_subscriptions_put", metadataFreshnessLive, now, now); err != nil {
 		return 0, false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -722,7 +723,7 @@ func (s *controlMetadataStore) ClaimNativeIDResolving(hostedID, provider, native
 	if currentNative != "" && currentNative != nativeID {
 		err := tx.QueryRow(`SELECT provisional FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND provider=? AND native_thread_id=? AND retired_at IS NULL`, hostedID, provider, currentNative).Scan(&currentProvisional)
 		switch {
-		case err == sql.ErrNoRows && nativeThreadIDProvisional(provider, currentNative):
+		case err == sql.ErrNoRows && sessionruntime.NativeThreadIDProvisional(provider, currentNative):
 			// No active claim says what this handle is; it is not authority
 			// to retire it.
 			return fmt.Errorf("%w: current %s has no active claim", errUnresolvedProvisional, currentNative)
@@ -855,10 +856,10 @@ func (s *controlMetadataStore) AppendEvent(event metadataEvent) (metadataEvent, 
 	// later attachment generation or session is the current row seen again,
 	// not a change: recording it bumped the revision that makes every open tab
 	// re-fetch the thread. A causal answer to a request is never a repeat.
-	if event.Source != postureSourceOperator {
+	if event.Source != hosted.PostureSourceOperator {
 		var duplicate int64
 		column := "desired_event_id"
-		if event.Source == postureSourceProvider {
+		if event.Source == hosted.PostureSourceProvider {
 			column = "effective_event_id"
 		}
 		query := fmt.Sprintf(`SELECT e.event_id FROM thread_metadata_current c JOIN thread_metadata_events e ON e.event_id=c.%s WHERE c.hosted_thread_id=? AND c.field=? AND e.value_json=? AND e.disposition=? AND e.source=? AND e.evidence_freshness=? AND (? IS NULL OR e.causation_event_id=?)`, column)
@@ -906,7 +907,7 @@ func (s *controlMetadataStore) AppendEvent(event metadataEvent) (metadataEvent, 
 	// Historical JSON intent can establish an old baseline, but it is never
 	// allowed to displace a live desired decision or a provider-confirmed value
 	// that arrived before a restarted migration completed.
-	strongEffective := effectiveID.Valid && effectiveSource.Valid && effectiveSource.String == postureSourceProvider && effectiveDisposition.Valid && effectiveDisposition.String == metadataDispositionConfirmed
+	strongEffective := effectiveID.Valid && effectiveSource.Valid && effectiveSource.String == hosted.PostureSourceProvider && effectiveDisposition.Valid && effectiveDisposition.String == metadataDispositionConfirmed
 	allowDesired := event.Freshness == metadataFreshnessLive || (!desiredID.Valid && !strongEffective) || desiredIsHistorical
 	isRelationship := metadataConfirmedFact(event.Field)
 	if (event.Disposition == metadataDispositionRequested || event.Disposition == metadataDispositionCleared || (isRelationship && event.Disposition == metadataDispositionConfirmed)) && allowDesired {
@@ -925,12 +926,12 @@ func (s *controlMetadataStore) AppendEvent(event metadataEvent) (metadataEvent, 
 		desiredDisposition = sql.NullString{String: metadataDispositionRejected, Valid: true}
 		desiredSettlementID = sql.NullInt64{Int64: event.ID, Valid: true}
 	}
-	freshProvider := event.Source == postureSourceProvider && event.Freshness == metadataFreshnessLive && (event.AttachmentGeneration == currentGeneration || causallyLinked) && event.Disposition == metadataDispositionConfirmed
-	historicalObservation := event.Source == postureSourceProvider || event.Disposition == metadataDispositionObserved
+	freshProvider := event.Source == hosted.PostureSourceProvider && event.Freshness == metadataFreshnessLive && (event.AttachmentGeneration == currentGeneration || causallyLinked) && event.Disposition == metadataDispositionConfirmed
+	historicalObservation := event.Source == hosted.PostureSourceProvider || event.Disposition == metadataDispositionObserved
 	// The migration fold is a bounded snapshot of old JSON. It may be replayed
 	// with a later suffix after an interruption, so it may replace only its own
 	// earlier observed baseline. It can never displace provider-confirmed state.
-	priorMigrationBaseline := effectiveID.Valid && effectiveSource.Valid && (effectiveSource.String == metadataSourceMigration || effectiveSource.String == postureSourceProvider) && effectiveDisposition.Valid && effectiveDisposition.String == metadataDispositionObserved
+	priorMigrationBaseline := effectiveID.Valid && effectiveSource.Valid && (effectiveSource.String == metadataSourceMigration || effectiveSource.String == hosted.PostureSourceProvider) && effectiveDisposition.Valid && effectiveDisposition.String == metadataDispositionObserved
 	legacyFoldBaseline := event.Source == metadataSourceMigration && event.Evidence == "legacy_fold_baseline"
 	baseline := historicalObservation && (event.Freshness == metadataFreshnessHistorical || event.Freshness == metadataFreshnessReplayed) && (!effectiveID.Valid || (legacyFoldBaseline && priorMigrationBaseline)) && (!desiredID.Valid || desiredIsHistorical)
 	if freshProvider || baseline {
@@ -1015,13 +1016,13 @@ func projectMetadataDisplay(entry *metadataCurrentView, desiredFreshness, effect
 
 // Posture is the canonical display projection from the thread's view.
 // Empty/unknown stays empty, never a product default.
-func (s *controlMetadataStore) Posture(hostedID string) sessionPosture {
+func (s *controlMetadataStore) Posture(hostedID string) hosted.Posture {
 	if hostedID == "" {
-		return sessionPosture{}
+		return hosted.Posture{}
 	}
 	view, err := s.View(hostedID)
 	if err != nil {
-		return sessionPosture{}
+		return hosted.Posture{}
 	}
 	return hosted.PostureFromFields(view.Fields)
 }
@@ -1297,7 +1298,7 @@ func (s *controlMetadataStore) importLegacyAttachmentsUntil(records []attachment
 		if r.HostedThreadID == "" || r.Provider == "" {
 			continue
 		}
-		for _, fact := range []postureFieldValue{{"cwd", r.Cwd}, {postureFieldModel, r.Model}, {postureFieldServiceTier, r.TurnServiceTier}} {
+		for _, fact := range []hosted.FieldValue{{Field: "cwd", Value: r.Cwd}, {Field: hosted.PostureFieldModel, Value: r.Model}, {Field: hosted.PostureFieldServiceTier, Value: r.TurnServiceTier}} {
 			if fact.Value == "" {
 				continue
 			}

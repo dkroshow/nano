@@ -65,11 +65,11 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 		log.Printf("transactional turn boot parked action=%q provider=%q hostedThreadId=%q nativeThreadId=%q missing=%s",
 			parked.ActionID, parked.Provider, parked.HostedThreadID, parked.NativeThreadID, strings.Join(parked.Missing, ","))
 	}
-	if result.queue, err = newQueuedTurnStore(control.db, paths.Destination, result.turns); err != nil {
+	if result.queue, err = prompts.NewLegacyQueue(control.db, paths.Destination, result.turns); err != nil {
 		return nil, err
 	}
-	result.queue.bootParks = bootParks
-	if result.attempts, err = newSendAttemptStore(control.db, paths.Destination, runID, result.turns); err != nil {
+	result.queue.SetBootParks(bootParks)
+	if result.attempts, err = prompts.NewLegacyJournal(control.db, paths.Destination, runID, result.turns); err != nil {
 		return nil, err
 	}
 	if result.executions, err = newControlAgentExecutionStore(control, runID); err != nil {
@@ -84,8 +84,8 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 
 // Back up the canonical database the two compatibility views read from.
 func backupSubmissionStore(ctx context.Context, queue *queuedTurnStore, attempts *sendAttemptStore, destination string) error {
-	if queue == nil || attempts == nil || queue.db == nil || attempts.db == nil || queue.path == "" || queue.path != attempts.path {
+	if queue == nil || attempts == nil || queue.Database() == nil || attempts.Database() == nil || queue.Path() == "" || queue.Path() != attempts.Path() {
 		return fmt.Errorf("submission stores do not share the canonical database")
 	}
-	return threads.Backup(ctx, queue.db, destination)
+	return threads.Backup(ctx, queue.Database(), destination)
 }

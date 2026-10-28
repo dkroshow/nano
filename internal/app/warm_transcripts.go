@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -260,7 +261,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 	stream := s.warm.open(request.fill)
 	defer s.warm.close(stream)
 	type member struct {
-		sess     *session
+		sess     *sessionruntime.Session
 		pane     *liveTextPane
 		joining  bool // its first message is not written yet
 		joinedAt time.Time
@@ -317,7 +318,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 				failedAt[ref], told[ref] = now, true
 				delete(request.markers, ref)
 				leave(ref, m)
-			case s.sessionForHostedThread(ref) != m.sess:
+			case s.SessionForHostedThread(ref) != m.sess:
 				leave(ref, m)
 			}
 		}
@@ -338,10 +339,10 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 				soonest(warmRetryWait - now.Sub(failed))
 				continue
 			}
-			sess := s.sessionForHostedThread(ref)
+			sess := s.SessionForHostedThread(ref)
 			reason := ""
 			switch {
-			case sess == nil || sess.liveTextService() == nil:
+			case sess == nil || sess.LiveTextService() == nil:
 				reason = "no live session holds this thread"
 			case !s.warm.admit(ref):
 				reason = "the warm budget is spent"

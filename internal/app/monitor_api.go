@@ -223,10 +223,10 @@ func tailJSONLines(path string, tail int64) ([]json.RawMessage, error) {
 }
 
 func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
-	sessions := s.snapshotSessions()
+	sessions := s.SnapshotSessions()
 	turns := []monitorTurn{}
 	for _, sess := range sessions {
-		if turn, active := sess.activeTurnSnapshot(); active {
+		if turn, active := sess.ActiveTurnSnapshot(); active {
 			turns = append(turns, turn)
 		}
 	}

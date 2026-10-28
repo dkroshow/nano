@@ -15,7 +15,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 	for _, route := range []string{"attribution", "turn", "inbox"} {
 		for _, scenario := range []string{"source name only", "source name overrides catalog", "catalog fallback", "no hosted record", "missing native", "provisional native", "missing provider", "no name", "provider mismatch", "native mismatch"} {
 			t.Run(route+"/"+scenario, func(t *testing.T) {
-				s, store, workerSession, sender, worker, prompts := stage0Server(t)
+				s, store, workerSession, sender, worker, prompts, _ := stage0Server(t)
 				t.Cleanup(func() {
 					if op, ok := store.turnForAction(worker.ID, "identity-check"); ok {
 						waitForAgentTurnStatus(t, store, op.ID, agentTurnRunning)
@@ -23,15 +23,15 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					}
 				})
 				s.catalog = nil
-				live := &session{id: "nano-sender", hostedThreadID: sender.ID, provider: sender.Provider,
-					threadID: sender.NativeThreadID, displayName: "Source sender", createdAt: time.Now()}
-				s.sessions[live.id] = live
+				liveConfig := sessionConfig{ID: "nano-sender", HostedThreadID: sender.ID, Provider: sender.Provider, DisplayName: "Source sender", CreatedAt: time.Now()}
+				live := newFixtureSession(liveConfig, sender.NativeThreadID)
+				s.RegisterSession(live)
 				wantName, wantResolvedName, wantCode := "Source sender", "Source sender", ""
 				switch scenario {
 				case "source name overrides catalog":
 					s.catalog = renamedCatalog{name: "Old catalog name"}
 				case "catalog fallback":
-					delete(s.sessions, live.id)
+					s.RemoveSession(live.ID())
 					s.catalog = renamedCatalog{name: "Catalog sender"}
 					wantName, wantResolvedName = "Catalog sender", "Catalog sender"
 				case "no hosted record":
@@ -47,7 +47,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					sender.Provider = ""
 					wantCode = "sender_identity_incomplete"
 				case "no name":
-					live.displayName = ""
+					live.SetDisplayName("")
 					prefix := sender.NativeThreadID
 					if len(prefix) > 8 {
 						prefix = prefix[:8]
@@ -55,11 +55,14 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					wantName = sender.Provider + " " + prefix + " (unnamed)"
 					wantResolvedName = ""
 				case "provider mismatch":
-					live.provider = "codex"
+					liveConfig.Provider = "codex"
+					live = newFixtureSession(liveConfig, sender.NativeThreadID)
+					s.RegisterSession(live)
 					s.catalog = renamedCatalog{name: "Catalog sender"}
 					wantCode = "sender_identity_incomplete"
 				case "native mismatch":
-					live.threadID = identityNativeNew
+					live = newFixtureSession(liveConfig, identityNativeNew)
+					s.RegisterSession(live)
 					s.catalog = renamedCatalog{name: "Catalog sender"}
 					wantCode = "sender_identity_incomplete"
 				}
@@ -130,7 +133,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					if _, exists := store.turnForAction(worker.ID, "identity-check"); exists {
 						t.Fatal("refused sender created a turn")
 					}
-					if workerSession.queuedTurns.QueuedCount(worker.Provider, worker.NativeThreadID, worker.ID) != 0 || len(prompts) != 0 {
+					if s.queuedTurns.QueuedCount(worker.Provider, worker.NativeThreadID, worker.ID) != 0 || len(prompts) != 0 {
 						t.Fatal("refused sender queued or delivered a turn")
 					}
 					var messages int
@@ -162,7 +165,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 func TestAgentSenderCannotOverrideResolvedName(t *testing.T) {
 	for _, route := range []string{"turn", "inbox"} {
 		t.Run(route, func(t *testing.T) {
-			s, store, _, sender, recipient, prompts := stage0Server(t)
+			s, store, _, sender, recipient, prompts, _ := stage0Server(t)
 			body := map[string]string{"senderThreadRef": sender.ID, "senderName": "Caller supplied name"}
 			response := httptest.NewRecorder()
 			if route == "turn" {

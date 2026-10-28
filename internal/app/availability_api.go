@@ -1,10 +1,12 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/lifecycle"
 	"net/http"
 	"time"
+
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/lifecycle"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 // Availability: hard facts only, read-only. It answers
@@ -55,8 +57,8 @@ func (s *server) availabilityFor(hostedThreadID string, now time.Time) availabil
 		return view
 	}
 	view.Facts.LastHumanMessageAt = record.LastHumanPromptAt
-	sess := s.sessionForHostedThread(hostedThreadID)
-	if sess == nil && record.Status == sessionStatusExited {
+	sess := s.SessionForHostedThread(hostedThreadID)
+	if sess == nil && record.Status == sessionruntime.StatusExited {
 		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityUnreachable, "exited", record.Status
 		view.Reasons = append(view.Reasons, "exited")
 		return view
@@ -79,13 +81,13 @@ func (s *server) availabilityFor(hostedThreadID string, now time.Time) availabil
 		return view
 	}
 	view.Facts.Attachment = "live"
-	state := sess.availabilityState()
+	state := sess.AvailabilityState()
 	status, active, waiting := state.Status, state.Active, state.Waiting
 	permission, lastHuman := state.Permission, state.LastHumanPromptAt
 	view.Facts.SessionStatus = status
 	view.Facts.TurnActive = active
-	pending := sess.corePromptInFlight()
-	view.Facts.QueuedPrompts = sess.queuedPromptCount()
+	pending := sess.CorePromptInFlight()
+	view.Facts.QueuedPrompts = sess.QueuedPromptCount()
 	view.Facts.PendingInteraction = waiting
 	if !lastHuman.IsZero() && (view.Facts.LastHumanMessageAt == "" || lastHuman.Format(time.RFC3339Nano) > view.Facts.LastHumanMessageAt) {
 		view.Facts.LastHumanMessageAt = lastHuman.UTC().Format(time.RFC3339Nano)

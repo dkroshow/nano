@@ -2,13 +2,13 @@ package app
 
 import (
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -53,7 +53,7 @@ func (s *server) handleCreationNameRepair(w http.ResponseWriter, r *http.Request
 func (s *server) repairCreationNames(r *http.Request, request threads.CreationNameRepairRequest) creationNameRepairHTTPReceipt {
 	result := creationNameRepairHTTPReceipt{}
 	control := s.controlStore()
-	if control == nil || s.agentExecutions == nil || s.queuedTurns == nil || s.agentExecutions.control != control || s.queuedTurns.db != control.db {
+	if control == nil || s.agentExecutions == nil || s.queuedTurns == nil || s.agentExecutions.control != control || s.queuedTurns.Database() != control.db {
 		result.Error = "canonical creation-name repair stores are unavailable"
 		return result
 	}
@@ -88,7 +88,7 @@ func (s *server) repairCreationNames(r *http.Request, request threads.CreationNa
 	defer s.agentExecutions.mu.Unlock()
 	backupPath := ""
 	if request.Apply {
-		parent := filepath.Join(filepath.Dir(s.queuedTurns.path), "threads-maintenance-backups")
+		parent := filepath.Join(filepath.Dir(s.queuedTurns.Path()), "threads-maintenance-backups")
 		if err := os.MkdirAll(parent, 0700); err != nil {
 			result.Error = err.Error()
 			return result

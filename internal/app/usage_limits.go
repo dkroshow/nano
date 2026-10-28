@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/usage"
 	"github.com/dkroshow/nano/internal/usageclients"
 )
@@ -53,7 +54,7 @@ type usageLimitsPoller struct {
 	interval time.Duration
 }
 
-func newUsageLimitsPoller(store *usageLimitsStore, codex *codexDaemon, grok sessionDefaults, interval time.Duration) *usageLimitsPoller {
+func newUsageLimitsPoller(store *usageLimitsStore, codex *sessionruntime.CodexDaemon, grok sessionDefaults, interval time.Duration) *usageLimitsPoller {
 	if interval <= 0 {
 		interval = defaultUsageLimitPollInterval
 	}

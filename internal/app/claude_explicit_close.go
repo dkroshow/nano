@@ -1,6 +1,10 @@
 package app
 
-import "fmt"
+import (
+	"fmt"
+
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
+)
 
 // Explicit operator escape: forget bookkeeping only, never claim termination
 // or settle queued work. Refuse an attachment that has changed or resumed.
@@ -8,15 +12,15 @@ func (s *server) forgetUnconfirmedClaude(attachment attachmentRecord, shimID, at
 	if attachment.ShimSessionID != shimID || attachment.AttachedAt != attachedAt {
 		return fmt.Errorf("attachment changed; refresh before forgetting")
 	}
-	return s.forgetDetachedClaude(attachment.NativeThreadID, func() error {
+	return s.ForgetDetachedClaude(attachment.NativeThreadID, func() error {
 		return s.attachments.forgetClosed(attachment)
 	})
 }
 
 // All helpers require relationshipMu. Legacy UI endpoints use the hosted
 // lifecycle when possible, including heartbeat pause.
-func (s *server) closeExplicitSession(sess *session) error {
-	current := s.lookupSession(sess.ID())
+func (s *server) closeExplicitSession(sess *sessionruntime.Session) error {
+	current := s.LookupSession(sess.ID())
 	if current != sess {
 		return fmt.Errorf("session attachment changed; refresh before closing")
 	}
@@ -44,7 +48,7 @@ func (s *server) closeExplicitAttachment(attachment attachmentRecord) error {
 		}
 	}
 	// A stale detached control must not forget a runtime that has since resumed.
-	live := s.attachmentSession(attachment.Provider, attachment.NativeThreadID)
+	live := s.AttachmentSession(attachment.Provider, attachment.NativeThreadID)
 	if live != nil {
 		return s.closeAgentSession(live)
 	}
@@ -53,7 +57,7 @@ func (s *server) closeExplicitAttachment(attachment attachmentRecord) error {
 
 func (s *server) closeDetachedAttachment(attachment attachmentRecord) error {
 	if attachment.Provider == "claude" {
-		if err := closeDetachedClaude(s.defaults.claudeShimWS, attachment.ShimSessionID); err != nil {
+		if err := sessionruntime.CloseDetachedClaude(s.defaults.claudeShimWS, attachment.ShimSessionID); err != nil {
 			return fmt.Errorf("Claude stop unconfirmed; attachment retained (heartbeat may be paused): %w", err)
 		}
 	}

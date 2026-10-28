@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,6 +24,8 @@ func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	sess := configuredFixtureSession(t, sessionConfig{ID: "sess-fast", Provider: "codex", HostedThreadID: "nht_fast", Metadata: metadata}, "", "ready", "")
+
 	rows, err := metadata.ReadPool().Query(`SELECT hosted_thread_id FROM hosted_threads`)
 	if err != nil {
 		t.Fatal(err)
@@ -32,16 +35,10 @@ func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 		t.Fatal("metadata reader returned no hosted thread")
 	}
 
-	sess := &session{id: "sess-fast",
-		provider:       "codex",
-		hostedThreadID: "nht_fast",
-		metadata:       metadata,
-		subs:           map[chan wireEvent]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		rec := httptest.NewRecorder()
-		sess.handleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost,
+		sess.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost,
 			"/api/sessions/sess-fast/turn-options", strings.NewReader(`{"serviceTier":"priority"}`)))
 		done <- rec
 	}()
@@ -65,6 +62,8 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	sess := configuredFixtureSession(t, sessionConfig{ID: "sess-fast-route", Provider: "codex", HostedThreadID: "nht_fast_route", Metadata: metadata}, "", "ready", "")
+
 	readDB := metadata.ReadPool()
 	waitsBefore := readDB.Stats().WaitCount
 	held := make([]*sql.Conn, 0, 4)
@@ -87,16 +86,10 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 	}
 	defer releaseReaders()
 
-	sess := &session{id: "sess-fast-route",
-		provider:       "codex",
-		hostedThreadID: "nht_fast_route",
-		metadata:       metadata,
-		subs:           map[chan wireEvent]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}},
+	s := testServerWithSessions(&server{
+		Registry:        newSessionRegistry(),
 		controlMetadata: metadata,
-	}
+	}, map[string]*session{sess.ID(): sess})
 	registryDone := make(chan struct{})
 	go func() {
 		s.handleSessionsList(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
@@ -167,7 +160,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 	for provider, want := range map[string]string{
 		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
 	} {
-		resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
+		resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
 		if err != nil {
 			t.Fatalf("resolve %s resume: %v", provider, err)
 		}
@@ -185,7 +178,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
+	resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
 	if err != nil {
 		t.Fatalf("resolve explicit resume: %v", err)
 	}
@@ -197,26 +190,19 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 // Operator requires unsupported model/speed combinations to fail before changing
 // intent. Boundary: the real HTTP turn-options handler and canonical store.
 func TestUltrafastTurnOptionsValidateModelAndPreserveIntent(t *testing.T) {
-	fake := newFakeAppServer(t)
-	fake.mu.Lock()
-	fake.modelList = map[string]any{"data": []any{
+	store := newTestControlMetadata(t)
+	if err := store.ensureHostedThread("nht_speed_controls", "codex", presentationShared, "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "speed-controls", Provider: "codex", HostedThreadID: "nht_speed_controls", Metadata: store}, "native", "gpt-6-astra")
+	sess, fake := fixture.session, fixture.codex
+	fake.Mu.Lock()
+	fake.ModelList = map[string]any{"data": []any{
 		map[string]any{"model": "gpt-6-astra", "serviceTiers": []any{map[string]any{"id": "ultrafast"}}},
 		map[string]any{"model": "gpt-6.1-sol", "serviceTiers": []any{map[string]any{"id": "ultrafast"}}},
 		map[string]any{"model": "gpt-6-sol", "serviceTiers": []any{map[string]any{"id": "priority"}}},
 	}}
-	fake.mu.Unlock()
-	d := fake.daemon()
-	t.Cleanup(func() {
-		d.mu.Lock()
-		c := d.client
-		d.mu.Unlock()
-		if c != nil {
-			c.Close()
-		}
-	})
-	sess, store := causationTestSession(t, "nht_speed_controls")
-	sess.codex = d
-	sess.turnModel = "gpt-6-astra"
+	fake.Mu.Unlock()
 	for _, tc := range []struct {
 		body string
 		code int
@@ -226,17 +212,25 @@ func TestUltrafastTurnOptionsValidateModelAndPreserveIntent(t *testing.T) {
 		{`{"model":"gpt-6-sol"}`, 400},
 	} {
 		rec := httptest.NewRecorder()
-		sess.handleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/turn-options", strings.NewReader(tc.body)))
+		sess.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/turn-options", strings.NewReader(tc.body)))
 		if rec.Code != tc.code {
 			t.Fatalf("%s: %d %s", tc.body, rec.Code, rec.Body)
 		}
 	}
-	f, desired, effective := fieldStrings(t, store, sess.hostedThreadID, postureFieldServiceTier)
+	f, desired, effective := fieldStrings(t, store, sess.HostedThreadID(), postureFieldServiceTier)
 	if desired != "ultrafast" || effective != "" || f.DesiredDisposition != metadataDispositionRequested {
 		t.Fatalf("pending tier = %+v %s %s", f, desired, effective)
 	}
-	model, _, tier := sess.turnOptions()
-	if model != "gpt-6.1-sol" || tier != "ultrafast" {
-		t.Fatalf("rejected switch changed intent: %s %s", model, tier)
+	read := httptest.NewRecorder()
+	sess.HandleTurnOptionsRead(read, httptest.NewRequest(http.MethodGet, "/turn-options", nil))
+	var options struct {
+		Model       string `json:"model"`
+		ServiceTier string `json:"serviceTier"`
+	}
+	if err := json.Unmarshal(read.Body.Bytes(), &options); err != nil {
+		t.Fatal(err)
+	}
+	if options.Model != "gpt-6.1-sol" || options.ServiceTier != "ultrafast" {
+		t.Fatalf("rejected switch changed intent: %s %s", options.Model, options.ServiceTier)
 	}
 }

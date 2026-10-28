@@ -16,20 +16,15 @@ func serverWithAttachments(t *testing.T) (*server, *attachmentStore) {
 		t.Fatal(err)
 	}
 	return &server{
-		attachments:     store,
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
+		attachments: store,
+		Registry:    newSessionRegistry(),
 	}, store
 }
 
 // liveSession makes a minimal ready session bound to a native thread id, enough
 // for handleSessionsList and the DELETE path (no provider/ spool to tear down).
-func liveSession(id, threadID string) *session {
-	return &session{id: id,
-		provider:       "codex",
-		threadID:       threadID,
-		createdAt:      time.Now(),
-		state:          map[string]json.RawMessage{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+func liveSession(t *testing.T, id, threadID string) *session {
+	return configuredFixtureSession(t, sessionConfig{ID: id, Provider: "codex", CreatedAt: time.Now()}, threadID, "ready", "")
 }
 
 // GET /api/sessions surfaces detached attachments, and a thread with a live
@@ -40,7 +35,7 @@ func TestSessionsGETSurfacesDetached(t *testing.T) {
 	s, store := serverWithAttachments(t)
 	store.remember(attach("t-live", "/a", "2026-07-25T10:00:00Z"))
 	store.remember(attach("t-detached", "/b", "2026-07-25T11:00:00Z"))
-	s.sessions["sess1"] = liveSession("sess1", "t-live")
+	s.RegisterSession(liveSession(t, "sess1", "t-live"))
 
 	rec := httptest.NewRecorder()
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
@@ -65,9 +60,9 @@ func TestSessionsGETSurfacesDetached(t *testing.T) {
 func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 	s, store := serverWithAttachments(t)
 	store.remember(attach("t-retry", "/a", "2026-07-25T10:00:00Z"))
-	exited := liveSession("sess-exited", "t-retry")
-	exited.lifecycleState = testLifecycleSnapshot(sessionStatusExited, exited.workActiveLocked())
-	s.sessions[exited.id] = exited
+	exited := liveSession(t, "sess-exited", "t-retry")
+	exited.Close()
+	s.RegisterSession(exited)
 
 	rec := httptest.NewRecorder()
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
@@ -93,7 +88,7 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 func TestSessionDeleteForgetsAttachment(t *testing.T) {
 	s, store := serverWithAttachments(t)
 	store.remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
-	s.sessions["sess1"] = liveSession("sess1", "t-1")
+	s.RegisterSession(liveSession(t, "sess1", "t-1"))
 
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/sess1", nil))
@@ -116,7 +111,7 @@ func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 		Cwd:            "/b",
 		AttachedAt:     "2026-07-25T11:00:00Z",
 	})
-	s.sessions["sess1"] = liveSession("sess1", "shared") // codex
+	s.RegisterSession(liveSession(t, "sess1", "shared")) // codex
 
 	rec := httptest.NewRecorder()
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
@@ -142,7 +137,7 @@ func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",
 	})
-	s.sessions["sess1"] = liveSession("sess1", "shared") // codex
+	s.RegisterSession(liveSession(t, "sess1", "shared")) // codex
 
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/sess1", nil))
@@ -221,7 +216,7 @@ func TestAttachmentDismissEndpoint(t *testing.T) {
 // With no store wired (feature off), GET still succeeds with an empty detached
 // array and never panics.
 func TestSessionsGETNoStore(t *testing.T) {
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{Registry: newSessionRegistry()}
 	rec := httptest.NewRecorder()
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {

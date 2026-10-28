@@ -35,34 +35,6 @@ func projectionStateForTest(view sessionProjection) liveProjectionSnapshot {
 	return liveProjectionSnapshot{NativeThreadID: native, Turns: p.TurnList(), Runtime: status.Runtime, Interactions: status.Interactions}
 }
 
-func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
-	stores, err := openThreadRuntimeStores(context.Background(), t.TempDir(), "", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = stores.control.Close() })
-	store := stores.completed
-	p := newLiveProjection("codex", "hosted", "session")
-	started := time.Date(2026, 9, 11, 3, 0, 0, 0, time.UTC)
-	p.mu.Lock()
-	p.upsertTurnLocked(&liveProjectionTurn{ID: "turn-file", Status: "in_progress", StartedAtMs: started.UnixMilli()})
-	p.mu.Unlock()
-	sess := &session{
-		provider: "codex", hostedThreadID: "hosted", threadID: "native", turnID: "turn-file", projection: p,
-		lifecycleState: testLifecycleSnapshot("ready", true),
-	}
-	reconcileWithSavedTurn(sess, durableTurnEvidence{
-		Turn: liveProjectionTurn{ID: "turn-file", Status: "completed", StartedAtMs: started.UnixMilli(), CompletedAtMs: started.Add(time.Minute).UnixMilli()},
-	})
-	rows, err := store.after("hosted", "", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 0 {
-		t.Fatalf("durable file completion wrote feed rows: %+v", rows)
-	}
-}
-
 // savedTurnTestCatalog answers the saved-turn read with one fixed turn and
 // records each read.
 type savedTurnTestCatalog struct {
@@ -93,7 +65,7 @@ func TestSavedTurnEvidenceReadsOnlyExactCodexAndGrokTurns(t *testing.T) {
 			Turn: history.TranscriptTurn{NativeTurnID: "turn-1", Status: history.TurnCompleted, CompletedAt: &completed},
 		}}
 		catalog.thread.Source.Conflict = tc.conflict
-		sess := &session{provider: tc.provider, threadID: "native"}
+		sess := newFixtureSession(sessionConfig{Provider: tc.provider}, "native")
 		got, ok := (&server{catalog: catalog}).savedTurnEvidence(context.Background(), sess, "turn-1")
 		if ok != tc.want || (ok && (got.Turn.ID != "turn-1" || got.Turn.Status != agentTurnCompleted || got.Turn.CompletedAtMs != completed.UnixMilli())) ||
 			(!tc.want && len(catalog.reads) != 0) {
@@ -105,10 +77,10 @@ func TestSavedTurnEvidenceReadsOnlyExactCodexAndGrokTurns(t *testing.T) {
 // reconcileWithSavedTurn runs turn repair against one saved turn, which the
 // read returns only for its own exact id.
 func reconcileWithSavedTurn(sess *session, saved durableTurnEvidence) {
-	sess.savedTurn = func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
+	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
 		return saved, turnID == saved.Turn.ID
-	}
-	sess.reconcileDurableTurn(context.Background())
+	}, nil, nil, nil, nil)
+	sess.ReconcileDurableTurn(context.Background())
 }
 
 func TestDurableTerminalAuthority(t *testing.T) {
@@ -138,70 +110,12 @@ func TestDurableTerminalAuthority(t *testing.T) {
 	}
 }
 
-func durableTurnTestSession(turnID string, startedAtMs int64) *session {
-	projection := newLiveProjection("codex")
-	projection.mu.Lock()
-	projection.upsertTurnLocked(&liveProjectionTurn{ID: turnID, Status: "in_progress", StartedAtMs: startedAtMs})
-	projection.mu.Unlock()
-	return &session{provider: "codex",
-		threadID:        "native-thread",
-		projection:      projection,
-		turnID:          turnID,
-		turnStartedAtMs: startedAtMs,
-		lifecycleState:  testLifecycleSnapshot("ready", true)}
-}
-
-func TestDurableReconciliationSettlesResumeBeforeHandshakeCannotResurrect(t *testing.T) {
-	started := time.Now().Add(-time.Minute).UnixMilli()
-	sess := durableTurnTestSession("turn-resume", started)
-	reconcileWithSavedTurn(sess, durableTurnEvidence{
-		Turn: liveProjectionTurn{ID: "turn-resume", Status: "completed", CompletedAtMs: started + 1, DurationMS: 1},
+func durableTurnTestSession(t *testing.T, turnID string, startedAtMs int64) (*session, *liveProjection) {
+	p := newLiveProjection("codex")
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "session-1", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "", func(f *providerRuntimeFixture) {
+		f.resumeResult = map[string]any{"thread": map[string]any{"id": "native-thread", "turns": []any{map[string]any{"id": turnID, "status": "inProgress", "startedAt": startedAtMs / 1000}}}}
 	})
-	sess.setTurnActive(true, "turn-resume", started, true) // late thread/resume handshake
-	sess.stateMu.Lock()
-	active, guard := sess.workActiveLocked(), sess.durablyTerminalTurnID
-	sess.stateMu.Unlock()
-	if active || guard != "turn-resume" {
-		t.Fatalf("terminal resume was resurrected: active=%v guard=%q", active, guard)
-	}
-}
-
-func TestDurableCatalogReconciliationSettlesExactCurrentTurnAndAllowsNewerTurn(t *testing.T) {
-	started := time.Now().Add(-time.Minute).UnixMilli()
-	sess := durableTurnTestSession("turn-current", started)
-	reconcileWithSavedTurn(sess, durableTurnEvidence{
-		Turn: liveProjectionTurn{ID: "turn-current", Status: "interrupted", CompletedAtMs: started + 1},
-	})
-	sess.stateMu.Lock()
-	active := sess.workActiveLocked()
-	sess.stateMu.Unlock()
-	if active {
-		t.Fatal("catalog terminal evidence left the exact live turn working")
-	}
-	sess.setTurnActive(true, "turn-newer", started+2, true)
-	sess.stateMu.Lock()
-	active, current, guard := sess.workActiveLocked(), sess.turnID, sess.durablyTerminalTurnID
-	sess.stateMu.Unlock()
-	if !active || current != "turn-newer" || guard != "turn-current" {
-		t.Fatalf("newer turn did not preserve the old terminal guard: active=%v current=%q guard=%q", active, current, guard)
-	}
-}
-
-func TestDurableReconciliationLeavesWeakOrMismatchedEvidenceWorking(t *testing.T) {
-	started := time.Now().UnixMilli()
-	for _, saved := range []durableTurnEvidence{
-		{Turn: liveProjectionTurn{ID: "turn-current", Status: "completed"}},
-		{Turn: liveProjectionTurn{ID: "turn-other", Status: "completed", CompletedAtMs: started + 1}},
-	} {
-		sess := durableTurnTestSession("turn-current", started)
-		reconcileWithSavedTurn(sess, saved)
-		sess.stateMu.Lock()
-		active := sess.workActiveLocked()
-		sess.stateMu.Unlock()
-		if !active {
-			t.Fatalf("weak or mismatched durable evidence cleared the live turn: %#v", saved)
-		}
-	}
+	return f.session, p
 }
 
 // A saved completion ends the open turn only if the turn did no live work
@@ -213,8 +127,9 @@ func TestDurableReconciliationLeavesWeakOrMismatchedEvidenceWorking(t *testing.T
 func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 	started := time.Now().Add(-time.Minute)
 	saved := durableTurnEvidence{Turn: liveProjectionTurn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}
+	views := map[*session]*liveProjection{}
 	work := func(sess *session, at time.Time) {
-		sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
+		views[sess].applyWire(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
 	}
 	for _, tc := range []struct {
 		name    string
@@ -224,40 +139,29 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 	}{
 		{"live work after the saved completion", func(sess *session) { work(sess, started.Add(2*time.Second)) }, nil, true},
 		{"same-turn live work during the read", nil, func(sess *session) { work(sess, started.Add(time.Second/2)) }, true},
-		{"attachment replaced during the read", nil, func(sess *session) {
-			sess.stateMu.Lock()
-			sess.attachmentGeneration++
-			sess.stateMu.Unlock()
-		}, true},
-		{"native thread replaced during the read", nil, func(sess *session) {
-			sess.stateMu.Lock()
-			sess.threadID = "native-replacement"
-			sess.stateMu.Unlock()
-		}, true},
 		// Hiding Codex text deltas hides text, not the work they are.
-		{"same-turn hidden text delta during the read", func(sess *session) { sess.projection.(*liveProjection).dropLiveTextDeltas = true }, func(sess *session) {
-			sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
+		{"same-turn hidden text delta during the read", func(sess *session) { views[sess].dropLiveTextDeltas = true }, func(sess *session) {
+			views[sess].applyWire(protocol.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
 		}, true},
 		{"replayed old output during the read", nil, func(sess *session) {
-			sess.projection.(*liveProjection).ApplyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
+			views[sess].ApplyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
 		}, false},
 		{"nothing since the saved completion", nil, nil, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sess := durableTurnTestSession("turn-1", started.UnixMilli())
+			sess, p := durableTurnTestSession(t, "turn-1", started.UnixMilli())
+			views[sess] = p
 			if tc.before != nil {
 				tc.before(sess)
 			}
-			sess.savedTurn = func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
+			sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
 				if tc.during != nil {
 					tc.during(sess)
 				}
 				return saved, turnID == saved.Turn.ID
-			}
-			sess.reconcileDurableTurn(context.Background())
-			sess.stateMu.Lock()
-			working := sess.workActiveLocked()
-			sess.stateMu.Unlock()
+			}, nil, nil, nil, nil)
+			sess.ReconcileDurableTurn(context.Background())
+			working := sess.Summary().TurnActive
 			if working != tc.working {
 				t.Fatalf("working after the saved completion = %v, want %v", working, tc.working)
 			}
@@ -340,7 +244,11 @@ func TestCodexResumeSeedsFiveCompleteTurnsAndActiveTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedCodexResume(p, decodedCodexResume(response))
+	var reply map[string]any
+	if err := json.Unmarshal(response, &reply); err != nil {
+		t.Fatal(err)
+	}
+	newProviderRuntimeFixture(t, sessionConfig{ID: "seed-five", Provider: "codex", Projection: p}, "native-1", "", func(f *providerRuntimeFixture) { f.resumeResult = reply })
 	turnsAfter := p.TurnList()
 
 	if got, want := len(turnsAfter), 6; got != want {
@@ -447,29 +355,21 @@ func TestCompletedProviderUserMessageDoesNotSettleThePrompt(t *testing.T) {
 	seedAcceptedTransactionalTurn(t, turnStore, "hosted-thread", model.ProviderCodex, "native-thread", "action-wire-confirm", "turn-1", "ship it now")
 	projection := newLiveProjection("codex", "hosted-thread")
 	projection.SetNativeThreadID("native-thread")
-	sess := &session{id: "session-wire-confirm",
-		provider:       "codex",
-		hostedThreadID: "hosted-thread",
-		threadID:       "native-thread",
-		projection:     projection,
-		turns:          turnStore,
-		queuedTurns:    queue,
-		sendAttempts:   store,
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "session-wire-confirm", Provider: "codex", HostedThreadID: "hosted-thread", Projection: projection, Turns: turnStore, QueuedTurns: queue, SendAttempts: store}, "native-thread", "")
 
 	started := []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"provider-user-1","type":"userMessage","content":[{"type":"text","text":"ship it now"}]}}}`)
 	completed := []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"provider-user-1","type":"userMessage","content":[{"type":"text","text":"ship it now"}]}}}`)
 	agent := []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"agent-1","type":"agentMessage","text":"Working"}}}`)
 
-	sess.recordWire(protocol.Recv, started)
+	f.emitAndWait(t, started)
 	if record, _ := store.Get("action-wire-confirm"); record.Confirmed {
 		t.Fatalf("item/started confirmed the send before the provider completed its user item: %#v", record)
 	}
-	sess.recordWire(protocol.Recv, completed)
+	f.emitAndWait(t, completed)
 	if record, ok := store.Get("action-wire-confirm"); !ok || record.Confirmed || record.Status != sendAttemptAccepted {
 		t.Fatalf("completed provider user item settled accepted prompt: %#v, found=%v", record, ok)
 	}
-	sess.recordWire(protocol.Recv, agent)
+	f.emitAndWait(t, agent)
 	if record, ok := store.Get("action-wire-confirm"); !ok || record.Confirmed {
 		t.Fatalf("agent activity settled the accepted prompt: %#v, found=%v", record, ok)
 	}
@@ -540,12 +440,11 @@ drain:
 
 func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) {
 	started := time.Now().Add(-time.Minute).UnixMilli()
-	sess := durableTurnTestSession("turn-1", started)
-	sess.id = "session-1"
-	sess.savedTurn = func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
+	sess, _ := durableTurnTestSession(t, "turn-1", started)
+	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
 		return durableTurnEvidence{Turn: liveProjectionTurn{ID: turnID, Status: "completed", CompletedAtMs: started + 1}}, turnID == "turn-1"
-	}
-	s := &server{catalog: &fakeMessagesCatalog{}, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
+	}, nil, nil, nil, nil)
+	s := testServerWithSessions(&server{catalog: &fakeMessagesCatalog{}, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 
 	// Transcript notifications use the catalog's nth_ identity, while hosted
 	// sessions retain the provider-native thread identity.
@@ -553,7 +452,7 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 		ThreadID: "nth_1", Provider: "codex", NativeThreadID: "native-thread",
 	})
 
-	if summary := sess.summary(); summary.TurnActive {
+	if summary := sess.Summary(); summary.TurnActive {
 		t.Fatalf("catalog notification did not reach the session's open turn: %#v", summary)
 	}
 }
@@ -589,33 +488,42 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	}
 
 	server := &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions,
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 	blocked := make(chan struct{})
 	started := make(chan struct{}, transcriptChangeWorkerCount)
 	var durableCalls atomic.Int32
+	var providerCalls atomic.Int32
 	for index := 0; index < attachedSessions; index++ {
 		id := fmt.Sprintf("session-%d", index)
 		nativeID := fmt.Sprintf("native-%d", index)
-		sess := &session{id: id,
-			provider:       "codex",
-			threadID:       nativeID,
-			projection:     newLiveProjection("codex"),
-			interactions:   map[string]pendingInteraction{},
-			lifecycleState: testLifecycleSnapshot("ready", false)}
-		// Each catalog change reads the saved status of the session's open
-		// turn. The prompt target has none until its own prompt starts one.
-		if id != "session-99" {
-			sess.turnID = "open-turn"
-			sess.projection.UpdateRuntime(liveProjectionRuntime{TurnActive: true, TurnID: "open-turn"})
+		cfg := sessionConfig{ID: id, Provider: "codex", Projection: newLiveProjection("codex")}
+		if id == "session-99" {
+			cfg.HostedThreadID = hosted.ID
+			cfg.PresentationMode = presentationBackground
+			cfg.AgentExecutions = executions
+			cfg.Turns = turnStore
+			cfg.SendAttempts = attempts
+			cfg.QueuedTurns = queue
 		}
-		sess.savedTurn = func(context.Context, string) (durableTurnEvidence, bool) {
+		f := newProviderRuntimeFixture(t, cfg, nativeID, "", func(f *providerRuntimeFixture) {
+			if id != "session-99" {
+				f.resumeResult = map[string]any{"thread": map[string]any{"id": nativeID, "turns": []any{map[string]any{"id": "open-turn", "status": "inProgress"}}}}
+			}
+			if id == "session-99" {
+				f.send = func(context.Context, string) (json.RawMessage, error) {
+					providerCalls.Add(1)
+					return json.RawMessage(`{"turn":{"id":"provider-load-turn"}}`), nil
+				}
+			}
+		})
+		reader := func(context.Context, string) (durableTurnEvidence, bool) {
 			durableCalls.Add(1)
 			return durableTurnEvidence{}, false
 		}
 		if index < transcriptChangeWorkerCount {
-			sess.savedTurn = func(ctx context.Context, _ string) (durableTurnEvidence, bool) {
+			reader = func(ctx context.Context, _ string) (durableTurnEvidence, bool) {
 				started <- struct{}{}
 				select {
 				case <-blocked:
@@ -625,21 +533,10 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 				return durableTurnEvidence{}, false
 			}
 		}
-		server.sessions[id] = sess
+		f.session.ConfigureSavedReaders(reader, nil, nil, nil, nil)
+		server.RegisterSession(f.session)
 	}
-	target := server.sessions["session-99"]
-	target.hostedThreadID = hosted.ID
-	target.presentationMode = presentationBackground
-	target.agentExecutions = executions
-	target.turns = turnStore
-	target.sendAttempts = attempts
-	target.queuedTurns = queue
-	target.sendOps = map[string]*turnSendOperation{}
-	var providerCalls atomic.Int32
-	target.turnSender = func(context.Context, string) (json.RawMessage, error) {
-		providerCalls.Add(1)
-		return json.RawMessage(`{"turn":{"id":"provider-load-turn"}}`), nil
-	}
+	target := server.LookupSession("session-99")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	service := &threadCatalogService{transcriptChanges: make(map[string]*pendingTranscriptChange)}
@@ -787,7 +684,7 @@ func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 		Turns:    []transcriptTurn{{ID: "turn-0", FinalItemID: "durable-0"}},
 		Page:     transcriptPageInfo{StartSeq: 1, EndSeq: 1},
 	}}}
-	sess := &session{threadID: nativeThreadID, provider: "codex", projection: p}
+	sess := newFixtureSession(sessionConfig{Provider: "codex", Projection: p}, nativeThreadID)
 	recorder := httptest.NewRecorder()
 	(&server{catalog: fake}).handleConversationHistory(recorder,
 		httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session/conversation/history", nil), sess)

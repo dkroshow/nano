@@ -28,6 +28,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/liveview"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -51,8 +52,8 @@ const (
 )
 
 // startLiveText builds the file-only loop for every session constructor.
-func (s *server) startLiveText(sess *session) {
-	sess.attachLiveText(newLiveTextLoop(s, sess))
+func (s *server) startLiveText(sess *sessionruntime.Session) {
+	sess.AttachLiveText(newLiveTextLoop(s, sess))
 }
 
 // liveTextEntry is one piece of live text as panes see it.
@@ -496,8 +497,8 @@ func (l *liveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.Outbo
 	newClaim := entry.UpdatedAt != current.outbox.UpdatedAt || current.outbox.State != prompts.Delivering
 	current.outbox = entry
 	current.State = string(entry.State)
-	current.AllowedActions, current.Label = promptPresentation(provider, entry)
-	if slow, ok := slowDeliveryAt(entry); ok && newClaim && current.Label == "" {
+	current.AllowedActions, current.Label = sessionruntime.PromptPresentation(provider, entry)
+	if slow, ok := sessionruntime.SlowDeliveryAt(entry); ok && newClaim && current.Label == "" {
 		id := current.ID
 		time.AfterFunc(time.Until(slow), func() {
 			l.post(func(in *liveTextInbox) { in.events = append(in.events, liveTextEvent{slow: id}) })
@@ -555,7 +556,7 @@ func (l *liveTextLoop) promptKey(entry prompts.OutboxEntry) string {
 		return entry.Binding.EventID
 	}
 	if l.sess != nil && (l.sess.Provider() == "claude" || l.sess.Provider() == "grok") {
-		return submissionEventID(l.sess.HostedThreadID(), entry.ActionID)
+		return sessionruntime.SubmissionEventID(l.sess.HostedThreadID(), entry.ActionID)
 	}
 	return ""
 }
@@ -1641,7 +1642,7 @@ func (s *server) handleHostedThreadLive(w http.ResponseWriter, r *http.Request, 
 		httpapi.WriteHTTPError(w, "no live session is attached to this thread", http.StatusConflict)
 		return
 	}
-	sess.handleLiveStream(w, r)
+	sess.HandleLiveStream(w, r)
 }
 
 func savedConversationItem(row transcriptItem) liveProjectionItem {

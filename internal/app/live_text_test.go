@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -34,12 +35,16 @@ const (
 
 type liveTextHarness struct {
 	*liveTextViewer
-	t       *testing.T
-	srv     *server
-	sess    *session
-	service *threadCatalogService
-	store   *history.Store
-	file    string
+	t          *testing.T
+	srv        *server
+	sess       *session
+	projection *liveProjection
+	queue      sessionQueue
+	journal    sessionJournal
+	metadata   *controlMetadataStore
+	service    *threadCatalogService
+	store      *history.Store
+	file       string
 	// held keeps catalog apply notices from the loop; scanDelay holds each
 	// catalog scan before it projects a file.
 	held         atomic.Bool
@@ -94,7 +99,7 @@ func newLiveTextHarnessFor(t *testing.T, provider string, query transcriptListQu
 	return newLiveTextHarnessForThread(t, provider, query, grokFixtureThread)
 }
 
-func newLiveTextHarnessForThread(t *testing.T, provider string, query transcriptListQuery, grokThread string) *liveTextHarness {
+func newLiveTextHarnessForThread(t *testing.T, provider string, query transcriptListQuery, grokThread string, configure ...func(*sessionConfig)) *liveTextHarness {
 	t.Helper()
 	root := t.TempDir()
 	file := filepath.Join(root, "-disposable", liveTextFixtureSession+".jsonl")
@@ -132,15 +137,26 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query transcript
 	}
 	t.Cleanup(func() { service.Close() })
 	srv := &server{catalog: &countingLiveTextCatalog{service, &h.catalogReads, &h.lastQueries}, browserDiagnostics: newBrowserDiagnosticStore(64)}
-	sess, _ := claudeTestSession(t)
-	sess.provider = provider
-	sess.projection = srv.newSessionProjection(provider, sess.hostedThreadID)
+	cfg, generation, _ := providerSessionConfig(t, provider)
+	for _, apply := range configure {
+		apply(&cfg)
+	}
+	cfg.Projection = srv.newSessionProjection(provider, cfg.HostedThreadID)
+	h.metadata, _ = cfg.Metadata.(*controlMetadataStore)
+	cfg.Metadata = journalReadMetadata{sessionMetadata: cfg.Metadata, db: cfg.QueuedTurns.Database()}
+	sess := newSession(cfg)
+	if err := sess.InitializeBinding(generation); err != nil {
+		t.Fatal(err)
+	}
 	srv.startLiveText(sess)
-	sess.threadID = nativeThread
+	sess.ReserveNativeID(nativeThread)
 	h.srv, h.sess, h.service = srv, sess, service
+	h.projection = cfg.Projection.(*liveProjection)
+	h.queue = cfg.QueuedTurns
+	h.journal = cfg.SendAttempts
 	service.setTranscriptChanged(func(context.Context, transcriptChange) {
 		if !h.held.Load() {
-			sess.liveText.Applied()
+			sess.LiveTextService().Applied()
 		}
 	})
 	h.liveTextViewer = h.open(query)
@@ -161,13 +177,13 @@ func (h *liveTextHarness) hold() { h.held.Store(true) }
 
 func (h *liveTextHarness) release() {
 	h.held.Store(false)
-	h.sess.liveText.Applied()
+	h.sess.LiveTextService().Applied()
 }
 
 // page reads the catalog directly: the test's own view of what is saved.
 func (h *liveTextHarness) page(query transcriptListQuery) []transcriptItem {
 	h.t.Helper()
-	id, err := h.service.ResolveThreadReference(context.Background(), h.sess.threadID)
+	id, err := h.service.ResolveThreadReference(context.Background(), h.sess.ThreadID())
 	if err != nil {
 		return nil
 	}
@@ -183,7 +199,7 @@ func (h *liveTextHarness) page(query transcriptListQuery) []transcriptItem {
 func (h *liveTextHarness) waitTurnEnded(nativeTurnID string) {
 	h.t.Helper()
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		id, err := h.service.ResolveThreadReference(context.Background(), h.sess.threadID)
+		id, err := h.service.ResolveThreadReference(context.Background(), h.sess.ThreadID())
 		if err != nil {
 			continue // not indexed yet
 		}
@@ -247,12 +263,12 @@ func (h *liveTextHarness) feed(lines [][]byte) {
 			Type string `json:"type"`
 		}
 		if json.Unmarshal(line, &frame) == nil && frame.Type == "result" {
-			h.sess.projection.(*liveProjection).mu.Lock()
-			turn := h.sess.projection.(*liveProjection).claudeTurnID
-			h.sess.projection.(*liveProjection).mu.Unlock()
-			h.sess.projection.SetClaudeResultTurnID(turn)
+			h.projection.mu.Lock()
+			turn := h.projection.claudeTurnID
+			h.projection.mu.Unlock()
+			h.projection.SetClaudeResultTurnID(turn)
 		}
-		h.sess.projection.(*liveProjection).ApplyWireLive(protocol.Recv, line, time.Now(), true, false)
+		h.projection.ApplyWireLive(protocol.Recv, line, time.Now(), true, false)
 	}
 }
 
@@ -422,22 +438,22 @@ func TestLiveTextHandsOverToSavedRowsInOneMessage(t *testing.T) {
 	saved := fixtureLines(t, "claude-turn.saved.jsonl")
 	userLine, thinkingLine := lineWith(saved, liveTextFixturePrompt), lineWith(saved, `"thinking"`)
 	accepted := prompts.OutboxEntry{
-		HostedThreadID: h.sess.hostedThreadID, ActionID: "action-1", Sequence: 1,
+		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-1", Sequence: 1,
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt},
 	}
 	h.view.expectSaved["prompt:action-1"] = accepted.PresentationText
-	h.sess.liveText.OutboxChanged(accepted)
+	h.sess.LiveTextService().OutboxChanged(accepted)
 	h.expect("prompt", func(liveTextMessage) bool { return len(h.view.live) == 1 })
 	confirmed := accepted
 	confirmed.State = prompts.Confirmed
-	h.sess.liveText.OutboxChanged(confirmed)
+	h.sess.LiveTextService().OutboxChanged(confirmed)
 	h.barrier()
 	if !containsEntry(h.view.live, "prompt:action-1") {
 		t.Fatalf("confirmation removed the prompt before its saved row: %+v", h.view.live)
 	}
 	// The shim tags a delivered prompt's frames with its turn.
-	h.sess.projection.SetClaudeProviderTurnID("claude:" + h.sess.hostedThreadID + ":1")
+	h.projection.SetClaudeProviderTurnID("claude:" + h.sess.HostedThreadID() + ":1")
 	h.feed(fixtureLines(t, "claude-turn.wire.jsonl"))
 	// A finished reply reads done before its saved row lands, so the pane
 	// stops showing it as streaming.
@@ -488,12 +504,12 @@ func TestLiveTextQueuedPromptLeavesOnItsSavedRow(t *testing.T) {
 	thinkingLine := lineWith(saved, `"thinking"`)
 	h.save(saved[:thinkingLine+1])
 	queued := prompts.OutboxEntry{
-		HostedThreadID: h.sess.hostedThreadID, ActionID: "action-2", Sequence: 2,
+		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-2", Sequence: 2,
 		PresentationText: "Also mention snow.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: queuedPrompt},
 	}
 	h.view.expectSaved["prompt:action-2"] = queued.PresentationText
-	h.sess.liveText.OutboxChanged(queued)
+	h.sess.LiveTextService().OutboxChanged(queued)
 	h.expect("queued prompt", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:action-2") })
 	h.save(fixtureLines(t, "claude-queued-prompt.jsonl"))
 	h.expect("queued prompt saved", func(liveTextMessage) bool { return !containsEntry(h.view.live, "prompt:action-2") })
@@ -517,12 +533,12 @@ func TestLiveTextNamesAPromptSavedBeforeItWasShown(t *testing.T) {
 		return false
 	})
 	entry := prompts.OutboxEntry{
-		HostedThreadID: h.sess.hostedThreadID, ActionID: "action-2", Sequence: 2,
+		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-2", Sequence: 2,
 		PresentationText: "Also mention snow.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: prompt},
 	}
 	h.view.expectSaved["prompt:action-2"] = entry.PresentationText
-	h.sess.liveText.OutboxChanged(entry)
+	h.sess.LiveTextService().OutboxChanged(entry)
 	h.expect("the prompt named saved", func(m liveTextMessage) bool { return slices.Contains(m.Saved, "prompt:action-2") })
 	if h.view.shown["prompt:action-2"] {
 		t.Fatal("a prompt saved before Nano admitted it was listed live")
@@ -541,18 +557,18 @@ func TestLiveTextTailNamesPromptsWhoseSavedRowsItHolds(t *testing.T) {
 	settle := func(action, event string) {
 		t.Helper()
 		text, turn := "prompt "+action, "claude:"+action
-		if _, _, err := h.sess.turns.Submit(ctx, prompts.Submission{HostedThreadID: h.sess.hostedThreadID, Provider: model.ProviderClaude, NativeThreadID: native,
+		if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderClaude, NativeThreadID: native,
 			ActionID: action, ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 			t.Fatal(err)
 		}
-		if _, claimed, err := h.sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.hostedThreadID, Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+		if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.HostedThreadID(), Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 			t.Fatalf("claim %s: %v %v", action, claimed, err)
 		}
-		if _, err := h.sess.turns.Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
+		if _, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
 			Binding: prompts.Binding{EventID: event, Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &turn}}}); err != nil {
 			t.Fatal(err)
 		}
-		if _, settled, err := h.sess.turns.Settle(ctx, action); err != nil || !settled {
+		if _, settled, err := h.sess.PromptStore().Settle(ctx, action); err != nil || !settled {
 			t.Fatalf("settle %s: %v %v", action, settled, err)
 		}
 	}
@@ -592,7 +608,7 @@ func TestLiveTextTailFailsWhenItCannotNameItsSavedPrompts(t *testing.T) {
 	saved := fixtureLines(t, "claude-turn.saved.jsonl")
 	h.save(saved[:lineWith(saved, `"thinking"`)+1])
 	h.expect("rows saved", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	if err := h.sess.queuedTurns.(*queuedTurnStore).db.Close(); err != nil {
+	if err := h.queue.Database().Close(); err != nil {
 		t.Fatal(err)
 	}
 	later := &liveTextViewer{t: t, pane: newLiveTextPane(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}),
@@ -621,11 +637,11 @@ func TestLiveTextMergedPromptsLeaveOnTheirSavedRow(t *testing.T) {
 	}
 	for i, prompt := range sent {
 		entry := prompts.OutboxEntry{
-			HostedThreadID: h.sess.hostedThreadID, ActionID: prompt.action, Sequence: uint64(i + 2),
+			HostedThreadID: h.sess.HostedThreadID(), ActionID: prompt.action, Sequence: uint64(i + 2),
 			PresentationText: prompt.text, State: prompts.Accepted, Binding: &prompts.Binding{EventID: prompt.event},
 		}
 		h.view.expectSaved["prompt:"+prompt.action] = prompt.text
-		h.sess.liveText.OutboxChanged(entry)
+		h.sess.LiveTextService().OutboxChanged(entry)
 	}
 	h.expect("merged prompts", func(liveTextMessage) bool {
 		return containsEntry(h.view.live, "prompt:merged-first") && containsEntry(h.view.live, "prompt:merged-third")
@@ -659,13 +675,13 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 			t.Fatalf("page = %+v, want the first turn's reply off it", h.page(query))
 		}
 	}
-	h.sess.liveText.OutboxChanged(prompts.OutboxEntry{
-		HostedThreadID: h.sess.hostedThreadID, ActionID: "action-1", Sequence: 1,
+	h.sess.LiveTextService().OutboxChanged(prompts.OutboxEntry{
+		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-1", Sequence: 1,
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt},
 	})
-	h.sess.liveText.OutboxChanged(prompts.OutboxEntry{
-		HostedThreadID: h.sess.hostedThreadID, ActionID: "action-2", Sequence: 2,
+	h.sess.LiveTextService().OutboxChanged(prompts.OutboxEntry{
+		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-2", Sequence: 2,
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: "99999999-2222-4333-8444-555555555555"},
 	})
@@ -674,9 +690,9 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 	// counted, so it is not exact.
 	wire := fixtureLines(t, "claude-turn.wire.jsonl")
 	h.feed(wire)
-	h.sess.projection.(*liveProjection).adapterMu.Lock()
-	h.sess.projection.(*liveProjection).adapter = newClaudeLiveAdapter()
-	h.sess.projection.(*liveProjection).adapterMu.Unlock()
+	h.projection.adapterMu.Lock()
+	h.projection.adapter = newClaudeLiveAdapter()
+	h.projection.adapterMu.Unlock()
 	for _, line := range wire {
 		if strings.HasPrefix(string(line), `{"type": "assistant"`) && strings.Contains(string(line), `"type": "text"`) {
 			h.feed([][]byte{line})
@@ -706,7 +722,7 @@ func TestLiveTextReplayProvesNoLaterTurn(t *testing.T) {
 	h.save(fixtureLines(t, "claude-tool-error.saved.jsonl"))
 	h.waitSaved("msg_6289003a54e45a93b0f31403ba5b1278:1")
 	wire := fixtureLines(t, "claude-turn.wire.jsonl")
-	h.sess.projection.SetClaudeProviderTurnID("claude:" + h.sess.hostedThreadID + ":2")
+	h.projection.SetClaudeProviderTurnID("claude:" + h.sess.HostedThreadID() + ":2")
 	h.feed(wire)
 	h.expect("ended reply", func(liveTextMessage) bool { return h.view.reply() != nil && h.view.reply().State == "done" })
 	// The same frames, carrying the saved reply's identity: a replay.
@@ -714,7 +730,7 @@ func TestLiveTextReplayProvesNoLaterTurn(t *testing.T) {
 	for _, line := range wire {
 		replay = append(replay, []byte(strings.ReplaceAll(string(line), "msg_fc823e6c7ddd5dd584d9bd9b60795fa8", "msg_6289003a54e45a93b0f31403ba5b1278")))
 	}
-	h.sess.projection.SetClaudeProviderTurnID("claude:" + h.sess.hostedThreadID + ":3")
+	h.projection.SetClaudeProviderTurnID("claude:" + h.sess.HostedThreadID() + ":3")
 	h.feed(replay)
 	h.barrier()
 	if h.view.shown["reply:msg_6289003a54e45a93b0f31403ba5b1278:1"] {
@@ -746,14 +762,14 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 	// turn's result follows.
 	cut := newLiveTextHarness(t)
 	cut.view.neverSaved[reply] = true
-	cut.sess.projection.SetClaudeProviderTurnID("claude:" + cut.sess.hostedThreadID + ":1")
+	cut.projection.SetClaudeProviderTurnID("claude:" + cut.sess.HostedThreadID() + ":1")
 	cut.feed(append(append([][]byte(nil), wire[:lineWith(wire, `"type": "text_delta"`)+3]...), wire[len(wire)-1]))
 	cut.expect("cut reply", finished(cut))
 
 	// Saved in time, while the loop has not heard of the save.
 	inTime := newLiveTextHarness(t)
 	inTime.hold()
-	inTime.sess.projection.SetClaudeProviderTurnID("claude:" + inTime.sess.hostedThreadID + ":1")
+	inTime.projection.SetClaudeProviderTurnID("claude:" + inTime.sess.HostedThreadID() + ":1")
 	inTime.feed(wire)
 	inTime.expect("finished reply", finished(inTime))
 	inTime.save(turn)
@@ -782,7 +798,7 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 	h.view.neverSaved[reply] = true
 	h.save(turn[:lineWith(turn, liveTextFixturePrompt)+1])
 	h.expect("prompt row", func(liveTextMessage) bool { return len(h.view.rows) == 1 })
-	h.sess.projection.SetClaudeProviderTurnID("claude:" + h.sess.hostedThreadID + ":1")
+	h.projection.SetClaudeProviderTurnID("claude:" + h.sess.HostedThreadID() + ":1")
 	h.feed(wire)
 	h.expect("finished reply", finished(h))
 	reloaded := h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
@@ -792,9 +808,9 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 	}
 	// The next prompt, delivered after the reply ended, is saved: the reply
 	// leaves every pane with that row.
-	next := prompts.OutboxEntry{HostedThreadID: h.sess.hostedThreadID, ActionID: "next", Sequence: 2,
+	next := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "next", Sequence: 2,
 		PresentationText: "next", State: prompts.Accepted, Binding: &prompts.Binding{EventID: "22222222-3333-4444-8555-666666666666"}}
-	h.sess.liveText.OutboxChanged(next)
+	h.sess.LiveTextService().OutboxChanged(next)
 	h.expect("next prompt", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:next") })
 	saved := fixtureLines(t, "claude-tool-error.saved.jsonl")
 	h.save(saved[:lineWith(saved, "22222222-3333-4444-8555-666666666666")+1])
@@ -837,12 +853,12 @@ func (h *liveTextHarness) barrier() {
 	h.t.Helper()
 	h.barriers++
 	id := fmt.Sprintf("barrier-%d", h.barriers)
-	entry := prompts.OutboxEntry{HostedThreadID: h.sess.hostedThreadID, ActionID: id,
+	entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: id,
 		Sequence: 99, PresentationText: "barrier", State: prompts.Queued}
-	h.sess.liveText.OutboxChanged(entry)
+	h.sess.LiveTextService().OutboxChanged(entry)
 	h.expect("barrier", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:"+id) })
 	entry.State = prompts.Refused
-	h.sess.liveText.OutboxChanged(entry)
+	h.sess.LiveTextService().OutboxChanged(entry)
 	h.expect("barrier gone", func(liveTextMessage) bool { return !containsEntry(h.view.live, "prompt:"+id) })
 }
 
@@ -865,7 +881,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 		out := map[string]string{}
 		for _, view := range []conversationView{conversationViewMessages, conversationViewFull} {
 			rec := httptest.NewRecorder()
-			h.sess.handleConversationView(rec, httptest.NewRequest("GET", "/conversation?view="+string(view), nil), view)
+			h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view="+string(view), nil), view)
 			out["conversation "+string(view)] = rec.Body.String()
 		}
 		rec := httptest.NewRecorder()
@@ -903,15 +919,15 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	}
 	// Agent snapshots carry the live status cursor, and the event stream
 	// continues from it.
-	cursor := h.sess.projection.Status()
+	cursor := h.projection.Status()
 	rec := httptest.NewRecorder()
-	h.sess.handleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
+	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
 	var snapshot liveProjectionSnapshot
 	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil || snapshot.Epoch != cursor.Epoch || snapshot.Revision != cursor.Revision {
 		t.Fatalf("snapshot cursor = %s/%d (%v), want the status cursor %s/%d", snapshot.Epoch, snapshot.Revision, err, cursor.Epoch, cursor.Revision)
 	}
 	stream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.sess.handleFileConversationEvents(w, r, conversationViewMessages)
+		h.sess.HandleConversationEventsView(w, r, conversationViewMessages)
 	}))
 	defer stream.Close()
 	response, err := http.Get(stream.URL)
@@ -931,7 +947,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	}
 	var first liveProjectionUpdate
 	json.Unmarshal(nextData(), &first)
-	h.sess.projection.UpdateError("status changed")
+	h.projection.UpdateError("status changed")
 	var next liveProjectionUpdate
 	for next.Op == "" || next.Op == "rows.changed" {
 		next = liveProjectionUpdate{}
@@ -944,7 +960,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	// A failed read is an error to agents, never an empty transcript.
 	h.store.Close()
 	rec = httptest.NewRecorder()
-	h.sess.handleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
+	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
 	if rec.Code == 200 {
 		t.Fatalf("conversation read after a store failure = 200 %s, want an error", rec.Body.String())
 	}
@@ -969,21 +985,20 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 		{name: "restart", origin: turnOriginAgent, times: []string{first}, restart: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := newLiveTextHarness(t)
 			control := newTestControlMetadata(t)
 			store, err := newControlAgentExecutionStore(control, "before-restart")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := store.ensureSession(h.sess.hostedThreadID, "claude", presentationShared); err != nil {
+			h := newLiveTextHarnessForThread(t, "claude", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = store })
+			if _, err := store.ensureSession(h.sess.HostedThreadID(), "claude", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			h.sess.agentExecutions = store
 			want := make(map[string]string)
 			for index, stamp := range tc.times {
 				action := fmt.Sprintf("prompt-%d", index)
 				if !tc.missing {
-					op, _, err := store.beginTurnAttributed(h.sess.hostedThreadID, action, "hash", turnAttribution{
+					op, _, err := store.beginTurnAttributed(h.sess.HostedThreadID(), action, "hash", turnAttribution{
 						Origin: tc.origin, SenderSubmittedAt: stamp,
 					})
 					if err != nil {
@@ -995,8 +1010,8 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 				if tc.noTimestamp {
 					want["prompt:"+action] = ""
 				}
-				if _, _, err := h.sess.turns.Submit(context.Background(), prompts.Submission{
-					HostedThreadID: h.sess.hostedThreadID, Provider: "claude", NativeThreadID: h.sess.threadID,
+				if _, _, err := h.sess.PromptStore().Submit(context.Background(), prompts.Submission{
+					HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", NativeThreadID: h.sess.ThreadID(),
 					ActionID: action, ProviderText: "The same prompt.", PresentationText: "The same prompt.",
 					TextHash: sendTextHash("The same prompt."), RequestHash: sendTextHash("The same prompt."), Origin: prompts.HumanOrigin,
 				}); err != nil {
@@ -1016,10 +1031,9 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			store.mu.Lock()
 			store.resetControlCachesLocked()
 			store.mu.Unlock()
-			fresh := &session{id: h.sess.id, hostedThreadID: h.sess.hostedThreadID, provider: "claude",
-				threadID: h.sess.threadID, projection: h.sess.projection, turns: h.sess.turns, agentExecutions: store}
+			fresh := newFixtureSession(sessionConfig{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
 			liveTextOf(h.sess).srv.startLiveText(fresh)
-			stream := httptest.NewServer(http.HandlerFunc(fresh.handleLiveStream))
+			stream := httptest.NewServer(http.HandlerFunc(fresh.HandleLiveStream))
 			defer stream.Close()
 			client := &http.Client{Timeout: 5 * time.Second}
 			response, err := client.Get(stream.URL + "?view=enhanced&limit=40")
@@ -1082,7 +1096,7 @@ func TestLiveTextStreamCarriesStatusFirst(t *testing.T) {
 	h := newLiveTextHarness(t)
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.waitSaved(fixtureReply)
-	stream := httptest.NewServer(http.HandlerFunc(h.sess.handleLiveStream))
+	stream := httptest.NewServer(http.HandlerFunc(h.sess.HandleLiveStream))
 	defer stream.Close()
 	response, err := http.Get(stream.URL + "?view=enhanced&limit=40")
 	if err != nil {
@@ -1126,16 +1140,16 @@ func TestLiveTextStreamCarriesStatusFirst(t *testing.T) {
 			return
 		}
 	}
-	h.sess.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
+	h.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
 	expect("working=true cards=0")
-	h.sess.projection.UpsertInteraction(pendingInteraction{ID: "ask-1", Kind: "question", CreatedAt: "2026-10-03T00:00:00Z"})
+	h.projection.UpsertInteraction(pendingInteraction{ID: "ask-1", Kind: "question", CreatedAt: "2026-10-03T00:00:00Z"})
 	expect("working=true cards=1")
 	// Live rows change the projection too, with compact row records that
 	// carry no status; they must not read as a turn ending or a card leaving.
 	h.feed(fixtureLines(t, "claude-turn.wire.jsonl"))
-	h.sess.projection.RemoveInteraction("ask-1")
+	h.projection.RemoveInteraction("ask-1")
 	expect("working=true cards=0")
-	h.sess.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
+	h.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
 	expect("working=false cards=0")
 }
 
@@ -1146,7 +1160,7 @@ func TestLiveTextStreamEndsWhenStatusLags(t *testing.T) {
 	h := newLiveTextHarness(t)
 	writer, done := h.blockedStream()
 	for i := range 300 {
-		h.sess.projection.UpdateError(fmt.Sprintf("status %d", i))
+		h.projection.UpdateError(fmt.Sprintf("status %d", i))
 	}
 	close(writer.release)
 	select {
@@ -1163,8 +1177,8 @@ func TestLiveTextStreamEndsWhenStatusLags(t *testing.T) {
 func TestLiveTextStreamKeepsEveryQueuedFlip(t *testing.T) {
 	h := newLiveTextHarness(t)
 	writer, done := h.blockedStream()
-	h.sess.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
-	h.sess.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
+	h.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
+	h.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
 	close(writer.release)
 	deadline := time.Now().Add(10 * time.Second)
 	for len(writer.statuses()) < 3 && time.Now().Before(deadline) {
@@ -1189,7 +1203,7 @@ func (h *liveTextHarness) blockedStream() (*streamRecorder, chan struct{}) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		h.sess.handleLiveStream(writer, httptest.NewRequest("GET", "/live?view=enhanced&limit=40", nil).WithContext(ctx))
+		h.sess.HandleLiveStream(writer, httptest.NewRequest("GET", "/live?view=enhanced&limit=40", nil).WithContext(ctx))
 	}()
 	<-writer.wrote
 	h.t.Cleanup(cancel)
@@ -1246,12 +1260,12 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 	h := newLiveTextHarness(t)
 	h.save(fixtureLines(t, "claude-tool-error.saved.jsonl"))
 	h.expect("saved rows", func(liveTextMessage) bool { return len(h.view.rows) >= 2 })
-	bound := prompts.OutboxEntry{HostedThreadID: h.sess.hostedThreadID, ActionID: "bound", Sequence: 1,
+	bound := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "bound", Sequence: 1,
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt}}
 	h.view.expectSaved["prompt:bound"] = bound.PresentationText
-	h.sess.liveText.OutboxChanged(bound)
-	h.sess.liveText.OutboxChanged(prompts.OutboxEntry{HostedThreadID: h.sess.hostedThreadID, ActionID: "next",
+	h.sess.LiveTextService().OutboxChanged(bound)
+	h.sess.LiveTextService().OutboxChanged(prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "next",
 		Sequence: 2, PresentationText: "next prompt", State: prompts.Queued})
 	h.expect("prompts", func(liveTextMessage) bool { return len(h.view.live) == 2 })
 	// Rewriting the file in place (new inode) is a new source generation: the
@@ -1272,7 +1286,7 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 		t.Fatalf("the rebuild tail names %v saved, want the prompt it saved", saved)
 	}
 	// A tail larger than a pane's backlog limit still lands.
-	h.sess.liveText.OutboxChanged(prompts.OutboxEntry{HostedThreadID: h.sess.hostedThreadID, ActionID: "large",
+	h.sess.LiveTextService().OutboxChanged(prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "large",
 		Sequence: 3, PresentationText: strings.Repeat("x", liveTextPaneBacklog+1), State: prompts.Queued})
 	reopened := h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
 	if !containsEntry(reopened.view.live, "prompt:large") {
@@ -1280,7 +1294,7 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 	}
 	// A failed read is shown, and the stream ends instead of retrying.
 	h.store.Close()
-	h.sess.liveText.Applied()
+	h.sess.LiveTextService().Applied()
 	reopened.expect("read error", func(m liveTextMessage) bool { return m.Type == "error" })
 	if !reopened.pane.isClosed() {
 		t.Fatal("the pane stream stayed open after its read failed")
@@ -1310,15 +1324,15 @@ func TestLiveTextKeepsArrivalOrderInOneDrain(t *testing.T) {
 func TestLiveTextShowsQueueInDeliveryOrder(t *testing.T) {
 	h := newLiveTextHarness(t)
 	for _, origin := range []prompts.Origin{prompts.AgentOrigin, prompts.HumanOrigin} {
-		record, _, err := h.sess.turns.Submit(context.Background(), prompts.Submission{
-			HostedThreadID: h.sess.hostedThreadID, Provider: "claude", ActionID: string(origin),
+		record, _, err := h.sess.PromptStore().Submit(context.Background(), prompts.Submission{
+			HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", ActionID: string(origin),
 			ProviderText: string(origin), PresentationText: string(origin), TextHash: string(origin),
 			RequestHash: string(origin), Origin: origin,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		h.sess.liveText.OutboxChanged(record.Outbox)
+		h.sess.LiveTextService().OutboxChanged(record.Outbox)
 	}
 	h.expect("queue", func(liveTextMessage) bool { return len(h.view.live) == 2 })
 	if h.view.live[0].ID != "prompt:human" {
@@ -1328,12 +1342,12 @@ func TestLiveTextShowsQueueInDeliveryOrder(t *testing.T) {
 	// A prompt whose delivery is uncertain shows as uncertain until its saved
 	// row settles it (or it expires: TestLiveTextShowsNoExpiredPrompt).
 	uncertain := prompts.OutboxEntry{
-		HostedThreadID: h.sess.hostedThreadID, ActionID: "action-uncertain", Sequence: 3,
+		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-uncertain", Sequence: 3,
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Uncertain,
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt},
 	}
 	h.view.expectSaved["prompt:action-uncertain"] = uncertain.PresentationText
-	h.sess.liveText.OutboxChanged(uncertain)
+	h.sess.LiveTextService().OutboxChanged(uncertain)
 	h.expect("uncertain prompt", func(liveTextMessage) bool {
 		for _, entry := range h.view.live {
 			if entry.ID == "prompt:action-uncertain" {
@@ -1457,11 +1471,11 @@ func TestLiveTextCodexHandsOverByTurnAndItem(t *testing.T) {
 				// Nano delivers with them.
 				h.view.expectSaved["prompt:"+action] = text + "\n\n[from nano]"
 				// Delivery binds a Codex prompt to its turn only once the turn starts.
-				entry := prompts.OutboxEntry{HostedThreadID: h.sess.hostedThreadID, ActionID: action, Sequence: 1, PresentationText: text, State: prompts.Delivering}
-				h.sess.liveText.OutboxChanged(entry)
+				entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: action, Sequence: 1, PresentationText: text, State: prompts.Delivering}
+				h.sess.LiveTextService().OutboxChanged(entry)
 				entry.State = prompts.Accepted
 				entry.Binding = &prompts.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: "codex", NativeThreadID: &thread, NativeTurnID: &turn}}
-				h.sess.liveText.OutboxChanged(entry)
+				h.sess.LiveTextService().OutboxChanged(entry)
 			}
 			ended := func(v *livePaneView) func(liveTextMessage) bool {
 				return func(liveTextMessage) bool { return v.reply() != nil && v.reply().State == "done" }
@@ -1527,14 +1541,14 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 			h := newLiveTextHarnessFor(t, "codex", query)
 			thread, turn := codexFixtureThread, "01a0f63e-0000-7000-8000-00000000a001"
 			accept := func(action, text, event string) prompts.OutboxEntry {
-				if _, _, err := h.sess.turns.Submit(ctx, prompts.Submission{HostedThreadID: h.sess.hostedThreadID, Provider: model.ProviderCodex, NativeThreadID: thread,
+				if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: thread,
 					ActionID: action, ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 					t.Fatal(err)
 				}
-				if _, claimed, err := h.sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.hostedThreadID, Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+				if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.HostedThreadID(), Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 					t.Fatalf("claim %s: %v %v", action, claimed, err)
 				}
-				record, err := h.sess.turns.Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
+				record, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
 					Binding: prompts.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &thread, NativeTurnID: &turn}, EventID: event}})
 				if err != nil {
 					t.Fatal(err)
@@ -1556,22 +1570,22 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 			second := accept("second", "A second correction.", "client-second")
 			h.view.expectSaved["prompt:legacy"] = legacy.PresentationText
 			h.view.expectSaved["prompt:second"] = second.PresentationText
-			h.sess.liveText.OutboxChanged(legacy)
-			h.sess.liveText.OutboxChanged(second)
+			h.sess.LiveTextService().OutboxChanged(legacy)
+			h.sess.LiveTextService().OutboxChanged(second)
 			if restarted {
 				// Confirmed before this attach, so it is not live and only its
 				// stored binding still claims its row.
-				if _, _, err := h.sess.turns.Settle(ctx, "correction"); err != nil {
+				if _, _, err := h.sess.PromptStore().Settle(ctx, "correction"); err != nil {
 					t.Fatal(err)
 				}
 			} else {
 				h.view.expectSaved["prompt:correction"] = correction.PresentationText
-				h.sess.liveText.OutboxChanged(correction)
+				h.sess.LiveTextService().OutboxChanged(correction)
 			}
 			lines := [][]byte{fixtureLines(t, "codex-turns.saved.jsonl")[0],
 				[]byte(fmt.Sprintf(`{"timestamp":"2026-10-01T07:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":%q}}`, turn))}
 			if mode == "unreadable claims" {
-				db := h.sess.queuedTurns.(*queuedTurnStore).db
+				db := h.queue.Database()
 				var stored string
 				if err := db.QueryRow(`SELECT binding_json FROM queued_turns WHERE client_action_id='correction'`).Scan(&stored); err != nil {
 					t.Fatal(err)
@@ -1645,7 +1659,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	}
 	thread := codexFixtureThread
 	bound := func(h *liveTextHarness, action, text, turn string, state prompts.DeliveryState) prompts.OutboxEntry {
-		entry := prompts.OutboxEntry{HostedThreadID: h.sess.hostedThreadID, ActionID: action, Sequence: 1, PresentationText: text, State: state}
+		entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: action, Sequence: 1, PresentationText: text, State: state}
 		if turn != "" {
 			entry.Binding = &prompts.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: "codex", NativeThreadID: &thread, NativeTurnID: &turn}}
 		}
@@ -1657,19 +1671,19 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	stopped := "reply:" + codexFixtureStopped
 
 	h := newLiveTextHarnessFor(t, "codex", query)
-	h.sess.liveText.OutboxChanged(bound(h, "action-1", firstText, "", prompts.Delivering))
+	h.sess.LiveTextService().OutboxChanged(bound(h, "action-1", firstText, "", prompts.Delivering))
 	h.expect("unbound prompt", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:action-1") })
 	h.save(saved[:complete+1])
 	h.waitSaved(codexFixtureReply1)
 	h.barrier()
 	// Unbound, the prompt cannot be matched yet; its binding hands it over.
 	h.view.expectSaved["prompt:action-1"] = firstText + "\n\n[from nano]"
-	h.sess.liveText.OutboxChanged(bound(h, "action-1", firstText, codexFixtureTurn1, prompts.Accepted))
+	h.sess.LiveTextService().OutboxChanged(bound(h, "action-1", firstText, codexFixtureTurn1, prompts.Accepted))
 	h.expect("bound prompt handed over", func(liveTextMessage) bool { return !containsEntry(h.view.live, "prompt:action-1") })
 
 	h.view.expectSaved["prompt:action-2"] = stopText + "\n\n[from nano]"
 	h.view.neverSaved[stopped] = true
-	h.sess.liveText.OutboxChanged(bound(h, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
+	h.sess.LiveTextService().OutboxChanged(bound(h, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
 	h.feed(without(turns[1], `"turn/completed"`))
 	h.expect("streaming stopped reply", func(liveTextMessage) bool { return h.view.reply() != nil })
 	// The file without task_started leaves the turn's end unknown.
@@ -1697,7 +1711,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	h.feed(turns[1][len(turns[1])-1:]) // the live end arrives late
 	h.barrier()
 
-	h.sess.liveText.OutboxChanged(bound(h, "action-3", "Reply with exactly: CODEX_AFTER_STOP", codexFixtureTurn3, prompts.Accepted))
+	h.sess.LiveTextService().OutboxChanged(bound(h, "action-3", "Reply with exactly: CODEX_AFTER_STOP", codexFixtureTurn3, prompts.Accepted))
 	h.view.expectSaved["prompt:action-3"] = "Reply with exactly: CODEX_AFTER_STOP\n\n[from nano]"
 	h.feed(without(turns[2], `"item/started","params":{"item":{"type":"agentMessage"`))
 	h.save(saved[aborted+1:])
@@ -1710,7 +1724,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	r := newLiveTextHarnessFor(t, "codex", query)
 	r.view.neverSaved[stopped] = true
 	r.view.expectSaved["prompt:action-2"] = stopText + "\n\n[from nano]"
-	r.sess.liveText.OutboxChanged(bound(r, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
+	r.sess.LiveTextService().OutboxChanged(bound(r, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
 	r.feed(turns[1])
 	r.expect("stopped reply", func(liveTextMessage) bool { return r.view.reply() != nil && r.view.reply().State == "done" })
 	r.save(saved[:aborted+1])
@@ -1781,7 +1795,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 	}
 	const text = "Reply with exactly: CODEX_AFTER_STOP\n\n[from nano]"
 	const replacement = "Stop asking the coordinator"
-	compactionStarts := compactionFixture(t, "codex")[0].line // carries the dropped turn's id
+	compactionStarts := compactionFixture(t, "codex")[0].Line // carries the dropped turn's id
 	for _, variant := range []struct {
 		name  string
 		turn  string   // the turn the prompt was handed to
@@ -1806,47 +1820,49 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				ctx := context.Background()
 				h := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
 				sess := h.sess
-				hosted, native := sess.hostedThreadID, sess.threadID
+				hosted, native := sess.HostedThreadID(), sess.ThreadID()
 				var interrupts atomic.Int32
-				sess.providerAdapter = interruptAnsweringCodex(t, sess, &interrupts)
-				// The production settlement: each saved commit settles the session's prompts.
-				sess.lifecycleState = testLifecycleSnapshot("ready", false) // attached and idle
-				h.srv.sessions = map[string]*session{sess.id: sess}
-				sess.savedPrompts = h.srv.savedPromptsFor(sess)
+
+				seedTestSessionRegistry(&h.srv.Registry, map[string]*session{sess.ID(): sess})
+				sess.ConfigureSavedReaders(nil, h.srv.savedPromptsFor(sess), nil, nil, nil)
 				var settledCommits atomic.Int32
 				h.service.setTranscriptChanged(func(ctx context.Context, change transcriptChange) {
-					sess.liveText.Applied()
+					sess.LiveTextService().Applied()
 					h.srv.confirmDurableThread(ctx, change)
 					settledCommits.Add(1)
 				})
 				sent := make(chan string, 4)
-				sess.turnSender = func(_ context.Context, text string) (json.RawMessage, error) {
-					sent <- text
-					return json.RawMessage(`{"turn":{"id":"` + codexFixtureTurn3 + `"}}`), nil
-				}
+				var resendEnabled atomic.Bool
+				runtime := connectProviderRuntimeFixture(t, sess, h.projection, native, "", func(f *providerRuntimeFixture) {
+					f.onInterrupt = func() { interrupts.Add(1) }
+					f.send = func(_ context.Context, text string) (json.RawMessage, error) {
+						if !resendEnabled.Load() {
+							return json.RawMessage(`{"turn":{"id":"` + variant.turn + `"}}`), nil
+						}
+						sent <- text
+						return json.RawMessage(`{"turn":{"id":"` + codexFixtureTurn3 + `"}}`), nil
+					}
+				})
 				h.view.neverSaved["reply:"+codexFixtureStopped] = true // Stop cut it, so Codex never saved it
 				h.save(saved[:8])
 				for _, line := range wire[:18] {
-					sess.recordWireLive(protocol.Recv, line, true)
+					runtime.emitAndWait(t, line)
 				}
 				h.waitTurnEnded(codexFixtureTurn1)
 
-				// The person's prompt, accepted into the turn, waits for its saved row.
-				if _, _, err := sess.turns.Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "lost",
-					ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: prompts.HumanOrigin}); err != nil {
-					t.Fatal(err)
+				// Exercise a real steer for the running-turn case and a real
+				// start for the still-compacting case. Both register the saved-row wait.
+				steered := variant.name == "steered into a running turn"
+				if steered {
+					runtime.emitAndWait(t, variant.wire[0])
 				}
-				if _, claimed, err := sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "lost", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
-					t.Fatalf("claim = %v, %v", claimed, err)
+				if response := postTurn(t, sess, ctx, "lost", text); response.Code != http.StatusOK {
+					t.Fatalf("lost prompt acceptance = %d %s", response.Code, response.Body.String())
 				}
 				turn := variant.turn
-				accepted, err := sess.turns.Accepted(ctx, prompts.Acceptance{ActionID: "lost", ClaimToken: "lost", AttachmentEpoch: 1, Binding: prompts.Binding{
-					EventID: submissionEventID(hosted, "lost"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}})
-				if err != nil {
-					t.Fatal(err)
+				if record, _, err := sess.PromptStore().Get(ctx, "lost"); err != nil || record.ProviderTurnID != turn {
+					t.Fatalf("lost prompt bound to %+v, %v; want %s", record, err, turn)
 				}
-				sess.publishTransactionalOutbox(accepted.Outbox)
-				sess.awaitSavedPrompt("lost")
 				h.expect("pending prompt", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:lost") })
 				// From here on the pane shows the prompt's text exactly once in
 				// every message: the dropped prompt, then its resend in its
@@ -1872,13 +1888,16 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				// The turn's frames arrive as it runs; only its end, turn/completed,
 				// races the saved commit of its abort.
 				body, end := variant.wire[:len(variant.wire)-1], variant.wire[len(variant.wire)-1]
-				for _, line := range body {
-					sess.recordWireLive(protocol.Recv, line, true)
+				for index, line := range body {
+					if steered && index == 0 {
+						continue
+					}
+					runtime.emitAndWait(t, line)
 				}
 				if test.stopped {
 					for range 2 {
 						rec := httptest.NewRecorder()
-						sess.handleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
+						sess.HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
 						if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"interrupted":true`) {
 							t.Fatalf("Stop = %d %s", rec.Code, rec.Body.String())
 						}
@@ -1886,22 +1905,13 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 					if got := interrupts.Load(); got != 2 {
 						t.Fatalf("Stop reached the provider %d times, want 2", got)
 					}
-					// The person's replacement joins the turn still stopping.
-					if _, _, err := sess.turns.Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "replacement",
-						ProviderText: replacement, PresentationText: replacement, TextHash: sendTextHash(replacement), RequestHash: sendTextHash(replacement), Origin: prompts.HumanOrigin}); err != nil {
-						t.Fatal(err)
+					// The replacement joins the same turn while its stop is pending.
+					if response := postTurn(t, sess, ctx, "replacement", replacement); response.Code != http.StatusOK {
+						t.Fatalf("replacement acceptance = %d %s", response.Code, response.Body.String())
 					}
-					if _, claimed, err := sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "replacement", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
-						t.Fatalf("claim replacement = %v, %v", claimed, err)
-					}
-					accepted, err := sess.turns.Accepted(ctx, prompts.Acceptance{ActionID: "replacement", ClaimToken: "replacement", AttachmentEpoch: 1, Binding: prompts.Binding{
-						EventID: submissionEventID(hosted, "replacement"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}})
-					if err != nil {
-						t.Fatal(err)
-					}
-					sess.publishTransactionalOutbox(accepted.Outbox)
-					sess.awaitSavedPrompt("replacement")
 				}
+				resendEnabled.Store(true)
+
 				if order == "saved first" {
 					// The abort's commit is applied and settled before live
 					// reports the turn's end; no other commit follows it.
@@ -1909,17 +1919,17 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 					h.save(variant.saved)
 					waitForCatalogWithin(t, 20*time.Second, func() bool { return settledCommits.Load() > before })
 				}
-				sess.recordWireLive(protocol.Recv, end, true)
+				runtime.emitAndWait(t, end)
 				if order == "live first" {
 					h.save(variant.saved)
 				}
 				if test.stopped {
 					for action, want := range map[string]string{"lost": text, "replacement": replacement} {
 						waitForCatalogWithin(t, 20*time.Second, func() bool {
-							record, _, err := sess.turns.Get(ctx, action)
+							record, _, err := sess.PromptStore().Get(ctx, action)
 							return err == nil && record.Outbox.State == prompts.Uncertain
 						})
-						if record, _, _ := sess.turns.Get(ctx, action); record.ProviderText != want {
+						if record, _, _ := sess.PromptStore().Get(ctx, action); record.ProviderText != want {
 							t.Fatalf("held %s text = %q, want it kept", action, record.ProviderText)
 						}
 						if view, code := readPrompt(t, sess, action); code != http.StatusOK || view.State != string(prompts.Uncertain) || !slices.Equal(view.AllowedActions, []string{promptResend, promptDiscard}) {
@@ -1971,7 +1981,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				}
 
 				var resent prompts.Record
-				records, err := sess.turns.List(ctx, hosted)
+				records, err := sess.PromptStore().List(ctx, hosted)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1985,9 +1995,16 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 					t.Fatalf("resend read = %d %+v; want accepted", code, view)
 				}
 				h.view.expectSaved["prompt:"+resent.Outbox.ActionID] = text
-				h.save(saved[13:20])
+				// A Nano-submitted prompt carries its client identity on both
+				// provider surfaces; the captured prompt was typed directly.
+				clientID := submissionEventID(hosted, resent.Outbox.ActionID)
+				savedResend := make([][]byte, 0, 7)
+				for _, line := range saved[13:20] {
+					savedResend = append(savedResend, bytes.ReplaceAll(line, []byte(`"type":"UserMessage",`), []byte(`"type":"UserMessage","client_id":"`+clientID+`",`)))
+				}
+				h.save(savedResend)
 				for _, line := range wire[35:] {
-					sess.recordWireLive(protocol.Recv, line, true)
+					runtime.emitAndWait(t, bytes.ReplaceAll(line, []byte(`"clientId":null`), []byte(`"clientId":"`+clientID+`"`)))
 				}
 				h.expect("the resent prompt saved once", func(m liveTextMessage) bool {
 					shownOnce(m)
@@ -1999,11 +2016,11 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 					}
 					return rows == 1 && len(h.view.live) == 0
 				})
-				if old, _, err := sess.turns.Get(ctx, "lost"); err != nil || old.Outbox.State != prompts.Expired || old.ProviderText != text {
+				if old, _, err := sess.PromptStore().Get(ctx, "lost"); err != nil || old.Outbox.State != prompts.Expired || old.ProviderText != text {
 					t.Fatalf("dropped prompt = %s %q, %v; want retired with its text kept", old.Outbox.State, old.ProviderText, err)
 				}
 				waitForCatalogWithin(t, 10*time.Second, func() bool {
-					record, _, err := sess.turns.Get(ctx, resent.Outbox.ActionID)
+					record, _, err := sess.PromptStore().Get(ctx, resent.Outbox.ActionID)
 					return err == nil && record.Outbox.State == prompts.Confirmed
 				})
 				select {
@@ -2023,33 +2040,33 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 // live-text panes.
 func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	ctx := context.Background()
-	h := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
-	sess := h.sess
-	sess.agentExecutions = newTestAgentExecutionStore(t, "run") // a Discard ends any operation the prompt carries
-	hosted, native := sess.hostedThreadID, sess.threadID
+	executions := newTestAgentExecutionStore(t, "run")
+	h := newLiveTextHarnessForThread(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = executions })
+	sess := h.sess // a Discard ends any operation the prompt carries
+	hosted, native := sess.HostedThreadID(), sess.ThreadID()
 	const text = "no, budget requests go to me"
-	if _, _, err := sess.turns.Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "dropped",
+	if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "dropped",
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: prompts.HumanOrigin}); err != nil {
 		t.Fatal(err)
 	}
-	if _, claimed, err := sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "dropped", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "dropped", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		t.Fatalf("claim = %v, %v", claimed, err)
 	}
 	turn := codexFixtureTurn2
-	accepted, err := sess.turns.Accepted(ctx, prompts.Acceptance{ActionID: "dropped", ClaimToken: "dropped", AttachmentEpoch: 1, Binding: prompts.Binding{
+	accepted, err := sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: "dropped", ClaimToken: "dropped", AttachmentEpoch: 1, Binding: prompts.Binding{
 		EventID: submissionEventID(hosted, "dropped"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	held, ok, err := sess.turns.HoldUntaken(ctx, "dropped", accepted.Revision, prompts.ReasonTurnEnded)
+	held, ok, err := sess.PromptStore().HoldUntaken(ctx, "dropped", accepted.Revision, prompts.ReasonTurnEnded)
 	if err != nil || !ok {
 		t.Fatalf("hold = %v, %v", ok, err)
 	}
-	sess.publishTransactionalOutbox(held.Outbox)
+	sess.PublishLiveOutbox(held.Outbox)
 	h.expect("unsaved prompt shown", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:dropped") })
 
 	discard := httptest.NewRecorder()
-	sess.handleTurnDeliveryCancel(discard, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.id+"/turn-delivery/dropped", nil), "dropped")
+	sess.HandleTurnDeliveryCancel(discard, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/dropped", nil), "dropped")
 	if discard.Code != http.StatusOK {
 		t.Fatalf("discard status = %d, body = %s", discard.Code, discard.Body.String())
 	}
@@ -2057,7 +2074,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	if reloaded := h.open(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}); containsEntry(reloaded.view.live, "prompt:dropped") {
 		t.Fatal("a reload brought the discarded prompt back")
 	}
-	if record, _, err := sess.turns.Get(ctx, "dropped"); err != nil || record.Outbox.State != prompts.Expired || record.ProviderText != text {
+	if record, _, err := sess.PromptStore().Get(ctx, "dropped"); err != nil || record.Outbox.State != prompts.Expired || record.ProviderText != text {
 		t.Fatalf("discarded prompt = %s %q, %v; want expired with its text kept", record.Outbox.State, record.ProviderText, err)
 	}
 }
@@ -2066,11 +2083,8 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 // does, by action id.
 func (h *liveTextHarness) deliveryJournal() map[string]promptView {
 	h.t.Helper()
-	// This harness's prompt store is separate from its control metadata
-	// store, so the journal takes its ordinary direct read.
-	h.sess.metadata = nil
 	rec := httptest.NewRecorder()
-	h.sess.handleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.threadID, nil))
+	h.sess.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
 	var body struct {
 		Operations []promptView `json:"operations"`
 	}
@@ -2113,20 +2127,20 @@ func liveEntry(live []liveTextEntry, id string) *liveTextEntry {
 func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin prompts.Origin, createdAt string) {
 	h.t.Helper()
 	ctx := context.Background()
-	hosted, native := h.sess.hostedThreadID, h.sess.threadID
-	if _, _, err := h.sess.turns.Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
+	hosted, native := h.sess.HostedThreadID(), h.sess.ThreadID()
+	if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: origin, CreatedAt: createdAt}); err != nil {
 		h.t.Fatal(err)
 	}
-	if _, claimed, err := h.sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		h.t.Fatalf("claim %s = %v, %v", action, claimed, err)
 	}
-	accepted, err := h.sess.turns.Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: action, AttachmentEpoch: 1, Binding: prompts.Binding{
+	accepted, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: action, AttachmentEpoch: 1, Binding: prompts.Binding{
 		EventID: submissionEventID(hosted, action), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}})
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	h.sess.publishTransactionalOutbox(accepted.Outbox)
+	h.sess.PublishLiveOutbox(accepted.Outbox)
 }
 
 // An accepted prompt shows no dot, so one its provider never took must not
@@ -2142,10 +2156,9 @@ func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) 
 	ctx := context.Background()
 	h := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
-	sess.savedPrompts = h.srv.savedPromptsFor(sess)
-	sess.savedTurn = func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
+	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
 		return h.srv.savedTurnEvidence(ctx, sess, turnID)
-	}
+	}, h.srv.savedPromptsFor(sess), nil, nil, nil)
 	const running = "01a0f650-0000-7000-8000-0000000000aa"
 	saved := fixtureLines(t, "codex-turns.saved.jsonl")
 	h.save(append(saved[:8:8], []byte(`{"timestamp":"2026-10-01T07:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"`+running+`"}}`)))
@@ -2158,18 +2171,18 @@ func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) 
 	h.expect("both prompts shown", func(liveTextMessage) bool {
 		return containsEntry(h.view.live, "prompt:lost") && containsEntry(h.view.live, "prompt:steered")
 	})
-	if err := sess.settleSavedPrompts(ctx); err != nil {
+	if _, err := sess.SettlePrompts(ctx); err != nil {
 		t.Fatal(err)
 	}
 
-	record, attempt, err := sess.turns.Get(ctx, "lost")
+	record, attempt, err := sess.PromptStore().Get(ctx, "lost")
 	if err != nil || record.Outbox.State != prompts.Uncertain || attempt.Reason != prompts.ReasonTurnEnded || record.ProviderText != lost {
 		t.Fatalf("lost prompt = %s %q %q, %v; want held uncertain with its text", record.Outbox.State, attempt.Reason, record.ProviderText, err)
 	}
-	if record, _, err := sess.turns.Get(ctx, "steered"); err != nil || record.Outbox.State != prompts.Accepted {
+	if record, _, err := sess.PromptStore().Get(ctx, "steered"); err != nil || record.Outbox.State != prompts.Accepted {
 		t.Fatalf("steered prompt = %s, %v; want accepted while its turn runs", record.Outbox.State, err)
 	}
-	if record, _, err := sess.turns.Get(ctx, "old"); err != nil || record.Outbox.State != prompts.Accepted {
+	if record, _, err := sess.PromptStore().Get(ctx, "old"); err != nil || record.Outbox.State != prompts.Accepted {
 		t.Fatalf("prompt from before boot = %s, %v; want accepted, untouched", record.Outbox.State, err)
 	}
 	h.expect("held prompt offers Resend and Discard", func(liveTextMessage) bool {
@@ -2204,16 +2217,16 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	ctx := context.Background()
 	h := newLiveTextHarnessFor(t, "codex", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
-	hosted, native := sess.hostedThreadID, sess.threadID
+	hosted, native := sess.HostedThreadID(), sess.ThreadID()
 	submit := func(action string, nextTurn bool) {
 		text := "prompt " + action
-		if _, _, err := sess.turns.Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
+		if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
 			ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: turnRequestHash(text, nextTurn), Origin: prompts.AgentOrigin, NextTurn: nextTurn}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	claim := func(action string) prompts.Record {
-		claimed, ok, err := sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true})
+		claimed, ok, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true})
 		if err != nil || !ok || claimed.Outbox.ActionID != action {
 			t.Fatalf("claim %s = %s %v, %v", action, claimed.Outbox.ActionID, ok, err)
 		}
@@ -2221,30 +2234,30 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	}
 	submit("timed-out", false)
 	claim("timed-out")
-	uncertain, err := sess.turns.Uncertain(ctx, prompts.Uncertainty{ActionID: "timed-out", ClaimToken: "timed-out", AttachmentEpoch: 1, Reason: context.DeadlineExceeded.Error()})
+	uncertain, err := sess.PromptStore().Uncertain(ctx, prompts.Uncertainty{ActionID: "timed-out", ClaimToken: "timed-out", AttachmentEpoch: 1, Reason: context.DeadlineExceeded.Error()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	submit("parked", false)
 	claim("parked")
-	parked, err := sess.turns.Refused(ctx, prompts.Refusal{ActionID: "parked", ClaimToken: "parked", AttachmentEpoch: 1, State: prompts.Parked, Reason: "rpc error -32000: provider is not accepting input"})
+	parked, err := sess.PromptStore().Refused(ctx, prompts.Refusal{ActionID: "parked", ClaimToken: "parked", AttachmentEpoch: 1, State: prompts.Parked, Reason: "rpc error -32000: provider is not accepting input"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Delivery began shortly before the threshold: the provider has not taken
 	// it yet, and nothing about it changes again.
 	submit("slow", false)
-	slow, ok, err := sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "slow", AttachmentEpoch: 1, Ready: true,
+	slow, ok, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "slow", AttachmentEpoch: 1, Ready: true,
 		At: time.Now().Add(2*time.Second - promptSlowDelivery).UTC().Format(time.RFC3339Nano)})
 	if err != nil || !ok || slow.Outbox.ActionID != "slow" {
 		t.Fatalf("claim slow = %s %v, %v", slow.Outbox.ActionID, ok, err)
 	}
 	submit("addendum", true)
-	queued, _, err := sess.turns.Get(ctx, "addendum")
+	queued, _, err := sess.PromptStore().Get(ctx, "addendum")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess.liveText.OutboxChanged(uncertain.Outbox, parked.Outbox, slow.Outbox, queued.Outbox)
+	sess.LiveTextService().OutboxChanged(uncertain.Outbox, parked.Outbox, slow.Outbox, queued.Outbox)
 	h.expect("four prompts shown", func(liveTextMessage) bool { return len(h.view.live) == 4 })
 	if entry := liveEntry(h.view.live, "prompt:slow"); entry.State != string(prompts.Delivering) || entry.Label != "" || entry.AllowedActions != nil {
 		t.Fatalf("slow entry before the threshold = %+v; want delivering with no label or action", entry)
@@ -2266,7 +2279,7 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 		"slow":      {prompts.Delivering, nil, slowLabel},
 	}
 	rec := httptest.NewRecorder()
-	sess.handleTurnDeliveryRead(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery/slow", nil), "slow")
+	sess.HandleTurnDeliveryRead(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery/slow", nil), "slow")
 	var read promptView
 	if err := json.Unmarshal(rec.Body.Bytes(), &read); err != nil || read.State != string(prompts.Delivering) || read.Label != slowLabel || read.AllowedActions != nil {
 		t.Fatalf("single read of slow = %d %s, %v", rec.Code, rec.Body.String(), err)
@@ -2293,31 +2306,31 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	wire := fixtureLines(t, "claude-multi-message-turn.constructed.wire.jsonl")
 	const action = "restart-action"
 	ctx := context.Background()
-	hosted, native := h.sess.hostedThreadID, h.sess.threadID
+	hosted, native := h.sess.HostedThreadID(), h.sess.ThreadID()
 	turn, promptID := "claude:"+hosted+":2", submissionEventID(hosted, action)
 	for _, lines := range [][][]byte{saved, wire} {
 		for index := range lines {
 			lines[index] = bytes.ReplaceAll(lines[index], []byte(liveTextFixturePrompt), []byte(promptID))
 		}
 	}
-	if _, _, err := h.sess.turns.Submit(ctx, prompts.Submission{
+	if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{
 		HostedThreadID: hosted, Provider: "claude", NativeThreadID: native, ActionID: action,
 		ProviderText: "Continue the reply.", PresentationText: "Continue the reply.",
 		TextHash: sendTextHash("Continue the reply."), RequestHash: sendTextHash("Continue the reply."), Origin: prompts.HumanOrigin,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, claimed, err := h.sess.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		t.Fatalf("claim: %v, %v", claimed, err)
 	}
-	accepted, err := h.sess.turns.Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1,
+	accepted, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1,
 		Binding: prompts.Binding{EventID: promptID, Scope: model.Scope{Kind: model.ScopeTurn, Provider: "claude", NativeThreadID: &native, NativeTurnID: &turn}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.view.expectSaved["prompt:"+action] = "Continue the reply."
-	h.sess.liveText.OutboxChanged(accepted.Outbox)
-	h.sess.projection.SetClaudeProviderTurnID(turn)
+	h.sess.LiveTextService().OutboxChanged(accepted.Outbox)
+	h.projection.SetClaudeProviderTurnID(turn)
 	h.feed(wire[:15]) // init and A1/A2, without a turn result
 	h.save(saved[:3])
 	h.expect("first two messages saved", func(liveTextMessage) bool {
@@ -2329,13 +2342,13 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	// file, history store and transactional delivery journal. Do not close a
 	// provider child: the restarted Nano attaches to the surviving shim.
 	liveTextOf(h.sess).unsubscribe(h.pane)
-	spool := []claudeTestFrame{recvFrame(1, string(wire[0])), sendFrame(2, string(saved[0])).turn(turn)}
+	spool := []claudeTestFrame{recvFrame(1, string(wire[0])), sendFrame(2, string(saved[0])).WithTurn(turn)}
 	for index, line := range wire[1:15] {
-		spool = append(spool, recvFrame(int64(index+3), string(line)).turn(turn))
+		spool = append(spool, recvFrame(int64(index+3), string(line)).WithTurn(turn))
 	}
 	attached := make(chan *shimConn, 1)
 	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": native, "state": "running", "turnActive": true, "lastSeq": 16})
+		c.Reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": native, "state": "running", "turnActive": true, "lastSeq": 16})
 		var request struct {
 			FromSeq int64 `json:"fromSeq"`
 		}
@@ -2344,33 +2357,33 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		}
 		for _, frame := range spool {
 			if frame.Seq > request.FromSeq {
-				c.lineForTurn(frame.Seq, frame.Dir, frame.TurnID, frame.Line)
+				c.LineForTurn(frame.Seq, frame.Dir, frame.TurnID, frame.Line)
 			}
 		}
-		c.notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 16})
+		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 16})
 		attached <- c
 	}))
-	srv, attachments := claudeResumeServer(t, shim.wsURL())
+	srv, attachments := claudeResumeServer(t, shim.WSURL())
 	srv.catalog = h.service
-	srv.controlMetadata = h.sess.metadata.(*controlMetadataStore)
-	srv.queuedTurns, srv.sendAttempts, srv.turns = h.sess.queuedTurns.(*queuedTurnStore), h.sess.sendAttempts.(*sendAttemptStore), h.sess.turns
+	srv.controlMetadata = h.metadata
+	srv.queuedTurns, srv.sendAttempts, srv.turns = h.queue.(*queuedTurnStore), h.journal.(*sendAttemptStore), h.sess.PromptStore()
 	srv.agentExecutions, err = newControlAgentExecutionStore(srv.controlMetadata, "restart-test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
-		Cwd: h.sess.cwd, Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
+		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
 	seedBootAttachments(t, srv)
 	writeClaudeTestSpool(t, srv.defaults.claudeShimSpools, hosted, spool...)
 	h.service.setTranscriptChanged(srv.confirmDurableThread)
 	srv.prepareBootReattach()
 	srv.reattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
-	fresh := srv.sessionForThread("claude", native)
-	if fresh == nil || fresh == h.sess || fresh.liveText == h.sess.liveText {
+	fresh := srv.SessionForThread("claude", native)
+	if fresh == nil || fresh == h.sess || fresh.LiveTextService() == h.sess.LiveTextService() {
 		t.Fatal("boot did not construct a fresh session and live-text loop")
 	}
-	waitForClaude(t, "running turn reattached", func() bool { return fresh.summary().TurnActive })
-	restored, attempt, err := fresh.turns.Get(ctx, action)
+	waitForClaude(t, "running turn reattached", func() bool { return fresh.Summary().TurnActive })
+	restored, attempt, err := fresh.PromptStore().Get(ctx, action)
 	if err != nil || restored.Outbox.Binding == nil || restored.Outbox.Binding.EventID != promptID || attempt.ProviderTurnID != turn {
 		t.Fatalf("restored delivery binding: %+v, %+v, %v", restored, attempt, err)
 	}
@@ -2396,7 +2409,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	assertRows(3)
 	connection := <-attached
 	for index, line := range wire[15:19] {
-		connection.lineForTurn(int64(17+index), "recv", turn, string(line))
+		connection.LineForTurn(int64(17+index), "recv", turn, string(line))
 	}
 	h.expect("third message streaming after the saved tail", func(liveTextMessage) bool {
 		return h.view.reply() != nil && h.view.reply().Text == "Reply part 3."
@@ -2405,7 +2418,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		t.Fatalf("third message did not follow A2: rows=%+v live=%+v", h.view.rows, h.view.live)
 	}
 	for index, line := range wire[19:22] {
-		connection.lineForTurn(int64(21+index), "recv", turn, string(line))
+		connection.LineForTurn(int64(21+index), "recv", turn, string(line))
 	}
 	h.expect("third message finished, still unsaved", func(liveTextMessage) bool { return h.view.reply() != nil && h.view.reply().State == "done" })
 	h.save(saved[3:])
@@ -2419,11 +2432,11 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		return true
 	}) // livePaneView.apply checks never-both and never-neither on every update
 	assertRows(4)
-	connection.lineForTurn(24, "recv", turn, string(wire[22]))
-	waitForClaude(t, "same turn ended", func() bool { return !fresh.summary().TurnActive })
+	connection.LineForTurn(24, "recv", turn, string(wire[22]))
+	waitForClaude(t, "same turn ended", func() bool { return !fresh.Summary().TurnActive })
 	h.barrier()
 	assertRows(4)
-	if len(shim.callsOf(shimMethodStart)) != 0 {
+	if len(shim.CallsOf(shimMethodStart)) != 0 {
 		t.Fatal("restart started a replacement Claude child")
 	}
 }
@@ -2475,3 +2488,12 @@ func TestLiveTextEnhancedPaneOmitsDeveloperFields(t *testing.T) {
 		t.Fatalf("Enhanced tail %d bytes, dev tail %d bytes", len(enhanced), len(dev))
 	}
 }
+
+// journalReadMetadata keeps the harness's metadata owner while reading prompts
+// from its separately seeded canonical prompt database.
+type journalReadMetadata struct {
+	sessionMetadata
+	db *sql.DB
+}
+
+func (m journalReadMetadata) ReadPool() *sql.DB { return m.db }

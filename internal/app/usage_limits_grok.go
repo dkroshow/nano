@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -41,9 +42,9 @@ type grokUsageClient interface {
 var newGrokUsageClient = func(command []string, cwd string) grokUsageClient {
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = grokProcessEnv()
+	cmd.Env = sessionruntime.GrokProcessEnv()
 	client := protocol.NewClientCmd(cmd)
-	client.JSONRPCVersion = grokJSONRPCVersion
+	client.JSONRPCVersion = sessionruntime.GrokJSONRPCVersion
 	return client
 }
 
@@ -52,10 +53,10 @@ var newGrokUsageClient = func(command []string, cwd string) grokUsageClient {
 // the client also kills and reaps the short-lived stdio child.
 func fetchGrokUsage(ctx context.Context, defaults sessionDefaults) *usageProviderSnapshot {
 	out := &usageProviderSnapshot{Provider: "grok", Buckets: []usageBucket{}}
-	request := spawnRequest{providerRequest: providerRequest{Mode: "start", Cwd: defaults.cwd, GrokBin: resolveGrokBin(defaults.grokBin),
+	request := spawnRequest{ProviderRequest: sessionruntime.ProviderRequest{Mode: "start", Cwd: defaults.cwd, GrokBin: sessionruntime.ResolveGrokBin(defaults.grokBin),
 		GrokLeaderSocket: defaults.grokLeaderSocket},
 	}
-	command := grokCommand(request.providerRequest)
+	command := sessionruntime.GrokCommand(request.ProviderRequest)
 	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
 		return out.Fail("Grok executable is not configured", nil)
 	}
@@ -70,7 +71,7 @@ func fetchGrokUsage(ctx context.Context, defaults sessionDefaults) *usageProvide
 
 	callCtx, cancel := context.WithTimeout(ctx, grokUsageTimeout)
 	defer cancel()
-	client := newGrokUsageClient(command, grokProbeCwd(defaults.cwd))
+	client := newGrokUsageClient(command, sessionruntime.GrokProbeCwd(defaults.cwd))
 	defer client.Close()
 	if err := client.StartContext(callCtx); err != nil {
 		return out.Fail(grokUsageFailure("start", err), grokUsageErrorDetail("start", err))
@@ -78,7 +79,7 @@ func fetchGrokUsage(ctx context.Context, defaults sessionDefaults) *usageProvide
 
 	var initialize json.RawMessage
 	if err := client.Call(callCtx, "initialize", map[string]any{
-		"protocolVersion": grokProtocolVersion, "clientCapabilities": map[string]any{},
+		"protocolVersion": sessionruntime.GrokProtocolVersion, "clientCapabilities": map[string]any{},
 	}, &initialize); err != nil {
 		return out.Fail(grokUsageFailure("initialize", err), grokUsageErrorDetail("initialize", err))
 	}

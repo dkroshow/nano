@@ -22,7 +22,7 @@ import (
 // GET /api/v1/restarts.
 func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	daemon := newFakeAppServer(t)
-	s, store := bootReattachServer(t, "", daemon.wsURL())
+	s, store := bootReattachServer(t, "", daemon.WSURL())
 	path := filepath.Join(t.TempDir(), restartsFileName)
 	s.restart = newRestartTracker(path, "test-stamp", "boot-test", time.Now())
 	for _, native := range []string{"starred", "plain", "forgotten"} {
@@ -136,17 +136,14 @@ func TestRestartRecordTakesLiveAndFailureFromTheLifecycle(t *testing.T) {
 	} {
 		tracker := newRestartTracker(filepath.Join(t.TempDir(), restartsFileName), "test-stamp", "boot-test", time.Now())
 		tracker.addThreads([]attachmentRecord{{Provider: "claude", NativeThreadID: "thread"}})
-		snapshot, err := lifecycle.New(1)
-		if err != nil {
-			t.Fatal(err)
-		}
 		thread := tracker.thread(attachmentKey{Provider: "claude", NativeThreadID: "thread"})
-		sess := &session{lifecycleState: snapshot, restartProgress: thread.at, restartFailure: thread.fail}
-		sess.stateMu.Lock()
 		for _, event := range tc.events {
-			sess.transitionLifecycleLocked(event)
+			if event == lifecycle.EventReadyIdle {
+				thread.at(restartLive)
+			} else {
+				thread.fail("exited")
+			}
 		}
-		sess.stateMu.Unlock()
 		restarts, err := tracker.recent(1, true)
 		if err != nil {
 			t.Fatal(err)

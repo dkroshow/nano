@@ -293,7 +293,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 		ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread",
 		Metadata: catalogMetadata{},
 	}}}}
-	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: newRuntimeHub(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: newRuntimeHub(), Registry: newSessionRegistry()}
 
 	readCatalog := func() catalogThread {
 		t.Helper()
@@ -512,11 +512,10 @@ func TestCatalogFrontendDetailFixture(t *testing.T) {
 
 func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	catalog := &fakeThreadCatalog{}
-	sess := &session{id: "session-1",
-		provider:       "claude",
-		createdAt:      time.Now(),
-		lifecycleState: testLifecycleSnapshot("starting", false)}
-	s := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
+	var s *server
+	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "session-1", Provider: "claude", HostedThreadID: "name-api", CreatedAt: time.Now(), NameThread: func(provider, native, name string) { s.assignSpawnName(provider, native, name) }})
+	sess := configuredFixtureSession(t, cfg, "", "starting", "")
+	s = testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 
 	put := func(name string) sessionSummary {
 		t.Helper()
@@ -536,20 +535,40 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	if summary := put("  draft name  "); summary.Name != "draft name" {
 		t.Fatalf("unbound summary name = %q", summary.Name)
 	}
-	if sess.pendingName != "draft name" || sess.displayName != "draft name" || len(catalog.assigned) != 0 {
-		t.Fatalf("unbound rename state = pending %q display %q assignments %#v", sess.pendingName, sess.displayName, catalog.assigned)
+	if name := sess.Summary().Name; name != "draft name" || len(catalog.assigned) != 0 {
+		t.Fatalf("unbound name=%q assignments=%#v", name, catalog.assigned)
 	}
 
-	sess.stateMu.Lock()
-	sess.threadID = "native-1"
-	sess.stateMu.Unlock()
+	sess.ReserveNativeID("native-1")
 	if summary := put("bound name"); summary.Name != "bound name" {
 		t.Fatalf("bound summary name = %q", summary.Name)
 	}
-	if sess.pendingName != "" || sess.displayName != "bound name" ||
+	if sess.Summary().Name != "bound name" ||
 		!reflect.DeepEqual(catalog.assigned, []struct{ provider, nativeID, name string }{{"claude", "native-1", "bound name"}}) {
-		t.Fatalf("bound rename state = pending %q display %q assignments %#v", sess.pendingName, sess.displayName, catalog.assigned)
+		t.Fatalf("bound rename name=%q assignments %#v", sess.Summary().Name, catalog.assigned)
 	}
+	// A later native bind must not replay a stale pre-bind title.
+	connected := make(chan *shimConn, 1)
+	shim := newFakeShim(t, func(conn *shimConn) {
+		call, ok := conn.Next()
+		if !ok {
+			return
+		}
+		conn.Reply(call, map[string]any{"shimSessionId": "shim-name"})
+		connected <- conn
+		conn.AnswerRest()
+	})
+	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sess.Close)
+	conn := <-connected
+	waitForClaudeStatus(t, sess, "ready")
+	emitClaudeInit(t, sess, conn, 1, "native-2", "")
+	if len(catalog.assigned) != 1 {
+		t.Fatalf("a later bind replayed the staged name: %+v", catalog.assigned)
+	}
+
 }
 
 // A never-prompted Claude session carries its shim handle as a provisional
@@ -566,12 +585,10 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 		Provider: "claude", NativeThreadID: "cs_shim", ShimSessionID: "cs_shim",
 		Cwd: "/w", AttachedAt: "2026-08-06T10:00:00Z",
 	})
-	sess := &session{id: "session-1",
-		provider:       "claude",
-		createdAt:      time.Now(),
-		threadID:       "cs_shim",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{catalog: catalog, attachments: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
+	var s *server
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "session-1", Provider: "claude", CreatedAt: time.Now(), NameThread: func(provider, native, name string) { s.assignSpawnName(provider, native, name) }}, "cs_shim", "")
+	sess := fixture.session
+	s = testServerWithSessions(&server{catalog: catalog, attachments: store, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/sessions/session-1/name", strings.NewReader(`{"name":"nano api fable"}`))
@@ -579,8 +596,8 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("provisional rename status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if sess.pendingName != "nano api fable" || sess.displayName != "nano api fable" {
-		t.Fatalf("provisional rename state = pending %q display %q", sess.pendingName, sess.displayName)
+	if name := sess.Summary().Name; name != "nano api fable" {
+		t.Fatalf("provisional rename name=%q", name)
 	}
 	if len(catalog.assigned) != 0 {
 		t.Fatalf("provisional rename wrote catalog assignments %#v", catalog.assigned)
@@ -588,18 +605,32 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	if stored, ok := store.get("claude", "cs_shim"); !ok || stored.PendingName != "nano api fable" {
 		t.Fatalf("provisional record pendingName = %q, %v; want staged rename", stored.PendingName, ok)
 	}
+	emitClaudeInit(t, sess, fixture.claude, fixture.seq+1, "native-real", "")
+	if !reflect.DeepEqual(catalog.assigned, []struct{ provider, nativeID, name string }{{"claude", "native-real", "nano api fable"}}) {
+		t.Fatalf("real bind lost staged rename: %+v", catalog.assigned)
+	}
+
 }
 
 // memorySession builds a live session with a fixed creation time, so the
 // memory rows a request produces are deterministic.
-func memorySession(id, provider, threadID, status, cwd, model string, createdAt time.Time) *session {
-	return &session{id: id,
-		provider:       provider,
-		cwd:            cwd,
-		createdAt:      createdAt,
-		threadID:       threadID,
-		model:          model,
-		lifecycleState: testLifecycleSnapshot(status, false)}
+func memorySession(t *testing.T, id, provider, threadID, status, cwd, model string, createdAt time.Time, configure ...func(*sessionConfig)) *session {
+	t.Helper()
+	cfg := sessionConfig{ID: id, Provider: provider, CWD: cwd, CreatedAt: createdAt}
+	for _, fn := range configure {
+		fn(&cfg)
+	}
+	if status == "ready" {
+		return newProviderRuntimeFixture(t, cfg, threadID, model).session
+	}
+	sess := newFixtureSession(cfg, threadID)
+	if err := sess.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	if status == "exited" {
+		sess.Close()
+	}
+	return sess
 }
 
 // memoryRowServer wires a catalog holding two durable rows — one whose thread
@@ -616,16 +647,16 @@ func memoryRowServer(t *testing.T) *server {
 	}
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	metadata, executions := newTestHostedControl(t)
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"aaa": memorySession("aaa", "codex", "", "starting", "/w/start", "", base),
-		"bbb": memorySession("bbb", "claude", "native-new", "ready", "/w/new", "sonnet", base.Add(time.Minute)),
-		"ccc": memorySession("ccc", "codex", "native-indexed", "ready", "/w/idx", "gpt-5", base.Add(2*time.Minute)),
-		"ddd": memorySession("ddd", "claude", "native-onpage", "ready", "/w/page", "sonnet", base.Add(3*time.Minute)),
-		"eee": memorySession("eee", "codex", "native-dead", "exited", "/w/dead", "gpt-5", base.Add(4*time.Minute)),
-	}}, controlMetadata: metadata, agentExecutions: executions}
-	for id, sess := range s.sessions {
-		hostedID := "nht_memory_" + id
-		record, err := executions.ensureSessionWithIdentity(hostedID, sess.provider, presentationShared, "", "", "")
+	s := &server{catalog: fake, Registry: newSessionRegistry(), controlMetadata: metadata, agentExecutions: executions}
+	for index, fixture := range []struct{ id, provider, native, status, cwd, model string }{
+		{"aaa", "codex", "", "starting", "/w/start", ""},
+		{"bbb", "claude", "native-new", "ready", "/w/new", "sonnet"},
+		{"ccc", "codex", "native-indexed", "ready", "/w/idx", "gpt-5"},
+		{"ddd", "claude", "native-onpage", "ready", "/w/page", "sonnet"},
+		{"eee", "codex", "native-dead", "exited", "/w/dead", "gpt-5"},
+	} {
+		hostedID := "nht_memory_" + fixture.id
+		record, err := executions.ensureSessionWithIdentity(hostedID, fixture.provider, presentationShared, "", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -633,17 +664,18 @@ func memoryRowServer(t *testing.T) *server {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sess.hostedThreadID, sess.metadata, sess.attachmentGeneration = record.ID, metadata, generation
-		if sess.cwd != "" {
-			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: "cwd", Value: sess.cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+		if fixture.cwd != "" {
+			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: "cwd", Value: fixture.cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if sess.model != "" {
-			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: postureFieldModel, Value: sess.model, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+		if fixture.model != "" {
+			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: postureFieldModel, Value: fixture.model, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 				t.Fatal(err)
 			}
 		}
+		sess := memorySession(t, fixture.id, fixture.provider, fixture.native, fixture.status, fixture.cwd, fixture.model, base.Add(time.Duration(index)*time.Minute), func(cfg *sessionConfig) { cfg.HostedThreadID = hostedID; cfg.Metadata = metadata })
+		s.RegisterSession(sess)
 	}
 	s.runtime = s
 	return s
@@ -824,10 +856,10 @@ func rescueServer(t *testing.T) *server {
 	}
 	store.remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	s := &server{catalog: fake, attachments: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"aaa": memorySession("aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
-		"bbb": memorySession("bbb", "claude", "native-prog", "ready", "/w/prog", "sonnet", base.Add(time.Minute)),
-	}}}
+	s := testServerWithSessions(&server{catalog: fake, attachments: store, Registry: newSessionRegistry()}, map[string]*session{
+		"aaa": memorySession(t, "aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
+		"bbb": memorySession(t, "bbb", "claude", "native-prog", "ready", "/w/prog", "sonnet", base.Add(time.Minute)),
+	})
 	s.runtime = s
 	return s
 }
@@ -953,7 +985,7 @@ func TestCatalogWorkerIncludesSupervisorOutsideWindow(t *testing.T) {
 			},
 		},
 	}
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{catalog: fake, Registry: newSessionRegistry()}
 	items := listCatalog(t, s, "/api/v1/threads?includeSubagents=true&updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_worker", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want worker plus supervisor context", got)
@@ -986,7 +1018,7 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 			"native-parent": {ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"},
 		},
 	}
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store}
+	s := &server{catalog: fake, Registry: newSessionRegistry(), agentExecutions: store}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want child plus cross-provider invoker", got)
@@ -1013,7 +1045,7 @@ func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
 	}}}, rescued: map[string]catalogThread{
 		"native-parent": {ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"},
 	}}
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control}
+	s := &server{catalog: fake, Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child"}) {
 		t.Fatalf("row ids = %v, want standalone child only", got)
@@ -1053,7 +1085,7 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 			"native-new":      {ID: "nth_new", Provider: "claude", NativeID: "native-new", Kind: "main"},
 		},
 	}
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control}
+	s := &server{catalog: fake, Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_new"}) {
 		t.Fatalf("row ids = %v, want child plus current visual parent", got)

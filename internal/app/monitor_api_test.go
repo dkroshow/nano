@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/dkroshow/nano/internal/lifecycle"
 )
 
 // Catches: the host monitor losing the active turns its finished-turn row
@@ -50,11 +48,12 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	working := memorySession("working", "codex", "native-working", "ready", "/w", "model", now)
-	working.hostedThreadID, working.displayName = "nht_working", "busy agent"
-	working.lifecycleState = lifecycle.Snapshot{State: lifecycle.State{Connection: lifecycle.Ready, Work: lifecycle.Working}, Epoch: 1}
-	idle := memorySession("idle", "claude", "native-idle", "ready", "/w", "model", now)
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{working.id: working, idle.id: idle}}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "working", Provider: "codex", HostedThreadID: "nht_working", DisplayName: "busy agent", CWD: "/w", CreatedAt: now}, "native-working", "model", func(f *providerRuntimeFixture) {
+		f.resumeResult = map[string]any{"model": "model", "thread": map[string]any{"id": "native-working", "turns": []any{map[string]any{"id": "busy-turn", "status": "inProgress"}}}}
+	})
+	working := f.session
+	idle := memorySession(t, "idle", "claude", "native-idle", "ready", "/w", "model", now)
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}, map[string]*session{working.ID(): working, idle.ID(): idle})
 	s.hostMonitor.now = func() time.Time { return now }
 
 	rec := httptest.NewRecorder()
@@ -168,7 +167,7 @@ func TestMonitorDeliveryComesFromTheNewestCompleteSnapshot(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "health-2026-10-01.jsonl"), []byte(c.lines), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
+		s := &server{Registry: newSessionRegistry(), hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
 		rec := httptest.NewRecorder()
 		s.handleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
 		var body struct {

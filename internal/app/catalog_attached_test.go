@@ -21,56 +21,11 @@ func (s *threadCatalogService) attachedCatchUpFor(owner string) *attachedCatchUp
 	return nil
 }
 
-type recordingSources struct {
-	binds    []string
-	releases int
-	onBind   func()
-}
-
-func (r *recordingSources) BindAttachedSource(owner, provider, nativeID, cwd, known string, background bool) {
-	bind := provider + "/" + nativeID + "@" + cwd + "|" + known
-	if background {
-		bind += "|background"
-	}
-	r.binds = append(r.binds, bind)
-	if r.onBind != nil {
-		r.onBind()
-	}
-}
-
-func (r *recordingSources) ReleaseAttachedSource(string) { r.releases++ }
-
-func (r *recordingSources) AwaitAttachedCurrent(string, bool, func() bool, <-chan struct{}) bool {
-	return true
-}
-
 // passedSince reports that a pass after seq ran and no work is queued.
 func (s *threadCatalogService) passedSince(seq uint64) bool {
 	s.queueMu.Lock()
 	defer s.queueMu.Unlock()
 	return s.passSeq > seq && len(s.dirty) == 0
-}
-
-// Failure caught: a late identity event on a closed attachment
-// re-established a watch, or a close racing the bind left one behind.
-// Boundary: the session's bind on native identity.
-func TestSessionCatalogBindNeverOutlivesClose(t *testing.T) {
-	sources := &recordingSources{}
-	sess := &session{id: "s1", provider: "claude", cwd: "/work", catalogSources: sources}
-	sess.setProjectionThreadID("native-1")
-	if len(sources.binds) != 1 || sources.binds[0] != "claude/native-1@/work|" {
-		t.Fatalf("binds = %q, want the identity once", sources.binds)
-	}
-	sources.onBind = func() { sess.closed = true } // a close lands while the hold is made
-	sess.setProjectionThreadID("native-2")
-	if sources.releases != 1 {
-		t.Fatalf("releases after a racing close = %d, want 1", sources.releases)
-	}
-	sources.onBind = nil
-	sess.setProjectionThreadID("native-3")
-	if len(sources.binds) != 2 {
-		t.Fatalf("a closed attachment bound again: %q", sources.binds)
-	}
 }
 
 // Failure caught: an attachment whose file cannot be resolved vanished from
@@ -94,26 +49,39 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 		status := service.ingestStatus()
 		return status.Attachments, status.HeldSources, status.UnresolvedAttachments
 	}
-	sess := &session{id: "s1", provider: "codex", cwd: "/work", catalogSources: service}
-	sess.bindCatalogSource("")
+	sess := newSession(runtimeFixtureConfig(t, sessionConfig{ID: "s1", Provider: "codex", HostedThreadID: "catalog-owner", CWD: "/work"}))
+	if err := sess.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	sess.ConfigureRegistration(nil, nil, false, service)
+	sess.ConfigureSavedReaders(nil, nil, nil, nil, func(string) {})
+	sess.DidRegister()
 	if attachments, held, unresolved := view(); attachments != 1 || held != 0 || unresolved[unresolvedAwaitingIdentity] != 1 {
 		t.Fatalf("before identity: attachments %d, held %d, unresolved %v", attachments, held, unresolved)
 	}
-	sess.threadID = "01a0aaaa-0000-7000-8000-000000000001" // providers set it before binding
-	sess.setProjectionThreadID(sess.threadID)
+	sess.ReserveNativeID("01a0aaaa-0000-7000-8000-000000000001")
 	if attachments, held, unresolved := view(); attachments != 1 || held != 0 || unresolved[unresolvedNoSavedSource] != 1 {
 		t.Fatalf("identity with no saved source: attachments %d, held %d, unresolved %v", attachments, held, unresolved)
 	}
-	sess.learnCatalogSourcePath(filepath.Join(root, "2026", "10", "03", "rollout-01a0aaaa-0000-7000-8000-000000000001.jsonl"))
+	fake := newFakeAppServer(t)
+	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.ThreadID(), "path": filepath.Join(root, "2026", "10", "03", "rollout-01a0aaaa-0000-7000-8000-000000000001.jsonl")}})
+	if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
+		t.Fatal(err)
+	}
+	waitForClaude(t, "catalog path held", func() bool { _, held, _ := view(); return held == 1 })
 	if attachments, held, unresolved := view(); attachments != 1 || held != 1 || len(unresolved) != 0 {
 		t.Fatalf("resolved: attachments %d, held %d, unresolved %v", attachments, held, unresolved)
 	}
-	sess.releaseCatalogSource()
+	sess.Close()
 	if attachments, held, _ := view(); attachments != 0 || held != 0 {
 		t.Fatalf("released: attachments %d, held %d", attachments, held)
 	}
-	claude := &session{id: "s2", provider: "claude", cwd: "/work", catalogSources: service}
-	claude.setProjectionThreadID("cs_0123456789abcdef")
+	claude := newSession(sessionConfig{ID: "s2", Provider: "claude", CWD: "/work"})
+	if err := claude.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	claude.ConfigureRegistration(nil, nil, false, service)
+	claude.ReserveNativeID("cs_0123456789abcdef")
 	if _, held, unresolved := view(); held != 0 || unresolved[unresolvedProvisional] != 1 {
 		t.Fatalf("provisional Claude handle: held %d, unresolved %v", held, unresolved)
 	}

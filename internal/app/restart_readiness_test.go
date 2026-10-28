@@ -51,7 +51,7 @@ func newRestartWindow(t *testing.T) *restartWindow {
 	t.Helper()
 	ctx := context.Background()
 	fake := newFakeAppServer(t)
-	s, store := bootReattachServer(t, "", fake.wsURL())
+	s, store := bootReattachServer(t, "", fake.WSURL())
 	rec := bootCodexRecord(t)
 	root := t.TempDir()
 	w := &restartWindow{s: s, fake: fake, path: filepath.Join(root, "rollout-"+rec.NativeThreadID+".jsonl")}
@@ -188,7 +188,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 			if test.early {
 				delay = 3 * time.Second // time for the file to be written and indexed
 			}
-			w.fake.setReplyDelay("thread/resume", delay)
+			w.fake.SetReplyDelay("thread/resume", delay)
 			var sess *session
 			release := func() {}
 			sentBefore := []string{}
@@ -200,15 +200,15 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 					t.Fatal(err)
 				}
 				if test.unused {
-					w.fake.setResumeError("no rollout found for thread id " + native)
+					w.fake.SetResumeError("no rollout found for thread id " + native)
 				}
 				go func() {
 					w.s.reattachOnBoot()
 					w.s.reattachWaitingHosted(hosted) // no work open, so it rests until needed
 				}()
 				waitForClaude(t, "the boot shell", func() bool {
-					sess = w.s.sessionForHostedThread(hosted)
-					return sess != nil && sess.turns != nil
+					sess = w.s.SessionForHostedThread(hosted)
+					return sess != nil && sess.PromptStore() != nil
 				})
 			case !test.reattach:
 				// p1 was accepted into turn-p1 before Nano stopped; Codex
@@ -229,58 +229,58 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				w.appendSaved(t, savedPromptTurn(hosted, "p1", turn))
 				w.failReads.Store(test.failing)
 				w.failSavedRows.Store(test.unread)
-				w.fake.setResumeTurns(json.RawMessage(resumeTurns))
+				w.fake.SetResumeTurns(json.RawMessage(resumeTurns))
 				go w.s.reattachOnBoot()
 				waitForClaude(t, "the boot shell", func() bool {
-					sess = w.s.sessionForHostedThread(hosted)
-					return sess != nil && sess.turns != nil
+					sess = w.s.SessionForHostedThread(hosted)
+					return sess != nil && sess.PromptStore() != nil
 				})
 			default:
 				w.s.reattachOnBoot()
 				w.s.reattachWaitingHosted(hosted) // no work open, so it rests until needed
 				waitForClaude(t, "the first attachment", func() bool {
-					sess = w.s.sessionForHostedThread(hosted)
-					return sess != nil && sess.summary().Status == "ready"
+					sess = w.s.SessionForHostedThread(hosted)
+					return sess != nil && sess.Summary().Status == "ready"
 				})
 				// p1 starts turn-p1 on the first attachment. The link drops
 				// before Codex's echo of p1 arrives; in the gap Codex saves p1
 				// and the turn's interruption.
-				w.fake.setTurnStartResult(map[string]any{"turn": map[string]any{"id": turn}})
+				w.fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": turn}})
 				if rec := postTurn(t, sess, ctx, "p1", "p1 prompt"); rec.Code != http.StatusOK {
 					t.Fatalf("p1 delivery = %d %s", rec.Code, rec.Body.String())
 				}
 				sentBefore = []string{"p1 prompt"}
-				w.fake.emitThreadNotification(native, map[string]any{"method": "turn/started", "params": map[string]any{
+				w.fake.EmitThreadNotification(native, map[string]any{"method": "turn/started", "params": map[string]any{
 					"threadId": native, "turn": map[string]any{"id": turn, "status": "inProgress", "items": []any{}}}})
 				waitForClaude(t, "turn-p1 working", func() bool {
-					_, running := sess.activeTurn()
-					return running == turn
+					record, _, err := sess.PromptStore().Get(ctx, "p1")
+					return err == nil && record.ProviderTurnID == turn && sess.Summary().TurnActive
 				})
 				release = w.pause()
 				w.appendSaved(t, savedPromptTurn(hosted, "p1", turn))
-				w.fake.setResumeTurns(json.RawMessage(resumeTurns))
-				resumes = w.fake.resumeCount()
-				w.fake.dropConnections()
-				waitForClaude(t, "the link loss", func() bool { return sess.summary().Status == "reconnecting" })
+				w.fake.SetResumeTurns(json.RawMessage(resumeTurns))
+				resumes = w.fake.ResumeCount()
+				w.fake.DropConnections()
+				waitForClaude(t, "the link loss", func() bool { return sess.Summary().Status == "reconnecting" })
 			}
 			defer release()
 			if test.ahead {
 				go func() {
-					waitForClaude(t, "the resume request", func() bool { return w.fake.resumeCount() > resumes })
-					w.fake.emitThreadNotification(native, map[string]any{"method": "turn/completed", "params": map[string]any{
+					waitForClaude(t, "the resume request", func() bool { return w.fake.ResumeCount() > resumes })
+					w.fake.EmitThreadNotification(native, map[string]any{"method": "turn/completed", "params": map[string]any{
 						"threadId": native, "turn": map[string]any{"id": turn, "status": "interrupted"}}})
 				}()
 			}
 
 			// p2 is typed while the thread cannot take it yet.
-			w.fake.setTurnStartResult(map[string]any{"turn": map[string]any{"id": "turn-p2"}})
+			w.fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "turn-p2"}})
 			if rec := postTurn(t, sess, ctx, "p2", "p2 prompt"); rec.Code != http.StatusAccepted {
 				t.Fatalf("p2 admission = %d %s; want queued", rec.Code, rec.Body.String())
 			}
 			notReady := func(why string) {
 				t.Helper()
 				for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-					if status, sent := sess.summary().Status, w.fake.startedTexts(); status == "ready" || fmt.Sprint(sent) != fmt.Sprint(sentBefore) {
+					if status, sent := sess.Summary().Status, w.fake.StartedTexts(); status == "ready" || fmt.Sprint(sent) != fmt.Sprint(sentBefore) {
 						t.Fatalf("%s: status %s, sent %q", why, status, sent)
 					}
 				}
@@ -295,7 +295,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				// both land before readiness starts to wait.
 				var catchUp *attachedCatchUp
 				waitForClaude(t, "the pass that found no file", func() bool {
-					catchUp = w.catalog.attachedCatchUpFor(sess.id)
+					catchUp = w.catalog.attachedCatchUpFor(sess.ID())
 					return catchUp != nil && w.catalog.passedSince(catchUp.after)
 				})
 				writeRollout()
@@ -307,22 +307,22 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 						return false
 					}
 				})
-				if status := sess.summary().Status; status != "starting" {
+				if status := sess.Summary().Status; status != "starting" {
 					t.Fatalf("the resume answer was processed before the file was indexed (status %s)", status)
 				}
 			case !test.unused:
 				// Attached, but its saved file is not proven current: not
 				// ready, and p2 waits.
-				waitForClaude(t, "the resume answer", func() bool { return w.fake.resumeCount() > resumes })
+				waitForClaude(t, "the resume answer", func() bool { return w.fake.ResumeCount() > resumes })
 				notReady("before the saved file caught up")
 				if test.missing {
 					writeRollout()
 				}
 				if test.linkLost {
 					// The wait gives way to the reconnect, which waits in turn.
-					lost := w.fake.resumeCount()
-					w.fake.dropConnections()
-					waitForClaude(t, "the reconnect's resume", func() bool { return w.fake.resumeCount() > lost })
+					lost := w.fake.ResumeCount()
+					w.fake.DropConnections()
+					waitForClaude(t, "the reconnect's resume", func() bool { return w.fake.ResumeCount() > lost })
 					notReady("after the reconnect, before the saved file caught up")
 				}
 			}
@@ -338,7 +338,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 			}
 
 			waitForClaudeWithin(t, time.Minute, "the queued prompt sent", func() bool {
-				return len(w.fake.startedTexts()) > len(sentBefore) && sess.summary().Status == "ready" &&
+				return len(w.fake.StartedTexts()) > len(sentBefore) && sess.Summary().Status == "ready" &&
 					(test.missing || test.unused || w.state(t, "p1") != turns.Accepted)
 			})
 			time.Sleep(300 * time.Millisecond) // a resend would be queued by now
@@ -356,7 +356,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 					t.Fatalf("p1 = %s; want confirmed by its saved row", state)
 				}
 			}
-			if got, want := w.fake.startedTexts(), append(sentBefore, "p2 prompt"); fmt.Sprint(got) != fmt.Sprint(want) {
+			if got, want := w.fake.StartedTexts(), append(sentBefore, "p2 prompt"); fmt.Sprint(got) != fmt.Sprint(want) {
 				t.Fatalf("provider received %q; want %q", got, want)
 			}
 			if state := w.state(t, "p2"); state != turns.Accepted {

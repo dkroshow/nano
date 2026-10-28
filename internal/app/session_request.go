@@ -4,13 +4,14 @@ import (
 	"errors"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 // spawnRequest is the POST /api/sessions body: everything the New Window
 // dialog can pick. Empty fields fall back to server flag defaults (or the
 // provider's own defaults).
 type spawnRequest struct {
-	providerRequest
+	sessionruntime.ProviderRequest
 	ClientSessionID       string                   `json:"clientSessionId,omitempty"`  // optional idempotent creation alias
 	InvokerThreadRef      string                   `json:"invokerThreadRef,omitempty"` // agent API only: caller's own hosted/native/current session reference
 	Subscriptions         subscriptions.Choices    `json:"subscriptions,omitempty"`    // agent API only: completion delivery channels on the immutable invoker edge

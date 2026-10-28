@@ -94,7 +94,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 	hosted("w-invoker", "w-invoker", &invokerParent)
 
 	catalog := &countingCatalog{threadCatalogService: &threadCatalogService{store: store}}
-	s := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, controlMetadata: metadata, agentExecutions: executions}
+	s := &server{catalog: catalog, Registry: newSessionRegistry(), controlMetadata: metadata, agentExecutions: executions}
 	s.runtime = s
 	f := &lineageFixture{budget: &budgetFixture{server: s, catalog: catalog, now: now}}
 	from := now.Add(-2 * 24 * time.Hour)

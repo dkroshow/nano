@@ -86,10 +86,10 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 
 	events = s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
-	sess := s.sessions["sess-attached"]
-	sess.stateMu.Lock()
-	sess.lifecycleState = testLifecycleSnapshot("ready", true)
-	sess.stateMu.Unlock()
+	sess := s.LookupSession("sess-attached")
+	if response := postTurn(t, sess, context.Background(), "sidebar-working", "working"); response.Code != http.StatusOK {
+		t.Fatalf("sidebar working setup: %d %s", response.Code, response.Body)
+	}
 	s.sidebar.applyRuntimeDelta(s.runtimeDeltaSnapshot())
 	select {
 	case delta := <-events:
@@ -234,7 +234,7 @@ func TestSidebarManualCloseOverridesWatchedFleetUntilTreeDisappears(t *testing.T
 	parent := catalogThread{ID: "parent", Provider: "codex", NativeID: "parent-native", HostedThreadID: "hosted-parent", HostedStatus: sessionStatusExited, Fleet: watched}
 	child := catalogThread{ID: "child", Provider: "codex", NativeID: "child-native", HostedThreadID: "hosted-child", HostedStatus: "ready", InvokerHostedThreadID: parent.HostedThreadID, Fleet: watched}
 	child.Runtime = &runtimeInfo{Attached: true, Status: "ready", TurnActive: true}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{parent, child}, sidebarRuntimeSnapshot{})
 	if !nodes[0].included || !nodes[0].structural || !nodes[1].included {
 		t.Fatalf("closed parent should remain structural for active child: parent=%+v child=%+v", nodes[0], nodes[1])
@@ -258,7 +258,7 @@ func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
 		InvokerHostedThreadID: root.HostedThreadID,
 		Runtime:               &runtimeInfo{Detached: true},
 	}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child}, sidebarRuntimeSnapshot{})
 	if nodes[0].included || nodes[1].included {
 		t.Fatalf("fully detached unstarred tree stayed active: root=%+v child=%+v", nodes[0], nodes[1])
@@ -285,7 +285,7 @@ func TestSidebarKeepsRestingThreadsActive(t *testing.T) {
 		InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
 	detached := catalogThread{ID: "detached", Provider: "codex", NativeID: "detached-native", HostedThreadID: "hosted-detached",
 		Runtime: &runtimeInfo{Detached: true}}
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child, detached}, sidebarRuntimeSnapshot{})
 	included := map[string]bool{}
 	for _, node := range nodes {
@@ -414,7 +414,7 @@ func TestSidebarHistoryPagesInactiveDescendants(t *testing.T) {
 }
 
 func TestSidebarActiveRejectsSnapshotRoute(t *testing.T) {
-	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{Registry: newSessionRegistry()}
 	rec := httptest.NewRecorder()
 	mux := http.NewServeMux()
 	mountRoutes(mux, applicationRoutes(s))
@@ -526,23 +526,27 @@ func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]stri
 	}
 
 	svc := &threadCatalogService{store: store}
-	attached := memorySession("sess-attached", "codex", "attached-recent", "ready", "/w/att", "gpt-5.6-sol", now)
-	parentLive := memorySession("sess-parent", "codex", "related-parent", "ready", "/w/related-parent", "gpt-5.6-sol", now)
-	parentLive.hostedThreadID = parentHosted.ID
-	parentLive.lifecycleState = testLifecycleSnapshot("ready", true)
-	childLive := memorySession("sess-child", "codex", "related-child", "ready", "/w/related-child", "gpt-5.6-sol", now)
-	childLive.hostedThreadID = childHosted.ID
-	childLive.invokerHostedThreadID = parentHosted.ID
-	childLive.lifecycleState = testLifecycleSnapshot("ready", true)
-	s := &server{
-		catalog: svc, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-			"sess-attached": attached, "sess-parent": parentLive, "sess-child": childLive,
-		}},
+	attached := memorySession(t, "sess-attached", "codex", "attached-recent", "ready", "/w/att", "gpt-5.6-sol", now)
+	parentLive := memorySession(t, "sess-parent", "codex", "related-parent", "ready", "/w/related-parent", "gpt-5.6-sol", now, func(cfg *sessionConfig) { cfg.HostedThreadID = parentHosted.ID })
+	if response := postTurn(t, parentLive, context.Background(), "parent-work", "working"); response.Code != http.StatusOK {
+		t.Fatalf("parent working setup: %d %s", response.Code, response.Body)
+	}
+	childLive := memorySession(t, "sess-child", "codex", "related-child", "ready", "/w/related-child", "gpt-5.6-sol", now, func(cfg *sessionConfig) {
+		cfg.HostedThreadID = childHosted.ID
+		cfg.InvokerHostedThreadID = parentHosted.ID
+	})
+	if response := postTurn(t, childLive, context.Background(), "child-work", "working"); response.Code != http.StatusOK {
+		t.Fatalf("child working setup: %d %s", response.Code, response.Body)
+	}
+	s := testServerWithSessions(&server{
+		catalog: svc, Registry: newSessionRegistry(),
 		attachments: attachments, threadStars: stars,
 		controlMetadata: metadata, agentExecutions: executions,
 		runtimeEvents: newRuntimeHub(), mailEvents: newMailHub(),
 		mail: newTestAgentMessageStore(t),
-	}
+	}, map[string]*session{
+		"sess-attached": attached, "sess-parent": parentLive, "sess-child": childLive,
+	})
 	s.runtime = s
 	if err := s.materializeSidebar(context.Background(), now); err != nil {
 		t.Fatal(err)

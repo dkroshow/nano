@@ -17,7 +17,7 @@ func TestCodexStartWithoutSandboxGetsPermissiveDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &server{defaults: sessionDefaults{cwd: t.TempDir(), sandbox: cfg.Sandbox, approval: cfg.Approval}}
-	req, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start"}})
+	req, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start"}})
 	if err != nil {
 		t.Fatal(err)
 	}

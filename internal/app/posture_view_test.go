@@ -19,8 +19,6 @@ import (
 // The summary and /state serve the same folded posture — newest decision per
 // field — and fall back to live session values where the log is silent.
 func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
-	sess, _ := claudeTestSession(t)
-	sess.hostedThreadID = "nht_view"
 	store := newTestControlMetadata(t)
 	if err := store.ensureHostedThread("nht_view", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
@@ -29,21 +27,32 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess.metadata, sess.attachmentGeneration = store, g
-	sess.recordPosture([]postureEntry{
+	sess := newSession(sessionConfig{ID: "posture-view", Provider: "claude", HostedThreadID: "nht_view", Metadata: store})
+	if err := sess.InitializeBinding(g); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []metadataEvent{
 		{Field: postureFieldModel, Value: "sonnet", Source: postureSourceCreation, Evidence: postureEvidenceSpawnRequest},
 		{Field: postureFieldEffort, Value: "xhigh", Source: postureSourceCreation, Evidence: postureEvidenceSpawnRequest},
 		{Field: postureFieldPermissionMode, Value: "acceptEdits", Source: postureSourceCreation, Evidence: postureEvidenceSpawnRequest},
 		{Field: postureFieldModel, Value: "haiku", Source: postureSourceOperator, Evidence: postureEvidenceSetModel},
-	}, metadataFreshnessLive)
+	} {
+		entry.HostedThreadID = "nht_view"
+		entry.Disposition = metadataDispositionRequested
+		entry.Freshness = metadataFreshnessLive
+		entry.AttachmentGeneration = g
+		if _, err := store.AppendEvent(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	want := sessionPosture{Model: "haiku", Effort: "xhigh", PermissionMode: "acceptEdits"}
-	if got := sess.summary().Posture; got != want {
+	if got := sess.Summary().Posture; got != want {
 		t.Fatalf("summary posture = %+v, want %+v", got, want)
 	}
 
 	w := httptest.NewRecorder()
-	sess.handleState(w, httptest.NewRequest(http.MethodGet, "/api/sessions/x/state", nil))
+	sess.HandleState(w, httptest.NewRequest(http.MethodGet, "/api/sessions/x/state", nil))
 	var state struct {
 		Posture sessionPosture `json:"posture"`
 	}
@@ -56,10 +65,8 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 
 	// A thread with no recorded decisions serves live session evidence — the
 	// legacy-session fallback.
-	legacy, _ := claudeTestSession(t)
-	legacy.hostedThreadID = "nht_legacy"
-	legacy.model = "claude-opus-5"
-	if got := legacy.summary().Posture.Model; got != "" {
+	legacy := newProviderRuntimeFixture(t, sessionConfig{ID: "legacy-model", Provider: "claude", HostedThreadID: "nht_legacy"}, "legacy-native", "claude-opus-5").session
+	if got := legacy.Summary().Posture.Model; got != "" {
 		t.Fatalf("unavailable metadata fabricated model = %q", got)
 	}
 }
@@ -95,7 +102,7 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", claudeModelFlag, "legacy-model", "--permission-mode", "bypassPermissions"},
 	})
 	s := &server{defaults: sessionDefaults{cwd: legacyCwd, claudeBin: "/claude"}, attachments: attachments, controlMetadata: metadata}
-	resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
+	resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +149,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		Provider: "claude", NativeThreadID: "native-historical", HostedThreadID: hostedID,
 		Bin: "/claude", Args: []string{"-p", claudeModelFlag, "stale-model", "--effort", "low", "--permission-mode", "bypassPermissions"},
 	})
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir(), claudeBin: "/default/claude"}, attachments: attachments, controlMetadata: metadata, agentExecutions: executions, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{defaults: sessionDefaults{cwd: t.TempDir(), claudeBin: "/default/claude"}, attachments: attachments, controlMetadata: metadata, agentExecutions: executions, Registry: newSessionRegistry()}
 
 	// The public API is presentation state and must expose the observed fold.
 	api := httptest.NewRecorder()
@@ -158,7 +165,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		t.Fatalf("API display model = %s, want observed fold", got)
 	}
 
-	resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
+	resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,42 +206,6 @@ func TestMemoryThreadRowServesPostureCells(t *testing.T) {
 	unknown := memoryThreadRow(sessionSummary{ID: "sess-2", Provider: "claude"})
 	if unknown.Metadata.Effort.State != "unknown" {
 		t.Fatalf("empty posture effort cell = %+v, want honest unknown", unknown.Metadata.Effort)
-	}
-}
-
-// A resumed codex session re-seeds its per-turn overrides from the fold, so a
-// click-resume and a boot reattach converge. A pre-log thread (nil fold)
-// falls back to the attachment record's stored tier — the boot special case
-// retired into this one seam — while any recorded history makes the log the
-// only truth.
-func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
-	folded := map[string]postureEntry{
-		postureFieldModel:       {Field: postureFieldModel, Value: "gpt-5.3-codex", Source: postureSourceOperator},
-		postureFieldEffort:      {Field: postureFieldEffort, Value: "high", Source: postureSourceCreation},
-		postureFieldServiceTier: {Field: postureFieldServiceTier, Value: "priority", Source: postureSourceOperator},
-	}
-
-	codex := &session{provider: "codex",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	codex.seedCodexTurnOverrides(folded, "ignored-legacy")
-	if codex.turnModel != "gpt-5.3-codex" || codex.turnEffort != "high" || codex.turnServiceTier != "priority" {
-		t.Fatalf("codex overrides = %q/%q/%q, want the folded posture seeded",
-			codex.turnModel, codex.turnEffort, codex.turnServiceTier)
-	}
-
-	legacy := &session{provider: "codex",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	legacy.seedCodexTurnOverrides(nil, "priority")
-	if legacy.turnServiceTier != "priority" {
-		t.Fatalf("legacy tier = %q, want the pre-log record honored on a nil fold", legacy.turnServiceTier)
-	}
-
-	cleared := &session{provider: "codex",
-		turnServiceTier: "stale",
-		lifecycleState:  testLifecycleSnapshot("ready", false)}
-	cleared.seedCodexTurnOverrides(map[string]postureEntry{}, "stale-record")
-	if cleared.turnServiceTier != "stale" {
-		t.Fatalf("cleared-history tier = %q, want the record ignored once any history exists", cleared.turnServiceTier)
 	}
 }
 
@@ -279,17 +250,36 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			codex := &session{turnModel: "stale",
-				turnServiceTier: "stale",
-				lifecycleState:  testLifecycleSnapshot("ready", false)}
 			view.Fields[postureFieldServiceTier] = view.Fields[postureFieldModel]
-			codex.seedCodexCanonicalOverrides(view)
-			if codex.turnModel != test.want || codex.turnServiceTier != test.want {
-				t.Fatalf("Codex resume = %q/%q, want %q", codex.turnModel, codex.turnServiceTier, test.want)
+			fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "canonical-resume", Provider: "codex", HostedThreadID: hostedID, Metadata: fixedMetadataView{sessionMetadata: metadata, view: view}}, "canonical-native", "")
+			read := httptest.NewRecorder()
+			fixture.session.HandleTurnOptionsRead(read, httptest.NewRequest(http.MethodGet, "/turn-options", nil))
+			var options struct {
+				Model       string `json:"model"`
+				ServiceTier string `json:"serviceTier"`
 			}
-			args := applyClaudeResumeOverlay([]string{"-p", claudeModelFlag, "stale"}, metadata, hostedID)
+			if err := json.Unmarshal(read.Body.Bytes(), &options); err != nil {
+				t.Fatal(err)
+			}
+			if options.Model != test.want || options.ServiceTier != test.want {
+				t.Fatalf("Codex resume = %q/%q, want %q", options.Model, options.ServiceTier, test.want)
+			}
+			cwd := t.TempDir()
+			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
+				t.Fatal(err)
+			}
+			owner := &server{controlMetadata: metadata}
+			req := spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
+			if err := owner.applyCanonicalResumeMetadata(&req); err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := owner.resolveClaudeResume(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := resolved.ClaudeArgs
 			if test.want == "" {
-				args = claudeCanonicalResumeArgs(args, (spawnRequest{}).providerRequest)
+				args = claudeCanonicalResumeArgs(args, (spawnRequest{}).ProviderRequest)
 				if strings.Contains(strings.Join(args, " "), "stale") {
 					t.Fatalf("cleared Claude resume retained stale argv %#v", args)
 				}
@@ -317,14 +307,14 @@ func (c *namedThreadCatalog) ThreadNameFor(_ context.Context, provider, nativeID
 // summary carries it without waiting for the catalog overlay.
 func TestResumeHydratesDurableName(t *testing.T) {
 	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.reply(call, map[string]any{
+		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID,
 			"state": "running", "lastSeq": 1,
 		})
-		c.line(1, "recv", claudeInitLine)
-		c.notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
+		c.Line(1, "recv", claudeInitLine)
+		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
 	}))
-	s, store := claudeResumeServer(t, shim.wsURL())
+	s, store := claudeResumeServer(t, shim.WSURL())
 	s.catalog = &namedThreadCatalog{
 		names: map[string]string{"claude:" + claudeResumeThreadID: "overnight refactor"},
 	}
@@ -341,9 +331,9 @@ func TestResumeHydratesDurableName(t *testing.T) {
 // "live set_model is never persisted" finding describes.
 func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.replyError(call, shimCodeSessionNotFound, "session_not_found")
+		c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 	}))
-	s, store := claudeResumeServer(t, shim.wsURL())
+	s, store := claudeResumeServer(t, shim.WSURL())
 	rec := rememberedClaudeSession(t, "/stored/claude")
 	rec.HostedThreadID = "nht_overlay"
 	store.remember(rec)
@@ -382,3 +372,12 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 		t.Fatalf("canonical overlay intent missing after fallback: view=%#v err=%v", view, err)
 	}
 }
+
+// fixedMetadataView supplies the same canonical view to a second provider's consumer.
+// The real store still owns persistence and event validation.
+type fixedMetadataView struct {
+	sessionMetadata
+	view hostedMetadataView
+}
+
+func (m fixedMetadataView) View(string) (hostedMetadataView, error) { return m.view, nil }

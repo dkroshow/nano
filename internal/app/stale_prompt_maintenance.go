@@ -18,6 +18,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -141,7 +142,7 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 		return receipt
 	}
 	receipt.ClientActionID = clientActionID
-	parent := filepath.Join(filepath.Dir(s.queuedTurns.path), "threads-maintenance-backups")
+	parent := filepath.Join(filepath.Dir(s.queuedTurns.Path()), "threads-maintenance-backups")
 	if err := os.MkdirAll(parent, 0700); err != nil {
 		receipt.Error = err.Error()
 		return receipt
@@ -152,7 +153,7 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 		return receipt
 	}
 	receipt.BackupPath = filepath.Join(dir, "nano_threads.sqlite")
-	if err := threads.Backup(ctx, s.queuedTurns.db, receipt.BackupPath); err != nil {
+	if err := threads.Backup(ctx, s.queuedTurns.Database(), receipt.BackupPath); err != nil {
 		receipt.Error = "backup failed; nothing changed: " + err.Error()
 		return receipt
 	}
@@ -186,8 +187,8 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 			case expired:
 				receipt.Expired++
 				// An open pane drops an expired prompt only when told.
-				if sess := s.sessionForHostedThread(hosted); sess != nil {
-					sess.publishLiveOutbox(current.Outbox)
+				if sess := s.SessionForHostedThread(hosted); sess != nil {
+					sess.PublishLiveOutbox(current.Outbox)
 				}
 			case current.Outbox.State == prompts.Confirmed:
 				receipt.Settled++
@@ -208,8 +209,8 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 // other error leaves the thread for a later run.
 func (s *server) settleStaleThread(ctx context.Context, hosted string, records []prompts.Record) error {
 	var err error
-	if sess := s.sessionForHostedThread(hosted); sess != nil {
-		_, err = sess.settlePrompts(ctx)
+	if sess := s.SessionForHostedThread(hosted); sess != nil {
+		_, err = sess.SettlePrompts(ctx)
 	} else {
 		var all []prompts.Record
 		if all, err = s.turns.List(ctx, hosted); err != nil {
@@ -219,14 +220,14 @@ func (s *server) settleStaleThread(ctx context.Context, hosted string, records [
 		// native thread, which a newer prompt than these may record.
 		current := ""
 		for _, record := range all {
-			if record.NativeThreadID != "" && !claudeNativeIDProvisional(record.NativeThreadID) {
+			if record.NativeThreadID != "" && !sessionruntime.ClaudeNativeIDProvisional(record.NativeThreadID) {
 				current = record.NativeThreadID
 			}
 		}
 		saved := func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 			return s.savedPromptRows(ctx, current, keys)
 		}
-		_, err = settleThreadPrompts(ctx, s.turns, saved, hosted, string(records[0].Provider), current)
+		_, err = sessionruntime.SettleThreadPrompts(ctx, s.turns, saved, hosted, string(records[0].Provider), current)
 	}
 	if errors.Is(err, history.ErrSavedTranscriptUnavailable) {
 		return nil
@@ -241,9 +242,9 @@ func (s *server) settleStaleThread(ctx context.Context, hosted string, records [
 // delivered, and expiry neither touches rows already shown nor hides a saved
 // row, so no prompt the transcript holds is lost from view.
 func (s *server) threadBusy(hosted string) bool {
-	sess := s.sessionForHostedThread(hosted)
+	sess := s.SessionForHostedThread(hosted)
 	if sess == nil {
 		return false
 	}
-	return sess.busyForMaintenance()
+	return sess.BusyForMaintenance()
 }

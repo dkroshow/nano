@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	_ "modernc.org/sqlite"
 )
@@ -229,7 +230,7 @@ func (s *threadStarsStore) starredIdentities() []attachmentKey {
 	return out
 }
 
-func (s *server) attachStarredOnSessions(summaries []sessionSummary) {
+func (s *server) attachStarredOnSessions(summaries []sessionruntime.Summary) {
 	if s == nil || s.threadStars == nil {
 		return
 	}

@@ -225,7 +225,7 @@ func TestHeartbeatReconcilesProviderUsage(t *testing.T) {
 }
 
 func TestHeartbeatPublicSubmissionAddsOnlyHeartbeatFooter(t *testing.T) {
-	s, _, _, _, target, prompts := stage0Server(t)
+	s, _, _, _, target, prompts, _ := stage0Server(t)
 	body, _ := json.Marshal(map[string]any{
 		"prompt": "continue", "clientActionId": "nano:heartbeat:hba_test:500", "origin": "system", "requireIdle": true,
 	})
@@ -245,7 +245,7 @@ func TestHeartbeatPublicSubmissionAddsOnlyHeartbeatFooter(t *testing.T) {
 }
 
 func TestAnyHostedAgentCanPauseAndResumeWithAuditedReasons(t *testing.T) {
-	s, _, _, manager, target, _ := stage0Server(t)
+	s, _, _, manager, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
 	s.heartbeat = newHeartbeatService(s, store, true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())
@@ -270,7 +270,7 @@ func TestAnyHostedAgentCanPauseAndResumeWithAuditedReasons(t *testing.T) {
 }
 
 func TestHeartbeatAttachmentAPIRequiresReasonAndRejectsClosedTarget(t *testing.T) {
-	s, _, _, manager, target, _ := stage0Server(t)
+	s, _, _, manager, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
 	s.heartbeat = newHeartbeatService(s, store, true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())

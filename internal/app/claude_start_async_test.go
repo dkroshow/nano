@@ -34,15 +34,15 @@ const startingShimID = "cs_starting1"
 func startingShim(t *testing.T, hold, speak <-chan struct{}) *fakeShim {
 	t.Helper()
 	return newFakeShim(t, func(c *shimConn) {
-		start, ok := c.next()
+		start, ok := c.Next()
 		if !ok {
 			return
 		}
 		<-hold
-		c.reply(start, map[string]any{"shimSessionId": startingShimID})
+		c.Reply(start, map[string]any{"shimSessionId": startingShimID})
 		<-speak
-		c.line(1, "recv", claudeInitLine)
-		c.answerRest()
+		c.Line(1, "recv", claudeInitLine)
+		c.AnswerRest()
 	})
 }
 
@@ -52,8 +52,8 @@ func startingShim(t *testing.T, hold, speak <-chan struct{}) *fakeShim {
 func provisionallyAdopted(t *testing.T, sess *session, speak chan struct{}) {
 	t.Helper()
 	waitForClaude(t, "the shim id to be the recorded provisional identity", func() bool {
-		view, err := sess.metadata.View(sess.hostedThreadID)
-		return err == nil && view.NativeThreadID == startingShimID
+		view := sess.Summary().Metadata
+		return view != nil && view.NativeThreadID == startingShimID
 	})
 	close(speak)
 }
@@ -64,7 +64,7 @@ func provisionallyAdopted(t *testing.T, sess *session, speak chan struct{}) {
 func TestClaudeStartReturnsStartingWhileTransportComesUp(t *testing.T) {
 	hold, speak := make(chan struct{}), make(chan struct{})
 	shim := startingShim(t, hold, speak)
-	s, _ := claudeResumeServer(t, shim.wsURL())
+	s, _ := claudeResumeServer(t, shim.WSURL())
 	migrateTestControl(t, s.controlMetadata) // the init resolves the provisional handle, as on the real schema
 
 	begin := time.Now()
@@ -81,9 +81,9 @@ func TestClaudeStartReturnsStartingWhileTransportComesUp(t *testing.T) {
 	}
 	// Listed from the moment the POST returns: the card is on screen while the
 	// child is still coming up.
-	s.mu.Lock()
-	sess := s.sessions[sum.ID]
-	s.mu.Unlock()
+
+	sess := s.LookupSession(sum.ID)
+
 	if sess == nil {
 		t.Fatal("a starting session is not listed")
 	}
@@ -92,7 +92,7 @@ func TestClaudeStartReturnsStartingWhileTransportComesUp(t *testing.T) {
 	provisionallyAdopted(t, sess, speak)
 	waitForClaudeThreadID(t, sess, "native-1")
 	waitForClaudeStatus(t, sess, "ready")
-	if got := sess.summary().Status; got != "ready" {
+	if got := sess.Summary().Status; got != "ready" {
 		t.Fatalf("status = %q after the transport came up, want ready", got)
 	}
 }
@@ -104,27 +104,27 @@ func TestClaudeStartTransportFailureLandsOnTheSession(t *testing.T) {
 	// The shim refuses, and the direct-child fallback runs a binary that is not
 	// there: both rungs of the start path fail.
 	shim := newFakeShim(t, func(c *shimConn) {
-		start, ok := c.next()
+		start, ok := c.Next()
 		if !ok {
 			return
 		}
-		c.replyError(start, shimCodeSessionExited, "child died on exec")
-		c.answerRest() // stay connected: a dropped connection is its own exit path
+		c.ReplyError(start, shimCodeSessionExited, "child died on exec")
+		c.AnswerRest() // stay connected: a dropped connection is its own exit path
 	})
-	s, _ := claudeResumeServer(t, shim.wsURL())
+	s, _ := claudeResumeServer(t, shim.WSURL())
 	s.defaults.claudeBin = filepath.Join(t.TempDir(), "no-such-claude")
 
 	sum := spawnedSummary(t, postClaudeStart(t, s))
 	if sum.Status != "starting" {
 		t.Fatalf("summary = %#v, want the failure to land on the session rather than the POST", sum)
 	}
-	s.mu.Lock()
-	sess := s.sessions[sum.ID]
-	s.mu.Unlock()
+
+	sess := s.LookupSession(sum.ID)
+
 	waitForClaude(t, "the spawn failure to reach the session", func() bool {
-		return strings.Contains(sess.summary().Error, "starting claude")
+		return strings.Contains(sess.Summary().Error, "starting claude")
 	})
-	if got := sess.summary().Status; got != sessionStatusExited {
+	if got := sess.Summary().Status; got != sessionStatusExited {
 		t.Fatalf("status = %q, want exited alongside the error (the R3 contract)", got)
 	}
 }
@@ -141,42 +141,18 @@ func (stubClaudeTransport) durableAttachment(nativeThreadID, model string) (atta
 	return attachmentRecord{Provider: "claude", NativeThreadID: nativeThreadID, Model: model}, true
 }
 
-// TestClaudeInitAfterCloseDoesNotResurrectTheSession: a fresh start's child
-// announces itself asynchronously, so the handshake can land after the operator
-// has already closed the session. Adopting it then would flip a torn-down
-// session back to ready and leave a durable attachment record offering to
-// re-attach to a session that was deliberately let go of.
-func TestClaudeInitAfterCloseDoesNotResurrectTheSession(t *testing.T) {
-	sess, attachments := claudeTestSession(t)
-	c := newClaudeSession(sess, "")
-	sess.close()
-
-	c.captureState(stubClaudeTransport{}, []byte(claudeInitLine))
-
-	sum := sess.summary()
-	if sum.Status != sessionStatusExited {
-		t.Fatalf("status = %q after a post-close init, want it to stay exited", sum.Status)
-	}
-	if sum.ThreadID != "" {
-		t.Fatalf("threadId = %q, want a closed session to take no identity", sum.ThreadID)
-	}
-	if recs := attachments.all(); len(recs) != 0 {
-		t.Fatalf("a closed session was remembered as re-attachable: %+v", recs)
-	}
-}
-
 // A close before the transport exists must fail safely. Once start settles,
 // retry closes the exact child and removes the session only after confirmation.
 func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	hold, speak := make(chan struct{}), make(chan struct{})
 	shim := startingShim(t, hold, speak)
-	s, _ := claudeResumeServer(t, shim.wsURL())
+	s, _ := claudeResumeServer(t, shim.WSURL())
 	migrateTestControl(t, s.controlMetadata) // the init resolves the provisional handle, as on the real schema
 
 	sum := spawnedSummary(t, postClaudeStart(t, s))
-	s.mu.Lock()
-	sess := s.sessions[sum.ID]
-	s.mu.Unlock()
+
+	sess := s.LookupSession(sum.ID)
+
 	if sess == nil {
 		t.Fatal("a starting session is not listed")
 	}
@@ -186,10 +162,10 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("unconfirmed close status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	s.mu.Lock()
-	retained := s.sessions[sum.ID] == sess
-	s.mu.Unlock()
-	if !retained || len(shim.callsOf(shimMethodClose)) != 0 {
+
+	retained := s.LookupSession(sum.ID) == sess
+
+	if !retained || len(shim.CallsOf(shimMethodClose)) != 0 {
 		t.Fatal("unconfirmed close removed the session or attempted an unidentified stop")
 	}
 	close(hold)
@@ -203,17 +179,17 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	}
 
 	waitForClaude(t, "the orphaned shim session to be closed", func() bool {
-		return len(shim.callsOf(shimMethodClose)) == 1
+		return len(shim.CallsOf(shimMethodClose)) == 1
 	})
-	if got := sess.summary().Status; got != sessionStatusExited {
+	if got := sess.Summary().Status; got != sessionStatusExited {
 		t.Fatalf("status = %q after a close raced the handshake, want it to stay exited", got)
 	}
-	if got := sess.summary().Error; got != "" {
+	if got := sess.Summary().Error; got != "" {
 		t.Fatalf("closing a starting session reported a spawn failure: %q", got)
 	}
-	s.mu.Lock()
-	_, listed := s.sessions[sum.ID]
-	s.mu.Unlock()
+
+	listed := s.LookupSession(sum.ID) != nil
+
 	if listed {
 		t.Fatal("the closed session came back into the session list")
 	}

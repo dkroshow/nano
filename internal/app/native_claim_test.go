@@ -12,7 +12,7 @@ func TestNativeRecoveryRetiredAliasCannotResume(t *testing.T) {
 	control, executions, record := retiredRecoveryFixture(t)
 	s := &server{controlMetadata: control, agentExecutions: executions}
 	for _, hosted := range []string{"", record.ID} {
-		req := spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: "recovery-old", HostedThreadID: hosted}}
+		req := spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: "recovery-old", HostedThreadID: hosted}}
 		if err := s.resolveResumeHostedIdentity(&req); err == nil {
 			t.Fatal("retired alias resumed")
 		}
@@ -112,9 +112,9 @@ func TestTransferNativeClaimConflictsWhenOwnerIsLiveAttached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{controlMetadata: store.control, agentExecutions: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"live": {id: "live", provider: "claude", hostedThreadID: owner.ID, threadID: revivedNativeID, lifecycleState: testLifecycleSnapshot("ready", false)},
-	}}}
+	s := testServerWithSessions(&server{controlMetadata: store.control, agentExecutions: store, Registry: newSessionRegistry()}, map[string]*session{
+		"live": configuredFixtureSession(t, sessionConfig{ID: "live", Provider: "claude", HostedThreadID: owner.ID}, revivedNativeID, "ready", ""),
+	})
 	if err := s.transferNativeClaim(challenger.ID, "claude", revivedNativeID); !errors.Is(err, errNativeClaimLive) {
 		t.Fatalf("transfer err = %v, want errNativeClaimLive", err)
 	}
@@ -127,13 +127,8 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 	control, store := newTestHostedControl(t)
 	owner := seedHostedNative(t, store, "claude", revivedNativeID, agentSessionDetached)
 	other := seedHostedNative(t, store, "claude", "cs_other", "ready")
-	sess := &session{hostedThreadID: other.ID,
-		provider:        "claude",
-		threadID:        revivedNativeID,
-		metadata:        control,
-		agentExecutions: store,
-		lifecycleState:  testLifecycleSnapshot("ready", false)}
-	sess.updateHostedThread(agentSessionDetached, "")
+	sess := configuredFixtureSession(t, sessionConfig{HostedThreadID: other.ID, Provider: "claude", Metadata: control, AgentExecutions: store}, revivedNativeID, "ready", "", false)
+	sess.Close()
 	if err := hostedvalues.SkipOwnedNativeClaim(store.BindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +150,7 @@ func TestResumeReusesExitedOwnerInsteadOfMinting(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	req := spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}}
+	req := spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}}
 	resolved, err := s.resolveSpawn(req)
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +177,7 @@ func TestResumeHistoricalHostedIDRedirectsToCurrentOwner(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	req := spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, HostedThreadID: old.ID}}
+	req := spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, HostedThreadID: old.ID}}
 	resolved, err := s.resolveSpawn(req)
 	if err != nil {
 		t.Fatal(err)
@@ -206,7 +201,7 @@ func TestInheritMissingCwdFromPredecessor(t *testing.T) {
 		t.Fatal(err)
 	}
 	current := seedHostedNative(t, store, "claude", "cs_tmp", agentSessionDetached)
-	s := &server{controlMetadata: control, agentExecutions: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{controlMetadata: control, agentExecutions: store, Registry: newSessionRegistry()}
 	if err := s.repairCanonicalNativeIdentity("claude", revivedNativeID, current.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -226,14 +221,14 @@ func TestInheritMissingCwdFromPredecessor(t *testing.T) {
 
 func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.reply(call, map[string]any{
+		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID,
 			"state": "running", "turnActive": false, "lastSeq": 1,
 		})
-		c.line(1, "recv", claudeInitLine)
-		c.notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
+		c.Line(1, "recv", claudeInitLine)
+		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
 	}))
-	s, attachments := bootReattachServer(t, shim.wsURL(), "")
+	s, attachments := bootReattachServer(t, shim.WSURL(), "")
 	predecessor := seedHostedNative(t, s.agentExecutions, "claude", claudeResumeThreadID, sessionStatusExited)
 	cwd := t.TempDir()
 	if _, err := s.controlMetadata.AppendEvent(metadataEvent{
@@ -253,16 +248,16 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	ensureClaudeTestSpool(t, s, "claude", current.ID)
 	openTurnsForBoot(t, s)
 	s.reattachOnBoot()
-	s.mu.Lock()
+
 	var sess *session
-	for _, candidate := range s.sessions {
+	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
-	s.mu.Unlock()
+
 	if sess == nil {
 		t.Fatal("boot left the revived record detached")
 	}
-	sum := waitForSessionStatus(t, s, sess.id, "ready")
+	sum := waitForSessionStatus(t, s, sess.ID(), "ready")
 	if sum.Cwd != cwd || sum.HostedThreadID != current.ID {
 		t.Fatalf("boot summary = %#v, want inherited cwd %q on %s", sum, cwd, current.ID)
 	}
@@ -362,7 +357,7 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 						{Provider: provider, NativeThreadID: revivedNativeID}: {Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID},
 					}},
 				}
-				req := spawnRequest{providerRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: revivedNativeID}}
+				req := spawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: revivedNativeID}}
 				if named {
 					req.HostedThreadID = old.ID
 				}
@@ -384,18 +379,18 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 func TestResumeRefusesUnownedNativeBeforeProviderStart(t *testing.T) {
 	app, _ := claudeResumeServer(t, "")
 	before := len(app.agentExecutions.sessions)
-	_, err := app.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, Cwd: t.TempDir()}})
+	_, err := app.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, Cwd: t.TempDir()}})
 	if err == nil {
 		t.Fatal("unowned native resume created a hosted record")
 	}
-	if len(app.agentExecutions.sessions) != before || len(app.sessions) != 0 {
+	if len(app.agentExecutions.sessions) != before || len(app.SnapshotSessions()) != 0 {
 		t.Fatal("unowned resume created session state before refusal")
 	}
 }
 
 func TestResumeRefusesWithoutCanonicalStore(t *testing.T) {
 	app := &server{}
-	req := spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: revivedNativeID}}
+	req := spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: revivedNativeID}}
 	if err := app.resolveResumeHostedIdentity(&req); err == nil {
 		t.Fatal("resume accepted without canonical ownership store")
 	}
@@ -414,7 +409,7 @@ func TestResumeRefusesConflictingCanonicalOwners(t *testing.T) {
 	}
 	app := &server{controlMetadata: control, agentExecutions: store}
 	for _, named := range []string{"", first.ID, second.ID} {
-		req := spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, HostedThreadID: named}}
+		req := spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, HostedThreadID: named}}
 		if err := app.resolveResumeHostedIdentity(&req); err == nil {
 			t.Fatal("conflicting owners selected by row order")
 		}

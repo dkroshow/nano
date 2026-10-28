@@ -156,24 +156,24 @@ func TestGeneralFileWriteConflictForcePermissionsAndNoCreation(t *testing.T) {
 
 // liveEvidenceSession is a Codex session whose live text shows each text as a
 // finished reply, as the wire delivered it.
-func liveEvidenceSession(texts ...string) *session {
-	sess := &session{id: "session-1", provider: "codex", projection: newLiveProjection("codex")}
-	sess.liveText = newLiveTextLoop(&server{}, sess)
-	sess.projection.(*liveProjection).liveText = sess.liveText
+func liveEvidenceSession(texts ...string) (*session, *liveProjection) {
+	projection := newLiveProjection("codex")
+	sess := newFixtureSession(sessionConfig{ID: "session-1", Provider: "codex", Projection: projection}, "")
+	sess.AttachLiveText(newLiveTextLoop(&server{}, sess))
 	for _, text := range texts {
-		addLiveEvidence(sess, text)
+		addLiveEvidence(projection, text)
 	}
-	return sess
+	return sess, projection
 }
 
 // addLiveEvidence streams one reply: live text shows a reply that started
 // streaming, not one that arrived only finished.
-func addLiveEvidence(sess *session, text string) {
+func addLiveEvidence(projection *liveProjection, text string) {
 	id := "reply-" + sendTextHash(text)
 	for _, method := range []string{"item/started", "item/completed"} {
 		frame, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"turnId": "turn-1",
 			"item": map[string]any{"id": id, "type": "agentMessage", "text": text}}})
-		sess.projection.(*liveProjection).applyWire(protocol.Recv, frame, time.Now())
+		projection.applyWire(protocol.Recv, frame, time.Now())
 	}
 }
 
@@ -189,15 +189,15 @@ func TestGeneralFileResolutionUsesOnlyCurrentThreadLiveEvidence(t *testing.T) {
 		}
 		writeTestFile(t, path, path+"\n")
 	}
-	sess := liveEvidenceSession("See " + first)
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": sess}}}
+	sess, projection := liveEvidenceSession("See " + first)
+	server := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"session-1": sess})
 
 	path, by, err := server.resolveGeneralFile(context.Background(), filepath.ToSlash(relative), "", "", "session-1")
 	if err != nil || path != filemodel.CanonicalPath(first) || by != "thread-evidence" {
 		t.Fatalf("live evidence = %q, %q, %v", path, by, err)
 	}
 
-	addLiveEvidence(sess, "Also "+second)
+	addLiveEvidence(projection, "Also "+second)
 	_, _, err = server.resolveGeneralFile(context.Background(), filepath.ToSlash(relative), "", "", "session-1")
 	if err == nil || err.Code != "ambiguous_path" || len(err.Candidates) != 2 {
 		t.Fatalf("ambiguous evidence = %#v", err)
@@ -218,8 +218,8 @@ func TestGeneralFileEvidenceUsesPathBoundariesAndDedupesSymlinkAliases(t *testin
 	if err := os.Symlink(target, alias); err != nil {
 		t.Fatal(err)
 	}
-	sess := liveEvidenceSession("real " + target + " alias " + alias + " false " + filepath.Join(root, "notreports", "pulse.md"))
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": sess}}}
+	sess, _ := liveEvidenceSession("real " + target + " alias " + alias + " false " + filepath.Join(root, "notreports", "pulse.md"))
+	server := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"session-1": sess})
 
 	path, _, err := server.resolveGeneralFile(context.Background(), "reports/pulse.md", "", "", "session-1")
 	if err != nil || path != filemodel.CanonicalPath(target) {
@@ -258,9 +258,9 @@ func TestGeneralFileResolvesFromSavedHistoryOlderThanTheLiveRows(t *testing.T) {
 	}
 	writeTestFile(t, target, "older\n")
 	catalog := &fileEvidenceTestCatalog{blobs: map[string][]string{"thread-1": {"Earlier turn: " + target}}}
-	server := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"session-1": {id: "session-1", projection: newLiveProjection("codex")},
-	}}}
+	server := testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*session{
+		"session-1": newFixtureSession(sessionConfig{ID: "session-1", Projection: newLiveProjection("codex")}, ""),
+	})
 
 	path, by, err := server.resolveGeneralFile(context.Background(), "reports/older.md", "", "thread-1", "session-1")
 	if err != nil || path != filemodel.CanonicalPath(target) || by != "thread-evidence" {
@@ -280,9 +280,9 @@ func TestGeneralFileSearchesTheSessionsSavedHistoryWithoutAThreadID(t *testing.T
 	}
 	writeTestFile(t, target, "older\n")
 	catalog := &fileEvidenceTestCatalog{blobs: map[string][]string{"thread-1": {"Earlier turn: " + target}}}
-	server := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"session-1": {id: "session-1", threadID: "native-1", projection: newLiveProjection("codex")},
-	}}}
+	server := testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*session{
+		"session-1": newFixtureSession(sessionConfig{ID: "session-1", Projection: newLiveProjection("codex")}, "native-1"),
+	})
 
 	path, _, err := server.resolveGeneralFile(context.Background(), "reports/older.md", "", "", "session-1")
 	if err != nil || path != filemodel.CanonicalPath(target) || !reflect.DeepEqual(catalog.searched, []string{"thread-1"}) {
@@ -387,7 +387,7 @@ func TestGeneralFileFallsBackToTheThreadWorkingDirectory(t *testing.T) {
 	writeTestFile(t, target, "routing\n")
 	_ = repo
 
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": {id: "session-1", cwd: threadRepo}}}}
+	server := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"session-1": newFixtureSession(sessionConfig{ID: "session-1", CWD: threadRepo}, "")})
 	path, by, err := server.resolveGeneralFile(context.Background(), "analysis/routing.md", docDir, "", "session-1")
 	if err != nil || path != filemodel.CanonicalPath(target) || by != "thread-cwd" {
 		t.Fatalf("thread-cwd resolve = %q, %q, %v; want %q by thread-cwd", path, by, err, filemodel.CanonicalPath(target))
@@ -404,7 +404,8 @@ func TestGeneralFileEvidenceOutranksAnAmbiguousFilesystemGuess(t *testing.T) {
 		}
 		writeTestFile(t, path, path+"\n")
 	}
-	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": liveEvidenceSession("wrote " + far)}}}
+	sess, _ := liveEvidenceSession("wrote " + far)
+	server := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"session-1": sess})
 
 	path, by, err := server.resolveGeneralFile(context.Background(), "docs/notes.md", docDir, "", "session-1")
 	if err != nil || path != filemodel.CanonicalPath(far) || by != "thread-evidence" {

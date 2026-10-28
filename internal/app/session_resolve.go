@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 // resolveSpawn fills flag defaults and absolutizes cwd — the single place
@@ -39,7 +40,7 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 		// canonical hosted state alone. The immutable identity block is part of
 		// that transport command, so the resume resolver needs the same server
 		// origin a fresh start receives below.
-		req.apiOrigin = s.defaults.apiOrigin
+		req.APIOrigin = s.defaults.apiOrigin
 		req.ThreadID = strings.TrimSpace(req.ThreadID)
 		if req.ThreadID == "" {
 			return req, fmt.Errorf("threadId is required to resume a thread")
@@ -82,7 +83,7 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 		return req, fmt.Errorf("sessionStartSource must be %q or %q, got %q", "startup", "clear", req.SessionStartSource)
 	}
 
-	req.apiOrigin = s.defaults.apiOrigin
+	req.APIOrigin = s.defaults.apiOrigin
 	if req.Cwd == "" {
 		req.Cwd = s.defaults.cwd
 	}
@@ -115,7 +116,7 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 		if req.ServiceTier == "" {
 			req.ServiceTier = "default"
 		}
-		if err := s.codex.validateUltrafast(req.Model, req.ServiceTier); err != nil {
+		if err := s.codex.ValidateUltrafast(req.Model, req.ServiceTier); err != nil {
 			return req, err
 		}
 	case "grok":
@@ -152,7 +153,7 @@ func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
 	if err != nil {
 		return fmt.Errorf("read external Resume origin for hosted thread %s: %w", req.HostedThreadID, err)
 	}
-	req.externalResumePosture = externalPosture
+	req.ExternalResumePosture = externalPosture
 	// Do not let an API caller's resume body or a retired attachment value fill
 	// a missing canonical fact. Resume deliberately uses desired intent rather
 	// than the display projection: an imported historical creation/operator
@@ -164,10 +165,10 @@ func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
 		name string
 		set  func(string)
 	}{
-		{postureFieldModel, func(value string) { req.Model = value }},
-		{postureFieldEffort, func(value string) { req.Effort = value }},
-		{postureFieldPermissionMode, func(value string) { req.PermissionMode = value }},
-		{postureFieldServiceTier, func(value string) { req.ServiceTier = value }},
+		{hostedvalues.PostureFieldModel, func(value string) { req.Model = value }},
+		{hostedvalues.PostureFieldEffort, func(value string) { req.Effort = value }},
+		{hostedvalues.PostureFieldPermissionMode, func(value string) { req.PermissionMode = value }},
+		{hostedvalues.PostureFieldServiceTier, func(value string) { req.ServiceTier = value }},
 		{"cwd", func(value string) { req.Cwd = value }},
 	} {
 		if value, ok := hostedvalues.ResumeString(view.Fields[field.name]); ok {
@@ -204,7 +205,7 @@ func (s *server) resolveGrokResume(req spawnRequest) (spawnRequest, error) {
 	// by applyCanonicalResumeMetadata.  A non-hosted historical attachment may
 	// still supply an explicit request value, but it cannot become authority for
 	// a hosted session.
-	req.grokResumeModel = resumeModel
+	req.GrokResumeModel = resumeModel
 	return req, nil
 }
 
@@ -253,7 +254,7 @@ func (s *server) resolveCodexResume(req spawnRequest) (spawnRequest, error) {
 func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 	req.ClaudeShimWS = s.defaults.claudeShimWS
 	req.ClaudeShimSpools = s.defaults.claudeShimSpools
-	if nativeThreadIDProvisional("claude", req.ThreadID) && req.HostedThreadID != "" {
+	if sessionruntime.NativeThreadIDProvisional("claude", req.ThreadID) && req.HostedThreadID != "" {
 		// An interrupted re-key can leave the handle's record beside the one it
 		// wrote for the resolved native. The native's record is the current
 		// one, with the anchor of any later turn: resume it. spawnSession
@@ -287,23 +288,23 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 	req.ClaudeArgs = rec.Args
 	req.ClaudeAnchor = rec
 	if req.ClaudeBin == "" {
-		req.ClaudeBin = resolveClaudeBin(s.defaults.claudeBin)
+		req.ClaudeBin = sessionruntime.ResolveClaudeBin(s.defaults.claudeBin)
 	}
 	if len(req.ClaudeArgs) == 0 {
 		// No stored transport command exists, so rebuild one from the request's
 		// recorded fields. Existing hosted records retain the legacy allowlist
 		// fallback. A first registration must keep an unknown provider allowlist
 		// unknown instead of applying a new-session default.
-		if !req.externalResumePosture && req.AllowedTools == "" && req.PermissionMode != "bypassPermissions" {
+		if !req.ExternalResumePosture && req.AllowedTools == "" && req.PermissionMode != "bypassPermissions" {
 			req.AllowedTools = s.defaults.allowedTools
 		}
-		req.ClaudeArgs = claudeArgs(req.providerRequest)
+		req.ClaudeArgs = sessionruntime.ClaudeArgs(req.ProviderRequest)
 	}
 	// A stored command supplies the stream transport baseline. A record-less
 	// historical resume rebuilds that baseline above. Only after either source
 	// exists may canonical hosted posture and identity replace stale values.
 	if req.HostedThreadID != "" {
-		req.ClaudeArgs = claudeCanonicalResumeArgs(req.ClaudeArgs, req.providerRequest)
+		req.ClaudeArgs = sessionruntime.ClaudeCanonicalResumeArgs(req.ClaudeArgs, req.ProviderRequest)
 	}
 	return req, nil
 }

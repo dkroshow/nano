@@ -73,7 +73,7 @@ func countHostedRecords(t *testing.T, s *server) int {
 
 func TestExternalCodexResumeRegistersOnceAndPreservesHistoryIdentity(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external001"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 
@@ -95,8 +95,8 @@ func TestExternalCodexResumeRegistersOnceAndPreservesHistoryIdentity(t *testing.
 		t.Fatalf("hosted records = %d, want 1", got)
 	}
 	ready := waitForSessionStatus(t, s, summary.ID, "ready")
-	if ready.ThreadID != nativeID || fake.resumeCount() != 1 {
-		t.Fatalf("ready = %#v resumes=%d", ready, fake.resumeCount())
+	if ready.ThreadID != nativeID || fake.ResumeCount() != 1 {
+		t.Fatalf("ready = %#v resumes=%d", ready, fake.ResumeCount())
 	}
 	for field, want := range map[string]string{
 		"cwd": s.defaults.cwd, postureFieldModel: "gpt-external", postureFieldEffort: "high",
@@ -115,7 +115,7 @@ func TestExternalCodexResumeRegistersOnceAndPreservesHistoryIdentity(t *testing.
 
 func TestExternalResumePreviewIsReadOnly(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external002"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 
@@ -135,7 +135,7 @@ func TestExternalResumePreviewIsReadOnly(t *testing.T) {
 
 func TestConcurrentExternalResumeCreatesOneRegistrationAndOneAttachment(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external003"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 
@@ -168,14 +168,14 @@ func TestConcurrentExternalResumeCreatesOneRegistrationAndOneAttachment(t *testi
 		t.Fatalf("wins=%d conflicts=%d hosted=%d", wins, conflicts, countHostedRecords(t, s))
 	}
 	waitForSessionStatus(t, s, winner.ID, "ready")
-	if fake.resumeCount() != 1 {
-		t.Fatalf("provider resumes = %d, want 1", fake.resumeCount())
+	if fake.ResumeCount() != 1 {
+		t.Fatalf("provider resumes = %d, want 1", fake.ResumeCount())
 	}
 }
 
 func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	s.defaults.allowedTools = "Read,Write"
 
 	for _, provider := range []string{"claude", "grok"} {
@@ -186,7 +186,7 @@ func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testin
 			// its new-session allowlist or a broader permission mode.
 			catalog.thread.Metadata.Permission = unknownCatalogValue()
 			s.catalog = catalog
-			resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
+			resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -203,7 +203,7 @@ func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testin
 					t.Fatalf("Claude args leaked new-session defaults: %q", joined)
 				}
 			case "grok":
-				if resolved.Model != "" || resolved.Effort != "" || resolved.grokResumeModel != "gpt-external" {
+				if resolved.Model != "" || resolved.Effort != "" || resolved.GrokResumeModel != "gpt-external" {
 					t.Fatalf("Grok resume posture = %#v", resolved)
 				}
 			}
@@ -213,8 +213,8 @@ func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testin
 
 func TestExternalResumeProviderFailureKeepsOneRetryableIdentity(t *testing.T) {
 	fake := newFakeAppServer(t)
-	fake.setResumeErrorSequence("temporary resume failure", "")
-	s := newResumeTestServer(t, fake.wsURL())
+	fake.SetResumeErrorSequence("temporary resume failure", "")
+	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external006"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 
@@ -243,8 +243,8 @@ func TestExternalResumeProviderFailureKeepsOneRetryableIdentity(t *testing.T) {
 		t.Fatalf("retry minted a new identity: failed=%#v retried=%#v records=%d", failed, retried, countHostedRecords(t, s))
 	}
 	waitForSessionStatus(t, s, retried.ID, "ready")
-	if fake.resumeCount() != 2 {
-		t.Fatalf("resume attempts=%d, want 2", fake.resumeCount())
+	if fake.ResumeCount() != 2 {
+		t.Fatalf("resume attempts=%d, want 2", fake.ResumeCount())
 	}
 }
 
@@ -256,7 +256,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	catalog.thread.Metadata.Permission = unknownCatalogValue()
 	s.catalog = catalog
 
-	firstResolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	firstResolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	waitForSessionStatus(t, s, first.ID, sessionStatusExited)
 
-	retry, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	retry, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,22 +284,22 @@ func TestConcurrentExternalClaudeResumePreclaimsBeforeReturn(t *testing.T) {
 	releaseAttach := make(chan struct{})
 	shim := newFakeShim(t, func(c *shimConn) {
 		for {
-			call, ok := c.next()
+			call, ok := c.Next()
 			if !ok {
 				return
 			}
 			switch call.Method {
 			case shimMethodAttach:
 				<-releaseAttach
-				c.replyError(call, shimCodeSessionNotFound, "not found")
+				c.ReplyError(call, shimCodeSessionNotFound, "not found")
 			case shimMethodStart:
-				c.reply(call, map[string]any{"shimSessionId": "unexpected-second-writer"})
+				c.Reply(call, map[string]any{"shimSessionId": "unexpected-second-writer"})
 			default:
-				c.reply(call, nil)
+				c.Reply(call, nil)
 			}
 		}
 	})
-	s, _ := claudeResumeServer(t, shim.wsURL())
+	s, _ := claudeResumeServer(t, shim.WSURL())
 	const nativeID = "external-claude-concurrent"
 	s.catalog = externalResumeCatalog(t, "claude", nativeID, s.defaults.cwd)
 
@@ -335,10 +335,10 @@ func TestConcurrentExternalClaudeResumePreclaimsBeforeReturn(t *testing.T) {
 		t.Fatalf("winning Resume returned before reserving native identity: threadId=%q", winner.ThreadID)
 	}
 	waitForSessionStatus(t, s, winner.ID, sessionStatusExited)
-	if attaches := len(shim.callsOf(shimMethodAttach)); attaches != 1 {
+	if attaches := len(shim.CallsOf(shimMethodAttach)); attaches != 1 {
 		t.Fatalf("provider attach attempts=%d, want exactly one", attaches)
 	}
-	if starts := len(shim.callsOf(shimMethodStart)); starts != 0 {
+	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("exclusive attach failure started %d replacement Claude writers", starts)
 	}
 }
@@ -368,33 +368,33 @@ while :; do sleep 1; done
 	if second.Code != http.StatusConflict {
 		t.Fatalf("second Grok Resume status=%d body=%s, want conflict", second.Code, second.Body.String())
 	}
-	s.mu.Lock()
-	firstSession := s.sessions[first.ID]
-	s.mu.Unlock()
+
+	firstSession := s.LookupSession(first.ID)
+
 	if firstSession == nil {
 		t.Fatal("first Grok session disappeared during blocked handshake")
 	}
-	firstSession.close()
+	firstSession.Close()
 }
 
 func TestExternalClaudeResumeFailsWithoutExclusiveShimAttachment(t *testing.T) {
 	shim := newFakeShim(t, func(c *shimConn) {
 		for {
-			call, ok := c.next()
+			call, ok := c.Next()
 			if !ok {
 				return
 			}
 			switch call.Method {
 			case shimMethodAttach:
-				c.replyError(call, shimCodeSessionNotFound, "external process is not shim-owned")
+				c.ReplyError(call, shimCodeSessionNotFound, "external process is not shim-owned")
 			case shimMethodStart:
-				c.reply(call, map[string]any{"shimSessionId": "unsafe-replacement"})
+				c.Reply(call, map[string]any{"shimSessionId": "unsafe-replacement"})
 			default:
-				c.reply(call, nil)
+				c.Reply(call, nil)
 			}
 		}
 	})
-	s, _ := claudeResumeServer(t, shim.wsURL())
+	s, _ := claudeResumeServer(t, shim.WSURL())
 	const nativeID = "external-claude-exclusive"
 	s.catalog = externalResumeCatalog(t, "claude", nativeID, s.defaults.cwd)
 
@@ -403,7 +403,7 @@ func TestExternalClaudeResumeFailsWithoutExclusiveShimAttachment(t *testing.T) {
 	if !strings.Contains(strings.ToLower(failed.Error), "exclusive") {
 		t.Fatalf("failure=%q, want an exclusive-attachment explanation", failed.Error)
 	}
-	if starts := len(shim.callsOf(shimMethodStart)); starts != 0 {
+	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("unsafe fallback started %d replacement Claude writers", starts)
 	}
 	if got := countHostedRecords(t, s); got != 1 {
@@ -415,13 +415,13 @@ func TestExternalClaudeResumeUsesExclusiveShimAttachment(t *testing.T) {
 	// The newly minted hosted id has no spool file yet, which only a shim
 	// session that has recorded nothing (lastSeq 0) positively explains.
 	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.reply(call, map[string]any{
+		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-external", "nativeSessionId": "native-1",
 			"state": "running", "lastSeq": 0,
 		})
-		c.notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-external", "lastSeq": 0})
+		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-external", "lastSeq": 0})
 	}))
-	s, _ := claudeResumeServer(t, shim.wsURL())
+	s, _ := claudeResumeServer(t, shim.WSURL())
 	s.catalog = externalResumeCatalog(t, "claude", "native-1", s.defaults.cwd)
 
 	first := spawnedSummary(t, postExternalResume(s, "claude", "native-1"))
@@ -429,7 +429,7 @@ func TestExternalClaudeResumeUsesExclusiveShimAttachment(t *testing.T) {
 	if ready.ThreadID != "native-1" {
 		t.Fatalf("ready identity=%q, want native-1", ready.ThreadID)
 	}
-	if starts := len(shim.callsOf(shimMethodStart)); starts != 0 {
+	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("exclusive attach unexpectedly started %d replacement children", starts)
 	}
 }
@@ -448,7 +448,7 @@ func TestExternalResumeRejectsUnsafeCatalogEvidenceWithoutRegistration(t *testin
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := newFakeAppServer(t)
-			s := newResumeTestServer(t, fake.wsURL())
+			s := newResumeTestServer(t, fake.WSURL())
 			const nativeID = "0199a213-abcd-7000-8000-external004"
 			catalog := externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 			tc.mutate(catalog)
@@ -466,7 +466,7 @@ func TestExternalResumeRejectsUnsafeCatalogEvidenceWithoutRegistration(t *testin
 
 func TestExternalResumeRejectsStaleCatalogWhenCurrentSourceChanged(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external007"
 	s.catalog = &externalResumeVerifyingCatalog{
 		fakeThreadCatalog: externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd),
@@ -483,7 +483,7 @@ func TestExternalResumeRejectsStaleCatalogWhenCurrentSourceChanged(t *testing.T)
 
 func TestExternalResumeRejectsUnknownNativeIDWithoutRegistration(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	s.catalog = &fakeThreadCatalog{rescued: map[string]catalogThread{}}
 	rec := postExternalResume(s, "codex", "0199a213-abcd-7000-8000-unknown")
 	if rec.Code == http.StatusOK || !strings.Contains(strings.ToLower(rec.Body.String()), "not found") {
@@ -496,7 +496,7 @@ func TestExternalResumeRejectsUnknownNativeIDWithoutRegistration(t *testing.T) {
 
 func TestExternalResumeRejectsRecoveryHeldNativeIDWithoutRegistration(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-recovery"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 	hosted := seedHostedNative(t, s.agentExecutions, "codex", "recovery-old", sessionStatusExited)
@@ -514,7 +514,7 @@ func TestExternalResumeRejectsRecoveryHeldNativeIDWithoutRegistration(t *testing
 
 func TestExternalResumeRejectsRetiredHostedHistory(t *testing.T) {
 	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.wsURL())
+	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external005"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 	old := seedHostedNative(t, s.agentExecutions, "codex", nativeID, sessionStatusExited)

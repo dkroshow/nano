@@ -26,7 +26,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{agentExecutions: store, controlMetadata: control, Registry: newSessionRegistry()}
 
 	first, err := control.currentOrchestrationAssignment(worker.ID)
 	if err != nil || first == nil || first.AssignmentRole != "worker" || first.Focus != "Implement exactly this" {
@@ -211,24 +211,15 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	sess := &session{id: "nano-worker",
-		provider:        "codex",
-		hostedThreadID:  worker.ID,
-		threadID:        "native-worker",
-		createdAt:       time.Now(),
-		interactions:    map[string]pendingInteraction{},
-		projection:      newLiveProjection("codex", worker.ID),
-		agentExecutions: store,
-		sendOps:         map[string]*turnSendOperation{},
-		turns:           turnStore,
-		queuedTurns:     queue,
-		sendAttempts:    attempts,
-		lifecycleState:  testLifecycleSnapshot("ready", false)}
-	sess.turnSender = func(_ context.Context, prompt string) (json.RawMessage, error) {
-		prompts <- prompt
-		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
-	}
-	s := &server{agentExecutions: store, controlMetadata: control, catalog: renamedCatalog{name: "Worker sender"}, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
+	var sess *session
+	runtimeFixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-worker", Provider: "codex", HostedThreadID: worker.ID, CreatedAt: time.Now(), Projection: newLiveProjection("codex", worker.ID), AgentExecutions: store, Turns: turnStore, QueuedTurns: queue, SendAttempts: attempts}, "native-worker", "", func(f *providerRuntimeFixture) {
+		f.send = func(_ context.Context, prompt string) (json.RawMessage, error) {
+			prompts <- prompt
+			return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
+		}
+	})
+	sess = runtimeFixture.session
+	s := testServerWithSessions(&server{agentExecutions: store, controlMetadata: control, catalog: renamedCatalog{name: "Worker sender"}, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 	const prompt = "  Exact caller prompt: do not alter it.  "
 	rec := httptest.NewRecorder()
 	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)
@@ -265,7 +256,7 @@ func TestOrchestrationAssignmentNormalizesAndValidatesTargets(t *testing.T) {
 	parent, _, _ := store.beginSession("parent", "parent", "codex", presentationShared)
 	target, _, _ := store.beginSession("target-alias", "target", "codex", presentationShared)
 	op, _, _ := store.beginTurn(target.ID, "result", "hash")
-	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{agentExecutions: store, controlMetadata: control, Registry: newSessionRegistry()}
 	if view := s.agentSessionView(parent.ID); view.Assignment != nil {
 		t.Fatalf("unassigned thread defaulted to %#v", view.Assignment)
 	}
@@ -277,8 +268,8 @@ func TestOrchestrationAssignmentNormalizesAndValidatesTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstHash, _ := json.Marshal(spawnRequest{providerRequest: providerRequest{Provider: "claude"}, ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byAlias})
-	secondHash, _ := json.Marshal(spawnRequest{providerRequest: providerRequest{Provider: "claude"}, ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byID})
+	firstHash, _ := json.Marshal(spawnRequest{ProviderRequest: providerRequest{Provider: "claude"}, ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byAlias})
+	secondHash, _ := json.Marshal(spawnRequest{ProviderRequest: providerRequest{Provider: "claude"}, ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byID})
 	if agentHash(firstHash) != agentHash(secondHash) {
 		t.Fatalf("normalized target aliases changed creation hash: %s != %s", firstHash, secondHash)
 	}
@@ -343,7 +334,7 @@ func TestOrchestrationAssignmentRelationshipReparentsWithoutChangingInvocationLi
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{agentExecutions: store, controlMetadata: control, Registry: newSessionRegistry()}
 
 	update := httptest.NewRecorder()
 	body := `{"clientActionId":"move-child","assignment":{"assignmentRole":"worker","focus":"Implement the change","relatedHostedThreadId":"new-parent","auditTargets":[]}}`
@@ -410,7 +401,7 @@ func TestAssignmentResolutionFailuresAreVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{agentExecutions: store, controlMetadata: control, Registry: newSessionRegistry()}
 	if err := control.Close(); err != nil {
 		t.Fatal(err)
 	}

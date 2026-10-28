@@ -14,7 +14,7 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 )
 
-func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentSessionRecord, agentSessionRecord, chan string) {
+func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentSessionRecord, agentSessionRecord, chan string, *fakeAppServer) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	mail := newTestAgentMessageStore(t)
@@ -34,58 +34,53 @@ func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentS
 	worker, _ = store.session(worker.ID)
 	prompts := make(chan string, 8)
 	queue := mustQueuedTurnStore(t)
-	turnStore, err := turns.OpenStore(context.Background(), queue.db)
+	turnStore, err := turns.OpenStore(context.Background(), queue.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := turnStore.AdoptLegacy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	attempts, err := newSendAttemptStore(queue.db, queue.path, "stage0-test", testPromptStore(t, queue.db))
+	attempts, err := newSendAttemptStore(queue.Database(), queue.Path(), "stage0-test", testPromptStore(t, queue.Database()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue.turns, attempts.turns = turnStore, turnStore
+	queue.BindTransactionStore(turnStore)
+	attempts.BindTransactionStore(turnStore)
 	projection := newLiveProjection("codex", worker.ID)
 	projection.SetNativeThreadID("native-worker")
-	sess := &session{id: "nano-worker",
-		provider:        "codex",
-		hostedThreadID:  worker.ID,
-		threadID:        "native-worker",
-		createdAt:       time.Now(),
-		interactions:    map[string]pendingInteraction{},
-		projection:      projection,
-		agentExecutions: store,
-		sendOps:         map[string]*turnSendOperation{},
-		queuedTurns:     queue,
-		sendAttempts:    attempts,
-		turns:           turnStore,
-		lifecycleState:  testLifecycleSnapshot("ready", false)}
-	sess.turnSender = func(_ context.Context, prompt string) (json.RawMessage, error) {
-		prompts <- prompt
-		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
-	}
-	// newTestControlMetadata closes the shared database during cleanup. Drain
-	// every delivery first so the fixture observes production's shutdown order.
-	t.Cleanup(func() {
-		sess.sendMu.Lock()
-		actionIDs := make([]string, 0, len(sess.sendOps))
-		for actionID := range sess.sendOps {
-			actionIDs = append(actionIDs, actionID)
-		}
-		sess.sendMu.Unlock()
-		for _, actionID := range actionIDs {
-			waitTurnSendDone(t, sess, actionID)
-		}
-	})
 	notices := interact.NewNotices()
-	sess.appendUnread = notices.Append
-	s := &server{agentExecutions: store, controlMetadata: control, mail: mail, notices: notices, catalog: renamedCatalog{name: "Claude sender"}, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, queuedTurns: queue, sendAttempts: attempts, turns: turnStore}
-	return s, store, sess, sender, worker, prompts
+	fake := newFakeAppServer(t)
+	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn"}})
+	fake.OnTurnStart = func(prompt string) { prompts <- prompt }
+	daemon := fake.daemon()
+	s := &server{agentExecutions: store, controlMetadata: control, mail: mail, notices: notices, catalog: renamedCatalog{name: "Claude sender"}, queuedTurns: queue, sendAttempts: attempts, turns: turnStore}
+	sess := newSession(sessionConfig{ID: "nano-worker", Provider: "codex", HostedThreadID: worker.ID, CreatedAt: time.Now(), Projection: projection, AgentExecutions: store, QueuedTurns: queue, SendAttempts: attempts, Turns: turnStore, Metadata: control, AppendUnread: notices.Append, NanoStopping: &s.stopping})
+	if err := sess.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	sess.ReserveNativeID("native-worker")
+	if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
+	// Stop transport work before the shared database cleanup.
+	t.Cleanup(func() {
+		for _, done := range sess.InFlightDeliveries() {
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Error("fixture delivery did not finish")
+			}
+		}
+		sess.Close()
+	})
+	seedTestSessionRegistry(&s.Registry, map[string]*session{sess.ID(): sess})
+	return s, store, sess, sender, worker, prompts, fake
 }
 
 func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
-	s, store, _, sender, worker, prompts := stage0Server(t)
+	s, store, _, sender, worker, prompts, _ := stage0Server(t)
 	body := `{"clientActionId":"ask-1","prompt":"Please review the parser.","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
 	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
@@ -164,7 +159,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, store, sess, sender, worker, prompts := stage0Server(t)
+			s, store, sess, sender, worker, prompts, _ := stage0Server(t)
 			if test.prepare != nil {
 				test.prepare(s, sender)
 			}
@@ -176,7 +171,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 			if _, ok := store.turnForAction(worker.ID, strings.Split(strings.TrimPrefix(test.body, `{"clientActionId":"`), `"`)[0]); ok {
 				t.Fatalf("rejected request created an operation")
 			}
-			if got := sess.queuedTurns.QueuedCount("codex", "native-worker", worker.ID); got != 0 {
+			if got := sess.QueuedPromptCount(); got != 0 {
 				t.Fatalf("rejected request queued %d turns", got)
 			}
 			select {
@@ -189,7 +184,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 }
 
 func TestInternalTurnHelperRejectsUnattributedAgentOriginBeforeArtifacts(t *testing.T) {
-	s, store, sess, _, worker, prompts := stage0Server(t)
+	s, store, sess, _, worker, prompts, _ := stage0Server(t)
 	_, _, err := s.submitHostedTurnWithOptions(worker.ID, "legacy-agent-action", "do not deliver", true)
 	if err == nil || !strings.Contains(err.Error(), "senderThreadRef") {
 		t.Fatalf("error = %v", err)
@@ -197,7 +192,7 @@ func TestInternalTurnHelperRejectsUnattributedAgentOriginBeforeArtifacts(t *test
 	if _, ok := store.turnForAction(worker.ID, "legacy-agent-action"); ok {
 		t.Fatal("unattributed internal agent action created an operation")
 	}
-	if got := sess.queuedTurns.QueuedCount("codex", "native-worker", worker.ID); got != 0 {
+	if got := sess.QueuedPromptCount(); got != 0 {
 		t.Fatalf("unattributed internal agent action queued %d turns", got)
 	}
 	select {
@@ -211,7 +206,7 @@ func TestQueueDeliversHumanBeforeAgentBeforeSystem(t *testing.T) {
 	q := mustQueuedTurnStore(t)
 	ctx := context.Background()
 	put := func(id string, origin turns.Origin) {
-		if _, _, err := q.turns.Submit(ctx, turns.Submission{HostedThreadID: "h", Provider: "codex", NativeThreadID: "n", ActionID: id, ProviderText: id, TextHash: id, RequestHash: id, Origin: origin}); err != nil {
+		if _, _, err := q.TransactionStore().Submit(ctx, turns.Submission{HostedThreadID: "h", Provider: "codex", NativeThreadID: "n", ActionID: id, ProviderText: id, TextHash: id, RequestHash: id, Origin: origin}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -239,7 +234,7 @@ func TestQueueDeliversHumanBeforeAgentBeforeSystem(t *testing.T) {
 			break
 		}
 		order = append(order, rec.ClientActionID)
-		if _, err := q.turns.Cancel(ctx, rec.ClientActionID); err != nil {
+		if _, err := q.TransactionStore().Cancel(ctx, rec.ClientActionID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -249,17 +244,21 @@ func TestQueueDeliversHumanBeforeAgentBeforeSystem(t *testing.T) {
 }
 
 func TestAvailabilityFromHardFacts(t *testing.T) {
-	s, store, sess, _, worker, _ := stage0Server(t)
+	s, store, sess, _, worker, prompts, fake := stage0Server(t)
 	now := time.Now().UTC()
 	if v := s.availabilityFor(worker.ID, now); v.State != availabilityAvailable {
 		t.Fatalf("idle = %+v", v)
 	}
-	sess.setTurnActive(true, "t1", 0, false)
+	(&providerRuntimeFixture{session: sess, codex: fake}).activate(t)
 	if v := s.availabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" {
 		t.Fatalf("active = %+v", v)
 	}
-	sess.setTurnActive(false, "", 0, true)
-	sess.noteHumanPrompt(now.Add(-2 * time.Minute))
+	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"status":"completed"}}}`))
+	if response := postTurn(t, sess, context.Background(), "human-recent", "hello"); response.Code != http.StatusOK {
+		t.Fatalf("human prompt = %d %s", response.Code, response.Body.String())
+	}
+	<-prompts
+	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"id":"provider-turn","status":"completed"}}}`))
 	if v := s.availabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.LastHumanMessageAt == "" {
 		t.Fatalf("recent human remains diagnostic only = %+v", v)
 	}
@@ -273,13 +272,18 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 		t.Fatal("last human prompt not persisted")
 	}
 	// Pending interaction holds the thread.
-	sess.addPendingInteraction(pendingInteraction{ID: "req-1", Method: "item/permissions/requested"})
+	fake.EmitNotification(map[string]any{"id": "req-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": sess.ThreadID()}})
+	waitForClaude(t, "pending permissions", func() bool { return len(sess.PendingInteractionList()) == 1 })
 	if v := s.availabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
 		t.Fatalf("pending interaction = %+v", v)
 	}
-	sess.takePendingInteraction("req-1")
+	response := httptest.NewRecorder()
+	sess.HandleInteraction(response, httptest.NewRequest(http.MethodPost, "/interactions/req-1", strings.NewReader(`{"decision":"decline"}`)), sess.PendingInteractionList()[0].ID)
+	if response.Code != http.StatusOK {
+		t.Fatalf("interaction decline = %d %s", response.Code, response.Body.String())
+	}
 	// Detached and unknown threads are unreachable.
-	delete(s.sessions, sess.id)
+	s.RemoveSession(sess.ID())
 	if v := s.availabilityFor(worker.ID, now); v.State != availabilityUnreachable || v.Facts.Attachment != "detached" {
 		t.Fatalf("detached = %+v", v)
 	}
@@ -290,8 +294,8 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 }
 
 func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
-	s, store, sess, sender, worker, prompts := stage0Server(t)
-	sess.setTurnActive(true, "busy", 0, false) // force queueing so the text persists without delivery
+	s, store, sess, sender, worker, prompts, fake := stage0Server(t)
+	(&providerRuntimeFixture{session: sess, codex: fake}).activate(t) // force queueing so the text persists without delivery
 	body := `{"clientActionId":"ask-2","prompt":"Q","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
 	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
@@ -314,7 +318,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("retry after rename = %d %s", rec.Code, rec.Body.String())
 	}
-	sess.setTurnActive(false, "", 0, true)
+	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"status":"completed"}}}`))
 	select {
 	case got := <-prompts:
 		wantFooter := senderFooter(turnAttribution{Origin: turnOriginAgent, SenderName: "Claude sender", SenderNativeThreadID: sender.NativeThreadID, SenderSubmittedAt: op.SenderSubmittedAt})
@@ -349,16 +353,18 @@ func (renamedCatalog) RequestRefresh() bool { return false }
 // Catches: the newest human prompt time losing to an older one when the older
 // one's fraction ends in zeros. RFC3339Nano trims them, so as text ".2374Z"
 // sorts after the later ".237401Z". Boundary: the session's note, in memory and
-// in the durable copy a reload reads.
+// in the durable copy a reload reads. The session sibling checks its in-memory note.
 func TestLastHumanPromptMovesForwardAcrossTrimmedFractions(t *testing.T) {
-	s, _, sess, _, worker, _ := stage0Server(t)
+	s, _, _, _, worker, _, _ := stage0Server(t)
 	earlier := time.Date(2026, 10, 15, 12, 0, 4, 237400000, time.UTC)
 	later := earlier.Add(time.Microsecond)
 	if earlier.Format(time.RFC3339Nano) <= later.Format(time.RFC3339Nano) {
 		t.Fatal("fixture: the earlier time must sort after the later one as text")
 	}
 	for _, at := range []time.Time{earlier, later, earlier} {
-		sess.noteHumanPrompt(at)
+		if err := s.agentExecutions.NoteHumanPrompt(worker.ID, at); err != nil {
+			t.Fatal(err)
+		}
 	}
 	want := later.Format(time.RFC3339Nano)
 	if rec, _ := s.agentExecutions.session(worker.ID); rec.LastHumanPromptAt != want {

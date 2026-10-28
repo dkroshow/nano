@@ -2,12 +2,13 @@ package app
 
 import (
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/dkroshow/nano/internal/diagnostics"
+	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -21,7 +22,7 @@ type browserDiagnosticEvent = diagnostics.Event
 type browserDiagnosticStore struct{ *diagnostics.Store }
 
 func newBrowserDiagnosticStore(capacity int) *browserDiagnosticStore {
-	return &browserDiagnosticStore{Store: diagnostics.NewStore(capacity, newSessionID())}
+	return &browserDiagnosticStore{Store: diagnostics.NewStore(capacity, sessionruntime.NewID())}
 }
 
 func (store *browserDiagnosticStore) add(events []browserDiagnosticEvent) int {

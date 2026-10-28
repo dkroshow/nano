@@ -14,6 +14,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -89,7 +90,7 @@ type sidebarNode struct {
 type sidebarRuntimeSnapshot struct {
 	overlays  map[attachmentKey]runtimeInfo
 	batched   bool
-	summaries []sessionSummary
+	summaries []sessionruntime.Summary
 }
 
 func (s *server) handleSidebarThreads(w http.ResponseWriter, r *http.Request) {
@@ -399,12 +400,12 @@ func (s *server) sidebarRuntimeSnapshot() sidebarRuntimeSnapshot {
 // control-store read. Every fleet-wide caller (runtime deltas, list rows,
 // identity and reference resolution) uses it; canonical metadata is applied
 // afterward in one batch, never once per session.
-func (s *server) volatileSessionSummaries() []sessionSummary {
+func (s *server) volatileSessionSummaries() []sessionruntime.Summary {
 	needsAttention := map[string]bool{}
 	if s.agentExecutions != nil {
 		needsAttention = s.agentExecutions.sessionsNeedingAttention()
 	}
-	return s.volatileSummaries(needsAttention)
+	return s.VolatileSummaries(needsAttention)
 }
 
 // sidebarHostedRecords resolves the durable hosted identity overlay in one
@@ -469,8 +470,8 @@ func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRe
 			continue
 		}
 		best := fallback[key]
-		bestOpen := best.ID != "" && best.Status != sessionStatusExited
-		recordOpen := record.Status != sessionStatusExited
+		bestOpen := best.ID != "" && best.Status != sessionruntime.StatusExited
+		recordOpen := record.Status != sessionruntime.StatusExited
 		// Compared as times: RFC3339Nano trims trailing zeros, so as text
 		// ".2374Z" sorts after the later ".237401Z".
 		if best.ID == "" || (recordOpen != bestOpen && recordOpen) || (recordOpen == bestOpen && threadvalues.TimestampBefore(best.UpdatedAt, record.UpdatedAt)) {
@@ -642,9 +643,9 @@ func (s *controlMetadataStore) catalogMetadataByHostedIDs(ids []string) map[stri
 	}
 	for hostedID, fields := range views {
 		out[hostedID] = catalogMetadata{
-			CWD: canonical(fields, "cwd"), Model: canonical(fields, postureFieldModel),
-			Effort: canonical(fields, postureFieldEffort), Priority: canonical(fields, postureFieldServiceTier),
-			Permission: canonical(fields, postureFieldPermissionMode),
+			CWD: canonical(fields, "cwd"), Model: canonical(fields, hostedvalues.PostureFieldModel),
+			Effort: canonical(fields, hostedvalues.PostureFieldEffort), Priority: canonical(fields, hostedvalues.PostureFieldServiceTier),
+			Permission: canonical(fields, hostedvalues.PostureFieldPermissionMode),
 		}
 	}
 	return out
@@ -677,7 +678,7 @@ func (s *server) assembleSidebarGraph(ctx context.Context, graph history.Sidebar
 // live native identity was requested explicitly, so an absent row is not
 // indexed and needs a transient memory row. This avoids one catalog point
 // query per newly starting session on every sidebar request.
-func (s *server) memorySidebarThreadRows(durable []catalogThread, live []sessionSummary) []catalogThread {
+func (s *server) memorySidebarThreadRows(durable []catalogThread, live []sessionruntime.Summary) []catalogThread {
 	if len(live) == 0 {
 		return nil
 	}
@@ -992,7 +993,7 @@ func sidebarIndependentlyActive(thread catalogThread) bool {
 	// Provider transcripts can still look working or needs-you after Nano has
 	// explicitly closed their hosted record. That durable close wins for the
 	// active sidebar. Stars remain a separate operator fact above this branch.
-	if thread.Fleet != nil && thread.HostedStatus != sessionStatusExited {
+	if thread.Fleet != nil && thread.HostedStatus != sessionruntime.StatusExited {
 		switch thread.Fleet.Label {
 		case fleetWorking, fleetNeedsYou:
 			return true

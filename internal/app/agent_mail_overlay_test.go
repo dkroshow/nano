@@ -28,7 +28,7 @@ func operatorSendForTest(t *testing.T, s *server, recipient agentSessionRecord, 
 }
 
 func TestOperatorSendIdentityAndExclusivity(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 
 	rec, message := operatorSendForTest(t, s, recipient, "op-1", "From Operator", "Please prioritize the parser.")
 	if rec.Code != http.StatusCreated {
@@ -64,7 +64,7 @@ func TestOperatorSendIdentityAndExclusivity(t *testing.T) {
 }
 
 func TestOperatorEditOnlyWhileUnread(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	_, message := operatorSendForTest(t, s, recipient, "op-edit", "Draft", "First wording.")
 
 	edit := func(id, subject, body string) *httptest.ResponseRecorder {
@@ -111,7 +111,7 @@ func TestOperatorEditOnlyWhileUnread(t *testing.T) {
 }
 
 func TestAgentMailCountsAndCatalogOverlay(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	sendAgentMessageForTest(t, s, recipient, sender.ID, "m-1", "One", "First", nil)
 	sendAgentMessageForTest(t, s, recipient, sender.ID, "m-2", "Two", "Second", nil)
 	operatorSendForTest(t, s, recipient, "m-3", "Three", "Third")
@@ -152,7 +152,7 @@ func TestAgentMailCountsAndCatalogOverlay(t *testing.T) {
 }
 
 func TestGlobalMailListingOrderFiltersAndPaging(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	sendAgentMessageForTest(t, s, recipient, sender.ID, "g-1", "One", "First", nil)
 	sendAgentMessageForTest(t, s, recipient, sender.ID, "g-2", "Two", "Second", nil)
 	operatorSendForTest(t, s, recipient, "g-3", "Three", "Third")
@@ -223,7 +223,7 @@ func jsonNumber(v int64) string {
 }
 
 func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	s.mailEvents = newMailHub()
 	ch := s.mailEvents.subscribe()
 	defer s.mailEvents.unsubscribe(ch)

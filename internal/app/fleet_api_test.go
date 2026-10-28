@@ -35,12 +35,21 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			if err := executions.BindSession(record.ID, "session", "native-hosted", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			sess := memorySession("session", "codex", "native-hosted", "ready", "/work", "model", now)
-			sess.hostedThreadID = record.ID
-			sess.lifecycleState = lifecycle.Snapshot{State: lifecycle.State{Connection: lifecycle.Ready, Work: tc.work}, Epoch: 1}
-			sess.projection = newLiveProjection("codex")
-			sess.publishProjectionRuntime()
-
+			fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "session", Provider: "codex", HostedThreadID: record.ID, CWD: "/work", CreatedAt: now}, "native-hosted", "model")
+			sess := fixture.session
+			switch tc.work {
+			case lifecycle.Accepted:
+				if response := postTurn(t, sess, context.Background(), "fleet-prompt", "working"); response.Code != http.StatusOK {
+					t.Fatalf("accepted setup: %d %s", response.Code, response.Body)
+				}
+			case lifecycle.Working:
+				fixture.activate(t)
+			case lifecycle.WaitingOnYou:
+				fixture.activate(t)
+				fixture.emitAndWait(t, []byte(`{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-hosted","turnId":"fleet-turn","itemId":"fleet-command","command":"echo test"}}`))
+				waitForClaude(t, "fleet waiting state", func() bool { return len(sess.PendingInteractionList()) == 1 })
+			}
+			sess.PublishProjectionRuntime()
 			fake := &fakeFleetCatalog{
 				fakeThreadCatalog: fakeThreadCatalog{page: catalogPage{Items: []catalogThread{{
 					ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main",
@@ -51,10 +60,10 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 					ItemType: "user_message", Head: "continue", Tail: "continue", LastActivity: now,
 				}},
 			}
-			s := &server{
-				catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}},
+			s := testServerWithSessions(&server{
+				catalog: fake, Registry: newSessionRegistry(),
 				controlMetadata: metadata, agentExecutions: executions,
-			}
+			}, map[string]*session{sess.ID(): sess})
 			s.runtime = s
 			// The agents' transition feed labels the materialized row, which
 			// carries the contradicting saved-file court beside the overlay.
@@ -76,7 +85,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			if fleet == nil || fleet.Label != tc.want {
 				t.Fatalf("fleet = %#v, want %q", fleet, tc.want)
 			}
-			if pane := projectionStateForTest(sess.projection).Runtime.ThreadStatus; pane != tc.want {
+			if pane := projectionStateForTest(fixture.projection).Runtime.ThreadStatus; pane != tc.want {
 				t.Fatalf("pane = %q, rail = %q", pane, fleet.Label)
 			}
 			// The pane, the session list and the runtime overlay the sidebar
@@ -85,7 +94,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			if err := json.Unmarshal(items[0]["runtime"], &overlay); err != nil {
 				t.Fatal(err)
 			}
-			raw, err := json.Marshal(sess.summary())
+			raw, err := json.Marshal(sess.Summary())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -123,7 +132,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			}},
 		}
 		s := &server{
-			catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
+			catalog: fake, Registry: newSessionRegistry(),
 			controlMetadata: metadata, agentExecutions: executions,
 		}
 		s.runtime = s
@@ -189,12 +198,14 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 		},
 	}
 	base := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	busy := memorySession("busy", "claude", "native-busy", "ready", "/w/busy", "sonnet", base)
-	busy.lifecycleState = testLifecycleSnapshot(busy.connectionStatusLocked(), true)
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{
+	busy := memorySession(t, "busy", "claude", "native-busy", "ready", "/w/busy", "sonnet", base)
+	if response := postTurn(t, busy, context.Background(), "busy-prompt", "working"); response.Code != http.StatusOK {
+		t.Fatalf("busy setup: %d %s", response.Code, response.Body)
+	}
+	s := testServerWithSessions(&server{catalog: fake, Registry: newSessionRegistry()}, map[string]*session{
 		"busy": busy,
-		"new":  memorySession("new", "codex", "", "starting", "/w/new", "", base.Add(time.Minute)),
-	}}}
+		"new":  memorySession(t, "new", "codex", "", "starting", "/w/new", "", base.Add(time.Minute)),
+	})
 	s.runtime = s
 
 	items := listCatalog(t, s, "/api/v1/threads")
@@ -238,9 +249,9 @@ func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 		courtErr: errors.New("sqlite unavailable"),
 	}
 	base := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{
-		"new": memorySession("new", "codex", "", "starting", "/w/new", "", base),
-	}}}
+	s := testServerWithSessions(&server{catalog: fake, Registry: newSessionRegistry()}, map[string]*session{
+		"new": memorySession(t, "new", "codex", "", "starting", "/w/new", "", base),
+	})
 	s.runtime = s
 	items := listCatalog(t, s, "/api/v1/threads")
 	if len(items) != 2 || fleetRow(t, items[0]) != nil {

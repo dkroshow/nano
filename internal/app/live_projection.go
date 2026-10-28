@@ -20,8 +20,10 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
+	interactmodel "github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/protocol"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -110,7 +112,7 @@ type liveProjection struct {
 	// the rest of the running execution's frames carry that prompt's tag.
 	claudeRun        liveTurnWork
 	runtime          liveProjectionRuntime
-	interactions     map[string]pendingInteraction
+	interactions     map[string]interactmodel.PendingInteraction
 	interactionOrder []string
 	subs             map[chan liveProjectionUpdate]struct{}
 	// diagnostics is the thread's bounded list of delivery and session
@@ -124,7 +126,7 @@ type liveProjection struct {
 
 	// liveText receives each frame's parsed changes for a file-only thread;
 	// set once before wire activity.
-	liveText liveTextObserver
+	liveText sessionruntime.LiveTextObserver
 }
 
 // codexAgentTextDelta reports an agent-message delta, or the empty
@@ -171,7 +173,7 @@ func newLiveProjection(provider string, hostedThreadID ...string) *liveProjectio
 	projection := &liveProjection{
 		provider: provider, epoch: epoch, adapter: adapter,
 		turns: map[string]*liveProjectionTurn{}, turnWork: map[string]*liveTurnWork{},
-		interactions: map[string]pendingInteraction{}, subs: map[chan liveProjectionUpdate]struct{}{},
+		interactions: map[string]interactmodel.PendingInteraction{}, subs: map[chan liveProjectionUpdate]struct{}{},
 		runtime: liveProjectionRuntime{ThreadStatus: "unknown"},
 	}
 	if len(hostedThreadID) > 0 {
@@ -303,7 +305,7 @@ func (p *liveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at t
 		}
 		if json.Unmarshal(line, &envelope) == nil {
 			claudeTurnOpened = (dir == protocol.Send && envelope.Type == "user") ||
-				(live && dir == protocol.Recv && claudeExecutionEvidence(line))
+				(live && dir == protocol.Recv && sessionruntime.ClaudeExecutionEvidence(line))
 			claudeTurnClosed = dir == protocol.Recv && envelope.Type == "result"
 		}
 	}
@@ -344,7 +346,7 @@ func (p *liveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at t
 		id := providerTurnID
 		turn := cloneTurn(p.turns[id])
 		if turn != nil {
-			turn.Status, turn.Error = claudeProjectionTerminal(line)
+			turn.Status, turn.Error = sessionruntime.ClaudeProjectionTerminal(line)
 			turn.CompletedAtMs = at.UnixMilli()
 			if turn.StartedAtMs > 0 {
 				turn.DurationMS = turn.CompletedAtMs - turn.StartedAtMs
@@ -447,7 +449,7 @@ func (p *liveProjection) latestTurnInProgressLocked() bool {
 func (p *liveProjection) trimTurnsLocked() {
 	completed := make([]string, 0, len(p.turnOrder))
 	for _, turnID := range p.turnOrder {
-		if turn := p.turns[turnID]; turn != nil && codexResumeTurnTerminal(turn.Status) {
+		if turn := p.turns[turnID]; turn != nil && sessionruntime.CodexResumeTurnTerminal(turn.Status) {
 			completed = append(completed, turnID)
 		}
 	}
@@ -630,7 +632,7 @@ func cloneRuntimePtr(runtime liveProjectionRuntime) *liveProjectionRuntime {
 }
 
 // UpsertInteraction records a pending provider interaction.
-func (p *liveProjection) UpsertInteraction(interaction pendingInteraction) {
+func (p *liveProjection) UpsertInteraction(interaction interactmodel.PendingInteraction) {
 	interaction = liveview.CloneInteraction(interaction)
 	p.mu.Lock()
 	if _, exists := p.interactions[interaction.ID]; !exists {
@@ -667,8 +669,8 @@ func (p *liveProjection) RemoveInteraction(id string) {
 	p.mu.Unlock()
 }
 
-func (p *liveProjection) interactionsLocked() []pendingInteraction {
-	interactions := make([]pendingInteraction, 0, len(p.interactions))
+func (p *liveProjection) interactionsLocked() []interactmodel.PendingInteraction {
+	interactions := make([]interactmodel.PendingInteraction, 0, len(p.interactions))
 	for _, interaction := range p.interactions {
 		interactions = append(interactions, liveview.CloneInteraction(interaction))
 	}
@@ -693,7 +695,7 @@ type durableTurnEvidence = liveview.DurableTurnEvidence
 // savedTurnEvidence reads the saved status of a Codex or Grok turn by exact
 // native turn id. Claude saved turns carry no id the live turn shares, so a
 // Claude turn settles only from live evidence.
-func (s *server) savedTurnEvidence(ctx context.Context, sess *session, turnID string) (durableTurnEvidence, bool) {
+func (s *server) savedTurnEvidence(ctx context.Context, sess *sessionruntime.Session, turnID string) (durableTurnEvidence, bool) {
 	if s.catalog == nil || sess == nil || (sess.Provider() != "codex" && sess.Provider() != "grok") ||
 		turnID == "" || sess.ThreadID() == "" {
 		return durableTurnEvidence{}, false
@@ -748,8 +750,8 @@ func (s *server) confirmDurableThread(ctx context.Context, change transcriptChan
 	// Attached or not, the commit may hold an answer indexed after its
 	// operation's wait.
 	s.agentExecutions.savedTranscriptApplied(provider, nativeThreadID)
-	if sess := s.sessionForThread(provider, nativeThreadID); sess != nil {
-		sess.notifySavedTranscript()
+	if sess := s.SessionForThread(provider, nativeThreadID); sess != nil {
+		sess.NotifySavedTranscript()
 		s.confirmDurableItems(ctx, sess)
 	}
 	if provider == string(model.ProviderClaude) {
@@ -771,18 +773,18 @@ func (s *server) transcriptRepairPriority(candidate history.TranscriptParserBack
 	if s.transcriptValidations != nil && s.transcriptValidations.freshVisibleThread(candidate.NativeThreadID, time.Now().UTC()) {
 		return 0
 	}
-	if s.sessionForThread(string(candidate.Provider), candidate.NativeThreadID) != nil {
+	if s.SessionForThread(string(candidate.Provider), candidate.NativeThreadID) != nil {
 		return 1
 	}
 	return 2
 }
 
-func (s *server) confirmDurableItems(ctx context.Context, sess *session) {
+func (s *server) confirmDurableItems(ctx context.Context, sess *sessionruntime.Session) {
 	if sess == nil {
 		return
 	}
-	sess.reconcileDurableTurn(ctx)
-	sess.settleWaitingPrompts(ctx)
+	sess.ReconcileDurableTurn(ctx)
+	sess.SettleWaitingPrompts(ctx)
 }
 
 // RetainedTurnEvidence is a retained turn, the time of its newest start, end
@@ -804,7 +806,7 @@ func (p *liveProjection) RetainedTurnEvidence(turnID string) (liveProjectionTurn
 	return *turn, latest, version, true
 }
 
-func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Request, sess *session) {
+func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Request, sess *sessionruntime.Session) {
 	catalog, ok := s.catalog.(threadTranscriptCatalog)
 	resolver, resolves := s.catalog.(threadReferenceResolver)
 	if !ok || !resolves || sess == nil || sess.ThreadID() == "" {
@@ -961,7 +963,7 @@ func cloneUpdate(update liveProjectionUpdate) liveProjectionUpdate {
 			snapshot.Items[i] = *cloneLiveItem(&snapshot.Items[i])
 		}
 		snapshot.Turns = append([]liveProjectionTurn(nil), update.Snapshot.Turns...)
-		snapshot.Interactions = append([]pendingInteraction(nil), update.Snapshot.Interactions...)
+		snapshot.Interactions = append([]interactmodel.PendingInteraction(nil), update.Snapshot.Interactions...)
 		out.Snapshot = &snapshot
 	}
 	return out
@@ -979,7 +981,7 @@ func (p *liveProjection) ProviderName() string {
 func (p *liveProjection) DropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
 
 // SetLiveText connects the observer of ordered parsed evidence.
-func (p *liveProjection) SetLiveText(observer liveTextObserver) { p.liveText = observer }
+func (p *liveProjection) SetLiveText(observer sessionruntime.LiveTextObserver) { p.liveText = observer }
 
 // TurnActive reports whether the projected turn is active.
 func (p *liveProjection) TurnActive() bool {

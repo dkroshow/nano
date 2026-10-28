@@ -17,7 +17,7 @@ func newFileOnlyClaude(t *testing.T) *claudeHandoff {
 	t.Helper()
 	h := newClaudeHandoff(t)
 	h.catalog.server.startLiveText(h.session)
-	if h.session.liveText == nil {
+	if h.session.LiveTextService() == nil {
 		t.Fatal("a Claude session was not wired file-only")
 	}
 	return h
@@ -52,7 +52,7 @@ func TestFileOnlyClaudeFileOpensBySavedOrLiveEvidence(t *testing.T) {
 	h.stream("unsaved", "now editing "+unsaved)
 	for name, want := range map[string]string{"notes.md": saved, "draft.md": unsaved} {
 		rec := httptest.NewRecorder()
-		h.catalog.server.handleGeneralFileRead(rec, httptest.NewRequest(http.MethodGet, "/api/v1/files/read?path="+name+"&sessionId="+h.session.id, nil))
+		h.catalog.server.handleGeneralFileRead(rec, httptest.NewRequest(http.MethodGet, "/api/v1/files/read?path="+name+"&sessionId="+h.session.ID(), nil))
 		var file struct {
 			Path       string `json:"path"`
 			ResolvedBy string `json:"resolvedBy"`

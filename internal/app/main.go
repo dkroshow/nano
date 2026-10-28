@@ -35,13 +35,18 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/observability"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
+	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 	"github.com/dkroshow/nano/web"
 )
 
 // sessionDefaults come from flags and apply to every spawned session unless
 // the spawn request overrides them (provider/cwd/model are per-spawn).
+// deliveryExpiryWindow keeps a provider marked slow for five minutes after a delivery expires.
+const deliveryExpiryWindow = 5 * time.Minute
+
 type sessionDefaults struct {
 	cwd              string
 	model            string
@@ -63,7 +68,7 @@ type sessionDefaults struct {
 type server struct {
 	dropLiveTextDeltas bool
 	defaults           sessionDefaults
-	codex              *codexDaemon
+	codex              *sessionruntime.CodexDaemon
 	spoolDir           string
 	catalog            threadCatalog
 
@@ -75,7 +80,7 @@ type server struct {
 	// catalogSources is the catalog's attached-file watch set; each
 	// registered session holds its native files there. Nil when the catalog
 	// is unavailable.
-	catalogSources attachedSourceCatalog
+	catalogSources sessionruntime.AttachedCatalog
 	// runtime answers "is a nano session attached to this thread?" for the
 	// catalog API's volatile runtime overlay (runtime.go); main injects the
 	// server itself. Nil leaves the overlay field absent on every response.
@@ -200,9 +205,9 @@ type server struct {
 	stopping atomic.Bool
 	// deliveryExpiries counts each provider's recent delivery deadline
 	// expiries for the panes' "slow right now" line.
-	deliveryExpiries *deliveryExpiries
+	deliveryExpiries *sessionruntime.DeliveryExpiries
 
-	sessionRegistry
+	sessionruntime.Registry
 }
 
 // Main runs Nano using the process arguments and standard streams.
@@ -241,7 +246,7 @@ func construct(cfg config.Config) *application {
 	if err != nil {
 		log.Fatal(err)
 	}
-	spoolDir, err := prepareWireSpoolDir(cfg.Paths.WireSpoolDir)
+	spoolDir, err := sessionruntime.PrepareWireSpoolDir(cfg.Paths.WireSpoolDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -262,7 +267,7 @@ func construct(cfg config.Config) *application {
 	remoteAuth := remoteauth.New(remoteAuthStore, cfg.RemoteAuthHost)
 	var catalog threadCatalog
 	var catalogRefresh func(string)
-	var catalogSources attachedSourceCatalog
+	var catalogSources sessionruntime.AttachedCatalog
 	if catalogService != nil {
 		catalog, catalogSources = catalogService, catalogService
 		// Hosted sessions hint their known native files into the same queue
@@ -309,13 +314,13 @@ func construct(cfg config.Config) *application {
 				Attempts:  cfg.Paths.LegacySendAttempts,
 				Completed: legacyCompletedPath,
 			},
-		}, newSessionID())
+		}, sessionruntime.NewID())
 		if err != nil {
 			log.Fatalf("required schema %d turns store unavailable: %v", prompts.TurnSchemaVersion, err)
 		} else {
 			controlMetadata, agentExecutions = stores.control, stores.executions
 			queuedTurns, sendAttempts, completedTurns, turnStore = stores.queue, stores.attempts, stores.completed, stores.turns
-			startThreadsSizeWatch(stores.control.db, stores.queue.path)
+			startThreadsSizeWatch(stores.control.db, stores.queue.Path())
 			if err := importAndScrubLegacyAttachments(controlMetadata, attachments); err != nil {
 				log.Printf("canonical attachment migration unavailable: %v", err)
 				controlMetadataErr, executionControlErr = err.Error(), err.Error()
@@ -352,7 +357,9 @@ func construct(cfg config.Config) *application {
 			log.Printf("usage limits using %s", usagePath)
 		}
 	}
-	codexDaemon := newCodexDaemon(cfg.CodexWS, cfg.CodexSupervisorLabel)
+	codexDaemon := sessionruntime.NewCodexDaemon(cfg.CodexWS, cfg.CodexSupervisorLabel, func() bool {
+		return codexwire.SupervisorLoaded(cfg.CodexSupervisorLabel)
+	})
 	skills := setup.NewSkillsListCache(func(ctx context.Context, cwd string) (json.RawMessage, error) {
 		var result json.RawMessage
 		err := codexDaemon.Call(ctx, "skills/list", map[string]any{"cwds": []string{cwd}}, &result)
@@ -368,10 +375,10 @@ func construct(cfg config.Config) *application {
 			approval:         cfg.Approval,
 			reasoningSummary: cfg.ReasoningSummary,
 			allowedTools:     cfg.AllowedTools,
-			claudeBin:        resolveClaudeBin(cfg.ClaudeBin),
+			claudeBin:        sessionruntime.ResolveClaudeBin(cfg.ClaudeBin),
 			claudeShimWS:     strings.TrimSpace(cfg.ClaudeShimWS),
 			claudeShimSpools: cfg.ClaudeShimSpoolDir,
-			grokBin:          resolveGrokBin(cfg.GrokBin),
+			grokBin:          sessionruntime.ResolveGrokBin(cfg.GrokBin),
 			grokLeaderSocket: strings.TrimSpace(cfg.GrokLeaderSocket),
 			apiOrigin:        fmt.Sprintf("http://127.0.0.1:%d", cfg.Port),
 		},
@@ -398,9 +405,9 @@ func construct(cfg config.Config) *application {
 		transcriptAudits:      newTranscriptAuditStore(),
 		transcriptAuditEvents: newTranscriptAuditHub(),
 		usageLimits:           usageLimits,
-		sessionRegistry:       newSessionRegistry(),
+		Registry:              sessionruntime.NewRegistry(),
 	}
-	s.deliveryExpiries = newDeliveryExpiries(deliveryExpiryWindow, s.publishProviderRuntime)
+	s.deliveryExpiries = sessionruntime.NewDeliveryExpiries(deliveryExpiryWindow, s.publishProviderRuntime)
 	if agentExecutions != nil {
 		agentExecutions.useSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
 	}
@@ -656,10 +663,10 @@ func (s *server) stop(deliveryWait, deadline time.Duration) stopReport {
 // sendMu while it registers its operation, so each session's operations are
 // complete once that lock is taken after stopping is set.
 func (s *server) awaitInFlightDeliveries(until time.Time) stopReport {
-	sessions := s.snapshotSessions()
+	sessions := s.SnapshotSessions()
 	var inFlight []chan struct{}
 	for _, sess := range sessions {
-		inFlight = append(inFlight, sess.inFlightDeliveries()...)
+		inFlight = append(inFlight, sess.InFlightDeliveries()...)
 	}
 	timer := time.NewTimer(time.Until(until))
 	defer timer.Stop()
@@ -826,12 +833,12 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 		at := s.runtimeEvents.position()
 		position = &at
 	}
-	sessions := s.snapshotSessions()
+	sessions := s.SnapshotSessions()
 
 	listed := s.listedSessions(sessions)
 	live := make(map[attachmentKey]bool, len(listed))
 	for _, sum := range listed {
-		if sum.ThreadID != "" && sum.Status != sessionStatusExited {
+		if sum.ThreadID != "" && sum.Status != sessionruntime.StatusExited {
 			live[attachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}] = true
 		}
 	}
@@ -852,7 +859,7 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 // list read and the runtime event that names joined sessions share it, so a
 // browser holds the same row either way. Every per-session fact is read in
 // bounded batches, never once per session: views, attention, badges and names.
-func (s *server) listedSessions(sessions []*session) []listedSession {
+func (s *server) listedSessions(sessions []*sessionruntime.Session) []listedSession {
 	var summaryDB *sql.DB
 	if s.controlMetadata != nil {
 		summaryDB = s.controlMetadata.ReadPool()
@@ -865,14 +872,14 @@ func (s *server) listedSessions(sessions []*session) []listedSession {
 	}
 	views, viewsErr := s.controlMetadata.viewsFrom(summaryDB, hostedIDs)
 	needsAttention := s.agentExecutions.sessionsNeedingAttention()
-	summaries := make([]sessionSummary, 0, len(sessions))
+	summaries := make([]sessionruntime.Summary, 0, len(sessions))
 	for _, sess := range sessions {
 		view, found := views[sess.HostedThreadID()]
 		viewErr := viewsErr
 		if viewErr == nil && !found {
 			viewErr = sql.ErrNoRows
 		}
-		sum := sess.summaryWith(view, viewErr, sess.HostedThreadID() != "" && needsAttention[sess.HostedThreadID()])
+		sum := sess.SummaryWith(view, viewErr, sess.HostedThreadID() != "" && needsAttention[sess.HostedThreadID()])
 		summaries = append(summaries, sum)
 	}
 	s.attachStarredOnSessions(summaries)
@@ -881,7 +888,7 @@ func (s *server) listedSessions(sessions []*session) []listedSession {
 	})
 	listed := make([]listedSession, len(summaries))
 	for i, sum := range summaries {
-		listed[i] = listedSession{sessionSummary: sum, Metadata: listMetadata(sum.Metadata)}
+		listed[i] = listedSession{Summary: sum, Metadata: listMetadata(sum.Metadata)}
 	}
 	return listed
 }
@@ -935,7 +942,7 @@ func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionVi
 }
 
 type listedSession struct {
-	sessionSummary
+	sessionruntime.Summary
 	Metadata *listedMetadata `json:"metadata,omitempty"`
 }
 
@@ -982,7 +989,7 @@ func (s *server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		// Frozen contract: a resume onto an already-attached thread is a
 		// 409 whose body carries the session to jump to.
-		var attached *threadAttachedError
+		var attached *sessionruntime.ThreadAttachedError
 		if errors.As(err, &attached) {
 			httpapi.WriteErrorEnvelope(w, http.StatusConflict, httpapi.ErrorEnvelope{Error: httpapi.Error{
 				Code: "thread_attached", Message: "Thread is already attached", Details: map[string]string{"existingSessionId": attached.ExistingSessionID},
@@ -993,15 +1000,15 @@ func (s *server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	sum := sess.summary() // snapshot under the state lock; claude's threadID lands async
+	sum := sess.Summary() // snapshot under the state lock; claude's threadID lands async
 	log.Printf("spawned %s session %s (thread %q, cwd %s)", sum.Provider, sum.ID, sum.ThreadID, sum.Cwd)
 	httpapi.WriteJSON(w, sum)
 }
 
-func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Request, *session)) http.HandlerFunc {
+func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Request, *sessionruntime.Session)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("sessionId")
-		sess := s.lookupSession(id)
+		sess := s.LookupSession(id)
 		if sess == nil {
 			httpapi.WriteHTTPError(w, "no such session", http.StatusNotFound)
 			return
@@ -1010,7 +1017,7 @@ func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Requ
 	}
 }
 
-func (s *server) handleSessionClose(w http.ResponseWriter, _ *http.Request, sess *session) {
+func (s *server) handleSessionClose(w http.ResponseWriter, _ *http.Request, sess *sessionruntime.Session) {
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
 	if err := s.closeExplicitSession(sess); err != nil {
@@ -1089,7 +1096,7 @@ func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	switch resolved.Provider {
 	case "codex":
-		method, params := codexSessionRequest(resolved.providerRequest)
+		method, params := sessionruntime.CodexSessionRequest(resolved.ProviderRequest)
 		out := map[string]any{
 			"provider":      "codex",
 			"method":        method,
@@ -1099,19 +1106,19 @@ func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
 		if resolved.Mode != "resume" {
 			// The model rides thread/start at spawn time, so it is not a turn
 			// override yet — the pane's per-turn control introduces one later.
-			out["turnOverrides"] = codexTurnOverrides("", resolved.Effort, "", s.defaults.reasoningSummary)
+			out["turnOverrides"] = sessionruntime.CodexTurnOverrides("", resolved.Effort, "", s.defaults.reasoningSummary)
 		}
 		httpapi.WriteJSON(w, out)
 	case "claude":
 		httpapi.WriteJSON(w, map[string]any{
 			"provider": "claude",
-			"argv":     claudeCommand(resolved.providerRequest),
+			"argv":     sessionruntime.ClaudeCommand(resolved.ProviderRequest),
 		})
 	case "grok":
-		method, params := grokSessionRequest(resolved.providerRequest)
+		method, params := sessionruntime.GrokSessionRequest(resolved.ProviderRequest)
 		httpapi.WriteJSON(w, map[string]any{
 			"provider": "grok",
-			"argv":     grokCommand(resolved.providerRequest),
+			"argv":     sessionruntime.GrokCommand(resolved.ProviderRequest),
 			"initialize": map[string]any{
 				"protocolVersion": 1, "clientCapabilities": map[string]any{},
 			},
@@ -1124,7 +1131,7 @@ func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
 // handleCodexModels serves the (cached) codex model/list response so the New
 // Window dialog can offer models, efforts, and service tiers from the wire.
 func (s *server) handleCodexModels(w http.ResponseWriter, r *http.Request) {
-	models, err := s.codex.fetchModels(r.URL.Query().Get("refresh") == "true")
+	models, err := s.codex.FetchModels(r.URL.Query().Get("refresh") == "true")
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
@@ -1136,7 +1143,7 @@ func (s *server) handleCodexModels(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleGrokModels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	models, err := fetchGrokModels(ctx, providerRequest{Mode: "start", Cwd: s.defaults.cwd, GrokBin: s.defaults.grokBin, GrokLeaderSocket: s.defaults.grokLeaderSocket})
+	models, err := sessionruntime.FetchGrokModels(ctx, sessionruntime.ProviderRequest{Mode: "start", Cwd: s.defaults.cwd, GrokBin: s.defaults.grokBin, GrokLeaderSocket: s.defaults.grokLeaderSocket})
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return

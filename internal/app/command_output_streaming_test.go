@@ -1,20 +1,20 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	coresession "github.com/dkroshow/nano/internal/core/session"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -25,62 +25,55 @@ const (
 
 func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextPrompt(t *testing.T) {
 	delivered := make(chan string, 1)
-	sess, _ := readyTransactionalSendTestSession(t, func(_ context.Context, text string) (json.RawMessage, error) {
-		delivered <- text
-		return json.RawMessage(`{"turn":{"id":"next-provider-turn"}}`), nil
+	p := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted-thread")}
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "incident-output", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "", func(f *providerRuntimeFixture) {
+		f.send = func(_ context.Context, text string) (json.RawMessage, error) {
+			delivered <- text
+			return json.RawMessage(`{"turn":{"id":"next-provider-turn"}}`), nil
+		}
 	})
-	if err := sess.ensureCoreSession(); err != nil {
+	sess := f.session
+	spoolDir := t.TempDir()
+	if err := sess.OpenWireSpool(spoolDir); err != nil {
 		t.Fatal(err)
 	}
-	core := sess.coreSession()
-	t.Cleanup(core.Close)
+	f.emitAndWait(t, []byte(liveTextDeltaTurnStarted))
 
-	// The spool is the record of every raw frame; the in-memory ring keeps a tail.
-	sess.spool = newTestWireSpool(t)
-	base := time.Now()
-	sess.recordWireAt(protocol.Recv, []byte(liveTextDeltaTurnStarted), true, false, base)
-	if err := core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
-		t.Fatal(err)
-	}
-	if !sess.summary().TurnActive {
+	if !sess.Summary().TurnActive {
 		t.Fatal("turn did not become active before the incident burst")
 	}
 	queuedText := "next prompt after large command output"
 	// Held for the next turn: this test needs the prompt released by the turn's end.
 	queued := httptest.NewRecorder()
-	sess.handleTurn(queued, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn",
+	sess.HandleTurn(queued, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn",
 		strings.NewReader(`{"text":`+string(mustJSON(t, queuedText))+`,"clientActionId":"command-output-next","nextTurn":true}`)))
 	if queued.Code != http.StatusAccepted || !strings.Contains(queued.Body.String(), `"status":"queued"`) {
 		t.Fatalf("next prompt was not queued: status=%d body=%s", queued.Code, queued.Body.String())
 	}
 
 	frames := makeCommandOutputIncidentFrames(t)
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	core.ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
-		close(entered)
-		<-release
-		return nil
-	}})
-	<-entered
+	release := holdFirstProviderFrame(t, f, p, frames[0])
+	defer release()
 
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	for index, frame := range frames {
-		sess.recordWireAt(protocol.Recv, frame, true, false, base.Add(time.Duration(index+1)*time.Microsecond))
+	for _, frame := range frames[1:] {
+		f.emit(t, frame)
 	}
+	awaitProviderIngress(t, f)
 	started := time.Now()
-	close(release)
-	if err := core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
-		t.Fatal(err)
-	}
+	release()
+	awaitProviderFrame(t, f, frames[len(frames)-1])
+
 	elapsed := time.Since(started)
 	runtime.ReadMemStats(&after)
 	t.Logf("35MiB command-output mailbox drain: elapsed=%s allocated=%d bytes frames=%d", elapsed, after.TotalAlloc-before.TotalAlloc, len(frames))
 
-	if sess.summary().TurnActive {
-		t.Fatal("turn remained active after final answer and turn completion")
+	// The released follow-up can already be active on the real transport.
+	// The incident turn itself must be terminal before that handoff.
+	if turn, _, _, ok := p.RetainedTurnEvidence("stream-turn"); !ok || turn.Status != "completed" {
+		t.Fatalf("incident turn remained active after final answer and turn completion: %+v", turn)
 	}
 	select {
 	case got := <-delivered:
@@ -91,7 +84,8 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 		t.Fatal("next queued prompt did not progress after completion")
 	}
 
-	command, output, found := liveReaderItemForTest(sess.projection, "incident-command")
+	waitTurnSendDone(t, sess, "command-output-next")
+	command, output, found := liveReaderItemForTest(p.liveProjection, "incident-command")
 	if !found {
 		t.Fatal("bounded command is missing")
 	}
@@ -99,27 +93,24 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 		!command.ContentTruncated || command.OriginalBytes <= liveProjectionOutputCap {
 		t.Fatalf("command output bytes=%d marker=%t truncated=%t original=%d", len(output), strings.Contains(output, "live command output truncated"), command.ContentTruncated, command.OriginalBytes)
 	}
-	if final, _, found := liveReaderItemForTest(sess.projection, "agent-1"); !found || final.Text != "EXACT FINAL MESSAGE" || !final.Complete ||
-		sess.projection.FinalAgentItemID("stream-turn") != "agent-1" {
+	if final, _, found := liveReaderItemForTest(p.liveProjection, "agent-1"); !found || final.Text != "EXACT FINAL MESSAGE" || !final.Complete ||
+		p.liveProjection.FinalAgentItemID("stream-turn") != "agent-1" {
 		t.Fatalf("final message mismatch: present=%t text=%q done=%t", found, final.Text, final.Complete)
 	}
-	sess.projection.(*liveProjection).adapterMu.Lock()
-	semanticFrames := sess.projection.(*liveProjection).adapter.(*codexLiveAdapter).reader.Frame
-	sess.projection.(*liveProjection).adapterMu.Unlock()
+	p.liveProjection.adapterMu.Lock()
+	semanticFrames := p.liveProjection.adapter.(*codexLiveAdapter).reader.Frame
+	p.liveProjection.adapterMu.Unlock()
 	if semanticFrames >= int64(commandOutputIncidentChunks/2) {
 		t.Fatalf("command deltas were not coalesced before semantic application: frames=%d rawChunks=%d", semanticFrames, commandOutputIncidentChunks)
 	}
 
-	if err := sess.spool.close(false); err != nil {
-		t.Fatal(err)
+	// The public page flushes the spool before its file is inspected.
+	_ = claudeWireEvents(sess)
+	events := readReceivedSpoolFrames(t, spoolDir)
+	if len(events) != len(frames)+1 {
+		t.Fatalf("raw event count=%d, want=%d", len(events), len(frames)+1)
 	}
-	events, more, err := sess.spool.readBefore(math.MaxInt64, len(frames)+1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(events) != len(frames)+1 || more {
-		t.Fatalf("raw event count=%d (more=%t), want=%d", len(events), more, len(frames)+1)
-	}
+
 	for index, frame := range frames {
 		if sha256.Sum256(events[index+1].Msg) != sha256.Sum256(frame) {
 			t.Fatalf("raw event order/content mismatch at index %d", index)
@@ -128,12 +119,12 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 }
 
 func TestQueuedCodexCommandOutputBatchesWithoutCrossingBoundaries(t *testing.T) {
-	sess, _ := readyTransactionalSendTestSession(t, nil)
-	if err := sess.ensureCoreSession(); err != nil {
-		t.Fatal(err)
-	}
-	core := sess.coreSession()
-	t.Cleanup(core.Close)
+	p := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted-thread")}
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "batch-commands", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "")
+	sess := f.session
+	p.adapterMu.Lock()
+	initialFrames := p.adapter.(*codexLiveAdapter).reader.Frame
+	p.adapterMu.Unlock()
 
 	frames := [][]byte{
 		[]byte(liveTextDeltaTurnStarted),
@@ -147,77 +138,61 @@ func TestQueuedCodexCommandOutputBatchesWithoutCrossingBoundaries(t *testing.T) 
 		commandOutputDeltaFrame(t, "command-b", "boundary"),
 		commandOutputDeltaFrame(t, "command-a", "five"),
 	}
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	core.ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
-		close(entered)
-		<-release
-		return nil
-	}})
-	<-entered
-	for index, frame := range frames {
-		sess.recordWireAt(protocol.Recv, frame, true, false, time.Unix(100, int64(index)))
+	release := holdFirstProviderFrame(t, f, p, frames[0])
+	defer release()
+	for _, frame := range frames[1:] {
+		f.emit(t, frame)
 	}
-	close(release)
-	if err := core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
-		t.Fatal(err)
-	}
+	awaitProviderIngress(t, f)
+	release()
+	awaitProviderFrame(t, f, frames[len(frames)-1])
 
 	outputs := map[string]string{}
 	for _, id := range []string{"command-a", "command-b"} {
-		_, outputs[id], _ = liveReaderItemForTest(sess.projection, id)
+		_, outputs[id], _ = liveReaderItemForTest(p.liveProjection, id)
 	}
 	if outputs["command-a"] != "onetwothreefourfive" || outputs["command-b"] != "boundary" {
 		t.Fatalf("command outputs crossed a boundary: %#v", outputs)
 	}
-	sess.projection.(*liveProjection).adapterMu.Lock()
-	semanticFrames := sess.projection.(*liveProjection).adapter.(*codexLiveAdapter).reader.Frame
-	sess.projection.(*liveProjection).adapterMu.Unlock()
+	p.liveProjection.adapterMu.Lock()
+	semanticFrames := p.liveProjection.adapter.(*codexLiveAdapter).reader.Frame - initialFrames
+	p.liveProjection.adapterMu.Unlock()
 	if semanticFrames != int64(len(frames)-2) {
 		t.Fatalf("semantic frames=%d, want %d after two adjacent pair merges", semanticFrames, len(frames)-2)
 	}
-	if len(sess.events) != len(frames) {
-		t.Fatalf("raw frames=%d, want=%d", len(sess.events), len(frames))
+	if len(receivedProviderFrames(sess)) != len(frames) {
+		t.Fatalf("raw frames=%d, want=%d", len(receivedProviderFrames(sess)), len(frames))
 	}
 	for index, frame := range frames {
-		if sha256.Sum256(sess.events[index].Msg) != sha256.Sum256(frame) {
+		if sha256.Sum256(receivedProviderFrames(sess)[index].Msg) != sha256.Sum256(frame) {
 			t.Fatalf("raw boundary order/content mismatch at %d", index)
 		}
 	}
 }
 
 func TestCommandOutputBoundedBaselineComparison(t *testing.T) {
-	sess, _ := readyTransactionalSendTestSession(t, nil)
-	if err := sess.ensureCoreSession(); err != nil {
-		t.Fatal(err)
-	}
-	core := sess.coreSession()
-	t.Cleanup(core.Close)
-
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	core.ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
-		close(entered)
-		<-release
-		return nil
-	}})
-	<-entered
-	sess.recordWireAt(protocol.Recv, []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn","item":{"id":"command","type":"commandExecution","command":"baseline","status":"inProgress"}}}`), true, false, time.Now())
+	p := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted-thread")}
+	f := newProviderRuntimeFixture(t, sessionConfig{ID: "baseline-output", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "")
+	first := []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn","item":{"id":"command","type":"commandExecution","command":"baseline","status":"inProgress"}}}`)
+	release := holdFirstProviderFrame(t, f, p, first)
+	defer release()
+	var last []byte
 	for index := 0; index < 128; index++ {
-		sess.recordWireAt(protocol.Recv, commandOutputDeltaFrame(t, "command", strings.Repeat(string('a'+rune(index%26)), 8<<10)), true, false, time.Now())
+		last = commandOutputDeltaFrame(t, "command", strings.Repeat(string('a'+rune(index%26)), 8<<10))
+		f.emit(t, last)
 	}
+	awaitProviderIngress(t, f)
+
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 	started := time.Now()
-	close(release)
-	if err := core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
-		t.Fatal(err)
-	}
+	release()
+	awaitProviderFrame(t, f, last)
 	elapsed := time.Since(started)
 	runtime.ReadMemStats(&after)
 
-	_, output, _ := liveReaderItemForTest(sess.projection, "command")
+	_, output, _ := liveReaderItemForTest(p.liveProjection, "command")
 	t.Logf("bounded comparison: elapsed=%s allocated=%d bytes output=%d bytes frames=%d", elapsed, after.TotalAlloc-before.TotalAlloc, len(output), 129)
 	if len(output) > liveProjectionOutputCap || !strings.Contains(output, "live command output truncated") {
 		t.Fatalf("bounded comparison output=%d marker=%t", len(output), strings.Contains(output, "live command output truncated"))
@@ -302,4 +277,34 @@ func commandOutputCompletedFrame(t *testing.T, output string) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+func readReceivedSpoolFrames(t *testing.T, dir string) []wireEvent {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("wire spool files = %v, %v", files, err)
+	}
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []wireEvent
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var event wireEvent
+		if err := json.Unmarshal(line, &event); err != nil {
+			t.Fatal(err)
+		}
+		var body struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(event.Msg, &body)
+		if event.Dir == "recv" && body.Method != "" {
+			events = append(events, event)
+		}
+	}
+	return events
 }

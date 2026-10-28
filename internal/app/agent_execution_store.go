@@ -18,6 +18,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/hosted"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -117,7 +118,7 @@ func newControlAgentExecutionStore(control *controlMetadataStore, runID string) 
 			touchAgentSession(&rec)
 			s.sessions[id] = rec
 			changed = true
-		} else if rec.RunID != "" && rec.RunID != runID && rec.Status != sessionStatusExited {
+		} else if rec.RunID != "" && rec.RunID != runID && rec.Status != sessionruntime.StatusExited {
 			rec.Status = agentSessionDetached
 			rec.NanoSessionID = ""
 			rec.Error = ""
@@ -540,7 +541,7 @@ func (s *agentExecutionStore) BindSession(id, nanoSessionID, nativeThreadID, sta
 	if nativeThreadID != "" {
 		rec.NativeThreadID = nativeThreadID
 		if s.control != nil && rec.Provider != "" && rec.Provider != "unknown" {
-			if err := hosted.SkipOwnedNativeClaim(s.control.ClaimNativeID(id, rec.Provider, nativeThreadID, nativeThreadIDProvisional(rec.Provider, nativeThreadID))); err != nil {
+			if err := hosted.SkipOwnedNativeClaim(s.control.ClaimNativeID(id, rec.Provider, nativeThreadID, sessionruntime.NativeThreadIDProvisional(rec.Provider, nativeThreadID))); err != nil {
 				return err
 			}
 		}
@@ -805,11 +806,11 @@ func (s *agentExecutionStore) resolveSession(ref string) (agentSessionRecord, bo
 		}
 		// A currently hosted record wins over an older closed attachment of
 		// the same provider-native thread. Two live matches stay ambiguous.
-		if matched.Status == sessionStatusExited && rec.Status != sessionStatusExited {
+		if matched.Status == sessionruntime.StatusExited && rec.Status != sessionruntime.StatusExited {
 			matched = rec
 			continue
 		}
-		if rec.Status == sessionStatusExited && matched.Status != sessionStatusExited {
+		if rec.Status == sessionruntime.StatusExited && matched.Status != sessionruntime.StatusExited {
 			continue
 		}
 		return agentSessionRecord{}, false

@@ -20,7 +20,7 @@ func newBulkCloseTestServer(t *testing.T) (*server, *agentExecutionStore, *contr
 		t.Fatal(err)
 	}
 	return &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
+		Registry:        newSessionRegistry(),
 		agentExecutions: executions,
 		controlMetadata: control,
 		threadStars:     openTestThreadStars(t),
@@ -204,7 +204,7 @@ func TestBulkCloseReportsPartialMemberFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := queue.enqueue(queuedTurnRecord{
+	if _, _, err := QueueEnqueue(queue, queuedTurnRecord{
 		ClientActionID: "queued-root", Provider: root.Provider, HostedThreadID: root.ID,
 		NativeThreadID: root.NativeThreadID, Text: "still queued", TextHash: "hash", State: submissionQueued,
 	}); err != nil {
@@ -212,7 +212,7 @@ func TestBulkCloseReportsPartialMemberFailure(t *testing.T) {
 	}
 	// A synthetic database failure must roll back the prompt's refusal and
 	// remain visible in the member result.
-	if _, err := queue.db.Exec(`CREATE TRIGGER reject_queue_removal BEFORE UPDATE OF state ON queued_turns BEGIN SELECT RAISE(ABORT,'synthetic queue failure'); END`); err != nil {
+	if _, err := queue.Database().Exec(`CREATE TRIGGER reject_queue_removal BEFORE UPDATE OF state ON queued_turns BEGIN SELECT RAISE(ABORT,'synthetic queue failure'); END`); err != nil {
 		t.Fatal(err)
 	}
 	s.queuedTurns = queue

@@ -5,9 +5,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
-
-	coresession "github.com/dkroshow/nano/internal/core/session"
 )
 
 // Exercise the callers too: an attach-level error alone does not prove that
@@ -19,49 +16,48 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 			var failOnce sync.Once
 			shim := newFakeShim(t, func(c *shimConn) {
 				for {
-					call, ok := c.next()
+					call, ok := c.Next()
 					if !ok {
 						return
 					}
 					switch call.Method {
 					case shimMethodAttach:
-						sess := s.sessionForThread("claude", claudeResumeThreadID)
-						if sess == nil {
-							t.Error("missing registered resume shell")
+						failed := false
+						failOnce.Do(func() { failed = true })
+						c.Reply(call, map[string]any{"shimSessionId": "original-child", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 1})
+						c.Line(1, "recv", claudeInitLine)
+						if failed {
+							_ = c.Conn.Close()
 							return
 						}
-						failOnce.Do(sess.coreSession().Close)
-						c.reply(call, map[string]any{"shimSessionId": "original-child", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 1})
-						c.line(1, "recv", claudeInitLine)
-						c.notify(shimMethodReplayDone, map[string]any{"shimSessionId": "original-child", "lastSeq": 1})
+						c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "original-child", "lastSeq": 1})
 					case shimMethodStart:
-						c.reply(call, map[string]any{"shimSessionId": "replacement-child"})
+						c.Reply(call, map[string]any{"shimSessionId": "replacement-child"})
 					default:
-						c.reply(call, nil)
+						c.Reply(call, nil)
 					}
 				}
 			})
 			var store *attachmentStore
-			s, store = claudeResumeServer(t, shim.wsURL())
+			s, store = claudeResumeServer(t, shim.WSURL())
 			store.remember(rememberedClaudeSession(t, "/fake/claude"))
 			if mode == "manual" {
 				response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
-				if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), errClaudeReplayUnsettled.Error()) {
+				if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") {
 					t.Fatalf("Resume must refuse replay failure: HTTP %d, %s", response.Code, response.Body.String())
 				}
 			} else {
 				seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-				sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, bootReattach: &bootProviderControl{}}})
+				sess, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, BootReattach: &bootProviderControl{}}})
 				if err != nil {
 					t.Fatal(err)
 				}
 				waitForClaude(t, "failed boot attachment discarded", func() bool {
-					s.mu.Lock()
-					defer s.mu.Unlock()
-					return s.sessions[sess.id] == nil || len(shim.callsOf(shimMethodStart)) > 0
+
+					return s.LookupSession(sess.ID()) == nil || len(shim.CallsOf(shimMethodStart)) > 0
 				})
 			}
-			if starts := len(shim.callsOf(shimMethodStart)); starts != 0 {
+			if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 				t.Fatalf("replay failure started %d replacements", starts)
 			}
 			if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
@@ -70,7 +66,7 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 			// The failed attachment must not poison the durable identity: the
 			// next attempt can attach to that same surviving child.
 			response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
-			if response.Code != http.StatusOK || len(shim.callsOf(shimMethodStart)) != 0 {
+			if response.Code != http.StatusOK || len(shim.CallsOf(shimMethodStart)) != 0 {
 				t.Fatalf("retry must attach without replacement: HTTP %d, %s", response.Code, response.Body.String())
 			}
 		})
@@ -80,51 +76,38 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 func TestClaudeResumeReplayProcessingTimeoutNeverStartsReplacement(t *testing.T) {
 	var s *server
 	blocked, release := make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	unblock := func() { once.Do(func() { close(release) }) }
+	var once, unblockOnce sync.Once
+	unblock := func() { unblockOnce.Do(func() { close(release) }) }
 	defer unblock()
 	shim := newFakeShim(t, func(c *shimConn) {
 		for {
-			call, ok := c.next()
+			call, ok := c.Next()
 			if !ok {
 				return
 			}
 			switch call.Method {
 			case shimMethodAttach:
-				sess := s.sessionForThread("claude", claudeResumeThreadID)
-				if sess == nil {
-					t.Error("missing registered resume shell")
-					return
-				}
-				sess.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
-					close(blocked)
-					<-release
-					return nil
-				}})
-				<-blocked
-				c.reply(call, map[string]any{"shimSessionId": "original-child", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 1})
-				c.line(1, "recv", claudeInitLine)
-				c.notify(shimMethodReplayDone, map[string]any{"shimSessionId": "original-child", "lastSeq": 1})
+
+				c.Reply(call, map[string]any{"shimSessionId": "original-child", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 2})
+				c.Line(1, "recv", claudeInitLine)
+				c.Line(2, "recv", `{"type":"result","subtype":"success","is_error":false}`)
+				c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "original-child", "lastSeq": 2})
 			case shimMethodStart:
-				c.reply(call, map[string]any{"shimSessionId": "replacement-child"})
+				c.Reply(call, map[string]any{"shimSessionId": "replacement-child"})
 				unblock()
 			default:
-				c.reply(call, nil)
+				c.Reply(call, nil)
 			}
 		}
 	})
 	var store *attachmentStore
-	s, store = claudeResumeServer(t, shim.wsURL())
+	s, store = claudeResumeServer(t, shim.WSURL())
 	t.Cleanup(unblock)
 	store.remember(rememberedClaudeSession(t, "/fake/claude"))
-	// The blocked apply never settles, so the resume waits out the replay
-	// timeout. Shorten it; the production 30s default adds nothing here.
-	previous := claudeShimReplayTimeout
-	claudeShimReplayTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { claudeShimReplayTimeout = previous })
+	s.catalogRefresh = func(string) { once.Do(func() { close(blocked); <-release }) }
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
-	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), errClaudeReplayUnsettled.Error()) || len(shim.callsOf(shimMethodStart)) != 0 {
-		t.Fatalf("timeout must refuse without replacement: HTTP %d, starts %d, %s", response.Code, len(shim.callsOf(shimMethodStart)), response.Body.String())
+	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") || len(shim.CallsOf(shimMethodStart)) != 0 {
+		t.Fatalf("timeout must refuse without replacement: HTTP %d, starts %d, %s", response.Code, len(shim.CallsOf(shimMethodStart)), response.Body.String())
 	}
 	if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
 		t.Fatal("timeout removed the retryable identity")

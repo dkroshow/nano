@@ -21,7 +21,7 @@ func TestExecutionFamilyViewUsesDurableInvocationLineage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{agentExecutions: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
+	s := &server{agentExecutions: store, Registry: newSessionRegistry()}
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/"+root.ID+"/family", nil))
 	if rec.Code != http.StatusOK {

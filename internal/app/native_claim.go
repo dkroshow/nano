@@ -9,6 +9,7 @@ import (
 	"time"
 
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 var (
@@ -192,7 +193,7 @@ func (s *server) transferNativeClaim(targetHostedID, provider, nativeID string) 
 			return errNativeClaimLive
 		}
 	}
-	return control.transferNativeClaim(targetHostedID, provider, nativeID, nativeThreadIDProvisional(provider, nativeID))
+	return control.transferNativeClaim(targetHostedID, provider, nativeID, sessionruntime.NativeThreadIDProvisional(provider, nativeID))
 }
 
 // resolveResumeHostedIdentity is a read-only routing decision. An exact active
@@ -226,7 +227,7 @@ func (s *server) resolveResumeHostedIdentity(req *spawnRequest) error {
 		// the handle still resumes, and resumeClaudeSession finishes the re-key,
 		// but only while the recorded native is that thread's current one and
 		// nobody else owns it.
-		if nativeThreadIDProvisional(req.Provider, nativeID) {
+		if sessionruntime.NativeThreadIDProvisional(req.Provider, nativeID) {
 			resolvedOwner, err := control.resolvedHandleOwner(context.Background(), named, req.Provider, nativeID)
 			if err != nil {
 				return err
@@ -266,7 +267,7 @@ func (s *controlMetadataStore) inheritMissingDesiredPosture(targetID, sourceID s
 	if err != nil {
 		return fmt.Errorf("read target metadata %s: %w", targetID, err)
 	}
-	for _, field := range []string{"cwd", postureFieldModel, postureFieldEffort, postureFieldPermissionMode} {
+	for _, field := range []string{"cwd", hostedvalues.PostureFieldModel, hostedvalues.PostureFieldEffort, hostedvalues.PostureFieldPermissionMode} {
 		if _, ok := hostedvalues.ResumeString(target.Fields[field]); ok {
 			continue
 		}
@@ -277,7 +278,7 @@ func (s *controlMetadataStore) inheritMissingDesiredPosture(targetID, sourceID s
 		key := fmt.Sprintf("inherit:%s:%s:%s", sourceID, targetID, field)
 		if _, err := s.AppendEvent(metadataEvent{
 			HostedThreadID: targetID, Field: field, Value: value,
-			Disposition: metadataDispositionRequested, Source: postureSourceCreation,
+			Disposition: metadataDispositionRequested, Source: hostedvalues.PostureSourceCreation,
 			Freshness: metadataFreshnessLive, SourceEventKey: key,
 			Evidence: "inherit:" + sourceID,
 		}); err != nil {
@@ -301,7 +302,7 @@ func (s *controlMetadataStore) persistMissingResumeCwd(hostedID, cwd string) err
 	key := fmt.Sprintf("resume-cwd:%s:%s", hostedID, cwd)
 	_, err = s.AppendEvent(metadataEvent{
 		HostedThreadID: hostedID, Field: "cwd", Value: cwd,
-		Disposition: metadataDispositionRequested, Source: postureSourceCreation,
+		Disposition: metadataDispositionRequested, Source: hostedvalues.PostureSourceCreation,
 		Freshness: metadataFreshnessLive, SourceEventKey: key,
 		Evidence: "resume_cwd",
 	})

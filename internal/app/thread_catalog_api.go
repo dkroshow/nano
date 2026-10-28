@@ -18,6 +18,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -255,7 +256,7 @@ type threadCatalogNamer interface {
 // handleSessionName renames a live session before or after its native thread
 // is indexed. A fresh Claude session has no native id until its first turn, so
 // its validated name remains pending until applyPendingName can persist it.
-func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess *session) {
+func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess *sessionruntime.Session) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	namer, ok := s.catalog.(threadCatalogNamer)
 	if s.catalog == nil || !ok {
@@ -279,10 +280,10 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// A native id, once present, is immutable for the hosted session. Holding
 	// the lock while merely recording a pre-bind name lets applyPendingName see
 	// exactly this value when the provider announces its identity.
-	provider, nativeID, staged := sess.stageNameBeforeBinding(name)
+	provider, nativeID, staged := sess.StageNameBeforeBinding(name)
 	if staged {
 		s.notifyRuntimeRefresh()
-		httpapi.WriteJSON(w, sess.summary())
+		httpapi.WriteJSON(w, sess.Summary())
 		return
 	}
 
@@ -297,11 +298,11 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// proves the staged value will still be picked up.
 	if rec, ok := s.attachmentFor(provider, nativeID); ok && rec.Provisional() {
 		var staged bool
-		nativeID, staged = sess.stageProvisionalName(nativeID, name)
+		nativeID, staged = sess.StageProvisionalName(nativeID, name)
 		if staged {
 			s.setAttachmentPendingName(provider, nativeID, name)
 			s.notifyRuntimeRefresh()
-			httpapi.WriteJSON(w, sess.summary())
+			httpapi.WriteJSON(w, sess.Summary())
 			return
 		}
 		// The real id landed while we probed; assign under it normally.
@@ -311,9 +312,9 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 		writeThreadNameError(w, err)
 		return
 	}
-	sess.setDisplayName(name)
+	sess.SetDisplayName(name)
 	s.notifyRuntimeRefresh()
-	httpapi.WriteJSON(w, sess.summary())
+	httpapi.WriteJSON(w, sess.Summary())
 }
 
 // assignSpawnName is the session's nameThread closure: best-effort by design —
@@ -579,7 +580,7 @@ const (
 	archivedIncludeFilter = "include"
 )
 
-func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, page []catalogThread, live []sessionSummary) []catalogThread {
+func (s *server) runtimeThreadRows(ctx context.Context, query catalogListQuery, page []catalogThread, live []sessionruntime.Summary) []catalogThread {
 	if query.Archived == archivedOnlyFilter {
 		return nil
 	}
@@ -676,7 +677,7 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 // a memory row is attached by construction, and a session still starting has no
 // native id for the (provider, nativeId) lookup to match. The later overlay pass
 // leaves a stamped row alone.
-func memoryThreadRow(sess sessionSummary) catalogThread {
+func memoryThreadRow(sess sessionruntime.Summary) catalogThread {
 	createdAt := sess.CreatedAt
 	runtime := sessionRuntimeInfo(sess)
 	var name *catalogThreadName
@@ -870,10 +871,10 @@ func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID stri
 		return catalogValue{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 	}
 	thread.Metadata.CWD = canonical("cwd")
-	thread.Metadata.Model = canonical(postureFieldModel)
-	thread.Metadata.Effort = canonical(postureFieldEffort)
-	thread.Metadata.Priority = canonical(postureFieldServiceTier)
-	thread.Metadata.Permission = canonical(postureFieldPermissionMode)
+	thread.Metadata.Model = canonical(hostedvalues.PostureFieldModel)
+	thread.Metadata.Effort = canonical(hostedvalues.PostureFieldEffort)
+	thread.Metadata.Priority = canonical(hostedvalues.PostureFieldServiceTier)
+	thread.Metadata.Permission = canonical(hostedvalues.PostureFieldPermissionMode)
 }
 
 func (s *server) applyHostedCatalogAssignment(thread *catalogThread, hostedID string) {

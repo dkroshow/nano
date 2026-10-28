@@ -109,8 +109,8 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 	reply := lineWith(saved, fixtureReply[:strings.Index(fixtureReply, ":")])
 	h.save(saved[:reply])
 	h.expect("first rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	ref := h.sess.hostedThreadID
-	h.srv.sessions = map[string]*session{h.sess.id: h.sess}
+	ref := h.sess.HostedThreadID()
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
 
 	reads := h.catalogReads.Load()
 	warm := openWarm(t, h.srv, []string{ref}, nil)
@@ -136,7 +136,7 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 	reads = h.catalogReads.Load()
 	warm.quiet("the thread is idle")
 	for range 5 {
-		h.sess.liveText.Applied()
+		h.sess.LiveTextService().Applied()
 	}
 	warm.quiet("nothing changed")
 	if got := h.catalogReads.Load() - reads; got != 1 {
@@ -177,8 +177,8 @@ func TestWarmStreamMarkerGetsOnlyTheMissingRows(t *testing.T) {
 	reply := lineWith(saved, fixtureReply[:strings.Index(fixtureReply, ":")])
 	h.save(saved[:reply])
 	h.expect("first rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	ref := h.sess.hostedThreadID
-	h.srv.sessions = map[string]*session{h.sess.id: h.sess}
+	ref := h.sess.HostedThreadID()
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
 
 	first := openWarm(t, h.srv, []string{ref}, nil)
 	first.next("set")
@@ -257,9 +257,9 @@ func TestWarmStreamRetriesAFailedThreadWhenItsWaitRunsOut(t *testing.T) {
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	liveTextOf(h.sess).unsubscribe(h.pane)
 	h.srv.catalog = &failOneRead{countingLiveTextCatalog: h.srv.catalog.(*countingLiveTextCatalog)}
-	h.srv.sessions = map[string]*session{h.sess.id: h.sess}
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
 
-	warm := openWarm(t, h.srv, []string{h.sess.hostedThreadID}, nil)
+	warm := openWarm(t, h.srv, []string{h.sess.HostedThreadID()}, nil)
 	warm.next("set")
 	if got := warm.next("the failed read"); got.Type != "error" {
 		t.Fatalf("got %+v, want the read error", got)
@@ -281,19 +281,20 @@ func TestWarmStreamRetriesAFailedThreadWhenItsWaitRunsOut(t *testing.T) {
 // behind them joins once the wait runs out.
 func TestWarmStreamIndexingThreadsDoNotBlockTheRest(t *testing.T) {
 	h := newLiveTextHarness(t)
-	h.srv.sessions = map[string]*session{}
+	h.srv.Registry = newSessionRegistry()
 	refs := []string{}
 	for i := range warmJoining {
-		pending := newLiveTextHarness(t)
-		pending.sess.hostedThreadID = fmt.Sprintf("nht_indexing_%d", i)
-		pending.sess.id = fmt.Sprintf("indexing_%d", i)
-		h.srv.sessions[pending.sess.id] = pending.sess
-		refs = append(refs, pending.sess.hostedThreadID)
+		pending := newLiveTextHarnessForThread(t, "claude", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) {
+			cfg.HostedThreadID = fmt.Sprintf("nht_indexing_%d", i)
+			cfg.ID = fmt.Sprintf("indexing_%d", i)
+		})
+		h.srv.RegisterSession(pending.sess)
+		refs = append(refs, pending.sess.HostedThreadID())
 	}
-	h.srv.sessions[h.sess.id] = h.sess
+	h.srv.RegisterSession(h.sess)
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.expect("indexed rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	refs = append(refs, h.sess.hostedThreadID)
+	refs = append(refs, h.sess.HostedThreadID())
 
 	warm := openWarm(t, h.srv, refs, nil)
 	if set := warm.next("set"); !slices.Equal(set.Refs, refs) {
@@ -301,7 +302,7 @@ func TestWarmStreamIndexingThreadsDoNotBlockTheRest(t *testing.T) {
 	}
 	started := time.Now()
 	got := warm.next("the indexed thread's tail")
-	if got.Type != "tail" || got.Ref != h.sess.hostedThreadID {
+	if got.Type != "tail" || got.Ref != h.sess.HostedThreadID() {
 		t.Fatalf("got %s for %s, want the indexed thread's tail", got.Type, got.Ref)
 	}
 	if waited := time.Since(started); waited > warmJoinWait+3*time.Second {
@@ -317,21 +318,21 @@ func TestWarmStreamRetriesARefusedThreadWithATail(t *testing.T) {
 	saved := fixtureLines(t, "claude-turn.saved.jsonl")
 	h.save(saved)
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	ref := h.sess.hostedThreadID
-	h.srv.sessions = map[string]*session{h.sess.id: h.sess}
+	ref := h.sess.HostedThreadID()
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
 	h.srv.sidebar = newSidebarMaterializedState() // the stream retries on its events
 	earlier := openWarm(t, h.srv, []string{ref}, nil)
 	earlier.next("set")
 	tail := earlier.next("tail")
 	key, held := tail.Key, tail.Rows
 
-	h.srv.sessions = map[string]*session{} // the session is gone for now
+	h.srv.Registry = newSessionRegistry() // the session is gone for now
 	warm := openWarm(t, h.srv, []string{ref}, markersParam(t, ref, key, held))
 	if got := warm.next("refusal"); got.Type != "error" {
 		t.Fatalf("got %+v, want an error", got)
 	}
 	warm.next("set")
-	h.srv.sessions = map[string]*session{h.sess.id: h.sess} // it is back
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess}) // it is back
 	h.srv.sidebar.events.notify(sidebarDelta{Revision: 1})
 	got := warm.next("retry")
 	if got.Type == "set" { // the set names the thread again before its rows
@@ -349,8 +350,8 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 	h := newLiveTextHarness(t)
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) >= 2 })
-	ref := h.sess.hostedThreadID
-	h.srv.sessions = map[string]*session{h.sess.id: h.sess}
+	ref := h.sess.HostedThreadID()
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
 	page := h.page(warmPaneQuery())
 
 	// A narrow window: the newest reply alone wraps past five lines.
@@ -391,14 +392,14 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 // again when the sidebar changes, with no second error.
 func TestWarmStreamRefusesThreadsItCannotWarm(t *testing.T) {
 	h := newLiveTextHarness(t)
-	h.srv.sessions = map[string]*session{h.sess.id: h.sess}
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
 	for i := range warmBudget {
 		h.srv.warm.admit(fmt.Sprintf("nht_elsewhere_%d", i))
 	}
-	warm := openWarm(t, h.srv, []string{"nht_not_held", h.sess.hostedThreadID}, nil)
+	warm := openWarm(t, h.srv, []string{"nht_not_held", h.sess.HostedThreadID()}, nil)
 	for _, want := range []struct{ ref, reason string }{
 		{"nht_not_held", "no live session holds this thread"},
-		{h.sess.hostedThreadID, "the warm budget is spent"},
+		{h.sess.HostedThreadID(), "the warm budget is spent"},
 	} {
 		if got := warm.next("refusal"); got.Type != "error" || got.Ref != want.ref || got.Error != want.reason {
 			t.Fatalf("got %+v, want error %q for %s", got, want.reason, want.ref)
@@ -407,7 +408,7 @@ func TestWarmStreamRefusesThreadsItCannotWarm(t *testing.T) {
 	if set := warm.next("set"); set.Type != "set" || len(set.Refs) != 0 {
 		t.Fatalf("got %+v, want an empty set", set)
 	}
-	if bad := openWarm(t, h.srv, []string{h.sess.hostedThreadID}, url.Values{"markers": {"not json"}}); bad.status != http.StatusBadRequest {
+	if bad := openWarm(t, h.srv, []string{h.sess.HostedThreadID()}, url.Values{"markers": {"not json"}}); bad.status != http.StatusBadRequest {
 		t.Fatalf("malformed markers: status %d, want 400", bad.status)
 	}
 }

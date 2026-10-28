@@ -89,7 +89,7 @@ func TestInteractCompletedTurnFeedAdvancesDurableCursor(t *testing.T) {
 // person's prompt, names none. Boundary: the public completed-turn feed.
 func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *testing.T) {
 	s, target := interactTestServer(t, false)
-	completed := &completedTurnStore{db: s.queuedTurns.db}
+	completed := &completedTurnStore{db: s.queuedTurns.Database()}
 	s.completedTurns = newCompletedTurnSource(completed)
 	op, _, err := s.agentExecutions.beginTurn(target, "action-failed", "hash-failed")
 	if err != nil {
@@ -117,9 +117,9 @@ func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *tes
 }
 
 func TestInteractLifecycleReportsCoordinatorFacts(t *testing.T) {
-	s, target := interactTestServer(t, true)
-	sess := s.sessionForHostedThread(target)
-	sess.projection.RecordDiagnostic(threadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
+	var projection *liveProjection
+	s, target := interactTestServer(t, true, func(cfg *sessionConfig) { projection = cfg.Projection.(*liveProjection) })
+	projection.RecordDiagnostic(threadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
 	state, err := interactTestClient(t, s).ReadLifecycle(context.Background(), target)
 	if err != nil || !state.Attached || !state.Ready || !state.Working || !state.TurnActive || state.Availability != availabilityBusy || state.AttachmentState != "live" {
 		t.Fatalf("lifecycle state = %#v, %v", state, err)
@@ -140,7 +140,7 @@ func interactTestClient(t *testing.T, s *server) *interact.HTTPClient {
 
 // interactTestServer holds one hosted thread over the server's stores, which
 // share one threads database as they do in Nano.
-func interactTestServer(t *testing.T, working bool) (*server, string) {
+func interactTestServer(t *testing.T, working bool, configure ...func(*sessionConfig)) (*server, string) {
 	t.Helper()
 	directory := t.TempDir()
 	stores, err := openThreadRuntimeStores(context.Background(), directory, filepath.Join(directory, "turn-completed.sqlite"), "run-1")
@@ -157,15 +157,13 @@ func interactTestServer(t *testing.T, working bool) (*server, string) {
 		t.Fatal(err)
 	}
 	notices := interact.NewNotices()
-	sess := &session{
-		id: "nano-target", provider: "codex", hostedThreadID: record.ID, threadID: "native-target",
-		createdAt: time.Now(), projection: newLiveProjection("codex", record.ID, "nano-target"),
-		lifecycleState: testLifecycleSnapshot("ready", working), interactions: map[string]pendingInteraction{},
-		agentExecutions: executions, queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
-		sendOps: map[string]*turnSendOperation{}, appendUnread: notices.Append,
+	cfg := sessionConfig{ID: "nano-target", Provider: "codex", HostedThreadID: record.ID, CreatedAt: time.Now(), Projection: newLiveProjection("codex", record.ID, "nano-target"), AgentExecutions: executions, QueuedTurns: queue, SendAttempts: attempts, Turns: turnStore, AppendUnread: notices.Append}
+	for _, apply := range configure {
+		apply(&cfg)
 	}
-	return &server{
-		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
+	sess := configuredFixtureSession(t, cfg, "native-target", "ready", "", working)
+	return testServerWithSessions(&server{
+		Registry: newSessionRegistry(), agentExecutions: executions,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore, notices: notices,
-	}, record.ID
+	}, map[string]*session{sess.ID(): sess}), record.ID
 }

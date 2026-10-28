@@ -9,6 +9,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -270,9 +271,9 @@ func (s *agentExecutionStore) finishSavedResult(id string, rec agentTurnRecord, 
 }
 
 func (s *server) savedOperationResultFinished(hostedID string) {
-	if sess := s.sessionForHostedThread(hostedID); sess != nil {
+	if sess := s.SessionForHostedThread(hostedID); sess != nil {
 		if sess.Provider() == "claude" {
-			sess.requestMemberStep()
+			sess.RequestMemberStep()
 		}
 		return
 	}
@@ -295,11 +296,11 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 	entry := prompt.Outbox
 	claude := rec.Provider == string(model.ProviderClaude)
 	if claude {
-		entry = claudeSettlementEntry(entry, prompt.NativeThreadID, rec.NativeThreadID, nil)
-		if native, ok := exactClaudeNative(entry); !ok || native != rec.NativeThreadID {
+		entry = sessionruntime.ClaudeSettlementEntry(entry, prompt.NativeThreadID, rec.NativeThreadID, nil)
+		if native, ok := sessionruntime.ExactClaudeNative(entry); !ok || native != rec.NativeThreadID {
 			return "", "", history.ErrSavedTranscriptUnavailable
 		}
-		answer, err := s.claudeAnswers(rec.HostedThreadID).answer(ctx, entry)
+		answer, err := s.claudeAnswers(rec.HostedThreadID).Answer(ctx, entry)
 		if err != nil {
 			return "", "", err
 		}
@@ -329,16 +330,16 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 		}
 	}
 	var keys history.SavedUserKeys
-	addSavedUserKey(&keys, binding, rec.Provider)
+	sessionruntime.AddSavedUserKey(&keys, binding, rec.Provider)
 	rows, err := s.savedPromptRows(ctx, rec.NativeThreadID, keys)
 	if err != nil {
 		return "", "", err
 	}
-	generation, ok := savedRowsGeneration(rows)
+	generation, ok := sessionruntime.SavedRowsGeneration(rows)
 	if !ok && len(rows) > 0 {
 		return "", "", history.ErrSavedGenerationChanged // rows from two generations: a rebuild is in flight
 	}
-	settlement, turn := transcript.SavedSettlementTurn(entry, stored, savedRowsOf(rows))
+	settlement, turn := transcript.SavedSettlementTurn(entry, stored, sessionruntime.SavedRowsOf(rows))
 	if !ok || settlement != transcript.SettlementSettled {
 		return "", "", history.ErrSavedTranscriptUnavailable
 	}

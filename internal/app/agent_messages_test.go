@@ -35,7 +35,7 @@ func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient agen
 }
 
 func TestAgentMessageSendOrderingRefsAndDedup(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	refs := []agentMessageRef{{Kind: "nano.thread", ID: recipient.NativeThreadID}, {Kind: "issue.ref", ID: "sample-task"}}
 	rec, first := sendAgentMessageForTest(t, s, recipient, sender.ID, "result-1", "First", "Result one", refs)
 	if rec.Code != http.StatusCreated {
@@ -67,7 +67,7 @@ func TestAgentMessageSendOrderingRefsAndDedup(t *testing.T) {
 }
 
 func TestAgentInboxPeekSeenLintAndRecipientBoundary(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	_, message := sendAgentMessageForTest(t, s, recipient, sender.ID, "finding-1", "Finding", "Please inspect", []agentMessageRef{{Kind: "issue.ref", ID: "sample-task"}})
 
 	peek := httptest.NewRecorder()
@@ -96,7 +96,7 @@ func TestAgentInboxPeekSeenLintAndRecipientBoundary(t *testing.T) {
 }
 
 func TestAgentMessageDispositionFeedbackAndNoRecursion(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	_, quiet := sendAgentMessageForTest(t, s, recipient, sender.ID, "decision-quiet", "Decision", "No feedback requested", nil)
 	if quiet.DispositionFeedback {
 		t.Fatal("disposition feedback defaulted on")
@@ -135,7 +135,7 @@ func TestAgentMessageDispositionFeedbackAndNoRecursion(t *testing.T) {
 }
 
 func TestAgentMessageDispositionRollsBackWhenFeedbackFails(t *testing.T) {
-	s, _, _, sender, recipient, _ := stage0Server(t)
+	s, _, _, sender, recipient, _, _ := stage0Server(t)
 	_, original := sendAgentMessageWithFeedbackForTest(t, s, recipient, sender.ID, "rollback-1", "Rollback", "Prove atomicity", nil, true)
 	// The failure fires inside the disposition transaction, after the status
 	// update, when the sender feedback row is inserted.
@@ -214,7 +214,7 @@ func TestAgentMessageFailedSendRollsBackSequenceAllocation(t *testing.T) {
 func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 	for _, status := range []string{agentSessionDetached, sessionStatusExited} {
 		t.Run(status, func(t *testing.T) {
-			s, store, sess, sender, recipient, prompts := stage0Server(t)
+			s, store, sess, sender, recipient, prompts, _ := stage0Server(t)
 			if err := store.UpdateSession(recipient.ID, "", recipient.NativeThreadID, status, ""); err != nil {
 				t.Fatal(err)
 			}
@@ -223,7 +223,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 			if rec.Code != http.StatusCreated || message.Status != agentMessageUnread {
 				t.Fatalf("send = %d %+v %s", rec.Code, message, rec.Body.String())
 			}
-			if got := sess.queuedTurns.QueuedCount(sess.provider, sess.ThreadID(), sess.hostedThreadID); got != 0 {
+			if got := sess.QueuedPromptCount(); got != 0 {
 				t.Fatalf("inbox send queued %d prompt turns", got)
 			}
 			select {
@@ -423,7 +423,7 @@ func TestControlMetadataAgentInboxIntegrityRejectsCorruptStatusAndSequence(t *te
 
 func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 	t.Run("agent", func(t *testing.T) {
-		s, _, _, sender, recipient, prompts := stage0Server(t)
+		s, _, _, sender, recipient, prompts, _ := stage0Server(t)
 		_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "mail-agent", "Mail", "Unread", nil)
 		body := `{"clientActionId":"agent-turn","prompt":"Review","senderThreadRef":"` + sender.ID + `"}`
 		rec := httptest.NewRecorder()
@@ -437,11 +437,10 @@ func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 		}
 	})
 	t.Run("human", func(t *testing.T) {
-		s, _, sess, sender, recipient, prompts := stage0Server(t)
-		sess.metadata = s.controlMetadata
+		s, _, sess, sender, recipient, prompts, _ := stage0Server(t)
 		_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "mail-human", "Mail", "Unread", nil)
 		rec := httptest.NewRecorder()
-		sess.handleTurn(rec, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(`{"text":"Hello","clientActionId":"human-turn"}`)))
+		sess.HandleTurn(rec, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(`{"text":"Hello","clientActionId":"human-turn"}`)))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("submit=%d %s", rec.Code, rec.Body.String())
 		}
@@ -450,7 +449,7 @@ func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 		}
 	})
 	t.Run("system", func(t *testing.T) {
-		s, _, _, sender, recipient, prompts := stage0Server(t)
+		s, _, _, sender, recipient, prompts, _ := stage0Server(t)
 		_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "mail-system", "Mail", "Unread", nil)
 		if _, _, err := s.submitHostedTurnWithOptions(recipient.ID, "nano:test-system", "Nudge", false); err != nil {
 			t.Fatal(err)
@@ -471,18 +470,17 @@ func mustAgentTurn(t *testing.T, s *server, hostedID, actionID string) agentTurn
 }
 
 func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
-	s, _, sess, sender, recipient, _ := stage0Server(t)
-	sess.metadata = s.controlMetadata
+	s, _, sess, sender, recipient, _, fake := stage0Server(t)
 	_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "mail-queued", "Mail", "Unread", nil)
-	sess.setTurnActive(true, "busy", 0, false)
+	(&providerRuntimeFixture{session: sess, codex: fake}).activate(t)
 	// Held for the next turn, so it stays queued while the turn works.
 	request := `{"text":"Queued","clientActionId":"queued-human","nextTurn":true}`
 	first := httptest.NewRecorder()
-	sess.handleTurn(first, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
+	sess.HandleTurn(first, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
 	if first.Code != http.StatusAccepted {
 		t.Fatalf("first=%d %s", first.Code, first.Body.String())
 	}
-	queued, ok := sess.queuedTurns.Get("queued-human")
+	queued, ok := s.queuedTurns.Get("queued-human")
 	if !ok || !strings.Contains(queued.Text, "[nano: 1 unread") || queued.TextHash == queued.RequestHash || queued.RequestHash != turnRequestHash("Queued", true) {
 		t.Fatalf("queued record = %+v", queued)
 	}
@@ -491,20 +489,19 @@ func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
 		t.Fatal(err)
 	}
 	retry := httptest.NewRecorder()
-	sess.handleTurn(retry, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
+	sess.HandleTurn(retry, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
 	if retry.Code != http.StatusAccepted {
 		t.Fatalf("retry=%d %s", retry.Code, retry.Body.String())
 	}
-	again, _ := sess.queuedTurns.Get("queued-human")
+	again, _ := s.queuedTurns.Get("queued-human")
 	if again.Text != queued.Text {
 		t.Fatalf("retry rewrote queued text: before=%q after=%q", queued.Text, again.Text)
 	}
 }
 
 func TestPromptUsesNoticeSnapshotWithoutReadingMailStore(t *testing.T) {
-	s, store, _, sender, recipient, prompts := stage0Server(t)
-	s.sessions["nano-sender"] = &session{id: "nano-sender", hostedThreadID: sender.ID,
-		provider: sender.Provider, threadID: sender.NativeThreadID, displayName: "Claude sender"}
+	s, store, _, sender, recipient, prompts, _ := stage0Server(t)
+	s.RegisterSession(newFixtureSession(sessionConfig{ID: "nano-sender", HostedThreadID: sender.ID, Provider: sender.Provider, DisplayName: "Claude sender"}, sender.NativeThreadID))
 	_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "notice-snapshot", "Mail", "Unread", nil)
 	if err := s.mail.Close(); err != nil {
 		t.Fatal(err)

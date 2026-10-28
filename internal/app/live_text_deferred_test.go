@@ -13,7 +13,7 @@ func TestLiveTextUnsavedReplyLabelsQueuedAndBuildingRereads(t *testing.T) {
 	for _, state := range []string{"ordinary", "queued", "building"} {
 		t.Run(state, func(t *testing.T) {
 			srv := &server{catalog: catalog, browserDiagnostics: newBrowserDiagnosticStore(10)}
-			sess := &session{provider: "codex", threadID: f.stored(t).Projection.NativeThreadID, hostedThreadID: "synthetic-hosted"}
+			sess := newFixtureSession(sessionConfig{Provider: "codex", HostedThreadID: "synthetic-hosted"}, f.stored(t).Projection.NativeThreadID)
 			loop := &liveTextLoop{srv: srv, sess: sess, awaiting: map[string]awaitedReply{"missing-reply": {finishedAt: time.Now().Add(-time.Minute)}}}
 			if state == "queued" {
 				catalog.enqueueTranscriptReread(f.threadID)
