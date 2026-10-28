@@ -51,27 +51,48 @@ func TestCodexOpenTurnCheckpointDropsSettledResults(t *testing.T) {
 	}
 }
 
-// Codex can complete a native item again under its id. Found in review: an
-// open turn that dropped a completed CommandExecution made its second
-// completion a second item, and history then moved the row's displayed
-// creation time. Boundary: the file checkpoint between two writes.
-func TestCodexOpenTurnKeepsNativeItemForRecompletion(t *testing.T) {
-	first := fixture(t, "capture-item-completed-commandexecution")
-	second := []byte(strings.Replace(string(first), "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z", 1))
-	view, _, err := parseFileView(parsedView{}, inputFor(first))
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkpoint, _ := json.Marshal(view)
-	var restored parsedView
-	if err := json.Unmarshal(checkpoint, &restored); err != nil {
-		t.Fatal(err)
-	}
-	if view, _, err = parseFileView(restored, inputFor(second)); err != nil {
-		t.Fatal(err)
-	}
-	if items := orderedItems(view); len(items) != 1 || len(items[0].Observations) != 2 {
-		t.Fatalf("a second completion of one native item made %d items", len(items))
+// Codex can complete a native item again under its id, after a newer item of
+// its type and whichever of its two copies came first. Found in review: an
+// open turn that dropped such an item made the repeat a second item; a
+// repeated earlier answer then became the turn's final answer, and history
+// moved a command row's displayed creation time. Boundary: the file
+// checkpoint, saved and restored after every record.
+func TestCodexOpenTurnKeepsNativeItemsForRecompletion(t *testing.T) {
+	command := string(fixture(t, "capture-item-completed-commandexecution"))
+	for _, tc := range []struct {
+		name  string
+		rows  []string
+		items int
+		final string
+	}{
+		{"command", []string{command, strings.Replace(command, "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z", 1)}, 1, ""},
+		{"response-first user prompt", []string{userTwinResponse("response-1", "turn-1"), userTwinCompleted("completed-1", "turn-1"), userTwinCompleted("completed-1", "turn-1")}, 1, ""},
+		{"response-first earlier answer", []string{taskStarted("t"), responseAgent("msg_1", "Earlier answer"), completedAgent("item-1", "t", "Earlier answer"),
+			responseAgent("msg_2", "Latest answer"), completedAgent("item-2", "t", "Latest answer"), completedAgent("item-1", "t", "Earlier answer"),
+			`{"type":"event_msg","payload":{"type":"task_complete","turn_id":"t"}}` + "\n"}, 2, "Latest answer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var view parsedView
+			for _, row := range tc.rows {
+				checkpoint, _ := json.Marshal(view)
+				var restored parsedView
+				if err := json.Unmarshal(checkpoint, &restored); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				if view, _, err = parseFileView(restored, inputFor([]byte(row))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(view.Items) != tc.items {
+				t.Fatalf("a repeated native completion made %d items, want %d", len(view.Items), tc.items)
+			}
+			for _, turn := range view.Turns {
+				if final := view.Items[turn.FinalItemID]; tc.final != "" && final.Text != tc.final {
+					t.Fatalf("final answer %q, want %q", final.Text, tc.final)
+				}
+			}
+		})
 	}
 }
 
