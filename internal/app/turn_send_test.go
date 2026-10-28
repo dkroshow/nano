@@ -389,7 +389,7 @@ func (h *settlementHarness) appendSaved(t *testing.T, rows string) {
 		t.Fatal(err)
 	}
 	file.Close()
-	h.service.RequestPathRefresh([]string{h.fixture.path})
+	h.service.FileChanged(h.fixture.path)
 }
 
 func (h *settlementHarness) state(t *testing.T, action string) turns.DeliveryState {
@@ -1225,9 +1225,23 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		if got, _ := store.turn(op.ID); got.Status != agentTurnFailed {
 			t.Fatalf("operation before the proof = %+v; want it still waiting", got)
 		}
-		if _, _, err := h.service.RunTranscriptParserBackfillBatch(ctx, 100); err != nil {
+		// Restart the real background backfill at the proof boundary. Its
+		// queued commit notification waits for the callback to be installed.
+		h.service.Close()
+		reopened, err := history.Open(h.historyPath)
+		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() { reopened.Close() })
+		service, err := newThreadCatalogService(ctx, reopened, threadCatalogServiceOptions{
+			Roots: []history.SourceRoot{h.fixture.root}, EnableUsageBackfillScheduler: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(service.Close)
+		h.service, h.server.catalog = service, service
+		service.SetTranscriptChanged(h.server.confirmDurableThread)
 		waitForCatalogWithin(t, time.Minute, func() bool {
 			got, _ := store.turn(op.ID)
 			return got.Status == agentTurnCompleted

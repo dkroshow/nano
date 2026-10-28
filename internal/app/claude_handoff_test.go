@@ -42,7 +42,7 @@ func newClaudeHandoff(t *testing.T) *claudeHandoff {
 	h.catalog = newGateCatalog(t, nil, nil)
 	h.path = filepath.Join(h.catalog.roots[history.ProviderClaude], handoffNative+".jsonl")
 	writeGateFile(t, h.path, []byte(file.String()))
-	h.catalog.service.RequestPathRefresh([]string{h.path})
+	h.catalog.service.FileChanged(h.path)
 	h.threadID = h.catalog.threadID(t, handoffNative, 2)
 
 	h.projection = newLiveProjection("claude", "hosted-handoff")
@@ -82,7 +82,7 @@ func (h *claudeHandoff) appendSaved(t *testing.T, rows string, wantText string) 
 		t.Fatal(err)
 	}
 	file.Close()
-	h.catalog.service.RequestPathRefresh([]string{h.path})
+	h.catalog.service.FileChanged(h.path)
 	waitForCatalogWithin(t, time.Minute, func() bool {
 		page, err := h.catalog.service.LoadTranscript(context.Background(), h.threadID, transcriptListQuery{
 			Limit: maxThreadTranscriptLimit, View: "dev", HiddenSpecified: true,

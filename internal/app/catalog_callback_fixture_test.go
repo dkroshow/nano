@@ -63,5 +63,5 @@ func appendCallbackFixture(t *testing.T, service *threadCatalogService, path str
 		t.Fatal(err)
 	}
 	file.Close()
-	service.RequestPathRefresh([]string{path})
+	service.FileChanged(path)
 }

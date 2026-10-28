@@ -193,7 +193,7 @@ func (s *Service) runUsageBackfillScheduler(ctx context.Context) {
 		var worked time.Duration
 		var err error
 		if s.usageBackfillEnabled || s.hasDirectTranscriptReread(time.Now()) {
-			rebuilt, worked, err = s.RunTranscriptParserBackfillBatch(ctx, s.usageBackfillBatch)
+			rebuilt, worked, err = s.runTranscriptParserBackfillBatch(ctx, s.usageBackfillBatch)
 		}
 		if err != nil && !errors.Is(err, context.Canceled) {
 			s.logf("transcript usage backfill: %v", err)
@@ -218,11 +218,11 @@ func (s *Service) runUsageBackfillScheduler(ctx context.Context) {
 	}
 }
 
-// RunTranscriptParserBackfillBatch rebuilds at most batchSize parser-behind
+// runTranscriptParserBackfillBatch rebuilds at most batchSize parser-behind
 // transcripts whose canonical source is still present. It returns how many it
 // inspected and how long it worked once admitted, not counting its waits for
 // projectionMu.
-func (s *Service) RunTranscriptParserBackfillBatch(ctx context.Context, batchSize int) (int, time.Duration, error) {
+func (s *Service) runTranscriptParserBackfillBatch(ctx context.Context, batchSize int) (int, time.Duration, error) {
 	if !s.waitTranscriptRebuildStartup(ctx) {
 		return 0, 0, ctx.Err()
 	}

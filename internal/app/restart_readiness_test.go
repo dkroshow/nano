@@ -115,7 +115,7 @@ func (f *catalogReadFailure) Store(fail bool) {
 	if err := os.Chtimes(f.path, at, at); err != nil {
 		f.t.Fatal(err)
 	}
-	f.catalog.RequestPathRefresh([]string{f.path})
+	f.catalog.FileChanged(f.path)
 }
 
 // appendSaved writes rows Codex saved; a held file's watch queues the read.
@@ -129,7 +129,7 @@ func (w *restartWindow) appendSaved(t *testing.T, rows string) {
 		t.Fatal(err)
 	}
 	file.Close()
-	w.catalog.RequestPathRefresh([]string{w.path})
+	w.catalog.FileChanged(w.path)
 }
 
 // savedPromptTurn is what Codex saves of a turn that took the prompt action
@@ -305,7 +305,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 			}
 			writeRollout := func() {
 				writeSettlementFile(t, w.path, fmt.Sprintf(`{"type":"session_meta","payload":{"id":%q,"cwd":"/disposable","timestamp":"2026-10-08T17:00:00Z"}}`+"\n", native))
-				w.catalog.RequestPathRefresh([]string{w.path})
+				w.catalog.FileChanged(w.path)
 			}
 			switch {
 			case test.early:

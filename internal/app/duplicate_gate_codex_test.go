@@ -83,7 +83,7 @@ func TestDuplicateGateCodexTwinSplitAcrossAppendServedOnce(t *testing.T) {
 	catalog := newGateCatalog(t, nil, nil)
 	path := filepath.Join(catalog.roots[history.ProviderCodex], "rollout-40b7284b-c7dd-56b1-a8d1-f5f536dbe04c.jsonl")
 	writeGateFile(t, path, []byte(raw[:split]))
-	catalog.service.RequestPathRefresh([]string{path})
+	catalog.service.FileChanged(path)
 	expected := []gateRow{gateUser(gateShortPrompt), gateAgent(gateShortAnswer)}
 	id := catalog.threadID(t, "40b7284b-c7dd-56b1-a8d1-f5f536dbe04c", 2)
 	assertGateRows(t, "transcript after the event copy", expected, catalog.servedTranscript(t, id))
@@ -96,7 +96,7 @@ func TestDuplicateGateCodexTwinSplitAcrossAppendServedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	file.Close()
-	catalog.service.RequestPathRefresh([]string{path})
+	catalog.service.FileChanged(path)
 	waitForCatalogWithin(t, time.Minute, func() bool {
 		page, err := catalog.service.LoadTranscript(context.Background(), id, transcriptListQuery{Limit: 10, HiddenSpecified: true, View: defaultThreadTranscriptView})
 		return err == nil && len(page.Turns) == 1 && page.Turns[0].Status == "completed"
@@ -158,7 +158,7 @@ func TestDuplicateGateCodexUserTwinKeepsItsFirstNativeID(t *testing.T) {
 				}
 				file.Close()
 				written += int64(len(chunk))
-				catalog.service.RequestPathRefresh([]string{path})
+				catalog.service.FileChanged(path)
 				if index == 0 {
 					id = catalog.threadID(t, native, 0)
 				}

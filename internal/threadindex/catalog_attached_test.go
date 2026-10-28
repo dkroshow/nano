@@ -78,9 +78,9 @@ func TestCatchUpNeedsASavedOrVerifiedTranscript(t *testing.T) {
 func TestBackgroundSourcesWaitBehindForegroundOnes(t *testing.T) {
 	s := &Service{work: make(chan struct{}, 1), dirty: map[string]*dirtySource{}}
 	s.requestPaths([]string{"/hidden-a", "/hidden-b", "/hidden-c"}, true)
-	s.RequestPathRefresh([]string{"/visible"})
+	s.requestPathRefresh([]string{"/visible"})
 	s.FileChanged("/hidden-c")                  // a file event keeps its place
-	s.RequestPathRefresh([]string{"/hidden-b"}) // a reconnect's fresh catch-up
+	s.requestPathRefresh([]string{"/hidden-b"}) // a reconnect's fresh catch-up
 	var order []string
 	for _, take := range s.takeDirtyLocked(10) {
 		order = append(order, take.path)
@@ -101,7 +101,7 @@ func TestAgedBackgroundSourcesShareEachPassWithForegroundWriters(t *testing.T) {
 	aged := time.Now().Add(-catalogBackgroundMaxWait)
 	s.enqueue("/hidden-a", aged, true, false)
 	s.enqueue("/hidden-b", aged, true, false)
-	s.RequestPathRefresh([]string{"/writer-a", "/writer-b"})
+	s.requestPathRefresh([]string{"/writer-a", "/writer-b"})
 	var passes [][]string
 	for range 3 {
 		batch := s.takeDirtyLocked(catalogIngestBatch)

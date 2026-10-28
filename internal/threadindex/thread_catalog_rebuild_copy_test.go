@@ -165,7 +165,7 @@ func TestCopiedIndexParserRebuild(t *testing.T) {
 	rebuilt := 0
 	for {
 		checkResources()
-		n, _, err := service.RunTranscriptParserBackfillBatch(ctx, 8)
+		n, _, err := service.runTranscriptParserBackfillBatch(ctx, 8)
 		if err != nil {
 			t.Fatal(err)
 		}

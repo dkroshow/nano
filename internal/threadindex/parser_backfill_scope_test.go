@@ -154,7 +154,7 @@ func (f *claudeScopeFixture) candidates(t *testing.T) int {
 // projection an older reader built left each unaffected Claude thread with
 // no saved answers until its file next changed. The marked source carries a
 // captured row the current upgrade changes (a sent slash command, as Claude
-// writes it, spacing included). Boundary: RunTranscriptParserBackfillBatch
+// writes it, spacing included). Boundary: runTranscriptParserBackfillBatch
 // and ReadSavedUserRows on a store holding two Claude sources one reader
 // behind.
 func TestParserBackfillMarksUnaffectedSourcesWithoutRereading(t *testing.T) {
@@ -187,7 +187,7 @@ func TestParserBackfillMarksUnaffectedSourcesWithoutRereading(t *testing.T) {
 	if _, err := f.store.ReadSavedUserRows(f.ctx, f.threadIDs[plainID], plainPrompt); !errors.Is(err, history.ErrSavedReaderOutdated) {
 		t.Fatalf("saved read of an older reader's projection before any check = %v; want outdated", err)
 	}
-	inspected, _, err := f.service.RunTranscriptParserBackfillBatch(f.ctx, 2)
+	inspected, _, err := f.service.runTranscriptParserBackfillBatch(f.ctx, 2)
 	if err != nil || inspected != 2 {
 		t.Fatalf("batch inspected = %d, %v; want 2", inspected, err)
 	}
@@ -229,7 +229,7 @@ func TestParserBackfillLeavesUnscannedSourcesPending(t *testing.T) {
 		}
 		return total
 	})
-	inspected, _, err := f.service.RunTranscriptParserBackfillBatch(f.ctx, 2)
+	inspected, _, err := f.service.runTranscriptParserBackfillBatch(f.ctx, 2)
 	if err != nil || inspected != unaffectedScanBatch {
 		t.Fatalf("first batch inspected = %d, %v; want %d marked and none re-read", inspected, err, unaffectedScanBatch)
 	}
@@ -241,7 +241,7 @@ func TestParserBackfillLeavesUnscannedSourcesPending(t *testing.T) {
 	if got := f.candidates(t); got != 2 {
 		t.Fatalf("candidates after one batch = %d; want the 2 unscanned sources", got)
 	}
-	if inspected, _, err := f.service.RunTranscriptParserBackfillBatch(f.ctx, 2); err != nil || inspected != 2 {
+	if inspected, _, err := f.service.runTranscriptParserBackfillBatch(f.ctx, 2); err != nil || inspected != 2 {
 		t.Fatalf("second batch inspected = %d, %v; want the remaining 2 marked", inspected, err)
 	}
 	if got := f.candidates(t); got != 0 {

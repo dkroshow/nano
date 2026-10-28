@@ -55,7 +55,7 @@ func TestThreadCatalogPassHasOneInFlightAndOnePendingAndNoSettle(t *testing.T) {
 	waitCatalogReady(t, service)
 
 	hinted := time.Now()
-	service.RequestPathRefresh([]string{path})
+	service.requestPathRefresh([]string{path})
 	select {
 	case <-entered:
 	case <-time.After(time.Second):
@@ -68,7 +68,7 @@ func TestThreadCatalogPassHasOneInFlightAndOnePendingAndNoSettle(t *testing.T) {
 	// pass follows, however many hints arrive.
 	for i := 0; i < 20; i++ {
 		appendCatalogRow(t, path, claudeCatalogUserRow(nativeID, "2026-09-15T10:01:00Z", fmt.Sprintf("burst %d", i)))
-		service.RequestPathRefresh([]string{path})
+		service.requestPathRefresh([]string{path})
 	}
 	release <- struct{}{}
 	select {
@@ -181,7 +181,7 @@ func TestThreadCatalogRefreshIsRecoveryAndKeepsQueuedWork(t *testing.T) {
 	}
 	defer service.Close()
 	service.SetTranscriptChanged(func(context.Context, TranscriptChange) {})
-	service.RequestPathRefresh([]string{kept, removed})
+	service.requestPathRefresh([]string{kept, removed})
 	waitForCatalog(t, func() bool {
 		page, err := service.ListThreads(context.Background(), ListQuery{Archived: "include", Limit: 10})
 		return err == nil && len(page.Items) == 2
@@ -192,14 +192,14 @@ func TestThreadCatalogRefreshIsRecoveryAndKeepsQueuedWork(t *testing.T) {
 	}
 	appendCatalogRow(t, kept, claudeCatalogUserRow(keptID, "2026-09-15T13:02:00Z", "kept, changed"))
 	// A hint for another file imports nothing it did not name.
-	service.RequestPathRefresh([]string{kept})
+	service.requestPathRefresh([]string{kept})
 	waitForCatalog(t, func() bool { return catalogCompleteLines(t, service, keptID) == 3 })
 	if page, _ := service.ListThreads(context.Background(), ListQuery{Archived: "include", Limit: 10}); len(page.Items) != 2 {
 		t.Fatalf("a targeted pass imported an unnamed file: %d threads", len(page.Items))
 	}
 
 	service.RequestRefresh()
-	service.RequestPathRefresh([]string{kept})
+	service.requestPathRefresh([]string{kept})
 	waitForCatalog(t, func() bool {
 		page, err := service.ListThreads(context.Background(), ListQuery{Archived: "include", Limit: 10})
 		if err != nil || len(page.Items) != 3 {

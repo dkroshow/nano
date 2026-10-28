@@ -252,11 +252,11 @@ func TestParserVersionChangeWithCheckpointErrorStaysScanWork(t *testing.T) {
 
 // TestParserBackfillAdvancesSourceAndTranscriptVersions guards the paced path:
 // one backfill batch brings both the source's and the transcript's stored
-// parser versions to current. Boundary: RunTranscriptParserBackfillBatch on a
+// parser versions to current. Boundary: runTranscriptParserBackfillBatch on a
 // byte-identical parser-behind source.
 func TestParserBackfillAdvancesSourceAndTranscriptVersions(t *testing.T) {
 	f := newParserBudgetFixture(t, 1)
-	rebuilt, _, err := f.service.RunTranscriptParserBackfillBatch(f.ctx, 1)
+	rebuilt, _, err := f.service.runTranscriptParserBackfillBatch(f.ctx, 1)
 	if err != nil || rebuilt != 1 {
 		t.Fatalf("backfill rebuilt = %d, %v", rebuilt, err)
 	}
@@ -271,7 +271,7 @@ func TestParserBackfillAdvancesSourceAndTranscriptVersions(t *testing.T) {
 // TestParserBackfillPauseFileHoldsBatches catches a pause that does not hold:
 // an operator creates the pause file to stop a long parser upgrade without a
 // deploy, and a batch still rebuilds, including one that was already waiting
-// for a scan when the file appeared. Boundary: RunTranscriptParserBackfillBatch,
+// for a scan when the file appeared. Boundary: runTranscriptParserBackfillBatch,
 // the scheduler's batch. With the file present it rebuilds nothing and the
 // transcript stays behind; once the file is gone the next batch rebuilds it.
 func TestParserBackfillPauseFileHoldsBatches(t *testing.T) {
@@ -291,7 +291,7 @@ func TestParserBackfillPauseFileHoldsBatches(t *testing.T) {
 	}
 	t.Cleanup(service.Close)
 	<-service.catalogReady
-	if rebuilt, _, err := service.RunTranscriptParserBackfillBatch(f.ctx, 1); err != nil || rebuilt != 0 {
+	if rebuilt, _, err := service.runTranscriptParserBackfillBatch(f.ctx, 1); err != nil || rebuilt != 0 {
 		t.Fatalf("paused batch rebuilt %d, %v; want 0", rebuilt, err)
 	}
 	if got := f.checkpointVersion(t); got != staleParserVersion {
@@ -304,7 +304,7 @@ func TestParserBackfillPauseFileHoldsBatches(t *testing.T) {
 	service.projectionMu.Lock()
 	waiting := make(chan int, 1)
 	go func() {
-		rebuilt, _, _ := service.RunTranscriptParserBackfillBatch(f.ctx, 1)
+		rebuilt, _, _ := service.runTranscriptParserBackfillBatch(f.ctx, 1)
 		waiting <- rebuilt
 	}()
 	// The wait only has to outlast the batch's start; the result does not
@@ -320,7 +320,7 @@ func TestParserBackfillPauseFileHoldsBatches(t *testing.T) {
 	if err := os.Remove(pause); err != nil {
 		t.Fatal(err)
 	}
-	if rebuilt, _, err := service.RunTranscriptParserBackfillBatch(f.ctx, 1); err != nil || rebuilt != 1 {
+	if rebuilt, _, err := service.runTranscriptParserBackfillBatch(f.ctx, 1); err != nil || rebuilt != 1 {
 		t.Fatalf("resumed batch rebuilt %d, %v; want 1", rebuilt, err)
 	}
 	if got, want := f.checkpointVersion(t), history.CurrentTranscriptParserVersion(history.ProviderCodex); got != want {
@@ -392,7 +392,7 @@ func TestParserBackfillCoolsDownBetweenBatches(t *testing.T) {
 // TestParserBackfillWaitsForFreshnessScans catches a parser backfill batch
 // that starts while attached work is queued, or runs during a targeted pass:
 // it re-projects sources ahead of, or alongside, the changed files the user
-// is waiting for. Boundary: RunTranscriptParserBackfillBatch, the scheduler's
+// is waiting for. Boundary: runTranscriptParserBackfillBatch, the scheduler's
 // batch, on the parser fixture: while a pass is held inside its projection of
 // a changed file and another file waits queued behind it, the batch does not
 // start; it rebuilds the parser-behind source only after both passes end.
@@ -416,7 +416,7 @@ func TestParserBackfillWaitsForFreshnessScans(t *testing.T) {
 	batch := func(service *Service, ctx context.Context) chan result {
 		done := make(chan result, 1)
 		go func() {
-			rebuilt, _, _ := service.RunTranscriptParserBackfillBatch(ctx, 2)
+			rebuilt, _, _ := service.runTranscriptParserBackfillBatch(ctx, 2)
 			done <- result{rebuilt, time.Now()}
 		}()
 		return done
@@ -445,9 +445,9 @@ func TestParserBackfillWaitsForFreshnessScans(t *testing.T) {
 		t.Fatal(err)
 	}
 	file.Close()
-	scanning.RequestPathRefresh([]string{f.paths[1]})
+	scanning.requestPathRefresh([]string{f.paths[1]})
 	<-started
-	scanning.RequestPathRefresh([]string{f.paths[0]})
+	scanning.requestPathRefresh([]string{f.paths[0]})
 	done := batch(scanning, f.ctx)
 	select {
 	case r := <-done:
@@ -471,12 +471,12 @@ func TestParserBackfillWaitsForFreshnessScans(t *testing.T) {
 // TestParserBackfillParsesWithoutTheProjectionLock catches a batch that holds
 // projectionMu while it reads and parses a source: every worker pass, and so
 // every thread's saved rows, waits for the whole batch. Boundary:
-// RunTranscriptParserBackfillBatch on a parser-behind source. Once the batch
+// runTranscriptParserBackfillBatch on a parser-behind source. Once the batch
 // is reading, the lock must come free before the batch commits that source.
 func TestParserBackfillParsesWithoutTheProjectionLock(t *testing.T) {
 	f := newParserBudgetFixture(t, 1)
 	appendTurns(t, f.path, 0, 200)
-	f.service.RequestPathRefresh([]string{f.path})
+	f.service.requestPathRefresh([]string{f.path})
 	waitForCatalogWithin(t, 30*time.Second, func() bool { return f.stored(t).Source.Size == fileSize(t, f.path) })
 	f.markStale(t, f.stored(t), f.threadID)
 
@@ -484,7 +484,7 @@ func TestParserBackfillParsesWithoutTheProjectionLock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		f.service.RunTranscriptParserBackfillBatch(withReadProgress(f.ctx, progress), 1)
+		f.service.runTranscriptParserBackfillBatch(withReadProgress(f.ctx, progress), 1)
 	}()
 	waitForCatalogWithin(t, 30*time.Second, func() bool { return progress.readAt.Load() != 0 })
 	for !f.service.projectionMu.TryLock() {
@@ -516,7 +516,7 @@ func TestParserBackfillCommitsOnlyAnUnchangedSource(t *testing.T) {
 	failed := errors.New("parse failed")
 	workerAppends := func(t *testing.T, f *parserBudgetFixture) {
 		appendTurns(t, f.path, 0, 1)
-		f.service.RequestPathRefresh([]string{f.path})
+		f.service.requestPathRefresh([]string{f.path})
 		waitForCatalogWithin(t, 30*time.Second, func() bool { return f.stored(t).Source.Size == fileSize(t, f.path) })
 	}
 	for _, tc := range []struct {

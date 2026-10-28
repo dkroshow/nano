@@ -233,7 +233,7 @@ func TestTranscriptRereadDirectQueuePreemptsBacklogAndSwitchesFirst(t *testing.T
 	if err != nil || old.ProjectionKey != cp.ProjectionKey {
 		t.Fatal("preemption replaced A", err)
 	}
-	inspected, _, err := s.RunTranscriptParserBackfillBatch(f.ctx, 1)
+	inspected, _, err := s.runTranscriptParserBackfillBatch(f.ctx, 1)
 	if err != nil || inspected != 1 {
 		t.Fatal("direct rebuild failed", inspected, err)
 	}
@@ -430,7 +430,7 @@ func TestTranscriptRereadWorkerDefersLargeErroredCheckpoint(t *testing.T) {
 	if after.Source.Size != source.Source.Size || after.ParserVersion != source.ParserVersion {
 		t.Fatal("deferral changed the base source row")
 	}
-	if count, _, err := s.RunTranscriptParserBackfillBatch(f.ctx, 1); err != nil || count != 1 {
+	if count, _, err := s.runTranscriptParserBackfillBatch(f.ctx, 1); err != nil || count != 1 {
 		t.Fatal("errored source was never retried", count, err)
 	}
 	cp, _, err := f.store.LoadTranscriptCheckpointHeader(f.ctx, f.threadID)
@@ -502,7 +502,7 @@ func TestTranscriptRereadRefreshLeavesUnchangedLargeThreadInBacklog(t *testing.T
 	if s.DeferredTranscriptReread(f.threadID) {
 		t.Fatal("Refresh queued an idle parser-behind thread as direct work")
 	}
-	if count, _, err := s.RunTranscriptParserBackfillBatch(f.ctx, 1); err != nil || count != 0 {
+	if count, _, err := s.runTranscriptParserBackfillBatch(f.ctx, 1); err != nil || count != 0 {
 		t.Fatal("unchanged thread bypassed the backlog pause", count, err)
 	}
 	if f.checkpointVersion(t) != staleParserVersion {
@@ -642,7 +642,7 @@ func TestTranscriptRereadFailedBuildWaitsForFirstRetry(t *testing.T) {
 	s.enqueueTranscriptReread(f.threadID)
 	s.enqueueTranscriptReread(f.threadID)
 	before := time.Now()
-	count, _, err := s.RunTranscriptParserBackfillBatch(f.ctx, 1)
+	count, _, err := s.runTranscriptParserBackfillBatch(f.ctx, 1)
 	after := time.Now()
 	if err != nil || count != 1 {
 		t.Fatal("failed direct build was not processed", count, err)

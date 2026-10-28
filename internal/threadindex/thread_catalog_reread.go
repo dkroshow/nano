@@ -220,7 +220,7 @@ func (s *Service) runDirectTranscriptRereads(ctx context.Context, limit int) (in
 				reason = "removed"
 			}
 			s.finishTranscriptReread(id, false, reason)
-			s.RequestPathRefresh([]string{source.Source.Path})
+			s.requestPathRefresh([]string{source.Source.Path})
 			count++
 			continue
 		}
@@ -251,7 +251,7 @@ func (s *Service) runDirectTranscriptRereads(ctx context.Context, limit int) (in
 		if !retry && s.holdsAttachedSource(source.Source.Path) {
 			// An attachment's catch-up waits on this file: one targeted pass
 			// now proves the reread checkpoint current.
-			s.RequestPathRefresh([]string{source.Source.Path})
+			s.requestPathRefresh([]string{source.Source.Path})
 		}
 		count++
 		if ctx.Err() != nil {
@@ -349,7 +349,7 @@ func (s *Service) buildPreparedTranscriptReread(ctx context.Context, candidate h
 		}
 		return started.Sub(queuedAt)
 	}(), time.Since(started), prepared.File.Transcript.ReadOffset)
-	s.RequestPathRefresh([]string{prepared.Source.Path})
+	s.requestPathRefresh([]string{prepared.Source.Path})
 	s.requestSupersededCollection()
 	nativeID := ""
 	if base.Projection != nil {

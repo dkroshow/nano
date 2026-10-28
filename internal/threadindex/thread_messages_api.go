@@ -113,12 +113,12 @@ func (s *Handlers) HandleThreadMessages(w http.ResponseWriter, r *http.Request, 
 		WriteCatalogJSON(w, http.StatusOK, MessagesResponse{ThreadID: id, Count: len(messages), Messages: messages})
 		return
 	}
-	for len(messages) > 0 && len(RenderThreadMessagesText(messages)) > MaxThreadTranscriptBytes {
+	for len(messages) > 0 && len(renderThreadMessagesText(messages)) > MaxThreadTranscriptBytes {
 		messages = messages[1:]
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, RenderThreadMessagesText(messages))
+	_, _ = io.WriteString(w, renderThreadMessagesText(messages))
 }
 
 // resolveThreadReference resolves the path segment to a durable thread id. A
@@ -292,9 +292,9 @@ func MessageRole(itemType string) (string, bool) {
 	return "", false
 }
 
-// RenderThreadMessagesText is the token-cheap rendering: a role/time header per
+// renderThreadMessagesText is the token-cheap rendering: a role/time header per
 // message and the text underneath, nothing else to parse past.
-func RenderThreadMessagesText(messages []Message) string {
+func renderThreadMessagesText(messages []Message) string {
 	var out strings.Builder
 	for _, message := range messages {
 		out.WriteString(message.Role)

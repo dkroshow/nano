@@ -126,8 +126,8 @@ func (s *Service) ReadSavedTurnStatus(ctx context.Context, threadID, nativeTurnI
 	return s.store.ReadSavedTurnStatus(ctx, threadID, nativeTurnID)
 }
 
-// LoadCompletedTranscriptTurn returns one complete saved native turn within the byte budget.
-func (s *Service) LoadCompletedTranscriptTurn(ctx context.Context, id, nativeTurnID string) (TranscriptResponse, error) {
+// loadCompletedTranscriptTurn returns one complete saved native turn within the byte budget.
+func (s *Service) loadCompletedTranscriptTurn(ctx context.Context, id, nativeTurnID string) (TranscriptResponse, error) {
 	page, err := s.store.ReadCompletedTranscriptTurn(ctx, id, nativeTurnID)
 	if errors.Is(err, history.ErrTranscriptChanged) {
 		return TranscriptResponse{}, errTranscriptCursorStale

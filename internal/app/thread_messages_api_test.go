@@ -360,7 +360,7 @@ func TestThreadMessagesMarksALoadedRetainedPrefixIncomplete(t *testing.T) {
 	if message.Complete || !message.RetainedTruncated || message.ContentState != "retained_truncated_prefix" || message.Text != "retained prefix" {
 		t.Fatalf("retained prefix semantics=%#v", message)
 	}
-	if text := renderThreadMessagesText(messages); !strings.Contains(text, "[retained_truncated_prefix incomplete") || !strings.Contains(text, "retainedTruncated=true") {
+	if text := messagesRequest(t, &server{catalog: fake}, "/api/v1/threads/nth_one/messages").Body.String(); !strings.Contains(text, "[retained_truncated_prefix incomplete") || !strings.Contains(text, "retainedTruncated=true") {
 		t.Fatalf("retained prefix marker=%q", text)
 	}
 }

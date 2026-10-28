@@ -334,7 +334,7 @@ func (s *Service) AwaitAttachedCurrent(owner string, fresh bool, neverPrompted f
 			return true
 		}
 		if refresh {
-			s.RequestPathRefresh(current.paths)
+			s.requestPathRefresh(current.paths)
 		}
 		select {
 		case <-catchUp.done:

@@ -238,9 +238,9 @@ func (s *Service) RequestRefresh() bool {
 	return true
 }
 
-// RequestPathRefresh queues known sources for targeted passes. A path that is
+// requestPathRefresh queues known sources for targeted passes. A path that is
 // not a provider file under a configured root is a cheap no-op.
-func (s *Service) RequestPathRefresh(paths []string) { s.requestPaths(paths, false) }
+func (s *Service) requestPathRefresh(paths []string) { s.requestPaths(paths, false) }
 
 // requestPaths queues sources, in the background queue when background. A
 // foreground request moves a waiting background source forward; a file event

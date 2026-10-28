@@ -298,11 +298,6 @@ type TranscriptCatalog interface {
 	LoadTranscript(context.Context, string, TranscriptQuery) (TranscriptResponse, error)
 }
 
-// CompletedTranscriptCatalog reads one complete saved native turn.
-type CompletedTranscriptCatalog interface {
-	LoadCompletedTranscriptTurn(context.Context, string, string) (TranscriptResponse, error)
-}
-
 // SavedTurnStatusCatalog reads the durable status evidence of one native turn.
 type SavedTurnStatusCatalog interface {
 	ReadSavedTurnStatus(ctx context.Context, threadID, nativeTurnID string) (history.SavedTurnStatus, bool, error)

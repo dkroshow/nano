@@ -54,7 +54,7 @@ func completedTranscriptFixture(t *testing.T) (*Service, string) {
 			return false
 		}
 		threadID = id
-		_, err = service.LoadCompletedTranscriptTurn(context.Background(), id, "old-turn")
+		_, err = service.loadCompletedTranscriptTurn(context.Background(), id, "old-turn")
 		return err == nil
 	})
 	return service, threadID
@@ -66,14 +66,14 @@ func TestCompletedTranscriptServiceRealLargeTurn(t *testing.T) {
 	if err != nil || !partial.Page.StartsMidTurn {
 		t.Fatalf("fixture is not partial: %+v %v", partial.Page, err)
 	}
-	complete, err := service.LoadCompletedTranscriptTurn(context.Background(), threadID, "old-turn")
+	complete, err := service.loadCompletedTranscriptTurn(context.Background(), threadID, "old-turn")
 	if err != nil || len(complete.Items) != 2 || complete.ThreadID != threadID || complete.Turns[0].NativeTurnID != "old-turn" || complete.Items[1].NativeItemID != "final-0" || complete.Items[1].Text != "old final" || !complete.Items[1].IsFinalAnswer || complete.Page.StartsMidTurn {
 		t.Fatalf("exact turn: %+v %v", complete, err)
 	}
-	if _, err := service.LoadCompletedTranscriptTurn(context.Background(), threadID, "wrong-turn"); err == nil {
+	if _, err := service.loadCompletedTranscriptTurn(context.Background(), threadID, "wrong-turn"); err == nil {
 		t.Fatal("wrong turn accepted")
 	}
-	if _, err := service.LoadCompletedTranscriptTurn(context.Background(), "wrong-thread", "old-turn"); err == nil {
+	if _, err := service.loadCompletedTranscriptTurn(context.Background(), "wrong-thread", "old-turn"); err == nil {
 		t.Fatal("wrong thread accepted")
 	}
 }

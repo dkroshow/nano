@@ -527,7 +527,7 @@ func TestTranscriptParserBackfillRebuildsUnchangedCodexV8ServiceTier(t *testing.
 	if err != nil || len(candidates) != 1 || candidates[0].ThreadID != threadID || candidates[0].ParserVersion != "codex-transcript-v8" {
 		t.Fatalf("v8 backfill candidates = %#v, %v", candidates, err)
 	}
-	rebuilt, _, err := service.RunTranscriptParserBackfillBatch(ctx, 1)
+	rebuilt, _, err := service.runTranscriptParserBackfillBatch(ctx, 1)
 	if err != nil || rebuilt != 1 {
 		t.Fatalf("backfill rebuilt = %d, %v", rebuilt, err)
 	}
@@ -617,7 +617,7 @@ func TestTranscriptParserBackfillMarksFailedRebuildSoLaterBatchesSkipIt(t *testi
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	rebuilt, _, err := service.RunTranscriptParserBackfillBatch(ctx, 1)
+	rebuilt, _, err := service.runTranscriptParserBackfillBatch(ctx, 1)
 	if err != nil || rebuilt != 1 {
 		t.Fatalf("failed rebuild = %d, %v", rebuilt, err)
 	}
@@ -634,7 +634,7 @@ func TestTranscriptParserBackfillMarksFailedRebuildSoLaterBatchesSkipIt(t *testi
 // TestCodexReaderBumpFullyRebuildsOlderSourcesInPriorityOrder catches a
 // backfill that skips older sources, publishes an authoritative repair, loses
 // priority order, or waits for the whole corpus before publishing. Boundary:
-// RunTranscriptParserBackfillBatch with the catalog's published transcript
+// runTranscriptParserBackfillBatch with the catalog's published transcript
 // changes and saved checkpoints.
 func TestCodexReaderBumpFullyRebuildsOlderSourcesInPriorityOrder(t *testing.T) {
 	for _, oldReader := range []string{"codex-reader-v34", "codex-reader-v36"} {
@@ -757,7 +757,7 @@ func codexOlderReaderBackfill(t *testing.T, oldReader string) {
 	})
 	changed := make(chan TranscriptChange, 4)
 	service.SetTranscriptChanged(func(_ context.Context, change TranscriptChange) { changed <- change })
-	if inspected, _, err := service.RunTranscriptParserBackfillBatch(ctx, 1); err != nil || inspected != 1 {
+	if inspected, _, err := service.runTranscriptParserBackfillBatch(ctx, 1); err != nil || inspected != 1 {
 		t.Fatalf("first batch=%d err=%v", inspected, err)
 	}
 	select {
@@ -773,7 +773,7 @@ func codexOlderReaderBackfill(t *testing.T, oldReader string) {
 		t.Fatalf("first publication waited for corpus: remaining=%d err=%v", len(remaining), err)
 	}
 	for range 2 {
-		if inspected, _, err := service.RunTranscriptParserBackfillBatch(ctx, 1); err != nil || inspected != 1 {
+		if inspected, _, err := service.runTranscriptParserBackfillBatch(ctx, 1); err != nil || inspected != 1 {
 			t.Fatalf("later batch=%d err=%v", inspected, err)
 		}
 	}
@@ -820,7 +820,7 @@ func codexOlderReaderBackfill(t *testing.T, oldReader string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service.RequestPathRefresh([]string{fixtures[2].path})
+	service.requestPathRefresh([]string{fixtures[2].path})
 	waitForCatalogWithin(t, 5*time.Second, func() bool {
 		checkpoint, ok, err := store.LoadTranscriptCheckpointHeader(ctx, threadByNative[fixtures[2].id])
 		return err == nil && ok && checkpoint.ParserVersion == current
@@ -1096,7 +1096,7 @@ func TestThreadCatalogHintRetriesFailedCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer service.Close()
-	service.RequestPathRefresh([]string{path})
+	service.requestPathRefresh([]string{path})
 
 	var threadID string
 	var sourceID int64
@@ -1121,7 +1121,7 @@ func TestThreadCatalogHintRetriesFailedCheckpoint(t *testing.T) {
 	if err := store.MarkTranscriptError(context.Background(), threadID, sourceID, "injected transcript failure", time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	service.RequestPathRefresh([]string{path})
+	service.requestPathRefresh([]string{path})
 	waitForCatalog(t, func() bool {
 		checkpoint, exists, err := store.LoadTranscriptCheckpoint(context.Background(), threadID)
 		return err == nil && exists && checkpoint.ErrorSummary == nil && checkpoint.CompleteLines == 2
@@ -1178,7 +1178,7 @@ func TestThreadCatalogGrokSummaryToUpdatesPublishesTerminalTurn(t *testing.T) {
 			}
 			started := time.Now()
 			if targeted {
-				service.RequestPathRefresh([]string{updatesPath})
+				service.requestPathRefresh([]string{updatesPath})
 			} else {
 				service.RequestRefresh()
 			}
@@ -1335,7 +1335,7 @@ func TestCatalogRestartServesWhatAScanStoppedBeforeSaving(t *testing.T) {
 			path := filepath.Join(spec.Path, "rollout-"+native+".jsonl")
 			if tc.indexed != "" {
 				writeGateFile(t, path, []byte(tc.indexed))
-				catalog.service.RequestPathRefresh([]string{path})
+				catalog.service.requestPathRefresh([]string{path})
 				catalog.threadID(t, native, 1)
 			}
 			catalog.service.Close()

@@ -11,7 +11,7 @@ func TestRecordWireNudgeDoesNotBlockWhileTheWorkerIsBusy(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		for i := 0; i < 100; i++ {
-			service.RequestPathRefresh([]string{"/sessions/rollout.jsonl"})
+			service.requestPathRefresh([]string{"/sessions/rollout.jsonl"})
 		}
 		close(done)
 	}()
