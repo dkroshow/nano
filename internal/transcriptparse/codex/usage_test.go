@@ -3,6 +3,7 @@ package codex
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -98,6 +99,45 @@ func TestCodexClosedReadKeepsUsageOnEmittedTurns(t *testing.T) {
 	for _, turn := range view.Turns {
 		if len(turn.UsageObservations) == 0 || turn.Usage == nil {
 			t.Fatalf("a closed read emitted its turn without usage samples: %+v", turn.UsageObservations)
+		}
+	}
+}
+
+// Usage samples left Turns in checkpoint version 23. Found in review: kept
+// at 22, a rolled-back binary read the new layout, saw turns without their
+// samples and summed only later ones. The previous reader accepts only 22, so
+// a 23 checkpoint makes it rebuild; this reader still resumes a 22 one with
+// its inline samples. Boundary: a saved checkpoint, restored by ParseFile.
+func TestCodexUsageLayoutIsVersioned(t *testing.T) {
+	count := func(last, total int) string {
+		return fmt.Sprintf(`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":%d},"total_token_usage":{"input_tokens":%d}}}}`+"\n", last, total)
+	}
+	view, _, err := parseFileView(parsedView{}, inputFor([]byte(`{"type":"event_msg","payload":{"type":"task_started","turn_id":"t"}}`+"\n"+count(1, 1))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Continuation.Version == 22 {
+		t.Fatal("a checkpoint with usage entries keeps version 22, which an older reader accepts")
+	}
+	older := view.Continuation
+	older.Version = 22
+	for key, turn := range older.Turns {
+		turn.UsageObservations = older.usageOf(key)
+		older.Turns[key] = turn
+	}
+	older.Usage, older.UsageCounts = nil, nil
+	saved, _ := json.Marshal(parsedView{Continuation: older})
+	var restored parsedView
+	if err := json.Unmarshal(saved, &restored); err != nil {
+		t.Fatal(err)
+	}
+	view, _, err = parseFileView(restored, inputFor([]byte(count(2, 3))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, turn := range view.Turns {
+		if turn.Usage == nil || turn.Usage.Input == nil || *turn.Usage.Input != 3 {
+			t.Fatalf("a version-22 checkpoint resumed with usage %+v, want input 3", turn.Usage)
 		}
 	}
 }

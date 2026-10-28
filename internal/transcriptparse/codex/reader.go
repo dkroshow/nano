@@ -67,6 +67,9 @@ type State struct {
 	changed map[string]map[string]bool
 }
 
+// checkpointVersion is State.Version: 23 keeps usage samples in Usage.
+const checkpointVersion = 23
+
 // ParseFile consumes chunks of Codex native JSONL. An open file's unterminated tail
 // stays pending until Closed is explicit; closing bytes does not complete turns.
 func ParseFile(state State, input model.Input) (State, model.Batch, error) {
@@ -154,8 +157,8 @@ func prepare(state State, input model.Input, kind string) (State, model.Batch, e
 		if !reflect.DeepEqual(state, State{}) {
 			return state, batch, readerError("invalid_checkpoint", source)
 		}
-		state.Version, state.Source, state.Limit = 22, source, limit
-	} else if state.Version != 22 || state.Source != source || state.Limit != limit {
+		state.Version, state.Source, state.Limit = checkpointVersion, source, limit
+	} else if state.Version != checkpointVersion && state.Version != 22 || state.Source != source || state.Limit != limit {
 		return state, batch, readerError("incompatible_checkpoint", source)
 	}
 	state.pending += len(input.Bytes)
@@ -183,6 +186,10 @@ func prepare(state State, input model.Input, kind string) (State, model.Batch, e
 		}
 		state.changed = changed
 	}
+	// Version 22 kept usage samples in Turns. A reader that knows only 22
+	// rejects 23, so after a rollback it rebuilds instead of reading a turn
+	// without its samples.
+	state.Version = checkpointVersion
 	for key, turn := range state.Turns {
 		// A checkpoint saved before usage moved out of Turns.
 		if len(turn.UsageObservations) > 0 {

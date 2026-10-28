@@ -269,7 +269,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'building', ?, ?, ?, 0, 0, ?, ?)`,
 
 func (s *Store) ApplyTranscript(ctx context.Context, input TranscriptApplyRequest) (TranscriptApplyResult, error) {
 	result, err := s.applyTranscript(ctx, input)
-	s.resident.settle(input.ThreadID, input.Result.residentNext, err == nil)
+	// A no-op append saved nothing: a kept copy still describes the saved rows,
+	// and the proposed one was never saved.
+	if err != nil || result.Changed {
+		s.resident.settle(input.ThreadID, input.Result.residentNext, err == nil)
+	}
 	return result, err
 }
 
@@ -384,6 +388,11 @@ FROM conversation_projections WHERE thread_id = ? AND state = 'active'`, input.T
 		}
 		if input.Result.ReadOffset <= oldReadOffset {
 			return TranscriptApplyResult{ProjectionKey: oldKey, LatestSeq: oldLatest, ItemCount: oldCount}, nil
+		}
+		// A resumed save holds only the changes since the copy it resumed
+		// from, so it applies only to the rows that copy saved.
+		if delta != nil && delta.from != oldReadOffset {
+			return TranscriptApplyResult{}, ErrTranscriptChanged
 		}
 		if input.Result.CompleteLines < int(oldLines) || input.Result.CompleteOffset < oldOffset {
 			return TranscriptApplyResult{}, ErrTranscriptChanged

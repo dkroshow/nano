@@ -126,6 +126,7 @@ func (c *residentContinuation) record(entries []continuationEntry) {
 // continuationDelta is a resumed save: the base row and the entries that
 // changed since the copy it resumed from.
 type continuationDelta struct {
+	from    int64 // the read offset of the saved copy it resumed from
 	base    []byte
 	upserts []continuationEntry
 	deletes [][2]string
@@ -154,7 +155,7 @@ func codexContinuationDelta(checkpoint parsedFileCheckpoint, reader parsecodex.S
 	if err != nil {
 		return nil, nil, false, err
 	}
-	delta := &continuationDelta{base: base}
+	delta := &continuationDelta{from: prior.readOffset, base: base}
 	next := &residentContinuation{small: map[string][sha256.Size]byte{}, sizes: make(map[string]int, len(prior.sizes)), bytes: prior.bytes, recorded: true}
 	for id, size := range prior.sizes {
 		next.sizes[id] = size

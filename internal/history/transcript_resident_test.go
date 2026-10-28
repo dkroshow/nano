@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -268,5 +269,144 @@ func TestResidentContinuationsStayBounded(t *testing.T) {
 	}
 	if r.bytes > residentTotalBytes || len(r.threads) != 3 || r.threads["a"] != nil {
 		t.Fatalf("kept %d bytes in %d copies (a kept: %v), bound %d", r.bytes, len(r.threads), r.threads["a"] != nil, residentTotalBytes)
+	}
+}
+
+// A save resumed from memory holds only the changes since the copy it resumed
+// from. Found in review: two appends prepared from one copy were both
+// accepted, and the second, which never saw the first's new turn, left that
+// turn on disk while memory dropped it; after a restart, late usage reopened
+// the completed turn. Boundary: ApplyTranscript, saving the shorter append
+// and then the longer one prepared from the same copy.
+func TestTranscriptResumedSaveRejectsAStaleBase(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	target := newCodexAppendTarget(t, store, filepath.Join(dir, "source"))
+	seed := `{"type":"event_msg","payload":{"type":"task_started","turn_id":"base"}}` + "\n"
+	target.apply(t, []byte(seed))
+	checkpoint, _, err := store.LoadTranscriptCheckpointForAppend(ctx, target.threadID)
+	if err != nil || checkpoint.resident == nil {
+		t.Fatalf("no copy in memory to resume from: %v", err)
+	}
+	first := `{"type":"event_msg","payload":{"type":"task_complete","turn_id":"base"}}` + "\n" + `{"type":"event_msg","payload":{"type":"task_started","turn_id":"middle"}}` + "\n"
+	second := first + `{"type":"event_msg","payload":{"type":"task_complete","turn_id":"middle"}}` + "\n" + `{"type":"event_msg","payload":{"type":"task_started","turn_id":"last"}}` + "\n"
+	save := func(appended string) error {
+		candidate := target.source
+		candidate.Size = int64(len(seed) + len(appended))
+		parsed, err := ProjectParsedFile(ctx, ParsedFileRequest{Source: candidate, Reader: strings.NewReader(appended), Checkpoint: &checkpoint, SpoolDir: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer parsed.Close()
+		_, err = store.ApplyTranscript(ctx, TranscriptApplyRequest{Mode: TranscriptAppend, ThreadID: target.threadID, SourceID: target.sourceID, SourceGeneration: target.sourceGen, Provider: ProviderCodex,
+			ParserVersion: parsed.ParserVersion, CompletionRuleVersion: parsed.CompletionRuleVersion, ExpectedProjectionKey: checkpoint.ProjectionKey, Result: parsed.Transcript})
+		return err
+	}
+	if err := save(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := save(second); !errors.Is(err, ErrTranscriptChanged) {
+		t.Fatalf("a save resumed from a superseded copy = %v, want ErrTranscriptChanged", err)
+	}
+}
+
+// A zero-byte append saves nothing, so its proposed copy must not replace
+// the saved one. Found in review: resuming a checkpoint saved before usage
+// samples left Turns moved them in memory; a zero-byte append then published
+// that copy, the next append saved only its new sample, and after a restart
+// the turn had lost its earlier ones. Boundary: the store's append path,
+// from a checkpoint in the earlier layout through a restart.
+func TestTranscriptNoopAppendKeepsTheSavedCopy(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	target := newCodexAppendTarget(t, store, filepath.Join(dir, "source"))
+	count := func(last, total int) string {
+		return fmt.Sprintf(`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":%d},"total_token_usage":{"input_tokens":%d}}}}`+"\n", last, total)
+	}
+	seed := `{"type":"event_msg","payload":{"type":"task_started","turn_id":"t"}}` + "\n" + count(1, 1)
+	target.apply(t, []byte(seed))
+	// Save the checkpoint the way the previous reader did: version 22, usage
+	// samples inside their turn.
+	checkpoint, _, err := store.LoadTranscriptCheckpoint(ctx, target.threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file parsedFileCheckpoint
+	if err := json.Unmarshal(checkpoint.ParserState, &file); err != nil {
+		t.Fatal(err)
+	}
+	var older map[string]json.RawMessage
+	if err := json.Unmarshal(file.Reader, &older); err != nil {
+		t.Fatal(err)
+	}
+	var turns map[string]model.Turn
+	var usage map[string]model.UsageObservation
+	var counts map[string]int
+	json.Unmarshal(older["turns"], &turns)
+	json.Unmarshal(older["usage"], &usage)
+	json.Unmarshal(older["usageCounts"], &counts)
+	for key, turn := range turns {
+		for i := 0; i < counts[key]; i++ {
+			turn.UsageObservations = append(turn.UsageObservations, usage[fmt.Sprintf("%s#%d", key, i)])
+		}
+		turns[key] = turn
+	}
+	older["turns"], _ = json.Marshal(turns)
+	older["version"] = json.RawMessage(`22`)
+	delete(older, "usage")
+	delete(older, "usageCounts")
+	file.Reader, _ = json.Marshal(older)
+	full, _ := json.Marshal(file)
+	base, entries, err := splitTranscriptContinuation(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projection int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM conversation_projections WHERE state='active'`).Scan(&projection); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE conversation_projections SET parser_state_json=? WHERE id=?`, base, projection); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncContinuationEntries(ctx, tx, projection, entries); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	store.resident.settle(target.threadID, nil, false)
+	target.apply(t, []byte(seed))
+	target.apply(t, []byte(seed+count(2, 3)))
+	store.resident.settle(target.threadID, nil, false) // a restart
+	target.apply(t, []byte(seed+count(2, 3)+count(3, 6)))
+	var raw []byte
+	if err := store.db.QueryRowContext(ctx, `SELECT parsed_json FROM conversation_turns WHERE native_turn_id='t'`).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	read, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Rollback()
+	turn, err := decodeParsedTurnTx(ctx, read, projection, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if turn.Usage == nil || turn.Usage.Input == nil || *turn.Usage.Input != 6 {
+		t.Fatalf("turn usage after a zero-byte append and a restart = %+v, want input 6", turn.Usage)
 	}
 }

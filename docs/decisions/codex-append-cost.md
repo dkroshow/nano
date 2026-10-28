@@ -31,8 +31,16 @@ not what the running turn holds:
   compared with what was saved. The saved rows stay the source of truth:
   every append saves its own changes, the copy is replaced only after the
   transaction commits, and a projection, offset or commit mismatch drops it,
-  so the next append reads the saved rows as before. A restart starts from
-  the saved rows.
+  so the next append reads the saved rows as before. A resumed save applies
+  only to the rows its copy saved (the same read offset), and an append that
+  saves nothing leaves the kept copy as it was. A restart starts from the
+  saved rows.
+- **The layout is versioned.** Codex checkpoint version 23 holds usage in
+  its own entries; this reader still resumes a version 22 checkpoint and
+  moves its samples. The previous reader accepts only 22, so after a
+  rollback it rebuilds a thread saved as 23 instead of reading turns without
+  their samples. Turn rows saved with `uv` read without their sample list
+  in an older binary; its next save of that thread rebuilds it.
 
 ## Bounds
 
