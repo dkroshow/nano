@@ -14,7 +14,7 @@ import (
 // HandleThreadTranscriptBody serves the saved catalog thread transcript body endpoint.
 func (s *Handlers) HandleThreadTranscriptBody(w http.ResponseWriter, r *http.Request, rawThreadID, rawItemID string) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	catalog, ok := s.catalog.(TranscriptBodyCatalog)
+	catalog, ok := s.catalog.(transcriptBodyCatalog)
 	if s.catalog == nil || !ok {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
@@ -30,7 +30,7 @@ func (s *Handlers) HandleThreadTranscriptBody(w http.ResponseWriter, r *http.Req
 		return
 	}
 	body, err := json.Marshal(response)
-	if err != nil || len(body) > MaxThreadRetainedBodyBytes {
+	if err != nil || len(body) > maxThreadRetainedBodyBytes {
 		httpapi.WriteError(w, http.StatusInternalServerError, "body_error", "Retained transcript body request failed")
 		return
 	}
@@ -42,7 +42,7 @@ func (s *Handlers) HandleThreadTranscriptBody(w http.ResponseWriter, r *http.Req
 // HandleThreadTranscriptEvidence serves the saved catalog thread transcript evidence endpoint.
 func (s *Handlers) HandleThreadTranscriptEvidence(w http.ResponseWriter, r *http.Request, rawThreadID, rawItemID string) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	catalog, ok := s.catalog.(TranscriptEvidenceCatalog)
+	catalog, ok := s.catalog.(transcriptEvidenceCatalog)
 	if s.catalog == nil || !ok {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
@@ -58,7 +58,7 @@ func (s *Handlers) HandleThreadTranscriptEvidence(w http.ResponseWriter, r *http
 		return
 	}
 	body, err := json.Marshal(response)
-	if err != nil || response.RawBytes > MaxThreadEvidenceBytes {
+	if err != nil || response.RawBytes > maxThreadEvidenceBytes {
 		httpapi.WriteError(w, http.StatusInternalServerError, "evidence_error", "Transcript evidence request failed")
 		return
 	}
@@ -70,7 +70,7 @@ func (s *Handlers) HandleThreadTranscriptEvidence(w http.ResponseWriter, r *http
 // HandleThreadUsage serves the saved catalog thread usage endpoint.
 func (s *Handlers) HandleThreadUsage(w http.ResponseWriter, r *http.Request, rawID string) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	catalog, ok := s.catalog.(UsageCatalog)
+	catalog, ok := s.catalog.(usageCatalog)
 	if s.catalog == nil || !ok {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
@@ -116,7 +116,7 @@ func (s *Handlers) HandleThreadUsage(w http.ResponseWriter, r *http.Request, raw
 
 // HandleThreadUsageList serves the saved catalog thread usage list endpoint.
 func (s *Handlers) HandleThreadUsageList(w http.ResponseWriter, r *http.Request) {
-	catalog, ok := s.catalog.(UsageCatalog)
+	catalog, ok := s.catalog.(usageCatalog)
 	if s.catalog == nil || !ok {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return

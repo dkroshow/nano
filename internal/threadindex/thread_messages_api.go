@@ -27,7 +27,7 @@ const (
 	// non-message items, so one page does not always fill the tail; three is
 	// generous without turning a tail request into a transcript scan.
 	maxThreadMessagePages = 3
-	// MaxThreadReferenceCandidates bounds the list an ambiguous reference
+	// maxThreadReferenceCandidates bounds the list an ambiguous reference
 	// reports back.
 
 	// MessagesFormatText selects the plain-text conversational tail.
@@ -72,8 +72,8 @@ type Message struct {
 	Preview           string  `json:"-"`
 }
 
-// MessagesResponse is the agent-facing conversational tail.
-type MessagesResponse struct {
+// messagesResponse is the agent-facing conversational tail.
+type messagesResponse struct {
 	ThreadID string    `json:"threadId"`
 	Count    int       `json:"count"`
 	Messages []Message `json:"messages"`
@@ -110,7 +110,7 @@ func (s *Handlers) HandleThreadMessages(w http.ResponseWriter, r *http.Request, 
 	}
 	messages = boundThreadMessages(id, messages)
 	if query.Format == MessagesFormatJSON {
-		WriteCatalogJSON(w, http.StatusOK, MessagesResponse{ThreadID: id, Count: len(messages), Messages: messages})
+		WriteCatalogJSON(w, http.StatusOK, messagesResponse{ThreadID: id, Count: len(messages), Messages: messages})
 		return
 	}
 	for len(messages) > 0 && len(renderThreadMessagesText(messages)) > MaxThreadTranscriptBytes {
@@ -211,7 +211,7 @@ func CollectThreadMessages(ctx context.Context, catalog TranscriptCatalog, id st
 			// rejected by a pessimistic escaping multiplier.
 			if item.ContentRef != "" && item.OriginalBytes <= int64(history.MaxTranscriptBodyBytes) &&
 				threadMessageBaseJSONBytes(message)+item.OriginalBytes <= budget {
-				if bodies, ok := catalog.(TranscriptBodyCatalog); ok {
+				if bodies, ok := catalog.(transcriptBodyCatalog); ok {
 					body, bodyErr := bodies.LoadTranscriptBody(ctx, id, item.ID)
 					if bodyErr == nil {
 						candidate := message
@@ -262,7 +262,7 @@ func threadMessageBaseJSONBytes(message Message) int64 {
 // retained canonical text.
 func boundThreadMessages(threadID string, messages []Message) []Message {
 	for {
-		encoded, _ := json.Marshal(MessagesResponse{ThreadID: threadID, Count: len(messages), Messages: messages})
+		encoded, _ := json.Marshal(messagesResponse{ThreadID: threadID, Count: len(messages), Messages: messages})
 		if len(encoded)+1 <= MaxThreadTranscriptBytes || len(messages) == 0 {
 			return messages
 		}

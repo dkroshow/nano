@@ -51,7 +51,7 @@ func (s *Service) LoadTranscriptAuditReference(ctx context.Context, threadID, pr
 		before = maxSeq + 1
 	}
 	page, err := s.store.ReadTranscript(ctx, history.TranscriptReadRequest{
-		ThreadID: threadID, Limit: MaxAuditReference, MaxBytes: MaxThreadTranscriptBytes,
+		ThreadID: threadID, Limit: maxAuditReference, MaxBytes: MaxThreadTranscriptBytes,
 		HiddenCategories: hidden, ExpectedProjectionKey: projectionKey, SnapshotHeadSeq: snapshotHead, BeforeSeq: before,
 	})
 	if err != nil {
@@ -80,7 +80,7 @@ func (s *Service) LoadTranscriptAuditReference(ctx context.Context, threadID, pr
 	}
 	result.CapReached = page.HasMoreBefore && (minSeq == 0 || page.StartSeq > minSeq)
 	if result.CapReached {
-		if len(page.Items) >= MaxAuditReference {
+		if len(page.Items) >= maxAuditReference {
 			result.CapReason = "rows"
 		} else {
 			result.CapReason = "bytes"
@@ -89,8 +89,8 @@ func (s *Service) LoadTranscriptAuditReference(ctx context.Context, threadID, pr
 	return result, nil
 }
 
-// MaxAuditReference caps the rows in an audit reference window.
-const MaxAuditReference = 100
+// maxAuditReference caps the rows in an audit reference window.
+const maxAuditReference = 100
 
 // ErrAuditReferenceChanged reports a reference whose saved projection changed.
 var ErrAuditReferenceChanged = errors.New("transcript audit reference changed")

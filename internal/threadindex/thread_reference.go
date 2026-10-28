@@ -21,5 +21,5 @@ type ReferenceResolver interface {
 	ResolveThreadReference(ctx context.Context, reference string) (string, error)
 }
 
-// MaxThreadReferenceCandidates bounds ambiguous reference responses.
-const MaxThreadReferenceCandidates = 10
+// maxThreadReferenceCandidates bounds ambiguous reference responses.
+const maxThreadReferenceCandidates = 10

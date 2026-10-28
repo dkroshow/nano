@@ -25,10 +25,10 @@ const (
 	maxThreadTranscriptTurnLimit = 20
 	// MaxThreadTranscriptBytes bounds a serialized transcript response.
 	MaxThreadTranscriptBytes = 256 << 10
-	// MaxThreadEvidenceBytes bounds native evidence returned by the API.
-	MaxThreadEvidenceBytes = 8 << 20
-	// MaxThreadRetainedBodyBytes bounds a retained-body response.
-	MaxThreadRetainedBodyBytes = 8 << 20
+	// maxThreadEvidenceBytes bounds native evidence returned by the API.
+	maxThreadEvidenceBytes = 8 << 20
+	// maxThreadRetainedBodyBytes bounds a retained-body response.
+	maxThreadRetainedBodyBytes = 8 << 20
 	// DefaultThreadTranscriptView is the canonical enhanced message view.
 	DefaultThreadTranscriptView = "enhanced"
 	// DevThreadTranscriptView exposes the complete saved transcript taxonomy.
@@ -303,8 +303,8 @@ type SavedTurnStatusCatalog interface {
 	ReadSavedTurnStatus(ctx context.Context, threadID, nativeTurnID string) (history.SavedTurnStatus, bool, error)
 }
 
-// UsageCatalog reads saved turn usage and per-thread totals.
-type UsageCatalog interface {
+// usageCatalog reads saved turn usage and per-thread totals.
+type usageCatalog interface {
 	LoadThreadUsage(context.Context, string, int, int) (history.ThreadUsagePage, error)
 	ListThreadUsageTotals(context.Context, history.ThreadUsageListQuery) (history.ThreadUsageListPage, error)
 }
@@ -327,13 +327,13 @@ type TranscriptEvidenceResponse struct {
 	RawBase64         string  `json:"rawBase64,omitempty"`
 }
 
-// TranscriptEvidenceCatalog reads the native evidence of one saved item.
-type TranscriptEvidenceCatalog interface {
+// transcriptEvidenceCatalog reads the native evidence of one saved item.
+type transcriptEvidenceCatalog interface {
 	LoadTranscriptEvidence(context.Context, string, string) (TranscriptEvidenceResponse, error)
 }
 
-// TranscriptBodyCatalog reads a saved item’s retained full body.
-type TranscriptBodyCatalog interface {
+// transcriptBodyCatalog reads a saved item’s retained full body.
+type transcriptBodyCatalog interface {
 	LoadTranscriptBody(context.Context, string, string) (history.TranscriptRetainedBody, error)
 }
 

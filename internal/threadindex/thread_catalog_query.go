@@ -371,7 +371,7 @@ func (s *Service) LoadTranscriptEvidence(ctx context.Context, threadID, itemID s
 	if len(raw) == 0 {
 		return TranscriptEvidenceResponse{}, errTranscriptEvidenceUnavailable
 	}
-	if len(raw) > MaxThreadEvidenceBytes {
+	if len(raw) > maxThreadEvidenceBytes {
 		return TranscriptEvidenceResponse{}, errTranscriptEvidenceLarge
 	}
 	digest := sha256.Sum256(raw)
@@ -411,7 +411,7 @@ func readTranscriptEvidenceRange(ctx context.Context, reader io.ReaderAt, ref hi
 	if ref.ByteStart < 0 || ref.ByteLength <= 0 || ref.ByteStart > ref.CompleteOffset || ref.ByteLength > ref.CompleteOffset-ref.ByteStart {
 		return nil, errTranscriptEvidenceUnavailable
 	}
-	if ref.ByteLength > int64(MaxThreadEvidenceBytes)+2 {
+	if ref.ByteLength > int64(maxThreadEvidenceBytes)+2 {
 		return nil, errTranscriptEvidenceLarge
 	}
 	raw, err := io.ReadAll(io.NewSectionReader(reader, ref.ByteStart, ref.ByteLength))
@@ -444,7 +444,7 @@ func readTranscriptEvidenceLine(ctx context.Context, reader io.Reader, wantedLin
 		return nil, errTranscriptEvidenceUnavailable
 	}
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64<<10), MaxThreadEvidenceBytes+1)
+	scanner.Buffer(make([]byte, 64<<10), maxThreadEvidenceBytes+1)
 	line := 0
 	for {
 		if err := ctx.Err(); err != nil {
@@ -803,7 +803,7 @@ func (s *Service) ResolveThreadReference(ctx context.Context, reference string) 
 	if reference == "" {
 		return "", ErrCatalogThreadNotFound
 	}
-	matches, err := s.store.ResolveThreadReferences(ctx, reference, MaxThreadReferenceCandidates)
+	matches, err := s.store.ResolveThreadReferences(ctx, reference, maxThreadReferenceCandidates)
 	if err != nil {
 		return "", err
 	}
@@ -822,7 +822,7 @@ func (s *Service) ResolveThreadReference(ctx context.Context, reference string) 
 
 var _ TranscriptCatalog = (*Service)(nil)
 
-var _ TranscriptEvidenceCatalog = (*Service)(nil)
+var _ transcriptEvidenceCatalog = (*Service)(nil)
 
 var _ catalog.FleetCourtSource = (*Service)(nil)
 
