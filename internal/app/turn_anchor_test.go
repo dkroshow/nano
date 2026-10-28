@@ -383,7 +383,7 @@ func TestRuntimeOverlayCarriesAnchorAndWaiting(t *testing.T) {
 	sess.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
 	sess.addPendingInteraction(pendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
 
-	s := &server{sessions: map[string]*session{"sess-anchor": sess}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"sess-anchor": sess}}}
 	info, ok := s.RuntimeFor("codex", "t1")
 	if !ok {
 		t.Fatal("the hosted thread has no runtime overlay")

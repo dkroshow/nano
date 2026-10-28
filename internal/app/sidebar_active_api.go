@@ -402,28 +402,7 @@ func (s *server) volatileSessionSummaries() []sessionSummary {
 	if s.agentExecutions != nil {
 		needsAttention = s.agentExecutions.sessionsNeedingAttention()
 	}
-	s.mu.Lock()
-	sessions := make([]*session, 0, len(s.sessions))
-	for _, sess := range s.sessions {
-		sessions = append(sessions, sess)
-	}
-	s.mu.Unlock()
-
-	summaries := make([]sessionSummary, 0, len(sessions))
-	for _, sess := range sessions {
-		summary, live := sess.volatileSummary(needsAttention[sess.hostedThreadID])
-		if !live {
-			continue
-		}
-		summaries = append(summaries, summary)
-	}
-	sort.Slice(summaries, func(i, j int) bool {
-		if a, b := parseIdentityTime(summaries[i].CreatedAt), parseIdentityTime(summaries[j].CreatedAt); !a.Equal(b) {
-			return a.Before(b)
-		}
-		return summaries[i].ID < summaries[j].ID
-	})
-	return summaries
+	return s.volatileSummaries(needsAttention)
 }
 
 // sidebarHostedRecords resolves the durable hosted identity overlay in one

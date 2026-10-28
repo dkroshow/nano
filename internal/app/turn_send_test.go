@@ -1235,7 +1235,7 @@ func TestDeliveryDeadlineExpiryShowsInRuntimeStatusUntilItAgesOut(t *testing.T) 
 	sess := readySendTestSession(t, store, func(context.Context, string) (json.RawMessage, error) {
 		return nil, context.DeadlineExceeded // the provider did not answer in time
 	})
-	srv := &server{sessions: map[string]*session{sess.id: sess}}
+	srv := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 	sess.deliveryExpiries = newDeliveryExpiries(time.Second, srv.publishProviderRuntime)
 	shown := func() int { return sess.projection.status().Runtime.DeliveryExpiries }
 

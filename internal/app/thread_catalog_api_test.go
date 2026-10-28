@@ -293,7 +293,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 		ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread",
 		Metadata: catalogMetadata{},
 	}}}}
-	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: newRuntimeHub(), sessions: map[string]*session{}}
+	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: newRuntimeHub(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 
 	readCatalog := func() catalogThread {
 		t.Helper()
@@ -516,7 +516,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 		provider:       "claude",
 		createdAt:      time.Now(),
 		lifecycleState: testLifecycleSnapshot("starting", false)}
-	s := &server{catalog: catalog, sessions: map[string]*session{sess.id: sess}}
+	s := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 
 	put := func(name string) sessionSummary {
 		t.Helper()
@@ -571,7 +571,7 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 		createdAt:      time.Now(),
 		threadID:       "cs_shim",
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{catalog: catalog, attachments: store, sessions: map[string]*session{sess.id: sess}}
+	s := &server{catalog: catalog, attachments: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/sessions/session-1/name", strings.NewReader(`{"name":"nano api fable"}`))
@@ -616,13 +616,13 @@ func memoryRowServer(t *testing.T) *server {
 	}
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	metadata, executions := newTestHostedControl(t)
-	s := &server{catalog: fake, sessions: map[string]*session{
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"aaa": memorySession("aaa", "codex", "", "starting", "/w/start", "", base),
 		"bbb": memorySession("bbb", "claude", "native-new", "ready", "/w/new", "sonnet", base.Add(time.Minute)),
 		"ccc": memorySession("ccc", "codex", "native-indexed", "ready", "/w/idx", "gpt-5", base.Add(2*time.Minute)),
 		"ddd": memorySession("ddd", "claude", "native-onpage", "ready", "/w/page", "sonnet", base.Add(3*time.Minute)),
 		"eee": memorySession("eee", "codex", "native-dead", "exited", "/w/dead", "gpt-5", base.Add(4*time.Minute)),
-	}, controlMetadata: metadata, agentExecutions: executions}
+	}}, controlMetadata: metadata, agentExecutions: executions}
 	for id, sess := range s.sessions {
 		hostedID := "nht_memory_" + id
 		record, err := executions.ensureSessionWithIdentity(hostedID, sess.provider, presentationShared, "", "", "")
@@ -824,10 +824,10 @@ func rescueServer(t *testing.T) *server {
 	}
 	store.remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	s := &server{catalog: fake, attachments: store, sessions: map[string]*session{
+	s := &server{catalog: fake, attachments: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"aaa": memorySession("aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
 		"bbb": memorySession("bbb", "claude", "native-prog", "ready", "/w/prog", "sonnet", base.Add(time.Minute)),
-	}}
+	}}}
 	s.runtime = s
 	return s
 }
@@ -953,7 +953,7 @@ func TestCatalogWorkerIncludesSupervisorOutsideWindow(t *testing.T) {
 			},
 		},
 	}
-	s := &server{catalog: fake, sessions: map[string]*session{}}
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	items := listCatalog(t, s, "/api/v1/threads?includeSubagents=true&updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_worker", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want worker plus supervisor context", got)
@@ -986,7 +986,7 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 			"native-parent": {ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"},
 		},
 	}
-	s := &server{catalog: fake, sessions: map[string]*session{}, agentExecutions: store}
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want child plus cross-provider invoker", got)
@@ -1013,7 +1013,7 @@ func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
 	}}}, rescued: map[string]catalogThread{
 		"native-parent": {ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"},
 	}}
-	s := &server{catalog: fake, sessions: map[string]*session{}, agentExecutions: store, controlMetadata: control}
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child"}) {
 		t.Fatalf("row ids = %v, want standalone child only", got)
@@ -1053,7 +1053,7 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 			"native-new":      {ID: "nth_new", Provider: "claude", NativeID: "native-new", Kind: "main"},
 		},
 	}
-	s := &server{catalog: fake, sessions: map[string]*session{}, agentExecutions: store, controlMetadata: control}
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_new"}) {
 		t.Fatalf("row ids = %v, want child plus current visual parent", got)

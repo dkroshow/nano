@@ -165,7 +165,7 @@ func interactTestServer(t *testing.T, working bool) (*server, string) {
 		sendOps: map[string]*turnSendOperation{}, notices: notices,
 	}
 	return &server{
-		sessions: map[string]*session{sess.id: sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore, notices: notices,
 	}, record.ID
 }

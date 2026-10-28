@@ -17,7 +17,7 @@ func TestChildLaunchDoesNotBecomeParentWork(t *testing.T) {
 		sess.projection.applyWireLive(protocol.Recv, []byte(line), at, true, false)
 	}
 	sess.hostedThreadID = "hosted-parent"
-	app := &server{sessions: map[string]*session{"parent": sess}}
+	app := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"parent": sess}}}
 	summary := sess.summary()
 	if summary.TurnActive || app.bulkCloseMemberWorking(agentSessionRecord{ID: "hosted-parent"}) {
 		t.Fatal("child launch became parent's own work")

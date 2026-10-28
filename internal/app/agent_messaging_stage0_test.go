@@ -80,7 +80,7 @@ func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentS
 	})
 	notices := interact.NewNotices()
 	sess.notices = notices
-	s := &server{agentExecutions: store, controlMetadata: control, mail: mail, notices: notices, catalog: renamedCatalog{name: "Claude sender"}, sessions: map[string]*session{sess.id: sess}, queuedTurns: queue, sendAttempts: attempts, turns: turnStore}
+	s := &server{agentExecutions: store, controlMetadata: control, mail: mail, notices: notices, catalog: renamedCatalog{name: "Claude sender"}, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, queuedTurns: queue, sendAttempts: attempts, turns: turnStore}
 	return s, store, sess, sender, worker, prompts
 }
 

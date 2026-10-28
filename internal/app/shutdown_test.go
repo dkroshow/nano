@@ -26,7 +26,7 @@ func stoppingServer(t *testing.T) (*server, *session, *turns.Store, chan struct{
 		<-release
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	s := &server{sessions: map[string]*session{sess.id: sess}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 	sess.nanoStopping = &s.stopping
 	return s, sess, store, release, &sends
 }
@@ -141,7 +141,7 @@ func TestStoppingNanoRefusesWritesInsideTheSecurityGuards(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = authStore.Close() })
 	const remoteHost = "nano.example.ts.net:7690"
-	s := &server{sessions: map[string]*session{}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	app := &application{server: s, remoteAuth: remoteauth.New(authStore, remoteHost)}
 	local, remote := app.mount()
 	s.stopping.Store(true)

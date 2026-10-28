@@ -188,7 +188,7 @@ func TestAgentSessionViewMarksProvisionalNativeID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{sessions: map[string]*session{}, agentExecutions: store}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store}
 
 	if err := store.bindSession(hosted.ID, "nano-1", "cs_eec9373f24115d539dd1c06786b96b36", "ready", presentationBackground); err != nil {
 		t.Fatal(err)

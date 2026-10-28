@@ -489,7 +489,7 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 		codex:           newCodexDaemon(wsURL, supervisedDaemonLabel),
 		spoolDir:        t.TempDir(),
 		runtimeEvents:   newRuntimeHub(),
-		sessions:        map[string]*session{},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 		controlMetadata: metadata,
 		agentExecutions: executions,
 	}

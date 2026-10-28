@@ -23,7 +23,7 @@ func TestFeedbackKeepsTheSavingTabsEvidenceForTheThread(t *testing.T) {
 	}
 	t.Cleanup(func() { store.Close() })
 	s := &server{
-		sessions: map[string]*session{}, agentExecutions: executions, controlMetadata: control,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: control,
 		browserDiagnostics: newBrowserDiagnosticStore(100), feedback: store,
 	}
 	f := &pinFixture{server: s, mux: http.NewServeMux()}

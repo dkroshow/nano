@@ -89,7 +89,7 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *attachmentStore
 		spoolDir:        t.TempDir(),
 		runtimeEvents:   newRuntimeHub(),
 		attachments:     store,
-		sessions:        map[string]*session{},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 		controlMetadata: control,
 		agentExecutions: executions,
 		queuedTurns:     queue,

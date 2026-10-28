@@ -230,9 +230,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	if s.catalogSources != nil {
 		sess.catalogSources = s.catalogSources
 	}
-	s.mu.Lock()
-	s.sessions[sess.id] = sess
-	s.mu.Unlock()
+	s.registerSession(sess)
 	sess.bindCatalogSource(sess.currentThreadID())
 	sess.recordRestartStep(restartRegistered)
 	if sess.agentExecutions != nil {
@@ -277,9 +275,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 // registration has to be undone with it, and the spool file removed — nothing
 // will ever read it.
 func (s *server) discardSpawn(sess *session) {
-	s.mu.Lock()
-	delete(s.sessions, sess.id)
-	s.mu.Unlock()
+	s.removeSession(sess.id)
 	sess.releaseCatalogSource()
 	if sess.spool != nil {
 		if err := sess.spool.close(true); err != nil {

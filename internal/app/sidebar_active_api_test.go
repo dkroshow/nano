@@ -234,7 +234,7 @@ func TestSidebarManualCloseOverridesWatchedFleetUntilTreeDisappears(t *testing.T
 	parent := catalogThread{ID: "parent", Provider: "codex", NativeID: "parent-native", HostedThreadID: "hosted-parent", HostedStatus: sessionStatusExited, Fleet: watched}
 	child := catalogThread{ID: "child", Provider: "codex", NativeID: "child-native", HostedThreadID: "hosted-child", HostedStatus: "ready", InvokerHostedThreadID: parent.HostedThreadID, Fleet: watched}
 	child.Runtime = &runtimeInfo{Attached: true, Status: "ready", TurnActive: true}
-	s := &server{sessions: map[string]*session{}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{parent, child}, sidebarRuntimeSnapshot{})
 	if !nodes[0].included || !nodes[0].structural || !nodes[1].included {
 		t.Fatalf("closed parent should remain structural for active child: parent=%+v child=%+v", nodes[0], nodes[1])
@@ -258,7 +258,7 @@ func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
 		InvokerHostedThreadID: root.HostedThreadID,
 		Runtime:               &runtimeInfo{Detached: true},
 	}
-	s := &server{sessions: map[string]*session{}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child}, sidebarRuntimeSnapshot{})
 	if nodes[0].included || nodes[1].included {
 		t.Fatalf("fully detached unstarred tree stayed active: root=%+v child=%+v", nodes[0], nodes[1])
@@ -285,7 +285,7 @@ func TestSidebarKeepsRestingThreadsActive(t *testing.T) {
 		InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
 	detached := catalogThread{ID: "detached", Provider: "codex", NativeID: "detached-native", HostedThreadID: "hosted-detached",
 		Runtime: &runtimeInfo{Detached: true}}
-	s := &server{sessions: map[string]*session{}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child, detached}, sidebarRuntimeSnapshot{})
 	included := map[string]bool{}
 	for _, node := range nodes {
@@ -414,7 +414,7 @@ func TestSidebarHistoryPagesInactiveDescendants(t *testing.T) {
 }
 
 func TestSidebarActiveRejectsSnapshotRoute(t *testing.T) {
-	s := &server{sessions: map[string]*session{}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	rec := httptest.NewRecorder()
 	mux := http.NewServeMux()
 	mountRoutes(mux, applicationRoutes(s))
@@ -535,9 +535,9 @@ func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]stri
 	childLive.invokerHostedThreadID = parentHosted.ID
 	childLive.lifecycleState = testLifecycleSnapshot("ready", true)
 	s := &server{
-		catalog: svc, sessions: map[string]*session{
+		catalog: svc, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 			"sess-attached": attached, "sess-parent": parentLive, "sess-child": childLive,
-		},
+		}},
 		attachments: attachments, threadStars: stars,
 		controlMetadata: metadata, agentExecutions: executions,
 		runtimeEvents: newRuntimeHub(), mailEvents: newMailHub(),

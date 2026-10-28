@@ -54,7 +54,7 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 	working.hostedThreadID, working.displayName = "nht_working", "busy agent"
 	working.lifecycleState = lifecycle.Snapshot{State: lifecycle.State{Connection: lifecycle.Ready, Work: lifecycle.Working}, Epoch: 1}
 	idle := memorySession("idle", "claude", "native-idle", "ready", "/w", "model", now)
-	s := &server{sessions: map[string]*session{working.id: working, idle.id: idle}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{working.id: working, idle.id: idle}}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
 	s.hostMonitor.now = func() time.Time { return now }
 
 	rec := httptest.NewRecorder()
@@ -168,7 +168,7 @@ func TestMonitorDeliveryComesFromTheNewestCompleteSnapshot(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "health-2026-10-01.jsonl"), []byte(c.lines), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		s := &server{sessions: map[string]*session{}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
+		s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
 		rec := httptest.NewRecorder()
 		s.handleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
 		var body struct {

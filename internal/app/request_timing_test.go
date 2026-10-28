@@ -43,7 +43,7 @@ func timingServer(t *testing.T, at time.Time, extra func(s *server, mux *http.Se
 	clock := &atomic.Value{}
 	clock.Store(at)
 	dir := t.TempDir()
-	s := &server{sessions: map[string]*session{}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
 	s.requests = observability.NewRequestTimes(func() time.Time { return clock.Load().(time.Time) })
 	mux := http.NewServeMux()
 	mux.Handle("/", applicationHandler(s))

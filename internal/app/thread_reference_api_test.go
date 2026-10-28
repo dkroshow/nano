@@ -52,7 +52,7 @@ func newThreadReferenceServer(t *testing.T, rows []catalogThread) (*server, *age
 	return &server{
 		catalog:         &fakeThreadCatalog{page: catalogPage{Items: rows}},
 		agentExecutions: store,
-		sessions:        map[string]*session{},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 	}, store
 }
 

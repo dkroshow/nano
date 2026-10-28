@@ -16,8 +16,8 @@ func serverWithAttachments(t *testing.T) (*server, *attachmentStore) {
 		t.Fatal(err)
 	}
 	return &server{
-		attachments: store,
-		sessions:    map[string]*session{},
+		attachments:     store,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 	}, store
 }
 
@@ -221,7 +221,7 @@ func TestAttachmentDismissEndpoint(t *testing.T) {
 // With no store wired (feature off), GET still succeeds with an empty detached
 // array and never panics.
 func TestSessionsGETNoStore(t *testing.T) {
-	s := &server{sessions: map[string]*session{}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	rec := httptest.NewRecorder()
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {

@@ -52,7 +52,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 				}},
 			}
 			s := &server{
-				catalog: fake, sessions: map[string]*session{sess.id: sess},
+				catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}},
 				controlMetadata: metadata, agentExecutions: executions,
 			}
 			s.runtime = s
@@ -123,7 +123,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			}},
 		}
 		s := &server{
-			catalog: fake, sessions: map[string]*session{},
+			catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 			controlMetadata: metadata, agentExecutions: executions,
 		}
 		s.runtime = s
@@ -191,10 +191,10 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 	base := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	busy := memorySession("busy", "claude", "native-busy", "ready", "/w/busy", "sonnet", base)
 	busy.lifecycleState = testLifecycleSnapshot(busy.connectionStatusLocked(), true)
-	s := &server{catalog: fake, sessions: map[string]*session{
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"busy": busy,
 		"new":  memorySession("new", "codex", "", "starting", "/w/new", "", base.Add(time.Minute)),
-	}}
+	}}}
 	s.runtime = s
 
 	items := listCatalog(t, s, "/api/v1/threads")
@@ -238,9 +238,9 @@ func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 		courtErr: errors.New("sqlite unavailable"),
 	}
 	base := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	s := &server{catalog: fake, sessions: map[string]*session{
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"new": memorySession("new", "codex", "", "starting", "/w/new", "", base),
-	}}
+	}}}
 	s.runtime = s
 	items := listCatalog(t, s, "/api/v1/threads")
 	if len(items) != 2 || fleetRow(t, items[0]) != nil {

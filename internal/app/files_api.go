@@ -142,9 +142,7 @@ func (s *server) fileThreadCwd(ctx context.Context, threadID, sessionID string) 
 		return ""
 	}
 	if sessionID != "" {
-		s.mu.Lock()
-		session := s.sessions[sessionID]
-		s.mu.Unlock()
+		session := s.lookupSession(sessionID)
 		if session != nil {
 			if dir := filemodel.CleanDir(session.cwd); dir != "" {
 				return dir
@@ -169,9 +167,7 @@ func (s *server) sessionCatalogThreadID(ctx context.Context, sessionID string) s
 	if !ok || sessionID == "" {
 		return ""
 	}
-	s.mu.Lock()
-	session := s.sessions[sessionID]
-	s.mu.Unlock()
+	session := s.lookupSession(sessionID)
 	if session == nil || session.currentThreadID() == "" {
 		return ""
 	}
@@ -189,9 +185,7 @@ func (s *server) liveFileEvidence(ctx context.Context, sessionID string) []strin
 	if sessionID == "" {
 		return nil
 	}
-	s.mu.Lock()
-	session := s.sessions[sessionID]
-	s.mu.Unlock()
+	session := s.lookupSession(sessionID)
 	if session == nil || session.liveText == nil {
 		return nil
 	}

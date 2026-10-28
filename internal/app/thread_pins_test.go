@@ -95,7 +95,7 @@ func newPinFixture(t *testing.T) *pinFixture {
 	}
 	t.Cleanup(func() { pins.Close() })
 	s := &server{
-		sessions: map[string]*session{}, agentExecutions: executions, controlMetadata: control,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: control,
 		catalog: &threadCatalogService{store: store}, threadPins: pins,
 	}
 	mux := http.NewServeMux()

@@ -94,7 +94,7 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 		subs:           map[chan wireEvent]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	s := &server{
-		sessions:        map[string]*session{sess.id: sess},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}},
 		controlMetadata: metadata,
 	}
 	registryDone := make(chan struct{})

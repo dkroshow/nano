@@ -86,7 +86,7 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	if err := turns.SaveSendAttempts(ctx, control.db, []sendAttemptRecord{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
 		t.Fatal(err)
 	}
-	return retirementServerFixture{server: &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, sessions: map[string]*session{}}, old: old, owner: owner, child: child, oldTurn: oldTurn, childTurn: childTurn}
+	return retirementServerFixture{server: &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}, old: old, owner: owner, child: child, oldTurn: oldTurn, childTurn: childTurn}
 }
 func retirementHTTP(t *testing.T, s *server, body string) (retiredHostedReceipt, int) {
 	t.Helper()

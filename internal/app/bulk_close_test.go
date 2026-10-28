@@ -20,7 +20,7 @@ func newBulkCloseTestServer(t *testing.T) (*server, *agentExecutionStore, *contr
 		t.Fatal(err)
 	}
 	return &server{
-		sessions:        map[string]*session{},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 		agentExecutions: executions,
 		controlMetadata: control,
 		threadStars:     openTestThreadStars(t),

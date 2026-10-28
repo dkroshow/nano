@@ -21,9 +21,7 @@ func (s *server) forgetUnconfirmedClaude(attachment attachmentRecord, shimID, at
 // All helpers require relationshipMu. Legacy UI endpoints use the hosted
 // lifecycle when possible, including heartbeat pause.
 func (s *server) closeExplicitSession(sess *session) error {
-	s.mu.Lock()
-	current := s.sessions[sess.id]
-	s.mu.Unlock()
+	current := s.lookupSession(sess.id)
 	if current != sess {
 		return fmt.Errorf("session attachment changed; refresh before closing")
 	}

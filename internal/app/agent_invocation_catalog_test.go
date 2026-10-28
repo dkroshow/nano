@@ -29,7 +29,7 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 		{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"},
 		{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"},
 	}}}
-	s := &server{catalog: catalog, sessions: map[string]*session{}, agentExecutions: store}
+	s := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store}
 	rec := httptest.NewRecorder()
 	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusOK {

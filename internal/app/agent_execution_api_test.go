@@ -62,7 +62,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
 				return json.RawMessage(`{"turn":{"id":"provider-turn-1"}}`), nil
 			}
-			s := &server{sessions: map[string]*session{"nano-1": sess}, agentExecutions: store}
+			s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
 			sender := confirmedTestSender(t, s, provider)
 
 			body, err := json.Marshal(map[string]string{"prompt": "inspect only", "clientActionId": "action-1", "senderThreadRef": sender})
@@ -212,7 +212,7 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 		WHEN NEW.provider_turn_id='provider-turn-bind-fail' BEGIN SELECT RAISE(FAIL,'synthetic bind failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	s := &server{sessions: map[string]*session{"nano-1": sess}, agentExecutions: store}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
 	sender := confirmedTestSender(t, s, "codex")
 	body, err := json.Marshal(map[string]string{"prompt": "keep this text", "clientActionId": "action-bind-fail", "senderThreadRef": sender})
 	if err != nil {
@@ -303,8 +303,8 @@ func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
 func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	s := &server{
-		defaults: sessionDefaults{cwd: t.TempDir()},
-		sessions: map[string]*session{}, agentExecutions: store,
+		defaults:        sessionDefaults{cwd: t.TempDir()},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store,
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent-sessions", bytes.NewReader([]byte(`{
@@ -322,8 +322,8 @@ func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testi
 func TestAgentCreatedHostedThreadRequiresKnownInvoker(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	s := &server{
-		defaults: sessionDefaults{cwd: t.TempDir()},
-		sessions: map[string]*session{}, agentExecutions: store,
+		defaults:        sessionDefaults{cwd: t.TempDir()},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store,
 	}
 	for name, body := range map[string]string{
 		"missing": `{"clientSessionId":"worker-missing","provider":"codex","mode":"start"}`,
@@ -357,7 +357,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	s := &server{
 		defaults: sessionDefaults{cwd: t.TempDir()}, codex: provider.daemon(),
-		spoolDir: t.TempDir(), sessions: map[string]*session{}, agentExecutions: store, controlMetadata: control,
+		spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
 	}
 
@@ -474,7 +474,7 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	s := &server{
 		defaults: sessionDefaults{cwd: t.TempDir()}, codex: provider.daemon(),
-		spoolDir: t.TempDir(), sessions: map[string]*session{}, agentExecutions: store, controlMetadata: control,
+		spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
 	}
 
@@ -558,7 +558,7 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	saved := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: transcriptResponse{
 		Items: []transcriptItem{{ID: "saved-message-1", Type: "agent_message", Text: "working on it"}},
 	}}}
-	s := &server{sessions: map[string]*session{"nano-1": sess}, agentExecutions: store, catalog: saved}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store, catalog: saved}
 	s.startLiveText(sess)
 
 	read := func(path string) (liveProjectionSnapshot, int) {
@@ -616,7 +616,7 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 		ShimSessionID:    "shim-delete-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
-	s := &server{sessions: map[string]*session{}, agentExecutions: store, attachments: attachments, controlMetadata: control}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: attachments, controlMetadata: control}
 	s.defaults.claudeShimWS = shim.wsURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agent-sessions/caller-session", nil)
@@ -658,7 +658,7 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 		ShimSessionID:    "shim-close-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
-	s := &server{sessions: map[string]*session{}, agentExecutions: store, attachments: attachments}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: attachments}
 	s.defaults.claudeShimWS = shim.wsURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil)
@@ -697,7 +697,7 @@ func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 	_ = store.markTurnDelivery(waiting.ID, "claude:1", agentTurnRunning, nil)
 	_ = store.markWaiting(hosted.ID, "claude:1", true)
 
-	s := &server{sessions: map[string]*session{}, agentExecutions: store, attachments: newTestStore(t)}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: newTestStore(t)}
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil))
 	if rec.Code != http.StatusOK {
@@ -733,7 +733,7 @@ func TestAgentSessionDetach(t *testing.T) {
 		ShimSessionID:    "shim-detach-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
-	s := &server{sessions: map[string]*session{}, agentExecutions: store, attachments: attachments}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: attachments}
 	s.defaults.claudeShimWS = shim.wsURL()
 
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
@@ -792,7 +792,7 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 			"request-1": {ID: "request-1", TurnID: "turn-current"},
 		},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{sessions: map[string]*session{"nano-1": sess}, agentExecutions: store}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
 	oldRecord, _ := store.turn(old.ID)
 	currentRecord, _ := store.turn(current.ID)
 	oldView := s.agentTurnView(oldRecord)
@@ -827,7 +827,7 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 		provider:       "codex",
 		threadID:       "native-live-only",
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{sessions: map[string]*session{sess.id: sess}, agentExecutions: executions}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions}
 
 	// Block the downstream lookup and prove the server lock is already free.
 	lookupStarted := make(chan struct{})
@@ -897,7 +897,7 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"provider-queued-turn"}}`), nil
 	}
 	s := &server{
-		sessions: map[string]*session{"nano-1": sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -990,7 +990,7 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 		return json.RawMessage(`{"turn":{"id":"claude:fresh"}}`), nil
 	}
 	s := &server{
-		sessions: map[string]*session{sess.id: sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1051,7 +1051,7 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"claude:followup"}}`), nil
 	}
 	s := &server{
-		sessions: map[string]*session{sess.id: sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1114,7 +1114,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"claude:` + strconv.Itoa(int(n)) + `"}}`), nil
 	}
 	s := &server{
-		sessions: map[string]*session{sess.id: sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1218,7 +1218,7 @@ func TestHostedClaudeAcceptedPromptDoesNotHoldFollowupClaim(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"claude:2"}}`), nil
 	}
 	s := &server{
-		sessions: map[string]*session{sess.id: sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1271,7 +1271,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"claude:1"}}`), nil
 	}
 	s := &server{
-		sessions: map[string]*session{"nano-1": sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1348,7 +1348,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	transport := &fastStartingClaudeTransport{owner: claude, base: time.Now(), includeResult: true}
 	claude.tr = transport
 	s := &server{
-		sessions: map[string]*session{"nano-1": sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1482,7 +1482,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	transport := &fastStartingClaudeTransport{owner: claude, base: time.Now()}
 	claude.tr = transport
 	s := &server{
-		sessions: map[string]*session{sess.id: sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1668,7 +1668,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 		interactions:     map[string]pendingInteraction{},
 		lifecycleState:   testLifecycleSnapshot("ready", true)}
 	s := &server{
-		sessions: map[string]*session{"nano-1": sess}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 
@@ -1800,7 +1800,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 		sendOps:          map[string]*turnSendOperation{},
 		queuedTurns:      mustQueuedTurnStore(t),
 		lifecycleState:   testLifecycleSnapshot("ready", false)}
-	s := &server{sessions: map[string]*session{"nano-1": sess}, agentExecutions: store}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"nano-1": sess}}, agentExecutions: store}
 
 	put := func(ref, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -1867,7 +1867,7 @@ func TestHostedThreadSidebarPlacementEndpoint(t *testing.T) {
 	hub := newRuntimeHub()
 	changes := hub.subscribe()
 	t.Cleanup(func() { hub.unsubscribe(changes) })
-	s := &server{sessions: map[string]*session{}, agentExecutions: store, controlMetadata: control, runtimeEvents: hub}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control, runtimeEvents: hub}
 	put := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+hosted.ID+"/sidebar-placement", strings.NewReader(body))
@@ -1910,7 +1910,7 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{sessions: map[string]*session{}, agentExecutions: store, controlMetadata: control}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, controlMetadata: control}
 	request := func(method, ref, suffix, body string) *httptest.ResponseRecorder {
 		out := httptest.NewRecorder()
 		applicationHandler(s).ServeHTTP(out, httptest.NewRequest(method, "/api/v1/hosted-threads/"+ref+suffix, strings.NewReader(body)))
@@ -2041,7 +2041,7 @@ func TestHostedThreadOperationsUseItsLiveSessionNotAnExitedOne(t *testing.T) {
 		id := fmt.Sprintf("other-%d", i)
 		sessions[id] = &session{id: id, hostedThreadID: id, lifecycleState: testLifecycleSnapshot("ready", false)}
 	}
-	s := &server{agentExecutions: newTestAgentExecutionStore(t, "run"), sessions: sessions}
+	s := &server{agentExecutions: newTestAgentExecutionStore(t, "run"), sessionRegistry: sessionRegistry{sessions: sessions}}
 	for range 200 {
 		if got := s.sessionForHostedThread("target"); got == nil || got.id != "live" {
 			id := "none"

@@ -230,12 +230,7 @@ type monitorTurn struct {
 }
 
 func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
-	s.mu.Lock()
-	sessions := make([]*session, 0, len(s.sessions))
-	for _, sess := range s.sessions {
-		sessions = append(sessions, sess)
-	}
-	s.mu.Unlock()
+	sessions := s.snapshotSessions()
 	turns := []monitorTurn{}
 	for _, sess := range sessions {
 		sess.stateMu.Lock()

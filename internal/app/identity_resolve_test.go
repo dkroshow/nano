@@ -36,7 +36,7 @@ func newIdentityServer(t *testing.T, rows []catalogThread) (*server, *agentExecu
 	return &server{
 		catalog:         &fakeThreadCatalog{page: catalogPage{Items: rows}},
 		agentExecutions: store,
-		sessions:        map[string]*session{},
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 	}, store
 }
 

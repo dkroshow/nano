@@ -190,7 +190,7 @@ func TestGeneralFileResolutionUsesOnlyCurrentThreadLiveEvidence(t *testing.T) {
 		writeTestFile(t, path, path+"\n")
 	}
 	sess := liveEvidenceSession("See " + first)
-	server := &server{sessions: map[string]*session{"session-1": sess}}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": sess}}}
 
 	path, by, err := server.resolveGeneralFile(context.Background(), filepath.ToSlash(relative), "", "", "session-1")
 	if err != nil || path != canonicalPath(first) || by != "thread-evidence" {
@@ -219,7 +219,7 @@ func TestGeneralFileEvidenceUsesPathBoundariesAndDedupesSymlinkAliases(t *testin
 		t.Fatal(err)
 	}
 	sess := liveEvidenceSession("real " + target + " alias " + alias + " false " + filepath.Join(root, "notreports", "pulse.md"))
-	server := &server{sessions: map[string]*session{"session-1": sess}}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": sess}}}
 
 	path, _, err := server.resolveGeneralFile(context.Background(), "reports/pulse.md", "", "", "session-1")
 	if err != nil || path != canonicalPath(target) {
@@ -258,9 +258,9 @@ func TestGeneralFileResolvesFromSavedHistoryOlderThanTheLiveRows(t *testing.T) {
 	}
 	writeTestFile(t, target, "older\n")
 	catalog := &fileEvidenceTestCatalog{blobs: map[string][]string{"thread-1": {"Earlier turn: " + target}}}
-	server := &server{catalog: catalog, sessions: map[string]*session{
+	server := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"session-1": {id: "session-1", projection: newLiveProjection("codex")},
-	}}
+	}}}
 
 	path, by, err := server.resolveGeneralFile(context.Background(), "reports/older.md", "", "thread-1", "session-1")
 	if err != nil || path != canonicalPath(target) || by != "thread-evidence" {
@@ -280,9 +280,9 @@ func TestGeneralFileSearchesTheSessionsSavedHistoryWithoutAThreadID(t *testing.T
 	}
 	writeTestFile(t, target, "older\n")
 	catalog := &fileEvidenceTestCatalog{blobs: map[string][]string{"thread-1": {"Earlier turn: " + target}}}
-	server := &server{catalog: catalog, sessions: map[string]*session{
+	server := &server{catalog: catalog, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"session-1": {id: "session-1", threadID: "native-1", projection: newLiveProjection("codex")},
-	}}
+	}}}
 
 	path, _, err := server.resolveGeneralFile(context.Background(), "reports/older.md", "", "", "session-1")
 	if err != nil || path != canonicalPath(target) || !reflect.DeepEqual(catalog.searched, []string{"thread-1"}) {
@@ -387,7 +387,7 @@ func TestGeneralFileFallsBackToTheThreadWorkingDirectory(t *testing.T) {
 	writeTestFile(t, target, "routing\n")
 	_ = repo
 
-	server := &server{sessions: map[string]*session{"session-1": {id: "session-1", cwd: threadRepo}}}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": {id: "session-1", cwd: threadRepo}}}}
 	path, by, err := server.resolveGeneralFile(context.Background(), "analysis/routing.md", docDir, "", "session-1")
 	if err != nil || path != canonicalPath(target) || by != "thread-cwd" {
 		t.Fatalf("thread-cwd resolve = %q, %q, %v; want %q by thread-cwd", path, by, err, canonicalPath(target))
@@ -404,7 +404,7 @@ func TestGeneralFileEvidenceOutranksAnAmbiguousFilesystemGuess(t *testing.T) {
 		}
 		writeTestFile(t, path, path+"\n")
 	}
-	server := &server{sessions: map[string]*session{"session-1": liveEvidenceSession("wrote " + far)}}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": liveEvidenceSession("wrote " + far)}}}
 
 	path, by, err := server.resolveGeneralFile(context.Background(), "docs/notes.md", docDir, "", "session-1")
 	if err != nil || path != canonicalPath(far) || by != "thread-evidence" {

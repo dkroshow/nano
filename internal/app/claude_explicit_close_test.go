@@ -22,7 +22,7 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 				record.ShimSessionID = ""
 			}
 			store.remember(record)
-			s := &server{sessions: map[string]*session{}, attachments: store}
+			s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, attachments: store}
 			query := url.Values{"provider": {"claude"}, "forget": {"unconfirmed"}, "expectedShimSessionId": {record.ShimSessionID}, "expectedAttachedAt": {record.AttachedAt}}
 			switch scenario {
 			case "replacement":
@@ -69,7 +69,7 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 				attachment.ShimSessionID = ""
 			}
 			store.remember(attachment)
-			s := &server{sessions: map[string]*session{}, attachments: store}
+			s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, attachments: store}
 			s.defaults.claudeShimWS = shim.wsURL()
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?provider=claude", nil)
@@ -273,7 +273,7 @@ func TestClaudeExplicitConcurrentClosesSendOneStop(t *testing.T) {
 		<-finish
 		c.reply(call, map[string]any{})
 	})
-	s := &server{sessions: map[string]*session{}, attachments: newTestStore(t)}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, attachments: newTestStore(t)}
 	s.defaults.claudeShimWS = shim.wsURL()
 	s.attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "cs_provisional", ShimSessionID: "cs_provisional"})
 	results := make(chan int, 2)
@@ -298,7 +298,7 @@ func TestClaudeExplicitConcurrentClosesSendOneStop(t *testing.T) {
 
 func TestClaudeExplicitStartingCloseDoesNotClaimSuccess(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	s := &server{sessions: map[string]*session{sess.id: sess}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 	w := httptest.NewRecorder()
 	s.handleSessionClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
 	if w.Code != 502 || s.sessions[sess.id] != sess || sess.closed {
@@ -331,7 +331,7 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 	op, _, _ := store.beginTurn(hosted.ID, "pending", "hash")
 	attachments := newTestStore(t)
 	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: sess.currentThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
-	s := &server{sessions: map[string]*session{sess.id: sess}, attachments: attachments, agentExecutions: store}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, attachments: attachments, agentExecutions: store}
 	w := httptest.NewRecorder()
 	s.handleSessionClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
 	if w.Code != http.StatusBadGateway {

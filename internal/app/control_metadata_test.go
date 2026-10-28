@@ -477,7 +477,7 @@ func TestHostedMetadataAPIReadsCanonicalCurrentState(t *testing.T) {
 	if _, err := executions.ensureSession("nht_api", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessions: map[string]*session{}, agentExecutions: executions, controlMetadata: store}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: store}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata", nil))
 	if rec.Code != http.StatusOK {
@@ -508,7 +508,7 @@ func TestHostedMetadataAPIBaseMissingCanonicalRecordReturnsNotFound(t *testing.T
 	if _, err := executions.ensureSession("nht_missing_metadata", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessions: map[string]*session{}, agentExecutions: executions, controlMetadata: metadata}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: metadata}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_missing_metadata/metadata", nil))
 	if rec.Code != http.StatusNotFound {
@@ -541,7 +541,7 @@ func TestHostedMetadataEventsAPIUsesPublicFilteredCursorContract(t *testing.T) {
 	if _, err := executions.ensureSession("nht_event_api", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessions: map[string]*session{}, agentExecutions: executions, controlMetadata: store}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: store}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_event_api/metadata/events?after=0&limit=1&field=serviceTier&freshness=live", nil))
 	if rec.Code != http.StatusOK {
@@ -584,7 +584,7 @@ func TestHostedMetadataAPIDegradedModeDoesNotServePartialCurrent(t *testing.T) {
 	if _, err := executions.ensureSession("nht_metadata_degraded", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessions: map[string]*session{}, agentExecutions: executions, controlMetadata: store, controlMetadataErr: "legacy import checksum failed"}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: store, controlMetadataErr: "legacy import checksum failed"}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_metadata_degraded/metadata", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "legacy import checksum failed") {
@@ -593,7 +593,7 @@ func TestHostedMetadataAPIDegradedModeDoesNotServePartialCurrent(t *testing.T) {
 }
 
 func TestExecutionControlDegradedModeRejectsHostedMutations(t *testing.T) {
-	server := &server{sessions: map[string]*session{}, executionControlErr: "control.sqlite is corrupt"}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, executionControlErr: "control.sqlite is corrupt"}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_unavailable", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "control.sqlite is corrupt") {
@@ -602,7 +602,7 @@ func TestExecutionControlDegradedModeRejectsHostedMutations(t *testing.T) {
 }
 
 func TestSessionsRouteDegradedModeKeepsReadsButRejectsNewHostedSession(t *testing.T) {
-	server := &server{sessions: map[string]*session{}, executionControlErr: "control.sqlite is corrupt"}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, executionControlErr: "control.sqlite is corrupt"}
 	get := httptest.NewRecorder()
 	server.handleSessionsList(get, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	if get.Code != http.StatusOK {
@@ -764,7 +764,7 @@ func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
 	if _, err := exec.ensureSession("nht_hint", "codex", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessions: map[string]*session{}, agentExecutions: exec, controlMetadata: store}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: exec, controlMetadata: store}
 	good := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(good, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=2", nil))
 	if good.Code != http.StatusOK || !containsAll(good.Body.String(), `"currentRevision":3`, `"refetchRequired":false`) {
@@ -1035,7 +1035,7 @@ func TestSessionListCarriesDisplayedMetadataOnly(t *testing.T) {
 		createdAt: time.Now(), state: map[string]json.RawMessage{}, metadata: metadata, runtimeNotify: func() {},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.recordPosture([]postureEntry{{Field: postureFieldServiceTier, Value: "priority", Source: postureSourceCreation}}, metadataFreshnessLive)
-	server := &server{sessions: map[string]*session{sess.id: sess}, controlMetadata: metadata}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, controlMetadata: metadata}
 	rec := httptest.NewRecorder()
 	server.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {
@@ -1258,7 +1258,7 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 	if err := exec.updateSession("nht_attachment_api", "", "", agentSessionDetached, ""); err != nil {
 		t.Fatal(err)
 	}
-	s := &server{sessions: map[string]*session{}, agentExecutions: exec, controlMetadata: store}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: exec, controlMetadata: store}
 	before, _ := store.view("nht_attachment_api")
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_attachment_api/metadata", nil))

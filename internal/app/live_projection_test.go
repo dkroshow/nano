@@ -543,7 +543,7 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 	sess.savedTurn = func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
 		return durableTurnEvidence{Turn: liveProjectionTurn{ID: turnID, Status: "completed", CompletedAtMs: started + 1}}, turnID == "turn-1"
 	}
-	s := &server{catalog: &fakeMessagesCatalog{}, sessions: map[string]*session{sess.id: sess}}
+	s := &server{catalog: &fakeMessagesCatalog{}, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 
 	// Transcript notifications use the catalog's nth_ identity, while hosted
 	// sessions retain the provider-native thread identity.
@@ -587,7 +587,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	}
 
 	server := &server{
-		sessions: map[string]*session{}, agentExecutions: executions,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions,
 		sendAttempts: attempts, queuedTurns: queue, turns: turnStore,
 	}
 	blocked := make(chan struct{})

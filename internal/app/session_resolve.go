@@ -345,23 +345,3 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 	}
 	return req, nil
 }
-
-// liveSessionForResume finds a live session that already hosts the thread a
-// resume names, by native id or, before Codex learns its native id, by
-// hosted id. Exited sessions do not count: the operator may resume those.
-func (s *server) liveSessionForResume(provider, nativeThreadID, hostedThreadID string) *session {
-	if existing := s.sessionForThread(provider, nativeThreadID); existing != nil {
-		return existing
-	}
-	existing := s.sessionForHostedThread(hostedThreadID)
-	if existing == nil || hostedThreadID == "" {
-		return nil
-	}
-	existing.stateMu.Lock()
-	exited := existing.connectionStatusLocked() == sessionStatusExited
-	existing.stateMu.Unlock()
-	if exited {
-		return nil
-	}
-	return existing
-}

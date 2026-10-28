@@ -65,7 +65,7 @@ func TestTurnActiveTransition(t *testing.T) {
 func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *testing.T) {
 	sess := &session{id: "blocked-summary",
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{sessions: map[string]*session{sess.id: sess}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 	sess.stateMu.Lock()
 	done := make(chan struct{})
 	go func() {
@@ -374,7 +374,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 		}},
 		thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"},
 	}
-	s := &server{catalog: fake, sessions: map[string]*session{}}
+	s := &server{catalog: fake, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	s.runtime = s
 	s.sessions["s1"] = &session{id: "s1",
 		provider:       "codex",
@@ -470,14 +470,14 @@ func TestRuntimeForThreeStates(t *testing.T) {
 	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
 	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-exited", Cwd: "/c", AttachedAt: "2026-07-27T12:00:00Z"})
 
-	s := &server{attachments: attachments, sessions: map[string]*session{
+	s := &server{attachments: attachments, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"s1": {id: "s1", provider: "codex", threadID: "codex-live", lifecycleState: testLifecycleSnapshot("ready", true)},
 		"s2": {id: "s2", provider: "claude", threadID: "claude-live", lifecycleState: testLifecycleSnapshot("starting", false)},
 		// Exited, but its attachment record is still there: detached.
 		"s3": {id: "s3", provider: "claude", threadID: "claude-exited", lifecycleState: testLifecycleSnapshot("exited", false)},
 		// Exited with no record at all: no overlay whatsoever.
 		"s4": {id: "s4", provider: "codex", threadID: "codex-gone", lifecycleState: testLifecycleSnapshot("exited", false)},
-	}}
+	}}}
 	s.runtime = s
 
 	cases := []struct {
@@ -507,7 +507,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 	}
 
 	// A server without an attachment store simply has no detached state.
-	bare := &server{sessions: map[string]*session{}}
+	bare := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	if info, ok := bare.RuntimeFor("codex", "codex-detached"); ok || !reflect.DeepEqual(info, runtimeInfo{}) {
 		t.Fatalf("nil attachment store = %#v, %v", info, ok)
 	}
@@ -520,9 +520,9 @@ func TestDetachedOverlayJSON(t *testing.T) {
 	attachments := newTestStore(t)
 	attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	s := &server{
-		catalog:     &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}},
-		attachments: attachments,
-		sessions:    map[string]*session{},
+		catalog:         &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}},
+		attachments:     attachments,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 	}
 	s.runtime = s
 
@@ -541,7 +541,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 // runtime overlay, so open Explorers must be told to refetch — the same nudge
 // bind and unbind fire.
 func TestAttachmentDismissNudgesRuntime(t *testing.T) {
-	s := &server{attachments: newTestStore(t), runtimeEvents: newRuntimeHub(), sessions: map[string]*session{}}
+	s := &server{attachments: newTestStore(t), runtimeEvents: newRuntimeHub(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	s.attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "t-1", AttachedAt: "2026-07-27T10:00:00Z"})
 	nudges := s.runtimeEvents.subscribe()
 
@@ -746,7 +746,7 @@ func TestRuntimeHubPreservesPendingRefresh(t *testing.T) {
 // delta. One thread re-attaching sends its own row and key, not the list.
 func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	now := time.Now()
-	s := &server{attachments: newTestStore(t), sessions: map[string]*session{}}
+	s := &server{attachments: newTestStore(t), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	for i := range 40 {
 		s.attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: fmt.Sprintf("parked-%02d", i), AttachedAt: "2026-07-27T10:00:00Z"})
 	}
@@ -928,7 +928,7 @@ func readSSEEvent(t *testing.T, reader *bufio.Reader) (event, data string) {
 // every session.
 func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 	pending := &session{id: "pending", lifecycleState: testLifecycleSnapshot("starting", false)}
-	s := &server{sessions: map[string]*session{}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
 
 	carries := func(delta runtimeDelta) bool {
@@ -952,7 +952,7 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 // row and detached its tab, losing the only place the error shows.
 func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
 	pending := &session{id: "pending", lifecycleState: testLifecycleSnapshot("starting", false)}
-	s := &server{sessions: map[string]*session{"pending": pending}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"pending": pending}}}
 	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
 
 	pending.failSpawn("handshake failed")
@@ -1132,7 +1132,7 @@ func TestRuntimeDeltaCarriesOnlyChangedRows(t *testing.T) {
 	now := time.Now()
 	a := memorySession("sess-a", "codex", "thread-a", "ready", "/w/a", "gpt-5.6-sol", now)
 	b := memorySession("sess-b", "codex", "thread-b", "ready", "/w/b", "gpt-5.6-sol", now)
-	s := &server{sessions: map[string]*session{"sess-a": a, "sess-b": b}}
+	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"sess-a": a, "sess-b": b}}}
 	if first := s.runtimeDeltaSnapshot(); len(first.Rows) != 2 {
 		t.Fatalf("first delta rows = %d, want every held thread", len(first.Rows))
 	}

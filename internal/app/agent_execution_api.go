@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -663,9 +663,7 @@ func (s *server) handleHostedThreadDetach(w http.ResponseWriter, _ *http.Request
 	}
 	if sess := s.sessionForHostedThread(record.ID); sess != nil {
 		sess.close()
-		s.mu.Lock()
-		delete(s.sessions, sess.id)
-		s.mu.Unlock()
+		s.removeSession(sess.id)
 		s.notifyRuntime()
 	}
 	// The attachment record survives — that is the difference from close:
@@ -1466,58 +1464,6 @@ func (s *server) hostedSessionForRequest(id string) *session {
 	return s.sessionForHostedThread(id)
 }
 
-// sessionForHostedThread returns the session a hosted thread's operations
-// use. A failed attach can leave an exited session beside the one that
-// replaced it, so map order must not choose: the live session wins
-// (liveHostedThreadSession). Callers must not hold a session's stateMu.
-func (s *server) sessionForHostedThread(id string) *session {
-	matches := s.hostedThreadSessions(id)
-	switch len(matches) {
-	case 0:
-		return nil
-	case 1:
-		return matches[0]
-	}
-	if live := liveHostedThreadSession(matches); live != nil {
-		return live
-	}
-	return matches[0]
-}
-
-// hostedThreadSessions lists the registered sessions of one hosted thread.
-func (s *server) hostedThreadSessions(id string) []*session {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	matches := make([]*session, 0, 1)
-	for _, sess := range s.sessions {
-		if sess.hostedThreadID == id {
-			matches = append(matches, sess)
-		}
-	}
-	return matches
-}
-
-// liveHostedThreadSession is the oldest of a hosted thread's sessions that has
-// not exited, with the fleet summary's timestamp precision and ID tie-break,
-// or nil when every session has exited.
-func liveHostedThreadSession(matches []*session) *session {
-	var oldest *session
-	var oldestCreated string
-	for _, sess := range matches {
-		sess.stateMu.Lock()
-		exited := sess.connectionStatusLocked() == sessionStatusExited
-		sess.stateMu.Unlock()
-		if exited {
-			continue
-		}
-		created := sess.createdAt.Format(time.RFC3339)
-		if oldest == nil || created < oldestCreated || (created == oldestCreated && sess.id < oldest.id) {
-			oldest, oldestCreated = sess, created
-		}
-	}
-	return oldest
-}
-
 // resolveHostedThreadRecord accepts the durable hosted-thread id, an optional
 // client creation alias, the current Nano session id, or the live provider
 // thread id. All references converge on the same durable record before an
@@ -1527,34 +1473,6 @@ func (s *server) resolveHostedThreadRecord(ref string) (agentSessionRecord, bool
 		return record, true
 	}
 	return s.resolveLiveHostedThreadRecord(ref, s.agentExecutions.session)
-}
-
-func (s *server) resolveLiveHostedThreadRecord(ref string, lookup func(string) (agentSessionRecord, bool)) (agentSessionRecord, bool) {
-	s.mu.Lock()
-	hostedThreadID := ""
-	for _, sess := range s.sessions {
-		if sess.id == ref {
-			hostedThreadID = sess.hostedThreadID
-			break
-		}
-	}
-	if hostedThreadID == "" {
-		for _, sess := range s.sessions {
-			if sess.currentThreadID() != ref {
-				continue
-			}
-			if hostedThreadID != "" && hostedThreadID != sess.hostedThreadID {
-				s.mu.Unlock()
-				return agentSessionRecord{}, false // provider-native reference is ambiguous
-			}
-			hostedThreadID = sess.hostedThreadID
-		}
-	}
-	s.mu.Unlock()
-	if hostedThreadID == "" {
-		return agentSessionRecord{}, false
-	}
-	return lookup(hostedThreadID)
 }
 
 // closeHostedThreadForRecord ends a hosted thread's attachment whether or not
@@ -1644,11 +1562,7 @@ func (s *server) closeAgentSession(sess *session) error {
 	if !closed {
 		return err
 	}
-	s.mu.Lock()
-	if s.sessions[sess.id] == sess {
-		delete(s.sessions, sess.id)
-	}
-	s.mu.Unlock()
+	s.removeCurrentSession(sess)
 	defer s.notifyRuntime()
 	if err != nil {
 		return fmt.Errorf("Claude stop unconfirmed; attachment retained for retry: %w", err)

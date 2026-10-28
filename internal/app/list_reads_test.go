@@ -174,7 +174,7 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 
 	f.catalog = &countingCatalog{threadCatalogService: &threadCatalogService{store: store}}
 	s := &server{
-		catalog: f.catalog, sessions: sessions,
+		catalog: f.catalog, sessionRegistry: sessionRegistry{sessions: sessions},
 		attachments: attachments, threadStars: stars,
 		controlMetadata: metadata, agentExecutions: executions,
 		runtimeEvents: newRuntimeHub(), mailEvents: newMailHub(), mail: newTestAgentMessageStore(t),

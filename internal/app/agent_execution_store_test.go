@@ -1663,12 +1663,12 @@ func TestAgentExecutionLiveHostedSessionSelectsOnlyMatchingSummary(t *testing.T)
 		metadataDegraded: true, turnEffort: "high", permissionMode: "never", turnServiceTier: "fast",
 	}
 	unrelated := &session{id: "unrelated", hostedThreadID: "other", lifecycleState: testLifecycleSnapshot("ready", false)}
-	s := &server{agentExecutions: store, sessions: map[string]*session{
+	s := &server{agentExecutions: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"a":         selected,
 		"z":         {id: "z", hostedThreadID: "target", createdAt: created.Add(100 * time.Millisecond), lifecycleState: testLifecycleSnapshot("ready", false)},
 		"exited":    {id: "exited", hostedThreadID: "target", createdAt: created.Add(-time.Hour), lifecycleState: testLifecycleSnapshot("exited", false)},
 		"unrelated": unrelated,
-	}}
+	}}}
 	unrelated.stateMu.Lock()
 	done := make(chan struct{})
 	var got sessionSummary

@@ -125,7 +125,7 @@ func TestPermissionEventsAPIIsPagedByHostedThread(t *testing.T) {
 	if _, err := executions.ensureSession(sess.hostedThreadID, "grok", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	server := &server{sessions: map[string]*session{}, controlMetadata: store, agentExecutions: executions}
+	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, controlMetadata: store, agentExecutions: executions}
 	rec := httptest.NewRecorder()
 	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
 		"/api/v1/hosted-threads/"+sess.hostedThreadID+"/permission-events?limit=1", nil))

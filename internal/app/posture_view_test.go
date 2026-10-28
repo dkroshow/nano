@@ -142,7 +142,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		Provider: "claude", NativeThreadID: "native-historical", HostedThreadID: hostedID,
 		Bin: "/claude", Args: []string{"-p", claudeModelFlag, "stale-model", "--effort", "low", "--permission-mode", "bypassPermissions"},
 	})
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir(), claudeBin: "/default/claude"}, attachments: attachments, controlMetadata: metadata, agentExecutions: executions, sessions: map[string]*session{}}
+	s := &server{defaults: sessionDefaults{cwd: t.TempDir(), claudeBin: "/default/claude"}, attachments: attachments, controlMetadata: metadata, agentExecutions: executions, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 
 	// The public API is presentation state and must expose the observed fold.
 	api := httptest.NewRecorder()

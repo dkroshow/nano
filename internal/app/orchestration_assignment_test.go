@@ -26,7 +26,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{agentExecutions: store, controlMetadata: control, sessions: map[string]*session{}}
+	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 
 	first, err := control.currentOrchestrationAssignment(worker.ID)
 	if err != nil || first == nil || first.AssignmentRole != "worker" || first.Focus != "Implement exactly this" {
@@ -228,7 +228,7 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 		prompts <- prompt
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	}
-	s := &server{agentExecutions: store, controlMetadata: control, catalog: renamedCatalog{name: "Worker sender"}, sessions: map[string]*session{sess.id: sess}}
+	s := &server{agentExecutions: store, controlMetadata: control, catalog: renamedCatalog{name: "Worker sender"}, sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 	const prompt = "  Exact caller prompt: do not alter it.  "
 	rec := httptest.NewRecorder()
 	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)
@@ -265,7 +265,7 @@ func TestOrchestrationAssignmentNormalizesAndValidatesTargets(t *testing.T) {
 	parent, _, _ := store.beginSession("parent", "parent", "codex", presentationShared)
 	target, _, _ := store.beginSession("target-alias", "target", "codex", presentationShared)
 	op, _, _ := store.beginTurn(target.ID, "result", "hash")
-	s := &server{agentExecutions: store, controlMetadata: control, sessions: map[string]*session{}}
+	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	if view := s.agentSessionView(parent.ID); view.Assignment != nil {
 		t.Fatalf("unassigned thread defaulted to %#v", view.Assignment)
 	}
@@ -343,7 +343,7 @@ func TestOrchestrationAssignmentRelationshipReparentsWithoutChangingInvocationLi
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{agentExecutions: store, controlMetadata: control, sessions: map[string]*session{}}
+	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 
 	update := httptest.NewRecorder()
 	body := `{"clientActionId":"move-child","assignment":{"assignmentRole":"worker","focus":"Implement the change","relatedHostedThreadId":"new-parent","auditTargets":[]}}`
@@ -410,7 +410,7 @@ func TestAssignmentResolutionFailuresAreVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{agentExecutions: store, controlMetadata: control, sessions: map[string]*session{}}
+	s := &server{agentExecutions: store, controlMetadata: control, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	if err := control.Close(); err != nil {
 		t.Fatal(err)
 	}

@@ -200,8 +200,7 @@ type server struct {
 	// expiries for the panes' "slow right now" line.
 	deliveryExpiries *deliveryExpiries
 
-	mu       sync.Mutex
-	sessions map[string]*session
+	sessionRegistry
 }
 
 // Main runs Nano using the process arguments and standard streams.
@@ -397,7 +396,7 @@ func construct(cfg config.Config) *application {
 		transcriptAudits:      newTranscriptAuditStore(),
 		transcriptAuditEvents: newTranscriptAuditHub(),
 		usageLimits:           usageLimits,
-		sessions:              map[string]*session{},
+		sessionRegistry:       sessionRegistry{sessions: map[string]*session{}},
 	}
 	s.deliveryExpiries = newDeliveryExpiries(deliveryExpiryWindow, s.publishProviderRuntime)
 	if agentExecutions != nil {
@@ -655,12 +654,7 @@ func (s *server) stop(deliveryWait, deadline time.Duration) stopReport {
 // sendMu while it registers its operation, so each session's operations are
 // complete once that lock is taken after stopping is set.
 func (s *server) awaitInFlightDeliveries(until time.Time) stopReport {
-	s.mu.Lock()
-	sessions := make([]*session, 0, len(s.sessions))
-	for _, sess := range s.sessions {
-		sessions = append(sessions, sess)
-	}
-	s.mu.Unlock()
+	sessions := s.snapshotSessions()
 	var inFlight []chan struct{}
 	for _, sess := range sessions {
 		sess.sendMu.Lock()
@@ -838,12 +832,7 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 		at := s.runtimeEvents.position()
 		position = &at
 	}
-	s.mu.Lock()
-	sessions := make([]*session, 0, len(s.sessions))
-	for _, sess := range s.sessions {
-		sessions = append(sessions, sess)
-	}
-	s.mu.Unlock()
+	sessions := s.snapshotSessions()
 
 	listed := s.listedSessions(sessions)
 	live := make(map[attachmentKey]bool, len(listed))
@@ -1016,9 +1005,7 @@ func (s *server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Request, *session)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("sessionId")
-		s.mu.Lock()
-		sess := s.sessions[id]
-		s.mu.Unlock()
+		sess := s.lookupSession(id)
 		if sess == nil {
 			httpapi.WriteHTTPError(w, "no such session", http.StatusNotFound)
 			return

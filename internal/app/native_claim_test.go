@@ -110,9 +110,9 @@ func TestTransferNativeClaimConflictsWhenOwnerIsLiveAttached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{controlMetadata: store.control, agentExecutions: store, sessions: map[string]*session{
+	s := &server{controlMetadata: store.control, agentExecutions: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{
 		"live": {id: "live", provider: "claude", hostedThreadID: owner.ID, threadID: revivedNativeID, lifecycleState: testLifecycleSnapshot("ready", false)},
-	}}
+	}}}
 	if err := s.transferNativeClaim(challenger.ID, "claude", revivedNativeID); !errors.Is(err, errNativeClaimLive) {
 		t.Fatalf("transfer err = %v, want errNativeClaimLive", err)
 	}
@@ -204,7 +204,7 @@ func TestInheritMissingCwdFromPredecessor(t *testing.T) {
 		t.Fatal(err)
 	}
 	current := seedHostedNative(t, store, "claude", "cs_tmp", agentSessionDetached)
-	s := &server{controlMetadata: control, agentExecutions: store, sessions: map[string]*session{}}
+	s := &server{controlMetadata: control, agentExecutions: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 	if err := s.repairCanonicalNativeIdentity("claude", revivedNativeID, current.ID); err != nil {
 		t.Fatal(err)
 	}

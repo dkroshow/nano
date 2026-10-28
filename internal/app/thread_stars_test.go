@@ -132,7 +132,7 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	catalog := &fakeThreadCatalog{thread: catalogThread{
 		ID: "nth_1", Provider: "codex", NativeID: "native-1", Title: strPtr("Pinned"),
 	}}
-	s := &server{catalog: catalog, threadStars: store, sessions: map[string]*session{}}
+	s := &server{catalog: catalog, threadStars: store, sessionRegistry: sessionRegistry{sessions: map[string]*session{}}}
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{"starred":true}`))
 	rec := httptest.NewRecorder()
@@ -168,10 +168,10 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 	ch := hub.subscribe()
 	t.Cleanup(func() { hub.unsubscribe(ch) })
 	s := &server{
-		catalog:       &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}},
-		threadStars:   store,
-		runtimeEvents: hub,
-		sessions:      map[string]*session{},
+		catalog:         &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}},
+		threadStars:     store,
+		runtimeEvents:   hub,
+		sessionRegistry: sessionRegistry{sessions: map[string]*session{}},
 	}
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{"starred":true}`))
 	rec := httptest.NewRecorder()

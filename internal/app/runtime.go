@@ -89,37 +89,6 @@ type runtimeSource interface {
 	RuntimeFor(provider, nativeThreadID string) (runtimeInfo, bool)
 }
 
-// sessionForThread returns the LIVE session hosting (provider,
-// nativeThreadID), if any. Exited sessions are passed over: a resume that died
-// pre-init (purged transcript) leaves a corpse still holding the thread id it
-// seeded at spawn, and both callers mean "live" — the claude resume guard
-// (session.go) must let the operator retry rather than 409 them into the dead
-// session, and RuntimeFor must read the thread as detached-or-durable, not
-// attached. The guard in codexDaemon.claimThread/registerThread keeps codex
-// threads single-attached and the claude resume guard does the same for
-// claude, so at most one *live* session matches; exited corpses may coexist
-// with their replacement until closed.
-func (s *server) sessionForThread(provider, nativeThreadID string) *session {
-	if nativeThreadID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sess := range s.sessions {
-		if sess.provider != provider || sess.currentThreadID() != nativeThreadID {
-			continue
-		}
-		sess.stateMu.Lock()
-		exited := sess.connectionStatusLocked() == sessionStatusExited
-		sess.stateMu.Unlock()
-		if exited {
-			continue
-		}
-		return sess
-	}
-	return nil
-}
-
 // RuntimeFor reports the runtime overlay for (provider, nativeThreadID) — the
 // catalog-facing half of sessionForThread, extended with the remembered feed:
 // a live session makes the thread attached, otherwise a surviving attachment
