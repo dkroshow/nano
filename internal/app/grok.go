@@ -499,7 +499,7 @@ func runGrokHandshake(sess *session, req providerRequest) error {
 // attempt that ever left the queue. A session Nano did not create, or any
 // attempt sent, parked or of unknown outcome, proves nothing.
 func (sess *session) grokNeverPrompted(ctx context.Context) bool {
-	native := sess.currentThreadID()
+	native := sess.ThreadID()
 	if sess.turns == nil || sess.metadata == nil || native == "" {
 		return false
 	}
@@ -707,7 +707,7 @@ func (g *grokSession) recordWire(dir protocol.Direction, line []byte) {
 		active := g.active
 		candidate := ""
 		if active != nil {
-			candidate = grokAcceptancePromptID(line, active.text, g.sess.currentThreadID())
+			candidate = grokAcceptancePromptID(line, active.text, g.sess.ThreadID())
 		}
 		observed := grokPromptIDFromWire(line)
 		_, previouslySeen := g.seenPromptIDs[observed]
@@ -785,7 +785,7 @@ func (g *grokSession) wireBelongsToAttachedSession(line []byte) bool {
 	if !scoped {
 		return true
 	}
-	attached := g.sess.currentThreadID()
+	attached := g.sess.ThreadID()
 	// Session creation/load tests have not attached the returned native id
 	// yet. Production parent traffic always has one, so this is only a safe
 	// pre-attachment compatibility path.
@@ -949,7 +949,7 @@ func (g *grokSession) SendTurn(ctx context.Context, text, actionID string) (json
 	go func() {
 		var response grokPromptResponse
 		err := g.client.CallWithWriteAck(context.Background(), "session/prompt", map[string]any{
-			"sessionId": g.sess.currentThreadID(),
+			"sessionId": g.sess.ThreadID(),
 			"prompt": []map[string]any{{"type": "text", "text": text,
 				"_meta": map[string]string{"x.nano/submissionId": submissionEventID(g.sess.hostedThreadID, actionID)}}},
 		}, &response, func() {
@@ -1036,12 +1036,12 @@ func (g *grokSession) observeResolvedPromptOutcome(promptID string, outcome grok
 			return
 		}
 		detail, _ := json.Marshal(map[string]string{"error": outcome.err.Error()})
-		g.sess.observeGrokAgentTerminal(g.sess.currentThreadID(), promptID, agentTurnFailed, "prompt_error", detail)
+		g.sess.observeGrokAgentTerminal(g.sess.ThreadID(), promptID, agentTurnFailed, "prompt_error", detail)
 		return
 	}
 	if strings.TrimSpace(outcome.response.StopReason) != "" {
 		status := grokTurnStatus(outcome.response.StopReason)
-		threadID := g.sess.currentThreadID()
+		threadID := g.sess.ThreadID()
 		apply := func() {
 			g.sess.observeGrokAgentTerminal(threadID, promptID, status, outcome.response.StopReason, nil)
 		}
@@ -1067,7 +1067,7 @@ func (g *grokSession) observeResolvedPromptOutcome(promptID string, outcome grok
 }
 
 func (g *grokSession) interrupt() error {
-	return g.client.Notify("session/cancel", map[string]any{"sessionId": g.sess.currentThreadID()})
+	return g.client.Notify("session/cancel", map[string]any{"sessionId": g.sess.ThreadID()})
 }
 
 func (g *grokSession) Close() error {
@@ -1106,7 +1106,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 	if json.Unmarshal(params, &body) != nil || body.SessionID == "" {
 		return nil, &protocol.RPCError{Code: -32602, Message: "Grok request " + method + " is missing sessionId"}
 	}
-	if current := g.sess.currentThreadID(); current != "" && current != body.SessionID {
+	if current := g.sess.ThreadID(); current != "" && current != body.SessionID {
 		log.Printf("Grok request %s for unrouted session %q on %q — rejecting", method, body.SessionID, current)
 		return grokInteractionResult(pendingInteraction{Method: method, Params: params}, decisionDecline, nil)
 	}

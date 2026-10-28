@@ -11,7 +11,6 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/inspection"
-	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/providers"
@@ -162,7 +161,7 @@ type session struct {
 	providerAdapter providers.Adapter
 	agentExecutions sessionExecutions
 	metadata        sessionMetadata
-	notices         *interact.Notices
+	appendUnread    func(string, string) string
 	// metadataDegraded means a newer observation failed to enter the canonical
 	// log. It never makes the last committed canonical record unreadable; API
 	// reads derive unavailable directly from control.sqlite instead.

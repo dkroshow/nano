@@ -27,7 +27,7 @@ func (sess *session) codexZeroTurnEvidence(refusedAction string) bool {
 	}
 	var attempts []sendAttemptRecord
 	if sess.sendAttempts != nil {
-		attempts = sess.sendAttempts.ListThread("codex", sess.currentThreadID())
+		attempts = sess.sendAttempts.ListThread("codex", sess.ThreadID())
 	}
 	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
@@ -53,7 +53,7 @@ func (sess *session) codexZeroTurnEvidence(refusedAction string) bool {
 func (sess *session) codexZeroTurnNativeMissing(actionID string, err error) bool {
 	var rpcErr *protocol.RPCError
 	return providerLifecycleCapabilities(sess.provider).ResumeWithoutTranscript && errors.As(err, &rpcErr) &&
-		rpcErr.Message == "thread not found: "+sess.currentThreadID() &&
+		rpcErr.Message == "thread not found: "+sess.ThreadID() &&
 		sess.codexZeroTurnRecoveryNeeded() && sess.codexZeroTurnEvidence(actionID)
 }
 
@@ -88,7 +88,7 @@ func (sess *session) failCodexReconnect(message string) error {
 	if closed {
 		return nil
 	}
-	for _, queued := range sess.queuedPrompts(sess.currentThreadID()) {
+	for _, queued := range sess.queuedPrompts(sess.ThreadID()) {
 		if queued.State != submissionQueued && queued.State != submissionParked {
 			continue
 		}

@@ -140,7 +140,7 @@ func (in *liveTextInbox) addReply(update liveReplyUpdate) {
 
 type liveTextLoop struct {
 	srv  *server
-	sess *session
+	sess liveTextAttachment
 
 	mu      sync.Mutex
 	inbox   liveTextInbox
@@ -167,10 +167,6 @@ type awaitedReply struct {
 	turn       string
 }
 
-func newLiveTextLoop(srv *server, sess *session) *liveTextLoop {
-	return &liveTextLoop{srv: srv, sess: sess, wake: make(chan struct{}, 1)}
-}
-
 // ObserveBatch takes the live adapter's parsed changes for one frame. Only
 // top-level assistant text with an exact native id becomes live text; a
 // provisional block index never matches a saved row.
@@ -178,11 +174,11 @@ func (l *liveTextLoop) ObserveBatch(batch model.Batch, turn string) {
 	if l == nil {
 		return
 	}
-	if l.sess != nil && l.sess.provider == "grok" {
+	if l.sess != nil && l.sess.Provider() == "grok" {
 		l.observeGrokBatch(batch)
 		return
 	}
-	codex := l.sess != nil && l.sess.provider == "codex"
+	codex := l.sess != nil && l.sess.Provider() == "codex"
 	var updates []liveReplyUpdate
 	var ended []string
 	for _, change := range batch.Changes {
@@ -342,10 +338,10 @@ func (l *liveTextLoop) CurrentTexts(ctx context.Context) []string {
 }
 
 func (l *liveTextLoop) sessionWorking() bool {
-	if l.sess == nil || l.sess.projection == nil {
+	if l.sess == nil {
 		return false
 	}
-	return l.sess.projection.TurnActive()
+	return l.sess.LiveTurnActive()
 }
 
 func (l *liveTextLoop) reset() {
@@ -364,12 +360,12 @@ func (l *liveTextLoop) reset() {
 // queued or parked prompt shows on reopening. Delivery state is never changed.
 // No pane exists yet; each pane joins through a tick that checks them first.
 func (l *liveTextLoop) seedOutbox() {
-	if l.sess == nil || l.sess.turns == nil {
+	if l.sess == nil || l.sess.PromptStore() == nil {
 		return
 	}
-	records, err := l.sess.turns.List(context.Background(), l.sess.hostedThreadID)
+	records, err := l.sess.PromptStore().List(context.Background(), l.sess.HostedThreadID())
 	if err != nil {
-		log.Printf("live text outbox snapshot %s: %v", l.sess.hostedThreadID, err)
+		log.Printf("live text outbox snapshot %s: %v", l.sess.HostedThreadID(), err)
 		return
 	}
 	for _, record := range records {
@@ -464,8 +460,8 @@ func (l *liveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 			return false
 		}
 		current = &liveTextEntry{ID: id, Kind: "prompt", ActionID: entry.ActionID, key: l.promptKey(entry), rank: rank}
-		if l.sess != nil && l.sess.agentExecutions != nil {
-			turn, found, err := l.sess.agentExecutions.PersistedTurnForTransportAction(context.Background(), l.hostedID(), entry.ActionID)
+		if l.sess != nil {
+			turn, found, err := l.sess.PersistedOperation(context.Background(), entry.ActionID)
 			if err != nil {
 				log.Printf("live text submission metadata %s: %v", l.hostedID(), err)
 			} else if found && turn.Origin == turnOriginAgent && turn.SenderSubmittedAt != "" {
@@ -496,7 +492,7 @@ func (l *liveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 func (l *liveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.OutboxEntry) {
 	provider := ""
 	if l.sess != nil {
-		provider = l.sess.provider
+		provider = l.sess.Provider()
 	}
 	newClaim := entry.UpdatedAt != current.outbox.UpdatedAt || current.outbox.State != prompts.Delivering
 	current.outbox = entry
@@ -515,7 +511,7 @@ func (l *liveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.Outbo
 // its saved row may already be in the file.
 func (l *liveTextLoop) learnKey(current *liveTextEntry, entry prompts.OutboxEntry) bool {
 	learned := false
-	if l.sess != nil && (l.sess.provider == "grok" || l.sess.provider == "codex") && entry.Binding != nil && entry.Binding.Scope.NativeTurnID != nil && current.turn != *entry.Binding.Scope.NativeTurnID {
+	if l.sess != nil && (l.sess.Provider() == "grok" || l.sess.Provider() == "codex") && entry.Binding != nil && entry.Binding.Scope.NativeTurnID != nil && current.turn != *entry.Binding.Scope.NativeTurnID {
 		current.turn = *entry.Binding.Scope.NativeTurnID
 		learned = true
 	}
@@ -529,10 +525,10 @@ func (l *liveTextLoop) learnKey(current *liveTextEntry, entry prompts.OutboxEntr
 // deliveryRank reads the rank delivery claims a queued prompt by, so queued
 // prompts show in the order they will be delivered.
 func (l *liveTextLoop) deliveryRank(actionID string) int {
-	if l.sess == nil || l.sess.turns == nil {
+	if l.sess == nil || l.sess.PromptStore() == nil {
 		return 0
 	}
-	record, _, err := l.sess.turns.Get(context.Background(), actionID)
+	record, _, err := l.sess.PromptStore().Get(context.Background(), actionID)
 	if err != nil {
 		log.Printf("live text queue rank %s: %v", actionID, err)
 		return 0
@@ -545,7 +541,7 @@ func (l *liveTextLoop) deliveryRank(actionID string) int {
 // client message id, or, for a Codex prompt delivered without one, the native
 // turn it started.
 func (l *liveTextLoop) promptKey(entry prompts.OutboxEntry) string {
-	if l.sess != nil && l.sess.provider == "codex" {
+	if l.sess != nil && l.sess.Provider() == "codex" {
 		switch {
 		case entry.Binding == nil:
 			return ""
@@ -559,8 +555,8 @@ func (l *liveTextLoop) promptKey(entry prompts.OutboxEntry) string {
 	if entry.Binding != nil && entry.Binding.EventID != "" {
 		return entry.Binding.EventID
 	}
-	if l.sess != nil && (l.sess.provider == "claude" || l.sess.provider == "grok") {
-		return submissionEventID(l.sess.hostedThreadID, entry.ActionID)
+	if l.sess != nil && (l.sess.Provider() == "claude" || l.sess.Provider() == "grok") {
+		return submissionEventID(l.sess.HostedThreadID(), entry.ActionID)
 	}
 	return ""
 }
@@ -659,8 +655,8 @@ func (l *liveTextLoop) checkUnsaved(key string) {
 	}
 	l.srv.browserDiagnostics.add([]browserDiagnosticEvent{{
 		EventID: "file.reply.unsaved:" + l.hostedID() + ":" + key, Kind: "file.reply.unsaved",
-		ClientAt: finishedAt.UTC().Format(time.RFC3339Nano), Provider: l.sess.provider,
-		HostedThreadID: l.hostedID(), ThreadID: l.sess.currentThreadID(), Code: key,
+		ClientAt: finishedAt.UTC().Format(time.RFC3339Nano), Provider: l.sess.Provider(),
+		HostedThreadID: l.hostedID(), ThreadID: l.sess.ThreadID(), Code: key,
 		DurationMS: int(elapsed / time.Millisecond),
 		Status:     strings.ReplaceAll(label, " ", "-"),
 	}})
@@ -723,7 +719,7 @@ func (l *liveTextLoop) proofs(matched map[string]string, ended map[string]bool) 
 	saved, gone = make(map[string]bool), make(map[string]bool)
 	var latest int64
 	for _, entry := range l.entries {
-		if entry.key != "" && matched[entry.key] != "" || l.sess.provider == "grok" && entry.Kind == "prompt" && entry.turn != "" && matched[entry.turn] != "" {
+		if entry.key != "" && matched[entry.key] != "" || l.sess.Provider() == "grok" && entry.Kind == "prompt" && entry.turn != "" && matched[entry.turn] != "" {
 			saved[entry.ID], gone[entry.ID] = true, true
 			if entry.Kind == "prompt" {
 				latest = max(latest, entry.order)
@@ -745,7 +741,7 @@ func (l *liveTextLoop) proofs(matched map[string]string, ended map[string]bool) 
 // needs none. An agent stream never reloads what the operator sees.
 func (l *liveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPane]bool, responses []transcriptResponse) map[string]bool {
 	ended := map[string]bool{}
-	if l.sess.provider != "codex" {
+	if l.sess.Provider() != "codex" {
 		return ended
 	}
 	reloading := false
@@ -1022,13 +1018,13 @@ func (l *liveTextLoop) replyMatch(turns map[string]string) history.TranscriptMat
 	for key := range turns {
 		keys = append(keys, key)
 	}
-	if l.sess.provider == "grok" {
+	if l.sess.Provider() == "grok" {
 		return history.TranscriptMatch{Namespace: "native.eventId", ItemType: "agent_message", Keys: keys}
 	}
-	if l.sess.provider == "codex" {
+	if l.sess.Provider() == "codex" {
 		return history.TranscriptMatch{Namespace: history.MatchTurnNativeItem, ItemType: "agent_message", Keys: keys, Turns: turns}
 	}
-	return history.TranscriptMatch{Namespace: l.sess.provider + ".messageBlock", ItemType: "agent_message", Keys: keys}
+	return history.TranscriptMatch{Namespace: l.sess.Provider() + ".messageBlock", ItemType: "agent_message", Keys: keys}
 }
 
 // claimedTurnEvents names, for each turn a Codex prompt without a client id
@@ -1038,7 +1034,7 @@ func (l *liveTextLoop) replyMatch(turns map[string]string) history.TranscriptMat
 // confirmed before a restart, still claims its row. A turn whose claims cannot
 // be read is left out of this tick's keys: without them its row is unproven.
 func (l *liveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, []string) {
-	if l.sess.turns == nil {
+	if l.sess.PromptStore() == nil {
 		return nil, nil
 	}
 	claimed := make(map[string][]string)
@@ -1047,7 +1043,7 @@ func (l *liveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, [
 	for _, turn := range turns {
 		ok, read := readable[turn]
 		if !read {
-			events, err := l.sess.turns.TurnEvents(context.Background(), l.sess.hostedThreadID, model.ProviderCodex, l.sess.currentThreadID(), turn)
+			events, err := l.sess.PromptStore().TurnEvents(context.Background(), l.sess.HostedThreadID(), model.ProviderCodex, l.sess.ThreadID(), turn)
 			if ok = err == nil; !ok {
 				log.Printf("live text turn events %s: %v", turn, err)
 			} else if len(events) > 0 {
@@ -1063,10 +1059,10 @@ func (l *liveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, [
 }
 
 func (l *liveTextLoop) promptMatch(keys []string) history.TranscriptMatch {
-	if l.sess.provider == "grok" {
+	if l.sess.Provider() == "grok" {
 		return history.TranscriptMatch{Namespace: "nano.submissionId", ItemType: "user_message", Keys: keys}
 	}
-	if l.sess.provider == "codex" {
+	if l.sess.Provider() == "codex" {
 		return history.TranscriptMatch{Namespace: history.MatchTurnItem, ItemType: "user_message", Keys: keys}
 	}
 	return history.TranscriptMatch{Namespace: "native.eventId", ItemType: "user_message", Keys: keys}
@@ -1098,7 +1094,7 @@ func (l *liveTextLoop) catalogThreadID() (string, error) {
 	if l.sess == nil {
 		return "", errLiveTextNotIndexed
 	}
-	native := l.sess.currentThreadID()
+	native := l.sess.ThreadID()
 	resolver, ok := l.srv.catalog.(threadReferenceResolver)
 	if native == "" || !ok {
 		return "", errLiveTextNotIndexed
@@ -1154,12 +1150,12 @@ func (l *liveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	// found by that id within its turn; one without keeps its turn key.
 	eventTurns := make(map[string]string)
 	for _, entry := range l.entries {
-		if l.sess.provider == "grok" && entry.Kind == "prompt" && entry.turn != "" {
+		if l.sess.Provider() == "grok" && entry.Kind == "prompt" && entry.turn != "" {
 			promptTurns = append(promptTurns, entry.turn)
 		}
 		switch {
 		case entry.key == "":
-		case entry.Kind == "prompt" && l.sess.provider == "codex" && entry.turn != "" && entry.key != entry.turn:
+		case entry.Kind == "prompt" && l.sess.Provider() == "codex" && entry.turn != "" && entry.key != entry.turn:
 			eventTurns[entry.key] = entry.turn
 		case entry.Kind == "prompt":
 			promptKeys = append(promptKeys, entry.key)
@@ -1171,7 +1167,7 @@ func (l *liveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	if len(promptTurns) > 0 {
 		match = append(match, history.TranscriptMatch{Namespace: history.MatchTurnItem, ItemType: "user_message", Keys: promptTurns})
 	}
-	if l.sess.provider == "codex" && len(promptKeys) > 0 {
+	if l.sess.Provider() == "codex" && len(promptKeys) > 0 {
 		var claimed map[string][]string
 		claimed, promptKeys = l.claimedTurnEvents(promptKeys)
 		if len(promptKeys) > 0 {
@@ -1418,7 +1414,7 @@ func (p *liveTextPane) needsTail(response transcriptResponse) bool {
 // Codex prompt with only a turn key is left out: its turn may hold several
 // rows, and the browser's record read covers it.
 func (l *liveTextLoop) promptsSavedIn(rows []transcriptItem) ([]string, error) {
-	if l.sess == nil || l.sess.turns == nil {
+	if l.sess == nil || l.sess.PromptStore() == nil {
 		return nil, nil
 	}
 	var oldest time.Time
@@ -1438,7 +1434,7 @@ func (l *liveTextLoop) promptsSavedIn(rows []transcriptItem) ([]string, error) {
 	if len(page) == 0 || oldest.IsZero() {
 		return nil, nil
 	}
-	candidates, err := l.sess.turns.TailCandidates(context.Background(), l.hostedID(), oldest)
+	candidates, err := l.sess.PromptStore().TailCandidates(context.Background(), l.hostedID(), oldest)
 	if err != nil {
 		return nil, err
 	}
@@ -1447,10 +1443,10 @@ func (l *liveTextLoop) promptsSavedIn(rows []transcriptItem) ([]string, error) {
 	var keys []string
 	for _, entry := range candidates {
 		key := l.promptKey(entry)
-		if key == "" || l.sess.provider == "codex" && (entry.Binding == nil || entry.Binding.EventID == "") {
+		if key == "" || l.sess.Provider() == "codex" && (entry.Binding == nil || entry.Binding.EventID == "") {
 			continue
 		}
-		if l.sess.provider == "codex" && entry.Binding.Scope.NativeTurnID != nil {
+		if l.sess.Provider() == "codex" && entry.Binding.Scope.NativeTurnID != nil {
 			eventTurns[key] = *entry.Binding.Scope.NativeTurnID
 		} else if len(actions[key]) == 0 {
 			keys = append(keys, key)
@@ -1600,7 +1596,7 @@ func (l *liveTextLoop) hostedID() string {
 	if l.sess == nil {
 		return ""
 	}
-	return l.sess.hostedThreadID
+	return l.sess.HostedThreadID()
 }
 
 func sentFor(live []liveTextEntry) liveSent {

@@ -49,7 +49,7 @@ func TestCodexReconnectFleetStorm(t *testing.T) {
 	})
 	for index, sess := range sessions {
 		want := fmt.Sprintf("storm-%03d", index)
-		if sess.currentThreadID() != want || sess.hostedThreadID != "hosted-"+want {
+		if sess.ThreadID() != want || sess.hostedThreadID != "hosted-"+want {
 			t.Fatalf("identity changed: %+v", sess.summary())
 		}
 	}
@@ -137,7 +137,7 @@ func TestCodexReconnectNoRolloutStopsWithoutLosingIdentity(t *testing.T) {
 		return !server.codex.reconnecting[sess.id]
 	})
 	time.Sleep(300 * time.Millisecond)
-	if fake.resumeCount() != 2 || sess.currentThreadID() != "missing-rollout" || sess.summary().Status != "reconnect_failed" {
+	if fake.resumeCount() != 2 || sess.ThreadID() != "missing-rollout" || sess.summary().Status != "reconnect_failed" {
 		t.Fatal("missing rollout was retried automatically or changed identity/status")
 	}
 	fake.setResumeError("")
@@ -163,7 +163,7 @@ func TestCodexReconnectBootTimeoutRecovers(t *testing.T) {
 	waitReconnectCondition(t, func() bool { return fake.resumeCount() >= 1 })
 	fake.setReplyDelay("thread/resume", 0)
 	waitForSessionStatus(t, server, sess.id, "ready")
-	if fake.resumeCount() < 2 || sess.currentThreadID() != "boot-timeout" {
+	if fake.resumeCount() < 2 || sess.ThreadID() != "boot-timeout" {
 		t.Fatal("boot timeout did not retry the original thread")
 	}
 }

@@ -67,7 +67,7 @@ func (sess *session) recordPosture(entries []postureEntry, freshness string) {
 		appended, err := sess.metadata.AppendEvent(metadataEvent{
 			HostedThreadID: sess.hostedThreadID, Field: entry.Field, Value: entry.Value,
 			Disposition: disposition, Source: entry.Source, Evidence: entry.Evidence,
-			NativeThreadID: sess.currentThreadID(), NanoSessionID: sess.id,
+			NativeThreadID: sess.ThreadID(), NanoSessionID: sess.id,
 			AttachmentGeneration: sess.attachmentGeneration, Freshness: freshness,
 		})
 		if err != nil {

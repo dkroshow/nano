@@ -94,7 +94,7 @@ func observeCodexWork(sess *session, dir protocol.Direction, line []byte, live b
 	if json.Unmarshal(line, &envelope) != nil {
 		return
 	}
-	if threadID := sess.currentThreadID(); envelope.Params.ThreadID != "" && threadID != "" && envelope.Params.ThreadID != threadID {
+	if threadID := sess.ThreadID(); envelope.Params.ThreadID != "" && threadID != "" && envelope.Params.ThreadID != threadID {
 		return
 	}
 	if active && startedAtMs == 0 {

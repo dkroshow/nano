@@ -223,7 +223,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 			if rec.Code != http.StatusCreated || message.Status != agentMessageUnread {
 				t.Fatalf("send = %d %+v %s", rec.Code, message, rec.Body.String())
 			}
-			if got := sess.queuedTurns.QueuedCount(sess.provider, sess.currentThreadID(), sess.hostedThreadID); got != 0 {
+			if got := sess.queuedTurns.QueuedCount(sess.provider, sess.ThreadID(), sess.hostedThreadID); got != 0 {
 				t.Fatalf("inbox send queued %d prompt turns", got)
 			}
 			select {

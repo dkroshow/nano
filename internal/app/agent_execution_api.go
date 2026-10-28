@@ -1021,7 +1021,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "busy"}
 		}
 		if sess.queuedTurns != nil {
-			if _, queued := sess.queuedTurns.First(sess.provider, sess.currentThreadID(), sess.hostedThreadID); queued {
+			if _, queued := sess.queuedTurns.First(sess.provider, sess.ThreadID(), sess.hostedThreadID); queued {
 				return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "queuedBacklog"}
 			}
 		}
@@ -1413,7 +1413,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 			queue = sess.queuedTurns
 		}
 		view.NanoSessionID = sess.id
-		if threadID := sess.currentThreadID(); threadID != "" {
+		if threadID := sess.ThreadID(); threadID != "" {
 			view.NativeThreadID = threadID
 		}
 		if !threadvalues.TurnTerminal(rec.Status) {
@@ -1529,7 +1529,7 @@ func (s *server) closeAgentSession(sess *session) error {
 	var attachment attachmentRecord
 	var remembered bool
 	if s.attachments != nil {
-		attachment, remembered = s.attachments.get(sess.provider, sess.currentThreadID())
+		attachment, remembered = s.attachments.get(sess.provider, sess.ThreadID())
 	}
 	if remembered && sess.provider == "claude" {
 		if c := sess.claudeHandle(); c != nil {

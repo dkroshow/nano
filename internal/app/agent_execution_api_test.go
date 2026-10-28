@@ -132,7 +132,7 @@ func TestGuardedHostedTurnAdmissionRejectsWithoutSideEffectsAndPreservesReplay(t
 	if operation, found := store.turnForAction(worker.ID, actionID); found {
 		t.Fatalf("guarded rejection created operation %#v", operation)
 	}
-	if queued, found := sess.queuedTurns.First(sess.provider, sess.currentThreadID(), sess.hostedThreadID); found {
+	if queued, found := sess.queuedTurns.First(sess.provider, sess.ThreadID(), sess.hostedThreadID); found {
 		t.Fatalf("guarded rejection created queue row %#v", queued)
 	}
 	if len(sess.sendOps) != 0 {
@@ -420,7 +420,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if err := control.db.QueryRow(`SELECT desired_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, summary.HostedThreadID, postureFieldServiceTier).Scan(&desired); err != nil || desired != metadataDispositionRequested {
 		t.Fatalf("priority desired metadata = %q, err=%v", desired, err)
 	}
-	if resolved, ok := s.resolveHostedThreadRecord(sess.currentThreadID()); !ok || resolved.ID != summary.HostedThreadID {
+	if resolved, ok := s.resolveHostedThreadRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
 		t.Fatalf("resolve human-created native id = %#v, present=%v", resolved, ok)
 	}
 	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {

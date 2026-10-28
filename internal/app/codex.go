@@ -397,7 +397,7 @@ func (d *codexDaemon) reconnectSessionLoop(sess *session) {
 		progress, _ := json.Marshal(map[string]any{"attempts": attempt, "retrying": true, "timeoutMs": timeout.Milliseconds()})
 		sess.setState("codexReconnect", progress)
 		sess.observeConnection(lifecycle.EventLinkLost)
-		req := providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.currentThreadID()}
+		req := providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}
 		err := runCodexHandshakeWithTimeout(context.Background(), sess, d, req, timeout)
 		if err == nil {
 			sess.setState("codexReconnect", json.RawMessage(`{"retrying":false}`))
@@ -639,7 +639,7 @@ func (d *codexDaemon) closeSession(sess *session) {
 	// outlives nano, so a request left unanswered here holds a turn open with
 	// nobody able to reach it (interactions.go).
 	sess.closeInteractions()
-	threadID := sess.currentThreadID()
+	threadID := sess.ThreadID()
 	if threadID == "" {
 		return // no id yet: a fresh start's handshake owns the cleanup instead
 	}
@@ -1065,7 +1065,7 @@ func (sess *session) runCodexZeroTurnRecovery() {
 				return
 			}
 		}
-		req := providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.currentThreadID()}
+		req := providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}
 		err := runCodexHandshakeWithTimeout(context.Background(), sess, sess.codex, req, codexZeroTurnRecoveryAttemptTimeout)
 		if err == nil || !sess.codexZeroTurnRecoveryNeeded() {
 			return
@@ -1090,7 +1090,7 @@ func (sess *session) runCodexZeroTurnRecovery() {
 		}
 	}
 	log.Printf("zero-turn recovery exhausted for thread %s (session %s); leaving session reconnecting",
-		sess.currentThreadID(), sess.id)
+		sess.ThreadID(), sess.id)
 	sess.codex.requestSessionRecovery(sess)
 }
 

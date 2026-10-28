@@ -404,7 +404,7 @@ func providerSubmitOperation(sess *session, send func(context.Context, providers
 // provisional one the caller captured, and reports the one it supersedes.
 func (sess *session) submissionBinding(scope model.Scope, turnID, eventID string) (prompts.Binding, string) {
 	supersedes := ""
-	if nativeThreadID := sess.currentThreadID(); nativeThreadID != "" {
+	if nativeThreadID := sess.ThreadID(); nativeThreadID != "" {
 		if scope.NativeThreadID != nil && *scope.NativeThreadID != nativeThreadID {
 			supersedes = *scope.NativeThreadID
 		}
@@ -425,7 +425,7 @@ var errRunningTurnEnded = errors.New("running turn ended")
 // turn and event shape as a started turn's.
 func codexSteer(ctx context.Context, sess *session, turnID, clientID, text string) (json.RawMessage, error) {
 	params := map[string]any{
-		"threadId": sess.currentThreadID(), "expectedTurnId": turnID, "clientUserMessageId": clientID,
+		"threadId": sess.ThreadID(), "expectedTurnId": turnID, "clientUserMessageId": clientID,
 		"input": []map[string]any{{"type": "text", "text": text}},
 	}
 	var result struct {
@@ -465,7 +465,7 @@ func claudeSubmissionEventIDForOutbox(entry prompts.OutboxEntry) string {
 }
 
 func (sess *session) deliveryScope() model.Scope {
-	nativeThreadID := sess.currentThreadID()
+	nativeThreadID := sess.ThreadID()
 	return model.Scope{Kind: model.ScopeTurn, Provider: model.Provider(sess.provider), NativeThreadID: &nativeThreadID}
 }
 

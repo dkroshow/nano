@@ -650,7 +650,7 @@ func (sess *session) observeClaudeShimEventGated(event claudeShimEvent, gate fun
 	var finish *coreturns.Finish
 	switch event.Kind {
 	case claudeShimAccepted:
-		started := coreturns.Start{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.currentThreadID(), TurnID: event.ProviderTurnID, At: at, Source: "adapter"}
+		started := coreturns.Start{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(), TurnID: event.ProviderTurnID, At: at, Source: "adapter"}
 		adapterEvent.TurnEvents = []coresession.TurnEvent{{Started: &started}}
 	case claudeShimResult:
 		// The shim tags a result with the prompt it last wrote, which a result
@@ -659,7 +659,7 @@ func (sess *session) observeClaudeShimEventGated(event claudeShimEvent, gate fun
 		// prompt.
 		adapterEvent.ProviderTurnID = ""
 		status, _ := claudeProjectionTerminal(event.Line)
-		finish = &coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.currentThreadID(),
+		finish = &coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(),
 			Outcome: status, At: at, Source: "adapter"}
 		adapterEvent.TurnEvents = []coresession.TurnEvent{{Finished: finish}}
 	}

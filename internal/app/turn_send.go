@@ -302,7 +302,7 @@ func writeExistingAttempt(w http.ResponseWriter, rec sendAttemptRecord, currentR
 func (sess *session) handleTurnDeliveryList(w http.ResponseWriter, r *http.Request) {
 	threadID := r.URL.Query().Get("thread")
 	if threadID == "" {
-		threadID = sess.currentThreadID()
+		threadID = sess.ThreadID()
 	}
 	views := make([]promptView, 0)
 	if sess.sendAttempts == nil || sess.sendAttempts.TransactionStore() == nil || threadID == "" {
@@ -590,7 +590,7 @@ func (sess *session) admitTransactionalTurnLocked(actionID, text, presentationTe
 		return nil, 0, "", err
 	}
 	result, err := sess.core.Admit(context.Background(), prompts.Submission{
-		HostedThreadID: sess.hostedThreadID, Provider: model.Provider(sess.provider), NativeThreadID: sess.currentThreadID(),
+		HostedThreadID: sess.hostedThreadID, Provider: model.Provider(sess.provider), NativeThreadID: sess.ThreadID(),
 		ActionID: actionID, ProviderText: text, PresentationText: presentationText,
 		TextHash: sendTextHash(text), RequestHash: requestHash, Origin: prompts.Origin(origin), NextTurn: nextTurn,
 	}, permission)
@@ -897,7 +897,7 @@ func (sess *session) settlePrompts(ctx context.Context) (map[transcript.Settleme
 	waiting := maps.Clone(sess.settleWaiting)
 	sess.stateMu.Unlock()
 	savedIn := func(ctx context.Context, native string, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-		if native == sess.currentThreadID() || sess.savedPromptsIn == nil {
+		if native == sess.ThreadID() || sess.savedPromptsIn == nil {
 			return sess.savedPrompts(ctx, keys)
 		}
 		return sess.savedPromptsIn(ctx, native, keys)
@@ -907,7 +907,7 @@ func (sess *session) settlePrompts(ctx context.Context) (map[transcript.Settleme
 		resolve = sess.claudeResolver(ctx)
 	}
 	live := &liveSettlement{watched: waiting, sess: sess}
-	results, err := settleThreadPromptsResolving(ctx, sess.turns, savedIn, sess.hostedThreadID, sess.provider, sess.currentThreadID(), resolve, live)
+	results, err := settleThreadPromptsResolving(ctx, sess.turns, savedIn, sess.hostedThreadID, sess.provider, sess.ThreadID(), resolve, live)
 	if err != nil {
 		return nil, err
 	}
@@ -1341,7 +1341,7 @@ func (sess *session) resolveClaudeHandle(ctx context.Context, handle string) str
 			return native
 		}
 	}
-	current := sess.currentThreadID()
+	current := sess.ThreadID()
 	if c := sess.claude; c != nil && c.tr != nil && c.initSeen.Load() && current != "" && !claudeNativeIDProvisional(current) {
 		if rec, ok := c.tr.durableAttachment("", ""); ok && rec.ShimSessionID == handle {
 			return current
@@ -1389,7 +1389,7 @@ func (sess *session) restoreQueuedTurnBootDiagnostics() {
 	if sess == nil || sess.projection == nil || sess.queuedTurns == nil {
 		return
 	}
-	for _, parked := range sess.queuedTurns.BootParksFor(sess.provider, sess.currentThreadID(), sess.hostedThreadID) {
+	for _, parked := range sess.queuedTurns.BootParksFor(sess.provider, sess.ThreadID(), sess.hostedThreadID) {
 		diagnostic := threadDiagnostic{
 			Code:     "boot_incomplete_outbox",
 			Message:  "durable queued turn was parked because required fields are missing: " + strings.Join(parked.Missing, ","),
@@ -1422,7 +1422,7 @@ func (sess *session) drainQueuedTurn() {
 	if sess.queuedTurns == nil {
 		return
 	}
-	queued, ok := sess.queuedTurns.First(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
+	queued, ok := sess.queuedTurns.First(sess.provider, sess.ThreadID(), sess.hostedThreadID)
 	if !ok {
 		return
 	}
@@ -1639,7 +1639,7 @@ func (sess *session) handleTurnDeliveryResend(w http.ResponseWriter, _ *http.Req
 // override preserves that confirmed thread-scoped profile.
 func codexTurnParams(sess *session, text string) (map[string]any, map[string]string) {
 	params := map[string]any{
-		"threadId": sess.currentThreadID(),
+		"threadId": sess.ThreadID(),
 		"input":    []map[string]any{{"type": "text", "text": text}},
 	}
 	model, effort, serviceTier := sess.turnOptions()

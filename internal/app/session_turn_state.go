@@ -275,7 +275,8 @@ func (sess *session) notifyRuntime() {
 	}
 }
 
-func (sess *session) currentThreadID() string {
+// ThreadID reads the attachment’s current native provider identity.
+func (sess *session) ThreadID() string {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return sess.threadID

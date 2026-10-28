@@ -90,3 +90,11 @@ func (l *liveTextLoop) ConversationItems(ctx context.Context, view conversationV
 	page := &liveProjectionPage{HasMoreBefore: response.Page.HasMoreBefore, NextBeforeCursor: response.Page.NextBeforeCursor, Source: "file"}
 	return items, page, response.Projection.Key, nil
 }
+
+func newLiveTextLoop(srv *server, sess *session) *liveTextLoop {
+	loop := &liveTextLoop{srv: srv, wake: make(chan struct{}, 1)}
+	if sess != nil {
+		loop.sess = sess
+	}
+	return loop
+}

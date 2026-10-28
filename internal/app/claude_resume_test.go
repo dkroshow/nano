@@ -1377,7 +1377,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	if sum := unrecorded.summary(); sum.Status == "exited" || strings.Contains(sum.Error, "no longer on disk") {
 		t.Fatalf("summary = %#v; a handshake whose pair was not recorded became a failed spawn", sum)
 	}
-	if got := unrecorded.currentThreadID(); got != "cs_handle" {
+	if got := unrecorded.ThreadID(); got != "cs_handle" {
 		t.Fatalf("identity = %q; want it to stay provisional until the pair is recorded", got)
 	}
 }

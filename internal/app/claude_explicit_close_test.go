@@ -328,10 +328,10 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 	if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest); err != nil {
 		t.Fatal(err)
 	}
-	_ = store.BindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, sess.id, sess.ThreadID(), "ready", presentationShared)
 	op, _, _ := store.beginTurn(hosted.ID, "pending", "hash")
 	attachments := newTestStore(t)
-	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: sess.currentThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
+	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: sess.ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
 	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, attachments: attachments, agentExecutions: store}
 	w := httptest.NewRecorder()
 	s.handleSessionClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
@@ -384,7 +384,7 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 			if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.BindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared); err != nil {
+			if err := store.BindSession(hosted.ID, sess.id, sess.ThreadID(), "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			op, _, err := store.beginTurn(hosted.ID, "pending", "hash")

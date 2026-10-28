@@ -170,10 +170,10 @@ func (s *server) sessionCatalogThreadID(ctx context.Context, sessionID string) s
 		return ""
 	}
 	session := s.lookupSession(sessionID)
-	if session == nil || session.currentThreadID() == "" {
+	if session == nil || session.ThreadID() == "" {
 		return ""
 	}
-	threadID, err := resolver.ResolveThreadReference(ctx, session.currentThreadID())
+	threadID, err := resolver.ResolveThreadReference(ctx, session.ThreadID())
 	if err != nil {
 		return ""
 	}

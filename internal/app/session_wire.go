@@ -308,13 +308,13 @@ func (sess *session) adapterTurnEvent(dir protocol.Direction, line []byte, live 
 	}
 	actionID := ""
 	if sess.queuedTurns != nil {
-		if prompt, found := sess.queuedTurns.ByProviderTurn(sess.provider, sess.currentThreadID(), sess.hostedThreadID, turnID); found {
+		if prompt, found := sess.queuedTurns.ByProviderTurn(sess.provider, sess.ThreadID(), sess.hostedThreadID, turnID); found {
 			actionID = prompt.ClientActionID
 		}
 	}
 	event := coresession.AdapterEvent{ProviderTurnID: turnID}
 	if active {
-		started := coreturns.Start{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.currentThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
+		started := coreturns.Start{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
 		event.TurnEvents = []coresession.TurnEvent{{Started: &started}}
 		return event, nil
 	}
@@ -337,7 +337,7 @@ func (sess *session) adapterTurnEvent(dir protocol.Direction, line []byte, live 
 		}
 		status = parsedStatus
 	}
-	finished := &coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.currentThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
+	finished := &coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
 	event.TurnEvents = []coresession.TurnEvent{{Finished: finished}}
 	return event, finished
 }

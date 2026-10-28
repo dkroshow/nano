@@ -30,7 +30,7 @@ func (s *sessionRegistry) sessionForThread(provider, nativeThreadID string) *ses
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider != provider || sess.currentThreadID() != nativeThreadID {
+		if sess.provider != provider || sess.ThreadID() != nativeThreadID {
 			continue
 		}
 		sess.stateMu.Lock()
@@ -127,7 +127,7 @@ func (s *sessionRegistry) resolveLiveHostedThreadRecord(ref string, lookup func(
 	}
 	if hostedThreadID == "" {
 		for _, sess := range s.sessions {
-			if sess.currentThreadID() != ref {
+			if sess.ThreadID() != ref {
 				continue
 			}
 			if hostedThreadID != "" && hostedThreadID != sess.hostedThreadID {
@@ -210,7 +210,7 @@ func (s *sessionRegistry) attachmentSession(provider, nativeID string) *session 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider == provider && sess.currentThreadID() == nativeID {
+		if sess.provider == provider && sess.ThreadID() == nativeID {
 			return sess
 		}
 	}
@@ -222,7 +222,7 @@ func (s *sessionRegistry) forgetDetachedClaude(nativeID string, forget func() er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider == "claude" && sess.currentThreadID() == nativeID && sess.summary().Status != sessionStatusExited {
+		if sess.provider == "claude" && sess.ThreadID() == nativeID && sess.summary().Status != sessionStatusExited {
 			return fmt.Errorf("thread is attached; end its session before forgetting")
 		}
 	}

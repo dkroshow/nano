@@ -252,7 +252,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		status := reopened.summary().Status
 		return status == sessionStatusExited || status == "reconnect_failed"
 	})
-	if reopened.codexMayBeZeroTurn() || reopened.currentThreadID() != request.ThreadID || reopened.hostedThreadID != hosted.ID {
+	if reopened.codexMayBeZeroTurn() || reopened.ThreadID() != request.ThreadID || reopened.hostedThreadID != hosted.ID {
 		t.Fatal("reboot lost containment or identity")
 	}
 	retained, _ := reopened.queuedTurns.Get(operation.TransportActionID)

@@ -45,7 +45,7 @@ func (sess *session) mcpServers(ctx context.Context) (*mcpInventory, error) {
 	}
 
 	var raw json.RawMessage
-	params := map[string]any{"threadId": sess.currentThreadID(), "detail": mcpInventoryDetail}
+	params := map[string]any{"threadId": sess.ThreadID(), "detail": mcpInventoryDetail}
 	if err := sess.codex.CallForSession(ctx, sess, "mcpServerStatus/list", params, &raw); err != nil {
 		return nil, err
 	}

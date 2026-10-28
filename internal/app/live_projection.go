@@ -695,7 +695,7 @@ type durableTurnEvidence = liveview.DurableTurnEvidence
 // Claude turn settles only from live evidence.
 func (s *server) savedTurnEvidence(ctx context.Context, sess *session, turnID string) (durableTurnEvidence, bool) {
 	if s.catalog == nil || sess == nil || (sess.provider != "codex" && sess.provider != "grok") ||
-		turnID == "" || sess.currentThreadID() == "" {
+		turnID == "" || sess.ThreadID() == "" {
 		return durableTurnEvidence{}, false
 	}
 	resolver, ok := s.catalog.(threadReferenceResolver)
@@ -706,7 +706,7 @@ func (s *server) savedTurnEvidence(ctx context.Context, sess *session, turnID st
 	if !ok {
 		return durableTurnEvidence{}, false
 	}
-	nanoID, err := resolver.ResolveThreadReference(ctx, sess.currentThreadID())
+	nanoID, err := resolver.ResolveThreadReference(ctx, sess.ThreadID())
 	if err != nil || nanoID == "" {
 		return durableTurnEvidence{}, false
 	}
@@ -807,11 +807,11 @@ func (p *liveProjection) RetainedTurnEvidence(turnID string) (liveProjectionTurn
 func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Request, sess *session) {
 	catalog, ok := s.catalog.(threadTranscriptCatalog)
 	resolver, resolves := s.catalog.(threadReferenceResolver)
-	if !ok || !resolves || sess == nil || sess.currentThreadID() == "" {
+	if !ok || !resolves || sess == nil || sess.ThreadID() == "" {
 		httpapi.WriteHTTPError(w, "conversation history unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	nanoID, err := resolver.ResolveThreadReference(r.Context(), sess.currentThreadID())
+	nanoID, err := resolver.ResolveThreadReference(r.Context(), sess.ThreadID())
 	if err != nil {
 		writeTranscriptBackendError(w, err)
 		return

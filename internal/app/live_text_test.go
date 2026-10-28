@@ -537,7 +537,7 @@ func TestLiveTextNamesAPromptSavedBeforeItWasShown(t *testing.T) {
 func TestLiveTextTailNamesPromptsWhoseSavedRowsItHolds(t *testing.T) {
 	ctx := context.Background()
 	h := newLiveTextHarness(t)
-	native := h.sess.currentThreadID()
+	native := h.sess.ThreadID()
 	settle := func(action, event string) {
 		t.Helper()
 		text, turn := "prompt "+action, "claude:"+action

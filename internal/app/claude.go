@@ -934,7 +934,7 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir protocol.Direc
 			// a frame tag or the prompt last sent.
 			id, named := c.sess.claudeAnsweredTurn(line)
 			c.sess.projection.SetClaudeResultTurnID(id)
-			native := c.sess.currentThreadID()
+			native := c.sess.ThreadID()
 			if c.noteAnswered(line) && !named && c.unnamedLoggedFor != native {
 				c.unnamedLoggedFor = native
 				log.Printf("Claude result on %s names no prompt while one Nano wrote is unanswered; it finishes no operation (logged once per transcript)", c.sess.hostedThreadID)
@@ -1070,7 +1070,7 @@ func (c *claudeSession) syncTurnAnchor() {
 	if c.persistedAnchor.Load() == anchor {
 		return
 	}
-	threadID := c.sess.currentThreadID()
+	threadID := c.sess.ThreadID()
 	if threadID == "" || c.sess.updateTurnAnchor == nil {
 		// No record to write to yet. Deliberately do NOT mark this anchor as
 		// persisted: a claude session is sent its first turn before it has ever

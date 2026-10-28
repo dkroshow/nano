@@ -162,7 +162,7 @@ func interactTestServer(t *testing.T, working bool) (*server, string) {
 		createdAt: time.Now(), projection: newLiveProjection("codex", record.ID, "nano-target"),
 		lifecycleState: testLifecycleSnapshot("ready", working), interactions: map[string]pendingInteraction{},
 		agentExecutions: executions, queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
-		sendOps: map[string]*turnSendOperation{}, notices: notices,
+		sendOps: map[string]*turnSendOperation{}, appendUnread: notices.Append,
 	}
 	return &server{
 		sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}, agentExecutions: executions,

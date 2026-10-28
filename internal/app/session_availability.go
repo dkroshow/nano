@@ -30,7 +30,7 @@ func (sess *session) queuedPromptCount() int {
 	if sess.queuedTurns == nil {
 		return 0
 	}
-	return sess.queuedTurns.QueuedCount(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
+	return sess.queuedTurns.QueuedCount(sess.provider, sess.ThreadID(), sess.hostedThreadID)
 }
 
 // activeTurn is one atomic snapshot of the monitor's live turn fields.

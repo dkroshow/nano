@@ -2,12 +2,13 @@ package app
 
 import (
 	"encoding/json"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 // controlResponder scripts a shim whose child answers every control request
@@ -142,7 +143,7 @@ func TestClaudeInteractionResponseUsesProviderAdapter(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{} })
 	sess, _ := startControlSession(t, shim)
 	sess.addPendingInteraction(pendingInteraction{
-		ID: "permission-1", Kind: kindToolPermission, ThreadID: sess.currentThreadID(),
+		ID: "permission-1", Kind: kindToolPermission, ThreadID: sess.ThreadID(),
 		Params: json.RawMessage(`{"input":{"command":"pwd"}}`), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 

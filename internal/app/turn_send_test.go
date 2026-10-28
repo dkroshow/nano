@@ -36,7 +36,7 @@ import (
 
 func observeTestTurnCompletion(t *testing.T, sess *session, turnID string) {
 	t.Helper()
-	finish := coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.currentThreadID(), TurnID: turnID, Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter"}
+	finish := coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(), TurnID: turnID, Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter"}
 	if err := sess.core.Observe(context.Background(), coresession.AdapterEvent{ProviderTurnID: turnID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}); err != nil {
 		t.Fatal(err)
 	}

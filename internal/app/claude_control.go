@@ -506,7 +506,7 @@ func (c *claudeSession) parkControlRequest(requestID string, request json.RawMes
 	}
 	pending := pendingInteraction{
 		ID: requestID, Method: probe.Subtype, Kind: kind,
-		ThreadID:  c.sess.currentThreadID(),
+		ThreadID:  c.sess.ThreadID(),
 		CreatedAt: time.Now().Format(time.RFC3339Nano),
 		Params:    append(json.RawMessage(nil), request...),
 	}

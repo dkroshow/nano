@@ -579,7 +579,7 @@ func TestClaudeSendTurnPersistsAndClearsTheAnchor(t *testing.T) {
 	}
 	defer claude.Close()
 	waitForClaude(t, "the init line and the shim seq watermark", func() bool {
-		return sess.currentThreadID() == "native-1" && claude.tr.lastSeq() == 2
+		return sess.ThreadID() == "native-1" && claude.tr.lastSeq() == 2
 	})
 
 	if err := claude.SendTurn("hello"); err != nil {

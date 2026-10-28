@@ -171,7 +171,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		turns:                s.turns,
 		agentExecutions:      s.agentExecutions,
 		metadata:             s.controlMetadata,
-		notices:              s.notices,
+		appendUnread:         s.notices.Append,
 		pendingTurnCausation: []turnCausationEntry{},
 		lastSettingsEvidence: map[string]turnCausationEntry{},
 		sendOps:              map[string]*turnSendOperation{},
@@ -238,7 +238,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		sess.catalogSources = s.catalogSources
 	}
 	s.registerSession(sess)
-	sess.bindCatalogSource(sess.currentThreadID())
+	sess.bindCatalogSource(sess.ThreadID())
 	sess.recordRestartStep(restartRegistered)
 	if sess.agentExecutions != nil {
 		// presentationMode is mutable under stateMu once the session is
@@ -282,7 +282,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 // registration has to be undone with it, and the spool file removed — nothing
 // will ever read it.
 func (s *server) discardSpawn(sess *session) {
-	s.removeSession(sess.id)
+	s.removeSession(sess.ID())
 	sess.releaseCatalogSource()
 	if sess.spool != nil {
 		if err := sess.spool.close(true); err != nil {

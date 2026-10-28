@@ -84,7 +84,7 @@ func finishCausationTurn(t *testing.T, sess *session, actionID string) {
 	line, err := json.Marshal(map[string]any{
 		"method": "turn/completed",
 		"params": map[string]any{
-			"threadId": sess.currentThreadID(),
+			"threadId": sess.ThreadID(),
 			"turn":     map[string]any{"id": accepted.ProviderTurnID, "status": "completed"},
 		},
 	})
@@ -467,8 +467,8 @@ func TestUltrafastSettingEvidenceSettlesOnlyTheRequestedTier(t *testing.T) {
 	}
 	sess.beginTurnCausation(map[string]string{postureFieldServiceTier: "ultrafast"})
 	d := newCodexDaemon("", supervisedDaemonLabel)
-	d.sessions = map[string]*session{sess.currentThreadID(): sess}
-	payload, _ := json.Marshal(map[string]any{"threadId": sess.currentThreadID(), "threadSettings": map[string]any{"serviceTier": "ultrafast"}})
+	d.sessions = map[string]*session{sess.ThreadID(): sess}
+	payload, _ := json.Marshal(map[string]any{"threadId": sess.ThreadID(), "threadSettings": map[string]any{"serviceTier": "ultrafast"}})
 	d.handleNotification("thread/settings/updated", payload)
 	f, desired, effective := fieldStrings(t, store, sess.hostedThreadID, postureFieldServiceTier)
 	if desired != "ultrafast" || effective != "ultrafast" || f.DesiredDisposition != metadataDispositionConfirmed {

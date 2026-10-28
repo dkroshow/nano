@@ -23,7 +23,7 @@ func (s *threadCatalogService) LoadSavedTurnFinal(ctx context.Context, threadID,
 
 func (s *server) savedPromptsFor(sess *session) savedPromptReader {
 	return func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-		return s.savedPromptRows(ctx, sess.currentThreadID(), keys)
+		return s.savedPromptRows(ctx, sess.ThreadID(), keys)
 	}
 }
 
