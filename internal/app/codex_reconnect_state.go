@@ -25,7 +25,11 @@ func (sess *session) codexZeroTurnEvidence(refusedAction string) bool {
 	if !eligible {
 		return false
 	}
-	for _, attempt := range sess.sendAttempts.listThread("codex", sess.currentThreadID()) {
+	var attempts []sendAttemptRecord
+	if sess.sendAttempts != nil {
+		attempts = sess.sendAttempts.listThread("codex", sess.currentThreadID())
+	}
+	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
 			return false
 		}
@@ -84,11 +88,11 @@ func (sess *session) failCodexReconnect(message string) error {
 	if closed {
 		return nil
 	}
-	for _, queued := range sess.queuedTurns.listThread(sess.provider, sess.currentThreadID(), sess.hostedThreadID) {
+	for _, queued := range sess.queuedPrompts(sess.currentThreadID()) {
 		if queued.State != submissionQueued && queued.State != submissionParked {
 			continue
 		}
-		attempt, ok := sess.sendAttempts.get(queued.ClientActionID)
+		attempt, ok := sess.sendAttempt(queued.ClientActionID)
 		if queued.State == submissionParked {
 			if !ok || (attempt.Reason != "reconnect_failed" && attempt.Reason != codexNativeMissing) {
 				continue

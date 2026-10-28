@@ -225,3 +225,21 @@ func queuedTurnRecordFromTransactional(record turns.Record) queuedTurnRecord {
 		ProviderTerminalStatus: record.ProviderTerminal, ProviderTerminalAt: record.ProviderTerminalAt,
 	}
 }
+
+func (s *queuedTurnStore) transactionStore() *turns.Store {
+	if s == nil {
+		return nil
+	}
+	return s.turns
+}
+func (s *queuedTurnStore) bindTransactionStore(store *turns.Store) {
+	if s != nil {
+		s.turns = store
+	}
+}
+func (s *queuedTurnStore) database() *sql.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
+}

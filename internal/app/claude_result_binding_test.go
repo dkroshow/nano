@@ -155,7 +155,7 @@ func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	})
 
 	sess := h.attach("claude", nil)
-	sess.agentExecutions, sess.completedTurns = executions, newCompletedTurnSource(completed)
+	sess.agentExecutions, sess.completedTurns = executions, completed.coreStore
 	h.server.sessions = map[string]*session{sess.id: sess}
 	sess.state, sess.subs, sess.interactions = map[string]json.RawMessage{}, map[chan wireEvent]struct{}{}, map[string]pendingInteraction{}
 	if err := sess.ensureCoreSession(); err != nil {
@@ -252,7 +252,7 @@ func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	f := newClaudeResultFixture(t)
 	a, d := f.order[0], f.order[3]
 	sess := f.h.attach("claude", nil)
-	sess.agentExecutions, sess.completedTurns = f.executions, newCompletedTurnSource(f.completed)
+	sess.agentExecutions, sess.completedTurns = f.executions, f.completed.coreStore
 	sess.state, sess.subs, sess.interactions = map[string]json.RawMessage{}, map[chan wireEvent]struct{}{}, map[string]pendingInteraction{}
 	owner := newClaudeSession(sess, f.h.fixture.native)
 	tr := directClaudeTransport{}

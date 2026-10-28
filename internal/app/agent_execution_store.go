@@ -1355,7 +1355,7 @@ const persistedTurnByTransportQuery = `SELECT operation_id,COALESCE(provider_tur
 // absence. The read assumes nothing about how the action id was formed.
 func (s *agentExecutionStore) persistedTurnForTransportAction(ctx context.Context, hostedID, transportActionID string) (agentTurnRecord, bool, error) {
 	if s == nil || s.control == nil || hostedID == "" || transportActionID == "" {
-		return agentTurnRecord{}, false, errors.New("persisted operation read needs the control store, a hosted thread and an action")
+		return agentTurnRecord{}, false, hosted.ErrOperationReadUnavailable
 	}
 	rows, err := s.control.db.QueryContext(ctx, persistedTurnByTransportQuery, hostedID, transportActionID)
 	if err != nil {

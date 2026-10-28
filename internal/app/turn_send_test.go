@@ -49,19 +49,20 @@ func mustQueuedTurnStore(t *testing.T) *queuedTurnStore {
 	return store
 }
 
-func mustBindTransactionalTurnStore(t *testing.T, queue *queuedTurnStore, attempts *sendAttemptStore) *turns.Store {
+func mustBindTransactionalTurnStore(t *testing.T, queue sessionQueue, attempts sessionJournal) *turns.Store {
 	t.Helper()
 	if queue == nil || attempts == nil {
 		t.Fatal("transactional turn fixture requires queue and journal views")
 	}
-	store, err := turns.OpenStore(context.Background(), queue.db)
+	store, err := turns.OpenStore(context.Background(), queue.database())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.AdoptLegacy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	queue.turns, attempts.turns = store, store
+	queue.bindTransactionStore(store)
+	attempts.bindTransactionStore(store)
 	return store
 }
 
@@ -374,7 +375,7 @@ func TestDuplicateQueuedActionIsStoredOnce(t *testing.T) {
 			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 		}
 	}
-	if records := sess.queuedTurns.snapshot(); len(records) != 1 || records[0].ClientActionID != "same-queued-action" {
+	if records := sess.queuedTurns.(*queuedTurnStore).snapshot(); len(records) != 1 || records[0].ClientActionID != "same-queued-action" {
 		t.Fatalf("queue records = %#v, want one action", records)
 	}
 }
@@ -1649,7 +1650,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 				}
 			}
 			sess := h.attach("claude", nil)
-			sess.agentExecutions, sess.completedTurns = executions, newCompletedTurnSource(completed)
+			sess.agentExecutions, sess.completedTurns = executions, completed.coreStore
 			if order == "answered settles first" {
 				// The starter is delivered but not yet accepted when the others
 				// settle; claimed after attach, so it holds the only claim.
@@ -1852,7 +1853,7 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 {"type":"assistant","uuid":"twin-shared","sessionId":"claude-settle","message":{"id":"twin-final","role":"assistant","content":[{"type":"text","text":"twin answer"}],"stop_reason":"end_turn"}}
 `, event("answerer"), event("twin-a"), event("twin-b")))
 	sess := h.attach("claude", nil)
-	sess.agentExecutions, sess.completedTurns = executions, newCompletedTurnSource(completed)
+	sess.agentExecutions, sess.completedTurns = executions, completed.coreStore
 	waitForCatalogWithin(t, time.Minute, func() bool {
 		if _, err := sess.settlePrompts(ctx); err != nil {
 			return false
@@ -1942,7 +1943,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(priorLog) })
 	sess := h.attach("claude", nil)
-	sess.agentExecutions, sess.completedTurns = executions, newCompletedTurnSource(completed)
+	sess.agentExecutions, sess.completedTurns = executions, completed.coreStore
 	// Owing is empty before saved proof confirms anything, so the wait needs
 	// positive evidence: both operations finished.
 	waitForCatalogWithin(t, time.Minute, func() bool {
@@ -2074,7 +2075,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 		return err == nil && len(page.Turns) == 2
 	})
 	sess := h.attach("claude", nil)
-	sess.agentExecutions, sess.completedTurns = executions, newCompletedTurnSource(completed)
+	sess.agentExecutions, sess.completedTurns = executions, completed.coreStore
 	outcomes := func() string {
 		var got []string
 		for _, name := range names {
@@ -2492,7 +2493,7 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 {"type":"assistant","uuid":"kept-shared","sessionId":"claude-settle","message":{"id":"kept-final","role":"assistant","content":[{"type":"text","text":"kept answer"}],"stop_reason":"end_turn"}}
 `, event("answerer"), event("absorbed")))
 	sess := h.attach("claude", nil)
-	sess.agentExecutions, sess.completedTurns = executions, newCompletedTurnSource(completed)
+	sess.agentExecutions, sess.completedTurns = executions, completed.coreStore
 	// Owing is empty before saved proof confirms anything, so the wait needs
 	// positive evidence: both prompts confirmed and the absorbed turn finished.
 	waitForCatalogWithin(t, time.Minute, func() bool {
@@ -2535,7 +2536,7 @@ func TestClaudeOwedPersonPromptFinishesAfterARestartOnALaterSavedCommit(t *testi
 	}
 	attach := func() *session {
 		sess := h.attach("claude", nil)
-		sess.agentExecutions, sess.completedTurns = newTestAgentExecutionStore(t, "run-1"), newCompletedTurnSource(completed)
+		sess.agentExecutions, sess.completedTurns = newTestAgentExecutionStore(t, "run-1"), completed.coreStore
 		return sess
 	}
 	turnOf := map[string]string{"person-starter": "claude:shim:300", "person-correction": "claude:shim:301"}
@@ -2652,7 +2653,7 @@ func TestReattachSettlesSavedPromptsAndPublishesOnlyTheRest(t *testing.T) {
 				// its stored binding lacks: its answered turn decides it too, so
 				// the person's prompt owes nothing more.
 				sess := h.attach(provider, nil)
-				sess.agentExecutions, sess.completedTurns = newTestAgentExecutionStore(t, "run-1"), newCompletedTurnSource(&completedTurnStore{db: h.queue.db})
+				sess.agentExecutions, sess.completedTurns = newTestAgentExecutionStore(t, "run-1"), (&completedTurnStore{db: h.queue.db}).coreStore
 				waitForCatalogWithin(t, time.Minute, func() bool {
 					if _, err := sess.settlePrompts(ctx); err != nil {
 						return false
@@ -3042,7 +3043,7 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 		}
 	}
 	sess := h.attach("claude", nil) // "running" waits: its saved turn is open
-	sess.agentExecutions, sess.completedTurns = newTestAgentExecutionStore(t, "run-1"), newCompletedTurnSource(completed)
+	sess.agentExecutions, sess.completedTurns = newTestAgentExecutionStore(t, "run-1"), completed.coreStore
 	h.appendSaved(t, `{"type":"assistant","uuid":"running-end","sessionId":"claude-settle","message":{"id":"running-message","role":"assistant","content":[{"type":"text","text":"running answer"}],"stop_reason":"end_turn"}}`+"\n")
 	saved := sess.savedPrompts
 	running := history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", "running")}}
@@ -3570,7 +3571,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 			t.Fatalf("operation %s = status %s final %q %q; want the turn's final answer", op.ClientActionID, got.Status, got.FinalItemID, got.FinalResponse)
 		}
 	}
-	completed, err := sess.completedTurns.store.coreStore(ctx)
+	completed, err := sess.completedTurns(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

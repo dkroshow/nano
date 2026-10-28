@@ -339,7 +339,7 @@ func TestAsyncTurnStoreFailureReachesTheThreadDiagnostics(t *testing.T) {
 	}
 	core := sess.coreSession()
 	t.Cleanup(core.Close)
-	if err := sess.completedTurns.store.db.Close(); err != nil {
+	if err := sess.queuedTurns.(*queuedTurnStore).db.Close(); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {

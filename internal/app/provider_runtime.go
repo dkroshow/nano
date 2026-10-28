@@ -40,10 +40,10 @@ func (sess *session) requireTransactionalTurnsLocked() error {
 	if sess.turns == nil {
 		return errors.New("transactional turns store is unavailable")
 	}
-	if sess.queuedTurns != nil && sess.queuedTurns.turns != sess.turns {
+	if sess.queuedTurns != nil && sess.queuedTurns.transactionStore() != sess.turns {
 		return errors.New("transactional turn queue view is unavailable")
 	}
-	if sess.sendAttempts != nil && sess.sendAttempts.turns != sess.turns {
+	if sess.sendAttempts != nil && sess.sendAttempts.transactionStore() != sess.turns {
 		return errors.New("transactional turn journal view is unavailable")
 	}
 	return nil
@@ -76,8 +76,8 @@ func (sess *session) ensureCoreSession() error {
 			}
 		}
 		var canonicalDB = func() *sql.DB {
-			if sess.queuedTurns != nil && sess.queuedTurns.db != nil {
-				return sess.queuedTurns.db
+			if sess.queuedTurns != nil && sess.queuedTurns.database() != nil {
+				return sess.queuedTurns.database()
 			}
 			if sess.metadata != nil {
 				return sess.metadata.canonicalDatabase()
@@ -96,10 +96,10 @@ func (sess *session) ensureCoreSession() error {
 			}
 			sess.turns = promptStore
 			if sess.queuedTurns != nil {
-				sess.queuedTurns.turns = promptStore
+				sess.queuedTurns.bindTransactionStore(promptStore)
 			}
 			if sess.sendAttempts != nil {
-				sess.sendAttempts.turns = promptStore
+				sess.sendAttempts.bindTransactionStore(promptStore)
 			}
 		}
 		sess.stateMu.Lock()
@@ -109,13 +109,18 @@ func (sess *session) ensureCoreSession() error {
 			// Root compatibility fixtures and older construction sites already
 			// carry the canonical threads handle through a queue or metadata view.
 			// Compose the turn store from that handle; it never owns another file.
-			sess.completedTurns = newCompletedTurnSource(&completedTurnStore{db: canonicalDB})
+			store, err := coreturns.OpenStore(context.Background(), canonicalDB)
+			if err != nil {
+				sess.coreErr = err
+				return
+			}
+			sess.completedTurns = func(context.Context) (*coreturns.Store, error) { return store, nil }
 		}
-		if sess.turns == nil || sess.completedTurns == nil || sess.completedTurns.store == nil {
+		if sess.turns == nil || sess.completedTurns == nil {
 			sess.coreErr = errors.New("core prompt or turn store is unavailable")
 			return
 		}
-		turnStore, err := sess.completedTurns.store.coreStore(context.Background())
+		turnStore, err := sess.completedTurns(context.Background())
 		if err != nil {
 			sess.coreErr = err
 			return

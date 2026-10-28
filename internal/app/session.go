@@ -9,6 +9,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
@@ -46,7 +47,7 @@ type session struct {
 	grok             *grokSession      // grok provider: stdio proxy to the durable native leader
 	reasoningSummary string            // codex: turn/start summary level
 	projection       sessionProjection // normalized live transcript, one per session
-	completedTurns   *completedTurnSource
+	completedTurns   func(context.Context) (*coreturns.Store, error)
 	// savedTurn reads the saved status of one turn by exact native turn id,
 	// to settle a live turn whose terminal event was lost.
 	savedTurn    func(ctx context.Context, turnID string) (durableTurnEvidence, bool)
@@ -151,8 +152,8 @@ type session struct {
 	// Submitted prompts are idempotent operations keyed by the browser's
 	// clientActionId. sendAttempts carries their small hash-only journal across
 	// Nano restarts; sendOps lets duplicate requests join an in-flight send.
-	sendAttempts    *sendAttemptStore
-	queuedTurns     *queuedTurnStore
+	sendAttempts    sessionJournal
+	queuedTurns     sessionQueue
 	turns           *prompts.Store
 	core            *coresession.Session
 	coreMu          sync.RWMutex

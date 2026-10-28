@@ -27,6 +27,9 @@ func (sess *session) availabilityState() sessionAvailability {
 }
 
 func (sess *session) queuedPromptCount() int {
+	if sess.queuedTurns == nil {
+		return 0
+	}
 	return sess.queuedTurns.queuedCount(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
 }
 

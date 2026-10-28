@@ -263,7 +263,7 @@ func (sess *session) memberStepLocked(ctx context.Context) {
 	if sess.provider != string(model.ProviderClaude) || sess.turns == nil || sess.completedTurns == nil || sess.agentExecutions == nil {
 		return
 	}
-	store, err := sess.completedTurns.store.coreStore(ctx)
+	store, err := sess.completedTurns(ctx)
 	if err != nil {
 		log.Printf("Claude members of %s: turn store unavailable: %v", sess.hostedThreadID, err)
 		return
@@ -438,7 +438,7 @@ func (sess *session) finishJoinedAgentTurns(ctx context.Context, turnID string) 
 	if sess.agentExecutions == nil || sess.turns == nil || sess.completedTurns == nil || !claude && !sess.acceptsRunningTurnInput() {
 		return
 	}
-	store, err := sess.completedTurns.store.coreStore(ctx)
+	store, err := sess.completedTurns(ctx)
 	if err != nil {
 		return
 	}

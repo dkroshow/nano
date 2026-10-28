@@ -167,10 +167,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		forgetAttachment:     s.forgetAttachment,
 		updateTurnAnchor:     s.setAttachmentTurnAnchor,
 		updateShimSession:    s.setAttachmentShimSession,
-		sendAttempts:         s.sendAttempts,
-		queuedTurns:          s.queuedTurns,
 		turns:                s.turns,
-		completedTurns:       s.completedTurns,
 		agentExecutions:      s.agentExecutions,
 		metadata:             s.controlMetadata,
 		notices:              s.notices,
@@ -179,6 +176,15 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		sendOps:              map[string]*turnSendOperation{},
 		nanoStopping:         &s.stopping,
 		deliveryExpiries:     s.deliveryExpiries,
+	}
+	if s.sendAttempts != nil {
+		sess.sendAttempts = s.sendAttempts
+	}
+	if s.queuedTurns != nil {
+		sess.queuedTurns = s.queuedTurns
+	}
+	if s.completedTurns != nil && s.completedTurns.store != nil {
+		sess.completedTurns = s.completedTurns.store.coreStore
 	}
 	// Reserve a resumed native identity before the shell becomes visible or any
 	// asynchronous provider work begins. Claude and Grok do not have Codex's

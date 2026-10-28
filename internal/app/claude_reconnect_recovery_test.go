@@ -310,7 +310,7 @@ func TestClaudeUnfinishedPromptsWaitForABusyWriterOncePerThread(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sess := &session{hostedThreadID: hosted, turns: s.turns, completedTurns: newCompletedTurnSource(&completedTurnStore{db: s.queuedTurns.db})}
+	sess := &session{hostedThreadID: hosted, turns: s.turns, completedTurns: (&completedTurnStore{db: s.queuedTurns.db}).coreStore}
 
 	// Restore writes, back to back: each holds the writer for 5 ms.
 	stop, done := make(chan struct{}), make(chan struct{})

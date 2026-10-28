@@ -1019,8 +1019,10 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 		case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.corePromptInFlight()):
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "busy"}
 		}
-		if _, queued := sess.queuedTurns.first(sess.provider, sess.currentThreadID(), sess.hostedThreadID); queued {
-			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "queuedBacklog"}
+		if sess.queuedTurns != nil {
+			if _, queued := sess.queuedTurns.first(sess.provider, sess.currentThreadID(), sess.hostedThreadID); queued {
+				return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "queuedBacklog"}
+			}
 		}
 		record, created, err := s.agentExecutions.beginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
 		if err != nil {
@@ -1076,7 +1078,7 @@ func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub h
 			}
 		}
 		if sess := s.sessionForHostedThread(hostedThreadID); sess != nil {
-			if queued, ok := sess.queuedTurns.get(record.TransportActionID); ok && queued.Text != "" {
+			if queued, ok := sess.queuedPrompt(record.TransportActionID); ok && queued.Text != "" {
 				sub.Delivered = queued.Text
 			}
 		}
@@ -1132,7 +1134,8 @@ func (s *server) needsTurnSubmissionReconciliation(record agentTurnRecord) bool 
 	if record.Status != agentTurnDeliveryPending {
 		return false
 	}
-	queue, attempts := s.queuedTurns, s.sendAttempts
+	var queue sessionQueue = s.queuedTurns
+	var attempts sessionJournal = s.sendAttempts
 	if sess := s.sessionForHostedThread(record.HostedThreadID); sess != nil {
 		if sess.queuedTurns != nil {
 			queue = sess.queuedTurns
@@ -1158,7 +1161,7 @@ func (s *server) turnSubmissionDeliveryUnknown(record agentTurnRecord) bool {
 	if record.Status != agentTurnDeliveryPending || record.RunID == s.agentExecutions.runID {
 		return false
 	}
-	attempts := s.sendAttempts
+	var attempts sessionJournal = s.sendAttempts
 	if sess := s.sessionForHostedThread(record.HostedThreadID); sess != nil && sess.sendAttempts != nil {
 		attempts = sess.sendAttempts
 	}
@@ -1415,7 +1418,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
 		Interactions: []pendingInteraction{},
 	}
-	queue := s.queuedTurns
+	var queue sessionQueue = s.queuedTurns
 	if sess := s.sessionForHostedThread(rec.HostedThreadID); sess != nil {
 		if sess.queuedTurns != nil {
 			queue = sess.queuedTurns

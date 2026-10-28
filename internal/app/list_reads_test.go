@@ -581,13 +581,13 @@ func TestAvailabilityReadsOnlyItsThreadsPrompts(t *testing.T) {
 		s, _, sess, _, worker, _ := stage0Server(t)
 		ctx := context.Background()
 		var statements, rows atomic.Int64
-		db := sql.OpenDB(countingConnector{driver: sess.queuedTurns.db.Driver(), dsn: sess.queuedTurns.path, count: &statements, rows: &rows})
+		db := sql.OpenDB(countingConnector{driver: sess.queuedTurns.(*queuedTurnStore).db.Driver(), dsn: sess.queuedTurns.(*queuedTurnStore).path, count: &statements, rows: &rows})
 		t.Cleanup(func() { db.Close() })
 		store, err := turns.OpenStore(ctx, db)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sess.queuedTurns.turns = store
+		sess.queuedTurns.bindTransactionStore(store)
 		submit := func(hosted, native, action string) {
 			if _, _, err := store.Submit(ctx, turns.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
 				ActionID: action, ProviderText: "prompt " + action, TextHash: action, RequestHash: action}); err != nil {

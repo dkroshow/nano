@@ -592,7 +592,7 @@ func TestLiveTextTailFailsWhenItCannotNameItsSavedPrompts(t *testing.T) {
 	saved := fixtureLines(t, "claude-turn.saved.jsonl")
 	h.save(saved[:lineWith(saved, `"thinking"`)+1])
 	h.expect("rows saved", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	if err := h.sess.queuedTurns.db.Close(); err != nil {
+	if err := h.sess.queuedTurns.(*queuedTurnStore).db.Close(); err != nil {
 		t.Fatal(err)
 	}
 	later := &liveTextViewer{t: t, pane: newLiveTextPane(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}),
@@ -1569,7 +1569,7 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 			lines := [][]byte{fixtureLines(t, "codex-turns.saved.jsonl")[0],
 				[]byte(fmt.Sprintf(`{"timestamp":"2026-10-01T07:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":%q}}`, turn))}
 			if mode == "unreadable claims" {
-				db := h.sess.queuedTurns.db
+				db := h.sess.queuedTurns.(*queuedTurnStore).db
 				var stored string
 				if err := db.QueryRow(`SELECT binding_json FROM queued_turns WHERE client_action_id='correction'`).Scan(&stored); err != nil {
 					t.Fatal(err)
@@ -2351,7 +2351,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	srv, attachments := claudeResumeServer(t, shim.wsURL())
 	srv.catalog = h.service
 	srv.controlMetadata = h.sess.metadata.(*controlMetadataStore)
-	srv.queuedTurns, srv.sendAttempts, srv.turns = h.sess.queuedTurns, h.sess.sendAttempts, h.sess.turns
+	srv.queuedTurns, srv.sendAttempts, srv.turns = h.sess.queuedTurns.(*queuedTurnStore), h.sess.sendAttempts.(*sendAttemptStore), h.sess.turns
 	srv.agentExecutions, err = newControlAgentExecutionStore(srv.controlMetadata, "restart-test")
 	if err != nil {
 		t.Fatal(err)

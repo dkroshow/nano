@@ -68,7 +68,7 @@ func (sess *session) stopDiscardAndRepairWithin(parent context.Context, actionID
 		return transcriptRepairResponse{}, errors.New("provider thread is not attached")
 	}
 
-	queue := sess.queuedTurns.listThread(sess.provider, threadID, sess.hostedThreadID)
+	queue := sess.queuedPrompts(threadID)
 	discardable := make([]queuedTurnRecord, 0, len(queue))
 	actionIDs := make([]string, 0, len(queue))
 	for _, record := range queue {

@@ -1359,7 +1359,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	// The prompt went out with its own client id, so the wire's completion
 	// alone does not finish its operation: only its own saved prompt does.
 	ctx := context.Background()
-	completed, err := sess.completedTurns.store.coreStore(ctx)
+	completed, err := sess.completedTurns(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1792,7 +1792,7 @@ func TestCodexTurnFinishedWhileNanoWasDownReachesTheCompletedTurnFeed(t *testing
 	}
 	var feed []completedTurn
 	waitForClaude(t, "the completed-turn feed", func() bool {
-		feed, err = sess.completedTurns.after(rec.HostedThreadID, "", 10)
+		feed, err = s.completedTurns.after(rec.HostedThreadID, "", 10)
 		return err == nil && len(feed) > 0
 	})
 	if len(feed) != 1 || feed[0].TurnID != "turn-down" || feed[0].Outcome != agentTurnCompleted {

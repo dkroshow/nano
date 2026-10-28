@@ -281,7 +281,7 @@ func TestReconnectAuditNativeMissingRequiresExactEvidence(t *testing.T) {
 			case "not-fallback":
 				sess.codexZeroTurnResume = false
 			case "accepted-history":
-				if err := sess.sendAttempts.put(sendAttemptRecord{ClientActionID: "past", Provider: "codex", NativeThreadID: sess.threadID, Status: sendAttemptAccepted}); err != nil {
+				if err := sess.sendAttempts.(*sendAttemptStore).put(sendAttemptRecord{ClientActionID: "past", Provider: "codex", NativeThreadID: sess.threadID, Status: sendAttemptAccepted}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -298,7 +298,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	sess := reconnectTestSession(t, daemon, "deleted-rollout")
 	sess.codexZeroTurnEligible = true
 	seedAcceptedTransactionalTurn(t, sess.turns, sess.hostedThreadID, model.ProviderCodex, sess.threadID, "previous-turn", "past-turn", "past")
-	turnStore, err := coreturns.OpenStore(context.Background(), sess.queuedTurns.db)
+	turnStore, err := coreturns.OpenStore(context.Background(), sess.queuedTurns.(*queuedTurnStore).db)
 	if err != nil {
 		t.Fatal(err)
 	}

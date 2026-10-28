@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/transcript"
@@ -82,13 +83,6 @@ func (s *sendAttemptStore) get(actionID string) (sendAttemptRecord, bool) {
 	}
 	attempt, err = s.turns.GetAttempt(context.Background(), actionID)
 	return sendAttemptRecordFromTransactional(prompts.Record{}, attempt), err == nil
-}
-
-// promptJournal is the prompt store's two listing reads, served by the
-// writer-backed store or by a read-only prompts.Journal.
-type promptJournal interface {
-	List(context.Context, string) ([]prompts.Record, error)
-	ListThreadAttempts(context.Context, model.Provider, string) ([]prompts.AttemptStatus, error)
 }
 
 func (s *sendAttemptStore) listThread(provider, nativeThreadID string) []sendAttemptRecord {
@@ -188,7 +182,7 @@ func (sess *session) handleTurn(w http.ResponseWriter, r *http.Request) {
 	// Action-id dedup is deliberately before readiness. A browser retry of a
 	// request Nano already accepted must be answered idempotently even while the
 	// provider is still in its boot window.
-	if rec, ok := sess.sendAttempts.get(req.ClientActionID); ok {
+	if rec, ok := sess.sendAttempt(req.ClientActionID); ok {
 		if rec.Provider != sess.provider || rec.TextHash != turnRequestHash(req.Text, req.NextTurn) {
 			writeTurnDeliveryFailure(w, http.StatusConflict, req.ClientActionID, "clientActionId does not match this message")
 			return
@@ -202,7 +196,7 @@ func (sess *session) handleTurn(w http.ResponseWriter, r *http.Request) {
 		}
 		currentRunID := ""
 		if sess.sendAttempts != nil {
-			currentRunID = sess.sendAttempts.runID
+			currentRunID = sess.sendAttempts.runIdentity()
 		}
 		if handled := writeExistingAttempt(w, rec, currentRunID); handled {
 			return
@@ -224,7 +218,7 @@ func (sess *session) handleTurn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	delivered := ""
-	if queued, ok := sess.queuedTurns.get(req.ClientActionID); ok && queued.Text != "" {
+	if queued, ok := sess.queuedPrompt(req.ClientActionID); ok && queued.Text != "" {
 		// A retry replays the exact provider-bound text already committed to the
 		// outbox. In particular, reading mail between attempts must not rewrite
 		// or remove the original unread footer.
@@ -332,11 +326,11 @@ func (sess *session) handleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 		threadID = sess.currentThreadID()
 	}
 	views := make([]promptView, 0)
-	if sess.sendAttempts == nil || sess.sendAttempts.turns == nil || threadID == "" {
+	if sess.sendAttempts == nil || sess.sendAttempts.transactionStore() == nil || threadID == "" {
 		httpapi.WriteJSON(w, map[string]any{"operations": views})
 		return
 	}
-	var journal promptJournal = sess.sendAttempts.turns
+	var journal promptJournal = sess.sendAttempts.transactionStore()
 	if sess.metadata != nil {
 		if pool := sess.metadata.readPool(); pool != nil {
 			journal = prompts.NewJournal(pool)
@@ -348,8 +342,10 @@ func (sess *session) handleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	texts := make(map[string]string)
-	for _, queued := range sess.queuedTurns.listThreadFrom(journal, sess.provider, threadID, sess.hostedThreadID) {
-		texts[queued.ClientActionID] = queued.Text
+	if sess.queuedTurns != nil {
+		for _, queued := range sess.queuedTurns.listThreadFrom(journal, sess.provider, threadID, sess.hostedThreadID) {
+			texts[queued.ClientActionID] = queued.Text
+		}
 	}
 	for _, row := range rows {
 		if row.OutboxState == "" || row.OutboxState == prompts.Expired {
@@ -1444,6 +1440,9 @@ func (sess *session) drainQueuedTurn() {
 	if permission.Submit != lifecycle.SendNow && !runningTurn || sess.corePromptInFlight() {
 		return
 	}
+	if sess.queuedTurns == nil {
+		return
+	}
 	queued, ok := sess.queuedTurns.first(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
 	if !ok {
 		return
@@ -1493,7 +1492,7 @@ func (sess *session) cancelQueuedTurnAction(actionID, by string) (queuedTurnReco
 	}
 	// Live text, which shows the prompt until a saved row settles it, drops
 	// it when told.
-	if record, _, err := sess.queuedTurns.turns.Get(context.Background(), actionID); err == nil {
+	if record, _, err := sess.queuedTurns.transactionStore().Get(context.Background(), actionID); err == nil {
 		sess.publishLiveOutbox(record.Outbox)
 	}
 	return queued, nil
@@ -1509,12 +1508,12 @@ const (
 // in the store, if promptActionRefusal allows its Discard: a queued prompt is
 // canceled, an uncertain or parked one expired. The operation that sent it
 // ends in the same transaction (endDiscardedOperation).
-func cancelQueuedTurnStores(queue *queuedTurnStore, ops sessionExecutions, actionID, by string) (queuedTurnRecord, error) {
-	if queue == nil || queue.turns == nil {
+func cancelQueuedTurnStores(queue sessionQueue, ops sessionExecutions, actionID, by string) (queuedTurnRecord, error) {
+	if queue == nil || queue.transactionStore() == nil {
 		return queuedTurnRecord{}, fmt.Errorf("transactional turns store is unavailable")
 	}
 	ctx := context.Background()
-	record, attempt, err := queue.turns.Get(ctx, actionID)
+	record, attempt, err := queue.transactionStore().Get(ctx, actionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return queuedTurnRecord{}, errQueuedTurnNotFound
 	}
@@ -1555,13 +1554,16 @@ func cancelQueuedTurnStores(queue *queuedTurnStore, ops sessionExecutions, actio
 // never reached its provider. An operation already ended keeps its outcome,
 // and one waiting on its saved answer still takes it (markTurnDelivery); a
 // prompt no operation sent, such as a person's, has none.
-func endDiscardedOperation(queue *queuedTurnStore, ops sessionExecutions, prior prompts.Record, by string, end func(*sql.Tx) error) error {
+func endDiscardedOperation(queue sessionQueue, ops sessionExecutions, prior prompts.Record, by string, end func(*sql.Tx) error) error {
+	if ops == nil {
+		return hosted.ErrOperationReadUnavailable
+	}
 	op, found, err := ops.persistedTurnForTransportAction(context.Background(), prior.Outbox.HostedThreadID, prior.Outbox.ActionID)
 	if err != nil {
 		return err
 	}
 	if !found {
-		tx, err := queue.db.Begin()
+		tx, err := queue.database().Begin()
 		if err != nil {
 			return err
 		}
@@ -1792,4 +1794,22 @@ func (s *server) publishProviderRuntime(provider string) {
 			sess.publishProjectionRuntime()
 		}
 	}
+}
+
+func (s *sendAttemptStore) transactionStore() *prompts.Store {
+	if s == nil {
+		return nil
+	}
+	return s.turns
+}
+func (s *sendAttemptStore) bindTransactionStore(store *prompts.Store) {
+	if s != nil {
+		s.turns = store
+	}
+}
+func (s *sendAttemptStore) runIdentity() string {
+	if s == nil {
+		return ""
+	}
+	return s.runID
 }
