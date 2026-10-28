@@ -26,10 +26,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const (
@@ -58,7 +57,7 @@ const (
 // pane's, so the loop keys both to one read.
 func warmPaneQuery() threadindex.TranscriptQuery {
 	return threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, HiddenSpecified: true,
-		HiddenCategories: append([]string(nil), threadindex.EnhancedHiddenCategories()...), Limit: warmPageRows}
+		HiddenCategories: threadindex.EnhancedHiddenCategories(), Limit: warmPageRows}
 }
 
 // warmMarker is what a page holds of one thread: a projection key, the

@@ -245,7 +245,7 @@ func (s *Service) NamedThreads(ctx context.Context, name string) ([]Thread, erro
 	for _, record := range records {
 		page, err := s.ListThreads(ctx, ListQuery{
 			ThreadID: record.NativeThreadID, IncludeSubagents: true, IncludeGuardians: true,
-			IncludeProgrammatic: true, Archived: "include", Limit: MaxThreadCatalogLimit,
+			IncludeProgrammatic: true, Archived: string(history.ArchivedInclude), Limit: MaxThreadCatalogLimit,
 		})
 		if err != nil {
 			return nil, err

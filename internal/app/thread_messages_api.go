@@ -62,11 +62,8 @@ func (s *server) handleThreadMessages(w http.ResponseWriter, r *http.Request, ra
 	threadindex.NewHandlers(s.catalog).HandleThreadMessages(w, r, rawID)
 }
 func (s *server) resolveThreadReference(ctx context.Context, reference string) (string, error) {
-	resolver, ok := s.catalog.(threadindex.ReferenceResolver)
-	if !ok {
-		return reference, nil
-	}
-	return resolver.ResolveThreadReference(ctx, reference)
+	resolver, _ := s.catalog.(threadindex.ReferenceResolver)
+	return threadindex.ResolveReference(ctx, resolver, reference)
 }
 func writeThreadReferenceError(w http.ResponseWriter, err error) {
 	threadindex.WriteThreadReferenceError(w, err)

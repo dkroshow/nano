@@ -26,9 +26,7 @@ import (
 func (s *Service) ListThreads(ctx context.Context, query ListQuery) (Page, error) {
 	params := catalogQueryParams(query)
 	params.ThreadID = query.ThreadID
-	for _, key := range query.Identities {
-		params.Identities = append(params.Identities, history.ThreadIdentity{Provider: key.Provider, NativeThreadID: key.NativeThreadID})
-	}
+	params.Identities = query.Identities
 	params.Limit = query.Limit
 	if query.Cursor != "" {
 		cursor, err := DecodeThreadCatalogCursor(query.Cursor)

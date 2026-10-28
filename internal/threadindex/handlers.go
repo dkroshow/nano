@@ -98,7 +98,8 @@ func (s *Handlers) HandleThreadUsage(w http.ResponseWriter, r *http.Request, raw
 		}
 		limit = value
 	}
-	id, err := s.resolveThreadReference(r.Context(), reference)
+	resolver, _ := s.catalog.(ReferenceResolver)
+	id, err := ResolveReference(r.Context(), resolver, reference)
 	if err != nil {
 		WriteThreadReferenceError(w, err)
 		return
@@ -183,7 +184,8 @@ func (s *Handlers) HandleThreadTranscript(w http.ResponseWriter, r *http.Request
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", err.Error())
 		return
 	}
-	id, err := s.resolveThreadReference(r.Context(), reference)
+	resolver, _ := s.catalog.(ReferenceResolver)
+	id, err := ResolveReference(r.Context(), resolver, reference)
 	if err != nil {
 		WriteThreadReferenceError(w, err)
 		return

@@ -5,10 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type applicationRoute struct {

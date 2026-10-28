@@ -3,10 +3,10 @@ package threadindex
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/setup"
-	"strings"
 )
 
 func newTestCatalogService(ctx context.Context, store *history.Store, options Options) (*Service, error) {

@@ -11,9 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dkroshow/nano/internal/httpapi"
-
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 const (
@@ -21,7 +20,6 @@ const (
 	DefaultMessagesTail = 20
 	// MaxMessagesTail rides the transcript page limit: the tail is
 	// assembled from transcript pages, so it cannot ask for more per page.
-	// MaxMessagesTail caps the conversational tail at the transcript page limit.
 	MaxMessagesTail = MaxThreadTranscriptLimit
 	// maxThreadMessagePages bounds the walk backwards. A page can be mostly
 	// non-message items, so one page does not always fill the tail; three is
@@ -98,7 +96,8 @@ func (s *Handlers) HandleThreadMessages(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	id, err := s.resolveThreadReference(r.Context(), reference)
+	resolver, _ := s.catalog.(ReferenceResolver)
+	id, err := ResolveReference(r.Context(), resolver, reference)
 	if err != nil {
 		WriteThreadReferenceError(w, err)
 		return
@@ -119,17 +118,6 @@ func (s *Handlers) HandleThreadMessages(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, renderThreadMessagesText(messages))
-}
-
-// resolveThreadReference resolves the path segment to a durable thread id. A
-// catalog without the resolver takes the reference as an exact id — the only
-// interpretation a stub can honour.
-func (s *Handlers) resolveThreadReference(ctx context.Context, reference string) (string, error) {
-	resolver, ok := s.catalog.(ReferenceResolver)
-	if !ok {
-		return reference, nil
-	}
-	return resolver.ResolveThreadReference(ctx, reference)
 }
 
 // ParseMessagesQuery validates a conversational-tail query before reference resolution.

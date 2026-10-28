@@ -265,7 +265,9 @@ func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
 	}
 	requests, streams := s.requests.Report()
 	var ingest *threadindex.IngestStatus
-	if catalog, ok := s.catalog.(*threadCatalogService); ok {
+	if catalog, ok := s.catalog.(interface {
+		IngestStatus() threadindex.IngestStatus
+	}); ok {
 		status := catalog.IngestStatus()
 		ingest = &status
 	}
@@ -288,7 +290,9 @@ func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
 // native file, newest first, for probes that join Nano's stage times to their
 // own file and browser observations.
 func (s *server) handleIngestReceipts(w http.ResponseWriter, _ *http.Request) {
-	catalog, ok := s.catalog.(*threadCatalogService)
+	catalog, ok := s.catalog.(interface {
+		IngestReceipts() []threadindex.IngestReceipt
+	})
 	if !ok {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return

@@ -10,11 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/history"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type externalResumeSourceVerifier interface {

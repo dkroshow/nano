@@ -23,3 +23,12 @@ type ReferenceResolver interface {
 
 // maxThreadReferenceCandidates bounds ambiguous reference responses.
 const maxThreadReferenceCandidates = 10
+
+// ResolveReference uses the optional catalog resolver, or treats the reference
+// as an exact id when a caller has no resolver.
+func ResolveReference(ctx context.Context, resolver ReferenceResolver, reference string) (string, error) {
+	if resolver == nil {
+		return reference, nil
+	}
+	return resolver.ResolveThreadReference(ctx, reference)
+}

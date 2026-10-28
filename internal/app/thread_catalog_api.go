@@ -232,7 +232,7 @@ const (
 	archivedOnlyFilter = "only"
 	// archivedIncludeFilter is the widest archived class — what a rescue lookup
 	// asks for, since archived says nothing about whether a thread is live.
-	archivedIncludeFilter = "include"
+	archivedIncludeFilter = string(history.ArchivedInclude)
 )
 
 func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQuery, page []catalogThread, live []sessions.Summary) []catalogThread {
