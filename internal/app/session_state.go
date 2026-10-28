@@ -99,7 +99,11 @@ func (sess *session) summary() sessionSummary {
 	if sess.metadata != nil {
 		view, err = sess.metadata.view(sess.hostedThreadID)
 	}
-	summary := sess.summaryWith(view, err, sess.agentExecutions.sessionNeedsAttention(sess.hostedThreadID))
+	needsAttention := false
+	if sess.agentExecutions != nil {
+		needsAttention = sess.agentExecutions.sessionNeedsAttention(sess.hostedThreadID)
+	}
+	summary := sess.summaryWith(view, err, needsAttention)
 	if summary.Metadata != nil {
 		summary.Metadata.Name, _ = sess.hostedMetadataName(summary.Provider, summary.ThreadID, summary.Name)
 	}

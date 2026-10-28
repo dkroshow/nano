@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"strings"
 
@@ -17,12 +18,7 @@ import (
 // event log and current-state projection; live transport and retired JSON are
 // never a fallback for a hosted identity.
 
-type sessionPosture struct {
-	Model          string `json:"model,omitempty"`
-	Effort         string `json:"effort,omitempty"`
-	PermissionMode string `json:"permissionMode,omitempty"`
-	ServiceTier    string `json:"serviceTier,omitempty"`
-}
+type sessionPosture = hosted.Posture
 
 // overlayFold writes the folded decision for one field over dst, leaving dst
 // alone when the log holds no decision for it.

@@ -357,7 +357,7 @@ func TestLastHumanPromptMovesForwardAcrossTrimmedFractions(t *testing.T) {
 		sess.noteHumanPrompt(at)
 	}
 	want := later.Format(time.RFC3339Nano)
-	if rec, _ := sess.agentExecutions.session(worker.ID); rec.LastHumanPromptAt != want {
+	if rec, _ := s.agentExecutions.session(worker.ID); rec.LastHumanPromptAt != want {
 		t.Fatalf("last human prompt = %q, want %q", rec.LastHumanPromptAt, want)
 	}
 	reloaded, err := newControlAgentExecutionStore(s.controlMetadata, "run-2")

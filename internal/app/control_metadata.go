@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"net/url"
 	"os"
@@ -47,63 +48,20 @@ const (
 	metadataSourceMigration = "migration"
 )
 
-type metadataEvent struct {
-	ID                   int64
-	HostedThreadID       string
-	Field                string
-	Value                any
-	Disposition          string
-	Source               string
-	Evidence             string
-	NativeThreadID       string
-	NanoSessionID        string
-	AttachmentGeneration int64
-	Freshness            string
-	CausationEventID     *int64
-	SourceEventKey       string
-	ObservedAt           string
-	CommittedAt          string
-	// Committed is true only when this invocation inserted immutable evidence
-	// and advanced the hosted revision. Stable retries and semantic duplicates
-	// return the established event with Committed false.
-	Committed bool
-}
+type metadataEvent = hosted.MetadataEvent
 
 func metadataConfirmedFact(field string) bool {
 	return field == orchestrationAssignmentField || field == threads.CreationNameField
 }
 
-type metadataEventPage struct {
-	Events     []metadataEventView `json:"events"`
-	NextCursor int64               `json:"nextCursor,omitempty"`
-}
+type metadataEventPage = hosted.MetadataEventPage
 
 // metadataEventView is the deliberately small public evidence contract.  The
 // internal retry key is not exported: it is repository implementation detail,
 // not evidence a client should retain or treat as user-visible identity.
-type metadataEventView struct {
-	ID                   int64           `json:"id"`
-	HostedThreadID       string          `json:"hostedThreadId"`
-	Field                string          `json:"field"`
-	Value                json.RawMessage `json:"value"`
-	Disposition          string          `json:"disposition"`
-	Source               string          `json:"source"`
-	Evidence             string          `json:"evidence,omitempty"`
-	NativeThreadID       string          `json:"nativeThreadId,omitempty"`
-	NanoSessionID        string          `json:"nanoSessionId,omitempty"`
-	AttachmentGeneration int64           `json:"attachmentGeneration"`
-	Freshness            string          `json:"freshness"`
-	CausationEventID     *int64          `json:"causationEventId,omitempty"`
-	ObservedAt           string          `json:"observedAt"`
-	CommittedAt          string          `json:"committedAt"`
-}
+type metadataEventView = hosted.MetadataEventView
 
-type metadataEventFilter struct {
-	Field       string
-	Source      string
-	Disposition string
-	Freshness   string
-}
+type metadataEventFilter = hosted.MetadataEventFilter
 
 // eventsAfter exposes immutable evidence with a bounded event-id cursor. It
 // intentionally has no JSON posture fallback: callers refetch current state
@@ -367,69 +325,12 @@ func (s *controlMetadataStore) changesAfter(hostedID string, revision int64) []m
 	return out
 }
 
-type metadataCurrentView struct {
-	DesiredValue       json.RawMessage `json:"desiredValue,omitempty"`
-	DesiredDisposition string          `json:"desiredDisposition"`
-	DesiredSource      string          `json:"desiredSource,omitempty"`
-	DesiredEventID     *int64          `json:"desiredEventId,omitempty"`
-	// DesiredSettlementEventID is deliberately separate from DesiredEventID:
-	// the latter remains the operator/creation decision that established the
-	// request, while this identifies provider evidence that settled it.
-	DesiredSettlementEventID *int64          `json:"desiredSettlementEventId,omitempty"`
-	EffectiveValue           json.RawMessage `json:"effectiveValue,omitempty"`
-	EffectiveDisposition     string          `json:"effectiveDisposition"`
-	EffectiveSource          string          `json:"effectiveSource,omitempty"`
-	EffectiveEventID         *int64          `json:"effectiveEventId,omitempty"`
-	// Display is the single server-authored projection used by API consumers.
-	// Desired intent remains separately available for audit and resume, but a
-	// historical or replayed request yields to an observed effective value.
-	DisplayValue       json.RawMessage `json:"displayValue,omitempty"`
-	DisplayDisposition string          `json:"displayDisposition"`
-	DisplaySource      string          `json:"displaySource,omitempty"`
-	DisplayFreshness   string          `json:"displayFreshness,omitempty"`
-	UpdatedAt          string          `json:"updatedAt"`
-}
+type metadataCurrentView = hosted.MetadataCurrent
 
-type hostedMetadataView struct {
-	HostedThreadID        string                `json:"hostedThreadId"`
-	Revision              int64                 `json:"revision"`
-	Provider              string                `json:"provider"`
-	NativeThreadID        string                `json:"nativeThreadId,omitempty"`
-	AttachmentGeneration  int64                 `json:"attachmentGeneration"`
-	PresentationMode      string                `json:"presentationMode"`
-	SidebarPlacement      string                `json:"sidebarPlacement"`
-	InvokerHostedThreadID string                `json:"invokerHostedThreadId,omitempty"`
-	InvokerNativeThreadID string                `json:"invokerNativeThreadId,omitempty"`
-	InvokerProvider       string                `json:"invokerProvider,omitempty"`
-	Subscriptions         subscriptions.Choices `json:"subscriptions"`
-	CreatedAt             string                `json:"createdAt"`
-	UpdatedAt             string                `json:"updatedAt"`
-	NativeIDHistory       []hostedNativeIDView  `json:"nativeIdHistory"`
-	// Attachment is joined by the server from live runtime/execution control.
-	// It is intentionally not a SQLite metadata fact and never changes Revision.
-	Attachment hostedAttachmentView `json:"attachment"`
-	// Name is joined by the server from the durable name store.  It is not an
-	// event fact because names have their own provenance and mutation surface.
-	Name   hostedMetadataName             `json:"name"`
-	Fields map[string]metadataCurrentView `json:"fields"`
-}
-type hostedAttachmentView struct {
-	State      string `json:"state"`
-	Provenance string `json:"provenance"`
-	Error      string `json:"error,omitempty"`
-}
-type hostedMetadataName struct {
-	Value      string `json:"value,omitempty"`
-	Provenance string `json:"provenance,omitempty"`
-}
-type hostedNativeIDView struct {
-	Provider       string `json:"provider"`
-	NativeThreadID string `json:"nativeThreadId"`
-	Provisional    bool   `json:"provisional"`
-	RetiredAt      string `json:"retiredAt,omitempty"`
-	FirstSeenAt    string `json:"firstSeenAt"`
-	LastSeenAt     string `json:"lastSeenAt"`
-}
+type hostedMetadataView = hosted.MetadataView
+type hostedAttachmentView = hosted.AttachmentView
+type hostedMetadataName = hosted.MetadataName
+type hostedNativeIDView = hosted.NativeIDView
 
 func validateMetadataEvent(event metadataEvent) error {
 	if event.Field != postureFieldModel && event.Field != postureFieldEffort && event.Field != postureFieldPermissionMode && event.Field != postureFieldServiceTier && event.Field != "cwd" && event.Field != orchestrationAssignmentField && event.Field != threads.CreationNameField {
@@ -758,10 +659,7 @@ func (s *controlMetadataStore) beginTransportBinding(hostedID string) (int64, er
 // hosted records claiming the same provider/native identity.
 // nativeResolution is one provisional handle's exact native: the session its
 // own child announced (its root init, live or in the spool).
-type nativeResolution struct {
-	Handle string
-	Native string
-}
+type nativeResolution = hosted.NativeResolution
 
 // errUnresolvedProvisional refuses a claim that would retire a provisional
 // handle without its exact resolution: prompts accepted under that handle are
@@ -1445,4 +1343,13 @@ func (s *controlMetadataStore) markMigrationComplete(name, fingerprint string) e
 		return err
 	}
 	return s.integrityCheck()
+}
+
+// canonicalDatabase supplies the shared transaction owner when composing the
+// prompt and lifecycle stores; it never opens another database.
+func (s *controlMetadataStore) canonicalDatabase() *sql.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
 }

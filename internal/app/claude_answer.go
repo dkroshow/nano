@@ -29,7 +29,7 @@ import (
 type claudeAnswers struct {
 	hosted string
 	turns  *prompts.Store
-	ops    *agentExecutionStore
+	ops    sessionExecutions
 	// rows reads saved user rows in one exact native thread; final reads one
 	// saved turn's final row at one generation.
 	rows  func(context.Context, string, history.SavedUserKeys) ([]history.SavedUserRow, error)

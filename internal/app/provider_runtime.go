@@ -80,7 +80,7 @@ func (sess *session) ensureCoreSession() error {
 				return sess.queuedTurns.db
 			}
 			if sess.metadata != nil {
-				return sess.metadata.db
+				return sess.metadata.canonicalDatabase()
 			}
 			return nil
 		}()

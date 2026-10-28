@@ -361,3 +361,11 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 	}
 	return text, itemID, nil
 }
+
+// readsSavedResults reports whether terminal operations have a saved-answer
+// reader. Keep the read under the execution store's own lock.
+func (s *agentExecutionStore) readsSavedResults() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.savedResultRead != nil
+}

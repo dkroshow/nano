@@ -395,10 +395,7 @@ func (sess *session) finishesOnSavedProof(provider, turnID string, openOperation
 	// The bounded result reader checks each prompt's saved proof itself.
 	// Start its deadline on provider completion even if no file row arrives.
 	if sess.agentExecutions != nil {
-		sess.agentExecutions.mu.Lock()
-		saved := sess.agentExecutions.savedResultRead != nil
-		sess.agentExecutions.mu.Unlock()
-		if saved {
+		if sess.agentExecutions.readsSavedResults() {
 			return false
 		}
 	}
@@ -414,7 +411,9 @@ func (sess *session) finishesOnSavedProof(provider, turnID string, openOperation
 	}
 	var open []agentTurnRecord
 	if len(openOperations) == 0 {
-		open = sess.agentExecutions.openTurnsForProviderTurn(sess.hostedThreadID, provider, turnID)
+		if sess.agentExecutions != nil {
+			open = sess.agentExecutions.openTurnsForProviderTurn(sess.hostedThreadID, provider, turnID)
+		}
 	} else {
 		open = openOperations[0]
 	}
@@ -535,7 +534,7 @@ func (sess *session) observeCodexResume(resp *codexResumeResponse) {
 	// reply's items are parsed from the earliest such turn, and not at all
 	// without one: parsing every turn of every resumed thread was the largest
 	// CPU cost of a boot.
-	if first := slices.IndexFunc(matches, func(m agentResumedTurnMatch) bool { return m.live }); first >= 0 {
+	if first := slices.IndexFunc(matches, func(m agentResumedTurnMatch) bool { return m.Live }); first >= 0 {
 		parsedItems := resp.items(positions[first])
 		for i, turn := range terminalTurns[first:] {
 			if parsed, found := parsedItems[[2]string{turn.ID, codexResumeFinalItemID(turn)}]; found && parsed.Type == model.ItemAgentMessage && turn.Status == agentTurnCompleted {
@@ -544,8 +543,8 @@ func (sess *session) observeCodexResume(resp *codexResumeResponse) {
 		}
 	}
 	for i := range marks {
-		if len(matches[i].openOperations) > 0 {
-			marks[i].FinishOnSavedProof = sess.finishesOnSavedProof("codex", marks[i].ProviderTurnID, matches[i].openOperations)
+		if len(matches[i].OpenOperations) > 0 {
+			marks[i].FinishOnSavedProof = sess.finishesOnSavedProof("codex", marks[i].ProviderTurnID, matches[i].OpenOperations)
 		}
 	}
 	endedWhileDown, _ := sess.agentExecutions.markResumedTurnsTerminal(sess.hostedThreadID, "codex", threadID, marks, matches)

@@ -157,8 +157,8 @@ type session struct {
 	coreOnce        sync.Once
 	coreErr         error
 	providerAdapter providers.Adapter
-	agentExecutions *agentExecutionStore
-	metadata        *controlMetadataStore
+	agentExecutions sessionExecutions
+	metadata        sessionMetadata
 	notices         *interact.Notices
 	// metadataDegraded means a newer observation failed to enter the canonical
 	// log. It never makes the last committed canonical record unreadable; API

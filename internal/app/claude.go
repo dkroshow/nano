@@ -322,7 +322,7 @@ func argvDropPairs(args []string, flags map[string]bool) []string {
 // applyClaudeResumeOverlay applies canonical desired intent over the stored
 // transport argv. An explicit desired model survives confirmed or rejected
 // attempts on a new attachment; a cleared intent adds no override.
-func applyClaudeResumeOverlay(args []string, source *controlMetadataStore, hostedThreadID string) []string {
+func applyClaudeResumeOverlay(args []string, source sessionMetadata, hostedThreadID string) []string {
 	if source == nil {
 		return args
 	}

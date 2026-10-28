@@ -2350,7 +2350,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	}))
 	srv, attachments := claudeResumeServer(t, shim.wsURL())
 	srv.catalog = h.service
-	srv.controlMetadata = h.sess.metadata
+	srv.controlMetadata = h.sess.metadata.(*controlMetadataStore)
 	srv.queuedTurns, srv.sendAttempts, srv.turns = h.sess.queuedTurns, h.sess.sendAttempts, h.sess.turns
 	srv.agentExecutions, err = newControlAgentExecutionStore(srv.controlMetadata, "restart-test")
 	if err != nil {

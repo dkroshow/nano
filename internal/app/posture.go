@@ -1,5 +1,7 @@
 package app
 
+import "github.com/dkroshow/nano/internal/hosted"
+
 const (
 	postureFieldModel          = "model"
 	postureFieldEffort         = "effort"
@@ -19,13 +21,7 @@ const (
 
 // postureEntry is one canonical posture decision written to control.sqlite.
 // Empty Value means the decision cleared the field.
-type postureEntry struct {
-	Field    string
-	Value    string
-	Source   string
-	Evidence string
-	At       string
-}
+type postureEntry = hosted.PostureEntry
 
 type postureFieldValue struct{ field, value string }
 

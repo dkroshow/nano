@@ -387,8 +387,9 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Cleanup(func() { once.Do(catalog.projectionMu.Unlock) })
 				defer once.Do(catalog.projectionMu.Unlock)
 			}
-			sess.metadata, _ = newTestHostedControl(t)
-			if err := sess.metadata.ensureHostedThread(sess.hostedThreadID, "grok", presentationShared, "", "", ""); err != nil {
+			metadata, _ := newTestHostedControl(t)
+			sess.metadata = metadata
+			if err := metadata.ensureHostedThread(sess.hostedThreadID, "grok", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
 			if tc.created {

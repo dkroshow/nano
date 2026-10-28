@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/threads"
 	"log"
 	"maps"
@@ -1419,22 +1420,9 @@ func (s *agentExecutionStore) openTurnsForProviderTurn(hostedThreadID, provider,
 	return open
 }
 
-type agentTerminalTurn struct {
-	ProviderTurnID     string
-	Status             string
-	Error              *agentExecutionError
-	Response           string
-	ItemID             string
-	FinishOnSavedProof bool
-}
+type agentTerminalTurn = hosted.TerminalTurn
 
-type agentResumedTurnMatch struct {
-	openOperations  []agentTurnRecord
-	boundOperations []string
-	// live: a matching operation is not terminal. Only then can the turn's
-	// reply text change an operation.
-	live bool
-}
+type agentResumedTurnMatch = hosted.ResumedTurnMatch
 
 // resumedTurnMatches scans the fleet once before prompt-store reads, which
 // must happen outside the execution lock. Only the reply's turns are indexed.
@@ -1458,14 +1446,14 @@ func (s *agentExecutionStore) resumedTurnMatches(hostedThreadID, provider, nativ
 		}
 		open := hostedThreadID != "" && rec.HostedThreadID == hostedThreadID && !agentTurnTerminal(rec.Status)
 		if open {
-			m.openOperations = append(m.openOperations, rec)
+			m.OpenOperations = append(m.OpenOperations, rec)
 		}
 		bound := boundToTurn(rec, provider, nativeThreadID, rec.ProviderTurnID)
 		if bound {
-			m.boundOperations = append(m.boundOperations, id)
+			m.BoundOperations = append(m.BoundOperations, id)
 		}
 		if (open || bound) && !agentTurnTerminal(rec.Status) {
-			m.live = true
+			m.Live = true
 		}
 	}
 	for i, turn := range turns {
@@ -1489,14 +1477,14 @@ func (s *agentExecutionStore) markResumedTurnsTerminal(hostedThreadID, provider,
 	changed := false
 	for i, turn := range turns {
 		m := matches[i]
-		for _, op := range m.openOperations {
+		for _, op := range m.OpenOperations {
 			if rec, found := s.turns[op.ID]; found && rec.HostedThreadID == hostedThreadID && rec.Provider == provider &&
 				rec.ProviderTurnID == turn.ProviderTurnID && !agentTurnTerminal(rec.Status) {
 				endedWhileDown[i] = true
 			}
 		}
 		chosen, count := "", 0
-		for _, id := range m.boundOperations {
+		for _, id := range m.BoundOperations {
 			rec, found := s.turns[id]
 			if !found || !boundToTurn(rec, provider, nativeThreadID, turn.ProviderTurnID) {
 				continue
@@ -1507,7 +1495,7 @@ func (s *agentExecutionStore) markResumedTurnsTerminal(hostedThreadID, provider,
 			}
 		}
 		if s.savedResultRead != nil {
-			for _, id := range m.boundOperations {
+			for _, id := range m.BoundOperations {
 				if rec, ok := s.turns[id]; ok && boundToTurn(rec, provider, nativeThreadID, turn.ProviderTurnID) && s.markTurnTerminalLocked(id, turn.Status, turn.Error, turn.Response, turn.ItemID) {
 					changed = true
 				}
@@ -1643,10 +1631,7 @@ func (s *agentExecutionStore) observeCandidateLocked(id, itemID, phase, response
 	return true
 }
 
-type agentResultMeta struct {
-	Bytes     int
-	Truncated bool
-}
+type agentResultMeta = hosted.ResultMeta
 
 func (s *agentExecutionStore) markTurnTerminal(provider, nativeThreadID, providerTurnID, status string, executionErr *agentExecutionError, response, itemID string, resultMeta ...agentResultMeta) error {
 	if s == nil || providerTurnID == "" {

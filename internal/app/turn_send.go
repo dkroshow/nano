@@ -1507,7 +1507,7 @@ const (
 // in the store, if promptActionRefusal allows its Discard: a queued prompt is
 // canceled, an uncertain or parked one expired. The operation that sent it
 // ends in the same transaction (endDiscardedOperation).
-func cancelQueuedTurnStores(queue *queuedTurnStore, ops *agentExecutionStore, actionID, by string) (queuedTurnRecord, error) {
+func cancelQueuedTurnStores(queue *queuedTurnStore, ops sessionExecutions, actionID, by string) (queuedTurnRecord, error) {
 	if queue == nil || queue.turns == nil {
 		return queuedTurnRecord{}, fmt.Errorf("transactional turns store is unavailable")
 	}
@@ -1553,7 +1553,7 @@ func cancelQueuedTurnStores(queue *queuedTurnStore, ops *agentExecutionStore, ac
 // never reached its provider. An operation already ended keeps its outcome,
 // and one waiting on its saved answer still takes it (markTurnDelivery); a
 // prompt no operation sent, such as a person's, has none.
-func endDiscardedOperation(queue *queuedTurnStore, ops *agentExecutionStore, prior prompts.Record, by string, end func(*sql.Tx) error) error {
+func endDiscardedOperation(queue *queuedTurnStore, ops sessionExecutions, prior prompts.Record, by string, end func(*sql.Tx) error) error {
 	op, found, err := ops.persistedTurnForTransportAction(context.Background(), prior.Outbox.HostedThreadID, prior.Outbox.ActionID)
 	if err != nil {
 		return err
