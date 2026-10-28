@@ -119,11 +119,11 @@ func (state *State) retainReemittable(name func(reemit map[string]bool)) {
 // An open turn keeps only the items a later record can still revise: the
 // ones a settled turn keeps (retainReemittable), the newest item of each type
 // (twin matching and the turn's final answer read it), every reasoning item,
-// and whatever an update, a process stream or a request still names. Codex
-// completes a growing reasoning record again under its native id, up to about
-// a thousand records later; other native ids repeat only in the next record
-// or two, and a call's output follows the call, so the rest belongs to the
-// consumer. Without this an open turn kept every
+// every item a native item_completed record made, and whatever an update, a
+// process stream or a request still names. Codex completes a native item
+// again under its id (a growing reasoning record up to about a thousand
+// records later); response rows never repeat an id, and a call's output
+// follows the call, so the rest belongs to the consumer. Without this an open turn kept every
 // item it had produced, and each append re-saved all of them.
 func (state *State) retainRevisable() {
 	keep := map[string]bool{}
@@ -153,7 +153,7 @@ func (state *State) retainRevisable() {
 		if !exists || settledOutcome(turn.Outcome) || keep[id] {
 			continue
 		}
-		if item.Type == model.ItemReasoning || item.Type == model.ItemUserMessage && turn.Scope.NativeTurnID == nil {
+		if item.SourcePayloadType == "item_completed" || item.Type == model.ItemReasoning || item.Type == model.ItemUserMessage && turn.Scope.NativeTurnID == nil {
 			continue
 		}
 		delete(state.Items, id)

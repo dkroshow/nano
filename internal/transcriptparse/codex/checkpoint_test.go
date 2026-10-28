@@ -51,6 +51,30 @@ func TestCodexOpenTurnCheckpointDropsSettledResults(t *testing.T) {
 	}
 }
 
+// Codex can complete a native item again under its id. Found in review: an
+// open turn that dropped a completed CommandExecution made its second
+// completion a second item, and history then moved the row's displayed
+// creation time. Boundary: the file checkpoint between two writes.
+func TestCodexOpenTurnKeepsNativeItemForRecompletion(t *testing.T) {
+	first := fixture(t, "capture-item-completed-commandexecution")
+	second := []byte(strings.Replace(string(first), "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z", 1))
+	view, _, err := parseFileView(parsedView{}, inputFor(first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, _ := json.Marshal(view)
+	var restored parsedView
+	if err := json.Unmarshal(checkpoint, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if view, _, err = parseFileView(restored, inputFor(second)); err != nil {
+		t.Fatal(err)
+	}
+	if items := orderedItems(view); len(items) != 1 || len(items[0].Observations) != 2 {
+		t.Fatalf("a second completion of one native item made %d items", len(items))
+	}
+}
+
 // A turn that never completes keeps its whole assembly in the continuation, so
 // encoding that state to measure it must not happen on every frame: one open
 // 2.5-hour turn made each wire frame re-encode hundreds of megabytes and the
