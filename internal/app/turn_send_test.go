@@ -2621,10 +2621,10 @@ func TestReattachSettlesSavedPromptsAndPublishesOnlyTheRest(t *testing.T) {
 				// from the outbox. A settled prompt is never published again,
 				// so no prompt is shown twice; unsettled prompts show once.
 				sess.liveText = newLiveTextLoop(h.server, sess)
-				sess.liveText.reset()
-				sess.liveText.seedOutbox()
+				liveTextOf(sess).reset()
+				liveTextOf(sess).seedOutbox()
 				actions, users := map[string]int{}, map[string]int{}
-				for _, entry := range sess.liveText.visible() {
+				for _, entry := range liveTextOf(sess).visible() {
 					if entry.Kind == "prompt" {
 						actions[entry.ActionID]++
 						users[strings.SplitN(entry.Text, "\n\n", 2)[0]]++

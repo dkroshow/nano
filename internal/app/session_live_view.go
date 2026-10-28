@@ -6,14 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/liveview"
 )
 
 // handleLiveStream is a file-only pane's one stream.
 func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
-	query, err := parseTranscriptListQuery(r)
+	pane, err := sess.liveText.requestPane(r)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -30,9 +33,8 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 	// and the stream ends so the browser reconnects to a fresh status.
 	updates, cancel := sess.projection.subscribe()
 	defer cancel()
-	pane := newLiveTextPane(query)
-	sess.liveText.subscribe(pane)
-	defer sess.liveText.unsubscribe(pane)
+	pane.start()
+	defer pane.stop()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -42,7 +44,10 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 	}
 	status := sess.projection.status()
 	writeStatus := func() bool {
-		raw, err := json.Marshal(liveTextMessage{Type: "status", Status: &status})
+		raw, err := json.Marshal(struct {
+			Type   string          `json:"type"`
+			Status *liveTextStatus `json:"status,omitempty"`
+		}{Type: "status", Status: &status})
 		return err == nil && write(raw)
 	}
 	if !writeStatus() {
@@ -55,14 +60,14 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-pane.done:
+		case <-pane.doneChannel():
 			// A failed read leaves its error message to deliver.
 			for _, raw := range pane.take() {
 				write(raw)
 			}
 			flusher.Flush()
 			return
-		case <-pane.ready:
+		case <-pane.readyChannel():
 			for _, raw := range pane.take() {
 				if !write(raw) {
 					return
@@ -76,7 +81,7 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 			if update.Revision <= status.Revision {
 				continue
 			}
-			next, changed := statusAfter(status, update)
+			next, changed := liveview.StatusAfter(status, update)
 			status = next
 			if changed {
 				if !writeStatus() {
@@ -96,34 +101,7 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 // fileConversationItems reads a file-only thread's saved rows for agents, in
 // the conversation item shape. Live text never appears here.
 func (sess *session) fileConversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
-	catalog, ok := sess.liveText.srv.catalog.(threadTranscriptCatalog)
-	if !ok {
-		return nil, nil, "", errors.New("catalog unavailable")
-	}
-	threadID, err := sess.liveText.catalogThreadID()
-	if errors.Is(err, errLiveTextNotIndexed) {
-		return []liveProjectionItem{}, &liveProjectionPage{}, "", nil
-	}
-	if err != nil {
-		return nil, nil, "", err
-	}
-	query := transcriptListQuery{View: defaultThreadTranscriptView, Before: before, Limit: min(limit, maxThreadTranscriptLimit)}
-	if view == conversationViewFull {
-		query.View, query.HiddenSpecified = devThreadTranscriptView, true
-	}
-	response, err := catalog.LoadTranscript(ctx, threadID, query)
-	if errors.Is(err, errCatalogThreadNotFound) {
-		return []liveProjectionItem{}, &liveProjectionPage{}, "", nil
-	}
-	if err != nil {
-		return nil, nil, "", err
-	}
-	items := make([]liveProjectionItem, 0, len(response.Items))
-	for _, row := range response.Items {
-		items = append(items, savedConversationItem(row))
-	}
-	page := &liveProjectionPage{HasMoreBefore: response.Page.HasMoreBefore, NextBeforeCursor: response.Page.NextBeforeCursor, Source: "file"}
-	return items, page, response.Projection.Key, nil
+	return sess.liveText.conversationItems(ctx, view, before, limit)
 }
 
 // fileConversationSnapshot is the agent snapshot of a file-only thread: saved
@@ -159,14 +137,9 @@ func (sess *session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 1}
-	if view == conversationViewFull {
-		query.View, query.HiddenSpecified = devThreadTranscriptView, true
-	}
-	pane := newLiveTextPane(query)
-	pane.rowsOnly = true
-	sess.liveText.subscribe(pane)
-	defer sess.liveText.unsubscribe(pane)
+	pane := sess.liveText.rowsPane(view)
+	pane.start()
+	defer pane.stop()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	write := func(value any) bool {
@@ -187,12 +160,14 @@ func (sess *session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		select {
 		case <-r.Context().Done():
 			return
-		case <-pane.done:
+		case <-pane.doneChannel():
 			return
-		case <-pane.ready:
+		case <-pane.readyChannel():
 			changed := false
 			for _, raw := range pane.take() {
-				var message liveTextMessage
+				var message struct {
+					Type string `json:"type"`
+				}
 				if json.Unmarshal(raw, &message) == nil && (message.Type == "tail" || message.Type == "update") {
 					changed = true
 				}
@@ -221,4 +196,33 @@ func (sess *session) handleFileConversationEvents(w http.ResponseWriter, r *http
 			flusher.Flush()
 		}
 	}
+}
+
+func parseConversationView(r *http.Request, defaultView conversationView) (conversationView, error) {
+	view := conversationView(strings.TrimSpace(r.URL.Query().Get("view")))
+	if view == "" {
+		view = defaultView
+	}
+	switch view {
+	case conversationViewFull, conversationViewMessages:
+		return view, nil
+	default:
+		return "", fmt.Errorf("view must be %q or %q", conversationViewMessages, conversationViewFull)
+	}
+}
+
+func parseConversationPage(r *http.Request) (string, int, error) {
+	before := strings.TrimSpace(r.URL.Query().Get("before"))
+	limit := transcriptFirstPaintRows
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value <= 0 {
+			return "", 0, errors.New("limit must be a positive integer")
+		}
+		limit = value
+	}
+	if limit > conversationPageMaxRows {
+		limit = conversationPageMaxRows
+	}
+	return before, limit, nil
 }

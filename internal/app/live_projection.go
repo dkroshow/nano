@@ -11,12 +11,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,11 +23,12 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
 const (
-	liveProjectionVersion        = 1
+	liveProjectionVersion        = liveview.Version
 	liveProjectionMaxBytes       = 2 << 20
 	liveProjectionTextCap        = 32 << 10
 	liveProjectionOutputCap      = 64 << 10
@@ -37,23 +36,23 @@ const (
 	liveProjectionStateTurnCap   = 256
 	liveProjectionItemPayloadCap = 96 << 10
 	liveProjectionTurnTail       = 5
-	transcriptFirstPaintRows     = 20
-	conversationPageMaxRows      = 100
+	transcriptFirstPaintRows     = liveview.FirstPaintRows
+	conversationPageMaxRows      = liveview.PageMaxRows
 )
 
 const (
-	projectionSnapshot          = "snapshot"
-	projectionTurnUpsert        = "turn.upsert"
-	projectionInteraction       = "interaction.upsert"
-	projectionInteractionRemove = "interaction.remove"
-	projectionMetaRefresh       = "meta.refresh"
+	projectionSnapshot          = liveview.SnapshotOp
+	projectionTurnUpsert        = liveview.TurnUpsertOp
+	projectionInteraction       = liveview.InteractionOp
+	projectionInteractionRemove = liveview.InteractionRemoveOp
+	projectionMetaRefresh       = liveview.MetaRefreshOp
 )
 
 type conversationView = liveview.View
 
 const (
-	conversationViewFull     conversationView = "full"
-	conversationViewMessages conversationView = "messages"
+	conversationViewFull     conversationView = liveview.Full
+	conversationViewMessages conversationView = liveview.Messages
 )
 
 // liveProjectionItem is intentionally provider-neutral at the wire boundary.
@@ -483,9 +482,9 @@ func (p *liveProjection) upsertTurnLocked(turn *liveProjectionTurn) {
 }
 
 func (p *liveProjection) updateRuntime(runtime liveProjectionRuntime) {
-	runtime = cloneRuntime(runtime)
+	runtime = liveview.CloneRuntime(runtime)
 	p.mu.Lock()
-	if runtimeEqual(p.runtime, runtime) {
+	if liveview.RuntimeEqual(p.runtime, runtime) {
 		p.mu.Unlock()
 		return
 	}
@@ -499,7 +498,7 @@ func (p *liveProjection) updateRuntime(runtime liveProjectionRuntime) {
 }
 
 func (p *liveProjection) updateTokenUsage(raw json.RawMessage) {
-	raw = truncateRawJSON(raw, 16<<10)
+	raw = liveview.TruncateJSON(raw, 16<<10)
 	p.mu.Lock()
 	if bytes.Equal(p.runtime.TokenUsage, raw) {
 		p.mu.Unlock()
@@ -511,7 +510,7 @@ func (p *liveProjection) updateTokenUsage(raw json.RawMessage) {
 }
 
 func (p *liveProjection) updateError(message string) {
-	message = truncateUTF8Live(message, 4<<10)
+	message = threads.TruncateText(message, 4<<10)
 	p.mu.Lock()
 	if p.runtime.LastError == message {
 		p.mu.Unlock()
@@ -588,8 +587,8 @@ func (p *liveProjection) completeTurnUnlessWorked(turnID string, version uint64,
 }
 
 func (p *liveProjection) updateCompletedTurnLocked(turnID, status string, durationMS int64, completedAtMs int64, turnError ...json.RawMessage) {
-	turnID = truncateUTF8Live(turnID, 256)
-	status = truncateUTF8Live(status, 64)
+	turnID = threads.TruncateText(turnID, 256)
+	status = threads.TruncateText(status, 64)
 	if turnID == "" {
 		return
 	}
@@ -658,7 +657,7 @@ func (p *liveProjection) turnList() []liveProjectionTurn {
 }
 
 func cloneRuntimePtr(runtime liveProjectionRuntime) *liveProjectionRuntime {
-	out := cloneRuntime(runtime)
+	out := liveview.CloneRuntime(runtime)
 	return &out
 }
 
@@ -684,7 +683,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (p *liveProjection) upsertInteraction(interaction pendingInteraction) {
-	interaction = cloneInteraction(interaction)
+	interaction = liveview.CloneInteraction(interaction)
 	p.mu.Lock()
 	if _, exists := p.interactions[interaction.ID]; !exists {
 		p.interactionOrder = append(p.interactionOrder, interaction.ID)
@@ -722,7 +721,7 @@ func (p *liveProjection) removeInteraction(id string) {
 func (p *liveProjection) interactionsLocked() []pendingInteraction {
 	interactions := make([]pendingInteraction, 0, len(p.interactions))
 	for _, interaction := range p.interactions {
-		interactions = append(interactions, cloneInteraction(interaction))
+		interactions = append(interactions, liveview.CloneInteraction(interaction))
 	}
 	sort.Slice(interactions, func(i, j int) bool { return timestampBefore(interactions[i].CreatedAt, interactions[j].CreatedAt) })
 	return interactions
@@ -733,7 +732,7 @@ func (p *liveProjection) interactionsLocked() []pendingInteraction {
 func (p *liveProjection) status() liveTextStatus {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return liveTextStatus{Epoch: p.epoch, Revision: p.revision, Runtime: cloneRuntime(p.runtime), Interactions: p.interactionsLocked()}
+	return liveTextStatus{Epoch: p.epoch, Revision: p.revision, Runtime: liveview.CloneRuntime(p.runtime), Interactions: p.interactionsLocked()}
 }
 
 // durableTurnEvidence is the saved status of one live turn, read by its exact
@@ -799,7 +798,7 @@ func (s *server) confirmDurableThread(ctx context.Context, change transcriptChan
 	// operation's wait.
 	s.agentExecutions.savedTranscriptApplied(provider, nativeThreadID)
 	if sess := s.sessionForThread(provider, nativeThreadID); sess != nil {
-		sess.liveText.applied()
+		sess.notifySavedTranscript()
 		s.confirmDurableItems(ctx, sess)
 	}
 	if provider == string(model.ProviderClaude) {
@@ -876,35 +875,6 @@ func (p *liveProjection) retainedTurnEvidence(turnID string) (liveProjectionTurn
 		latest, version = max(latest, work.atMs), work.version
 	}
 	return *turn, latest, version, true
-}
-
-func parseConversationView(r *http.Request, defaultView conversationView) (conversationView, error) {
-	view := conversationView(strings.TrimSpace(r.URL.Query().Get("view")))
-	if view == "" {
-		view = defaultView
-	}
-	switch view {
-	case conversationViewFull, conversationViewMessages:
-		return view, nil
-	default:
-		return "", fmt.Errorf("view must be %q or %q", conversationViewMessages, conversationViewFull)
-	}
-}
-
-func parseConversationPage(r *http.Request) (string, int, error) {
-	before := strings.TrimSpace(r.URL.Query().Get("before"))
-	limit := transcriptFirstPaintRows
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value <= 0 {
-			return "", 0, errors.New("limit must be a positive integer")
-		}
-		limit = value
-	}
-	if limit > conversationPageMaxRows {
-		limit = conversationPageMaxRows
-	}
-	return before, limit, nil
 }
 
 func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -1021,23 +991,6 @@ var liveItemPayloadKeys = []string{
 	"detail", "toolUseId", "phase", "status",
 }
 
-func truncateUTF8Live(value string, cap int) string {
-	if len(value) <= cap {
-		return value
-	}
-	for cap > 0 && cap < len(value) && (value[cap]&0xc0) == 0x80 {
-		cap--
-	}
-	return value[:cap]
-}
-
-func truncateRawJSON(raw json.RawMessage, cap int) json.RawMessage {
-	if len(raw) <= cap {
-		return append(json.RawMessage(nil), raw...)
-	}
-	return json.RawMessage(fmt.Sprintf(`{"truncated":true,"bytes":%d}`, len(raw)))
-}
-
 func rawString(values ...json.RawMessage) string {
 	for _, raw := range values {
 		var value string
@@ -1103,40 +1056,11 @@ func cloneTurn(turn *liveProjectionTurn) *liveProjectionTurn {
 		return nil
 	}
 	out := *turn
-	out.ID = truncateUTF8Live(out.ID, 256)
-	out.Status = truncateUTF8Live(out.Status, 64)
-	out.FinalItemID = truncateUTF8Live(out.FinalItemID, 256)
-	out.Error = truncateRawJSON(out.Error, 16<<10)
+	out.ID = threads.TruncateText(out.ID, 256)
+	out.Status = threads.TruncateText(out.Status, 64)
+	out.FinalItemID = threads.TruncateText(out.FinalItemID, 256)
+	out.Error = liveview.TruncateJSON(out.Error, 16<<10)
 	return &out
-}
-
-func cloneRuntime(runtime liveProjectionRuntime) liveProjectionRuntime {
-	out := runtime
-	out.SessionStatus = truncateUTF8Live(runtime.SessionStatus, 64)
-	out.ThreadStatus = truncateUTF8Live(runtime.ThreadStatus, 128)
-	out.TurnID = truncateUTF8Live(runtime.TurnID, 256)
-	out.LastError = truncateUTF8Live(runtime.LastError, 4<<10)
-	out.TokenUsage = truncateRawJSON(runtime.TokenUsage, 16<<10)
-	return out
-}
-
-func runtimeEqual(a, b liveProjectionRuntime) bool {
-	left, _ := json.Marshal(a)
-	right, _ := json.Marshal(b)
-	return bytes.Equal(left, right)
-}
-
-func cloneInteraction(interaction pendingInteraction) pendingInteraction {
-	interaction.ID = truncateUTF8Live(interaction.ID, 256)
-	interaction.Method = truncateUTF8Live(interaction.Method, 256)
-	interaction.Kind = truncateUTF8Live(interaction.Kind, 128)
-	interaction.ThreadID = truncateUTF8Live(interaction.ThreadID, 256)
-	interaction.TurnID = truncateUTF8Live(interaction.TurnID, 256)
-	interaction.ItemID = truncateUTF8Live(interaction.ItemID, 256)
-	interaction.CreatedAt = truncateUTF8Live(interaction.CreatedAt, 128)
-	interaction.ExpiresAt = truncateUTF8Live(interaction.ExpiresAt, 128)
-	interaction.Params = truncateRawJSON(interaction.Params, 8<<10)
-	return interaction
 }
 
 func cloneUpdate(update liveProjectionUpdate) liveProjectionUpdate {
@@ -1146,7 +1070,7 @@ func cloneUpdate(update liveProjectionUpdate) liveProjectionUpdate {
 		out.Runtime = cloneRuntimePtr(*update.Runtime)
 	}
 	if update.Interaction != nil {
-		interaction := cloneInteraction(*update.Interaction)
+		interaction := liveview.CloneInteraction(*update.Interaction)
 		out.Interaction = &interaction
 	}
 	if update.Snapshot != nil {

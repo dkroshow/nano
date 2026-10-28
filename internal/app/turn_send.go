@@ -822,7 +822,7 @@ func (sess *session) runTransactionalTurnSend(op *turnSendOperation, claimed pro
 }
 
 func (sess *session) publishTransactionalOutbox(entry prompts.OutboxEntry) {
-	sess.liveText.outboxChanged(entry)
+	sess.publishLiveOutbox(entry)
 }
 
 // restoreSubmissionOutbox recreates the presentation rows owned by unsettled
@@ -1036,7 +1036,7 @@ func settleThreadPromptsResolving(ctx context.Context, store *prompts.Store, sav
 					break
 				}
 				outcome = settlementHeld
-				live.sess.liveText.outboxChanged(held.Outbox)
+				live.sess.publishLiveOutbox(held.Outbox)
 				break
 			}
 			// Nano resends by itself only a prompt still accepted; one held
@@ -1067,7 +1067,7 @@ func settleThreadPromptsResolving(ctx context.Context, store *prompts.Store, sav
 			}
 			outcome = settlementHeld
 			if live != nil {
-				live.sess.liveText.outboxChanged(held.Outbox)
+				live.sess.publishLiveOutbox(held.Outbox)
 			}
 		}
 		results[entry.ActionID] = outcome
@@ -1250,7 +1250,7 @@ func claudeHandedAt(turnID string) (spool string, sequence int64, ok bool) {
 // publishResent shows a prompt resent for the next turn in place of the one
 // it retires, both in one live-text change.
 func (sess *session) publishResent(retired, resent prompts.Record) {
-	sess.liveText.outboxChanged(retired.Outbox, resent.Outbox)
+	sess.publishLiveOutbox(retired.Outbox, resent.Outbox)
 }
 
 // keepWaiting records one settlement pass: of the prompts it saw waiting,
@@ -1494,7 +1494,7 @@ func (sess *session) cancelQueuedTurnAction(actionID, by string) (queuedTurnReco
 	// Live text, which shows the prompt until a saved row settles it, drops
 	// it when told.
 	if record, _, err := sess.queuedTurns.turns.Get(context.Background(), actionID); err == nil {
-		sess.liveText.outboxChanged(record.Outbox)
+		sess.publishLiveOutbox(record.Outbox)
 	}
 	return queued, nil
 }

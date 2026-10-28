@@ -150,7 +150,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query transcript
 // open subscribes another pane and waits for its tail.
 func (h *liveTextHarness) open(query transcriptListQuery) *liveTextViewer {
 	v := &liveTextViewer{t: h.t, pane: newLiveTextPane(query), view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}}
-	h.sess.liveText.subscribe(v.pane)
+	liveTextOf(h.sess).subscribe(v.pane)
 	v.expect("tail", func(m liveTextMessage) bool { return m.Type == "tail" })
 	return v
 }
@@ -572,7 +572,7 @@ func TestLiveTextTailNamesPromptsWhoseSavedRowsItHolds(t *testing.T) {
 
 	later := &liveTextViewer{t: t, pane: newLiveTextPane(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}),
 		view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}}
-	h.sess.liveText.subscribe(later.pane)
+	liveTextOf(h.sess).subscribe(later.pane)
 	later.expect("its tail names the prompt whose row it holds, and only that one", func(m liveTextMessage) bool {
 		if m.Type != "tail" {
 			return false
@@ -597,7 +597,7 @@ func TestLiveTextTailFailsWhenItCannotNameItsSavedPrompts(t *testing.T) {
 	}
 	later := &liveTextViewer{t: t, pane: newLiveTextPane(transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40}),
 		view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}}
-	h.sess.liveText.subscribe(later.pane)
+	liveTextOf(h.sess).subscribe(later.pane)
 	later.expect("the pane fails", func(m liveTextMessage) bool {
 		if m.Type == "tail" {
 			t.Fatalf("a tail went out without its saved prompts: saved=%v", m.Saved)
@@ -736,7 +736,7 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 	turn := fixtureLines(t, "claude-turn.saved.jsonl")
 	reply := "reply:" + fixtureReply
 	unsaved := func(h *liveTextHarness) []browserDiagnosticEvent {
-		return h.sess.liveText.srv.browserDiagnostics.recent(10, "", "", "file.reply.unsaved")
+		return liveTextOf(h.sess).srv.browserDiagnostics.recent(10, "", "", "file.reply.unsaved")
 	}
 	finished := func(h *liveTextHarness) func(liveTextMessage) bool {
 		return func(liveTextMessage) bool { return h.view.reply() != nil && h.view.reply().State == "done" }
@@ -869,7 +869,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 			out["conversation "+string(view)] = rec.Body.String()
 		}
 		rec := httptest.NewRecorder()
-		h.sess.liveText.srv.handleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess)
+		liveTextOf(h.sess).srv.handleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess)
 		out["session history"] = rec.Body.String()
 		return out
 	}
@@ -1006,7 +1006,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			// A fresh loop restores the committed outbox instead of receiving
 			// fabricated live entries. The reopened operation cache is cleared
 			// to require the scoped committed lookup even after a failed reload.
-			h.sess.liveText.unsubscribe(h.pane)
+			liveTextOf(h.sess).unsubscribe(h.pane)
 			if tc.restart {
 				store, err = newControlAgentExecutionStore(control, "after-restart")
 				if err != nil {
@@ -1018,7 +1018,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			store.mu.Unlock()
 			fresh := &session{id: h.sess.id, hostedThreadID: h.sess.hostedThreadID, provider: "claude",
 				threadID: h.sess.threadID, projection: h.sess.projection, turns: h.sess.turns, agentExecutions: store}
-			h.sess.liveText.srv.startLiveText(fresh)
+			liveTextOf(h.sess).srv.startLiveText(fresh)
 			stream := httptest.NewServer(http.HandlerFunc(fresh.handleLiveStream))
 			defer stream.Close()
 			client := &http.Client{Timeout: 5 * time.Second}
@@ -1682,7 +1682,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	h.waitTurnEnded(codexFixtureTurn2)
 	agent := newLiveTextPane(query)
 	agent.rowsOnly = true // as handleFileConversationEvents subscribes
-	h.sess.liveText.subscribe(agent)
+	liveTextOf(h.sess).subscribe(agent)
 	h.barrier()
 	if h.view.reply() == nil {
 		t.Fatal("an agent stream opening cleared the operator's stopped reply")
@@ -2326,7 +2326,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	// Lose the old pane/session, as process exit does, but keep the provider
 	// file, history store and transactional delivery journal. Do not close a
 	// provider child: the restarted Nano attaches to the surviving shim.
-	h.sess.liveText.unsubscribe(h.pane)
+	liveTextOf(h.sess).unsubscribe(h.pane)
 	spool := []claudeTestFrame{recvFrame(1, string(wire[0])), sendFrame(2, string(saved[0])).turn(turn)}
 	for index, line := range wire[1:15] {
 		spool = append(spool, recvFrame(int64(index+3), string(line)).turn(turn))
@@ -2435,8 +2435,8 @@ func TestLiveTextEnhancedPaneOmitsDeveloperFields(t *testing.T) {
 	h.expect("saved rows", func(liveTextMessage) bool { return len(h.view.rows) >= 2 })
 	rawTail := func(query transcriptListQuery) string {
 		pane := newLiveTextPane(query)
-		h.sess.liveText.subscribe(pane)
-		defer h.sess.liveText.unsubscribe(pane)
+		liveTextOf(h.sess).subscribe(pane)
+		defer liveTextOf(h.sess).unsubscribe(pane)
 		deadline := time.Now().Add(20 * time.Second)
 		for time.Now().Before(deadline) {
 			select {

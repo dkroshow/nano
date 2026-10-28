@@ -187,7 +187,7 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 				receipt.Expired++
 				// An open pane drops an expired prompt only when told.
 				if sess := s.sessionForHostedThread(hosted); sess != nil {
-					sess.liveText.outboxChanged(current.Outbox)
+					sess.publishLiveOutbox(current.Outbox)
 				}
 			case current.Outbox.State == prompts.Confirmed:
 				receipt.Settled++

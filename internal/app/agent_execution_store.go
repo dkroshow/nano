@@ -9,15 +9,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/features/subscriptions"
-	"github.com/dkroshow/nano/internal/hosted"
-	"github.com/dkroshow/nano/internal/threads"
 	"log"
 	"maps"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -1902,7 +1903,7 @@ func boundAgentResult(value string) (string, int, bool) {
 	if original <= maxAgentResultBytes {
 		return value, original, false
 	}
-	return truncateUTF8Live(value, maxAgentResultBytes), original, true
+	return threads.TruncateText(value, maxAgentResultBytes), original, true
 }
 
 func touchAgentSession(rec *agentSessionRecord) {

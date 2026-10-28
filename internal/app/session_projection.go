@@ -179,7 +179,7 @@ func (sess *session) handleConversationView(w http.ResponseWriter, r *http.Reque
 	}
 	snapshot, err := sess.fileConversationSnapshot(r.Context(), view, before, limit)
 	if err != nil {
-		writeTranscriptBackendError(w, err)
+		sess.liveText.writeBackendError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, snapshot)

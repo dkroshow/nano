@@ -267,7 +267,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 	}
 	members := make(map[string]member)
 	leave := func(ref string, m member) {
-		m.sess.liveText.unsubscribe(m.pane)
+		liveTextOf(m.sess).unsubscribe(m.pane)
 		s.warm.release(ref)
 		delete(members, ref)
 	}
@@ -367,7 +367,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 			members[ref] = member{sess: sess, pane: pane, joining: true, joinedAt: now}
 			joining++
 			soonest(warmJoinWait)
-			sess.liveText.subscribe(pane)
+			liveTextOf(sess).subscribe(pane)
 			carried = append(carried, ref)
 		}
 		stream.refs.Store(int64(len(members)))

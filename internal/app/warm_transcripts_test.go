@@ -132,7 +132,7 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 	}
 	h.barrier()
 
-	h.sess.liveText.unsubscribe(h.pane)
+	liveTextOf(h.sess).unsubscribe(h.pane)
 	reads = h.catalogReads.Load()
 	warm.quiet("the thread is idle")
 	for range 5 {
@@ -255,7 +255,7 @@ func TestWarmStreamRetriesAFailedThreadWhenItsWaitRunsOut(t *testing.T) {
 	h := newLiveTextHarness(t)
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	h.sess.liveText.unsubscribe(h.pane)
+	liveTextOf(h.sess).unsubscribe(h.pane)
 	h.srv.catalog = &failOneRead{countingLiveTextCatalog: h.srv.catalog.(*countingLiveTextCatalog)}
 	h.srv.sessions = map[string]*session{h.sess.id: h.sess}
 

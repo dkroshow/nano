@@ -301,7 +301,7 @@ type session struct {
 	state                  map[string]json.RawMessage
 
 	// liveText is set for a provider switched to file-only transcripts.
-	liveText *liveTextLoop
+	liveText sessionLiveText
 }
 
 type sessionSummary struct {

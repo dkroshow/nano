@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -1663,27 +1662,4 @@ func savedConversationItem(row transcriptItem) liveProjectionItem {
 		TurnID: row.TurnID, Type: itemType, Category: row.Category, Role: row.Role, Phase: row.Phase, Text: row.Text,
 		Status: firstNonEmpty(row.Status, "completed"), Done: true, CreatedAt: createdAt, ToolName: row.ToolName, CallID: row.CallID,
 		ContentRef: row.ContentRef, ContentTruncated: row.ContentTruncated, OriginalBytes: int(row.OriginalBytes)}
-}
-
-// statusAfter is the status one projection update leaves, at that update's
-// revision. Each queued update is applied in turn, so a turn's start and end
-// that land while the stream is busy are both sent.
-func statusAfter(status liveTextStatus, update liveProjectionUpdate) (liveTextStatus, bool) {
-	next := status
-	next.Revision = update.Revision
-	// Row snapshots reach subscribers as compact row records without status;
-	// runtime and question changes each have their own update.
-	switch {
-	case update.Op == projectionTurnUpsert && update.Runtime != nil:
-		next.Runtime = cloneRuntime(*update.Runtime)
-	case update.Op == projectionInteraction && update.Interaction != nil:
-		next.Interactions = slices.DeleteFunc(slices.Clone(status.Interactions), func(interaction pendingInteraction) bool { return interaction.ID == update.Interaction.ID })
-		next.Interactions = append(next.Interactions, cloneInteraction(*update.Interaction))
-		slices.SortStableFunc(next.Interactions, func(a, b pendingInteraction) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
-	case update.Op == projectionInteractionRemove:
-		next.Interactions = slices.DeleteFunc(slices.Clone(status.Interactions), func(interaction pendingInteraction) bool { return interaction.ID == update.RequestID })
-	default:
-		return next, false
-	}
-	return next, !runtimeEqual(status.Runtime, next.Runtime) || !reflect.DeepEqual(status.Interactions, next.Interactions)
 }

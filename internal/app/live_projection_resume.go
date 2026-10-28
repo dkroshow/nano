@@ -1,13 +1,17 @@
 package app
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/dkroshow/nano/internal/threads"
+)
 
 // seedResumeTurns merges the provider's normalized prefix with already-live turns.
 func (p *liveProjection) seedResumeTurns(id string, seedTurns []*liveProjectionTurn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if id != "" {
-		p.nativeThread = truncateUTF8Live(id, 256)
+		p.nativeThread = threads.TruncateText(id, 256)
 	}
 	seedTurnOrder := make([]string, 0, len(seedTurns))
 	for _, turn := range seedTurns {
