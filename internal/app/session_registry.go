@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -202,4 +203,40 @@ func (s *sessionRegistry) volatileSummaries(needsAttention map[string]bool) []se
 		return summaries[i].ID < summaries[j].ID
 	})
 	return summaries
+}
+
+// attachmentSession includes exited attachments for explicit-close routing.
+func (s *sessionRegistry) attachmentSession(provider, nativeID string) *session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, sess := range s.sessions {
+		if sess.provider == provider && sess.currentThreadID() == nativeID {
+			return sess
+		}
+	}
+	return nil
+}
+
+// forgetDetachedClaude keeps registration excluded until durable forgetting ends.
+func (s *sessionRegistry) forgetDetachedClaude(nativeID string, forget func() error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, sess := range s.sessions {
+		if sess.provider == "claude" && sess.currentThreadID() == nativeID && sess.summary().Status != sessionStatusExited {
+			return fmt.Errorf("thread is attached; end its session before forgetting")
+		}
+	}
+	return forget()
+}
+
+// checkRetiredReferences excludes registration during the durable reference check.
+func (s *sessionRegistry) checkRetiredReferences(retired map[string]bool, checkDetached func() error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, sess := range s.sessions {
+		if retired[sess.hostedThreadID] || retired[sess.invokerHostedThreadID] {
+			return fmt.Errorf("retired identity still has a runtime attachment or invocation edge")
+		}
+	}
+	return checkDetached()
 }

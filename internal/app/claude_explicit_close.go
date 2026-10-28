@@ -8,14 +8,9 @@ func (s *server) forgetUnconfirmedClaude(attachment attachmentRecord, shimID, at
 	if attachment.ShimSessionID != shimID || attachment.AttachedAt != attachedAt {
 		return fmt.Errorf("attachment changed; refresh before forgetting")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sess := range s.sessions {
-		if sess.provider == "claude" && sess.currentThreadID() == attachment.NativeThreadID && sess.summary().Status != sessionStatusExited {
-			return fmt.Errorf("thread is attached; end its session before forgetting")
-		}
-	}
-	return s.attachments.forgetClosed(attachment)
+	return s.forgetDetachedClaude(attachment.NativeThreadID, func() error {
+		return s.attachments.forgetClosed(attachment)
+	})
 }
 
 // All helpers require relationshipMu. Legacy UI endpoints use the hosted
@@ -49,15 +44,7 @@ func (s *server) closeExplicitAttachment(attachment attachmentRecord) error {
 		}
 	}
 	// A stale detached control must not forget a runtime that has since resumed.
-	s.mu.Lock()
-	var live *session
-	for _, sess := range s.sessions {
-		if sess.provider == attachment.Provider && sess.currentThreadID() == attachment.NativeThreadID {
-			live = sess
-			break
-		}
-	}
-	s.mu.Unlock()
+	live := s.attachmentSession(attachment.Provider, attachment.NativeThreadID)
 	if live != nil {
 		return s.closeAgentSession(live)
 	}

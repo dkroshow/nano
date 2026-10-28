@@ -1787,15 +1787,9 @@ func (d *deliveryExpiries) recentLocked(provider string) []time.Time {
 // publishProviderRuntime republishes the runtime status of every session of
 // provider, so each pane sees that provider's delivery expiry count.
 func (s *server) publishProviderRuntime(provider string) {
-	s.mu.Lock()
-	sessions := make([]*session, 0, len(s.sessions))
-	for _, sess := range s.sessions {
+	for _, sess := range s.snapshotSessions() {
 		if sess.provider == provider {
-			sessions = append(sessions, sess)
+			sess.publishProjectionRuntime()
 		}
-	}
-	s.mu.Unlock()
-	for _, sess := range sessions {
-		sess.publishProjectionRuntime()
 	}
 }

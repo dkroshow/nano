@@ -240,13 +240,11 @@ func (s *server) runtimeDeltaSnapshot() runtimeDelta {
 		}
 		sessions[sum.ID] = ""
 	}
-	s.mu.Lock()
-	for id := range s.sessions {
-		if _, live := sessions[id]; !live {
-			sessions[id] = sessionStatusExited
+	for _, sess := range s.snapshotSessions() {
+		if _, live := sessions[sess.id]; !live {
+			sessions[sess.id] = sessionStatusExited
 		}
 	}
-	s.mu.Unlock()
 
 	s.runtimeSnapshotMu.Lock()
 	previous, previousSessions := s.runtimeSnapshot, s.runtimeSessions
@@ -324,16 +322,14 @@ func (d runtimeDelta) bounded() runtimeDelta {
 // two snapshots of the live session set and
 // the detached set since the last change.
 func (s *server) attachSessionChanges(delta *runtimeDelta, before, after map[string]string, summaries []sessionSummary) {
-	s.mu.Lock()
 	var changed []*session
-	for id, state := range after {
-		if previous, ok := before[id]; !ok || previous != state {
-			if sess := s.sessions[id]; sess != nil {
+	for _, sess := range s.snapshotSessions() {
+		if state, ok := after[sess.id]; ok {
+			if previous, ok := before[sess.id]; !ok || previous != state {
 				changed = append(changed, sess)
 			}
 		}
 	}
-	s.mu.Unlock()
 	for id := range before {
 		if _, ok := after[id]; !ok {
 			delta.RemovedSessions = append(delta.RemovedSessions, id)

@@ -23,20 +23,20 @@ func startSubscriptionDispatcher(s *server) {
 		return
 	}
 	d := subscriptions.NewDispatcher(s.agentExecutions.control.db, interact.NewHTTPClient(s.defaults.apiOrigin, nil), s.agentDisplay, log.Printf)
-	s.mu.Lock()
+	s.subscriptionMu.Lock()
 	s.subscriptions = d
-	s.mu.Unlock()
+	s.subscriptionMu.Unlock()
 	d.Start()
 }
 
 // sweepSubscriptions is every session's finished-turn hook. It takes the
-// server lock on its own goroutine, so a caller that holds that lock cannot
+// subscription lock on its own goroutine, so a caller that holds that lock cannot
 // deadlock on it.
 func (s *server) sweepSubscriptions(hostedThreadID string) {
 	go func() {
-		s.mu.Lock()
+		s.subscriptionMu.Lock()
 		d := s.subscriptions
-		s.mu.Unlock()
+		s.subscriptionMu.Unlock()
 		if d != nil {
 			d.Sweep(hostedThreadID)
 		}

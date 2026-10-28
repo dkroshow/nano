@@ -72,23 +72,18 @@ func (s *server) retireHostedRecords(ctx context.Context, request state.Retireme
 		}
 		// Runtime/attachment edges require a wider operation. Historical duplicate
 		// cleanup must not detach a provider or rewrite an attachment file.
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		for _, sess := range s.sessions {
-			if retired[sess.hostedThreadID] || retired[sess.invokerHostedThreadID] {
-				return fmt.Errorf("retired identity still has a runtime attachment or invocation edge")
-			}
-		}
-		if s.attachments != nil {
-			s.attachments.mu.Lock()
-			defer s.attachments.mu.Unlock()
-			for _, attachment := range s.attachments.byKey {
-				if retired[attachment.HostedThreadID] || retired[attachment.InvokerHostedThreadID] {
-					return fmt.Errorf("retired identity still has a durable attachment reference")
+		return s.checkRetiredReferences(retired, func() error {
+			if s.attachments != nil {
+				s.attachments.mu.Lock()
+				defer s.attachments.mu.Unlock()
+				for _, attachment := range s.attachments.byKey {
+					if retired[attachment.HostedThreadID] || retired[attachment.InvokerHostedThreadID] {
+						return fmt.Errorf("retired identity still has a durable attachment reference")
+					}
 				}
 			}
-		}
-		return nil
+			return nil
+		})
 	}
 	verify := func(tx *sql.Tx, targets []state.RetiredHostedRecord) error {
 		resolutions := []identityResolveResponse{}

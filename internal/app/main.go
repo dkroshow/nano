@@ -120,8 +120,9 @@ type server struct {
 	// agentExecutions is the durable provider-neutral control plane shared by
 	// every hosted thread: stable identities, action-correlated turns and results.
 	agentExecutions *agentExecutionStore
-	// subscriptions is set once, after boot, under mu.
-	subscriptions *subscriptionDispatcher
+	// subscriptions is set once, after boot, under subscriptionMu.
+	subscriptionMu sync.Mutex
+	subscriptions  *subscriptionDispatcher
 	// heartbeat owns the default-off wall-clock nudge scheduler and its
 	// sibling SQLite evidence; see docs/decisions/nano-heartbeat.md.
 	heartbeat      *heartbeatService
@@ -657,15 +658,7 @@ func (s *server) awaitInFlightDeliveries(until time.Time) stopReport {
 	sessions := s.snapshotSessions()
 	var inFlight []chan struct{}
 	for _, sess := range sessions {
-		sess.sendMu.Lock()
-		for _, op := range sess.sendOps {
-			select {
-			case <-op.done:
-			default:
-				inFlight = append(inFlight, op.done)
-			}
-		}
-		sess.sendMu.Unlock()
+		inFlight = append(inFlight, sess.inFlightDeliveries()...)
 	}
 	timer := time.NewTimer(time.Until(until))
 	defer timer.Stop()

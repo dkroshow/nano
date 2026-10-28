@@ -114,12 +114,10 @@ func (s *server) handleAgentSessionsList(w http.ResponseWriter, _ *http.Request)
 	// boot is still reattaching the thread (starting), so any other exited
 	// record is left out before its view costs any reads; the store keeps
 	// every record a thread ever had.
-	s.mu.Lock()
-	attached := make(map[string]bool, len(s.sessions))
-	for _, sess := range s.sessions {
+	attached := make(map[string]bool)
+	for _, sess := range s.snapshotSessions() {
 		attached[sess.hostedThreadID] = true
 	}
-	s.mu.Unlock()
 	records := s.agentExecutions.listSessions()
 	items := make([]agentSessionView, 0, len(records))
 	for _, record := range records {
