@@ -31,13 +31,13 @@ func TestMCPCacheDropsResultInvalidatedMidFetch(t *testing.T) {
 	cache := &inspection.MCPCache{}
 	_, generation := cache.Cached()
 	cache.Invalidate() // as if a startup notification landed mid-fetch
-	cache.Store(&mcpInventory{Servers: []mcpServer{{Name: "stale"}}}, generation)
+	cache.Store(&mcpInventory{Servers: []inspection.MCPServer{{Name: "stale"}}}, generation)
 	if cached, _ := cache.Cached(); cached != nil {
 		t.Errorf("cached a stale inventory: %+v", cached)
 	}
 
 	_, generation = cache.Cached()
-	cache.Store(&mcpInventory{Servers: []mcpServer{{Name: "fresh"}}}, generation)
+	cache.Store(&mcpInventory{Servers: []inspection.MCPServer{{Name: "fresh"}}}, generation)
 	cached, _ := cache.Cached()
 	if cached == nil || cached.Servers[0].Name != "fresh" {
 		t.Errorf("did not cache a current inventory: %+v", cached)
@@ -103,7 +103,7 @@ func TestMCPEndpointProjectsAndCaches(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
 		t.Fatal(err)
 	}
-	want := mcpInventory{Servers: []mcpServer{
+	want := mcpInventory{Servers: []inspection.MCPServer{
 		{Name: "docs", Tools: []string{"fetch_doc", "list_endpoints"}}, // sorted
 		{Name: "empty", Tools: []string{}},
 	}}

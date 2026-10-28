@@ -19,8 +19,6 @@ const (
 
 type permissionEvent = hosted.PermissionEvent
 
-type permissionEventPage = hosted.PermissionEventPage
-
 func isPermissionInteraction(p pendingInteraction) bool {
 	if p.Method == grokPermissionMethod {
 		return true

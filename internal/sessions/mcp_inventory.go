@@ -32,7 +32,6 @@ const mcpInventoryDetail = "toolsAndAuthOnly"
 // Deliberately not the raw response — codex_apps alone ships 244 KB of tool
 // schemas that nothing reads.
 type mcpInventory = inspection.MCPInventory
-type mcpServer = inspection.MCPServer
 
 // mcpServers returns the cached registry, fetching it from app-server on a
 // miss. The app-server call deliberately runs without the cache lock held: it
