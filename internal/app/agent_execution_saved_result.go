@@ -303,10 +303,10 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 		if err != nil {
 			return "", "", err
 		}
-		if answer.outcome != agentTurnCompleted {
+		if answer.Outcome != agentTurnCompleted {
 			return "", "", history.ErrSavedTranscriptUnavailable // an interrupted turn has no answer
 		}
-		return answer.text, answer.finalID, nil
+		return answer.Text, answer.FinalID, nil
 	}
 	// The prompt's binding must name the operation's thread and, except for
 	// Claude, whose execution turn is never saved, its provider turn.

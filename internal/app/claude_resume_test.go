@@ -199,12 +199,12 @@ func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID str
 		fixtureModel = "sonnet"
 	}
 	_, fixturePermission, _ := argvStripPair(record.Args, "--permission-mode")
-	for _, field := range []postureFieldValue{{field: "cwd", value: fixtureCwd}, {field: postureFieldModel, value: fixtureModel}, {field: postureFieldPermissionMode, value: fixturePermission}} {
-		if field.value == "" {
+	for _, field := range []postureFieldValue{{Field: "cwd", Value: fixtureCwd}, {Field: postureFieldModel, Value: fixtureModel}, {Field: postureFieldPermissionMode, Value: fixturePermission}} {
+		if field.Value == "" {
 			continue
 		}
-		key := fmt.Sprintf("fixture:%s:%d:%s:%s", hostedID, generation, field.field, field.value)
-		if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: field.field, Value: field.value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
+		key := fmt.Sprintf("fixture:%s:%d:%s:%s", hostedID, generation, field.Field, field.Value)
+		if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: field.Field, Value: field.Value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
 			t.Fatal(err)
 		}
 	}

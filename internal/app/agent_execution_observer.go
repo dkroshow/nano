@@ -337,7 +337,7 @@ func (sess *session) claudeResolver(ctx context.Context) func(string) string {
 // claudeAnswers is the one rule for this thread, read with the session's own
 // stores and saved readers.
 func (sess *session) claudeAnswers() claudeAnswers {
-	return claudeAnswers{hosted: sess.hostedThreadID, turns: sess.turns, ops: sess.agentExecutions, rows: sess.claudeSavedRows, final: sess.savedTurnFinal}
+	return newClaudeAnswers(sess.hostedThreadID, sess.turns, sess.agentExecutions, sess.claudeSavedRows, sess.savedTurnFinal)
 }
 
 // claudeSavedRows reads saved user rows in one exact native thread.

@@ -93,12 +93,12 @@ func seedBootAttachments(t *testing.T, s *server) {
 			}
 		}
 		_, fixturePermission, _ := argvStripPair(record.Args, "--permission-mode")
-		for _, fact := range []postureFieldValue{{field: "cwd", value: fixtureCwd}, {field: postureFieldModel, value: fixtureModel}, {field: postureFieldPermissionMode, value: fixturePermission}} {
-			if fact.value == "" {
+		for _, fact := range []postureFieldValue{{Field: "cwd", Value: fixtureCwd}, {Field: postureFieldModel, Value: fixtureModel}, {Field: postureFieldPermissionMode, Value: fixturePermission}} {
+			if fact.Value == "" {
 				continue
 			}
-			key := fmt.Sprintf("boot-fixture:%s:%d:%s:%s", record.HostedThreadID, generation, fact.field, fact.value)
-			if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: record.HostedThreadID, Field: fact.field, Value: fact.value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
+			key := fmt.Sprintf("boot-fixture:%s:%d:%s:%s", record.HostedThreadID, generation, fact.Field, fact.Value)
+			if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: record.HostedThreadID, Field: fact.Field, Value: fact.Value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
 				t.Fatal(err)
 			}
 		}

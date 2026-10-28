@@ -1130,12 +1130,8 @@ func (s *server) turnSubmissionDeliveryUnknown(record agentTurnRecord) bool {
 	if record.Status != agentTurnDeliveryPending || record.RunID == s.agentExecutions.runID {
 		return false
 	}
-	var attempts sessionJournal = s.sendAttempts
-	if sess := s.sessionForHostedThread(record.HostedThreadID); sess != nil && sess.sendAttempts != nil {
-		attempts = sess.sendAttempts
-	}
-	attempt, ok := attempts.Get(record.TransportActionID)
-	return ok && (attempt.Status == sendAttemptSending || attempt.Status == sendAttemptAccepted)
+	sess := s.sessionForHostedThread(record.HostedThreadID)
+	return sess.deliveryWasAttempted(record.TransportActionID, s.sendAttempts)
 }
 
 func (s *server) turnOperationID(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -1497,10 +1493,8 @@ func (s *server) closeAgentSession(sess *session) error {
 		attachment, remembered = s.attachments.get(sess.Provider(), sess.ThreadID())
 	}
 	if remembered && sess.Provider() == "claude" {
-		if c := sess.claudeHandle(); c != nil {
-			if tr, ok := c.tr.(*claudeShimTransport); ok && attachment.ShimSessionID != tr.shimSessionID {
-				return errors.New("Claude attachment changed; close refused")
-			}
+		if err := sess.verifyClaudeAttachment(attachment.ShimSessionID); err != nil {
+			return err
 		}
 	}
 	err := sess.closeWithResult()

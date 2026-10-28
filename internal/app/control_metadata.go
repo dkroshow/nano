@@ -1298,11 +1298,11 @@ func (s *controlMetadataStore) importLegacyAttachmentsUntil(records []attachment
 			continue
 		}
 		for _, fact := range []postureFieldValue{{"cwd", r.Cwd}, {postureFieldModel, r.Model}, {postureFieldServiceTier, r.TurnServiceTier}} {
-			if fact.value == "" {
+			if fact.Value == "" {
 				continue
 			}
-			keyMaterial := r.HostedThreadID + "\x00" + r.Provider + "\x00" + r.NativeThreadID + "\x00" + fact.field + "\x00" + fact.value
-			entry := metadataEvent{HostedThreadID: r.HostedThreadID, Field: fact.field, Value: fact.value, Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Evidence: "legacy_attachment_baseline", NativeThreadID: r.NativeThreadID, Freshness: metadataFreshnessHistorical, SourceEventKey: "legacy-attachment:" + agentHash([]byte(keyMaterial))}
+			keyMaterial := r.HostedThreadID + "\x00" + r.Provider + "\x00" + r.NativeThreadID + "\x00" + fact.Field + "\x00" + fact.Value
+			entry := metadataEvent{HostedThreadID: r.HostedThreadID, Field: fact.Field, Value: fact.Value, Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Evidence: "legacy_attachment_baseline", NativeThreadID: r.NativeThreadID, Freshness: metadataFreshnessHistorical, SourceEventKey: "legacy-attachment:" + agentHash([]byte(keyMaterial))}
 			if _, err := s.AppendEvent(entry); err != nil {
 				return err
 			}

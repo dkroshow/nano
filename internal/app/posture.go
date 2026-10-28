@@ -21,16 +21,16 @@ const (
 // Empty Value means the decision cleared the field.
 type postureEntry = hosted.PostureEntry
 
-type postureFieldValue struct{ field, value string }
+type postureFieldValue = hosted.FieldValue
 
 func postureEntriesFor(source, evidence string, fields ...postureFieldValue) []postureEntry {
 	entries := make([]postureEntry, 0, len(fields))
 	for _, field := range fields {
-		if field.value == "" {
+		if field.Value == "" {
 			continue
 		}
 		entries = append(entries, postureEntry{
-			Field: field.field, Value: field.value, Source: source, Evidence: evidence,
+			Field: field.Field, Value: field.Value, Source: source, Evidence: evidence,
 		})
 	}
 	return entries

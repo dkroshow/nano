@@ -40,15 +40,28 @@ type claudeAnswers struct {
 // claudeAnswer is one prompt's decided answer: the saved turn that consumed it
 // and that turn's outcome; a completed turn also gives its final row.
 type claudeAnswer struct {
-	native, generation, turn string
-	outcome                  string
-	text, finalID            string
+	// NativeID names the native thread whose saved turn consumed the prompt.
+	NativeID   string
+	generation string
+	// TurnID names that saved consuming turn.
+	TurnID string
+	// Outcome is the consuming turn's terminal outcome.
+	Outcome string
+	// Text is the completed turn's final saved answer.
+	Text string
+	// FinalID is the native identity of that final answer.
+	FinalID string
 }
 
 // errClaudeAnswerUndecided is a prompt whose answer the saved transcript does
 // not decide yet. It is the saved-transcript-unavailable outcome, so every
 // caller waits for the next catalog commit as it already does.
 var errClaudeAnswerUndecided = fmt.Errorf("%w: claude answer undecided", history.ErrSavedTranscriptUnavailable)
+
+// newClaudeAnswers supplies one hosted thread's prompt owner and saved readers.
+func newClaudeAnswers(hosted string, turns *prompts.Store, ops sessionExecutions, rows savedPromptNativeReader, final savedTurnFinalReader) claudeAnswers {
+	return claudeAnswers{hosted: hosted, turns: turns, ops: ops, rows: rows, final: final}
+}
 
 // answer decides entry's answer. entry is the prompt as settlement sees it
 // (claudeSettlementEntry): it must name an exact native thread and its own
@@ -94,19 +107,19 @@ func (a claudeAnswers) answer(ctx context.Context, entry prompts.OutboxEntry) (c
 			status = row.TurnStatus
 		}
 	}
-	decided := claudeAnswer{native: native, generation: generation, turn: turn}
+	decided := claudeAnswer{NativeID: native, generation: generation, TurnID: turn}
 	switch status {
 	case history.TurnCompleted:
-		decided.outcome = agentTurnCompleted
-		decided.text, decided.finalID, err = a.final(ctx, native, generation, turn)
+		decided.Outcome = agentTurnCompleted
+		decided.Text, decided.FinalID, err = a.final(ctx, native, generation, turn)
 		if err != nil {
 			return claudeAnswer{}, err
 		}
-		if decided.finalID == "" {
+		if decided.FinalID == "" {
 			return claudeAnswer{}, errClaudeAnswerUndecided
 		}
 	case history.TurnInterrupted:
-		decided.outcome = agentTurnInterrupted
+		decided.Outcome = agentTurnInterrupted
 	default:
 		return claudeAnswer{}, errClaudeAnswerUndecided
 	}
@@ -130,8 +143,8 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 		return
 	}
 	var executionErr *agentExecutionError
-	if answer.outcome != agentTurnCompleted {
-		executionErr = &agentExecutionError{Source: "provider", Code: answer.outcome, Message: "claude turn " + answer.outcome}
+	if answer.Outcome != agentTurnCompleted {
+		executionErr = &agentExecutionError{Source: "provider", Code: answer.Outcome, Message: "claude turn " + answer.Outcome}
 	}
 	owns := false
 	if record.ProviderTurnID != "" {
@@ -164,8 +177,8 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 				return &zero
 			}
 			usage := coreturns.Usage{InputTokens: counted(execution.UsageInputTokens), CachedInputTokens: counted(execution.UsageCachedInputTokens), OutputTokens: counted(execution.UsageOutputTokens)}
-			if _, _, err := store.Finished(ctx, coreturns.Finish{HostedThreadID: a.hosted, Provider: string(model.ProviderClaude), NativeThreadID: answer.native,
-				TurnID: record.ProviderTurnID, ActionID: record.Outbox.ActionID, FinalMessageID: answer.finalID, Outcome: answer.outcome, At: time.Now(), Source: "saved",
+			if _, _, err := store.Finished(ctx, coreturns.Finish{HostedThreadID: a.hosted, Provider: string(model.ProviderClaude), NativeThreadID: answer.NativeID,
+				TurnID: record.ProviderTurnID, ActionID: record.Outbox.ActionID, FinalMessageID: answer.FinalID, Outcome: answer.Outcome, At: time.Now(), Source: "saved",
 				Usage: usage}); err != nil {
 				log.Printf("Claude answer of %s on %s: finish its turn: %v", record.Outbox.ActionID, a.hosted, err)
 				return
@@ -189,7 +202,7 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 	if (!threadvalues.TurnTerminal(op.Status) || threadvalues.AnswerNotSaved(op)) && record.Outbox.State == prompts.Confirmed && owns {
 		// The answer is already read: it finishes the operation now, with no
 		// saved-result wait whose later commit no pass would revisit.
-		if err := a.ops.FinishResolvedTurn(op.ID, record.ProviderTurnID, answer.outcome, executionErr, answer.text, answer.finalID); err != nil {
+		if err := a.ops.FinishResolvedTurn(op.ID, record.ProviderTurnID, answer.Outcome, executionErr, answer.Text, answer.FinalID); err != nil {
 			log.Printf("Claude answer of %s on %s: finish operation %s: %v", record.Outbox.ActionID, a.hosted, op.ID, err)
 			return
 		}
@@ -198,7 +211,7 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 			return
 		}
 	}
-	holdsAnswer := op.Status == threadvalues.NormalizeTerminalStatus(answer.outcome) && (answer.outcome != agentTurnCompleted || op.FinalItemID == answer.finalID)
+	holdsAnswer := op.Status == threadvalues.NormalizeTerminalStatus(answer.Outcome) && (answer.Outcome != agentTurnCompleted || op.FinalItemID == answer.FinalID)
 	decidedElsewhere := threadvalues.TurnTerminal(op.Status) && !threadvalues.AnswerNotSaved(op)
 	if holdsAnswer || decidedElsewhere {
 		a.clearOwed(ctx, record)
@@ -209,7 +222,7 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 // stores and saved readers: an operation's answer, attached or not, and a
 // thread with no session.
 func (s *server) claudeAnswers(hosted string) claudeAnswers {
-	return claudeAnswers{hosted: hosted, turns: s.turns, ops: s.agentExecutions, rows: s.savedPromptRows, final: s.savedTurnFinal}
+	return newClaudeAnswers(hosted, s.turns, s.agentExecutions, s.savedPromptRows, s.savedTurnFinal)
 }
 
 func (a claudeAnswers) clearOwed(ctx context.Context, record prompts.Record) {

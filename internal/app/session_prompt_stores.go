@@ -106,3 +106,12 @@ func (sess *session) queuePositionOr(actionID string, fallback sessionQueue) int
 	}
 	return fallback.Position(actionID)
 }
+
+// deliveryWasAttempted reads acceptance/sending evidence from the attachment's journal.
+func (sess *session) deliveryWasAttempted(actionID string, fallback sessionJournal) bool {
+	if sess != nil && sess.sendAttempts != nil {
+		fallback = sess.sendAttempts
+	}
+	attempt, ok := fallback.Get(actionID)
+	return ok && (attempt.Status == sendAttemptSending || attempt.Status == sendAttemptAccepted)
+}

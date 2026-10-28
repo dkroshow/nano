@@ -113,7 +113,7 @@ func (s *server) publicCompletedTurn(ctx context.Context, hosted string, row com
 	answer, err := s.claudeAnswers(hosted).answer(ctx, claudeSettlementEntry(record.Outbox, record.NativeThreadID, "", resolve))
 	switch {
 	case err == nil:
-		item.FinalMessageID, item.Outcome, item.NativeThreadID, item.SavedTurnID = answer.finalID, answer.outcome, answer.native, answer.turn
+		item.FinalMessageID, item.Outcome, item.NativeThreadID, item.SavedTurnID = answer.FinalID, answer.Outcome, answer.NativeID, answer.TurnID
 		return item, true
 	case !errors.Is(err, history.ErrSavedTranscriptUnavailable) || item.Outcome == agentTurnCompleted:
 		return item, false
