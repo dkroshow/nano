@@ -66,56 +66,10 @@ func gateProblems(expected, served []gateRow) []string {
 	return problems
 }
 
-type gateCatalog struct {
+type restartCatalogFixture struct {
 	service *Service
 	handler *Handlers
-	roots   map[history.Provider]string
-}
-
-// newGateCatalog starts the real thread catalog over the named fixtures.
-// Codex fixtures are rollout files; Claude fixtures are project session files.
-// extraCodex holds generated rollouts, written before the catalog starts.
-func newGateCatalog(t *testing.T, codexFixtures, claudeFixtures []string, extraCodex ...string) *gateCatalog {
-	t.Helper()
-	codexRoot, claudeRoot := t.TempDir(), t.TempDir()
-	codexRaw := make([][]byte, 0, len(codexFixtures)+len(extraCodex))
-	for _, name := range codexFixtures {
-		codexRaw = append(codexRaw, readGateFixture(t, name))
-	}
-	for _, raw := range extraCodex {
-		codexRaw = append(codexRaw, []byte(raw))
-	}
-	for _, raw := range codexRaw {
-		writeGateFile(t, filepath.Join(codexRoot, "rollout-"+gateFixtureNativeID(t, raw)+".jsonl"), raw)
-	}
-	project := filepath.Join(claudeRoot, "-fixture-project")
-	for _, name := range claudeFixtures {
-		raw := readGateFixture(t, name)
-		writeGateFile(t, filepath.Join(project, gateFixtureNativeID(t, raw)+".jsonl"), raw)
-	}
-	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
-	service, err := newTestCatalogService(context.Background(), store, Options{
-		Roots: []history.SourceRoot{
-			{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: codexRoot},
-			{Provider: history.ProviderClaude, Kind: history.RootClaudeProjects, Path: claudeRoot},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { service.Close() })
-	select {
-	case <-service.catalogReady:
-	case <-time.After(time.Minute):
-		t.Fatal("catalog did not start")
-	}
-	service.RequestRefresh() // the explicit discovery a new store needs
-	return &gateCatalog{service: service, handler: NewHandlers(service),
-		roots: map[history.Provider]string{history.ProviderCodex: codexRoot, history.ProviderClaude: project}}
+	root    string
 }
 
 func readGateFixture(t *testing.T, name string) []byte {
@@ -137,35 +91,9 @@ func writeGateFile(t *testing.T, path string, raw []byte) {
 	}
 }
 
-// gateFixtureNativeID reads the provider thread id from the first row that
-// names one: Codex session_meta, or a Claude row's sessionId.
-func gateFixtureNativeID(t *testing.T, raw []byte) string {
-	t.Helper()
-	for _, line := range strings.Split(string(raw), "\n") {
-		var row struct {
-			Type      string `json:"type"`
-			SessionID string `json:"sessionId"`
-			Payload   struct {
-				ID string `json:"id"`
-			} `json:"payload"`
-		}
-		if json.Unmarshal([]byte(line), &row) != nil {
-			continue
-		}
-		if row.Type == "session_meta" && row.Payload.ID != "" {
-			return row.Payload.ID
-		}
-		if row.SessionID != "" {
-			return row.SessionID
-		}
-	}
-	t.Fatal("fixture names no native thread id")
-	return ""
-}
-
 // threadID waits until the catalog serves the thread with at least minRows
 // message or reasoning rows.
-func (c *gateCatalog) threadID(t *testing.T, nativeID string, minRows int) string {
+func (c *restartCatalogFixture) threadID(t *testing.T, nativeID string, minRows int) string {
 	t.Helper()
 	var id string
 	waitForCatalogWithin(t, time.Minute, func() bool {
@@ -181,7 +109,7 @@ func (c *gateCatalog) threadID(t *testing.T, nativeID string, minRows int) strin
 
 // servedTranscript reads GET /api/v1/threads/{id}/transcript with nothing
 // hidden, following every older page, and keeps message and reasoning rows.
-func (c *gateCatalog) servedTranscript(t *testing.T, threadID string) []gateRow {
+func (c *restartCatalogFixture) servedTranscript(t *testing.T, threadID string) []gateRow {
 	t.Helper()
 	var rows []gateRow
 	before := ""
@@ -240,3 +168,25 @@ func gateAgent(text string) gateRow { return gateRow{"assistant", "agent_message
 
 const gateShortPrompt = "is the build finished?"
 const gateShortAnswer = "Yes—it finished."
+
+func newRestartCatalog(t *testing.T) *restartCatalogFixture {
+	t.Helper()
+	root := t.TempDir()
+	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	service, err := newTestCatalogService(context.Background(), store, Options{Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: root}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(service.Close)
+	select {
+	case <-service.catalogReady:
+	case <-time.After(time.Minute):
+		t.Fatal("catalog did not start")
+	}
+	service.RequestRefresh()
+	return &restartCatalogFixture{service: service, handler: NewHandlers(service), root: root}
+}

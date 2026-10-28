@@ -1330,8 +1330,8 @@ func TestCatalogRestartServesWhatAScanStoppedBeforeSaving(t *testing.T) {
 		{"rewrite discovered, then growth read", raw, revised, revised + partial, revisedRows},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			catalog := newGateCatalog(t, nil, nil)
-			spec := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: catalog.roots[history.ProviderCodex]}
+			catalog := newRestartCatalog(t)
+			spec := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: catalog.root}
 			path := filepath.Join(spec.Path, "rollout-"+native+".jsonl")
 			if tc.indexed != "" {
 				writeGateFile(t, path, []byte(tc.indexed))
@@ -1410,7 +1410,7 @@ func TestCatalogRestartServesWhatAScanStoppedBeforeSaving(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			served := (&gateCatalog{service: restarted, handler: NewHandlers(restarted)}).servedTranscript(t, id)
+			served := (&restartCatalogFixture{service: restarted, handler: NewHandlers(restarted)}).servedTranscript(t, id)
 			assertGateRows(t, "transcript after the restart", tc.want, served)
 		})
 	}

@@ -58,6 +58,7 @@ type pendingTranscriptChange struct {
 }
 
 var (
+	// ErrInvalidThreadCatalogCursor reports a malformed catalog continuation cursor.
 	ErrInvalidThreadCatalogCursor = errors.New("invalid thread catalog cursor")
 	// errInvalidThreadName marks a rename rejected by the loader's name rules
 	// (trimmed, non-empty, ≤200 runes). It maps to a 400 invalid_name response.

@@ -10,6 +10,7 @@ import (
 // AuditScope selects the saved rows inspected by a transcript audit.
 type AuditScope string
 
+// AuditMessages selects conversational message rows for an audit.
 const AuditMessages AuditScope = "messages"
 
 // AuditReferenceRow is one bounded saved row used by the audit comparator.
@@ -88,6 +89,8 @@ func (s *Service) LoadTranscriptAuditReference(ctx context.Context, threadID, pr
 	return result, nil
 }
 
+// MaxAuditReference caps the rows in an audit reference window.
 const MaxAuditReference = 100
 
+// ErrAuditReferenceChanged reports a reference whose saved projection changed.
 var ErrAuditReferenceChanged = errors.New("transcript audit reference changed")

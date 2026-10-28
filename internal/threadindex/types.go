@@ -15,22 +15,31 @@ const (
 	// page's first row always comes with its complete supervisor chain, so a
 	// chain longer than the limit makes that page exceed it.
 	defaultThreadCatalogLimit = 100
-	MaxThreadCatalogLimit     = 250
-	maxThreadCatalogIDBytes   = 256
+	// MaxThreadCatalogLimit caps saved-thread windows.
+	MaxThreadCatalogLimit   = 250
+	maxThreadCatalogIDBytes = 256
 
 	defaultThreadTranscriptLimit = 40
+	// MaxThreadTranscriptLimit caps items in one transcript page.
 	MaxThreadTranscriptLimit     = 100
 	maxThreadTranscriptTurnLimit = 20
-	MaxThreadTranscriptBytes     = 256 << 10
-	MaxThreadEvidenceBytes       = 8 << 20
-	MaxThreadRetainedBodyBytes   = 8 << 20
-	DefaultThreadTranscriptView  = "enhanced"
-	DevThreadTranscriptView      = "dev"
-	legacyThreadTranscriptView   = "readable"
-	threadTranscriptTaxonomy     = "transcript-categories-v2"
-	clientClosedRequestStatus    = 499
-	CatalogEventHeartbeat        = 30 * time.Second
-	MaxThreadNameRequestBytes    = 4 << 10
+	// MaxThreadTranscriptBytes bounds a serialized transcript response.
+	MaxThreadTranscriptBytes = 256 << 10
+	// MaxThreadEvidenceBytes bounds native evidence returned by the API.
+	MaxThreadEvidenceBytes = 8 << 20
+	// MaxThreadRetainedBodyBytes bounds a retained-body response.
+	MaxThreadRetainedBodyBytes = 8 << 20
+	// DefaultThreadTranscriptView is the canonical enhanced message view.
+	DefaultThreadTranscriptView = "enhanced"
+	// DevThreadTranscriptView exposes the complete saved transcript taxonomy.
+	DevThreadTranscriptView    = "dev"
+	legacyThreadTranscriptView = "readable"
+	threadTranscriptTaxonomy   = "transcript-categories-v2"
+	clientClosedRequestStatus  = 499
+	// CatalogEventHeartbeat is the heartbeat interval used by the combined app event stream.
+	CatalogEventHeartbeat = 30 * time.Second
+	// MaxThreadNameRequestBytes bounds a name-write request body.
+	MaxThreadNameRequestBytes = 4 << 10
 )
 
 // enhancedHiddenCategories is the Enhanced view's default profile: every
@@ -38,7 +47,9 @@ const (
 var enhancedHiddenCategories = []string{"reasoning", "toolCall", "toolResult", "subagent", "system", "error", "unclassified"}
 
 var (
-	ErrThreadCatalogUnavailable      = errors.New("thread catalog unavailable")
+	// ErrThreadCatalogUnavailable reports an unavailable saved catalog.
+	ErrThreadCatalogUnavailable = errors.New("thread catalog unavailable")
+	// ErrCatalogThreadNotFound reports an unknown saved thread.
 	ErrCatalogThreadNotFound         = errors.New("catalog thread not found")
 	errInvalidTranscriptCursor       = errors.New("invalid transcript cursor")
 	errTranscriptCursorStale         = errors.New("transcript cursor stale")
@@ -114,6 +125,7 @@ type ThreadName struct {
 	Evidence   string `json:"evidence"`
 }
 
+// ThreadNameEvidence labels an operator-assigned name in catalog responses.
 const ThreadNameEvidence = "user_assigned"
 
 // Thread is saved catalog data, before application runtime and hosted overlays.

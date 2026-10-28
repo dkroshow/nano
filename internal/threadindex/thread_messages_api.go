@@ -17,9 +17,11 @@ import (
 )
 
 const (
+	// DefaultMessagesTail is the conversational tail length when none is requested.
 	DefaultMessagesTail = 20
 	// MaxMessagesTail rides the transcript page limit: the tail is
 	// assembled from transcript pages, so it cannot ask for more per page.
+	// MaxMessagesTail caps the conversational tail at the transcript page limit.
 	MaxMessagesTail = MaxThreadTranscriptLimit
 	// maxThreadMessagePages bounds the walk backwards. A page can be mostly
 	// non-message items, so one page does not always fill the tail; three is
@@ -28,10 +30,14 @@ const (
 	// MaxThreadReferenceCandidates bounds the list an ambiguous reference
 	// reports back.
 
+	// MessagesFormatText selects the plain-text conversational tail.
 	MessagesFormatText = "text"
+	// MessagesFormatJSON selects the structured conversational tail.
 	MessagesFormatJSON = "json"
 
-	MessageRoleUser  = "user"
+	// MessageRoleUser is a user-authored conversational message.
+	MessageRoleUser = "user"
+	// MessageRoleAgent is an agent-authored conversational message.
 	MessageRoleAgent = "agent"
 	// threadMessagesResponseReserve covers the small top-level object, commas,
 	// and count digits while per-message accounting uses actual JSON bytes.
