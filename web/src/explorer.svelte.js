@@ -1,5 +1,9 @@
 // Thread Explorer store. The explorer is a singleton surface (one read-only
-// catalog view), so this is a single module-level $state plus command functions.
+// catalog view), so this is a single module-level state object plus command
+// functions. Its row arrays (dataset, activeItems, windowItems and
+// historyScopes) are raw: every write replaces them whole, never edits a row
+// in place. Reading some 600 rows through deep proxies made each sidebar
+// update cost about 50 ms of main thread, which typing waited behind.
 // The seam with the backend is the versioned HTTP contract under /api/v1; this
 // module never reads provider files or invents metadata defaults.
 
@@ -24,31 +28,33 @@ export const ACTIVE_REFRESH_MS = 250
 const ACTIVE_REFRESH_RETRY_MS = 5000
 const ACTIVE_FLEET_LABELS = new Set(['working', 'needs_you', 'stale'])
 
-export const explorer = $state({
-  fetchParams: { ...DEFAULT_FETCH }, // change what the server sends → refetch
-  view: { ...DEFAULT_VIEW }, // sort/selections/ranges — applied locally, instant
-  dataset: [], // every thread of the fetched window, held whole in memory
-  datasetComplete: false, // false while window pages are still streaming in
-  datasetScope: 'empty', // empty | active | window
-  datasetSource: '',
-  sidebarBootState: 'idle', // idle | loading | ready | error
-  sidebarFallbackReason: '',
-  activeItems: [],
-  windowItems: [],
-  historicalCount: 0,
-  historyScopes: {},
-  listState: 'idle', // idle | loading | error
-  listError: null,
-  catalogVersion: null, // version the current dataset was fetched at
-  index: null, // GET /thread-index/status payload
-  indexError: null, // { op: 'status' | 'refresh', message } — which operation failed
-  selectedId: null,
-  detail: null,
-  detailState: 'idle', // idle | loading | error
-  detailError: null,
-  refreshRequested: false, // transient feedback for the manual refresh button
-  link: { epoch: 0, up: true }, // the catalog stream's freshness (lib/freshness.js railLink)
-})
+class ExplorerState {
+  fetchParams = $state({ ...DEFAULT_FETCH }) // change what the server sends → refetch
+  view = $state({ ...DEFAULT_VIEW }) // sort/selections/ranges — applied locally, instant
+  dataset = $state.raw([]) // every thread of the fetched window, held whole in memory
+  datasetComplete = $state(false) // false while window pages are still streaming in
+  datasetScope = $state('empty') // empty | active | window
+  datasetSource = $state('')
+  sidebarBootState = $state('idle') // idle | loading | ready | error
+  sidebarFallbackReason = $state('')
+  activeItems = $state.raw([])
+  windowItems = $state.raw([])
+  historicalCount = $state(0)
+  historyScopes = $state.raw({})
+  listState = $state('idle') // idle | loading | error
+  listError = $state(null)
+  catalogVersion = $state(null) // version the current dataset was fetched at
+  index = $state(null) // GET /thread-index/status payload
+  indexError = $state(null) // { op: 'status' | 'refresh', message } — which operation failed
+  selectedId = $state(null)
+  detail = $state(null)
+  detailState = $state('idle') // idle | loading | error
+  detailError = $state(null)
+  refreshRequested = $state(false) // transient feedback for the manual refresh button
+  link = $state({ epoch: 0, up: true }) // the catalog stream's freshness (lib/freshness.js railLink)
+}
+
+export const explorer = new ExplorerState()
 
 // Latest-request-wins dataset fetching. loadDataset aborts whatever window
 // fetch is in flight and starts fresh; the sequence number is belt-and-braces

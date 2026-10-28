@@ -4,7 +4,7 @@
 // The pure comparator is covered in explorer_local.test.js; this catches the
 // wrong-subtree/wrong-pipeline class by proving App actually renders that order
 // and preserves it when streamed activity changes updatedAt.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, fireEvent, render, within } from '@testing-library/svelte'
 import { tick } from 'svelte'
 import App from './App.svelte'
@@ -266,6 +266,38 @@ describe('compact sidebar active ordering', () => {
   // nothing restamped after a reconnect read "offline". A lost connection is the
   // page's state, not a row's: one banner says so, and rows keep what they
   // last showed. Boundary: the rendered sidebar.
+  // The sidebar's row arrays are raw state: the page sees a changed row only
+  // when a write replaces it, never when a row is edited in place. A sidebar
+  // event that renames a row must still change what the mounted row shows.
+  // Boundary: the mounted App, fed through the catalog stream.
+  it('shows a row a sidebar event renames', async () => {
+    const [older, newer] = explorer.dataset
+    __resetSidebarBootstrapForTest()
+    onTestFinished(() => __resetSidebarBootstrapForTest())
+    explorer.datasetComplete = false
+    explorer.datasetScope = 'active'
+    explorer.dataset = []
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      const target = String(url)
+      if (target === '/api/sessions') return response({ sessions, detached: [], defaults: {} })
+      if (target === '/api/v1/sidebar/threads') return response({ items: [older, newer], revision: 5, historicalCount: 0, catalogVersion: 1 })
+      if (target.startsWith('/api/v1/threads?')) return response({ items: [], catalogVersion: 1 })
+      return response({})
+    })
+    const { container } = render(App)
+    const catalog = await vi.waitFor(() => {
+      const source = MockEventSource.instances.findLast((es) => es.listeners.sidebar)
+      expect(source).toBeTruthy()
+      return source
+    })
+    catalog.emit('open')
+    catalog.emit('sidebar', { data: JSON.stringify({ revision: 5, refresh: true, historicalCount: 0, catalogVersion: 1 }) })
+    await vi.waitFor(() => expect(titles(container)).toContain('Older run'))
+    catalog.emit('sidebar', { data: JSON.stringify({ revision: 6, rows: [{ ...older, title: 'Older run, renamed' }], removedIds: [], historicalCount: 0, catalogVersion: 2 }) })
+    await vi.waitFor(() => expect(titles(container)).toContain('Older run, renamed'))
+    expect(titles(container)).not.toContain('Older run')
+  })
+
   it('shows one reconnecting banner while the stream is down and never a per-row offline', async () => {
     const external = {
       id: 'nth_external', provider: 'claude', nativeId: 'native-external', kind: 'subagent',
