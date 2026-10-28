@@ -45,7 +45,7 @@ The 17,169-row file sample counts in [the Grok file reference](grok-file.md) cou
 | `turn_completed` update | Provider notification: native prompt id, stop reason, optional usage. | Durable terminal counterpart. The file uses `_x.ai/session/update`; live can use `_x.ai/session_notification`. See terminal details below. |
 | `session/cancel` | Client notification: session id. | Request to interrupt; not evidence of completed interruption. Completion comes from provider evidence. No equivalent persisted request frame was found. |
 
-Code: session request [grok.go:139](../../internal/app/grok.go); identity/model [grok.go:387](../../internal/app/grok.go); model normalization [grok.go:451](../../internal/app/grok.go); resume [grok.go:501](../../internal/app/grok.go); exact queue matching [grok.go:698](../../internal/app/grok.go); terminal decoding [grok.go:819](../../internal/app/grok.go); prompt outcome [grok.go:935](../../internal/app/grok.go).
+Code: session request [grok.go](../../internal/sessions/grok.go); identity/model [grok.go](../../internal/sessions/grok.go); model normalization [grok.go](../../internal/sessions/grok.go); resume [grok.go](../../internal/sessions/grok.go); exact queue matching [grok.go](../../internal/sessions/grok.go); terminal decoding [grok.go](../../internal/sessions/grok.go); prompt outcome [grok.go](../../internal/sessions/grok.go).
 
 Model selection accepts `_meta.modelState.currentModelId`, `models.currentModelId`, or `_meta["x.ai/sessionDetail"].currentModelId`. These are native observations with different source fields. Do not describe a model-catalog default as the session's effective mode.
 
@@ -79,7 +79,7 @@ Filtering belongs to a **view of the stream**, not loss of the child's identity.
 
 The source file decoder has no equivalent attached-session predicate in `emitGrokUpdate`; it relies on file ownership. Unexpected foreign-session rows in a native file need a diagnostic rather than silent reassignment.
 
-[Ingress and replay: grok.go:537](../../internal/app/grok.go), [session predicate: grok.go:636](../../internal/app/grok.go), [current live conversion](../../internal/app/live_parse_grok.go).
+[Ingress and replay: grok.go](../../internal/sessions/grok.go), [session predicate: grok.go](../../internal/sessions/grok.go), [current live conversion](../../internal/app/live_parse_grok.go).
 
 ## Reverse requests and answers
 
@@ -95,7 +95,7 @@ The question parser is strict; the plan response parser is fail-soft. Refusing t
 
 Nano rejects missing session ids with `-32602` and unsupported reverse methods with `-32601`. An unrouted child's request is declined without parking a parent interaction. Bypass mode can auto-approve a native permission after recording audit evidence. The answer's author/origin is therefore not necessarily human.
 
-[Request handling: grok.go:980](../../internal/app/grok.go), [response handling: grok.go:1069](../../internal/app/grok.go), [verified reverse-request contract](../../docs/decisions/grok-native-leader.md).
+[Request handling: grok.go](../../internal/sessions/grok.go), [response handling: grok.go](../../internal/sessions/grok.go), [verified reverse-request contract](../../docs/decisions/grok-native-leader.md).
 
 ## Usage and errors
 
@@ -113,7 +113,7 @@ Nano redacts `rawOutput`, signature, env, hostname, agent identity and account p
 
 No live compaction notification, dedicated guardian shape, general elicitation method beyond the three reverse requests, or full binary/version matrix was verified. ACP filesystem and terminal reverse capabilities are not advertised by Nano. They must not be represented as supported just because ACP as a protocol can name them. These are explicit limits on mastery.
 
-[Redaction: grok.go:730](../../internal/app/grok.go). [Fixture catalog](../../internal/transcriptparse/grok/testdata/research/README.md) includes real scrubbed payloads, repository pairs, and constructed replay, terminal, interaction, damage and identity cases. Constructed cases show proposed semantics; they do not prove that a particular provider build emitted every optional field.
+[Redaction: grok.go](../../internal/sessions/grok.go). [Fixture catalog](../../internal/transcriptparse/grok/testdata/research/README.md) includes real scrubbed payloads, repository pairs, and constructed replay, terminal, interaction, damage and identity cases. Constructed cases show proposed semantics; they do not prove that a particular provider build emitted every optional field.
 
 ### Terminal authority refinement (2026-09-09)
 

@@ -43,7 +43,7 @@ transport observations. The constructed capture and checkpoint cases in
 `capture_test.go` exercise these rules; complete transport schema coverage is
 still pending.
 
-Spawn arguments: [claude.go:184](../../internal/app/claude.go). The code intentionally omits `--replay-user-messages`, since Nano already records its send lines. An optional echo from other clients is not a new human prompt. No provider-native snapshot-on-resume contract was established. Shim reattachment replays recorded traffic. A fresh `--resume` process reloads disk history but is not equivalent to that replay.
+Spawn arguments: [claude.go](../../internal/sessions/claude.go). The code intentionally omits `--replay-user-messages`, since Nano already records its send lines. An optional echo from other clients is not a new human prompt. No provider-native snapshot-on-resume contract was established. Shim reattachment replays recorded traffic. A fresh `--resume` process reloads disk history but is not equivalent to that replay.
 
 ## Coverage table
 
@@ -146,7 +146,7 @@ Code: old `live_projection.go:368` (the retired parser), old `live_projection.go
 
 `system.init` announces native session_id and configuration such as model, tools, mcp_servers, permissionMode, cwd, plugins, agents, skills or slash_commands. The exact inventory varies. Nano reads session_id/model/permissionMode and retains the raw init as session state. The survey also reports effort and output-style/memory information. Keep native configuration observations separate from accepted user settings and inferred model values.
 
-A child may be alive and ready before system.init appears. The 2.1.220 probe found init appeared only after the first user input. An init replay is old evidence; it must not override a later model-setting decision merely because replay was observed now. Code: [claude.go:924](../../internal/app/claude.go); [ready-on-transport decision](../../docs/decisions/claude-ready-on-transport.md).
+A child may be alive and ready before system.init appears. The 2.1.220 probe found init appeared only after the first user input. An init replay is old evidence; it must not override a later model-setting decision merely because replay was observed now. Code: [claude.go](../../internal/sessions/claude.go); [ready-on-transport decision](../../docs/decisions/claude-ready-on-transport.md).
 
 `system.status`, `system.thinking_tokens`, and `rate_limit_event` were observed by the 2.1.201 survey. Their full retained payload schemas were not available in the named fixtures. They belong to system facts or usage observations, not fabricated assistant messages. Their example fixtures deliberately contain only the known discriminator and mark the missing detail. The old adapter ignored them. No equivalent historical rate-limit event was found.
 
@@ -170,7 +170,7 @@ Result ends a Claude execution turn, not the long-lived process. Nano treats ter
 
 An error result **before** init can mean spawn/resume failure. The missing-transcript error is one known case. An error after init belongs to the turn. A process exit without result is separate evidence; absence of a terminal cannot prove success. An interrupt acknowledgment is also insufficient: idle and active sessions can acknowledge identically.
 
-Code: old `live_projection.go:3403` (the retired parser), [claude.go:890](../../internal/app/claude.go), [claude_control.go:318](../../internal/app/claude_control.go).
+Code: old `live_projection.go:3403` (the retired parser), [claude.go](../../internal/sessions/claude.go), [claude_control.go](../../internal/sessions/claude_control.go).
 
 ## Bidirectional control channel
 
@@ -237,7 +237,7 @@ link only when the scoped call is unambiguous. Controls alone do not establish
 a conversation turn. Later native calls and mixed result rows remain coverage
 gaps.
 
-Code: [claude_control.go:480](../../internal/app/claude_control.go), [interactions.go:259](../../internal/app/interactions.go). Fixture: [question/control/file answer](../../internal/transcriptparse/claude/testdata/research/question-control-and-file-answer/manifest.md).
+Code: [claude_control.go](../../internal/sessions/claude_control.go), [interactions.go](../../internal/sessions/interactions.go). Fixture: [question/control/file answer](../../internal/transcriptparse/claude/testdata/research/question-control-and-file-answer/manifest.md).
 
 ## Shim envelopes, replay and process state
 
@@ -272,9 +272,9 @@ Payload definitions: [cmd/claude-shim/server.go:92](../../cmd/claude-shim/server
 
 On reattach, receive requests are held until replay ends. An already recorded response proves an old dialog was answered. Only unmatched requests are rehydrated, merged with any pending arrays returned by initialize. Replaying the same seq is not another semantic event. Transport replay certainty depends on the complete spool and single attached client. A partial spool cannot justify the same conclusion.
 
-The source explicitly records that documented initialize pending arrays did not fire with an open stdio permission request. The spool fallback is therefore central, not optional polish. [claude_control.go:115](../../internal/app/claude_control.go), [claude_control.go:405](../../internal/app/claude_control.go).
+The source explicitly records that documented initialize pending arrays did not fire with an open stdio permission request. The spool fallback is therefore central, not optional polish. [claude_control.go](../../internal/sessions/claude_control.go), [claude_control.go](../../internal/sessions/claude_control.go).
 
-`session/line` ingestion suppresses already-seen seq values and passes the shim's original timestamp into delivery. [claude_shim_transport.go:424](../../internal/app/claude_shim_transport.go). A shim process can be running while its turn is idle; keep process state and turnActive separate. [cmd/claude-shim/session.go:309](../../cmd/claude-shim/session.go).
+`session/line` ingestion suppresses already-seen seq values and passes the shim's original timestamp into delivery. [claude_shim_transport.go](../../internal/sessions/claude_shim_transport.go). A shim process can be running while its turn is idle; keep process state and turnActive separate. [cmd/claude-shim/session.go:309](../../cmd/claude-shim/session.go).
 
 The shim scanner allows 64 MiB lines, while the historical parser defaults to 32 MiB. A line fitting the wire can exceed the file parser budget. Oversize and malformed transport failures need diagnostics with their own layer, not invented Claude error events.
 
