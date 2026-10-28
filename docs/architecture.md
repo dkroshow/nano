@@ -14,8 +14,9 @@ uses `internal/config` to parse every flag into one `Config` value before it ope
 store or a listener, builds the HTTP router (`routes.go`), and composes the
 session registry from `internal/sessions`. That package owns live attachments,
 provider connections, lifecycle application, prompt delivery and ordered wire
-events. The app keeps hosted identity and admission, catalog composition, and
-the live-text loop that reconciles saved rows with streamed output.
+events. `internal/hosted` owns hosted identity, admission and durable control adapters.
+The app composes its bounded runtime actions, catalog and sidebar projections,
+and the live-text loop that reconciles saved rows with streamed output.
 
 `internal/` also holds the packages the server is built from. Each package's doc
 comment states what it may depend on, and import tests hold the direction
@@ -23,6 +24,7 @@ for the parsing module, the state layer and lifecycle.
 
 | Package | Owns |
 | --- | --- |
+| `hosted` | Hosted identity/control APIs, admission ordering, metadata and execution adapters over the canonical thread/prompt/turn stores, and transcript pins. Sessions retain live state; catalog and sidebar projections are supplied by app. |
 | `sessions` | Live attachment state and its registry, provider wiring, lifecycle application, prompt delivery and wire ordering. It consumes owner services through explicit inputs and small interfaces; it never imports `app`. |
 | `providers`, `providers/{codex,claude,grok}` | The five turn operations and capability declaration of each provider adapter. Adapters take values and return normalized evidence; they never see the app. |
 | `wire`, `wire/{codex,claude,grok}` | The live connection to each runtime: Codex JSON-RPC over WebSocket, the Claude shim's framed stdio, Grok's ACP process. |

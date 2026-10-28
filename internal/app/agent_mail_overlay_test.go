@@ -296,13 +296,13 @@ func TestMailSchemaV16RebuildPreservesMailAndAdmitsOperator(t *testing.T) {
 		`INSERT INTO agent_message_refs(message_id,kind,id) VALUES('nmsg_v16','issue.ref','sample-task')`,
 		`INSERT INTO agent_message_events(message_id,kind,actor_kind,actor_hosted_id,at) VALUES('nmsg_v16','created','thread','nht_s','2026-09-01T00:00:00Z')`,
 	} {
-		if _, err := store.db.Exec(statement); err != nil {
+		if _, err := store.CanonicalDatabase().Exec(statement); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Downgrade: rebuild both tables with the v16 CHECKs and stamp version 16.
-	if _, err := store.db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+	if _, err := store.CanonicalDatabase().Exec(`PRAGMA foreign_keys = OFF`); err != nil {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
@@ -331,7 +331,7 @@ func TestMailSchemaV16RebuildPreservesMailAndAdmitsOperator(t *testing.T) {
 		`ALTER TABLE agent_message_events_v16 RENAME TO agent_message_events`,
 		`PRAGMA user_version = 16`,
 	} {
-		if _, err := store.db.Exec(statement); err != nil {
+		if _, err := store.CanonicalDatabase().Exec(statement); err != nil {
 			t.Fatalf("downgrade %q: %v", statement[:24], err)
 		}
 	}
@@ -346,19 +346,19 @@ func TestMailSchemaV16RebuildPreservesMailAndAdmitsOperator(t *testing.T) {
 	defer reopened.Close()
 	var body string
 	var refs, events int
-	if err := reopened.db.QueryRow(`SELECT body FROM agent_messages WHERE message_id='nmsg_v16'`).Scan(&body); err != nil {
+	if err := reopened.CanonicalDatabase().QueryRow(`SELECT body FROM agent_messages WHERE message_id='nmsg_v16'`).Scan(&body); err != nil {
 		t.Fatal(err)
 	}
-	_ = reopened.db.QueryRow(`SELECT count(*) FROM agent_message_refs WHERE message_id='nmsg_v16'`).Scan(&refs)
-	_ = reopened.db.QueryRow(`SELECT count(*) FROM agent_message_events WHERE message_id='nmsg_v16'`).Scan(&events)
+	_ = reopened.CanonicalDatabase().QueryRow(`SELECT count(*) FROM agent_message_refs WHERE message_id='nmsg_v16'`).Scan(&refs)
+	_ = reopened.CanonicalDatabase().QueryRow(`SELECT count(*) FROM agent_message_events WHERE message_id='nmsg_v16'`).Scan(&events)
 	if body != "Old mail" || refs != 1 || events != 1 {
 		t.Fatalf("migrated legacy row body=%q refs=%d events=%d", body, refs, events)
 	}
-	if _, err := reopened.db.Exec(`INSERT INTO agent_messages(message_id,client_message_id,request_hash,sender_key,sender_kind,origin,sender_name,recipient_hosted_id,seq,subject,body,status,created_at,updated_at)
+	if _, err := reopened.CanonicalDatabase().Exec(`INSERT INTO agent_messages(message_id,client_message_id,request_hash,sender_key,sender_kind,origin,sender_name,recipient_hosted_id,seq,subject,body,status,created_at,updated_at)
 		VALUES('nmsg_operator','op-after','hash2','operator','operator','operator','Operator','nht_r',2,'New','Operator mail','unread','2026-09-01T00:00:01Z','2026-09-01T00:00:01Z')`); err != nil {
 		t.Fatalf("operator row after legacy migration: %v", err)
 	}
-	if _, err := reopened.db.Exec(`INSERT INTO agent_message_events(message_id,kind,actor_kind,at) VALUES('nmsg_operator','edited','operator','2026-09-01T00:00:02Z')`); err != nil {
+	if _, err := reopened.CanonicalDatabase().Exec(`INSERT INTO agent_message_events(message_id,kind,actor_kind,at) VALUES('nmsg_operator','edited','operator','2026-09-01T00:00:02Z')`); err != nil {
 		t.Fatalf("edited event after legacy migration: %v", err)
 	}
 }

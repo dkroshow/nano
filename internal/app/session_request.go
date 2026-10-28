@@ -44,9 +44,4 @@ type spawnRequest struct {
 	externalResumeMetadata map[string]string `json:"-"`
 }
 
-// CreateHostedThreadRequest is the agent-facing creation shape. It shares the
-// server's spawn decoder because hosted-thread creation is one constrained
-// form of session creation.
-type CreateHostedThreadRequest = spawnRequest
-
 var errHostedControlUnavailable = errors.New("hosted control unavailable; new hosted sessions and resumes are disabled")

@@ -30,7 +30,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 	} {
 		t.Run(string(tc.work), func(t *testing.T) {
 			metadata, executions := newTestHostedControl(t)
-			record, err := executions.ensureSessionWithIdentity("nht_lifecycle_"+string(tc.work), "codex", presentationShared, "", "", "")
+			record, err := fixtureEnsureSessionWithIdentity(executions, "nht_lifecycle_"+string(tc.work), "codex", presentationShared, "", "", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -113,7 +113,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 
 	t.Run("detached", func(t *testing.T) {
 		metadata, executions := newTestHostedControl(t)
-		record, err := executions.ensureSessionWithIdentity("nht_lifecycle_detached", "codex", presentationShared, "", "", "")
+		record, err := fixtureEnsureSessionWithIdentity(executions, "nht_lifecycle_detached", "codex", presentationShared, "", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}

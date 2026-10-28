@@ -106,6 +106,7 @@ func TestDuplicateGateCheckerReportsMissingAndRepeatedRows(t *testing.T) {
 }
 
 type gateCatalog struct {
+	store   *history.Store
 	service *threadCatalogService
 	server  *server
 	roots   map[history.Provider]string
@@ -149,7 +150,7 @@ func newGateCatalog(t *testing.T, codexFixtures, claudeFixtures []string, extraC
 	t.Cleanup(func() { service.Close() })
 
 	service.RequestRefresh() // the explicit discovery a new store needs
-	return &gateCatalog{service: service, server: &server{catalog: service},
+	return &gateCatalog{store: store, service: service, server: &server{catalog: service},
 		roots: map[history.Provider]string{history.ProviderCodex: codexRoot, history.ProviderClaude: project}}
 }
 

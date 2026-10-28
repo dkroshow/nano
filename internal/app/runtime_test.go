@@ -145,9 +145,9 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 // hide the detached record behind it.
 func TestRuntimeForThreeStates(t *testing.T) {
 	attachments := newTestStore(t)
-	attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "codex-detached", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
-	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
-	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-exited", Cwd: "/c", AttachedAt: "2026-07-27T12:00:00Z"})
+	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "codex-detached", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
+	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
+	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-exited", Cwd: "/c", AttachedAt: "2026-07-27T12:00:00Z"})
 
 	active := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "codex-live", "model")
 	active.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"codex-live","turn":{"id":"turn-1","status":"inProgress","startedAt":1787600000}}}`))
@@ -198,7 +198,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 // session fields.
 func TestDetachedOverlayJSON(t *testing.T) {
 	attachments := newTestStore(t)
-	attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
+	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	s := &server{
 		catalog:     &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}}},
 		attachments: attachments,
@@ -222,7 +222,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 // bind and unbind fire.
 func TestAttachmentDismissNudgesRuntime(t *testing.T) {
 	s := &server{attachments: newTestStore(t), runtimeEvents: newRuntimeHub(), Registry: newSessionRegistry()}
-	s.attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "t-1", AttachedAt: "2026-07-27T10:00:00Z"})
+	s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "t-1", AttachedAt: "2026-07-27T10:00:00Z"})
 	nudges := s.runtimeEvents.subscribe()
 
 	rec := httptest.NewRecorder()
@@ -425,7 +425,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	now := time.Now()
 	s := &server{attachments: newTestStore(t), Registry: newSessionRegistry()}
 	for i := range 40 {
-		s.attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: fmt.Sprintf("parked-%02d", i), AttachedAt: "2026-07-27T10:00:00Z"})
+		s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: fmt.Sprintf("parked-%02d", i), AttachedAt: "2026-07-27T10:00:00Z"})
 	}
 	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
 	s.RegisterSession(memorySession(t, "s-0", "codex", "parked-00", "ready", "/w", "gpt-5.6-sol", now))
@@ -661,17 +661,6 @@ func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
 	}
 }
 
-// Publications can arrive out of order; a revision that moved back would hide
-// the hint a stale pane needs to re-read its metadata.
-func TestLatestRevisionNeverMovesBack(t *testing.T) {
-	store := &controlMetadataStore{}
-	store.publishChange("nht_a", 5, "model")
-	store.publishChange("nht_a", 3, "effort")
-	if got := store.latestRevision("nht_a"); got != 5 {
-		t.Fatalf("latestRevision = %d, want 5", got)
-	}
-}
-
 // The runtime snapshot that follows every boot registration read each detached
 // thread's presentation mode under its own execution-store lock, while
 // registrations hold that lock across their control-store writes. At a
@@ -680,11 +669,12 @@ func TestLatestRevisionNeverMovesBack(t *testing.T) {
 // attachment and execution stores while a writer keeps taking the lock.
 func TestRuntimeSnapshotWaitsForTheExecutionStoreOnce(t *testing.T) {
 	s, store := bootReattachServer(t, "", "")
+	migrateTestControl(t, s.controlMetadata)
 	const threads = 200
 	for i := 0; i < threads; i++ {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID = fmt.Sprintf("codex-thread-%d", i)
-		store.remember(rec)
+		store.Remember(rec)
 	}
 	seedBootAttachments(t, s)
 	// Several registrations and requests take the lock in turn, as at a
@@ -702,13 +692,13 @@ func TestRuntimeSnapshotWaitsForTheExecutionStoreOnce(t *testing.T) {
 					return
 				default:
 				}
-				s.agentExecutions.mu.Lock()
-				select {
-				case held <- struct{}{}:
-				default:
-				}
-				time.Sleep(5 * time.Millisecond)
-				s.agentExecutions.mu.Unlock()
+				fixtureExecutionLocked(t, s.agentExecutions, func() {
+					select {
+					case held <- struct{}{}:
+					default:
+					}
+					time.Sleep(5 * time.Millisecond)
+				})
 			}
 		}()
 	}

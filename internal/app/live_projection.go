@@ -750,7 +750,7 @@ func (s *server) confirmDurableThread(ctx context.Context, change threadindex.Tr
 	}
 	// Attached or not, the commit may hold an answer indexed after its
 	// operation's wait.
-	s.agentExecutions.savedTranscriptApplied(provider, nativeThreadID)
+	s.agentExecutions.SavedTranscriptApplied(provider, nativeThreadID)
 	if sess := s.SessionForThread(provider, nativeThreadID); sess != nil {
 		sess.NotifySavedTranscript()
 		s.confirmDurableItems(ctx, sess)
@@ -760,7 +760,7 @@ func (s *server) confirmDurableThread(ctx context.Context, change threadindex.Tr
 		// The commit can decide an answer a subscriber's feed waits on, and the
 		// owed pass finishes turns with no notice of their own: the owners'
 		// subscriptions read again (the dispatcher coalesces repeats).
-		owners, err := s.controlMetadata.nativeOwners(provider, nativeThreadID)
+		owners, err := s.controlMetadata.NativeOwners(provider, nativeThreadID)
 		if err != nil {
 			log.Printf("owners of %s unreadable: %v", nativeThreadID, err)
 		}

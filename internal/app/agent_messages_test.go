@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -218,7 +220,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 			if err := store.UpdateSession(recipient.ID, "", recipient.NativeThreadID, status, ""); err != nil {
 				t.Fatal(err)
 			}
-			recipient, _ = store.session(recipient.ID)
+			recipient, _ = store.Session(recipient.ID)
 			rec, message := sendAgentMessageForTest(t, s, recipient, sender.ID, "detached-"+status, "Status", "Stored only", nil)
 			if rec.Code != http.StatusCreated || message.Status != agentMessageUnread {
 				t.Fatalf("send = %d %+v %s", rec.Code, message, rec.Body.String())
@@ -241,13 +243,13 @@ func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := control.ensureHostedThread("nht_preserved", "codex", presentationShared, "", "", ""); err != nil {
+	if err := control.EnsureHostedThread("nht_preserved", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
 		`DROP TABLE agent_message_events`, `DROP TABLE agent_message_refs`, `DROP TABLE agent_messages`, `DROP TABLE agent_message_seq`, `PRAGMA user_version=15`,
 	} {
-		if _, err := control.db.Exec(statement); err != nil {
+		if _, err := control.CanonicalDatabase().Exec(statement); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -260,15 +262,15 @@ func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) 
 	}
 	defer control.Close()
 	var provider string
-	if err := control.db.QueryRow(`SELECT provider FROM hosted_threads WHERE hosted_thread_id='nht_preserved'`).Scan(&provider); err != nil || provider != "codex" {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT provider FROM hosted_threads WHERE hosted_thread_id='nht_preserved'`).Scan(&provider); err != nil || provider != "codex" {
 		t.Fatalf("preserved hosted row provider=%q err=%v", provider, err)
 	}
 	var version int
-	if err := control.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != controlSchemaVersion {
+	if err := control.CanonicalDatabase().QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != controlSchemaVersion {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	var mailRows int
-	if err := control.db.QueryRow(`SELECT count(*) FROM agent_messages`).Scan(&mailRows); err != nil || mailRows != 0 {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM agent_messages`).Scan(&mailRows); err != nil || mailRows != 0 {
 		t.Fatalf("legacy mail table rows=%d err=%v", mailRows, err)
 	}
 }
@@ -289,7 +291,7 @@ func TestAgentMailStoreCopiesLegacyRowsOnceAndLeavesSource(t *testing.T) {
 		`INSERT INTO agent_message_refs(message_id,kind,id) VALUES('nmsg_legacy','issue.ref','sample-task')`,
 	}
 	for _, statement := range statements {
-		if _, err := control.db.Exec(statement); err != nil {
+		if _, err := control.CanonicalDatabase().Exec(statement); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -318,7 +320,7 @@ func TestAgentMailStoreCopiesLegacyRowsOnceAndLeavesSource(t *testing.T) {
 		t.Fatalf("replayed migration report = %+v, want %+v", replay, report)
 	}
 	var sourceMessages int
-	if err := control.db.QueryRow(`SELECT count(*) FROM agent_messages WHERE message_id='nmsg_legacy'`).Scan(&sourceMessages); err != nil || sourceMessages != 1 {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM agent_messages WHERE message_id='nmsg_legacy'`).Scan(&sourceMessages); err != nil || sourceMessages != 1 {
 		t.Fatalf("legacy source rows=%d err=%v", sourceMessages, err)
 	}
 }
@@ -383,17 +385,17 @@ func TestAgentMailRetentionDefaultsOffAndDeletesOnlyExpiredDispositionedMail(t *
 func TestControlMetadataAgentInboxIntegrityRejectsCorruptStatusAndSequence(t *testing.T) {
 	t.Run("invalid status", func(t *testing.T) {
 		control := newTestControlMetadata(t)
-		if _, err := control.db.Exec(`PRAGMA ignore_check_constraints=ON`); err != nil {
+		if _, err := control.CanonicalDatabase().Exec(`PRAGMA ignore_check_constraints=ON`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := control.db.Exec(`INSERT INTO agent_message_seq(recipient_hosted_id,next_seq) VALUES('recipient',2)`); err != nil {
+		if _, err := control.CanonicalDatabase().Exec(`INSERT INTO agent_message_seq(recipient_hosted_id,next_seq) VALUES('recipient',2)`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := control.db.Exec(`INSERT INTO agent_messages(message_id,client_message_id,request_hash,sender_key,sender_kind,origin,recipient_hosted_id,seq,subject,body,status,created_at,updated_at)
+		if _, err := control.CanonicalDatabase().Exec(`INSERT INTO agent_messages(message_id,client_message_id,request_hash,sender_key,sender_kind,origin,recipient_hosted_id,seq,subject,body,status,created_at,updated_at)
 			VALUES('nmsg_bad_status','bad-status','hash','sender','thread','agent','recipient',1,'','body','unknown','2026-08-27T00:00:00Z','2026-08-27T00:00:00Z')`); err != nil {
 			t.Fatal(err)
 		}
-		if err := control.integrityCheck(); err == nil || !strings.Contains(err.Error(), "agent message rows have invalid") {
+		if err := state.CheckMetadataIntegrity(control.CanonicalDatabase(), statewiring.Migrations()); err == nil || !strings.Contains(err.Error(), "agent message rows have invalid") {
 			t.Fatalf("integrity check error = %v", err)
 		}
 	})
@@ -411,11 +413,11 @@ func TestControlMetadataAgentInboxIntegrityRejectsCorruptStatusAndSequence(t *te
 			`INSERT INTO agent_message_seq(recipient_hosted_id,next_seq) VALUES('recipient',2)`,
 			`INSERT INTO agent_messages(message_id,recipient_hosted_id,seq,status) VALUES('nmsg_one','recipient',1,'unread'),('nmsg_two','recipient',1,'seen')`,
 		} {
-			if _, err := control.db.Exec(statement); err != nil {
+			if _, err := control.CanonicalDatabase().Exec(statement); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if err := control.integrityCheck(); err == nil || !strings.Contains(err.Error(), "agent message rows have invalid") {
+		if err := state.CheckMetadataIntegrity(control.CanonicalDatabase(), statewiring.Migrations()); err == nil || !strings.Contains(err.Error(), "agent message rows have invalid") {
 			t.Fatalf("integrity check error = %v", err)
 		}
 	})
@@ -462,7 +464,7 @@ func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 
 func mustAgentTurn(t *testing.T, s *server, hostedID, actionID string) agentTurnRecord {
 	t.Helper()
-	record, ok := s.agentExecutions.turnForAction(hostedID, actionID)
+	record, ok := fixtureTurnForAction(s.agentExecutions, hostedID, actionID)
 	if !ok {
 		t.Fatalf("turn %s missing", actionID)
 	}
@@ -512,7 +514,7 @@ func TestPromptUsesNoticeSnapshotWithoutReadingMailStore(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit=%d %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := store.turnForAction(recipient.ID, "notice-snapshot"); !ok {
+	if _, ok := fixtureTurnForAction(store, recipient.ID, "notice-snapshot"); !ok {
 		t.Fatal("notice-backed prompt did not create an operation")
 	}
 	select {

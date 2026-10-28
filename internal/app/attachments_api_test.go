@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"encoding/json"
 	"net/http"
@@ -9,9 +11,9 @@ import (
 	"time"
 )
 
-func serverWithAttachments(t *testing.T) (*server, *attachmentStore) {
+func serverWithAttachments(t *testing.T) (*server, *hostedstore.AttachmentStore) {
 	t.Helper()
-	store, err := newAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	store, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +35,8 @@ func liveSession(t *testing.T, id, threadID string) *session {
 // sessions map.
 func TestSessionsGETSurfacesDetached(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.remember(attach("t-live", "/a", "2026-07-25T10:00:00Z"))
-	store.remember(attach("t-detached", "/b", "2026-07-25T11:00:00Z"))
+	store.Remember(attach("t-live", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attach("t-detached", "/b", "2026-07-25T11:00:00Z"))
 	s.RegisterSession(liveSession(t, "sess1", "t-live"))
 
 	rec := httptest.NewRecorder()
@@ -59,7 +61,7 @@ func TestSessionsGETSurfacesDetached(t *testing.T) {
 // not hide the durable attachment's retry row after a failed resume.
 func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.remember(attach("t-retry", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attach("t-retry", "/a", "2026-07-25T10:00:00Z"))
 	exited := liveSession(t, "sess-exited", "t-retry")
 	exited.Close()
 	s.RegisterSession(exited)
@@ -87,7 +89,7 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 // detached, not resurrected as a ghost.
 func TestSessionDeleteForgetsAttachment(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
 	s.RegisterSession(liveSession(t, "sess1", "t-1"))
 
 	rec := httptest.NewRecorder()
@@ -95,7 +97,7 @@ func TestSessionDeleteForgetsAttachment(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("DELETE code = %d", rec.Code)
 	}
-	if got := store.detachedExcept(nil); len(got) != 0 {
+	if got := store.DetachedExcept(nil); len(got) != 0 {
 		t.Fatalf("attachment survived explicit close: %+v", got)
 	}
 }
@@ -104,8 +106,8 @@ func TestSessionDeleteForgetsAttachment(t *testing.T) {
 // hiding each other's detached row: the live map is keyed by provider too.
 func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.remember(attachmentRecord{
+	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attachmentRecord{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		Cwd:            "/b",
@@ -131,8 +133,8 @@ func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 // same-id record under another provider is somebody else's session.
 func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.remember(attachmentRecord{
+	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attachmentRecord{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",
@@ -144,7 +146,7 @@ func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("DELETE code = %d", rec.Code)
 	}
-	got := store.detachedExcept(nil)
+	got := store.DetachedExcept(nil)
 	if len(got) != 1 || got[0].Provider != "claude" {
 		t.Fatalf("after close = %+v, want the claude record untouched", got)
 	}
@@ -153,32 +155,32 @@ func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 // A bare DELETE cannot widen a close to multiple providers.
 func TestAttachmentDismissProviderParam(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
 	claudeRec := attachmentRecord{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",
 	}
-	store.remember(claudeRec)
+	store.Remember(claudeRec)
 
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared?provider=codex", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("scoped dismiss code = %d", rec.Code)
 	}
-	got := store.detachedExcept(nil)
+	got := store.DetachedExcept(nil)
 	if len(got) != 1 || got[0].Provider != "claude" {
 		t.Fatalf("scoped dismiss = %+v, want only the claude record left", got)
 	}
 
 	// Restore the codex record; ambiguous dismissal must preserve both.
-	store.remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
 	rec = httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared", nil))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("bare dismiss code = %d", rec.Code)
 	}
-	if got := store.detachedExcept(nil); len(got) != 2 {
+	if got := store.DetachedExcept(nil); len(got) != 2 {
 		t.Fatalf("ambiguous dismiss changed records: %+v", got)
 	}
 }
@@ -187,14 +189,14 @@ func TestAttachmentDismissProviderParam(t *testing.T) {
 // and is idempotent for an unknown id.
 func TestAttachmentDismissEndpoint(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
 
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/t-1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("dismiss code = %d", rec.Code)
 	}
-	if got := store.detachedExcept(nil); len(got) != 0 {
+	if got := store.DetachedExcept(nil); len(got) != 0 {
 		t.Fatalf("dismiss left record: %+v", got)
 	}
 

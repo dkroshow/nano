@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -29,14 +28,14 @@ func newBulkCloseTestServer(t *testing.T) (*server, *agentExecutionStore, *contr
 
 func createBulkCloseMember(t *testing.T, store *agentExecutionStore, clientID string, invoker agentSessionRecord) agentSessionRecord {
 	t.Helper()
-	record, _, err := store.beginSessionWithInvoker(clientID, clientID+"-hash", "codex", presentationShared, invoker)
+	record, _, err := fixtureBeginSessionWithInvoker(store, clientID, clientID+"-hash", "codex", presentationShared, invoker)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.BindSession(record.ID, "nano-"+clientID, "native-"+clientID, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	record, _ = store.session(record.ID)
+	record, _ = store.Session(record.ID)
 	return record
 }
 
@@ -70,13 +69,13 @@ func bulkClosePreviewRequest(t *testing.T, s *server, rootID string) (int, bulkC
 }
 
 func TestBulkCloseUsesCurrentRelationshipTreeNotImmutableInvokerLineage(t *testing.T) {
-	s, store, control := newBulkCloseTestServer(t)
+	s, store, _ := newBulkCloseTestServer(t)
 	rootA := createBulkCloseMember(t, store, "root-a", agentSessionRecord{})
 	rootC := createBulkCloseMember(t, store, "root-c", agentSessionRecord{})
 	staysWithA := createBulkCloseMember(t, store, "stays-a", rootA)
 	movedToC := createBulkCloseMember(t, store, "moved-c", rootA)
 	movedChild := createBulkCloseMember(t, store, "moved-child", movedToC)
-	if _, err := control.appendOrchestrationAssignment(movedToC.ID, "move-to-c", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(store, movedToC.ID, "move-to-c", &orchestrationAssignment{
 		AssignmentRole: "worker", Focus: "Now belongs to C", RelatedHostedThreadID: rootC.ID,
 	}); err != nil {
 		t.Fatal(err)
@@ -94,13 +93,13 @@ func TestBulkCloseUsesCurrentRelationshipTreeNotImmutableInvokerLineage(t *testi
 		t.Fatalf("bulk close A = %d %+v", status, response)
 	}
 	for _, record := range []agentSessionRecord{rootA, staysWithA} {
-		closed, _ := store.session(record.ID)
+		closed, _ := store.Session(record.ID)
 		if closed.Status != sessionStatusExited {
 			t.Fatalf("member %s status = %q, want exited", record.ID, closed.Status)
 		}
 	}
 	for _, record := range []agentSessionRecord{rootC, movedToC, movedChild} {
-		open, _ := store.session(record.ID)
+		open, _ := store.Session(record.ID)
 		if open.Status == sessionStatusExited {
 			t.Fatalf("reassigned C-tree member %s was closed with A", record.ID)
 		}
@@ -108,17 +107,17 @@ func TestBulkCloseUsesCurrentRelationshipTreeNotImmutableInvokerLineage(t *testi
 }
 
 func TestBulkCloseExcludesStandaloneInvocationButAssignmentOverrides(t *testing.T) {
-	s, store, control := newBulkCloseTestServer(t)
+	s, store, _ := newBulkCloseTestServer(t)
 	root := createBulkCloseMember(t, store, "root", agentSessionRecord{})
 	standalone := createBulkCloseMember(t, store, "standalone", root)
-	if _, _, _, err := store.setSidebarPlacement(standalone.ID, sidebarPlacementStandalone); err != nil {
+	if _, _, _, err := store.SetSidebarPlacement(standalone.ID, sidebarPlacementStandalone); err != nil {
 		t.Fatal(err)
 	}
 	status, preview := bulkClosePreviewRequest(t, s, root.ID)
 	if status != http.StatusOK || preview.MemberCount != 1 {
 		t.Fatalf("standalone preview = %d %+v", status, preview)
 	}
-	if _, err := control.appendOrchestrationAssignment(standalone.ID, "assign", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(store, standalone.ID, "assign", &orchestrationAssignment{
 		AssignmentRole: "worker", Focus: "Operational child", RelatedHostedThreadID: root.ID,
 	}); err != nil {
 		t.Fatal(err)
@@ -136,7 +135,7 @@ func TestBulkCloseKeepsResumedHostedAliasesInOneVisibleTree(t *testing.T) {
 	if err := store.UpdateSession(oldRoot.ID, "", "", sessionStatusExited, "closed"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at=? WHERE hosted_thread_id=? AND provider=? AND native_thread_id=? AND retired_at IS NULL`, time.Now().UTC().Format(time.RFC3339Nano), oldRoot.ID, oldRoot.Provider, oldRoot.NativeThreadID); err != nil {
+	if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at=? WHERE hosted_thread_id=? AND provider=? AND native_thread_id=? AND retired_at IS NULL`, time.Now().UTC().Format(time.RFC3339Nano), oldRoot.ID, oldRoot.Provider, oldRoot.NativeThreadID); err != nil {
 		t.Fatal(err)
 	}
 	newRoot := createBulkCloseMember(t, store, "new-root", agentSessionRecord{})
@@ -149,7 +148,7 @@ func TestBulkCloseKeepsResumedHostedAliasesInOneVisibleTree(t *testing.T) {
 		t.Fatalf("bulk close resumed root = %d %+v", status, response)
 	}
 	for _, record := range []agentSessionRecord{newRoot, child} {
-		closed, _ := store.session(record.ID)
+		closed, _ := store.Session(record.ID)
 		if closed.Status != sessionStatusExited {
 			t.Fatalf("visible-tree member %s status = %q, want exited", record.ID, closed.Status)
 		}
@@ -223,37 +222,5 @@ func TestBulkCloseReportsPartialMemberFailure(t *testing.T) {
 	}
 	if response.Members[0].CloseAction != "failed" || !strings.Contains(response.Members[0].Error, "drop queued prompts") {
 		t.Fatalf("partial member evidence = %+v", response.Members[0])
-	}
-}
-
-func TestChildCreationQueuedBehindTreeMutationCannotUseClosedInvoker(t *testing.T) {
-	s, store, _ := newBulkCloseTestServer(t)
-	root := createBulkCloseMember(t, store, "root", agentSessionRecord{})
-	s.defaults.cwd = t.TempDir()
-
-	s.relationshipMu.Lock()
-	done := make(chan *httptest.ResponseRecorder, 1)
-	go func() {
-		recorder := httptest.NewRecorder()
-		body := fmt.Sprintf(`{"provider":"codex","cwd":%q,"clientSessionId":"late-child","invokerThreadRef":%q}`, s.defaults.cwd, root.ID)
-		s.handleAgentSessionCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", strings.NewReader(body)))
-		done <- recorder
-	}()
-	select {
-	case recorder := <-done:
-		t.Fatalf("child creation escaped relationship lock: %d %s", recorder.Code, recorder.Body.String())
-	case <-time.After(25 * time.Millisecond):
-	}
-	if err := store.UpdateSession(root.ID, "", "", sessionStatusExited, "closed by bulk close"); err != nil {
-		t.Fatal(err)
-	}
-	s.relationshipMu.Unlock()
-	select {
-	case recorder := <-done:
-		if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), "closed hosted thread") {
-			t.Fatalf("late child response = %d %s", recorder.Code, recorder.Body.String())
-		}
-	case <-time.After(time.Second):
-		t.Fatal("child creation did not resume after tree mutation")
 	}
 }

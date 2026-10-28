@@ -30,12 +30,12 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	for _, native := range []string{"starred", "plain", "forgotten"} {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		store.remember(rec)
+		store.Remember(rec)
 	}
 	seedBootAttachments(t, s)
 	// The boot loop queues only threads with open work.
 	for _, hosted := range []string{"nht_starred", "nht_plain", "nht_forgotten"} {
-		if _, _, err := s.agentExecutions.beginTurn(hosted, "nano:test:open-turn", "hash"); err != nil {
+		if _, _, err := fixtureBeginTurn(s.agentExecutions, hosted, "nano:test:open-turn", "hash"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -49,7 +49,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	s.sidebar = newSidebarMaterializedState()
 	s.sidebar.replace(threads, query, active, nodes, 1)
 	s.restart.markHTTPOpen()
-	s.attachments.forget("codex", "forgotten")
+	s.attachments.Forget("codex", "forgotten")
 
 	s.reattachOnBoot()
 

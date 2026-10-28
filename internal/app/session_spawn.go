@@ -43,7 +43,11 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		return nil, err
 	}
 	if req.externalResume {
-		record, err := s.agentExecutions.ensureExternalResumeSession(req)
+		record, err := s.agentExecutions.EnsureExternalResumeSession(externalResumeFacts{
+			Verified: req.externalResume, Provider: req.Provider, NativeThreadID: req.ThreadID,
+			PresentationMode: req.PresentationMode, CatalogID: req.externalResumeCatalog, Metadata: req.externalResumeMetadata,
+			NativeRecovery: sessions.ProviderLifecycleCapabilities(req.Provider).NativeRecovery,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +106,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		// Resume inputs, including boot's staged rename, are never that request.
 		creationRequestName = strings.TrimSpace(req.Name)
 	}
-	record, err := s.agentExecutions.ensureNamedSessionWithIdentity(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider, creationRequestName)
+	record, err := s.agentExecutions.EnsureNamedSessionWithIdentity(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider, creationRequestName)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +122,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	// id and only agent-API spawns would carry identity.
 	req.HostedThreadID = hostedThreadID
 	if req.Mode == "resume" && s.controlMetadata != nil {
-		if err := s.controlMetadata.persistMissingResumeCwd(hostedThreadID, req.Cwd); err != nil {
+		if err := s.controlMetadata.PersistMissingResumeCwd(hostedThreadID, req.Cwd); err != nil {
 			return nil, fmt.Errorf("persist resume cwd: %w", err)
 		}
 	}
@@ -143,8 +147,8 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		queue = s.queuedTurns
 	}
 	var completed func(context.Context) (*coreturns.Store, error)
-	if s.completedTurns != nil && s.completedTurns.store != nil {
-		completed = s.completedTurns.store.coreStore
+	if s.completedTurns != nil && s.completedTurns.Store() != nil {
+		completed = s.completedTurns.Store().CoreStore
 	}
 	sess := sessions.New(sessions.Config{
 		ID:                    nanoSessionID,
@@ -198,10 +202,10 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		sess.ReserveNativeID(req.ThreadID)
 	}
 	if s.controlMetadata != nil {
-		if err := s.controlMetadata.ensureHostedThread(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider); err != nil {
+		if err := s.controlMetadata.EnsureHostedThread(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider); err != nil {
 			return nil, fmt.Errorf("canonical hosted metadata: %w", err)
 		}
-		generation, err := s.controlMetadata.beginTransportBinding(hostedThreadID)
+		generation, err := s.controlMetadata.BeginTransportBinding(hostedThreadID)
 		if err != nil {
 			return nil, fmt.Errorf("begin hosted transport binding: %w", err)
 		}

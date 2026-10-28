@@ -173,7 +173,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 			}
 			switch name {
 			case "control.sqlite":
-				err = control.ensureHostedThread("rollback-owner", "codex", presentationShared, "", "", "")
+				err = control.EnsureHostedThread("rollback-owner", "codex", presentationShared, "", "", "")
 			case "queued-turns.json":
 				err = os.WriteFile(filepath.Join(dir, name), []byte(`[{"clientActionId":"rollback","provider":"codex","hostedThreadId":"rollback-owner","text":"retained prompt"}]`), 0600)
 			case "send-attempts.json":
@@ -203,7 +203,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 					t.Fatalf("later schema reimported changed attempt: %+v", row)
 				}
 			case "turn-completed.sqlite":
-				if row, err := resumed.completed.latest("rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
+				if row, err := fixtureLatestCompleted(resumed.completed, "rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
 					t.Fatalf("later schema reimported changed completion: %+v %v", row, err)
 				}
 			}
@@ -217,7 +217,7 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := control.ensureHostedThread("owner", "claude", presentationShared, "", "", ""); err != nil {
+	if err := control.EnsureHostedThread("owner", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := control.ClaimNativeID("owner", "claude", "native", false); err != nil {
@@ -253,7 +253,7 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stores.control.Close()
-	if stores.queue.Database() != stores.control.db || stores.attempts.Database() != stores.control.db || stores.completed.db != stores.control.db {
+	if stores.queue.Database() != stores.control.CanonicalDatabase() || stores.attempts.Database() != stores.control.CanonicalDatabase() {
 		t.Fatal("hosted writers use separate databases")
 	}
 	if got := QueueSnapshot(stores.queue); len(got) != 1 || got[0] != queued {
@@ -268,8 +268,9 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if next, inserted, err := recordTestCompletedTurn(stores.completed, coreturns.Finish{HostedThreadID: "owner", Provider: "claude", TurnID: "next", FinalMessageID: "next-final", Outcome: "completed", At: time.Now(), Source: "adapter"}); err != nil || !inserted || next.ID != "18" {
 		t.Fatalf("completion cursor lost: %+v %v %v", next, inserted, err)
 	}
+
 	var observers int
-	if err := stores.control.db.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name='retained_observer_fixture'`).Scan(&observers); err != nil || observers != 0 {
+	if err := stores.control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name='retained_observer_fixture'`).Scan(&observers); err != nil || observers != 0 {
 		t.Fatal("observer state migrated with completion facts")
 	}
 	if _, err := stores.turns.Cancel(context.Background(), "action"); err == nil {
@@ -302,6 +303,14 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if err := old.db.QueryRow(`SELECT count(*) FROM retained_observer_fixture`).Scan(&observers); err != nil || observers != 1 {
 		t.Fatal("observer state changed")
 	}
+	// The completed adapter must use the same writer connection, not a second database handle.
+	if err := stores.control.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixtureLatestCompleted(stores.completed, "owner"); err == nil {
+		t.Fatal("completed adapter survived closure of the shared writer")
+	}
+
 }
 
 func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testing.T) {

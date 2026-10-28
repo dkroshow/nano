@@ -44,7 +44,7 @@ func TestClaudeStartSpawnCarriesIdentity(t *testing.T) {
 // motivated this: the grok-acp-projector worker record of 2026-08-05.
 func TestAgentSessionViewMarksProvisionalNativeID(t *testing.T) {
 	_, store := newTestHostedControl(t)
-	hosted, _, err := store.beginSession("caller", "hash", "claude", presentationBackground)
+	hosted, _, err := fixtureBeginSession(store, "caller", "hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestAgentSessionViewMarksProvisionalNativeID(t *testing.T) {
 		t.Fatalf("view = %+v, want the cs_ stand-in marked provisional", view)
 	}
 
-	resolveTestProvisional(t, store.control, hosted.ID, "claude", "cs_eec9373f24115d539dd1c06786b96b36", "2dd36191-9386-542b-a1ef-bed95e638620")
+	resolveTestProvisional(t, store.Control(), hosted.ID, "claude", "cs_eec9373f24115d539dd1c06786b96b36", "2dd36191-9386-542b-a1ef-bed95e638620")
 	if err := store.BindSession(hosted.ID, "nano-1", "2dd36191-9386-542b-a1ef-bed95e638620", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}

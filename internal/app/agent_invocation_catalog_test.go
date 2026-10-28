@@ -11,15 +11,15 @@ import (
 
 func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	parent, _, err := store.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(store, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.BindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	parent, _ = store.session(parent.ID)
-	child, _, err := store.beginSessionWithInvoker("child", "child-hash", "claude", presentationBackground, parent)
+	parent, _ = store.Session(parent.ID)
+	child, _, err := fixtureBeginSessionWithInvoker(store, "child", "child-hash", "claude", presentationBackground, parent)
 	if err != nil {
 		t.Fatal(err)
 	}

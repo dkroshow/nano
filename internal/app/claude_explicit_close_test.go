@@ -21,13 +21,13 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 			if scenario == "missing_identity" {
 				record.ShimSessionID = ""
 			}
-			store.remember(record)
+			store.Remember(record)
 			s := &server{Registry: newSessionRegistry(), attachments: store}
 			query := url.Values{"provider": {"claude"}, "forget": {"unconfirmed"}, "expectedShimSessionId": {record.ShimSessionID}, "expectedAttachedAt": {record.AttachedAt}}
 			switch scenario {
 			case "replacement":
 				record.ShimSessionID = "new-process"
-				store.remember(record)
+				store.Remember(record)
 			case "resumed":
 				s.RegisterSession(configuredFixtureSession(t, sessionConfig{ID: "live", Provider: "claude"}, "native-1", "ready", "", false))
 			case "bad_provider":
@@ -37,7 +37,7 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 			}
 			w := httptest.NewRecorder()
 			applicationHandler(s).ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?"+query.Encode(), nil))
-			_, retained := store.get("claude", "native-1")
+			_, retained := store.Get("claude", "native-1")
 			if scenario == "forget" || scenario == "missing_identity" {
 				if w.Code != 200 || retained || !strings.Contains(w.Body.String(), `"processState":"unknown"`) {
 					t.Fatalf("forget=%d %s retained=%v", w.Code, w.Body, retained)
@@ -68,13 +68,13 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 			if outcome == "missing_identity" {
 				attachment.ShimSessionID = ""
 			}
-			store.remember(attachment)
+			store.Remember(attachment)
 			s := &server{Registry: newSessionRegistry(), attachments: store}
 			s.defaults.claudeShimWS = shim.WSURL()
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?provider=claude", nil)
 			applicationHandler(s).ServeHTTP(w, r)
-			_, retained := store.get("claude", "native-1")
+			_, retained := store.Get("claude", "native-1")
 			if outcome == "success" {
 				if w.Code != 200 || retained {
 					t.Fatalf("close = %d %s retained=%v", w.Code, w.Body, retained)
@@ -105,7 +105,7 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 func TestClaudeExplicitClosePreservesReplacement(t *testing.T) {
 	store := newTestStore(t)
 	old := attachmentRecord{Provider: "claude", NativeThreadID: "native-1", ShimSessionID: "old-process"}
-	store.remember(old)
+	store.Remember(old)
 	shim := newFakeShim(t, func(c *shimConn) {
 		call, ok := c.Next()
 		if !ok {
@@ -113,15 +113,19 @@ func TestClaudeExplicitClosePreservesReplacement(t *testing.T) {
 		}
 		replacement := old
 		replacement.ShimSessionID = "replacement"
-		store.remember(replacement)
+		store.Remember(replacement)
 		c.Reply(call, map[string]any{})
 	})
 	s := &server{attachments: store}
 	s.defaults.claudeShimWS = shim.WSURL()
-	if err := s.closeDetachedAttachment(old); err == nil {
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1", nil)
+	request.SetPathValue("nativeThreadId", "native-1")
+	s.handleAttachmentScoped(response, request)
+	if response.Code < 400 {
 		t.Fatal("replacement was not detected")
 	}
-	current, ok := store.get("claude", "native-1")
+	current, ok := store.Get("claude", "native-1")
 	if !ok || current.ShimSessionID != "replacement" {
 		t.Fatalf("replacement lost: %+v", current)
 	}
@@ -131,18 +135,18 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 	for _, endpoint := range []string{"close", "delete", "family", "attachment"} {
 		t.Run(endpoint, func(t *testing.T) {
 			s, store, _ := newBulkCloseTestServer(t)
-			hosted, _, err := store.beginSession("close-test", "hash", "claude", presentationShared)
+			hosted, _, err := fixtureBeginSession(store, "close-test", "hash", "claude", presentationShared)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if err := store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			op, _, err := store.beginTurn(hosted.ID, "queued-action", "hash")
+			op, _, err := fixtureBeginTurn(store, hosted.ID, "queued-action", "hash")
 			if err != nil {
 				t.Fatal(err)
 			}
-			before, _ := store.session(hosted.ID)
+			before, _ := store.Session(hosted.ID)
 			s.queuedTurns = mustQueuedTurnStore(t)
 			fixtureTurns, openErr := turns.OpenStore(context.Background(), s.queuedTurns.Database())
 			err = openErr
@@ -157,7 +161,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 				t.Fatal(err)
 			}
 			s.attachments = newTestStore(t)
-			s.attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"})
+			s.attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"})
 			var reject atomic.Bool
 			reject.Store(true)
 			shim := newFakeShim(t, func(c *shimConn) {
@@ -190,15 +194,15 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if w.Code < 400 && w.Code != 207 {
 				t.Fatalf("failed stop reported success: %d %s", w.Code, w.Body)
 			}
-			after, ok := store.session(hosted.ID)
+			after, ok := store.Session(hosted.ID)
 			if !ok || after.Status != before.Status {
 				t.Fatalf("failed stop settled session: %+v", after)
 			}
-			turn, _ := store.turn(op.ID)
+			turn, _ := store.Turn(op.ID)
 			if turn.Status != op.Status {
 				t.Fatalf("failed stop settled operation: %+v", turn)
 			}
-			if _, ok := s.attachments.get("claude", "native-1"); !ok {
+			if _, ok := s.attachments.Get("claude", "native-1"); !ok {
 				t.Fatal("failed stop erased attachment")
 			}
 			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); !ok {
@@ -209,7 +213,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if w.Code != 200 {
 				t.Fatalf("retry failed: %d %s", w.Code, w.Body)
 			}
-			if _, ok := s.attachments.get("claude", "native-1"); ok {
+			if _, ok := s.attachments.Get("claude", "native-1"); ok {
 				t.Fatal("successful retry retained attachment")
 			}
 			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); ok {
@@ -232,7 +236,7 @@ func TestClaudeExplicitConcurrentClosesSendOneStop(t *testing.T) {
 	})
 	s := &server{Registry: newSessionRegistry(), attachments: newTestStore(t)}
 	s.defaults.claudeShimWS = shim.WSURL()
-	s.attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: "cs_provisional", ShimSessionID: "cs_provisional"})
+	s.attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "cs_provisional", ShimSessionID: "cs_provisional"})
 	results := make(chan int, 2)
 	request := func() {
 		w := httptest.NewRecorder()
@@ -278,33 +282,33 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 		}
 	})
 	store := newTestAgentExecutionStore(t, "close-test")
-	hosted, _, _ := store.beginSession("live-close", "hash", "claude", presentationShared)
+	hosted, _, _ := fixtureBeginSession(store, "live-close", "hash", "claude", presentationShared)
 	sess := newCloseFixtureSession(t, store, hosted.ID)
 	if err := sess.BeginProviderSpawn(claudeShimSpawnRequest(sess, shim.WSURL()).ProviderRequest, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")
 	_ = store.BindSession(hosted.ID, sess.ID(), sess.ThreadID(), "ready", presentationShared)
-	op, _, _ := store.beginTurn(hosted.ID, "pending", "hash")
+	op, _, _ := fixtureBeginTurn(store, hosted.ID, "pending", "hash")
 	attachments := newTestStore(t)
-	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: sess.ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
+	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: sess.ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), attachments: attachments, agentExecutions: store}, map[string]*session{sess.ID(): sess})
 	w := httptest.NewRecorder()
 	s.handleSessionClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("close = %d %s", w.Code, w.Body)
 	}
-	if _, ok := attachments.get("claude", "shim-1"); !ok {
+	if _, ok := attachments.Get("claude", "shim-1"); !ok {
 		t.Fatal("retry identity lost")
 	}
 	if s.LookupSession(sess.ID()) != nil {
 		t.Fatal("failed local connection retained as live")
 	}
-	turn, _ := store.turn(op.ID)
+	turn, _ := store.Turn(op.ID)
 	if turn.Status != op.Status {
 		t.Fatalf("failed close settled turn: %+v", turn)
 	}
-	record, _ := store.session(hosted.ID)
+	record, _ := store.Session(hosted.ID)
 	if record.Status != "ready" {
 		t.Fatalf("failed close settled hosted record: %+v", record)
 	}
@@ -331,7 +335,7 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 				}
 			})
 			store := newTestAgentExecutionStore(t, "internal-close")
-			hosted, _, err := store.beginSession("internal-close", "hash", "claude", presentationShared)
+			hosted, _, err := fixtureBeginSession(store, "internal-close", "hash", "claude", presentationShared)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -343,13 +347,13 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 			if err := store.BindSession(hosted.ID, sess.ID(), sess.ThreadID(), "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			op, _, err := store.beginTurn(hosted.ID, "pending", "hash")
+			op, _, err := fixtureBeginTurn(store, hosted.ID, "pending", "hash")
 			if err != nil {
 				t.Fatal(err)
 			}
 			sess.Close()
-			record, _ := store.session(hosted.ID)
-			turn, _ := store.turn(op.ID)
+			record, _ := store.Session(hosted.ID)
+			turn, _ := store.Turn(op.ID)
 			if success {
 				if record.Status != sessionStatusExited || turn.Status != agentTurnInterrupted {
 					t.Fatalf("confirmed internal close failed to settle: %+v %+v", record, turn)
@@ -365,8 +369,8 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 func newCloseFixtureSession(t *testing.T, store *agentExecutionStore, hosted string) *session {
 	t.Helper()
 	cfg, _, _ := claudeTestSessionConfig(t)
-	cfg.HostedThreadID, cfg.AgentExecutions, cfg.Metadata = hosted, store, store.control
-	generation, err := store.control.beginTransportBinding(hosted)
+	cfg.HostedThreadID, cfg.AgentExecutions, cfg.Metadata = hosted, store, store.Control()
+	generation, err := store.Control().BeginTransportBinding(hosted)
 	if err != nil {
 		t.Fatal(err)
 	}

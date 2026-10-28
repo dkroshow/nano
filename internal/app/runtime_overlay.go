@@ -103,7 +103,7 @@ func (s *server) detachedRuntimeInfos(records []attachmentRecord) map[attachment
 	for _, rec := range records {
 		ids = append(ids, rec.HostedThreadID)
 	}
-	modes := s.agentExecutions.presentationModes(ids)
+	modes := s.agentExecutions.PresentationModes(ids)
 	infos := make(map[attachmentKey]runtimeInfo, len(records))
 	for _, rec := range records {
 		mode := rec.PresentationMode
@@ -196,12 +196,12 @@ func (s *server) runtimeOverlays(summaries []sessionruntime.Summary) map[attachm
 		live[key] = true
 		info := sessionRuntimeInfo(sum)
 		if sum.HostedThreadID != "" {
-			info.MetadataRevision = s.controlMetadata.latestRevision(sum.HostedThreadID)
+			info.MetadataRevision = s.controlMetadata.LatestRevision(sum.HostedThreadID)
 		}
 		overlays[key] = info
 	}
 	if s.attachments != nil {
-		for key, info := range s.detachedRuntimeInfos(s.attachments.detachedExcept(live)) {
+		for key, info := range s.detachedRuntimeInfos(s.attachments.DetachedExcept(live)) {
 			overlays[key] = info
 		}
 	}
@@ -352,7 +352,7 @@ func liveKeys(summaries []sessionruntime.Summary) map[attachmentKey]bool {
 func (s *server) detachedChanges(live map[attachmentKey]bool) ([]attachmentRecord, []string) {
 	var records []attachmentRecord
 	if s.attachments != nil {
-		records = s.attachments.detachedExcept(live)
+		records = s.attachments.DetachedExcept(live)
 	}
 	current := make(map[attachmentKey]string, len(records))
 	for _, record := range records {
@@ -474,7 +474,7 @@ func (s *server) rememberAttachment(rec attachmentRecord) {
 		return
 	}
 	rec.AttachedAt = time.Now().Format(time.RFC3339)
-	s.attachments.remember(rec)
+	s.attachments.Remember(rec)
 }
 
 // forgetAttachment drops a durable attachment record; nil-safe like
@@ -484,7 +484,7 @@ func (s *server) forgetAttachment(provider, nativeThreadID string) {
 	if s.attachments == nil {
 		return
 	}
-	s.attachments.forget(provider, nativeThreadID)
+	s.attachments.Forget(provider, nativeThreadID)
 }
 
 // setAttachmentTurnAnchor persists (or clears) the live-turn anchor on an
@@ -495,7 +495,7 @@ func (s *server) setAttachmentTurnAnchor(provider, nativeThreadID string, starte
 	if s.attachments == nil {
 		return
 	}
-	s.attachments.setTurnAnchor(provider, nativeThreadID, startedAtMs, anchorSeq)
+	s.attachments.SetTurnAnchor(provider, nativeThreadID, startedAtMs, anchorSeq)
 }
 
 // setAttachmentPendingName persists a pre-init rename onto an existing
@@ -504,7 +504,7 @@ func (s *server) setAttachmentPendingName(provider, nativeThreadID, name string)
 	if s.attachments == nil {
 		return
 	}
-	s.attachments.setPendingName(provider, nativeThreadID, name)
+	s.attachments.SetPendingName(provider, nativeThreadID, name)
 }
 
 // setAttachmentShimSession ties an existing attachment record to the shim
@@ -514,7 +514,7 @@ func (s *server) setAttachmentShimSession(provider, nativeThreadID, shimSessionI
 	if s.attachments == nil {
 		return
 	}
-	s.attachments.setShimSession(provider, nativeThreadID, shimSessionID)
+	s.attachments.SetShimSession(provider, nativeThreadID, shimSessionID)
 }
 
 // attachmentFor looks up a durable attachment; nil store (feature off) simply
@@ -523,7 +523,7 @@ func (s *server) attachmentFor(provider, nativeThreadID string) (attachmentRecor
 	if s.attachments == nil {
 		return attachmentRecord{}, false
 	}
-	return s.attachments.get(provider, nativeThreadID)
+	return s.attachments.Get(provider, nativeThreadID)
 }
 
 // runtimeHub fans the compact runtime delta out to every open thread-index SSE

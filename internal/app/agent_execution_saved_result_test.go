@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
@@ -63,7 +61,7 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := store.turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
+			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := store.Turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
 			request := httptest.NewRequest("GET", "/api/v1/turn-operations/"+op.ID, nil)
 			request.SetPathValue("operationId", op.ID)
 			response := httptest.NewRecorder()
@@ -75,7 +73,7 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			if result.Status != agentTurnCompleted || result.FinalResponse != "new answer" || (test.provider != "grok" && result.FinalItemID != item || test.provider == "grok" && result.FinalItemID == "") {
 				t.Fatalf("operation used unsaved output: %+v", result)
 			}
-			recorded, _ := store.turn(op.ID)
+			recorded, _ := store.Turn(op.ID)
 			if recorded.FinalResponse != result.FinalResponse {
 				t.Fatal("HTTP answer differs from recorded saved answer")
 			}
@@ -112,7 +110,7 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("saved read did not start")
 	}
-	pending, _ := store.turn(op.ID)
+	pending, _ := store.Turn(op.ID)
 	if pending.Status != agentTurnAwaitingSaved || pending.FinalResponse != "" || threadvalues.TurnTerminal(pending.Status) {
 		t.Fatalf("premature result: %+v", pending)
 	}
@@ -121,8 +119,8 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 {"type":"response_item","payload":{"type":"message","id":"late-answer","role":"assistant","content":[{"type":"output_text","text":"complete saved answer"}]}}
 {"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-late"}}
 `)
-	waitForCatalogWithin(t, 5*time.Second, func() bool { rec, _ := store.turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
-	result, _ := store.turn(op.ID)
+	waitForCatalogWithin(t, 5*time.Second, func() bool { rec, _ := store.Turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
+	result, _ := store.Turn(op.ID)
 	if result.Status != agentTurnCompleted || result.FinalResponse != "complete saved answer" || result.FinalItemID != "late-answer" {
 		t.Fatalf("late saved result: %+v", result)
 	}
@@ -184,232 +182,27 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 				}
 			}
 			// Written as the stopped server left it: no transition, so no job.
-			store.mu.Lock()
-			rec := store.turns[op.ID]
+			rec, _ := store.Turn(op.ID)
 			rec.Status, rec.ProviderTurnID, rec.FinalItemID = agentTurnAwaitingSaved, test.turn, test.item
-			rec.UpdatedAt = time.Now().Add(-savedOperationResultWait - time.Second).UTC().Format(time.RFC3339Nano)
+			rec.UpdatedAt = time.Now().Add(-3 * time.Minute).UTC().Format(time.RFC3339Nano)
 			rec.Revision++
-			store.setTurnLocked(op.ID, &rec)
-			err := store.persistAndNotifyLocked()
-			store.mu.Unlock()
+			err := fixtureWriteTurn(store, rec)
 			if err != nil {
 				t.Fatal(err)
 			}
-			restarted, err := newControlAgentExecutionStore(store.control, "next-run")
+			restarted, err := newControlAgentExecutionStore(store.Control(), "next-run")
 			if err != nil {
 				t.Fatal(err)
 			}
 			if err := restarted.BindSession(op.HostedThreadID, "next-session", h.fixture.native, "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			restarted.useSavedResults(h.server.savedOperationResult, nil)
-			waitForCatalogWithin(t, savedResultLastRead+time.Second, func() bool { rec, _ := restarted.turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
-			result, _ := restarted.turn(op.ID)
+			restarted.UseSavedResults(h.server.savedOperationResult, nil)
+			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := restarted.Turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
+			result, _ := restarted.Turn(op.ID)
 			if result.Status != test.status || result.FinalResponse != test.response || result.FinalItemID != test.item ||
 				test.status == agentTurnFailed && (result.Error == nil || result.Error.Code != "result_not_saved") {
 				t.Fatalf("result: %+v", result)
-			}
-		})
-	}
-}
-
-// Boundary: a result_not_saved operation reloaded from the control store, then
-// the server's catalog commits for its native thread, with no session
-// attached. Its exact answer, saved or indexed after the wait, must still
-// complete it: found at startup, on a later commit, after a commit that came
-// during a read, after a read the catalog cut short, or once a refused write
-// succeeds. Another answer never does.
-func TestCatalogCommitCompletesAnOperationWhoseAnswerOutlastedItsWait(t *testing.T) {
-	type reply struct {
-		item string
-		err  error
-	}
-	for _, test := range []struct {
-		name    string
-		replies []reply // one per read, the last repeating
-		commits int     // catalog commits after the startup read
-		during  bool    // the first commit arrives while the startup read runs
-		refused bool    // the store refuses finishing writes until the commits end
-		status  string
-		reads   int32
-	}{
-		{name: "indexed while Nano was down", replies: []reply{{item: "final-answer"}}, status: agentTurnCompleted, reads: 1},
-		{name: "committed while detached", replies: []reply{{err: history.ErrSavedTranscriptUnavailable}, {item: "final-answer"}}, commits: 1, status: agentTurnCompleted, reads: 2},
-		{name: "commit during a read", replies: []reply{{err: history.ErrSavedTranscriptUnavailable}, {item: "final-answer"}}, commits: 1, during: true, status: agentTurnCompleted, reads: 2},
-		// A busy catalog cut the read short; no further commit comes.
-		{name: "read cut short", replies: []reply{{err: history.ErrSavedTranscriptUnavailable}, {err: context.DeadlineExceeded}, {item: "final-answer"}}, commits: 1, status: agentTurnCompleted, reads: 3},
-		{name: "refused write of a found answer", replies: []reply{{err: history.ErrSavedTranscriptUnavailable}, {item: "final-answer"}, {err: history.ErrSavedTranscriptUnavailable}}, commits: 1, refused: true, status: agentTurnCompleted, reads: 2},
-		{name: "another answer saved", replies: []reply{{item: "other-answer"}}, commits: 2, status: agentTurnFailed, reads: 3},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			first := newTestAgentExecutionStore(t, "result-run")
-			hosted, err := first.ensureSession("hosted", "codex", presentationShared)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := first.BindSession(hosted.ID, "session", "native-thread", "ready", presentationShared); err != nil {
-				t.Fatal(err)
-			}
-			op, _, err := first.beginTurn(hosted.ID, "action", "prompt-hash")
-			if err != nil {
-				t.Fatal(err)
-			}
-			first.mu.Lock()
-			rec := first.turns[op.ID]
-			rec.Status, rec.ProviderTurnID, rec.FinalItemID = agentTurnFailed, "turn-1", "final-answer"
-			rec.Error = &agentExecutionError{Source: "saved", Code: "result_not_saved", Message: "not saved"}
-			rec.Revision++
-			first.setTurnLocked(op.ID, &rec)
-			err = first.persistAndNotifyLocked()
-			first.mu.Unlock()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if test.refused {
-				if _, err := first.control.db.Exec(`CREATE TRIGGER refuse_finish BEFORE UPDATE ON hosted_turn_operations
-WHEN NEW.status = 'completed' BEGIN SELECT RAISE(ABORT, 'disk unavailable'); END`); err != nil {
-					t.Fatal(err)
-				}
-			}
-			store, err := newControlAgentExecutionStore(first.control, "next-run")
-			if err != nil {
-				t.Fatal(err)
-			}
-			var reads atomic.Int32
-			inRead, release := make(chan struct{}), make(chan struct{})
-			store.useSavedResults(func(context.Context, agentTurnRecord) (string, string, error) {
-				n := reads.Add(1)
-				if test.during && n == 1 {
-					close(inRead)
-					<-release
-				}
-				r := test.replies[min(int(n), len(test.replies))-1]
-				if r.err != nil {
-					return "", "", r.err
-				}
-				return "saved answer", r.item, nil
-			}, nil)
-			srv := &server{agentExecutions: store}
-			commit := func() {
-				srv.confirmDurableThread(context.Background(), threadindex.TranscriptChange{ThreadID: "catalog-thread", Provider: "codex", NativeThreadID: "native-thread"})
-			}
-			if test.during {
-				<-inRead
-				commit()
-				close(release)
-			}
-			for i := 0; i < test.commits; i++ {
-				if test.during && i == 0 {
-					continue
-				}
-				// Each commit after the previous read has ended, as the worker serializes them.
-				waitForCatalogWithin(t, 3*time.Second, func() bool {
-					store.mu.Lock()
-					defer store.mu.Unlock()
-					job := store.savedResultJobs[op.ID]
-					return int(reads.Load()) > i && (job == nil || !job.reading)
-				})
-				commit()
-			}
-			if test.refused {
-				// The found answer's write keeps retrying; no read replaces it.
-				waitForCatalogWithin(t, 3*time.Second, func() bool { return reads.Load() == test.reads })
-				time.Sleep(1500 * time.Millisecond)
-				if _, err := first.control.db.Exec(`DROP TRIGGER refuse_finish`); err != nil {
-					t.Fatal(err)
-				}
-			}
-			waitForCatalogWithin(t, 4*time.Second, func() bool {
-				rec, _ := store.turn(op.ID)
-				store.mu.Lock()
-				defer store.mu.Unlock()
-				job := store.savedResultJobs[op.ID]
-				return reads.Load() == test.reads && rec.Status == test.status && (job == nil || !job.reading)
-			})
-			result, _ := store.turn(op.ID)
-			if test.status == agentTurnCompleted && (result.FinalResponse != "saved answer" || result.FinalItemID != "final-answer" || result.Error != nil) ||
-				test.status == agentTurnFailed && !threadvalues.AnswerNotSaved(result) {
-				t.Fatalf("late result: %+v", result)
-			}
-		})
-	}
-}
-
-// Boundary: one pending result's job, between its catalog reader and the
-// control store, a second before its deadline. A slow catalog cannot extend
-// the wait, and a refused commit retries the answer already found: it never
-// reads again and loses that answer when a later read fails after expiry.
-func TestOperationResultJobKeepsItsDeadlineAndItsAnswer(t *testing.T) {
-	for _, test := range []struct {
-		name                    string
-		slow, recovers, refused bool
-		status, answer          string
-	}{
-		{name: "slow catalog", slow: true, status: agentTurnFailed},
-		// Cut short past the deadline, the failure is provisional: the job reads
-		// again until the catalog answers.
-		{name: "catalog answers after the wait", slow: true, recovers: true, status: agentTurnCompleted, answer: "saved answer"},
-		{name: "refused commit", refused: true, status: agentTurnCompleted, answer: "saved answer"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			store := newTestAgentExecutionStore(t, "result-run")
-			hosted, err := store.ensureSession("hosted", "codex", presentationShared)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := store.BindSession(hosted.ID, "session", "native-thread", "ready", presentationShared); err != nil {
-				t.Fatal(err)
-			}
-			op, _, err := store.beginTurn(hosted.ID, "action", "prompt-hash")
-			if err != nil {
-				t.Fatal(err)
-			}
-			deadline := time.Now().Add(time.Second)
-			store.mu.Lock()
-			rec := store.turns[op.ID]
-			rec.Status, rec.ProviderTurnID, rec.FinalItemID = agentTurnAwaitingSaved, "turn-1", "final-answer"
-			rec.UpdatedAt = deadline.Add(-savedOperationResultWait).UTC().Format(time.RFC3339Nano)
-			rec.Revision++
-			store.setTurnLocked(op.ID, &rec)
-			err = store.persistAndNotifyLocked()
-			store.mu.Unlock()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if test.refused {
-				if _, err := store.control.db.Exec(`CREATE TRIGGER refuse_finish BEFORE UPDATE ON hosted_turn_operations
-WHEN NEW.status IN ('completed', 'failed') BEGIN SELECT RAISE(ABORT, 'disk unavailable'); END`); err != nil {
-					t.Fatal(err)
-				}
-			}
-			var reads atomic.Int32
-			store.useSavedResults(func(ctx context.Context, _ agentTurnRecord) (string, string, error) {
-				recovered := test.recovers && time.Now().After(deadline.Add(savedResultLastRead))
-				if !recovered && (reads.Add(1) > 1 || test.slow) {
-					<-ctx.Done() // the catalog answers nothing in time
-					return "", "", ctx.Err()
-				}
-				return "saved answer", "final-answer", nil
-			}, nil)
-			if test.refused {
-				// Past the deadline, while every finishing write is refused.
-				time.Sleep(time.Until(deadline) + savedResultLastRead)
-				if rec, _ := store.turn(op.ID); rec.Status != agentTurnAwaitingSaved {
-					t.Fatalf("refused commit changed the operation: %+v", rec)
-				}
-				if _, err := store.control.db.Exec(`DROP TRIGGER refuse_finish`); err != nil {
-					t.Fatal(err)
-				}
-			}
-			waitForCatalogWithin(t, time.Until(deadline)+savedResultLastRead+2*time.Second, func() bool { rec, _ := store.turn(op.ID); return rec.Status == test.status })
-			result, _ := store.turn(op.ID)
-			if result.Status != test.status || result.FinalResponse != test.answer || result.FinalItemID != "final-answer" {
-				t.Fatalf("result: %+v", result)
-			}
-			if test.refused && reads.Load() != 1 {
-				t.Fatalf("found answer was read again %d times", reads.Load()-1)
 			}
 		})
 	}
@@ -421,28 +214,29 @@ func (h *settlementHarness) savedResultOperation(t *testing.T, action string, re
 	t.Helper()
 	h.server.turns = h.prompts
 	store := newTestAgentExecutionStore(t, "result-run")
-	store.useSavedResults(read, nil)
-	hosted, err := store.ensureSession("hosted", string(h.fixture.root.Provider), presentationShared)
+	store.UseSavedResults(read, nil)
+	hosted, err := fixtureEnsureSession(store, "hosted", string(h.fixture.root.Provider), presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.BindSession(hosted.ID, "session", h.fixture.native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	op, _, err := store.beginTurn(hosted.ID, action, "prompt-hash")
+	op, _, err := fixtureBeginTurn(store, hosted.ID, action, "prompt-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Bind the operation to the seeded prompt. Commits never rewrite an
 	// operation's transport action, so set it where a restarted store reads it.
-	if _, err := store.control.db.Exec(`UPDATE hosted_turn_operations SET transport_action_id=? WHERE operation_id=?`, action, op.ID); err != nil {
+	if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_turn_operations SET transport_action_id=? WHERE operation_id=?`, action, op.ID); err != nil {
 		t.Fatal(err)
 	}
-	store.mu.Lock()
-	rec := store.turns[op.ID]
-	rec.TransportActionID = action
-	store.setTurnLocked(op.ID, &rec)
-	store.mu.Unlock()
+	store, err = newControlAgentExecutionStore(store.Control(), "result-run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.UseSavedResults(read, nil)
+	rec, _ := store.Turn(op.ID)
 	return rec, store
 }
 

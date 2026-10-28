@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"encoding/json"
@@ -22,10 +24,10 @@ import (
 // field — and fall back to live session values where the log is silent.
 func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	store := newTestControlMetadata(t)
-	if err := store.ensureHostedThread("nht_view", "claude", presentationShared, "", "", ""); err != nil {
+	if err := store.EnsureHostedThread("nht_view", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	g, err := store.beginTransportBinding("nht_view")
+	g, err := store.BeginTransportBinding("nht_view")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +82,7 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 	metadata := newTestControlMetadata(t)
 	canonicalCwd := t.TempDir()
 	legacyCwd := t.TempDir()
-	if err := metadata.ensureHostedThread("nht_resume_canonical", "claude", presentationShared, "", "", ""); err != nil {
+	if err := metadata.EnsureHostedThread("nht_resume_canonical", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := metadata.ClaimNativeID("nht_resume_canonical", "claude", "native-resume", false); err != nil {
@@ -95,11 +97,11 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	attachments, err := newAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.remember(attachmentRecord{
+	attachments.Remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: "native-resume", HostedThreadID: "nht_resume_canonical",
 		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", claudeModelFlag, "legacy-model", "--permission-mode", "bypassPermissions"},
 	})
@@ -120,10 +122,10 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 	metadata, executions := newTestHostedControl(t)
 	const hostedID = "nht_historical_resume"
 	canonicalCwd := t.TempDir()
-	if err := metadata.ensureHostedThread(hostedID, "claude", presentationShared, "", "", ""); err != nil {
+	if err := metadata.EnsureHostedThread(hostedID, "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := executions.ensureSessionWithIdentity(hostedID, "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, hostedID, "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := metadata.ClaimNativeID(hostedID, "claude", "native-historical", false); err != nil {
@@ -143,11 +145,11 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 			t.Fatal(err)
 		}
 	}
-	attachments, err := newAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.remember(attachmentRecord{
+	attachments.Remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: "native-historical", HostedThreadID: hostedID,
 		Bin: "/claude", Args: []string{"-p", claudeModelFlag, "stale-model", "--effort", "low", "--permission-mode", "bypassPermissions"},
 	})
@@ -225,7 +227,7 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			metadata := newTestControlMetadata(t)
 			const hostedID = "nht_resume_projection"
-			if err := metadata.ensureHostedThread(hostedID, "claude", presentationShared, "", "", ""); err != nil {
+			if err := metadata.EnsureHostedThread(hostedID, "claude", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
 			var desired metadataEvent
@@ -320,7 +322,7 @@ func TestResumeHydratesDurableName(t *testing.T) {
 	s.catalog = &namedThreadCatalog{
 		names: map[string]string{"claude:" + claudeResumeThreadID: "overnight refactor"},
 	}
-	store.remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	if sum.Name != "overnight refactor" {
@@ -338,8 +340,8 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 	s, store := claudeResumeServer(t, shim.WSURL())
 	rec := rememberedClaudeSession(t, "/stored/claude")
 	rec.HostedThreadID = "nht_overlay"
-	store.remember(rec)
-	if _, err := s.agentExecutions.ensureSessionWithIdentity("nht_overlay", "claude", presentationShared, "", "", ""); err != nil {
+	store.Remember(rec)
+	if _, err := fixtureEnsureSessionWithIdentity(s.agentExecutions, "nht_overlay", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.controlMetadata.ClaimNativeID("nht_overlay", "claude", claudeResumeThreadID, false); err != nil {

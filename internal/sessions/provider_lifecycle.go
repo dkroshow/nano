@@ -15,7 +15,6 @@ type providerLifecycleRules struct {
 	turn           func(protocol.Direction, []byte) (bool, string, int64, bool)
 	nudge          func(protocol.Direction, []byte) bool
 	observe        func(*Session, protocol.Direction, []byte, bool)
-	provisional    func(string) bool
 	runtime        func(*Session, protocol.Direction, []byte, time.Time)
 	accepted       func(*Session)
 	release        func(*Session)
@@ -26,9 +25,9 @@ var lifecycleProviders map[string]providerLifecycleRules
 
 func init() {
 	lifecycleProviders = map[string]providerLifecycleRules{
-		"codex":  {capabilities: (codexLifecycleAdapter{}).Capabilities(), turn: codexWorkEvidence, nudge: codexLifecycleNudge, observe: observeCodexWork, runtime: codexRuntimeEvidence, accepted: codexAcceptedEvidence, provisional: func(string) bool { return false }},
-		"claude": {capabilities: (claudeLifecycleAdapter{}).Capabilities(), turn: claudeWorkEvidence, nudge: claudeLifecycleNudge, observe: observeClaudeWork, runtime: claudeRuntimeEvidence, release: claudeReleaseAcceptedEvidence, ingressBlocked: claudeEvidenceIngressBlocked, provisional: ClaudeNativeIDProvisional},
-		"grok":   {capabilities: (grokLifecycleAdapter{}).Capabilities(), turn: grokWorkEvidence, nudge: grokLifecycleNudge, observe: observeGrokWork, runtime: grokRuntimeEvidence, provisional: func(string) bool { return false }},
+		"codex":  {capabilities: (codexLifecycleAdapter{}).Capabilities(), turn: codexWorkEvidence, nudge: codexLifecycleNudge, observe: observeCodexWork, runtime: codexRuntimeEvidence, accepted: codexAcceptedEvidence},
+		"claude": {capabilities: (claudeLifecycleAdapter{}).Capabilities(), turn: claudeWorkEvidence, nudge: claudeLifecycleNudge, observe: observeClaudeWork, runtime: claudeRuntimeEvidence, release: claudeReleaseAcceptedEvidence, ingressBlocked: claudeEvidenceIngressBlocked},
+		"grok":   {capabilities: (grokLifecycleAdapter{}).Capabilities(), turn: grokWorkEvidence, nudge: grokLifecycleNudge, observe: observeGrokWork, runtime: grokRuntimeEvidence},
 	}
 }
 

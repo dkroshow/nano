@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"encoding/json"
@@ -23,7 +25,7 @@ type recordingSubscriptionClient struct {
 }
 
 func subscriptionDispatcherForTest(executions *agentExecutionStore, client subscriptions.Client) *subscriptionDispatcher {
-	return subscriptions.NewDispatcher(executions.control.db, client, nil, nil)
+	return subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
 }
 
 func (c *recordingSubscriptionClient) SubscribeCompletedTurns(_ context.Context, request interact.PageRequest) (interact.CompletedTurnPage, error) {
@@ -49,11 +51,11 @@ func (c *recordingSubscriptionClient) SubmitPrompt(_ context.Context, request in
 
 func TestCompletionSubscriptionUsesInteractForIndependentChannels(t *testing.T) {
 	_, executions := newTestHostedControl(t)
-	parent, _, err := executions.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(executions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := executions.beginSessionWithSubscriptions("child", "child-hash", "claude", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.Send})
+	child, _, err := fixtureBeginSessionWithSubscriptions(executions, "child", "child-hash", "claude", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.Send})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +79,7 @@ func TestCompletionSubscriptionUsesInteractForIndependentChannels(t *testing.T) 
 	if client.prompts[0].ThreadRef != parent.ID || client.prompts[0].Origin != interact.SystemOrigin {
 		t.Fatalf("prompt delivery = %+v", client.prompts[0])
 	}
-	cursor, initialized, err := subscriptions.Cursor(executions.control.db, child.ID)
+	cursor, initialized, err := subscriptions.Cursor(executions.Control().CanonicalDatabase(), child.ID)
 	if err != nil || !initialized || cursor != "provider-turn" {
 		t.Fatalf("cursor = %q, initialized=%v, err=%v", cursor, initialized, err)
 	}
@@ -91,15 +93,15 @@ func TestCompletionSubscriptionUsesInteractForIndependentChannels(t *testing.T) 
 
 func TestCompletionSubscriptionInitializesLegacyCursorAtLatestWithoutReplay(t *testing.T) {
 	_, executions := newTestHostedControl(t)
-	parent, _, err := executions.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(executions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := executions.beginSessionWithInvoker("child", "child-hash", "claude", presentationBackground, parent)
+	child, _, err := fixtureBeginSessionWithInvoker(executions, "child", "child-hash", "claude", presentationBackground, parent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := executions.control.db.Exec(`DELETE FROM subscription_completed_cursors WHERE hosted_thread_id=?`, child.ID); err != nil {
+	if _, err := executions.Control().CanonicalDatabase().Exec(`DELETE FROM subscription_completed_cursors WHERE hosted_thread_id=?`, child.ID); err != nil {
 		t.Fatal(err)
 	}
 	client := &recordingSubscriptionClient{pages: map[string]interact.CompletedTurnPage{
@@ -110,7 +112,7 @@ func TestCompletionSubscriptionInitializesLegacyCursorAtLatestWithoutReplay(t *t
 	if len(client.messages) != 0 || len(client.prompts) != 0 {
 		t.Fatalf("legacy history replayed: messages=%d prompts=%d", len(client.messages), len(client.prompts))
 	}
-	cursor, initialized, err := subscriptions.Cursor(executions.control.db, child.ID)
+	cursor, initialized, err := subscriptions.Cursor(executions.Control().CanonicalDatabase(), child.ID)
 	if err != nil || !initialized || cursor != "historical-turn" {
 		t.Fatalf("initialized cursor = %q, %v, %v", cursor, initialized, err)
 	}
@@ -123,24 +125,24 @@ func TestCompletionSubscriptionInitializesLegacyCursorAtLatestWithoutReplay(t *t
 
 func TestCompletionSubscriptionSkipsExitedAndAdvancesPermanentFailure(t *testing.T) {
 	_, executions := newTestHostedControl(t)
-	parent, _, err := executions.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(executions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := executions.beginSessionWithInvoker("child", "child-hash", "claude", presentationBackground, parent)
+	child, _, err := fixtureBeginSessionWithInvoker(executions, "child", "child-hash", "claude", presentationBackground, parent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := executions.control.db.Exec(`UPDATE hosted_execution_sessions SET status='exited' WHERE hosted_thread_id=?`, child.ID); err != nil {
+	if _, err := executions.Control().CanonicalDatabase().Exec(`UPDATE hosted_execution_sessions SET status='exited' WHERE hosted_thread_id=?`, child.ID); err != nil {
 		t.Fatal(err)
 	}
-	if targets, err := subscriptions.Targets(executions.control.db, ""); err != nil || len(targets) != 0 {
+	if targets, err := subscriptions.Targets(executions.Control().CanonicalDatabase(), ""); err != nil || len(targets) != 0 {
 		t.Fatalf("exited child remained subscribed: %+v", targets)
 	}
-	if _, err := executions.control.db.Exec(`UPDATE hosted_execution_sessions SET status='creating' WHERE hosted_thread_id=?`, child.ID); err != nil {
+	if _, err := executions.Control().CanonicalDatabase().Exec(`UPDATE hosted_execution_sessions SET status='creating' WHERE hosted_thread_id=?`, child.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := executions.control.db.Exec(`UPDATE hosted_execution_sessions SET status='exited' WHERE hosted_thread_id=?`, parent.ID); err != nil {
+	if _, err := executions.Control().CanonicalDatabase().Exec(`UPDATE hosted_execution_sessions SET status='exited' WHERE hosted_thread_id=?`, parent.ID); err != nil {
 		t.Fatal(err)
 	}
 	client := &recordingSubscriptionClient{sendErr: errors.New("recipient gone"), pages: map[string]interact.CompletedTurnPage{
@@ -149,7 +151,7 @@ func TestCompletionSubscriptionSkipsExitedAndAdvancesPermanentFailure(t *testing
 	subscriptionDispatcherForTest(executions, client).SweepTarget(subscriptionTarget{
 		ChildHostedID: child.ID, InvokerHostedID: parent.ID,
 	})
-	cursor, _, err := subscriptions.Cursor(executions.control.db, child.ID)
+	cursor, _, err := subscriptions.Cursor(executions.Control().CanonicalDatabase(), child.ID)
 	if err != nil || cursor != "gone-turn" {
 		t.Fatalf("permanent failure cursor = %q, %v", cursor, err)
 	}
@@ -157,11 +159,11 @@ func TestCompletionSubscriptionSkipsExitedAndAdvancesPermanentFailure(t *testing
 
 func TestCompletionSubscriptionDefaultsPersistAcrossReload(t *testing.T) {
 	control, executions := newTestHostedControl(t)
-	parent, _, err := executions.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(executions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := executions.beginSessionWithInvoker("child", "child-hash", "claude", presentationBackground, parent)
+	child, _, err := fixtureBeginSessionWithInvoker(executions, "child", "child-hash", "claude", presentationBackground, parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +171,7 @@ func TestCompletionSubscriptionDefaultsPersistAcrossReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok := reloaded.session(child.ID)
+	got, ok := reloaded.Session(child.ID)
 	if !ok || !got.SubscriptionInbox || got.SubscriptionPrompt {
 		t.Fatalf("reloaded subscriptions = %+v, present=%v", got, ok)
 	}
@@ -236,12 +238,12 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	daemon := newFakeAppServer(t)
 	daemon.SetResumeTurns(json.RawMessage(`[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`))
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.completedTurns = newCompletedTurnSource(&completedTurnStore{db: s.queuedTurns.Database()})
-	parent, _, err := s.agentExecutions.beginSession("parent", "parent-hash", "codex", presentationShared)
+	s.completedTurns = hostedstore.NewCompletedTurnSource(hostedstore.NewCompletedTurnStore(s.queuedTurns.Database()))
+	parent, _, err := fixtureBeginSession(s.agentExecutions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := s.agentExecutions.beginSessionWithSubscriptions("child", "child-hash", "codex", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.Send})
+	child, _, err := fixtureBeginSessionWithSubscriptions(s.agentExecutions, "child", "child-hash", "codex", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.Send})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,12 +251,12 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	parentRec.NativeThreadID, parentRec.HostedThreadID = "codex-parent", parent.ID
 	childRec := bootCodexRecord(t)
 	childRec.HostedThreadID = child.ID
-	store.remember(parentRec)
-	store.remember(childRec)
+	store.Remember(parentRec)
+	store.Remember(childRec)
 	seedBootAttachments(t, s)
 	s.prepareBootReattach()
 	client := &preparingSubscriptionClient{feedSubscriptionClient{s: s}}
-	s.subscriptions = subscriptions.NewDispatcher(s.agentExecutions.control.db, client, nil, nil)
+	s.subscriptions = subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), client, nil, nil)
 	s.subscriptions.Sweep("") // the child's cursor starts where a running Nano would have it
 
 	s.reattachWaitingHosted(child.ID)
@@ -302,20 +304,20 @@ func (c *blockingSubscriptionClient) SendMessage(ctx context.Context, request in
 // dispatcher over the control store, with the recipient's API held.
 func TestCompletionNoticeToASlowParentDoesNotHoldAnotherParents(t *testing.T) {
 	_, executions := newTestHostedControl(t)
-	slow, _, err := executions.beginSession("slow-parent", "slow-hash", "claude", presentationShared)
+	slow, _, err := fixtureBeginSession(executions, "slow-parent", "slow-hash", "claude", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, _, err := executions.beginSession("other-parent", "other-hash", "codex", presentationShared)
+	other, _, err := fixtureBeginSession(executions, "other-parent", "other-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	inbox := subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.None}
-	slowChild, _, err := executions.beginSessionWithSubscriptions("slow-child", "slow-child-hash", "codex", presentationBackground, slow, inbox)
+	slowChild, _, err := fixtureBeginSessionWithSubscriptions(executions, "slow-child", "slow-child-hash", "codex", presentationBackground, slow, inbox)
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherChild, _, err := executions.beginSessionWithSubscriptions("other-child", "other-child-hash", "codex", presentationBackground, other, inbox)
+	otherChild, _, err := fixtureBeginSessionWithSubscriptions(executions, "other-child", "other-child-hash", "codex", presentationBackground, other, inbox)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +333,7 @@ func TestCompletionNoticeToASlowParentDoesNotHoldAnotherParents(t *testing.T) {
 	defer close(client.release)
 	dispatcher := subscriptionDispatcherForTest(executions, client)
 	for _, child := range []string{slowChild.ID, otherChild.ID} {
-		if err := subscriptions.AdvanceCursor(executions.control.db, child, ""); err != nil {
+		if err := subscriptions.AdvanceCursor(executions.Control().CanonicalDatabase(), child, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -359,11 +361,11 @@ func TestCompletionNoticeToASlowParentDoesNotHoldAnotherParents(t *testing.T) {
 // the dispatcher over the control store.
 func TestCompletionSubscriptionRetriesAfterAFailedTargetLookup(t *testing.T) {
 	_, executions := newTestHostedControl(t)
-	parent, _, err := executions.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(executions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := executions.beginSessionWithSubscriptions("child", "child-hash", "claude", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.None})
+	child, _, err := fixtureBeginSessionWithSubscriptions(executions, "child", "child-hash", "claude", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.None})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +373,7 @@ func TestCompletionSubscriptionRetriesAfterAFailedTargetLookup(t *testing.T) {
 		child.ID + "\x00": {Items: []interact.CompletedTurn{{TurnID: "turn-1", Outcome: agentTurnCompleted}}, NextCursor: "turn-1"},
 	}}
 	dispatcher := subscriptionDispatcherForTest(executions, client)
-	db := executions.control.db
+	db := executions.Control().CanonicalDatabase()
 	if _, err := db.Exec(`ALTER TABLE hosted_threads RENAME TO hosted_threads_unavailable`); err != nil {
 		t.Fatal(err)
 	}

@@ -989,14 +989,23 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 				t.Fatal(err)
 			}
 			h := newLiveTextHarnessForThread(t, "claude", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = store })
-			if _, err := store.ensureSession(h.sess.HostedThreadID(), "claude", presentationShared); err != nil {
+			if _, err := fixtureEnsureSession(store, h.sess.HostedThreadID(), "claude", presentationShared); err != nil {
+				t.Fatal(err)
+			}
+			// Open the reader before admission so its cache has no operation rows.
+			readerRun := "before-restart"
+			if tc.restart {
+				readerRun = "after-restart"
+			}
+			emptyReader, err := newControlAgentExecutionStore(control, readerRun)
+			if err != nil {
 				t.Fatal(err)
 			}
 			want := make(map[string]string)
 			for index, stamp := range tc.times {
 				action := fmt.Sprintf("prompt-%d", index)
 				if !tc.missing {
-					op, _, err := store.beginTurnAttributed(h.sess.HostedThreadID(), action, "hash", turnAttribution{
+					op, _, err := fixtureHistoricalTurn(store, h.sess.HostedThreadID(), action, "hash", turnAttribution{
 						Origin: tc.origin, SenderSubmittedAt: stamp,
 					})
 					if err != nil {
@@ -1017,18 +1026,10 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 				}
 			}
 			// A fresh loop restores the committed outbox instead of receiving
-			// fabricated live entries. The reopened operation cache is cleared
-			// to require the scoped committed lookup even after a failed reload.
+			// fabricated live entries. The reader opened before admission has
+			// no cached operations, requiring the scoped committed lookup.
 			liveTextOf(h.sess).unsubscribe(h.pane)
-			if tc.restart {
-				store, err = newControlAgentExecutionStore(control, "after-restart")
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			store.mu.Lock()
-			store.resetControlCachesLocked()
-			store.mu.Unlock()
+			store = emptyReader
 			fresh := newFixtureSession(sessionConfig{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
 			liveTextOf(h.sess).srv.startLiveText(fresh)
 			stream := httptest.NewServer(http.HandlerFunc(fresh.HandleLiveStream))
@@ -2369,7 +2370,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
+	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
 		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
 	seedBootAttachments(t, srv)
 	writeClaudeTestSpool(t, srv.defaults.claudeShimSpools, hosted, spool...)

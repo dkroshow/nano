@@ -206,7 +206,7 @@ func TestStoppingNanoRefusesRequireIdleSubmissions(t *testing.T) {
 	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), "notReady") {
 		t.Fatalf("requireIdle during stop = %d %s, want 409 notReady", recorder.Code, recorder.Body.String())
 	}
-	if _, found := s.agentExecutions.turnForAction(target.ID, "nano:heartbeat:stop:1"); found {
+	if _, found := fixtureTurnForAction(s.agentExecutions, target.ID, "nano:heartbeat:stop:1"); found {
 		t.Fatal("a refused requireIdle submission created an operation")
 	}
 	select {

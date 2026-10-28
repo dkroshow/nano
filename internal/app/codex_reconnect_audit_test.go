@@ -34,7 +34,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hosted, _, err := store.beginSession("missing-zero", "hash", "codex", presentationBackground)
+	hosted, _, err := fixtureBeginSession(store, "missing-zero", "hash", "codex", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
-	operation, _, err := store.beginTurn(hosted.ID, "orientation", sendTextHash("retained source text"))
+	operation, _, err := fixtureBeginTurn(store, hosted.ID, "orientation", sendTextHash("retained source text"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if queued.Text != "retained source text" || queued.State != submissionParked {
 		t.Fatalf("retained=%+v", queued)
 	}
-	settled, _ := store.turn(operation.ID)
+	settled, _ := store.Turn(operation.ID)
 	if settled.Status != agentTurnFailed || settled.ProviderTurnID != "" {
 		t.Fatalf("operation=%+v", settled)
 	}
@@ -128,7 +128,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	fake := newFakeAppServer(t)
 	daemon := fake.daemon()
 	store := newTestAgentExecutionStore(t, "audit")
-	hosted, _, err := store.beginSession("terminal", "hash", "codex", presentationBackground)
+	hosted, _, err := fixtureBeginSession(store, "terminal", "hash", "codex", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	if _, _, err := turnStore.Finished(context.Background(), coreturns.Finish{HostedThreadID: hosted.ID, Provider: string(model.ProviderCodex), NativeThreadID: sess.ThreadID(), TurnID: "past-turn", ActionID: "previous-turn", Outcome: string(model.OutcomeCompleted), Source: "test"}); err != nil {
 		t.Fatal(err)
 	}
-	operation, _, err := store.beginTurn(hosted.ID, "terminal-prompt", sendTextHash("retained"))
+	operation, _, err := fixtureBeginTurn(store, hosted.ID, "terminal-prompt", sendTextHash("retained"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,8 +174,8 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 		t.Fatalf("reconnecting admission = %d %s", response.Code, response.Body.String())
 	}
 	unblock()
-	waitReconnectCondition(t, func() bool { record, _ := store.turn(operation.ID); return record.Status == agentTurnFailed })
-	record, _ := store.turn(operation.ID)
+	waitReconnectCondition(t, func() bool { record, _ := store.Turn(operation.ID); return record.Status == agentTurnFailed })
+	record, _ := store.Turn(operation.ID)
 	if record.Error == nil || record.Error.Code != "reconnect_failed" {
 		t.Fatalf("terminal error: %+v", record.Error)
 	}

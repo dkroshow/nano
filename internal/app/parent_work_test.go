@@ -19,7 +19,7 @@ func TestChildLaunchDoesNotBecomeParentWork(t *testing.T) {
 	}
 	app := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"parent": sess})
 	summary := sess.Summary()
-	if summary.TurnActive || app.bulkCloseMemberWorking(agentSessionRecord{ID: "hosted-parent"}) {
+	if summary.TurnActive || app.agentSessionView("hosted-parent").Working {
 		t.Fatal("child launch became parent's own work")
 	}
 }

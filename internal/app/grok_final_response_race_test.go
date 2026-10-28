@@ -7,14 +7,14 @@ import "testing"
 // another source reports completion or a late failure.
 func TestGrokRPCOutcomeTerminalAppliesExactlyOnce(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run")
-	hosted, _, err := store.beginSession("grok-race", "hash", "grok", presentationShared)
+	hosted, _, err := fixtureBeginSession(store, "grok-race", "hash", "grok", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.BindSession(hosted.ID, "nano", "native-thread", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	op, _, err := store.beginTurn(hosted.ID, "action", "hash")
+	op, _, err := fixtureBeginTurn(store, hosted.ID, "action", "hash")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestGrokRPCOutcomeTerminalAppliesExactlyOnce(t *testing.T) {
 	if err := store.MarkTurnTerminal("grok", "native-thread", "prompt-race", agentTurnCompleted, nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	first, _ := store.turn(op.ID)
+	first, _ := store.Turn(op.ID)
 	if first.Status != agentTurnCompleted || first.FinalResponse != "-R2-OK" || first.FinalResponseTruncated {
 		t.Fatalf("first terminal = %+v", first)
 	}
@@ -36,7 +36,7 @@ func TestGrokRPCOutcomeTerminalAppliesExactlyOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	after, _ := store.turn(op.ID)
+	after, _ := store.Turn(op.ID)
 	if after.Revision != first.Revision || after.Status != agentTurnCompleted || after.FinalResponse != first.FinalResponse {
 		t.Fatalf("terminal rewritten: revision %d->%d status %q finalResponse %q", first.Revision, after.Revision, after.Status, after.FinalResponse)
 	}

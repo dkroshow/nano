@@ -197,7 +197,7 @@ func TestTranscriptDuplicateIncidentPersistsOnceAcrossRepeatedObservations(t *te
 		t.Fatalf("repeat duplicate POST = %d %s", second.Code, second.Body.String())
 	}
 
-	incidents, err := control.listBrowserDuplicateIncidents(browserDuplicateIncidentFilter{ThreadID: "native-duplicate-thread", Limit: 10})
+	incidents, err := control.ListBrowserDuplicateIncidents(browserDuplicateIncidentFilter{ThreadID: "native-duplicate-thread", Limit: 10})
 	if err != nil || len(incidents) != 1 {
 		t.Fatalf("incidents = %+v, err=%v", incidents, err)
 	}
@@ -250,7 +250,7 @@ func TestTranscriptValidationNormalPathCreatesNoDuplicateIncident(t *testing.T) 
 	if rec := postTranscriptValidationForTest(t, s, body); rec.Code != http.StatusOK {
 		t.Fatalf("normal POST = %d %s", rec.Code, rec.Body.String())
 	}
-	incidents, err := control.listBrowserDuplicateIncidents(browserDuplicateIncidentFilter{Limit: 10})
+	incidents, err := control.ListBrowserDuplicateIncidents(browserDuplicateIncidentFilter{Limit: 10})
 	if err != nil || len(incidents) != 0 {
 		t.Fatalf("normal incidents = %+v, err=%v", incidents, err)
 	}

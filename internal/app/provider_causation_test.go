@@ -17,10 +17,10 @@ func causationTestSession(t *testing.T, hosted string) (*session, *controlMetada
 func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*session, *controlMetadataStore) {
 	t.Helper()
 	store := newTestControlMetadata(t)
-	if err := store.ensureHostedThread(hosted, provider, presentationShared, "", "", ""); err != nil {
+	if err := store.EnsureHostedThread(hosted, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	generation, err := store.beginTransportBinding(hosted)
+	generation, err := store.BeginTransportBinding(hosted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestSpawnSessionCommitsPriorityBeforeImmediateThreadStartAndSettles(t *test
 	received := make(chan struct{}, 1)
 	fake.SetOnStart(func(_ json.RawMessage) {
 		var count int
-		if err := control.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE field=? AND value_json=? AND disposition=?`, postureFieldServiceTier, `"priority"`, metadataDispositionRequested).Scan(&count); err != nil || count != 1 {
+		if err := control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE field=? AND value_json=? AND disposition=?`, postureFieldServiceTier, `"priority"`, metadataDispositionRequested).Scan(&count); err != nil || count != 1 {
 			t.Errorf("Priority requested event at thread/start receipt = %d, err=%v", count, err)
 		}
 		received <- struct{}{}
@@ -311,13 +311,13 @@ func TestDuplicateSettingsNotificationAddsNoEventsOrRevisionAndOtherThreadDoesNo
 	payload := json.RawMessage(`{"threadId":"native","threadSettings":{"model":"gpt-5","effort":"","serviceTier":"","cwd":""}}`)
 	emitCausation(t, sess, fake, payload)
 	var events int
-	_ = store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events`).Scan(&events)
+	_ = store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events`).Scan(&events)
 	revision := func() int64 { v, _ := store.View(sess.HostedThreadID()); return v.Revision }()
 	emitCausation(t, sess, fake, payload)
 	fake.EmitNotification(map[string]any{"method": "thread/settings/updated", "params": map[string]any{"threadId": "other", "threadSettings": map[string]any{"model": "other"}}})
 	emitCausation(t, sess, fake, payload)
 	var after int
-	_ = store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events`).Scan(&after)
+	_ = store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events`).Scan(&after)
 	v, _ := store.View(sess.HostedThreadID())
 	if after != events || v.Revision != revision {
 		t.Fatalf("duplicate/other notification mutated events %d→%d revision %d→%d", events, after, revision, v.Revision)
@@ -355,7 +355,7 @@ func TestCaptureInitReplayAndFreshLaunchUseImmutableSnapshots(t *testing.T) {
 		t.Fatalf("replayed init settled newer desired: %+v desired=%q", f, desired)
 	}
 	var replayed int
-	if err := store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND evidence_freshness=?`, sess.HostedThreadID(), metadataFreshnessReplayed).Scan(&replayed); err != nil || replayed == 0 {
+	if err := store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND evidence_freshness=?`, sess.HostedThreadID(), metadataFreshnessReplayed).Scan(&replayed); err != nil || replayed == 0 {
 		t.Fatalf("captureInit did not store replayed evidence: count=%d err=%v", replayed, err)
 	}
 	sess.Close()
@@ -380,7 +380,7 @@ func TestClaudeReplayLiveBoundaryKeepsCanonicalMetadataReadable(t *testing.T) {
 		t.Fatalf("healthy canonical state hidden after replay/live boundary: %+v", summary)
 	}
 	var count int
-	if err := store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=? AND source=?`, sess.HostedThreadID(), postureFieldModel, postureSourceProvider).Scan(&count); err != nil {
+	if err := store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=? AND source=?`, sess.HostedThreadID(), postureFieldModel, postureSourceProvider).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 2 {
@@ -397,7 +397,7 @@ func TestClaudeReplayLiveBoundaryKeepsCanonicalMetadataReadable(t *testing.T) {
 
 func newCausationClaudeAttachment(t *testing.T, store *controlMetadataStore, hosted string) *session {
 	t.Helper()
-	generation, err := store.beginTransportBinding(hosted)
+	generation, err := store.BeginTransportBinding(hosted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,13 +503,13 @@ func TestSettingsDedupeDistinguishesCausalRequestsAndCanonicalizesJSON(t *testin
 	payloadA := json.RawMessage(`{"threadId":"native","threadSettings":{"model":"","effort":"high","serviceTier":"","cwd":""}}`)
 	emitCausation(t, sess, fake, payloadA)
 	var firstCount int
-	_ = store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&firstCount)
+	_ = store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&firstCount)
 	// The provider can retry before a second turn is submitted. Different JSON
 	// formatting must reuse the first causal identity rather than add evidence.
 	payloadB := json.RawMessage(` { "threadSettings" : { "cwd":"", "serviceTier":"", "effort":"high", "model":"" }, "threadId":"native" } `)
 	emitCausation(t, sess, fake, payloadB)
 	var retryCount int
-	_ = store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&retryCount)
+	_ = store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&retryCount)
 	if retryCount != firstCount {
 		t.Fatalf("pre-second duplicate added evidence %d→%d", firstCount, retryCount)
 	}
@@ -525,14 +525,14 @@ func TestSettingsDedupeDistinguishesCausalRequestsAndCanonicalizesJSON(t *testin
 		t.Fatalf("second identical causal request was suppressed: %+v", f)
 	}
 	var count int
-	if err := store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&count); err != nil {
+	if err := store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	// A reordered encoding with no newly queued request is a retry of the
 	// second causal entry. It must not add an unlinked observation.
 	emitCausation(t, sess, fake, payloadA)
 	var after int
-	_ = store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&after)
+	_ = store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field=?`, sess.HostedThreadID(), postureFieldEffort).Scan(&after)
 	if after != count {
 		t.Fatalf("reordered duplicate added evidence %d→%d", count, after)
 	}

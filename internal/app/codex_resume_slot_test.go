@@ -28,13 +28,19 @@ func TestCodexResumeSlotIsFreeOnceTheReplyArrives(t *testing.T) {
 		ids = append(ids, summary.ID)
 	}
 
-	server.agentExecutions.mu.Lock()
+	held, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		fixtureExecutionLocked(t, server.agentExecutions, func() { close(held); <-release })
+	}()
+	<-held
 	deadline := time.Now().Add(3 * time.Second)
 	for fake.ResumeCount() < threads && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	sent := fake.ResumeCount()
-	server.agentExecutions.mu.Unlock()
+	close(release)
+	<-done
 	if sent != threads {
 		t.Fatalf("%d of %d resumes sent while the first replies' post-reply work waited; the slots stayed held", sent, threads)
 	}

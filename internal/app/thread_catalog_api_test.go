@@ -1,5 +1,7 @@
 package app
 
+import "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"bytes"
 	"context"
@@ -271,11 +273,11 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invoker, _, err := store.beginSession("parent", "parent", "codex", presentationShared)
+	invoker, _, err := fixtureBeginSession(store, "parent", "parent", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, _, err := store.beginSessionWithInvoker("worker", "worker", "claude", presentationShared, invoker, &orchestrationAssignment{
+	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker", "worker", "claude", presentationShared, invoker, &orchestrationAssignment{
 		AssignmentRole: "worker", Focus: "Implement the catalog overlay",
 	})
 	if err != nil {
@@ -575,7 +577,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	catalog := &fakeThreadCatalog{}
 	store := newTestStore(t)
-	store.remember(attachmentRecord{
+	store.Remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: "cs_shim", ShimSessionID: "cs_shim",
 		Cwd: "/w", AttachedAt: "2026-08-06T10:00:00Z",
 	})
@@ -596,7 +598,7 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	if len(catalog.assigned) != 0 {
 		t.Fatalf("provisional rename wrote catalog assignments %#v", catalog.assigned)
 	}
-	if stored, ok := store.get("claude", "cs_shim"); !ok || stored.PendingName != "nano api fable" {
+	if stored, ok := store.Get("claude", "cs_shim"); !ok || stored.PendingName != "nano api fable" {
 		t.Fatalf("provisional record pendingName = %q, %v; want staged rename", stored.PendingName, ok)
 	}
 	emitClaudeInit(t, sess, fixture.claude, fixture.seq+1, "native-real", "")
@@ -649,11 +651,11 @@ func memoryRowServer(t *testing.T) *server {
 		{"eee", "codex", "native-dead", "exited", "/w/dead", "gpt-5"},
 	} {
 		hostedID := "nht_memory_" + fixture.id
-		record, err := executions.ensureSessionWithIdentity(hostedID, fixture.provider, presentationShared, "", "", "")
+		record, err := fixtureEnsureSessionWithIdentity(executions, hostedID, fixture.provider, presentationShared, "", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		generation, err := metadata.beginTransportBinding(record.ID)
+		generation, err := metadata.BeginTransportBinding(record.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -843,11 +845,11 @@ func rescueServer(t *testing.T) *server {
 			"native-sub":  {Thread: threadindex.Thread{ID: "nth_3", Provider: "codex", NativeID: "native-sub", Kind: "subagent", Interaction: "interactive", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		},
 	}
-	store, err := newAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	store, err := hosted.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
+	store.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	s := testServerWithSessions(&server{catalog: fake, attachments: store, Registry: newSessionRegistry()}, map[string]*session{
 		"aaa": memorySession(t, "aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
@@ -983,15 +985,15 @@ func TestCatalogWorkerIncludesSupervisorOutsideWindow(t *testing.T) {
 
 func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	parent, _, err := store.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(store, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.BindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	parent, _ = store.session(parent.ID)
-	child, _, err := store.beginSessionWithInvoker("child", "child-hash", "claude", presentationBackground, parent)
+	parent, _ = store.Session(parent.ID)
+	child, _, err := fixtureBeginSessionWithInvoker(store, "child", "child-hash", "claude", presentationBackground, parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1018,12 +1020,12 @@ func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, _, _ := store.beginSession("parent", "parent", "codex", presentationShared)
+	parent, _, _ := fixtureBeginSession(store, "parent", "parent", "codex", presentationShared)
 	_ = store.BindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared)
-	parent, _ = store.session(parent.ID)
-	child, _, _ := store.beginSessionWithInvoker("child", "child", "grok", presentationShared, parent)
+	parent, _ = store.Session(parent.ID)
+	child, _, _ := fixtureBeginSessionWithInvoker(store, "child", "child", "grok", presentationShared, parent)
 	_ = store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationShared)
-	if _, _, _, err := store.setSidebarPlacement(child.ID, sidebarPlacementStandalone); err != nil {
+	if _, _, _, err := store.SetSidebarPlacement(child.ID, sidebarPlacementStandalone); err != nil {
 		t.Fatal(err)
 	}
 	fake := &fakeThreadCatalog{page: catalogPage{Items: []catalogThread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "grok", NativeID: "native-child", Kind: "main"}}}}, rescued: map[string]catalogThread{
@@ -1045,9 +1047,9 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	original, _, _ := store.beginSession("original", "original", "codex", presentationShared)
-	newParent, _, _ := store.beginSession("new-parent", "new-parent", "claude", presentationShared)
-	child, _, _ := store.beginSessionWithInvoker("child", "child", "codex", presentationShared, original, nil)
+	original, _, _ := fixtureBeginSession(store, "original", "original", "codex", presentationShared)
+	newParent, _, _ := fixtureBeginSession(store, "new-parent", "new-parent", "claude", presentationShared)
+	child, _, _ := fixtureBeginSessionWithInvoker(store, "child", "child", "codex", presentationShared, original, nil)
 	if err := store.BindSession(original.ID, "nano-original", "native-original", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
@@ -1057,7 +1059,7 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 	if err := store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := control.appendOrchestrationAssignment(child.ID, "move", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(store, child.ID, "move", &orchestrationAssignment{
 		AssignmentRole: "worker", Focus: "Move visually", RelatedHostedThreadID: newParent.ID,
 	}); err != nil {
 		t.Fatal(err)

@@ -15,6 +15,7 @@ import (
 // sidebarTestCatalog wraps the fixture's real catalog so a test can publish
 // catalog changes, count full sidebar graph reads, and fail one read.
 type sidebarTestCatalog struct {
+	store *history.Store
 	*threadCatalogService
 	changes   chan catalog.Change
 	mu        sync.Mutex
@@ -50,8 +51,8 @@ func (c *sidebarTestCatalog) reads() int {
 // fixture and the wrapped catalog.
 func startSidebarFixture(t *testing.T) (*server, *sidebarTestCatalog) {
 	t.Helper()
-	s, _ := sidebarActiveFixture(t, time.Now())
-	c := &sidebarTestCatalog{threadCatalogService: s.catalog.(*threadCatalogService), changes: make(chan catalog.Change, 1)}
+	s, _, store := sidebarActiveFixtureWithStore(t, time.Now())
+	c := &sidebarTestCatalog{store: store, threadCatalogService: s.catalog.(*threadCatalogService), changes: make(chan catalog.Change, 1)}
 	s.catalog = c
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -203,7 +204,11 @@ func TestSidebarNativeBindShowsAtOnce(t *testing.T) {
 // A rebuild that changes nothing publishes nothing, and keeps the delta's revision on the row.
 func TestSidebarRebuildAgreesWithRuntimeDelta(t *testing.T) {
 	s, _ := startSidebarFixture(t)
-	s.controlMetadata.publishChange("nht_related_parent", 7, "name")
+	for revision := s.controlMetadata.LatestRevision("nht_related_parent"); revision < 7; revision++ {
+		if _, err := s.controlMetadata.BeginTransportBinding("nht_related_parent"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	events := s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
 	delta := s.runtimeDeltaSnapshot()

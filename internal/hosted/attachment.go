@@ -83,9 +83,9 @@ type AttachmentKey struct {
 	NativeThreadID string `json:"-"`
 }
 
-// Normalized fills in the provider a legacy record lacks, so every stored
+// normalized fills in the provider a legacy record lacks, so every stored
 // record is addressable and every rewrite of the file carries the field.
-func (r Attachment) Normalized() Attachment {
+func (r Attachment) normalized() Attachment {
 	if r.Provider == "" {
 		r.Provider = attachmentProviderDefault
 	}

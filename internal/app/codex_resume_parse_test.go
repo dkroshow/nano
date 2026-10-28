@@ -9,9 +9,9 @@ func TestCodexOperationalResponseUsesNativeTextInWireAndResume(t *testing.T) {
 	for _, route := range []string{"wire", "resume"} {
 		t.Run(route, func(t *testing.T) {
 			store := newTestAgentExecutionStore(t, "run-1")
-			hosted, _, _ := store.beginSession("caller", "request", "codex", presentationShared)
+			hosted, _, _ := fixtureBeginSession(store, "caller", "request", "codex", presentationShared)
 			_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
-			op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt")
+			op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt")
 			_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
 			sess, fake := newCodexObserverFixture(t, store, hosted.ID, "native-1")
 			answer := json.RawMessage(`{"id":"answer","type":"agentMessage","phase":"final_answer","text":"  native answer\n","summary":["unrelated summary"]}`)
@@ -23,8 +23,8 @@ func TestCodexOperationalResponseUsesNativeTextInWireAndResume(t *testing.T) {
 					t.Fatal(err)
 				}
 				fake.EmitThreadNotification("native-1", payload)
-				waitForClaude(t, "native answer candidate", func() bool { got, _ := store.turn(op.ID); return got.CandidateItemID == "answer" })
-				before, _ := store.turn(op.ID)
+				waitForClaude(t, "native answer candidate", func() bool { got, _ := store.Turn(op.ID); return got.CandidateItemID == "answer" })
+				before, _ := store.Turn(op.ID)
 				if before.Status != agentTurnRunning {
 					t.Fatal("item completion settled the operation")
 				}
@@ -34,8 +34,8 @@ func TestCodexOperationalResponseUsesNativeTextInWireAndResume(t *testing.T) {
 				fake.SetResumeTurns(turns)
 				startCodexObserverFixture(t, sess, fake)
 			}
-			waitForClaude(t, "native answer terminal", func() bool { got, _ := store.turn(op.ID); return got.Status == agentTurnCompleted })
-			after, _ := store.turn(op.ID)
+			waitForClaude(t, "native answer terminal", func() bool { got, _ := store.Turn(op.ID); return got.Status == agentTurnCompleted })
+			after, _ := store.Turn(op.ID)
 			if after.Status != agentTurnCompleted || after.FinalItemID != "answer" || after.FinalResponse != "  native answer\n" {
 				t.Fatalf("response changed at %s boundary: %#v", route, after)
 			}

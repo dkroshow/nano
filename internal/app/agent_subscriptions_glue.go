@@ -19,10 +19,10 @@ func serverFeatureAction(actionID string) bool {
 // child's feed reaches the invoker only if its finished-turn hook finds the
 // dispatcher.
 func startSubscriptionDispatcher(s *server) {
-	if s == nil || s.agentExecutions == nil || s.agentExecutions.control == nil {
+	if s == nil || s.agentExecutions == nil || s.agentExecutions.Control() == nil {
 		return
 	}
-	d := subscriptions.NewDispatcher(s.agentExecutions.control.db, interact.NewHTTPClient(s.defaults.apiOrigin, nil), s.agentDisplay, log.Printf)
+	d := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), interact.NewHTTPClient(s.defaults.apiOrigin, nil), s.agentDisplay, log.Printf)
 	s.subscriptionMu.Lock()
 	s.subscriptions = d
 	s.subscriptionMu.Unlock()

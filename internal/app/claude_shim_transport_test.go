@@ -24,10 +24,10 @@ func providerSessionConfig(t *testing.T, provider string) (sessionConfig, int64,
 	metadata := newTestControlMetadata(t)
 	migrateTestControl(t, metadata)
 	const hostedID = "nht_claude_test"
-	if err := metadata.ensureHostedThread(hostedID, provider, presentationShared, "", "", ""); err != nil {
+	if err := metadata.EnsureHostedThread(hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	generation, err := metadata.beginTransportBinding(hostedID)
+	generation, err := metadata.BeginTransportBinding(hostedID)
 	if err != nil {
 		t.Fatal(err)
 	}

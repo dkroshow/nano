@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"net/http"
 	"strings"
@@ -38,9 +40,9 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 					}
 				}
 			})
-			var store *attachmentStore
+			var store *hostedstore.AttachmentStore
 			s, store = claudeResumeServer(t, shim.WSURL())
-			store.remember(rememberedClaudeSession(t, "/fake/claude"))
+			store.Remember(rememberedClaudeSession(t, "/fake/claude"))
 			if mode == "manual" {
 				response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 				if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") {
@@ -99,10 +101,10 @@ func TestClaudeResumeReplayProcessingTimeoutNeverStartsReplacement(t *testing.T)
 			}
 		}
 	})
-	var store *attachmentStore
+	var store *hostedstore.AttachmentStore
 	s, store = claudeResumeServer(t, shim.WSURL())
 	t.Cleanup(unblock)
-	store.remember(rememberedClaudeSession(t, "/fake/claude"))
+	store.Remember(rememberedClaudeSession(t, "/fake/claude"))
 	s.catalogRefresh = func(string) { once.Do(func() { close(blocked); <-release }) }
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") || len(shim.CallsOf(shimMethodStart)) != 0 {

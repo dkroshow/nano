@@ -479,7 +479,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	hosted, _, err := executions.beginSession("load-target", "request-hash", "codex", presentationBackground)
+	hosted, _, err := fixtureBeginSession(executions, "load-target", "request-hash", "codex", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -607,12 +607,12 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	if firstView.ID == "" || secondView.ID != firstView.ID {
 		t.Fatalf("idempotent operation ids = %q / %q", firstView.ID, secondView.ID)
 	}
-	initialOperation, ok := executions.turnForAction(hosted.ID, "load-require-idle")
+	initialOperation, ok := fixtureTurnForAction(executions, hosted.ID, "load-require-idle")
 	if !ok {
 		t.Fatal("canonical operation is missing")
 	}
 	waitForTurnSendDone(t, target, initialOperation.TransportActionID)
-	if operation, ok := executions.turnForAction(hosted.ID, "load-require-idle"); !ok || operation.ID != firstView.ID || operation.ProviderTurnID != "provider-load-turn" {
+	if operation, ok := fixtureTurnForAction(executions, hosted.ID, "load-require-idle"); !ok || operation.ID != firstView.ID || operation.ProviderTurnID != "provider-load-turn" {
 		t.Fatalf("canonical operation = %#v, found=%v", operation, ok)
 	}
 	if providerCalls.Load() != 1 {

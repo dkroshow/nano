@@ -3,7 +3,6 @@ package app
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 // browserDuplicateIncident is the durable, content-free observation. Raw DOM
 // keys and semantic message IDs are hashed before this record is written.
 type browserDuplicateIncident = diagnostics.BrowserDuplicateIncident
+
 type browserDuplicateIncidentFilter = diagnostics.BrowserDuplicateIncidentFilter
 
 func contentFreeIdentityFingerprint(namespace string, values []string) string {
@@ -89,18 +89,4 @@ func deriveBrowserDuplicateIncident(snapshot transcriptValidationSnapshot, recei
 		FirstPaneID: snapshot.PaneID, LastPaneID: snapshot.PaneID,
 		FirstObservedAt: stamp, LastObservedAt: stamp, ObservationCount: 1,
 	}, true
-}
-
-func (s *controlMetadataStore) observeBrowserDuplicateIncident(observation browserDuplicateIncident) (browserDuplicateIncident, bool, error) {
-	if s == nil {
-		return browserDuplicateIncident{}, false, errors.New("durable browser duplicate store unavailable")
-	}
-	return diagnostics.ObserveBrowserDuplicateIncident(s.db, observation)
-}
-
-func (s *controlMetadataStore) listBrowserDuplicateIncidents(filter browserDuplicateIncidentFilter) ([]browserDuplicateIncident, error) {
-	if s == nil {
-		return nil, errors.New("durable browser duplicate store unavailable")
-	}
-	return diagnostics.ListBrowserDuplicateIncidents(s.db, filter)
 }

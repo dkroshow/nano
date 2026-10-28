@@ -13,7 +13,14 @@ import (
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threads"
 )
+
+type creationNameRepairHTTPReceipt struct {
+	threads.CreationNameRepairReceipt
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
 
 func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nano_threads.sqlite")
@@ -22,33 +29,33 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { control.Close() })
-	if _, err := turns.MigrateTurnRecords(context.Background(), control.db, turns.LegacyTurnPaths{}, filepath.Join(t.TempDir(), "migration")); err != nil {
+	if _, err := turns.MigrateTurnRecords(context.Background(), control.CanonicalDatabase(), turns.LegacyTurnPaths{}, filepath.Join(t.TempDir(), "migration")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateTurnTransactions(context.Background(), control.db, filepath.Join(t.TempDir(), "schema20.sqlite")); err != nil {
+	if _, err := turns.MigrateTurnTransactions(context.Background(), control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema20.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := coreturns.MigrateCompletedTurnUsage(context.Background(), control.db, filepath.Join(t.TempDir(), "schema21.sqlite")); err != nil {
+	if _, err := coreturns.MigrateCompletedTurnUsage(context.Background(), control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema21.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateMemberRecovery(context.Background(), control.db, filepath.Join(t.TempDir(), "schema22.sqlite")); err != nil {
+	if _, err := turns.MigrateMemberRecovery(context.Background(), control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema22.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateParkedDiscard(context.Background(), control.db, filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
+	if _, err := turns.MigrateParkedDiscard(context.Background(), control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
 		t.Fatal(err)
 	}
 	executions, err := newControlAgentExecutionStore(control, "repair-http")
 	if err != nil {
 		t.Fatal(err)
 	}
-	hosted, err := executions.ensureSession("nht_repair_http", "codex", presentationShared)
+	hosted, err := fixtureEnsureSession(executions, "nht_repair_http", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession(hosted.ID, "nano", "native-repair", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newQueuedTurnStore(control.db, path, testPromptStore(t, control.db))
+	queue, err := newQueuedTurnStore(control.CanonicalDatabase(), path, testPromptStore(t, control.CanonicalDatabase()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"testing"
 )
@@ -11,18 +13,18 @@ import (
 func TestAttachmentRecordRoundTripsTurnAnchor(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/attachments.json"
-	store, err := newAttachmentStore(path)
+	store, err := hostedstore.NewAttachmentStore(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.remember(attachmentRecord{Provider: "claude", NativeThreadID: "native-1", Cwd: dir})
-	store.setTurnAnchor("claude", "native-1", 1785510514000, 42)
+	store.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "native-1", Cwd: dir})
+	store.SetTurnAnchor("claude", "native-1", 1785510514000, 42)
 
-	reloaded, err := newAttachmentStore(path)
+	reloaded, err := hostedstore.NewAttachmentStore(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, ok := reloaded.get("claude", "native-1")
+	rec, ok := reloaded.Get("claude", "native-1")
 	if !ok {
 		t.Fatal("record did not survive the reload")
 	}
@@ -30,12 +32,12 @@ func TestAttachmentRecordRoundTripsTurnAnchor(t *testing.T) {
 		t.Fatalf("anchor round-trip = (%d, %d), want (1785510514000, 42)", rec.TurnStartedAtMs, rec.TurnAnchorSeq)
 	}
 
-	store.setTurnAnchor("claude", "native-1", 0, 0)
-	cleared, err := newAttachmentStore(path)
+	store.SetTurnAnchor("claude", "native-1", 0, 0)
+	cleared, err := hostedstore.NewAttachmentStore(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec, _ := cleared.get("claude", "native-1"); rec.TurnStartedAtMs != 0 || rec.TurnAnchorSeq != 0 {
+	if rec, _ := cleared.Get("claude", "native-1"); rec.TurnStartedAtMs != 0 || rec.TurnAnchorSeq != 0 {
 		t.Fatalf("anchor after clear = (%d, %d), want zeroes", rec.TurnStartedAtMs, rec.TurnAnchorSeq)
 	}
 }
@@ -44,12 +46,12 @@ func TestAttachmentRecordRoundTripsTurnAnchor(t *testing.T) {
 // durable transport gets a record. Writing one for a thread with no record
 // would offer a recovery that cannot happen.
 func TestSetTurnAnchorNeverCreatesARecord(t *testing.T) {
-	store, err := newAttachmentStore(t.TempDir() + "/attachments.json")
+	store, err := hostedstore.NewAttachmentStore(t.TempDir() + "/attachments.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.setTurnAnchor("claude", "ghost", 1785510514000, 7)
-	if _, ok := store.get("claude", "ghost"); ok {
+	store.SetTurnAnchor("claude", "ghost", 1785510514000, 7)
+	if _, ok := store.Get("claude", "ghost"); ok {
 		t.Fatal("setTurnAnchor invented an attachment record")
 	}
 }

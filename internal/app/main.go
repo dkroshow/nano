@@ -31,6 +31,7 @@ import (
 	feedback "github.com/dkroshow/nano/internal/features/feedback"
 	nanofiles "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
@@ -109,7 +110,7 @@ type server struct {
 	// attachments persists durable codex attachments so hosted threads survive
 	// nano restarts (attachments.go). Nil when the store is unavailable, which
 	// turns the feature off cleanly: no detached entries, hooks are no-ops.
-	attachments *attachmentStore
+	attachments *hostedstore.AttachmentStore
 	// controlMetadata is the SQLite-backed hosted metadata authority.
 	controlMetadata     *controlMetadataStore
 	controlMetadataErr  string
@@ -179,11 +180,8 @@ type server struct {
 	usageLimitsPoller *usageLimitsPoller
 	hostMonitor       *hostMonitor
 	requests          observability.RequestTimes
-	// relationshipMu serializes every mutation that can change or act on the
-	// current hosted-thread tree: child creation, assignment, close, and bulk
-	// close. Without it, a child could be created or moved after a bulk-close
-	// snapshot and escape the operator's requested tree removal.
-	relationshipMu sync.Mutex
+	hostedControl     *hostedstore.Controller
+	hostedControlOnce sync.Once
 	// The resume locks, one per provider, cover resume routing through the
 	// provider's pre-claim. They make first registration and ordinary
 	// concurrent resume of a thread share one winner without holding the
@@ -277,7 +275,7 @@ func construct(cfg config.Config) *application {
 		// nothing and never walks a root.
 		catalogRefresh = func(path string) {
 			if path = filepath.Clean(path); path != "." && path != "" {
-				catalogService.fileChanged(path)
+				catalogService.FileChanged(path)
 			}
 		}
 	}
@@ -286,7 +284,7 @@ func construct(cfg config.Config) *application {
 	// before HTTP can expose a catalog built from stale canonical identity.
 	legacyCompletedPath := cfg.Paths.CompletedTurnsDB
 	var completedTurns *completedTurnStore
-	var attachments *attachmentStore
+	var attachments *hostedstore.AttachmentStore
 	var controlMetadata *controlMetadataStore
 	var controlMetadataErr string
 	var executionControlErr string
@@ -298,7 +296,7 @@ func construct(cfg config.Config) *application {
 	var usageLimits *usageLimitsStore
 	if catalogPath != "" {
 		attachPath := cfg.Paths.Attachments
-		store, err := newAttachmentStore(attachPath)
+		store, err := hostedstore.NewAttachmentStore(attachPath)
 		if err != nil {
 			log.Printf("attachment store unavailable (%s): %v", attachPath, err)
 		} else {
@@ -320,8 +318,8 @@ func construct(cfg config.Config) *application {
 		} else {
 			controlMetadata, agentExecutions = stores.control, stores.executions
 			queuedTurns, sendAttempts, completedTurns, turnStore = stores.queue, stores.attempts, stores.completed, stores.turns
-			startThreadsSizeWatch(stores.control.db, stores.queue.Path())
-			if err := importAndScrubLegacyAttachments(controlMetadata, attachments); err != nil {
+			startThreadsSizeWatch(stores.control.CanonicalDatabase(), stores.queue.Path())
+			if err := hostedstore.ImportAndScrubLegacyAttachments(controlMetadata, attachments); err != nil {
 				log.Printf("canonical attachment migration unavailable: %v", err)
 				controlMetadataErr, executionControlErr = err.Error(), err.Error()
 			} else {
@@ -409,14 +407,14 @@ func construct(cfg config.Config) *application {
 	}
 	s.deliveryExpiries = sessionruntime.NewDeliveryExpiries(deliveryExpiryWindow, s.publishProviderRuntime)
 	if agentExecutions != nil {
-		agentExecutions.useSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
+		agentExecutions.UseSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
 	}
 	s.restart = newRestartTracker(filepath.Join(cfg.Paths.DataDir, restartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
 	if err := s.syncMailNotices(); err != nil {
 		log.Fatalf("initialize mail notices: %v", err)
 	}
 	if catalogService != nil && controlMetadata != nil {
-		catalogService.setCreationNameSource(controlMetadata.creationThreadNames)
+		catalogService.SetCreationNameSource(controlMetadata.CreationThreadNames)
 	}
 	s.hostMonitor = newHostMonitor(filepath.Join(cfg.Paths.DataDir, "health"), filepath.Join(cfg.Paths.DataDir, "deploys.jsonl"))
 	go s.hostMonitor.run(context.Background())
@@ -425,8 +423,8 @@ func construct(cfg config.Config) *application {
 		go s.usageLimitsPoller.run(context.Background())
 	}
 	if catalogService != nil {
-		catalogService.setTranscriptRepairPriority(s.transcriptRepairPriority)
-		catalogService.setTranscriptChanged(s.confirmDurableThread)
+		catalogService.SetTranscriptRepairPriority(s.transcriptRepairPriority)
+		catalogService.SetTranscriptChanged(s.confirmDurableThread)
 	}
 	if catalogStore != nil {
 		if providerHomes, err := configuredProviderHomes(); err != nil {
@@ -462,7 +460,7 @@ func construct(cfg config.Config) *application {
 		s.feedback = store
 	}
 	if completedTurns != nil {
-		s.completedTurns = newCompletedTurnSource(completedTurns)
+		s.completedTurns = hostedstore.NewCompletedTurnSource(completedTurns)
 	}
 	if cfg.HeartbeatMaxWakesPerHour < 1 {
 		log.Fatal("heartbeat-max-wakes-per-hour must be positive")
@@ -870,8 +868,8 @@ func (s *server) listedSessions(sessions []*sessionruntime.Session) []listedSess
 			hostedIDs = append(hostedIDs, sess.HostedThreadID())
 		}
 	}
-	views, viewsErr := s.controlMetadata.viewsFrom(summaryDB, hostedIDs)
-	needsAttention := s.agentExecutions.sessionsNeedingAttention()
+	views, viewsErr := s.controlMetadata.ViewsFrom(summaryDB, hostedIDs)
+	needsAttention := s.agentExecutions.SessionsNeedingAttention()
 	summaries := make([]sessionruntime.Summary, 0, len(sessions))
 	for _, sess := range sessions {
 		view, found := views[sess.HostedThreadID()]
@@ -902,7 +900,7 @@ func (s *server) listedSessions(sessions []*sessionruntime.Session) []listedSess
 func (s *server) detachedSessionViews(live map[attachmentKey]bool) []detachedSessionView {
 	var records []attachmentRecord
 	if s.attachments != nil {
-		records = s.attachments.detachedExcept(live)
+		records = s.attachments.DetachedExcept(live)
 	}
 	return s.detachedViewsOf(records)
 }
@@ -919,7 +917,7 @@ func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionVi
 			detachedIDs = append(detachedIDs, record.HostedThreadID)
 		}
 	}
-	detachedViews, detachedErr := s.controlMetadata.viewsFrom(summaryDB, detachedIDs)
+	detachedViews, detachedErr := s.controlMetadata.ViewsFrom(summaryDB, detachedIDs)
 	detached := []detachedSessionView{}
 	for _, record := range records {
 		view := detachedSessionView{attachmentRecord: record}
@@ -966,45 +964,6 @@ func listMetadata(view *hostedMetadataView) *listedMetadata {
 	return &listedMetadata{Revision: view.Revision, Fields: fields}
 }
 
-func (s *server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
-	// Share admission serialization with hosted and legacy explicit close.
-	s.relationshipMu.Lock()
-	defer s.relationshipMu.Unlock()
-	var req spawnRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Provider == "" {
-		httpapi.WriteHTTPError(w, "body must be {\"provider\": \"codex\"|\"claude\"|\"grok\", ...spawn options}", http.StatusBadRequest)
-		return
-	}
-	sess, err := s.spawnSession(req)
-	if err != nil {
-		if errors.Is(err, errHostedControlUnavailable) {
-			message := err.Error()
-			if s.executionControlErr != "" {
-				message += ": " + s.executionControlErr
-			} else if s.controlMetadataErr != "" {
-				message += ": " + s.controlMetadataErr
-			}
-			httpapi.WriteHTTPError(w, message, http.StatusServiceUnavailable)
-			return
-		}
-		// Frozen contract: a resume onto an already-attached thread is a
-		// 409 whose body carries the session to jump to.
-		var attached *sessionruntime.ThreadAttachedError
-		if errors.As(err, &attached) {
-			httpapi.WriteErrorEnvelope(w, http.StatusConflict, httpapi.ErrorEnvelope{Error: httpapi.Error{
-				Code: "thread_attached", Message: "Thread is already attached", Details: map[string]string{"existingSessionId": attached.ExistingSessionID},
-			}})
-
-			return
-		}
-		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	sum := sess.Summary() // snapshot under the state lock; claude's threadID lands async
-	log.Printf("spawned %s session %s (thread %q, cwd %s)", sum.Provider, sum.ID, sum.ThreadID, sum.Cwd)
-	httpapi.WriteJSON(w, sum)
-}
-
 func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Request, *sessionruntime.Session)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("sessionId")
@@ -1015,68 +974,6 @@ func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Requ
 		}
 		operation(w, r, sess)
 	}
-}
-
-func (s *server) handleSessionClose(w http.ResponseWriter, _ *http.Request, sess *sessionruntime.Session) {
-	s.relationshipMu.Lock()
-	defer s.relationshipMu.Unlock()
-	if err := s.closeExplicitSession(sess); err != nil {
-		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	log.Printf("closed %s session %s", sess.Provider(), sess.ID())
-	httpapi.WriteJSON(w, map[string]bool{"closed": true})
-}
-
-// handleAttachmentScoped handles DELETE /api/attachments/{nativeThreadId}:
-// stop a detached Claude process without re-attaching or replaying it.
-// Ambiguous provider identity is refused rather than broadening the target.
-func (s *server) handleAttachmentScoped(w http.ResponseWriter, r *http.Request) {
-	s.relationshipMu.Lock()
-	defer s.relationshipMu.Unlock()
-	nativeID := r.PathValue("nativeThreadId")
-	if nativeID == "" {
-		httpapi.WriteHTTPError(w, "native thread id required", http.StatusBadRequest)
-		return
-	}
-	forget := r.URL.Query().Get("forget")
-	if forget != "" && (forget != "unconfirmed" || r.URL.Query().Get("provider") != "claude" || !r.URL.Query().Has("expectedShimSessionId") || !r.URL.Query().Has("expectedAttachedAt")) {
-		httpapi.WriteHTTPError(w, "unconfirmed forget requires Claude and the captured attachment identity", http.StatusBadRequest)
-		return
-	}
-	if s.attachments != nil {
-		provider := strings.TrimSpace(r.URL.Query().Get("provider"))
-		var matches []attachmentRecord
-		for _, record := range s.attachments.records() {
-			if record.NativeThreadID == nativeID && (provider == "" || record.Provider == provider) {
-				matches = append(matches, record)
-			}
-		}
-		if len(matches) > 1 {
-			httpapi.WriteHTTPError(w, "provider required for ambiguous attachment", http.StatusConflict)
-			return
-		}
-		if len(matches) == 1 {
-			var err error
-			if forget == "unconfirmed" {
-				err = s.forgetUnconfirmedClaude(matches[0], r.URL.Query().Get("expectedShimSessionId"), r.URL.Query().Get("expectedAttachedAt"))
-			} else {
-				err = s.closeExplicitAttachment(matches[0])
-			}
-			if err != nil {
-				httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
-				return
-			}
-		}
-		// The dismissed row's detached overlay just disappeared; nudge open
-		// Explorers the same way bind/unbind does.
-		s.notifyRuntime()
-	}
-	if forget == "unconfirmed" {
-		httpapi.WriteJSON(w, map[string]any{"forgotten": true, "processState": "unknown"})
-		return
-	}
-	httpapi.WriteJSON(w, map[string]bool{"forgotten": true})
 }
 
 // handleSpawnPreview returns the exact protocol payload a spawn request

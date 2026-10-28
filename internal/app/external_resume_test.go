@@ -63,7 +63,7 @@ func postExternalResume(s *server, provider, nativeID string) *httptest.Response
 func countHostedRecords(t *testing.T, s *server) int {
 	t.Helper()
 	var count int
-	if err := s.controlMetadata.db.QueryRow(`SELECT count(*) FROM hosted_threads`).Scan(&count); err != nil {
+	if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT count(*) FROM hosted_threads`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	return count
@@ -101,7 +101,7 @@ func TestExternalCodexResumeRegistersOnceAndPreservesHistoryIdentity(t *testing.
 		postureFieldServiceTier: "priority", postureFieldPermissionMode: "never",
 	} {
 		var encoded string
-		if err := s.controlMetadata.db.QueryRow(`SELECT value_json FROM thread_metadata_events WHERE hosted_thread_id=? AND field=? AND source_event_key=?`, summary.HostedThreadID, field, "external-resume:codex:"+nativeID+":"+field).Scan(&encoded); err != nil {
+		if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT value_json FROM thread_metadata_events WHERE hosted_thread_id=? AND field=? AND source_event_key=?`, summary.HostedThreadID, field, "external-resume:codex:"+nativeID+":"+field).Scan(&encoded); err != nil {
 			t.Fatalf("read imported field %s: %v", field, err)
 		}
 		var got string
@@ -496,7 +496,7 @@ func TestExternalResumeRejectsRecoveryHeldNativeIDWithoutRegistration(t *testing
 	const nativeID = "0199a213-abcd-7000-8000-recovery"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 	hosted := seedHostedNative(t, s.agentExecutions, "codex", "recovery-old", sessionStatusExited)
-	if _, err := s.controlMetadata.db.Exec(`INSERT INTO hosted_native_recoveries(hosted_thread_id,client_recovery_id,old_native_id,new_native_id,state,record_json) VALUES(?,?,?,?,?,?)`, hosted.ID, "external-resume-test", "recovery-old", nativeID, "created", `{}`); err != nil {
+	if _, err := s.controlMetadata.CanonicalDatabase().Exec(`INSERT INTO hosted_native_recoveries(hosted_thread_id,client_recovery_id,old_native_id,new_native_id,state,record_json) VALUES(?,?,?,?,?,?)`, hosted.ID, "external-resume-test", "recovery-old", nativeID, "created", `{}`); err != nil {
 		t.Fatal(err)
 	}
 	rec := postExternalResume(s, "codex", nativeID)
@@ -514,10 +514,10 @@ func TestExternalResumeRejectsRetiredHostedHistory(t *testing.T) {
 	const nativeID = "0199a213-abcd-7000-8000-external005"
 	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
 	old := seedHostedNative(t, s.agentExecutions, "codex", nativeID, sessionStatusExited)
-	if _, err := s.controlMetadata.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at='retired' WHERE hosted_thread_id=? AND native_thread_id=?`, old.ID, nativeID); err != nil {
+	if _, err := s.controlMetadata.CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at='retired' WHERE hosted_thread_id=? AND native_thread_id=?`, old.ID, nativeID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.controlMetadata.db.Exec(`UPDATE hosted_threads SET current_native_id='' WHERE hosted_thread_id=?`, old.ID); err != nil {
+	if _, err := s.controlMetadata.CanonicalDatabase().Exec(`UPDATE hosted_threads SET current_native_id='' WHERE hosted_thread_id=?`, old.ID); err != nil {
 		t.Fatal(err)
 	}
 	rec := postExternalResume(s, "codex", nativeID)
@@ -539,17 +539,17 @@ func TestExternalResumeMarkerCheckDoesNotScanEveryMetadataEvent(t *testing.T) {
 	}
 	control := newTestControlMetadata(t)
 	for _, id := range []string{"nht_marked", "nht_plain"} {
-		if err := control.ensureHostedThread(id, "codex", presentationShared, "", "", ""); err != nil {
+		if err := control.EnsureHostedThread(id, "codex", presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := control.db.Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,disposition,source,evidence_freshness,source_event_key,observed_at,committed_at)
+	if _, err := control.CanonicalDatabase().Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,disposition,source,evidence_freshness,source_event_key,observed_at,committed_at)
 		WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<100000)
 		SELECT 'nht_plain','cwd',?,?,?,'other:'||i,?,? FROM n`, metadataDispositionConfirmed, postureSourceOperator, metadataFreshnessLive, now, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := control.db.Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,disposition,source,evidence_freshness,source_event_key,observed_at,committed_at)
+	if _, err := control.CanonicalDatabase().Exec(`INSERT INTO thread_metadata_events(hosted_thread_id,field,disposition,source,evidence_freshness,source_event_key,observed_at,committed_at)
 		VALUES('nht_marked','cwd',?,?,?,'external-resume:codex:native:cwd',?,?)`, metadataDispositionConfirmed, postureSourceOperator, metadataFreshnessLive, now, now); err != nil {
 		t.Fatal(err)
 	}
@@ -557,11 +557,11 @@ func TestExternalResumeMarkerCheckDoesNotScanEveryMetadataEvent(t *testing.T) {
 	const checks = 20
 	started := time.Now()
 	for range checks {
-		marked, err := control.wasExternalResumeRegistration("nht_marked")
+		marked, err := control.WasExternalResumeRegistration("nht_marked")
 		if err != nil || !marked {
 			t.Fatalf("marked thread = %v, %v; want its external-resume marker found", marked, err)
 		}
-		plain, err := control.wasExternalResumeRegistration("nht_plain")
+		plain, err := control.WasExternalResumeRegistration("nht_plain")
 		if err != nil || plain {
 			t.Fatalf("plain thread = %v, %v; want no marker among its 100,000 other events", plain, err)
 		}

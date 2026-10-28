@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"reflect"
@@ -35,14 +37,14 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
 	executions := newTestAgentExecutionStore(t, "run-1")
-	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, "hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +54,7 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 		order = append(order, &claudeResultPrompt{name: identity.Name, turn: identity.Turn})
 	}
 	for _, p := range order {
-		op, _, err := executions.beginTurn("hosted", "prompt-"+p.name, "hash-"+p.name)
+		op, _, err := fixtureBeginTurn(executions, "hosted", "prompt-"+p.name, "hash-"+p.name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +82,7 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 	// Operations take their answers through the saved-result reader, as Nano
 	// serves them.
 	h.server.turns = h.prompts
-	executions.useSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
+	executions.UseSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
 	return claudeResultFixture{h: h, executions: executions, completed: completed, core: core, order: order, fill: fill}
 }
 
@@ -118,7 +120,7 @@ func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
 		if _, err := sess.SettlePrompts(ctx); err == nil {
 			done := true
 			for _, p := range order {
-				if op, _ := executions.turn(p.op); !threadvalues.TurnTerminal(op.Status) {
+				if op, _ := executions.Turn(p.op); !threadvalues.TurnTerminal(op.Status) {
 					done = false
 				}
 			}
@@ -143,7 +145,7 @@ func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
 		if p.name == "A" {
 			want, final = "answer to A", answerA
 		}
-		op, _ := executions.turn(p.op)
+		op, _ := executions.Turn(p.op)
 		if op.Status != agentTurnCompleted || op.FinalItemID != final || op.FinalResponse != want {
 			t.Fatalf("operation %s = status %s final %q %q, error %+v; want %q", p.name, op.Status, op.FinalItemID, op.FinalResponse, op.Error, want)
 		}
@@ -160,7 +162,7 @@ func newClaudeResultSession(t *testing.T, f claudeResultFixture) *session {
 	t.Helper()
 	h := f.h
 	p := newLiveProjection("claude", "hosted")
-	sess := newSession(sessionConfig{ID: "nano-session", Provider: "claude", HostedThreadID: "hosted", Projection: p, AgentExecutions: f.executions, Metadata: h.control, CompletedTurns: f.completed.coreStore, Turns: h.prompts, QueuedTurns: h.queue, SendAttempts: h.attempts})
+	sess := newSession(sessionConfig{ID: "nano-session", Provider: "claude", HostedThreadID: "hosted", Projection: p, AgentExecutions: f.executions, Metadata: h.control, CompletedTurns: f.completed.CoreStore, Turns: h.prompts, QueuedTurns: h.queue, SendAttempts: h.attempts})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}

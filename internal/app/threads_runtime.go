@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"fmt"
@@ -40,14 +42,14 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 	if err != nil {
 		return nil, err
 	}
-	result := &threadRuntimeStores{control: control, completed: &completedTurnStore{db: control.db}}
+	result := &threadRuntimeStores{control: control, completed: hostedstore.NewCompletedTurnStore(control.CanonicalDatabase())}
 	failed := true
 	defer func() {
 		if failed {
 			_ = control.Close()
 		}
 	}()
-	if result.turns, err = prompts.OpenStore(ctx, control.db); err != nil {
+	if result.turns, err = prompts.OpenStore(ctx, control.CanonicalDatabase()); err != nil {
 		return nil, err
 	}
 	adoption, err := result.turns.AdoptLegacy(ctx)
@@ -65,11 +67,11 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 		log.Printf("transactional turn boot parked action=%q provider=%q hostedThreadId=%q nativeThreadId=%q missing=%s",
 			parked.ActionID, parked.Provider, parked.HostedThreadID, parked.NativeThreadID, strings.Join(parked.Missing, ","))
 	}
-	if result.queue, err = prompts.NewLegacyQueue(control.db, paths.Destination, result.turns); err != nil {
+	if result.queue, err = prompts.NewLegacyQueue(control.CanonicalDatabase(), paths.Destination, result.turns); err != nil {
 		return nil, err
 	}
 	result.queue.SetBootParks(bootParks)
-	if result.attempts, err = prompts.NewLegacyJournal(control.db, paths.Destination, runID, result.turns); err != nil {
+	if result.attempts, err = prompts.NewLegacyJournal(control.CanonicalDatabase(), paths.Destination, runID, result.turns); err != nil {
 		return nil, err
 	}
 	if result.executions, err = newControlAgentExecutionStore(control, runID); err != nil {
@@ -77,7 +79,7 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 	}
 	// Retention keeps every operation until the prompt owner can say whose
 	// evidence may go; from here on it asks.
-	result.executions.pruneEligible = result.turns.PruneEligible
+	result.executions.SetPruneEligible(result.turns.PruneEligible)
 	failed = false
 	return result, nil
 }

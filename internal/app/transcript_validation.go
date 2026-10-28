@@ -381,7 +381,7 @@ func (s *server) handleTranscriptValidationRecord(w http.ResponseWriter, r *http
 			httpapi.WriteHTTPError(w, "durable browser duplicate store unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		incident, _, err := s.controlMetadata.observeBrowserDuplicateIncident(observation)
+		incident, _, err := s.controlMetadata.ObserveBrowserDuplicateIncident(observation)
 		if err != nil {
 			httpapi.WriteHTTPError(w, "persist browser duplicate incident: "+err.Error(), http.StatusServiceUnavailable)
 			return
@@ -414,7 +414,7 @@ func (s *server) handleTranscriptValidationsList(w http.ResponseWriter, r *http.
 	)
 	response := map[string]any{"validations": latest, "history": history}
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
-		incidents, err := s.controlMetadata.listBrowserDuplicateIncidents(browserDuplicateIncidentFilter{
+		incidents, err := s.controlMetadata.ListBrowserDuplicateIncidents(browserDuplicateIncidentFilter{
 			ThreadID: r.URL.Query().Get("threadId"), HostedThreadID: r.URL.Query().Get("hostedThreadId"),
 			PaneID: r.URL.Query().Get("paneId"), Limit: limit,
 		})

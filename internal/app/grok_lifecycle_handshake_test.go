@@ -91,8 +91,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Cleanup(release)
 				defer release()
 			}
-
-			if err := metadata.ensureHostedThread(sess.HostedThreadID(), "grok", presentationShared, "", "", ""); err != nil {
+			if err := metadata.EnsureHostedThread(sess.HostedThreadID(), "grok", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
 			if tc.created {

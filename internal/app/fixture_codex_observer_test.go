@@ -16,13 +16,13 @@ func (*quietRuntimeExecutions) UpdateSession(string, string, string, string, str
 
 func newCodexObserverFixture(t *testing.T, store *agentExecutionStore, hostedID, nativeID string) (*session, *fakeAppServer) {
 	t.Helper()
-	migrateTestControl(t, store.control)
-	prompts := testPromptStore(t, store.control.db)
-	queue, err := newQueuedTurnStore(store.control.db, "", prompts)
+	migrateTestControl(t, store.Control())
+	prompts := testPromptStore(t, store.Control().CanonicalDatabase())
+	queue, err := newQueuedTurnStore(store.Control().CanonicalDatabase(), "", prompts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal, err := newSendAttemptStore(store.control.db, "", "observer", prompts)
+	journal, err := newSendAttemptStore(store.Control().CanonicalDatabase(), "", "observer", prompts)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,10 +1,11 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -43,7 +45,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			queue.BindTransactionStore(turnStore)
 			attempts.BindTransactionStore(turnStore)
 			clientID := provider + "-caller-session"
-			hosted, _, _ := store.beginSession(clientID, "request-hash", provider, presentationBackground)
+			hosted, _, _ := fixtureBeginSession(store, clientID, "request-hash", provider, presentationBackground)
 			_ = store.BindSession(hosted.ID, "nano-1", provider+"-native", "ready", presentationBackground)
 			fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: provider, HostedThreadID: hosted.ID, PresentationMode: presentationBackground, CreatedAt: time.Now(), Projection: newLiveProjection(provider), AgentExecutions: store, Turns: turnStore, QueuedTurns: queue, SendAttempts: attempts}, provider+"-native", "")
 			sess := fixture.session
@@ -64,7 +66,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &submitted); err != nil {
 				t.Fatal(err)
 			}
-			latest, ok := store.waitTurn(context.Background(), submitted.ID, submitted.Revision, time.Second)
+			latest, ok := fixtureWaitTurn(store, context.Background(), submitted.ID, submitted.Revision, time.Second)
 			if !ok || latest.Status != agentTurnRunning || latest.ProviderTurnID != "provider-turn-1" {
 				t.Fatalf("delivered operation = %#v", latest)
 			}
@@ -105,61 +107,12 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 	}
 }
 
-func TestGuardedHostedTurnAdmissionRejectsWithoutSideEffectsAndPreservesReplay(t *testing.T) {
-	s, store, sess, _, worker, prompts, _ := stage0Server(t)
-	rejected := errors.New("superseded by newer input")
-	actionID := "nano:guarded-admission"
-	if record, _, err := s.submitHostedTurnGuardedWithOptions(worker.ID, actionID, "continue owner work", true, func([]agentTurnRecord) error {
-		return rejected
-	}); !errors.Is(err, rejected) || record.ID != "" {
-		t.Fatalf("guarded rejection record=%#v err=%v", record, err)
-	}
-	if operation, found := store.turnForAction(worker.ID, actionID); found {
-		t.Fatalf("guarded rejection created operation %#v", operation)
-	}
-	if queued, found := s.queuedTurns.First(sess.Provider(), sess.ThreadID(), sess.HostedThreadID()); found {
-		t.Fatalf("guarded rejection created queue row %#v", queued)
-	}
-	if inFlight := sess.InFlightDeliveries(); len(inFlight) != 0 {
-		t.Fatalf("guarded rejection created send attempts %#v", inFlight)
-	}
-	select {
-	case prompt := <-prompts:
-		t.Fatalf("guarded rejection reached provider: %q", prompt)
-	default:
-	}
-
-	admitted, _, err := s.submitHostedTurnGuardedWithOptions(worker.ID, actionID, "continue owner work", true, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-prompts:
-	case <-time.After(time.Second):
-		t.Fatal("guarded admission did not reach provider")
-	}
-	waitTurnSendDone(t, sess, admitted.TransportActionID)
-	guardCalled := false
-	replay, _, err := s.submitHostedTurnGuardedWithOptions(worker.ID, actionID, "continue owner work", true, func([]agentTurnRecord) error {
-		guardCalled = true
-		return rejected
-	})
-	if err != nil || replay.ID != admitted.ID || guardCalled {
-		t.Fatalf("guarded replay=%#v admitted=%#v guardCalled=%v err=%v", replay, admitted, guardCalled, err)
-	}
-	select {
-	case duplicate := <-prompts:
-		t.Fatalf("guarded replay reached provider twice: %q", duplicate)
-	default:
-	}
-}
-
 func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	store, err := newAgentExecutionStore(filepath.Join(t.TempDir(), "executions.sqlite"), "run-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	hosted, _, _ := store.beginSession("codex-caller-session", "request-hash", "codex", presentationBackground)
+	hosted, _, _ := fixtureBeginSession(store, "codex-caller-session", "request-hash", "codex", presentationBackground)
 	_ = store.BindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationBackground)
 	queue := mustQueuedTurnStore(t)
 	attempts, err := newSendAttemptStore(queue.Database(), queue.Path(), "run-1", testPromptStore(t, queue.Database()))
@@ -200,12 +153,12 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &submitted); err != nil {
 		t.Fatal(err)
 	}
-	latest, ok := store.turn(submitted.ID)
+	latest, ok := store.Turn(submitted.ID)
 	if !ok {
 		t.Fatal("missing operation")
 	}
 	waitTurnSendDone(t, sess, latest.TransportActionID)
-	latest, ok = store.turn(submitted.ID)
+	latest, ok = store.Turn(submitted.ID)
 	if !ok || latest.Status != agentTurnDeliveryUnknown {
 		t.Fatalf("operation after bind failure = %#v found=%v", latest, ok)
 	}
@@ -217,10 +170,10 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 
 func TestAgentExecutionObserverUsesGrokPromptCompleteEvidence(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, _ := store.beginSession("grok-caller", "request-hash", "grok", presentationShared)
+	hosted, _, _ := fixtureBeginSession(store, "grok-caller", "request-hash", "grok", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "grok", HostedThreadID: hosted.ID, AgentExecutions: store, Projection: newLiveProjection("grok")}, "native-1", "")
-	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
+	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
 
 	fixture.emit(t, []byte(`{
@@ -231,8 +184,8 @@ func TestAgentExecutionObserverUsesGrokPromptCompleteEvidence(t *testing.T) {
       "jsonrpc":"2.0","method":"_x.ai/session/prompt_complete",
       "params":{"sessionId":"native-1","promptId":"turn-1","stopReason":"end_turn"}
     }`))
-	waitForClaude(t, "terminal operation", func() bool { got, _ := store.turn(op.ID); return got.Status == agentTurnCompleted })
-	after, _ := store.turn(op.ID)
+	waitForClaude(t, "terminal operation", func() bool { got, _ := store.Turn(op.ID); return got.Status == agentTurnCompleted })
+	after, _ := store.Turn(op.ID)
 	if after.Status != agentTurnCompleted || after.FinalResponse != "done" {
 		t.Fatalf("Grok terminal operation = %#v", after)
 	}
@@ -240,9 +193,9 @@ func TestAgentExecutionObserverUsesGrokPromptCompleteEvidence(t *testing.T) {
 
 func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
+	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "codex", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
-	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
+	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store}, "native-1", "")
 
@@ -250,8 +203,8 @@ func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
       "method":"item/completed",
       "params":{"threadId":"native-1","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}
     }`))
-	waitForClaude(t, "candidate answer", func() bool { got, _ := store.turn(op.ID); return got.CandidateItemID == "answer-1" })
-	before, _ := store.turn(op.ID)
+	waitForClaude(t, "candidate answer", func() bool { got, _ := store.Turn(op.ID); return got.CandidateItemID == "answer-1" })
+	before, _ := store.Turn(op.ID)
 	if before.Status != agentTurnRunning {
 		t.Fatalf("assistant message ended operation: %#v", before)
 	}
@@ -259,8 +212,8 @@ func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
       "method":"turn/completed",
       "params":{"threadId":"native-1","turn":{"id":"turn-1","status":"completed"}}
     }`))
-	waitForClaude(t, "terminal operation", func() bool { got, _ := store.turn(op.ID); return got.Status == agentTurnCompleted })
-	after, _ := store.turn(op.ID)
+	waitForClaude(t, "terminal operation", func() bool { got, _ := store.Turn(op.ID); return got.Status == agentTurnCompleted })
+	after, _ := store.Turn(op.ID)
 	if after.Status != agentTurnCompleted || after.FinalItemID != "answer-1" || after.FinalResponse != "done" {
 		t.Fatalf("terminal operation = %#v", after)
 	}
@@ -280,7 +233,7 @@ func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testi
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid presentation status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := store.resolveSession("caller-session"); ok {
+	if _, ok := (&server{agentExecutions: store, Registry: newSessionRegistry()}).resolveHostedThreadRecord("caller-session"); ok {
 		t.Fatal("invalid request was persisted")
 	}
 }
@@ -303,7 +256,7 @@ func TestAgentCreatedHostedThreadRequiresKnownInvoker(t *testing.T) {
 			}
 		})
 	}
-	if records := store.listSessions(); len(records) != 0 {
+	if records := fixtureListSessions(store); len(records) != 0 {
 		t.Fatalf("invalid invoker requests were persisted: %#v", records)
 	}
 }
@@ -345,18 +298,18 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatalf("New Window response status = %q, want async starting", summary.Status)
 	}
 	var runtimeRows int
-	if err := control.db.QueryRow(`SELECT count(*) FROM hosted_execution_sessions WHERE hosted_thread_id=?`, summary.HostedThreadID).Scan(&runtimeRows); err != nil || runtimeRows != 1 {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM hosted_execution_sessions WHERE hosted_thread_id=?`, summary.HostedThreadID).Scan(&runtimeRows); err != nil || runtimeRows != 1 {
 		t.Fatalf("execution row = %d, err=%v", runtimeRows, err)
 	}
 	var providerName string
-	if err := control.db.QueryRow(`SELECT provider FROM hosted_threads WHERE hosted_thread_id=?`, summary.HostedThreadID).Scan(&providerName); err != nil || providerName != "codex" {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT provider FROM hosted_threads WHERE hosted_thread_id=?`, summary.HostedThreadID).Scan(&providerName); err != nil || providerName != "codex" {
 		t.Fatalf("hosted identity = %q, err=%v", providerName, err)
 	}
-	record, ok := store.session(summary.HostedThreadID)
+	record, ok := store.Session(summary.HostedThreadID)
 	if !ok || record.ClientSessionID != "" || record.Provider != "codex" {
 		t.Fatalf("human-created hosted record = %#v, present=%v", record, ok)
 	}
-	if assignment, err := control.currentOrchestrationAssignment(summary.HostedThreadID); err != nil || assignment != nil {
+	if assignment, err := control.CurrentOrchestrationAssignment(summary.HostedThreadID); err != nil || assignment != nil {
 		t.Fatalf("human session assignment = %#v, err=%v", assignment, err)
 	}
 	listed := httptest.NewRecorder()
@@ -380,7 +333,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatalf("thread/start params omitted priority: %s", startParams)
 	}
 	var desired string
-	if err := control.db.QueryRow(`SELECT desired_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, summary.HostedThreadID, postureFieldServiceTier).Scan(&desired); err != nil || desired != metadataDispositionRequested {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT desired_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, summary.HostedThreadID, postureFieldServiceTier).Scan(&desired); err != nil || desired != metadataDispositionRequested {
 		t.Fatalf("priority desired metadata = %q, err=%v", desired, err)
 	}
 	if resolved, ok := s.resolveHostedThreadRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
@@ -407,7 +360,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if err := json.Unmarshal(submitted.Body.Bytes(), &operation); err != nil {
 		t.Fatal(err)
 	}
-	latest, ok := store.waitTurn(context.Background(), operation.ID, operation.Revision, time.Second)
+	latest, ok := fixtureWaitTurn(store, context.Background(), operation.ID, operation.Revision, time.Second)
 	if !ok || latest.HostedThreadID != summary.HostedThreadID || latest.Status != agentTurnRunning {
 		t.Fatalf("human-created operation = %#v", latest)
 	}
@@ -416,7 +369,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 
 func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	control, store := newTestHostedControl(t)
-	parent, _, err := store.beginSession("parent-alias", "parent-request", "claude", presentationShared)
+	parent, _, err := fixtureBeginSession(store, "parent-alias", "parent-request", "claude", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +450,7 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 
 func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, err := store.beginSession("reader-alias", "request-hash", "codex", presentationShared)
+	hosted, _, err := fixtureBeginSession(store, "reader-alias", "request-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,8 +459,8 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	}
 	projection := newLiveProjection("codex", hosted.ID)
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, Projection: projection}, "native-1", "ready", "", true)
-	saved := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: transcriptResponse{
-		Items: []transcriptItem{{ID: "saved-message-1", Type: "agent_message", Text: "working on it"}},
+	saved := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: threadindex.TranscriptResponse{
+		Items: []threadindex.TranscriptItem{{ID: "saved-message-1", Type: "agent_message", Text: "working on it"}},
 	}}}
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store, catalog: saved}, map[string]*session{"nano-1": sess})
 	s.startLiveText(sess)
@@ -532,15 +485,15 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	if len(messages.Items) != 1 || messages.Items[0].Type != "agentMessage" || !messages.Runtime.TurnActive {
 		t.Fatalf("messages view = %#v", messages)
 	}
-	if saved.query.View != defaultThreadTranscriptView {
+	if saved.query.View != threadindex.DefaultThreadTranscriptView {
 		t.Fatalf("messages query = %#v", saved.query)
 	}
-	saved.response.Items = append(saved.response.Items, transcriptItem{ID: "saved-tool-1", Type: "commandExecution", Text: "secret command output"})
+	saved.response.Items = append(saved.response.Items, threadindex.TranscriptItem{ID: "saved-tool-1", Type: "commandExecution", Text: "secret command output"})
 	full, code := read("/api/v1/hosted-threads/" + hosted.ID + "/conversation?view=full")
 	if code != http.StatusOK || len(full.Items) != 2 {
 		t.Fatalf("full view status = %d, snapshot = %#v", code, full)
 	}
-	if saved.query.View != devThreadTranscriptView || !saved.query.HiddenSpecified {
+	if saved.query.View != threadindex.DevThreadTranscriptView || !saved.query.HiddenSpecified {
 		t.Fatalf("full query = %#v", saved.query)
 	}
 	_, code = read("/api/v1/hosted-threads/" + hosted.ID + "/conversation?view=unknown")
@@ -555,14 +508,14 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 	shim := newFakeShim(t, func(c *shimConn) { c.AnswerRest() })
 	control, store := newTestHostedControl(t)
-	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
+	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
-	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
+	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	if _, err := control.AppendEvent(metadataEvent{HostedThreadID: hosted.ID, Field: postureFieldModel, Value: "opus", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
 	attachments := newTestStore(t)
-	attachments.remember(attachmentRecord{
+	attachments.Remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-delete-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
@@ -578,17 +531,17 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 	if _, ok := s.attachmentFor("claude", "native-1"); ok {
 		t.Fatal("detached attachment survived delete")
 	}
-	if _, ok := store.session(hosted.ID); ok {
+	if _, ok := store.Session(hosted.ID); ok {
 		t.Fatal("durable record survived delete — DELETE must destroy, not close")
 	}
-	if _, ok := store.turn(op.ID); ok {
+	if _, ok := store.Turn(op.ID); ok {
 		t.Fatal("operation record survived its thread's delete")
 	}
 	var current, events int
-	if err := control.db.QueryRow(`SELECT count(*) FROM thread_metadata_current WHERE hosted_thread_id=?`, hosted.ID).Scan(&current); err != nil || current != 0 {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_current WHERE hosted_thread_id=?`, hosted.ID).Scan(&current); err != nil || current != 0 {
 		t.Fatalf("canonical current survived destroy: count=%d err=%v", current, err)
 	}
-	if err := control.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=?`, hosted.ID).Scan(&events); err != nil || events != 0 {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=?`, hosted.ID).Scan(&events); err != nil || events != 0 {
 		t.Fatalf("canonical events survived destroy: count=%d err=%v", events, err)
 	}
 }
@@ -600,11 +553,11 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	shim := newFakeShim(t, func(c *shimConn) { c.AnswerRest() })
 	store := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
+	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
-	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
+	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	attachments := newTestStore(t)
-	attachments.remember(attachmentRecord{
+	attachments.Remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-close-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
@@ -620,11 +573,11 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	if _, ok := s.attachmentFor("claude", "native-1"); ok {
 		t.Fatal("attachment survived close")
 	}
-	session, ok := store.session(hosted.ID)
+	session, ok := store.Session(hosted.ID)
 	if !ok || session.Status != sessionStatusExited {
 		t.Fatalf("closed record = %+v ok=%v, want retained with status exited", session, ok)
 	}
-	turn, _ := store.turn(op.ID)
+	turn, _ := store.Turn(op.ID)
 	if turn.Status != agentTurnInterrupted {
 		t.Fatalf("detached-thread operation status = %q, want interrupted, not a dangling %q", turn.Status, op.Status)
 	}
@@ -640,11 +593,11 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 // across every non-terminal state, including waiting_for_input.
 func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
+	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
-	queued, _, _ := store.beginTurn(hosted.ID, "action-q", "hash-q")
+	queued, _, _ := fixtureBeginTurn(store, hosted.ID, "action-q", "hash-q")
 	_ = store.MarkTurnDelivery(queued.ID, "", agentTurnQueued, nil)
-	waiting, _, _ := store.beginTurn(hosted.ID, "action-w", "hash-w")
+	waiting, _, _ := fixtureBeginTurn(store, hosted.ID, "action-w", "hash-w")
 	_ = store.MarkTurnDelivery(waiting.ID, "claude:1", agentTurnRunning, nil)
 	_ = store.MarkWaiting(hosted.ID, "claude:1", true)
 
@@ -655,17 +608,17 @@ func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 		t.Fatalf("close status = %d, body %s", rec.Code, rec.Body.String())
 	}
 
-	session, ok := store.session(hosted.ID)
+	session, ok := store.Session(hosted.ID)
 	if !ok || session.Status != sessionStatusExited {
 		t.Fatalf("record = %+v ok=%v, want exited", session, ok)
 	}
-	if store.hasNonTerminalTurns(hosted.ID) {
-		q, _ := store.turn(queued.ID)
-		w, _ := store.turn(waiting.ID)
+	if store.HasNonTerminalTurns(hosted.ID) {
+		q, _ := store.Turn(queued.ID)
+		w, _ := store.Turn(waiting.ID)
 		t.Fatalf("exited record still owns open operations: queued=%q waiting=%q — the split-brain seam", q.Status, w.Status)
 	}
 	for _, op := range []agentTurnRecord{queued, waiting} {
-		if settled, _ := store.turn(op.ID); settled.Status != agentTurnInterrupted {
+		if settled, _ := store.Turn(op.ID); settled.Status != agentTurnInterrupted {
 			t.Fatalf("operation %s status = %q, want interrupted", op.ID, settled.Status)
 		}
 	}
@@ -676,10 +629,10 @@ func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 func TestAgentSessionDetach(t *testing.T) {
 	shim := newFakeShim(t, func(c *shimConn) { c.AnswerRest() })
 	store := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
+	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	attachments := newTestStore(t)
-	attachments.remember(attachmentRecord{
+	attachments.Remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-detach-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
@@ -687,7 +640,7 @@ func TestAgentSessionDetach(t *testing.T) {
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
 	s.defaults.claudeShimWS = shim.WSURL()
 
-	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
+	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/detach", nil))
 	if rec.Code != http.StatusConflict {
@@ -703,11 +656,11 @@ func TestAgentSessionDetach(t *testing.T) {
 	if _, ok := s.attachmentFor("claude", "native-1"); ok {
 		t.Fatal("Claude detach retained a dead shim attachment")
 	}
-	session, ok := store.session(hosted.ID)
+	session, ok := store.Session(hosted.ID)
 	if !ok || session.Status != sessionStatusExited {
 		t.Fatalf("closed record = %+v ok=%v, want retained with status exited", session, ok)
 	}
-	turn, _ := store.turn(op.ID)
+	turn, _ := store.Turn(op.ID)
 	if turn.Status != agentTurnCompleted {
 		t.Fatalf("terminal operation status = %q, want untouched by detach", turn.Status)
 	}
@@ -728,12 +681,12 @@ func TestAgentClientSessionIDIsPathSafe(t *testing.T) {
 
 func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
-	hosted, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
+	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "codex", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
-	old, _, _ := store.beginTurn(hosted.ID, "old-action", "old-prompt")
+	old, _, _ := fixtureBeginTurn(store, hosted.ID, "old-action", "old-prompt")
 	_ = store.MarkTurnDelivery(old.ID, "turn-old", agentTurnRunning, nil)
 	_ = store.MarkTurnTerminal("codex", "native-1", "turn-old", agentTurnCompleted, nil, "done", "item-old")
-	current, _, _ := store.beginTurn(hosted.ID, "current-action", "current-prompt")
+	current, _, _ := fixtureBeginTurn(store, hosted.ID, "current-action", "current-prompt")
 	_ = store.MarkTurnDelivery(current.ID, "turn-current", agentTurnWaiting, nil)
 	f := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID}, "native-1", "")
 	sess := f.session
@@ -741,8 +694,8 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	waitForClaude(t, "the current turn's interaction", func() bool { return len(sess.PendingInteractionList()) == 1 })
 
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
-	oldRecord, _ := store.turn(old.ID)
-	currentRecord, _ := store.turn(current.ID)
+	oldRecord, _ := store.Turn(old.ID)
+	currentRecord, _ := store.Turn(current.ID)
 	oldView := s.agentTurnView(oldRecord)
 	currentView := s.agentTurnView(currentRecord)
 	if len(oldView.Interactions) != 0 || len(currentView.Interactions) != 1 || currentView.Interactions[0].ID != "1" {
@@ -764,7 +717,7 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	hosted, _, _ := executions.beginSession("queue-active", "request-hash", "codex", presentationBackground)
+	hosted, _, _ := fixtureBeginSession(executions, "queue-active", "request-hash", "codex", presentationBackground)
 	_ = executions.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationBackground)
 	var providerCalls atomic.Int32
 	var sess *session
@@ -814,21 +767,21 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	hosted, _, err := first.beginSession("claude-restart-stale", "request-hash", "claude", presentationBackground)
+	hosted, _, err := fixtureBeginSession(first, "claude-restart-stale", "request-hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := first.BindSession(hosted.ID, "nano-before-restart", "native-restart-stale", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
-	stale, _, err := first.beginTurn(hosted.ID, "stale-first-action", "stale-prompt-hash")
+	stale, _, err := fixtureBeginTurn(first, hosted.ID, "stale-first-action", "stale-prompt-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := first.MarkTurnDelivery(stale.ID, "claude:stale", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.control.Close(); err != nil {
+	if err := first.Control().Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -839,7 +792,7 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = executions.control.Close() })
+	t.Cleanup(func() { _ = executions.Control().Close() })
 	if err := executions.BindSession(hosted.ID, "nano-after-restart", "native-restart-stale", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
@@ -878,7 +831,7 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	if running.ProviderTurnID != "claude:fresh" || providerCalls.Load() != 1 {
 		t.Fatalf("follow-up did not reach Claude exactly once: operation=%#v calls=%d", running, providerCalls.Load())
 	}
-	if prior, ok := executions.turn(stale.ID); !ok || prior.Status != agentTurnRunning || prior.ProviderTurnID != "claude:stale" {
+	if prior, ok := executions.Turn(stale.ID); !ok || prior.Status != agentTurnRunning || prior.ProviderTurnID != "claude:stale" {
 		t.Fatalf("restart audit operation changed during admission: %#v, present=%v", prior, ok)
 	}
 }
@@ -898,7 +851,7 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	hosted, _, err := executions.beginSession("claude-followup-active", "request-hash", "claude", presentationBackground)
+	hosted, _, err := fixtureBeginSession(executions, "claude-followup-active", "request-hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -954,7 +907,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	hosted, _, err := executions.beginSession("claude-accepted-first", "request-hash", "claude", presentationBackground)
+	hosted, _, err := fixtureBeginSession(executions, "claude-accepted-first", "request-hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1010,7 +963,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		if op, ok := executions.turn(secondView.ID); ok && op.Status == agentTurnRunning {
+		if op, ok := executions.Turn(secondView.ID); ok && op.Status == agentTurnRunning {
 			if op.ProviderTurnID != "claude:2" || providerCalls.Load() != 2 {
 				t.Fatalf("follow-up dispatch = %#v calls=%d", op, providerCalls.Load())
 			}
@@ -1018,7 +971,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	op, _ := executions.turn(secondView.ID)
+	op, _ := executions.Turn(secondView.ID)
 	row2, _ := queue.Get(op.TransportActionID)
 	t.Fatalf("prompt 2 never dispatched: op.status=%s row.state=%s calls=%d", op.Status, row2.State, providerCalls.Load())
 }
@@ -1038,14 +991,14 @@ func TestHostedClaudeAcceptedPromptDoesNotHoldFollowupClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	hosted, _, err := executions.beginSession("claude-held-mismatch", "request-hash", "claude", presentationBackground)
+	hosted, _, err := fixtureBeginSession(executions, "claude-held-mismatch", "request-hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession(hosted.ID, "nano-held-mismatch", "native-held-mismatch", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
-	operation, _, err := executions.beginTurn(hosted.ID, "held-first", "held-first-hash")
+	operation, _, err := fixtureBeginTurn(executions, hosted.ID, "held-first", "held-first-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1101,7 +1054,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	hosted, _, _ := executions.beginSession("queue-starting", "request-hash", "claude", presentationBackground)
+	hosted, _, _ := fixtureBeginSession(executions, "queue-starting", "request-hash", "claude", presentationBackground)
 	var providerCalls atomic.Int32
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: newLiveProjection("claude"), AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "", "starting", "")
 	shim := newFakeShim(t, func(c *shimConn) {
@@ -1150,7 +1103,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	if queued.Status != agentTurnQueued || queued.QueuePosition != 1 {
 		t.Fatalf("startup queued operation = %#v", queued)
 	}
-	queuedOperation, _ := executions.turn(queued.ID)
+	queuedOperation, _ := executions.Turn(queued.ID)
 	queuedRecord, ok := queue.Get(queuedOperation.TransportActionID)
 	if !ok || queuedRecord.HostedThreadID != hosted.ID || queuedRecord.NativeThreadID != "" {
 		t.Fatalf("pre-identity queue record = %#v, present=%v", queuedRecord, ok)
@@ -1186,7 +1139,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	hosted, _, err := executions.beginSession("claude-fast-start", "request-hash", "claude", presentationBackground)
+	hosted, _, err := fixtureBeginSession(executions, "claude-fast-start", "request-hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1194,7 +1147,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	projection := newLiveProjection("claude")
-	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.control, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_fast_start", "starting", "")
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.Control(), Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_fast_start", "starting", "")
 
 	s := testServerWithSessions(&server{
 		Registry: newSessionRegistry(), agentExecutions: executions,
@@ -1212,7 +1165,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if operation.Status != agentTurnQueued {
 		t.Fatalf("startup operation = %#v", operation)
 	}
-	queuedOperation, ok := executions.turn(operation.ID)
+	queuedOperation, ok := executions.Turn(operation.ID)
 	if !ok {
 		t.Fatal("queued public operation disappeared")
 	}
@@ -1226,7 +1179,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 		turns := projectionStateForTest(projection).Turns
 		return len(turns) == 1 && turns[0].Status == agentTurnCompleted
 	})
-	latest, _ := executions.turn(operation.ID)
+	latest, _ := executions.Turn(operation.ID)
 	if latest.ProviderTurnID != "shim-turn-fast-1" || latest.NativeThreadID != "native-fast-start" || latest.Status != agentTurnRunning {
 		t.Fatalf("bound public operation = %#v", latest)
 	}
@@ -1282,8 +1235,8 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	migrateTestControl(t, executions.control)
-	hosted, _, err := executions.beginSession("claude-output-first", "request-hash", "claude", presentationBackground)
+	migrateTestControl(t, executions.Control())
+	hosted, _, err := fixtureBeginSession(executions, "claude-output-first", "request-hash", "claude", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1293,7 +1246,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	projection := newLiveProjection("claude")
-	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-output-first", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.control, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_output_first", "starting", "")
+	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-output-first", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.Control(), Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_output_first", "starting", "")
 
 	s := testServerWithSessions(&server{
 		Registry: newSessionRegistry(), agentExecutions: executions,
@@ -1308,14 +1261,14 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if err := json.Unmarshal(submitted.Body.Bytes(), &operation); err != nil {
 		t.Fatal(err)
 	}
-	queuedOperation, ok := executions.turn(operation.ID)
+	queuedOperation, ok := executions.Turn(operation.ID)
 	if !ok || operation.Status != agentTurnQueued {
 		t.Fatalf("startup operation = %#v, durable=%#v, present=%v", operation, queuedOperation, ok)
 	}
 	startFastClaudeFixture(t, sess, false)
 	waitForTurnSendDone(t, sess, queuedOperation.TransportActionID)
 
-	running, ok := executions.turn(operation.ID)
+	running, ok := executions.Turn(operation.ID)
 	if !ok || running.Status != agentTurnRunning || running.ProviderTurnID != "shim-turn-fast-1" || running.NativeThreadID != "native-fast-start" {
 		t.Fatalf("output-first public operation = %#v, error=%+v, present=%v", running, running.Error, ok)
 	}
@@ -1350,7 +1303,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	seedAcceptedTransactionalTurn(t, sess.PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-output-first", "claude:9", "leave me alone")
 
 	s.confirmDurableItems(context.Background(), sess)
-	if current, _ := executions.turn(operation.ID); current.Status != agentTurnRunning {
+	if current, _ := executions.Turn(operation.ID); current.Status != agentTurnRunning {
 		t.Fatalf("incomplete durable turn settled operation: %#v", current)
 	}
 	if attempt, _ := attempts.Get(queuedOperation.TransportActionID); attempt.Confirmed {
@@ -1359,7 +1312,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if _, ok := queue.Get(queuedOperation.TransportActionID); !ok {
 		t.Fatal("incomplete durable turn scrubbed exact queue row")
 	}
-	completed, ok := executions.turn(operation.ID)
+	completed, ok := executions.Turn(operation.ID)
 	if !ok || completed.Status != agentTurnRunning || completed.ProviderTurnID != "shim-turn-fast-1" {
 		t.Fatalf("durable file evidence changed live operation = %#v, present=%v", completed, ok)
 	}
@@ -1463,7 +1416,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = stores.control.Close() })
 	executions, attempts, queue, turnStore := stores.executions, stores.attempts, stores.queue, stores.turns
-	hosted, _, _ := executions.beginSession("queue-cancel", "request-hash", "codex", presentationShared)
+	hosted, _, _ := fixtureBeginSession(executions, "queue-cancel", "request-hash", "codex", presentationShared)
 	_ = executions.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationShared, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-1", "ready", "", true)
 	s := testServerWithSessions(&server{
@@ -1493,7 +1446,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	if canceledView.Status != agentTurnInterrupted || !canceledView.Terminal || canceledView.QueuePosition != 0 {
 		t.Fatalf("canceled operation = %#v", canceledView)
 	}
-	firstRecord, _ := executions.turn(first.ID)
+	firstRecord, _ := executions.Turn(first.ID)
 	if got := s.agentTurnView(firstRecord).QueuePosition; got != 1 {
 		t.Fatalf("first queue position after cancel = %d", got)
 	}
@@ -1520,8 +1473,8 @@ func confirmedTestSender(t *testing.T, s *server, provider string) string {
 	if s.catalog == nil {
 		s.catalog = renamedCatalog{name: "API test sender"}
 	}
-	id := "test-sender-" + agentHash([]byte(t.Name()))[:16]
-	sender, _, err := s.agentExecutions.beginSession(id, id, provider, presentationShared)
+	id := "test-sender-" + hostedstore.AgentHash([]byte(t.Name()))[:16]
+	sender, _, err := fixtureBeginSession(s.agentExecutions, id, id, provider, presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1537,7 +1490,7 @@ func waitForAgentTurnStatus(t *testing.T, store *agentExecutionStore, operationI
 	defer cancel()
 	revision := int64(0)
 	for {
-		record, ok := store.waitTurn(ctx, operationID, revision, time.Second)
+		record, ok := fixtureWaitTurn(store, ctx, operationID, revision, time.Second)
 		if !ok {
 			t.Fatalf("operation %s disappeared waiting for %s", operationID, want)
 		}
@@ -1561,7 +1514,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hosted, _, _ := store.beginSession("caller-1", "request-hash", "codex", presentationShared)
+	hosted, _, _ := fixtureBeginSession(store, "caller-1", "request-hash", "codex", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationShared)
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationShared, CreatedAt: time.Now(), Projection: newLiveProjection("codex"), AgentExecutions: store, QueuedTurns: mustQueuedTurnStore(t)}, "codex-native", "ready", "")
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
@@ -1593,7 +1546,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	if sess.Summary().PresentationMode != presentationBackground {
 		t.Fatal("live session summary did not flip")
 	}
-	if got, ok := store.presentationModeFor(hosted.ID); !ok || got != presentationBackground {
+	if got, ok := store.PresentationModeFor(hosted.ID); !ok || got != presentationBackground {
 		t.Fatalf("execution cache mode = %q ok=%v", got, ok)
 	}
 
@@ -1624,7 +1577,7 @@ func TestHostedThreadSidebarPlacementEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hosted, _, err := store.beginSession("caller-1", "request-hash", "codex", presentationShared)
+	hosted, _, err := fixtureBeginSession(store, "caller-1", "request-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1666,11 +1619,11 @@ func TestHostedThreadSidebarPlacementEndpoint(t *testing.T) {
 // and the dispatcher must use each update without replaying the quiet period.
 func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 	control, store := newTestHostedControl(t)
-	parent, _, err := store.beginSession("parent", "parent-hash", "codex", presentationShared)
+	parent, _, err := fixtureBeginSession(store, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := store.beginSessionWithSubscriptions("child", "child-hash", "claude", presentationShared, parent, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.None})
+	child, _, err := fixtureBeginSessionWithSubscriptions(store, "child", "child-hash", "claude", presentationShared, parent, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.None})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1684,10 +1637,10 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 		t.Helper()
 		var revision int64
 		var audits int
-		if err := control.db.QueryRow(`SELECT revision FROM hosted_threads WHERE hosted_thread_id=?`, child.ID).Scan(&revision); err != nil {
+		if err := control.CanonicalDatabase().QueryRow(`SELECT revision FROM hosted_threads WHERE hosted_thread_id=?`, child.ID).Scan(&revision); err != nil {
 			t.Fatal(err)
 		}
-		if err := control.db.QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field='subscriptions'`, child.ID).Scan(&audits); err != nil {
+		if err := control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND field='subscriptions'`, child.ID).Scan(&audits); err != nil {
 			t.Fatal(err)
 		}
 		return revision, audits
@@ -1719,8 +1672,8 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 				t.Fatalf("returned choices = %+v err=%v", view, err)
 			}
 		}
-		cached, ok := store.session(child.ID)
-		if !ok || storedSubscriptions(cached) != choices {
+		cached, ok := store.Session(child.ID)
+		if !ok || cached.SubscriptionInbox != (choices.Inbox == subscriptions.Send) || cached.SubscriptionPrompt != (choices.Prompt == subscriptions.Send) {
 			t.Fatalf("cache choices = %+v", cached)
 		}
 	}
@@ -1761,7 +1714,7 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 		t.Helper()
 		client.pages = map[string]interact.CompletedTurnPage{child.ID + "\x00" + cursor: {Items: []interact.CompletedTurn{{TurnID: turn, Outcome: agentTurnCompleted}}, NextCursor: turn}}
 		dispatcher.Sweep(child.ID)
-		got, _, err := subscriptions.Cursor(control.db, child.ID)
+		got, _, err := subscriptions.Cursor(control.CanonicalDatabase(), child.ID)
 		if err != nil || got != turn {
 			t.Fatalf("cursor=%q want %q err=%v", got, turn, err)
 		}
@@ -1785,7 +1738,7 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, ok := reloaded.session(child.ID)
+	saved, ok := reloaded.Session(child.ID)
 	if !ok || !saved.SubscriptionInbox || saved.SubscriptionPrompt {
 		t.Fatal("settings did not survive store reload")
 	}
@@ -1815,7 +1768,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			s, target := interactTestServer(t, true)
 			sess := s.SessionForHostedThread(target)
-			op, _, err := s.agentExecutions.beginTurn(target, "worker-ask", "hash-ask")
+			op, _, err := fixtureBeginTurn(s.agentExecutions, target, "worker-ask", "hash-ask")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1843,7 +1796,9 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			discard := func() *httptest.ResponseRecorder {
 				rec := httptest.NewRecorder()
 				if test.byCaller {
-					s.cancelQueuedAgentTurn(rec, op.ID)
+					request := httptest.NewRequest(http.MethodDelete, "/api/v1/turn-operations/"+op.ID, nil)
+					request.SetPathValue("operationId", op.ID)
+					s.handleTurnOperationCancel(rec, request)
 				} else {
 					sess.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/"+action, nil), action)
 				}
@@ -1853,8 +1808,8 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			opBefore, _ := s.agentExecutions.turn(op.ID)
-			db := s.agentExecutions.control.db
+			opBefore, _ := s.agentExecutions.Turn(op.ID)
+			db := s.agentExecutions.Control().CanonicalDatabase()
 			if _, err := db.Exec(`CREATE TRIGGER refuse_ending BEFORE UPDATE ON hosted_turn_operations WHEN NEW.status='interrupted' BEGIN SELECT RAISE(ABORT,'the operation write fails'); END`); err != nil {
 				t.Fatal(err)
 			}
@@ -1862,7 +1817,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				t.Fatalf("discard with a failing operation write = %d %s; want 500", rec.Code, rec.Body.String())
 			}
 			kept, _, err := sess.PromptStore().Get(ctx, action)
-			if opKept, _ := s.agentExecutions.turn(op.ID); err != nil || kept.Outbox.State != before.Outbox.State || opKept.Status != opBefore.Status {
+			if opKept, _ := s.agentExecutions.Turn(op.ID); err != nil || kept.Outbox.State != before.Outbox.State || opKept.Status != opBefore.Status {
 				t.Fatalf("after a failed discard: prompt %s, operation %s, %v; want %s and %s unchanged", kept.Outbox.State, opKept.Status, err, before.Outbox.State, opBefore.Status)
 			}
 			if _, err := db.Exec(`DROP TRIGGER refuse_ending`); err != nil {
@@ -1871,7 +1826,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			if rec := discard(); rec.Code != http.StatusOK {
 				t.Fatalf("discard asked again = %d %s", rec.Code, rec.Body.String())
 			}
-			ended, _ := s.agentExecutions.turn(op.ID)
+			ended, _ := s.agentExecutions.Turn(op.ID)
 			if ended.Status != agentTurnInterrupted || ended.Error == nil || ended.Error.Source != test.source || ended.Error.Code != test.code {
 				t.Fatalf("operation = %s %+v; want interrupted by %s with %s", ended.Status, ended.Error, test.source, test.code)
 			}

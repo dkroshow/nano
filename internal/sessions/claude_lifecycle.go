@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
@@ -85,7 +86,7 @@ func ClaudeExecutionEvidence(line []byte) bool {
 }
 
 // ClaudeNativeIDProvisional reports whether an identity is an unresolved Claude shim handle.
-func ClaudeNativeIDProvisional(id string) bool { return strings.HasPrefix(id, "cs_") }
+func ClaudeNativeIDProvisional(id string) bool { return hosted.NativeThreadIDProvisional("claude", id) }
 
 // A shim response and its fully drained ordered spool are provider evidence.
 // A persisted timestamp or provisional shim identity is never activity evidence.

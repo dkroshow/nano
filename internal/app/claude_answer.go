@@ -71,7 +71,7 @@ func (s *server) runDetachedClaudeOwed(hosted string) {
 func (s *server) claudeOwedPass(hosted string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	store, err := s.completedTurns.store.coreStore(ctx)
+	store, err := s.completedTurns.Store().CoreStore(ctx)
 	if err != nil {
 		log.Printf("Claude owed prompts of %s: turn store unavailable: %v", hosted, err)
 		return

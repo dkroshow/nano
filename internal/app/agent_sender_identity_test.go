@@ -15,9 +15,22 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 	for _, route := range []string{"attribution", "turn", "inbox"} {
 		for _, scenario := range []string{"source name only", "source name overrides catalog", "catalog fallback", "no hosted record", "missing native", "provisional native", "missing provider", "no name", "provider mismatch", "native mismatch"} {
 			t.Run(route+"/"+scenario, func(t *testing.T) {
-				s, store, workerSession, sender, worker, prompts, _ := stage0Server(t)
+				s, store, workerSession, sender, worker, prompts, _ := stage0Server(t, func(store *agentExecutionStore, sender agentSessionRecord) {
+					native, provider := sender.NativeThreadID, sender.Provider
+					switch scenario {
+					case "missing native":
+						native = ""
+					case "provisional native":
+						native = "cs_provisional"
+					case "missing provider":
+						provider = ""
+					}
+					if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_threads SET current_native_id=?,provider=? WHERE hosted_thread_id=?`, native, provider, sender.ID); err != nil {
+						t.Fatal(err)
+					}
+				})
 				t.Cleanup(func() {
-					if op, ok := store.turnForAction(worker.ID, "identity-check"); ok {
+					if op, ok := fixtureTurnForAction(store, worker.ID, "identity-check"); ok {
 						waitForAgentTurnStatus(t, store, op.ID, agentTurnRunning)
 						waitForTurnSendDone(t, workerSession, op.TransportActionID)
 					}
@@ -66,14 +79,9 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					s.catalog = renamedCatalog{name: "Catalog sender"}
 					wantCode = "sender_identity_incomplete"
 				}
-				if scenario != "no hosted record" {
-					store.mu.Lock()
-					store.sessions[sender.ID] = sender
-					store.mu.Unlock()
-				}
 				if scenario == "source name only" {
 					var names int
-					if err := s.controlMetadata.db.QueryRow(`SELECT count(*) FROM thread_metadata_current WHERE hosted_thread_id=? AND field='name'`, sender.ID).Scan(&names); err != nil || names != 0 {
+					if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_current WHERE hosted_thread_id=? AND field='name'`, sender.ID).Scan(&names); err != nil || names != 0 {
 						t.Fatalf("fixture metadata names=%d, err=%v", names, err)
 					}
 					if name := s.displayNameForHosted(context.Background(), sender.Provider, sender.ID, sender.NativeThreadID); name != "" {
@@ -130,14 +138,14 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != http.StatusBadRequest || body.Error.Code != wantCode {
 						t.Fatalf("refusal=%d %s, want %s", response.Code, response.Body, wantCode)
 					}
-					if _, exists := store.turnForAction(worker.ID, "identity-check"); exists {
+					if _, exists := fixtureTurnForAction(store, worker.ID, "identity-check"); exists {
 						t.Fatal("refused sender created a turn")
 					}
 					if s.queuedTurns.QueuedCount(worker.Provider, worker.NativeThreadID, worker.ID) != 0 || len(prompts) != 0 {
 						t.Fatal("refused sender queued or delivered a turn")
 					}
 					var messages int
-					if err := s.controlMetadata.db.QueryRow(`SELECT count(*) FROM agent_messages`).Scan(&messages); err != nil || messages != 0 {
+					if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT count(*) FROM agent_messages`).Scan(&messages); err != nil || messages != 0 {
 						t.Fatalf("refused sender persisted mail: count=%d err=%v", messages, err)
 					}
 					return
@@ -145,7 +153,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 				if response.Code != http.StatusAccepted {
 					t.Fatalf("submit=%d %s", response.Code, response.Body)
 				}
-				op, exists := store.turnForAction(worker.ID, "identity-check")
+				op, exists := fixtureTurnForAction(store, worker.ID, "identity-check")
 				if !exists || op.SenderName != persistedName || op.SenderNativeThreadID != sender.NativeThreadID || op.SenderProvider != sender.Provider {
 					t.Fatalf("turn attribution=%+v", op)
 				}
@@ -175,7 +183,7 @@ func TestAgentSenderCannotOverrideResolvedName(t *testing.T) {
 				if response.Code != http.StatusAccepted {
 					t.Fatalf("caller name admission=%d %s", response.Code, response.Body)
 				}
-				op, exists := store.turnForAction(recipient.ID, "caller-name")
+				op, exists := fixtureTurnForAction(store, recipient.ID, "caller-name")
 				if !exists || op.SenderName != "Claude sender" {
 					t.Fatalf("caller name replaced canonical attribution: %+v", op)
 				}
@@ -188,11 +196,11 @@ func TestAgentSenderCannotOverrideResolvedName(t *testing.T) {
 			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_message_request") {
 				t.Fatalf("caller name admission=%d %s", response.Code, response.Body)
 			}
-			if _, exists := store.turnForAction(recipient.ID, "caller-name"); exists || len(prompts) != 0 {
+			if _, exists := fixtureTurnForAction(store, recipient.ID, "caller-name"); exists || len(prompts) != 0 {
 				t.Fatal("caller supplied name admitted a turn")
 			}
 			var messages int
-			if err := s.controlMetadata.db.QueryRow(`SELECT count(*) FROM agent_messages`).Scan(&messages); err != nil || messages != 0 {
+			if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT count(*) FROM agent_messages`).Scan(&messages); err != nil || messages != 0 {
 				t.Fatalf("caller supplied name persisted mail: count=%d err=%v", messages, err)
 			}
 		})

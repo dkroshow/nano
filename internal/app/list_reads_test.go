@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"database/sql"
@@ -34,10 +36,11 @@ import (
 // another provider for a codex session's native id, and a named and an unnamed
 // hosted detached record cover which name each row takes.
 type budgetFixture struct {
-	server   *server
-	catalog  *countingCatalog
-	now      time.Time
-	hostedBy map[string]string // native id -> hosted id
+	server            *server
+	catalog           *countingCatalog
+	now               time.Time
+	hostedBy          map[string]string // native id -> hosted id
+	controlStatements atomic.Int64
 }
 
 // countingCatalog counts the catalog calls a request makes. It embeds the real
@@ -104,13 +107,35 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stars.Close() })
-	attachments, err := newAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
-	metadata, executions := newTestHostedControl(t)
+	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
+	metadata, _ := newTestHostedControl(t)
 	f := &budgetFixture{now: now, hostedBy: map[string]string{}}
+	// Instrument the adapter's supplied database from construction, so sessions
+	// and the app read the same counted pools without mutating private handles.
+	var controlPath string
+	if err := metadata.CanonicalDatabase().QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&controlPath); err != nil {
+		t.Fatal(err)
+	}
+	controlURL := url.URL{Scheme: "file", Path: controlPath}
+	query := controlURL.Query()
+	query.Set("mode", "rw")
+	query.Set("_pragma", "busy_timeout(5000)")
+	controlURL.RawQuery = query.Encode()
+	counted := sql.OpenDB(countingConnector{driver: metadata.ReadPool().Driver(), dsn: controlURL.String(), count: &f.controlStatements})
+	counted.SetMaxOpenConns(1)
+	metadata, err = hostedstore.NewMetadataStore(counted, counted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = metadata.Close() })
+	executions, err := newControlAgentExecutionStore(metadata, "test-run")
+	if err != nil {
+		t.Fatal(err)
+	}
 	sessions := map[string]*session{}
 	var nameOwner *server
 	live := func(native, cwd, model string, hosted bool, created time.Time) *session {
@@ -118,7 +143,7 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 		hostedID := "nht_missing_record"
 		if hosted {
 			hostedID = "nht_" + native
-			record, err := executions.ensureSessionWithIdentity(hostedID, "codex", presentationShared, "", "", "")
+			record, err := fixtureEnsureSessionWithIdentity(executions, hostedID, "codex", presentationShared, "", "", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,11 +190,11 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 	for i, native := range []string{"detached-hosted", "detached-unnamed"} {
 		sess := live(native, "/canon/"+native, "canon-model-z", true, created)
 		delete(sessions, sess.ID())
-		attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: native, HostedThreadID: sess.HostedThreadID(),
+		attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: native, HostedThreadID: sess.HostedThreadID(),
 			AttachedAt: now.Add(-time.Duration(i+1) * time.Minute).Format(time.RFC3339)})
 	}
 
-	turn, _, err := executions.beginTurn(f.hostedBy["failed-live"], "action-failed", "prompt-hash")
+	turn, _, err := fixtureBeginTurn(executions, f.hostedBy["failed-live"], "action-failed", "prompt-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,29 +222,22 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 	return f
 }
 
-// countControlStatements runs fn with both control-store handles replaced by
-// read-only pools on the same file that count every prepared statement, then
-// restores the originals. A write inside fn fails, which is itself a finding.
+// countControlStatements counts all statements through the fixture's shared
+// adapter. Its single physical connection rejects writes for the read boundary.
 func (f *budgetFixture) countControlStatements(t *testing.T, fn func()) int64 {
 	t.Helper()
-	store := f.server.controlMetadata
-	var count atomic.Int64
-	var path string
-	if err := store.db.QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&path); err != nil {
+	database := f.server.controlMetadata.CanonicalDatabase()
+	if _, err := database.Exec(`PRAGMA query_only=ON`); err != nil {
 		t.Fatal(err)
 	}
-	u := url.URL{Scheme: "file", Path: path}
-	query := u.Query()
-	query.Set("mode", "ro")
-	query.Set("_pragma", "busy_timeout(5000)")
-	u.RawQuery = query.Encode()
-	counting := sql.OpenDB(countingConnector{driver: store.readDB.Driver(), dsn: u.String(), count: &count})
-	defer counting.Close()
-	originalDB, originalRead := store.db, store.readDB
-	store.db, store.readDB = counting, counting
-	defer func() { store.db, store.readDB = originalDB, originalRead }()
+	defer func() {
+		if _, err := database.Exec(`PRAGMA query_only=OFF`); err != nil {
+			t.Error(err)
+		}
+	}()
+	f.controlStatements.Store(0)
 	fn()
-	return count.Load()
+	return f.controlStatements.Load()
 }
 
 // countingConnector opens connections that count every prepared statement
@@ -531,7 +549,7 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 		executions := f.server.agentExecutions
 		for i := 0; i < exited; i++ {
 			id := fmt.Sprintf("nht_exited_%03d", i)
-			if _, err := executions.ensureSessionWithIdentity(id, "codex", presentationShared, "", "", ""); err != nil {
+			if _, err := fixtureEnsureSessionWithIdentity(executions, id, "codex", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
 			if err := executions.UpdateSession(id, "", fmt.Sprintf("exited-%03d", i), sessionStatusExited, ""); err != nil {
@@ -541,7 +559,7 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 		if err := executions.UpdateSession(f.hostedBy["outside-live"], "", "outside-live", sessionStatusExited, ""); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := executions.ensureSessionWithIdentity("nht_rebooting", "codex", presentationShared, "", "", ""); err != nil {
+		if _, err := fixtureEnsureSessionWithIdentity(executions, "nht_rebooting", "codex", presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := executions.UpdateSession("nht_rebooting", "", "rebooting", sessionStatusExited, ""); err != nil {

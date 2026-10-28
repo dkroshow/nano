@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,7 +14,6 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
-	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -266,7 +263,7 @@ func (s *server) sidebarRescueKeys() []history.SidebarGraphKey {
 		add(sess.Provider, sess.ThreadID)
 	}
 	if s.attachments != nil {
-		for _, rec := range s.attachments.detachedExcept(nil) {
+		for _, rec := range s.attachments.DetachedExcept(nil) {
 			add(rec.Key().Provider, rec.Key().NativeThreadID)
 		}
 	}
@@ -328,12 +325,12 @@ func (s *server) attachRuntimeOverlayBatch(ctx context.Context, threads []catalo
 		threads[i].SidebarPlacement = record.SidebarPlacement
 		hostedIDs = append(hostedIDs, record.ID)
 	}
-	controlAvailable := s.controlMetadata != nil && s.controlMetadataErr == "" && s.controlMetadata.db.PingContext(ctx) == nil
+	controlAvailable := s.controlMetadata != nil && s.controlMetadataErr == "" && s.controlMetadata.CanonicalDatabase().PingContext(ctx) == nil
 	assignments := map[string]*orchestrationAssignmentView{}
 	metadata := map[string]threadindex.Metadata{}
 	if controlAvailable {
-		assignments = s.controlMetadata.currentAssignmentsByHostedIDs(hostedIDs)
-		metadata = s.controlMetadata.catalogMetadataByHostedIDs(hostedIDs)
+		assignments = s.controlMetadata.CurrentAssignmentsByHostedIDs(hostedIDs)
+		metadata = catalogMetadataByHostedIDs(s.controlMetadata, hostedIDs)
 	}
 	for i := range threads {
 		hostedID := threads[i].HostedThreadID
@@ -390,236 +387,23 @@ func (s *server) sidebarRuntimeSnapshot() sidebarRuntimeSnapshot {
 func (s *server) volatileSessionSummaries() []sessions.Summary {
 	needsAttention := map[string]bool{}
 	if s.agentExecutions != nil {
-		needsAttention = s.agentExecutions.sessionsNeedingAttention()
+		needsAttention = s.agentExecutions.SessionsNeedingAttention()
 	}
 	return s.VolatileSummaries(needsAttention)
 }
 
-// sidebarHostedRecords resolves the durable hosted identity overlay in one
-// control-store read. The ordinary point helper is ideal for one detail row,
-// but calling it for every graph node turns a cold sidebar read into more than
-// a thousand serialized SQLite queries.
+// sidebarHostedRecords resolves one batch of catalog references through the hosted owner.
 func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRecord, []bool) {
-	records := make([]agentSessionRecord, len(threads))
-	found := make([]bool, len(threads))
-	store := s.agentExecutions
-	if store == nil || len(threads) == 0 {
-		return records, found
-	}
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	requested := map[attachmentKey]bool{}
+	refs := make([]recordReference, len(threads))
 	for i, thread := range threads {
-		if thread.HostedThreadID != "" {
-			if record, ok := store.sessions[thread.HostedThreadID]; ok {
-				records[i], found[i] = record, true
-			}
-			continue
-		}
-		if thread.Provider != "" && thread.NativeID != "" {
-			requested[attachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeID}] = true
-		}
+		refs[i] = recordReference{HostedThreadID: thread.HostedThreadID, Provider: thread.Provider, NativeThreadID: thread.NativeID}
 	}
-
-	claims := map[attachmentKey]string{}
-	if store.control != nil && len(requested) > 0 {
-		rows, err := store.control.db.Query(`SELECT provider,native_thread_id,hosted_thread_id
-			FROM hosted_thread_native_ids WHERE retired_at IS NULL`)
-		if err != nil {
-			return records, found
-		}
-		for rows.Next() {
-			var provider, nativeID, hostedID string
-			if err := rows.Scan(&provider, &nativeID, &hostedID); err != nil {
-				rows.Close()
-				return records, found
-			}
-			key := attachmentKey{Provider: provider, NativeThreadID: nativeID}
-			if requested[key] {
-				claims[key] = hostedID
-			}
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return records, found
-		}
-		rows.Close()
-	}
-
-	fallback := map[attachmentKey]agentSessionRecord{}
-	for _, record := range store.sessions {
-		key := attachmentKey{Provider: record.Provider, NativeThreadID: record.NativeThreadID}
-		if !requested[key] {
-			continue
-		}
-		if _, claimed := claims[key]; claimed {
-			continue
-		}
-		best := fallback[key]
-		bestOpen := best.ID != "" && best.Status != sessions.StatusExited
-		recordOpen := record.Status != sessions.StatusExited
-		// Compared as times: RFC3339Nano trims trailing zeros, so as text
-		// ".2374Z" sorts after the later ".237401Z".
-		if best.ID == "" || (recordOpen != bestOpen && recordOpen) || (recordOpen == bestOpen && threadvalues.TimestampBefore(best.UpdatedAt, record.UpdatedAt)) {
-			fallback[key] = record
-		}
-	}
-	for i, thread := range threads {
-		if found[i] || thread.Provider == "" || thread.NativeID == "" {
-			continue
-		}
-		key := attachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeID}
-		if hostedID, claimed := claims[key]; claimed {
-			records[i], found[i] = store.sessions[hostedID]
-			if records[i].ID == "" {
-				found[i] = false
-			}
-			continue
-		}
-		if record, ok := fallback[key]; ok {
-			records[i], found[i] = record, true
-		}
-	}
-	return records, found
+	return s.agentExecutions.RecordsForReferences(refs)
 }
 
-func (s *controlMetadataStore) currentAssignmentsByHostedIDs(ids []string) map[string]*orchestrationAssignmentView {
-	out := map[string]*orchestrationAssignmentView{}
-	if s == nil || len(ids) == 0 {
-		return out
-	}
-	// control.sqlite intentionally has one open connection. Resolve audit
-	// target existence before opening the assignment rows so projection never
-	// attempts a nested query while that sole connection is occupied.
-	hostedThreadIDs := map[string]bool{}
-	hostedRows, err := s.db.Query(`SELECT hosted_thread_id FROM hosted_threads`)
-	if err != nil {
-		return out
-	}
-	for hostedRows.Next() {
-		var hostedID string
-		if err := hostedRows.Scan(&hostedID); err != nil {
-			hostedRows.Close()
-			return out
-		}
-		hostedThreadIDs[hostedID] = true
-	}
-	if err := hostedRows.Err(); err != nil {
-		hostedRows.Close()
-		return out
-	}
-	hostedRows.Close()
-
-	unique := uniqueStrings(ids)
-	for start := 0; start < len(unique); start += 400 {
-		end := start + 400
-		if end > len(unique) {
-			end = len(unique)
-		}
-		batch := unique[start:end]
-		placeholders := make([]string, len(batch))
-		args := make([]any, 0, len(batch)+1)
-		args = append(args, orchestrationAssignmentField)
-		for i, id := range batch {
-			placeholders[i] = "?"
-			args = append(args, id)
-		}
-		rows, err := s.db.Query(`SELECT hosted_thread_id,desired_event_id,desired_disposition,desired_value_json
-			FROM thread_metadata_current WHERE field=? AND hosted_thread_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
-		if err != nil {
-			return out
-		}
-		for rows.Next() {
-			var hostedID, disposition string
-			var eventID sql.NullInt64
-			var raw sql.NullString
-			if err := rows.Scan(&hostedID, &eventID, &disposition, &raw); err != nil {
-				rows.Close()
-				return out
-			}
-			if disposition == metadataDispositionCleared || !eventID.Valid || !raw.Valid {
-				continue
-			}
-			var assignment orchestrationAssignment
-			if err := json.Unmarshal([]byte(raw.String), &assignment); err != nil {
-				continue
-			}
-			for i := range assignment.AuditTargets {
-				assignment.AuditTargets[i].Unresolved = !hostedThreadIDs[assignment.AuditTargets[i].HostedThreadID]
-			}
-			out[hostedID] = &orchestrationAssignmentView{
-				EventID: eventID.Int64, AssignmentRole: assignment.AssignmentRole, Focus: assignment.Focus,
-				RelatedHostedThreadID: assignment.RelatedHostedThreadID, AuditTargets: assignment.AuditTargets,
-			}
-		}
-		rows.Close()
-	}
-	return out
-}
-
-func (s *controlMetadataStore) catalogMetadataByHostedIDs(ids []string) map[string]threadindex.Metadata {
+func catalogMetadataByHostedIDs(store *controlMetadataStore, ids []string) map[string]threadindex.Metadata {
 	out := map[string]threadindex.Metadata{}
-	if s == nil || len(ids) == 0 {
-		return out
-	}
-	views := map[string]map[string]metadataCurrentView{}
-	unique := uniqueStrings(ids)
-	for start := 0; start < len(unique); start += 400 {
-		end := start + 400
-		if end > len(unique) {
-			end = len(unique)
-		}
-		batch := unique[start:end]
-		placeholders := make([]string, len(batch))
-		args := make([]any, len(batch))
-		for i, id := range batch {
-			placeholders[i] = "?"
-			args[i] = id
-		}
-		rows, err := s.db.Query(`SELECT c.hosted_thread_id,c.field,c.desired_value_json,c.desired_disposition,c.desired_source,c.desired_event_id,c.effective_value_json,c.effective_disposition,c.effective_source,c.effective_event_id,
-			COALESCE(d.evidence_freshness,''),COALESCE(e.evidence_freshness,'')
-			FROM thread_metadata_current c
-			LEFT JOIN thread_metadata_events d ON d.event_id=c.desired_event_id
-			LEFT JOIN thread_metadata_events e ON e.event_id=c.effective_event_id
-			WHERE c.hosted_thread_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
-		if err != nil {
-			return out
-		}
-		for rows.Next() {
-			var hostedID, field string
-			var dVal, dDisp, dSource, eVal, eDisp, eSource sql.NullString
-			var desiredFreshness, effectiveFreshness string
-			var dID, eID sql.NullInt64
-			if err := rows.Scan(&hostedID, &field, &dVal, &dDisp, &dSource, &dID, &eVal, &eDisp, &eSource, &eID, &desiredFreshness, &effectiveFreshness); err != nil {
-				rows.Close()
-				return out
-			}
-			entry := metadataCurrentView{DesiredDisposition: nonnullDisposition(dDisp), DesiredSource: dSource.String, EffectiveDisposition: nonnullDisposition(eDisp), EffectiveSource: eSource.String}
-			if dVal.Valid {
-				entry.DesiredValue = json.RawMessage(dVal.String)
-			}
-			if dID.Valid {
-				id := dID.Int64
-				entry.DesiredEventID = &id
-			}
-			if eVal.Valid {
-				entry.EffectiveValue = json.RawMessage(eVal.String)
-			}
-			if eID.Valid {
-				id := eID.Int64
-				entry.EffectiveEventID = &id
-			}
-			projectMetadataDisplay(&entry, desiredFreshness, effectiveFreshness)
-			fields := views[hostedID]
-			if fields == nil {
-				fields = map[string]metadataCurrentView{}
-				views[hostedID] = fields
-			}
-			fields[field] = entry
-		}
-		rows.Close()
-	}
+	views := store.CurrentMetadataByHostedIDs(ids)
 	canonical := func(fields map[string]metadataCurrentView, field string) threadindex.Value {
 		value, ok := hostedvalues.MetadataString(fields[field])
 		if !ok {
@@ -637,7 +421,6 @@ func (s *controlMetadataStore) catalogMetadataByHostedIDs(ids []string) map[stri
 	}
 	return out
 }
-
 func uniqueStrings(ids []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(ids))
@@ -706,7 +489,7 @@ func (s *server) missingSidebarParents(threads []catalogThread) []history.Sideba
 			provider, native, hosted := parseSidebarKey(key)
 			if hosted != "" {
 				if s.agentExecutions != nil {
-					if record, ok := s.agentExecutions.session(hosted); ok && record.NativeThreadID != "" {
+					if record, ok := s.agentExecutions.Session(hosted); ok && record.NativeThreadID != "" {
 						missing = append(missing, history.SidebarGraphKey{Provider: history.Provider(record.Provider), NativeID: record.NativeThreadID})
 					}
 				}

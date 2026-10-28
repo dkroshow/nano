@@ -34,7 +34,7 @@ func reconnectServer(t *testing.T, shimURL string, stale bool) (*server, string)
 	if stale {
 		record.TurnStartedAtMs, record.TurnAnchorSeq = 1789766804441, 1
 	}
-	store.remember(record)
+	store.Remember(record)
 	seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
 	stored, _ := s.attachmentFor("claude", claudeResumeThreadID)
 	return s, stored.HostedThreadID
@@ -423,7 +423,7 @@ func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
 		c.Line(1, "recv", claudeInitLine)
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
-	store.remember(rememberedClaudeSession(t, "/fake/claude"))
+	store.Remember(rememberedClaudeSession(t, "/fake/claude"))
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") {
 		t.Fatalf("resume = %d %s, want an unsettled replay refusal", response.Code, response.Body.String())
@@ -476,7 +476,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "admitted-action", turn, "prompt")
 
-	op, _, err := s.agentExecutions.beginTurn(hosted, "admitted-op", "prompt-hash")
+	op, _, err := fixtureBeginTurn(s.agentExecutions, hosted, "admitted-op", "prompt-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +484,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	operation := func() agentTurnRecord {
-		rec, ok := s.agentExecutions.turn(op.ID)
+		rec, ok := s.agentExecutions.Turn(op.ID)
 		if !ok {
 			t.Fatal("bound operation disappeared")
 		}
@@ -530,7 +530,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 		t.Fatalf("abandoned generation advanced the bound operation: %+v", rec)
 	}
 	var durableStatus string
-	if err := s.controlMetadata.db.QueryRow(`SELECT status FROM hosted_turn_operations WHERE operation_id=?`, op.ID).Scan(&durableStatus); err != nil || durableStatus != agentTurnRunning {
+	if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT status FROM hosted_turn_operations WHERE operation_id=?`, op.ID).Scan(&durableStatus); err != nil || durableStatus != agentTurnRunning {
 		t.Fatalf("durable operation status = %q, %v; want still running", durableStatus, err)
 	}
 

@@ -295,7 +295,7 @@ func TestThreadPinsSurviveNativeReplacementAndReopen(t *testing.T) {
 	old := f.pin(t, map[string]any{"text": "before replacement", "itemId": "nit_" + pinNativeA + "_t3-2"})
 
 	seedPinTranscript(t, f.store, f.root, pinNativeB, 3, nil)
-	if err := hostedvalues.SkipOwnedNativeClaim(f.executions.control.ClaimNativeID(f.hosted.ID, "claude", pinNativeB, false)); err != nil {
+	if err := hostedvalues.SkipOwnedNativeClaim(f.executions.Control().ClaimNativeID(f.hosted.ID, "claude", pinNativeB, false)); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.executions.UpdateSession(f.hosted.ID, "nano-"+f.hosted.ID, pinNativeB, "ready", ""); err != nil {
@@ -347,7 +347,7 @@ func TestThreadPinBrokenAnchorIsReportedAndMonitorIsReadOnly(t *testing.T) {
 	}
 
 	var before int
-	if err := f.server.threadPins.db.QueryRow(`SELECT COUNT(*) FROM thread_pins`).Scan(&before); err != nil {
+	if err := f.pinDB(t).QueryRow(`SELECT COUNT(*) FROM thread_pins`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	code, raw = f.do(t, http.MethodGet, "/api/v1/pins/monitor", nil)
@@ -362,7 +362,7 @@ func TestThreadPinBrokenAnchorIsReportedAndMonitorIsReadOnly(t *testing.T) {
 		t.Fatalf("monitor = %s", raw)
 	}
 	var after int
-	if err := f.server.threadPins.db.QueryRow(`SELECT COUNT(*) FROM thread_pins`).Scan(&after); err != nil || after != before {
+	if err := f.pinDB(t).QueryRow(`SELECT COUNT(*) FROM thread_pins`).Scan(&after); err != nil || after != before {
 		t.Fatalf("monitor changed pins: %d -> %d (%v)", before, after, err)
 	}
 	code, raw = f.do(t, http.MethodGet, "/api/v1/hosted-threads/"+f.hosted.ID+"/pins", nil)
@@ -391,53 +391,16 @@ func TestThreadPinCandidatesListRecentMessagesNewestFirst(t *testing.T) {
 	}
 }
 
-func TestTrimThreadPinContextKeepsAnchorWithinBudget(t *testing.T) {
-	big := strings.Repeat("x", 60<<10)
-	response := threadPinContextResponse{}
-	for ordinal := 1; ordinal <= 6; ordinal++ {
-		response.Turns = append(response.Turns, threadPinContextTurn{Ordinal: ordinal, Messages: []threadPinContextMessage{
-			{ItemID: fmt.Sprintf("u%d", ordinal), Text: big, ContentState: "retained_complete", Complete: true, preview: "p"},
-			{ItemID: fmt.Sprintf("a%d", ordinal), Text: "short", ContentState: "inline", Complete: true, preview: "short"},
-		}})
-	}
-	last := &response.Turns[5]
-	last.IsAnchorTurn = true
-	last.Messages = append(last.Messages, threadPinContextMessage{ItemID: "anchor", Text: strings.Repeat("y", 8<<10), IsAnchor: true, ContentState: "inline", Complete: true})
-	trimThreadPinContext(&response)
-	encoded, _ := json.Marshal(response)
-	if len(encoded) > pinContextResponseBudget || !response.TrimmedForSize || len(response.Turns) != 6 {
-		t.Fatalf("size %d trimmed %v turns %d", len(encoded), response.TrimmedForSize, len(response.Turns))
-	}
-
-	huge := strings.Repeat("z", 8<<10)
-	response = threadPinContextResponse{}
-	for ordinal, count := range []int{5, 40} {
-		turn := threadPinContextTurn{Ordinal: ordinal + 1}
-		for index := 0; index < count; index++ {
-			turn.Messages = append(turn.Messages, threadPinContextMessage{ItemID: fmt.Sprintf("m%d-%d", ordinal, index), Text: huge, ContentState: "inline", Complete: true})
-		}
-		response.Turns = append(response.Turns, turn)
-	}
-	response.Turns[1].Messages = append(response.Turns[1].Messages, threadPinContextMessage{ItemID: "anchor", Text: "a", IsAnchor: true})
-	trimThreadPinContext(&response)
-	encoded, _ = json.Marshal(response)
-	anchorTurn := response.Turns[len(response.Turns)-1]
-	if len(encoded) > pinContextResponseBudget || len(response.Turns) != 1 || !response.HasEarlierHistory || !anchorTurn.StartsMid ||
-		anchorTurn.Messages[len(anchorTurn.Messages)-1].ItemID != "anchor" {
-		t.Fatalf("size %d turns %d earlier %v", len(encoded), len(response.Turns), response.HasEarlierHistory)
-	}
-}
-
 // A pin recorded under another hosted record but anchored in a native id this
 // hosted thread has claimed still belongs to this thread's list.
 func TestThreadPinScopeIncludesPinsAnchoredInClaimedNativeIDs(t *testing.T) {
 	f := newPinFixture(t)
-	if _, _, err := f.server.threadPins.append(threadPinRecord{PinID: "pin_foreign", HostedThreadID: "nht_predecessor",
+	if err := f.appendPin(t, threadPinRecord{PinID: "pin_foreign", HostedThreadID: "nht_predecessor",
 		Provider: "claude", NativeThreadID: pinNativeA, AnchorItemID: "nit_" + pinNativeA + "_t1-2", AnchorTurnID: "t",
 		AnchorType: "agent_message", AnchorPreview: "p", Text: "carried over", CreatedAt: "2026-09-18T00:00:00Z"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := f.server.threadPins.append(threadPinRecord{PinID: "pin_unrelated", HostedThreadID: "nht_other",
+	if err := f.appendPin(t, threadPinRecord{PinID: "pin_unrelated", HostedThreadID: "nht_other",
 		Provider: "claude", NativeThreadID: pinNativeB, AnchorItemID: "x", AnchorTurnID: "t",
 		AnchorType: "agent_message", AnchorPreview: "p", Text: "not ours", CreatedAt: "2026-09-18T00:00:00Z"}); err != nil {
 		t.Fatal(err)
@@ -464,7 +427,7 @@ func TestThreadPinIdempotencyScopeAndContextURLFollowRequestThread(t *testing.T)
 		t.Fatalf("same key on another thread = %d %s", code, raw)
 	}
 
-	if _, _, err := f.server.threadPins.append(threadPinRecord{PinID: "pin_predecessor", HostedThreadID: "nht_predecessor",
+	if err := f.appendPin(t, threadPinRecord{PinID: "pin_predecessor", HostedThreadID: "nht_predecessor",
 		Provider: "claude", NativeThreadID: pinNativeA, AnchorItemID: "nit_" + pinNativeA + "_t1-2", AnchorTurnID: "t",
 		AnchorType: "agent_message", AnchorPreview: "p", Text: "written earlier", CreatedAt: "2026-09-18T00:00:00Z"}); err != nil {
 		t.Fatal(err)

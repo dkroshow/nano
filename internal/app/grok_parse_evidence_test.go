@@ -7,10 +7,10 @@ import (
 
 func TestGrokOperationalModuleCannotPromoteUnknownReplayToResponse(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run")
-	hosted, _, _ := store.beginSession("caller", "hash", "grok", presentationShared)
+	hosted, _, _ := fixtureBeginSession(store, "caller", "hash", "grok", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano", "native", "ready", presentationShared)
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano", Provider: "grok", HostedThreadID: hosted.ID, AgentExecutions: store, Projection: newLiveProjection("grok")}, "native", "")
-	op, _, _ := store.beginTurn(hosted.ID, "action", "hash")
+	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action", "hash")
 	_ = store.MarkTurnDelivery(op.ID, "prompt", agentTurnRunning, nil)
 	for _, message := range []struct {
 		text, event string
@@ -20,8 +20,8 @@ func TestGrokOperationalModuleCannotPromoteUnknownReplayToResponse(t *testing.T)
 		fixture.emit(t, line)
 	}
 	fixture.emit(t, []byte(`{"method":"_x.ai/session/prompt_complete","params":{"sessionId":"native","promptId":"prompt","stopReason":"end_turn"}}`))
-	waitForClaude(t, "Grok terminal after replay", func() bool { got, _ := store.turn(op.ID); return got.Status == agentTurnCompleted })
-	after, _ := store.turn(op.ID)
+	waitForClaude(t, "Grok terminal after replay", func() bool { got, _ := store.Turn(op.ID); return got.Status == agentTurnCompleted })
+	after, _ := store.Turn(op.ID)
 	if after.Status != agentTurnCompleted || after.FinalResponse != "live answer" {
 		t.Fatal("unknown replay replaced the current response candidate")
 	}

@@ -13,7 +13,7 @@ func permissionTestSession(t *testing.T, provider, mode string) (*providerRuntim
 	t.Helper()
 	store := newTestControlMetadata(t)
 	hostedID := "nht_permission_test"
-	if err := store.ensureHostedThread(hostedID, provider, presentationShared, "", "", ""); err != nil {
+	if err := store.EnsureHostedThread(hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-permission-test", Provider: provider, HostedThreadID: hostedID, PermissionMode: mode, Metadata: store}, "native-permission-test", "")
@@ -31,7 +31,7 @@ func TestPermissionEventsPersistRequestAndResolutionWithoutCommandText(t *testin
 			t.Fatalf("permission request: %s", response.Error)
 		}
 	}
-	page, err := store.permissionEventsAfter(sess.HostedThreadID(), 0, 100)
+	page, err := fixturePermissionEventsAfter(store, sess.HostedThreadID(), 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestGrokBypassAutoApprovesEscapedPermissionAndAuditsIt(t *testing.T) {
 	if got := sess.PendingInteractionList(); len(got) != 0 {
 		t.Fatalf("bypass parked an operator card: %#v", got)
 	}
-	page, err := store.permissionEventsAfter(sess.HostedThreadID(), 0, 100)
+	page, err := fixturePermissionEventsAfter(store, sess.HostedThreadID(), 0, 100)
 	if err != nil || len(page.Events) != 2 || page.Events[1].DecisionSource != "nano_bypass" {
 		t.Fatalf("audit page = %#v, error = %v", page, err)
 	}
@@ -87,7 +87,7 @@ func TestGrokDefaultPermissionStillParksAndLogs(t *testing.T) {
 	if got := sess.PendingInteractionList(); len(got) != 1 {
 		t.Fatalf("default pending = %#v", got)
 	}
-	page, err := store.permissionEventsAfter(sess.HostedThreadID(), 0, 100)
+	page, err := fixturePermissionEventsAfter(store, sess.HostedThreadID(), 0, 100)
 	if err != nil || len(page.Events) != 1 || page.Events[0].EventKind != permissionEventRequested {
 		t.Fatalf("audit page = %#v, error = %v", page, err)
 	}
@@ -98,14 +98,14 @@ func TestPermissionEventsAPIIsPagedByHostedThread(t *testing.T) {
 	sess := fixture.session
 	fixture.grok.Send(map[string]any{"jsonrpc": "2.0", "id": "request-api", "method": "session/request_permission", "params": map[string]any{"sessionId": sess.ThreadID(), "toolCall": map[string]any{"toolCallId": "call-api", "_meta": map[string]any{"x.ai/tool": map[string]any{"name": "read_file"}}}}})
 	waitForClaude(t, "persisted permission request", func() bool {
-		page, err := store.permissionEventsAfter(sess.HostedThreadID(), 0, 100)
+		page, err := fixturePermissionEventsAfter(store, sess.HostedThreadID(), 0, 100)
 		return err == nil && len(page.Events) == 1
 	})
 	executions, err := newControlAgentExecutionStore(store, "test-run")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := executions.ensureSession(sess.HostedThreadID(), "grok", presentationShared); err != nil {
+	if _, err := fixtureEnsureSession(executions, sess.HostedThreadID(), "grok", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	server := &server{Registry: newSessionRegistry(), controlMetadata: store, agentExecutions: executions}
@@ -123,7 +123,7 @@ func TestControlSchemaTenMigratesPermissionAuditTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`DROP TABLE hosted_permission_events; PRAGMA user_version = 10`); err != nil {
+	if _, err := store.CanonicalDatabase().Exec(`DROP TABLE hosted_permission_events; PRAGMA user_version = 10`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -135,11 +135,11 @@ func TestControlSchemaTenMigratesPermissionAuditTable(t *testing.T) {
 	}
 	t.Cleanup(func() { store.Close() })
 	var version int
-	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != controlSchemaVersion {
+	if err := store.CanonicalDatabase().QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != controlSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 	var table string
-	if err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='hosted_permission_events'`).Scan(&table); err != nil || table == "" {
+	if err := store.CanonicalDatabase().QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='hosted_permission_events'`).Scan(&table); err != nil || table == "" {
 		t.Fatalf("permission audit table = %q, %v", table, err)
 	}
 }

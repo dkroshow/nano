@@ -2,9 +2,7 @@ package sessions
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,8 +60,7 @@ type sendAttemptRecord = prompts.SendAttempt
 
 // SendTextHash returns the stable content hash used for prompt idempotency.
 func SendTextHash(text string) string {
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
+	return hosted.AgentHash([]byte(text))
 }
 
 // TurnRequestHash is the idempotency hash of one submission. Holding a prompt
@@ -71,10 +68,7 @@ func SendTextHash(text string) string {
 // conflicts; an ordinary prompt keeps its plain text hash. The prefix keeps
 // the two namespaces apart: no text hashes to a next-turn hash.
 func TurnRequestHash(text string, nextTurn bool) string {
-	if nextTurn {
-		return "next_turn:" + SendTextHash(text)
-	}
-	return SendTextHash(text)
+	return hosted.TurnRequestHash(text, nextTurn)
 }
 
 type turnSendOperation struct {

@@ -166,7 +166,7 @@ func TestDuplicateGateCodexUserTwinKeepsItsFirstNativeID(t *testing.T) {
 				if index < len(tc.writes)-1 {
 					// The first copy must be committed before its twin arrives.
 					waitForCatalogWithin(t, time.Minute, func() bool {
-						checkpoint, exists, err := catalog.service.store.LoadTranscriptCheckpointHeader(context.Background(), id)
+						checkpoint, exists, err := catalog.store.LoadTranscriptCheckpointHeader(context.Background(), id)
 						return err == nil && exists && checkpoint.ReadOffset == written
 					})
 				}
@@ -176,14 +176,14 @@ func TestDuplicateGateCodexUserTwinKeepsItsFirstNativeID(t *testing.T) {
 			waitForCatalogWithin(t, time.Minute, func() bool {
 				var exists bool
 				var err error
-				checkpoint, exists, err = catalog.service.store.LoadTranscriptCheckpointHeader(context.Background(), id)
+				checkpoint, exists, err = catalog.store.LoadTranscriptCheckpointHeader(context.Background(), id)
 				return err == nil && exists && (checkpoint.ErrorSummary != nil || checkpoint.ReadOffset == size)
 			})
 			if checkpoint.ErrorSummary != nil {
 				t.Fatalf("saved transcript failed: %s", *checkpoint.ErrorSummary)
 			}
 			assertGateRows(t, "transcript", expected, catalog.servedTranscript(t, id))
-			page, err := catalog.service.store.ReadTranscript(context.Background(), history.TranscriptReadRequest{ThreadID: id})
+			page, err := catalog.store.ReadTranscript(context.Background(), history.TranscriptReadRequest{ThreadID: id})
 			if err != nil {
 				t.Fatal(err)
 			}

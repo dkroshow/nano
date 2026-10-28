@@ -258,7 +258,7 @@ func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQu
 		}
 	}
 	if query.ThreadID == "" && s.attachments != nil {
-		for _, rec := range s.attachments.detachedExcept(attached) {
+		for _, rec := range s.attachments.DetachedExcept(attached) {
 			if key := rec.Key(); !covered[key] {
 				wanted = append(wanted, key)
 			}
@@ -426,7 +426,7 @@ func (s *server) lineageParentKeys(rows []catalogThread) []attachmentKey {
 				ids = append(ids, records[i].ID)
 			}
 		}
-		assignments = s.controlMetadata.currentAssignmentsByHostedIDs(ids)
+		assignments = s.controlMetadata.CurrentAssignmentsByHostedIDs(ids)
 	}
 	var keys []attachmentKey
 	for i, row := range rows {
@@ -441,7 +441,7 @@ func (s *server) lineageParentKeys(rows []catalogThread) []attachmentKey {
 				}
 				parentID = records[i].InvokerHostedThreadID
 			}
-			if parent, ok := s.agentExecutions.session(parentID); ok && parent.Provider != "" && parent.NativeThreadID != "" {
+			if parent, ok := s.agentExecutions.Session(parentID); ok && parent.Provider != "" && parent.NativeThreadID != "" {
 				keys = append(keys, attachmentKey{Provider: parent.Provider, NativeThreadID: parent.NativeThreadID})
 				continue
 			}
@@ -519,7 +519,7 @@ func (s *server) applyHostedCatalogAssignment(thread *catalogThread, hostedID st
 		thread.AssignmentUnavailable = true
 		return
 	}
-	assignment, err := s.controlMetadata.currentOrchestrationAssignment(hostedID)
+	assignment, err := s.controlMetadata.CurrentOrchestrationAssignment(hostedID)
 	if err != nil {
 		thread.AssignmentUnavailable = true
 		return
@@ -532,11 +532,11 @@ func (s *server) catalogHostedThreadRecord(thread catalogThread) (agentSessionRe
 		return agentSessionRecord{}, false
 	}
 	if thread.HostedThreadID != "" {
-		if record, ok := s.agentExecutions.session(thread.HostedThreadID); ok {
+		if record, ok := s.agentExecutions.Session(thread.HostedThreadID); ok {
 			return record, true
 		}
 	}
-	return s.agentExecutions.sessionForNative(thread.Provider, thread.NativeID)
+	return s.agentExecutions.SessionForNative(thread.Provider, thread.NativeID)
 }
 
 // attachFleetStates stamps each row's turn state (fleet_status.go). Rows Nano

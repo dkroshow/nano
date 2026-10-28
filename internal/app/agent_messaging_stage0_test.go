@@ -16,7 +16,7 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 )
 
-func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentSessionRecord, agentSessionRecord, chan string, *fakeAppServer) {
+func stage0Server(t *testing.T, seed ...func(*agentExecutionStore, agentSessionRecord)) (*server, *agentExecutionStore, *session, agentSessionRecord, agentSessionRecord, chan string, *fakeAppServer) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	mail := newTestAgentMessageStore(t)
@@ -24,16 +24,23 @@ func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentS
 	if err != nil {
 		t.Fatal(err)
 	}
-	sender, _, _ := store.beginSession("sender", "sender", "claude", presentationShared)
+	sender, _, _ := fixtureBeginSession(store, "sender", "sender", "claude", presentationShared)
 	if err := store.BindSession(sender.ID, "nano-sender", "019f0000-0000-7000-8000-000000000001", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	sender, _ = store.session(sender.ID)
-	worker, _, _ := store.beginSessionWithInvoker("worker", "worker", "codex", presentationShared, sender, nil)
+	sender, _ = store.Session(sender.ID)
+	worker, _, _ := fixtureBeginSessionWithInvoker(store, "worker", "worker", "codex", presentationShared, sender, nil)
 	if err := store.BindSession(worker.ID, "nano-worker", "native-worker", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	worker, _ = store.session(worker.ID)
+	worker, _ = store.Session(worker.ID)
+	if len(seed) > 0 {
+		seed[0](store, sender)
+		store, err = newControlAgentExecutionStore(control, "run-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	prompts := make(chan string, 8)
 	queue := mustQueuedTurnStore(t)
 	turnStore, err := turns.OpenStore(context.Background(), queue.Database())
@@ -92,7 +99,7 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	if strings.Contains(rec.Body.String(), `"warning"`) {
 		t.Fatalf("identified sender must not warn: %s", rec.Body.String())
 	}
-	op, ok := store.turnForAction(worker.ID, "ask-1")
+	op, ok := fixtureTurnForAction(store, worker.ID, "ask-1")
 	if !ok {
 		t.Fatal("operation missing")
 	}
@@ -115,7 +122,7 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	for op.Status == agentTurnDeliveryPending && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
-		op, _ = store.turnForAction(worker.ID, "ask-1")
+		op, _ = fixtureTurnForAction(store, worker.ID, "ask-1")
 	}
 	if op.Status != agentTurnRunning {
 		t.Fatalf("delivery status = %q, want %q", op.Status, agentTurnRunning)
@@ -138,7 +145,7 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, _ := reloaded.turn(op.ID)
+	again, _ := reloaded.Turn(op.ID)
 	if again.Origin != turnOriginAgent || again.SenderHostedThreadID != sender.ID || again.SenderSubmittedAt != op.SenderSubmittedAt {
 		t.Fatalf("attribution lost on reload: %+v", again)
 	}
@@ -170,7 +177,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), test.code) {
 				t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 			}
-			if _, ok := store.turnForAction(worker.ID, strings.Split(strings.TrimPrefix(test.body, `{"clientActionId":"`), `"`)[0]); ok {
+			if _, ok := fixtureTurnForAction(store, worker.ID, strings.Split(strings.TrimPrefix(test.body, `{"clientActionId":"`), `"`)[0]); ok {
 				t.Fatalf("rejected request created an operation")
 			}
 			if got := sess.QueuedPromptCount(); got != 0 {
@@ -191,7 +198,7 @@ func TestInternalTurnHelperRejectsUnattributedAgentOriginBeforeArtifacts(t *test
 	if err == nil || !strings.Contains(err.Error(), "senderThreadRef") {
 		t.Fatalf("error = %v", err)
 	}
-	if _, ok := store.turnForAction(worker.ID, "legacy-agent-action"); ok {
+	if _, ok := fixtureTurnForAction(store, worker.ID, "legacy-agent-action"); ok {
 		t.Fatal("unattributed internal agent action created an operation")
 	}
 	if got := sess.QueuedPromptCount(); got != 0 {
@@ -269,7 +276,7 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, _ := reloaded.session(worker.ID)
+	rec, _ := reloaded.Session(worker.ID)
 	if rec.LastHumanPromptAt == "" {
 		t.Fatal("last human prompt not persisted")
 	}
@@ -304,7 +311,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
-	op, ok := store.turnForAction(worker.ID, "ask-2")
+	op, ok := fixtureTurnForAction(store, worker.ID, "ask-2")
 	if !ok || op.SenderSubmittedAt == "" {
 		t.Fatalf("queued operation missing immutable submission timestamp: %+v", op)
 	}
@@ -369,14 +376,14 @@ func TestLastHumanPromptMovesForwardAcrossTrimmedFractions(t *testing.T) {
 		}
 	}
 	want := later.Format(time.RFC3339Nano)
-	if rec, _ := s.agentExecutions.session(worker.ID); rec.LastHumanPromptAt != want {
+	if rec, _ := s.agentExecutions.Session(worker.ID); rec.LastHumanPromptAt != want {
 		t.Fatalf("last human prompt = %q, want %q", rec.LastHumanPromptAt, want)
 	}
 	reloaded, err := newControlAgentExecutionStore(s.controlMetadata, "run-2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec, _ := reloaded.session(worker.ID); rec.LastHumanPromptAt != want {
+	if rec, _ := reloaded.Session(worker.ID); rec.LastHumanPromptAt != want {
 		t.Fatalf("durable last human prompt = %q, want %q", rec.LastHumanPromptAt, want)
 	}
 }

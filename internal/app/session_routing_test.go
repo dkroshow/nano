@@ -20,7 +20,7 @@ import (
 // wait behind the whole registry traversal.
 func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 	metadata := newTestControlMetadata(t)
-	if err := metadata.ensureHostedThread("nht_fast", "codex", presentationShared, "", "", ""); err != nil {
+	if err := metadata.EnsureHostedThread("nht_fast", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,7 +58,7 @@ func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 // global session-map mutex that the command router needs to find its target.
 func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 	metadata := newTestControlMetadata(t)
-	if err := metadata.ensureHostedThread("nht_fast_route", "codex", presentationShared, "", "", ""); err != nil {
+	if err := metadata.EnsureHostedThread("nht_fast_route", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -141,11 +141,11 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 	for provider, hosted := range map[string]string{
 		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
 	} {
-		store.remember(attachmentRecord{
+		store.Remember(attachmentRecord{
 			Provider: provider, NativeThreadID: "native-" + provider,
 			HostedThreadID: hosted, Cwd: cwd, AttachedAt: "2026-08-06T10:00:00Z",
 		})
-		if _, err := executions.ensureSessionWithIdentity(hosted, provider, presentationShared, "", "", ""); err != nil {
+		if _, err := fixtureEnsureSessionWithIdentity(executions, hosted, provider, presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := metadata.ClaimNativeID(hosted, provider, "native-"+provider, false); err != nil {
@@ -168,7 +168,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 			t.Fatalf("%s resume hostedThreadID = %q, want the stored %q", provider, resolved.HostedThreadID, want)
 		}
 	}
-	if _, err := executions.ensureSessionWithIdentity("nht_explicit", "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, "nht_explicit", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := metadata.ClaimNativeID("nht_explicit", "claude", "native-explicit", false); err != nil {
@@ -191,7 +191,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 // intent. Boundary: the real HTTP turn-options handler and canonical store.
 func TestUltrafastTurnOptionsValidateModelAndPreserveIntent(t *testing.T) {
 	store := newTestControlMetadata(t)
-	if err := store.ensureHostedThread("nht_speed_controls", "codex", presentationShared, "", "", ""); err != nil {
+	if err := store.EnsureHostedThread("nht_speed_controls", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "speed-controls", Provider: "codex", HostedThreadID: "nht_speed_controls", Metadata: store}, "native", "gpt-6-astra")

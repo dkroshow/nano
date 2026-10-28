@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"bufio"
 	"context"
@@ -12,9 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type countingSidebarCatalog struct {
@@ -439,6 +440,12 @@ func TestSidebarActiveBatchesHostedOverlays(t *testing.T) {
 
 func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]string) {
 	t.Helper()
+	s, ids, _ := sidebarActiveFixtureWithStore(t, now)
+	return s, ids
+}
+
+func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[string]string, *history.Store) {
+	t.Helper()
 	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -480,17 +487,17 @@ func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]stri
 	if err := stars.setStarred("codex", "starred-old", true); err != nil {
 		t.Fatal(err)
 	}
-	attachments, err := newAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
+	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
 	metadata, executions := newTestHostedControl(t)
-	parentHosted, err := executions.ensureSessionWithIdentity("nht_related_parent", "codex", presentationShared, "", "", "")
+	parentHosted, err := fixtureEnsureSessionWithIdentity(executions, "nht_related_parent", "codex", presentationShared, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	childHosted, err := executions.ensureSessionWithIdentity("nht_related_child", "codex", presentationShared, parentHosted.ID, ids["related-parent"], "codex")
+	childHosted, err := fixtureEnsureSessionWithIdentity(executions, "nht_related_child", "codex", presentationShared, parentHosted.ID, ids["related-parent"], "codex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +507,7 @@ func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]stri
 	if err := executions.BindSession(childHosted.ID, "sess-child", "related-child", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := metadata.appendOrchestrationAssignment(childHosted.ID, "rel-1", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(executions, childHosted.ID, "rel-1", &orchestrationAssignment{
 		AssignmentRole: "auditor", Focus: "Audit parent", RelatedHostedThreadID: parentHosted.ID,
 		AuditTargets: []orchestrationAuditTarget{
 			{HostedThreadID: parentHosted.ID},
@@ -536,7 +543,7 @@ func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]stri
 	if err := s.materializeSidebar(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
-	return s, ids
+	return s, ids, store
 }
 
 type historyCourt struct {
@@ -717,11 +724,23 @@ func TestSidebarActiveCarriesMailCounts(t *testing.T) {
 // sidebar's choice among unclaimed records for one native thread.
 func TestSidebarHostedRecordsPicksTheNewerRecordAcrossTrimmedFractions(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "sidebar-newest")
-	t.Cleanup(func() { _ = store.control.Close() })
+	t.Cleanup(func() { _ = store.Control().Close() })
 	at := time.Date(2026, 10, 15, 12, 0, 4, 237400000, time.UTC)
-	store.sessions = map[string]agentSessionRecord{
-		"nht_older": {ID: "nht_older", Provider: "codex", NativeThreadID: "native-1", Status: sessionStatusExited, UpdatedAt: at.Format(time.RFC3339Nano)},
-		"nht_newer": {ID: "nht_newer", Provider: "codex", NativeThreadID: "native-1", Status: sessionStatusExited, UpdatedAt: at.Add(time.Microsecond).Format(time.RFC3339Nano)},
+	for id, stamp := range map[string]string{"nht_older": at.Format(time.RFC3339Nano), "nht_newer": at.Add(time.Microsecond).Format(time.RFC3339Nano)} {
+		if _, err := fixtureEnsureSession(store, id, "codex", presentationShared); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_threads SET current_native_id='native-1' WHERE hosted_thread_id=?`, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_execution_sessions SET status=?,updated_at=? WHERE hosted_thread_id=?`, sessionStatusExited, stamp, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var err error
+	store, err = newControlAgentExecutionStore(store.Control(), "sidebar-newest")
+	if err != nil {
+		t.Fatal(err)
 	}
 	s := &server{agentExecutions: store}
 	records, found := s.sidebarHostedRecords([]catalogThread{{Thread: threadindex.Thread{Provider: "codex", NativeID: "native-1"}}})

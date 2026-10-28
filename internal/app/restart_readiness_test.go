@@ -84,9 +84,9 @@ func newRestartWindow(t *testing.T) *restartWindow {
 	t.Cleanup(func() { w.failReads.Store(false) })
 	s.catalog, s.catalogSources = failingSavedRows{w.catalog, &w.failSavedRows}, w.attached
 	w.catalog.SetTranscriptChanged(s.confirmDurableThread)
-	store.remember(rec)
+	store.Remember(rec)
 	seedBootAttachments(t, s)
-	w.rec = store.records()[0]
+	w.rec = fixtureAttachmentRecords(store)[0]
 	return w
 }
 

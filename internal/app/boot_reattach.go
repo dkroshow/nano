@@ -51,7 +51,7 @@ func (s *server) prepareBootReattach() {
 	if s.boot != nil || s.attachments == nil {
 		return
 	}
-	records := s.attachments.detachedExcept(nil)
+	records := s.attachments.DetachedExcept(nil)
 	boot := &bootReattach{
 		controls: map[string]*sessions.BootControl{},
 		pending:  make(map[attachmentKey]bool, len(records)),
@@ -311,7 +311,7 @@ func bootQueue(ordered []attachmentRecord, needed func(attachmentRecord) bool) (
 // turn that started and has no outcome. Such a thread cannot wait for someone
 // to look at it. A store it cannot read counts as work, so the thread attaches.
 func (s *server) bootWorkOpen(rec attachmentRecord) bool {
-	if s.agentExecutions.hasNonTerminalTurns(rec.HostedThreadID) || s.completedTurns.open(rec.HostedThreadID) {
+	if s.agentExecutions.HasNonTerminalTurns(rec.HostedThreadID) || s.completedTurns.Open(rec.HostedThreadID) {
 		return true
 	}
 	if s.turns == nil {
@@ -436,7 +436,7 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 	boot.wake(rec)
 	restart := s.restart.thread(rec.Key())
 	restart.at(restartPicked)
-	if _, stored := s.attachments.get(rec.Provider, rec.NativeThreadID); !stored {
+	if _, stored := s.attachments.Get(rec.Provider, rec.NativeThreadID); !stored {
 		restart.fail("no_longer_stored")
 		return bootReattachForgotten // detached or closed while it waited
 	}
@@ -446,7 +446,7 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 	// predate hosted identity.
 	presentationMode := rec.PresentationMode
 	if rec.HostedThreadID != "" && s.agentExecutions != nil {
-		if canonical, ok := s.agentExecutions.presentationModeFor(rec.HostedThreadID); ok {
+		if canonical, ok := s.agentExecutions.PresentationModeFor(rec.HostedThreadID); ok {
 			presentationMode = canonical
 		}
 	}

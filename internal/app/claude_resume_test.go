@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"bytes"
 	"context"
@@ -46,9 +48,9 @@ func containsArg(args []string, want string) bool {
 	return false
 }
 
-func claudeResumeServer(t *testing.T, shimURL string) (*server, *attachmentStore) {
+func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.AttachmentStore) {
 	t.Helper()
-	store, err := newAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	store, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,17 +165,17 @@ func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID str
 	if !ok || record.HostedThreadID != "" {
 		return
 	}
-	hostedID := "nht_fixture_" + agentHash([]byte(provider + "\x00" + nativeID))[:16]
+	hostedID := "nht_fixture_" + hostedstore.AgentHash([]byte(provider + "\x00" + nativeID))[:16]
 	ensureClaudeTestSpool(t, s, provider, hostedID)
 	record.HostedThreadID = hostedID
-	s.attachments.remember(record)
-	if _, err := s.agentExecutions.ensureSessionWithIdentity(hostedID, provider, presentationShared, "", "", ""); err != nil {
+	s.attachments.Remember(record)
+	if _, err := fixtureEnsureSessionWithIdentity(s.agentExecutions, hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.controlMetadata.ClaimNativeID(hostedID, provider, nativeID, nativeThreadIDProvisional(provider, nativeID)); err != nil {
 		t.Fatal(err)
 	}
-	generation, err := s.controlMetadata.beginTransportBinding(hostedID)
+	generation, err := s.controlMetadata.BeginTransportBinding(hostedID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +268,7 @@ func startArgs(t *testing.T, shim *fakeShim) (bin string, args []string, cwd str
 func seedHistoricalHostedClaudeWithoutAttachment(t *testing.T, s *server) string {
 	t.Helper()
 	const hostedID = "nht_historical_claude_no_attachment"
-	if _, err := s.agentExecutions.ensureSessionWithIdentity(hostedID, "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(s.agentExecutions, hostedID, "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.agentExecutions.BindSession(hostedID, "old-nano", claudeResumeThreadID, sessionStatusExited, presentationShared); err != nil {
@@ -435,7 +437,7 @@ func TestClaudeResumeStaysDetachedWhenShimAttachFailsUnproven(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			shim := newFakeShim(t, resumeScript(attach))
 			s, store := claudeResumeServer(t, shim.WSURL())
-			store.remember(rememberedClaudeSession(t, "/stored/claude"))
+			store.Remember(rememberedClaudeSession(t, "/stored/claude"))
 
 			resp := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 			if resp.Code < 400 || !strings.Contains(resp.Body.String(), "claude recovery evidence is missing or unprovable") {
@@ -444,7 +446,7 @@ func TestClaudeResumeStaysDetachedWhenShimAttachFailsUnproven(t *testing.T) {
 			if starts := shim.CallsOf(shimMethodStart); len(starts) != 0 {
 				t.Fatalf("a failed attach started a second child: %+v", starts)
 			}
-			if _, kept := store.get("claude", claudeResumeThreadID); !kept {
+			if _, kept := store.Get("claude", claudeResumeThreadID); !kept {
 				t.Fatal("the attachment record must stay for a later retry")
 			}
 		})
@@ -465,7 +467,7 @@ func TestClaudeResumeAttachesLiveShimSession(t *testing.T) {
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
 	rec := rememberedClaudeSession(t, "/stored/claude")
-	store.remember(rec)
+	store.Remember(rec)
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	if sum.Provider != "claude" || sum.ThreadID != claudeResumeThreadID || sum.Status != "ready" {
@@ -496,7 +498,7 @@ func TestClaudeResumeAttachesLiveShimSession(t *testing.T) {
 	}
 
 	// Re-attach re-remembers; it must not retire the record it just attached to.
-	got, ok := store.get("claude", claudeResumeThreadID)
+	got, ok := store.Get("claude", claudeResumeThreadID)
 	if !ok {
 		t.Fatal("attach forgot the record it re-attached to")
 	}
@@ -520,7 +522,7 @@ func TestClaudeResumeFallsBackToResumeFlagOnSessionNotFound(t *testing.T) {
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
 	rec := rememberedClaudeSession(t, "/stored/claude")
-	store.remember(rec)
+	store.Remember(rec)
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	sum = waitForResumedThreadID(t, s, sum.ID, "native-2")
@@ -539,10 +541,10 @@ func TestClaudeResumeFallsBackToResumeFlagOnSessionNotFound(t *testing.T) {
 	// The successor's init retires the superseded record and remembers itself
 	// with the argv actually used — stripping keeps that argv from stacking.
 	waitForClaude(t, "superseded record retired", func() bool {
-		_, stale := store.get("claude", claudeResumeThreadID)
+		_, stale := store.Get("claude", claudeResumeThreadID)
 		return !stale
 	})
-	successor, ok := store.get("claude", "native-2")
+	successor, ok := store.Get("claude", "native-2")
 	if !ok {
 		t.Fatal("successor session was never remembered")
 	}
@@ -572,7 +574,7 @@ func TestClaudeResumeProvisionalAttachesByShimHandle(t *testing.T) {
 	rec := rememberedClaudeSession(t, "/stored/claude")
 	rec.NativeThreadID = "shim-7"
 	rec.ShimSessionID = "shim-7"
-	store.remember(rec)
+	store.Remember(rec)
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody("shim-7")))
 	if sum.ThreadID != "shim-7" || sum.Status != "ready" {
@@ -595,7 +597,7 @@ func TestClaudeResumeProvisionalAttachesByShimHandle(t *testing.T) {
 	if starts := shim.CallsOf(shimMethodStart); len(starts) != 0 {
 		t.Fatalf("spawned a child for a live provisional session: %+v", starts)
 	}
-	if _, ok := store.get("claude", "shim-7"); !ok {
+	if _, ok := store.Get("claude", "shim-7"); !ok {
 		t.Fatal("the provisional record must survive the re-attach")
 	}
 }
@@ -612,7 +614,7 @@ func TestClaudeResumeProvisionalGoneRetiresTheRecord(t *testing.T) {
 	rec := rememberedClaudeSession(t, "/stored/claude")
 	rec.NativeThreadID = "shim-7"
 	rec.ShimSessionID = "shim-7"
-	store.remember(rec)
+	store.Remember(rec)
 
 	resp := postClaudeResume(t, s, resumeBody("shim-7"))
 	if resp.Code == http.StatusOK {
@@ -621,7 +623,7 @@ func TestClaudeResumeProvisionalGoneRetiresTheRecord(t *testing.T) {
 	if starts := shim.CallsOf(shimMethodStart); len(starts) != 0 {
 		t.Fatalf("respawned a thread that has no transcript: %+v", starts)
 	}
-	if _, ok := store.get("claude", "shim-7"); ok {
+	if _, ok := store.Get("claude", "shim-7"); ok {
 		t.Fatal("the unrecoverable provisional record must be retired")
 	}
 }
@@ -654,9 +656,9 @@ func TestClaudeResumeProvisionalGoneKeepsARecordWhosePromptMayHaveBeenDelivered(
 			rec := rememberedClaudeSession(t, "/stored/claude")
 			rec.NativeThreadID = "shim-7"
 			rec.ShimSessionID = "shim-7"
-			store.remember(rec)
+			store.Remember(rec)
 			// The hosted id seedHostedAttachmentFixture gives this record.
-			hostedID := "nht_fixture_" + agentHash([]byte("claude\x00shim-7"))[:16]
+			hostedID := "nht_fixture_" + hostedstore.AgentHash([]byte("claude\x00shim-7"))[:16]
 			if _, _, err := s.turns.Submit(context.Background(), turns.Submission{HostedThreadID: hostedID, Provider: "claude", NativeThreadID: "shim-7", ActionID: "provisional-1",
 				ProviderText: "hi", PresentationText: "hi", TextHash: "text", RequestHash: "request", Origin: turns.HumanOrigin, CreatedAt: "2026-10-07T00:00:00Z"}); err != nil {
 				t.Fatal(err)
@@ -670,7 +672,7 @@ func TestClaudeResumeProvisionalGoneKeepsARecordWhosePromptMayHaveBeenDelivered(
 			if starts := shim.CallsOf(shimMethodStart); len(starts) != 0 {
 				t.Fatalf("respawned a provisional thread: %+v", starts)
 			}
-			if _, ok := store.get("claude", "shim-7"); !ok {
+			if _, ok := store.Get("claude", "shim-7"); !ok {
 				t.Fatal("a provisional record whose prompt may have been delivered must survive")
 			}
 		})
@@ -714,7 +716,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 			var attaches []attachSeen
 			var attachMu sync.Mutex
 			// The native record as the shim was asked to attach.
-			var attachStore *attachmentStore
+			var attachStore *hostedstore.AttachmentStore
 			var nativeAtAttach attachmentRecord
 			var sentLine string // the spool's first frame, which a live child replays
 			shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
@@ -725,12 +727,12 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				_ = json.Unmarshal(call.Params, &params)
 				seen := attachSeen{handle: params.ShimSessionID, native: params.NativeSessionID}
 				var resolved sql.NullString
-				_ = control.db.QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, hostedID).Scan(&seen.current)
-				_ = control.db.QueryRow(`SELECT resolved_native_id FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND native_thread_id='cs_handle7'`, hostedID).Scan(&resolved)
+				_ = control.CanonicalDatabase().QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, hostedID).Scan(&seen.current)
+				_ = control.CanonicalDatabase().QueryRow(`SELECT resolved_native_id FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND native_thread_id='cs_handle7'`, hostedID).Scan(&resolved)
 				seen.resolved = resolved.String
 				attachMu.Lock()
 				attaches = append(attaches, seen)
-				nativeAtAttach, _ = attachStore.get("claude", "native-real")
+				nativeAtAttach, _ = attachStore.Get("claude", "native-real")
 				attachMu.Unlock()
 				if tc.nativeFirst {
 					c.Reply(call, map[string]any{"shimSessionId": params.ShimSessionID, "nativeSessionId": "native-real", "state": "running", "lastSeq": 2})
@@ -741,15 +743,21 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				}
 				c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 			}))
-			s, store := claudeResumeServer(t, shim.WSURL())
+			s, _ := claudeResumeServer(t, shim.WSURL())
+			storePath := filepath.Join(t.TempDir(), "attachments.json")
+			store, err := hostedstore.NewAttachmentStore(storePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.attachments = store
 			attachStore = store
 			s.controlMetadata, s.agentExecutions = newTestHostedControl(t)
 			control = s.controlMetadata
 			rec := rememberedClaudeSession(t, "/stored/claude")
 			rec.NativeThreadID, rec.ShimSessionID = "cs_handle7", "cs_handle7"
-			store.remember(rec)
+			store.Remember(rec)
 			seedHostedAttachmentFixture(t, s, "claude", "cs_handle7")
-			hostedID = "nht_fixture_" + agentHash([]byte("claude\x00cs_handle7"))[:16]
+			hostedID = "nht_fixture_" + hostedstore.AgentHash([]byte("claude\x00cs_handle7"))[:16]
 			anchor, turn, handle := submissionEventID(hostedID, "first-prompt"), "claude:"+hostedID+":1", "cs_handle7"
 			if _, _, err := s.turns.Submit(ctx, turns.Submission{HostedThreadID: hostedID, Provider: "claude", NativeThreadID: handle, ActionID: "first-prompt",
 				ProviderText: "hi", PresentationText: "hi", TextHash: "text", RequestHash: "request", Origin: turns.HumanOrigin, CreatedAt: "2026-10-07T00:00:00Z"}); err != nil {
@@ -767,7 +775,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				sendFrame(1, sentLine).WithTurn(turn),
 				recvFrame(2, `{"type":"system","subtype":"init","session_id":"native-real"}`).WithTurn(turn))
 			if tc.conflict {
-				if _, err := s.controlMetadata.db.Exec(`UPDATE hosted_thread_native_ids SET resolved_native_id='native-other' WHERE hosted_thread_id=? AND native_thread_id=?`, hostedID, handle); err != nil {
+				if _, err := s.controlMetadata.CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET resolved_native_id='native-other' WHERE hosted_thread_id=? AND native_thread_id=?`, hostedID, handle); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -777,16 +785,16 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				}
 			}
 			if tc.both {
-				kept, ok := store.get("claude", handle)
+				kept, ok := store.Get("claude", handle)
 				if !ok {
 					t.Fatal("handle record missing")
 				}
 				// The handle's record holds the first turn's anchor; the native's
 				// record then saw a later turn of its own.
 				kept.TurnStartedAtMs, kept.TurnAnchorSeq = 1790000000000, 7
-				store.remember(kept)
+				store.Remember(kept)
 				kept.NativeThreadID, kept.TurnStartedAtMs, kept.TurnAnchorSeq = "native-real", 1791000000000, 42
-				store.remember(kept)
+				store.Remember(kept)
 			}
 			if tc.succeeded {
 				if err := control.ClaimNativeID(hostedID, "claude", "native-2", false); err != nil {
@@ -797,18 +805,18 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 			if tc.both {
 				// Previewing the resume resolves the same request but resumes
 				// nothing, so it leaves both records where they are.
-				before, err := os.ReadFile(store.path)
+				before, err := os.ReadFile(storePath)
 				if err != nil {
 					t.Fatal(err)
 				}
 				preview := httptest.NewRecorder()
 				s.handleSpawnPreview(preview, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(handle))))
-				after, err := os.ReadFile(store.path)
+				after, err := os.ReadFile(storePath)
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, handleThere := store.get("claude", handle)
-				if _, nativeThere := store.get("claude", "native-real"); preview.Code != http.StatusOK || !handleThere || !nativeThere || !bytes.Equal(before, after) {
+				_, handleThere := store.Get("claude", handle)
+				if _, nativeThere := store.Get("claude", "native-real"); preview.Code != http.StatusOK || !handleThere || !nativeThere || !bytes.Equal(before, after) {
 					t.Fatalf("preview %d %s changed the records: handle=%v native=%v file changed=%v", preview.Code, preview.Body.String(), handleThere, nativeThere, !bytes.Equal(before, after))
 				}
 			}
@@ -818,11 +826,11 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 			}
 			resp := postClaudeResume(t, s, resumeBody(handle))
 			var current string
-			if err := s.controlMetadata.db.QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, hostedID).Scan(&current); err != nil {
+			if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, hostedID).Scan(&current); err != nil {
 				t.Fatal(err)
 			}
-			_, handleKept := store.get("claude", handle)
-			_, nativeKept := store.get("claude", "native-real")
+			_, handleKept := store.Get("claude", handle)
+			_, nativeKept := store.Get("claude", "native-real")
 			starts := shim.CallsOf(shimMethodStart)
 			attachMu.Lock()
 			defer attachMu.Unlock()
@@ -836,7 +844,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				// The handle's record resumes the live native session, and the
 				// re-key it was left by is finished: the record goes. The live
 				// attach owns the native record's anchor from here.
-				native, nativeOK := store.get("claude", "native-real")
+				native, nativeOK := store.Get("claude", "native-real")
 				if first.Code != http.StatusOK || resp.Code != http.StatusConflict || handleKept || !nativeOK || native.ShimSessionID != handle || len(attaches) != 1 || len(starts) != 0 {
 					t.Fatalf("native first: %d %s, then %d %s; handleKept=%v native=%+v attaches=%+v starts=%d", first.Code, first.Body.String(), resp.Code, resp.Body.String(), handleKept, native, attaches, len(starts))
 				}
@@ -856,7 +864,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				t.Fatalf("attach saw %+v (resume %d %s); want one attach to the same child's handle as native-real after the pair was recorded", attaches, resp.Code, resp.Body.String())
 			}
 			var resolved sql.NullString
-			if err := s.controlMetadata.db.QueryRow(`SELECT resolved_native_id FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND native_thread_id=?`, hostedID, handle).Scan(&resolved); err != nil {
+			if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT resolved_native_id FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND native_thread_id=?`, hostedID, handle).Scan(&resolved); err != nil {
 				t.Fatal(err)
 			}
 			// The handle's resolution is permanent. The --resume child then
@@ -873,7 +881,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 			}
 			waitForCatalogWithin(t, 10*time.Second, func() bool {
 				var fresh string
-				err := control.db.QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, hostedID).Scan(&fresh)
+				err := control.CanonicalDatabase().QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, hostedID).Scan(&fresh)
 				return err == nil && fresh == "native-2"
 			})
 			if len(starts) != 1 {
@@ -911,7 +919,7 @@ func TestClaudeResumeFallsBackToDirectChildWhenShimUnreachable(t *testing.T) {
 
 	s, store := claudeResumeServer(t, deadURL)
 	rec := rememberedClaudeSession(t, fakeClaudeBinary(t))
-	store.remember(rec)
+	store.Remember(rec)
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	sum = waitForResumedThreadID(t, s, sum.ID, "native-direct")
@@ -923,10 +931,10 @@ func TestClaudeResumeFallsBackToDirectChildWhenShimUnreachable(t *testing.T) {
 		t.Fatalf("log missing the fallback warnings: %q", got)
 	}
 	waitForClaude(t, "superseded record retired", func() bool {
-		_, stale := store.get("claude", claudeResumeThreadID)
+		_, stale := store.Get("claude", claudeResumeThreadID)
 		return !stale
 	})
-	if got := store.detachedExcept(nil); len(got) != 0 {
+	if got := store.DetachedExcept(nil); len(got) != 0 {
 		t.Fatalf("a direct child was remembered as durable: %+v", got)
 	}
 }
@@ -943,7 +951,7 @@ func TestClaudeResumeSecondAttachIs409(t *testing.T) {
 		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
-	store.remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
 
 	winner := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	second := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
@@ -990,7 +998,7 @@ func TestClaudeSecondResumeOnRespawnRungIs409(t *testing.T) {
 		}
 	})
 	s, store := claudeResumeServer(t, shim.WSURL())
-	store.remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
 
 	winner := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	if winner.ThreadID != claudeResumeThreadID || winner.Status != "ready" {
@@ -1076,7 +1084,7 @@ func TestClaudeResumeAttachRungIgnoresMissingWorkingDirectory(t *testing.T) {
 	s, store := claudeResumeServer(t, shim.WSURL())
 	rec := rememberedClaudeSession(t, "/stored/claude")
 	rec.Cwd = filepath.Join(t.TempDir(), "deleted-project")
-	store.remember(rec)
+	store.Remember(rec)
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	if sum.ThreadID != claudeResumeThreadID || sum.Status != "ready" {
@@ -1096,23 +1104,23 @@ func TestClaudeReattachKeepsContinuedFrom(t *testing.T) {
 		c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
-	store.remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	waitForResumedThreadID(t, s, sum.ID, "native-2")
 	waitForClaude(t, "successor remembered with its lineage", func() bool {
-		rec, ok := store.get("claude", "native-2")
+		rec, ok := store.Get("claude", "native-2")
 		return ok && rec.ContinuedFrom == claudeResumeThreadID
 	})
-	successor, _ := store.get("claude", "native-2")
+	successor, _ := store.Get("claude", "native-2")
 
 	// The next transport record carries no lineage. Its construction is checked
 	// by the sessions-package sibling; this owner must preserve persisted lineage.
 	rewrite := successor
 	rewrite.ContinuedFrom = ""
-	store.remember(rewrite)
+	store.Remember(rewrite)
 
-	after, _ := store.get("claude", "native-2")
+	after, _ := store.Get("claude", "native-2")
 	if after.ContinuedFrom != claudeResumeThreadID {
 		t.Fatalf("record after re-attach = %+v, want continuedFrom %q carried forward", after, claudeResumeThreadID)
 	}
@@ -1126,7 +1134,7 @@ func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
 		c.ReplyError(call, shimCodeSessionAttached, "session_attached")
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
-	store.remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
 
 	rec := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 	if rec.Code != http.StatusBadGateway {

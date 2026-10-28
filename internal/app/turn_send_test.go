@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"database/sql"
@@ -53,7 +55,7 @@ func BenchmarkSendAttemptStoreListThreadWithUnrelatedHistory(b *testing.B) {
 			Status: sendAttemptAccepted, UpdatedAt: time.Unix(int64(20_000+i), 0).UTC().Format(time.RFC3339Nano),
 		})
 	}
-	if err := turns.SaveSendAttempts(context.Background(), stores.control.db, attempts); err != nil {
+	if err := turns.SaveSendAttempts(context.Background(), stores.control.CanonicalDatabase(), attempts); err != nil {
 		b.Fatal(err)
 	}
 
@@ -78,19 +80,19 @@ func TestTurnDeliveryListDoesNotWaitForTheWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = stores.control.Close() })
-	if err := turns.SaveSendAttempts(context.Background(), stores.control.db, []sendAttemptRecord{
+	if err := turns.SaveSendAttempts(context.Background(), stores.control.CanonicalDatabase(), []sendAttemptRecord{
 		{ClientActionID: "journal-action", Provider: "codex", NativeThreadID: "target", TextHash: "journal-hash", Status: sendAttemptAccepted, CreatedAt: "2026-10-02T11:00:00Z", UpdatedAt: "2026-10-02T11:00:01Z"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := turns.SaveQueuedTurns(context.Background(), stores.control.db, []queuedTurnRecord{{
+	if err := turns.SaveQueuedTurns(context.Background(), stores.control.CanonicalDatabase(), []queuedTurnRecord{{
 		ClientActionID: "journal-action", Provider: "codex", HostedThreadID: "hosted", NativeThreadID: "target", Text: "journal text",
 		TextHash: "journal-hash", RequestHash: "journal-hash", State: "accepted", Origin: "human", CreatedAt: "2026-10-02T11:00:00Z",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	sess := newFixtureSession(sessionConfig{ID: "nano-session", Provider: "codex", HostedThreadID: "hosted", SendAttempts: stores.attempts, QueuedTurns: stores.queue, Metadata: stores.control}, "target")
-	tx, err := stores.control.db.Begin()
+	tx, err := stores.control.CanonicalDatabase().Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +120,7 @@ func TestSendAttemptStoreListThreadPreservesStatusFieldsAndOrdering(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = stores.control.Close() })
-	if err := turns.SaveSendAttempts(context.Background(), stores.control.db, []sendAttemptRecord{
+	if err := turns.SaveSendAttempts(context.Background(), stores.control.CanonicalDatabase(), []sendAttemptRecord{
 		{ClientActionID: "older", Provider: "codex", NativeThreadID: "target", TextHash: "older-hash", Status: sendAttemptAccepted, RunID: "old-run", CreatedAt: "2026-09-15T01:00:00Z", UpdatedAt: "2026-09-15T01:01:00Z", Confirmed: true, ProviderTurnID: "older-turn"},
 		{ClientActionID: "newer-orphan", Provider: "codex", NativeThreadID: "target", TextHash: "newer-hash", Status: sendAttemptRefused, RunID: "new-run", Reason: "legacy orphan", CreatedAt: "2026-09-15T02:00:00Z", UpdatedAt: "2026-09-15T02:01:00Z", CanonicalMessageID: "newer-message"},
 		{ClientActionID: "parked", Provider: "codex", NativeThreadID: "target", TextHash: "parked-hash", Status: "unknown", CreatedAt: "2026-09-15T00:00:00Z", UpdatedAt: "2026-09-15T00:01:00Z"},
@@ -127,7 +129,7 @@ func TestSendAttemptStoreListThreadPreservesStatusFieldsAndOrdering(t *testing.T
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := turns.SaveQueuedTurns(context.Background(), stores.control.db, []queuedTurnRecord{{
+	if err := turns.SaveQueuedTurns(context.Background(), stores.control.CanonicalDatabase(), []queuedTurnRecord{{
 		ClientActionID: "parked", Provider: "codex", HostedThreadID: "hosted", NativeThreadID: "target", Text: "queue text",
 		PresentationText: "presentation text", TextHash: "parked-hash", RequestHash: "request", State: "parked", Origin: "human", CreatedAt: "2026-09-15T00:00:00Z",
 	}}); err != nil {
@@ -144,7 +146,7 @@ func TestSendAttemptStoreListThreadPreservesStatusFieldsAndOrdering(t *testing.T
 	if got[2].Status != "parked" {
 		t.Fatalf("outbox status override = %q, want parked", got[2].Status)
 	}
-	queue, err := turns.LoadQueuedTurns(context.Background(), stores.control.db)
+	queue, err := turns.LoadQueuedTurns(context.Background(), stores.control.CanonicalDatabase())
 	if err != nil || len(queue) != 1 || queue[0].Text != "queue text" || queue[0].PresentationText != "presentation text" {
 		t.Fatalf("queue text changed: %+v, %v", queue, err)
 	}
@@ -340,7 +342,7 @@ func newSettlementHarness(t *testing.T, provider string) *settlementHarness {
 		// The child that ran under the shim handle announced the saved
 		// session; its init recorded that resolution, as captureInit does.
 		h.control, _ = newTestHostedControl(t)
-		if err := h.control.ensureHostedThread("hosted", "claude", presentationShared, "", "", ""); err != nil {
+		if err := h.control.EnsureHostedThread("hosted", "claude", presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := h.control.ClaimNativeID("hosted", "claude", "cs_shim-handle", true); err != nil {
@@ -422,14 +424,14 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 			h := newSettlementHarness(t, "claude")
 			native := h.fixture.native
 			executions := newTestAgentExecutionStore(t, "run-1")
-			if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
+			if _, err := fixtureEnsureSessionWithIdentity(executions, "hosted", "claude", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
 			if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			completed := &completedTurnStore{db: h.queue.Database()}
-			core, err := completed.coreStore(ctx)
+			completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+			core, err := completed.CoreStore(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -455,7 +457,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 				}
 			}
 			for _, name := range []string{"starter", "correction", "late"} {
-				op, _, err := executions.beginTurn("hosted", name, "hash-"+name)
+				op, _, err := fixtureBeginTurn(executions, "hosted", name, "hash-"+name)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -471,7 +473,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.coreStore })
+			sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.CoreStore })
 			if order == "answered settles first" {
 				// The starter is delivered but not yet accepted when the others
 				// settle; claimed after attach, so it holds the only claim.
@@ -535,10 +537,10 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 			}
 			if order == "answered settles first" {
 				settled("correction", "late")
-				if op, _ := executions.turn(sent["correction"].op); op.Status != agentTurnCompleted {
+				if op, _ := executions.Turn(sent["correction"].op); op.Status != agentTurnCompleted {
 					t.Fatalf("answered operation = %+v; want it finished on its own saved proof", op)
 				}
-				if op, _ := executions.turn(sent["starter"].op); threadvalues.TurnTerminal(op.Status) {
+				if op, _ := executions.Turn(sent["starter"].op); threadvalues.TurnTerminal(op.Status) {
 					t.Fatalf("starter operation finished before its prompt was accepted: %+v", op)
 				}
 				starter := sent["starter"]
@@ -550,7 +552,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 			if order == "saved first" {
 				// The saved transcript alone decides every answer.
 				for name, want := range map[string]string{"starter": "shared", "correction": "shared", "late": "late"} {
-					if op, _ := executions.turn(sent[name].op); op.Status != agentTurnCompleted || op.FinalItemID != want+"-final:0" {
+					if op, _ := executions.Turn(sent[name].op); op.Status != agentTurnCompleted || op.FinalItemID != want+"-final:0" {
 						t.Fatalf("%s operation before any result = %+v; want completed with its saved %s answer", name, op, want)
 					}
 				}
@@ -567,7 +569,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 					if err != nil || record.UsageInputTokens == nil || *record.UsageInputTokens != held {
 						t.Fatalf("absorbed turn usage = %+v, %v; want its own %d kept", record, err, held)
 					}
-					if op, _ := executions.turn(p.op); op.Status != agentTurnCompleted || op.FinalItemID != "shared-final:0" {
+					if op, _ := executions.Turn(p.op); op.Status != agentTurnCompleted || op.FinalItemID != "shared-final:0" {
 						t.Fatalf("absorbed operation = %+v; want the shared answer", op)
 					}
 					continue
@@ -594,7 +596,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 						t.Fatalf("%s turn usage[%d] = %v; want %d", name, i, got[i], want)
 					}
 				}
-				op, _ := executions.turn(p.op)
+				op, _ := executions.Turn(p.op)
 				if op.Status != agentTurnCompleted || op.FinalItemID != want+"-final:0" || op.FinalResponse != want+" answer" {
 					t.Fatalf("%s operation = status %s final %q %q; want the %s answer", name, op.Status, op.FinalItemID, op.FinalResponse, want)
 				}
@@ -618,21 +620,21 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
 	executions := newTestAgentExecutionStore(t, "run-1")
-	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, "hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	type prompt struct{ op, turn, transport string }
 	sent := map[string]*prompt{"answerer": {turn: "claude:shim:401"}, "twin-a": {turn: "claude:shim:400"}, "twin-b": {turn: "claude:shim:400"}}
 	for _, name := range []string{"answerer", "twin-a", "twin-b"} {
-		op, _, err := executions.beginTurn("hosted", name, "hash-"+name)
+		op, _, err := fixtureBeginTurn(executions, "hosted", name, "hash-"+name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -673,19 +675,19 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 {"type":"attachment","uuid":"twin-b-queued","sessionId":"claude-settle","attachment":{"type":"queued_command","commandMode":"prompt","prompt":[{"type":"text","text":"twin-b prompt"}],"source_uuid":%q}}
 {"type":"assistant","uuid":"twin-shared","sessionId":"claude-settle","message":{"id":"twin-final","role":"assistant","content":[{"type":"text","text":"twin answer"}],"stop_reason":"end_turn"}}
 `, event("answerer"), event("twin-a"), event("twin-b")))
-	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.coreStore })
+	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.CoreStore })
 	waitForCatalogWithin(t, time.Minute, func() bool {
 		if _, err := sess.SettlePrompts(ctx); err != nil {
 			return false
 		}
-		op, _ := executions.turn(sent["answerer"].op)
+		op, _ := executions.Turn(sent["answerer"].op)
 		return threadvalues.TurnTerminal(op.Status)
 	})
 	if shared, err := core.Get(ctx, "hosted", "claude:shim:400"); err != nil || shared.Outcome != "" || shared.UsageInputTokens != nil {
 		t.Fatalf("the twice-claimed turn = %+v, %v; want it unfinished and uncounted", shared, err)
 	}
 	for _, name := range []string{"twin-a", "twin-b"} {
-		if op, _ := executions.turn(sent[name].op); threadvalues.TurnTerminal(op.Status) {
+		if op, _ := executions.Turn(sent[name].op); threadvalues.TurnTerminal(op.Status) {
 			t.Fatalf("%s operation completed on a shared turn: %+v", name, op)
 		}
 	}
@@ -707,21 +709,21 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
 	executions := newTestAgentExecutionStore(t, "run-1")
-	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, "hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	transports := map[string]string{}
 	turnsByName := map[string]string{"first": "claude:shim:500", "second": "claude:shim:501"}
 	for _, name := range []string{"first", "second"} {
-		op, _, err := executions.beginTurn("hosted", name, "hash-"+name)
+		op, _, err := fixtureBeginTurn(executions, "hosted", name, "hash-"+name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -762,7 +764,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 	priorLog := log.Writer()
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(priorLog) })
-	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.coreStore })
+	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.CoreStore })
 	// Owing is empty before saved proof confirms anything, so the wait needs
 	// positive evidence: both operations finished.
 	waitForCatalogWithin(t, time.Minute, func() bool {
@@ -789,7 +791,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 		if err != nil || !ok {
 			t.Fatalf("%s operation unreadable: %v", name, err)
 		}
-		if op, _ := executions.turn(persisted.ID); op.Status != agentTurnCompleted || op.FinalItemID != "shared-final:0" || op.FinalResponse != "one answer" {
+		if op, _ := executions.Turn(persisted.ID); op.Status != agentTurnCompleted || op.FinalItemID != "shared-final:0" || op.FinalResponse != "one answer" {
 			t.Fatalf("%s operation = %+v; want the saved turn's answer", name, op)
 		}
 	}
@@ -814,14 +816,14 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 	h := newSettlementHarness(t, "claude")
 	native := "claude-process-death"
 	executions := newTestAgentExecutionStore(t, "run-1")
-	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, "hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -844,7 +846,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 		if name == "neverTakenUnderHandle" {
 			native = handle
 		}
-		op, _, err := executions.beginTurn("hosted", name, "hash-"+name)
+		op, _, err := fixtureBeginTurn(executions, "hosted", name, "hash-"+name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -893,13 +895,13 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 		page, err := h.service.LoadTranscript(ctx, id, threadindex.TranscriptQuery{Limit: 100, HiddenSpecified: true, View: threadindex.DefaultThreadTranscriptView})
 		return err == nil && len(page.Turns) == 2
 	})
-	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.coreStore })
+	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.CoreStore })
 	outcomes := func() string {
 		var got []string
 		for _, name := range names {
 			op := ""
 			if persisted, ok, err := executions.PersistedTurnForTransportAction(ctx, "hosted", transports[name]); err == nil && ok {
-				turn, _ := executions.turn(persisted.ID)
+				turn, _ := executions.Turn(persisted.ID)
 				op = turn.Status
 			}
 			got = append(got, fmt.Sprintf("%s: prompt %s, operation %s", name, h.state(t, transports[name]), op))
@@ -947,26 +949,26 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
 	executions := newTestAgentExecutionStore(t, "run-1")
-	parent, _, err := executions.beginSession("parent", "parent-hash", "claude", presentationShared)
+	parent, _, err := fixtureBeginSession(executions, "parent", "parent-hash", "claude", presentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := executions.beginSessionWithSubscriptions("child", "child-hash", "claude", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.Send})
+	child, _, err := fixtureBeginSessionWithSubscriptions(executions, "child", "child-hash", "claude", presentationBackground, parent, subscriptions.Choices{Inbox: subscriptions.Send})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession(child.ID, "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.control.ClaimNativeID(child.ID, "claude", native, false); err != nil {
+	if err := executions.Control().ClaimNativeID(child.ID, "claude", native, false); err != nil {
 		t.Fatal(err)
 	}
-	completed := &completedTurnStore{db: h.queue.Database()}
-	h.server.turns, h.server.agentExecutions, h.server.completedTurns, h.server.controlMetadata = h.prompts, executions, newCompletedTurnSource(completed), executions.control
-	executions.useSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	h.server.turns, h.server.agentExecutions, h.server.completedTurns, h.server.controlMetadata = h.prompts, executions, hostedstore.NewCompletedTurnSource(completed), executions.Control()
+	executions.UseSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
 	client := &feedSubscriptionClient{s: h.server}
-	h.server.subscriptions = subscriptions.NewDispatcher(executions.control.db, client, nil, nil)
-	op, _, err := executions.beginTurn(child.ID, "exited", "hash-exited")
+	h.server.subscriptions = subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
+	op, _, err := fixtureBeginTurn(executions, child.ID, "exited", "hash-exited")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1002,7 +1004,7 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 		t.Fatal(err)
 	}
 	h.server.confirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
-	if finished, _ := executions.turn(op.ID); finished.Status != agentTurnCompleted || finished.FinalItemID != "exited-final:0" || finished.FinalResponse != "answered after all" {
+	if finished, _ := executions.Turn(op.ID); finished.Status != agentTurnCompleted || finished.FinalItemID != "exited-final:0" || finished.FinalResponse != "answered after all" {
 		t.Fatalf("operation after the commit = %+v; want its saved answer", finished)
 	}
 	if owing, err := h.prompts.Owing(ctx, child.ID, []string{op.TransportActionID}); err != nil || len(owing) != 0 {
@@ -1027,12 +1029,12 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 	ctx := context.Background()
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.server.turns, h.server.completedTurns, h.server.controlMetadata = h.prompts, newCompletedTurnSource(completed), h.control
+	h.server.turns, h.server.completedTurns, h.server.controlMetadata = h.prompts, hostedstore.NewCompletedTurnSource(completed), h.control
 	h.server.agentExecutions = newTestAgentExecutionStore(t, "run")
 	turnOf := map[string]string{"answered": "claude:shim:701", "twin-a": "claude:shim:703", "twin-b": "claude:shim:703", "unsaved": "claude:shim:702"}
 	for _, action := range []string{"answered", "twin-a", "twin-b", "unsaved"} {
@@ -1122,13 +1124,13 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
 	first := newTestAgentExecutionStore(t, "run-1")
-	if _, err := first.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(first, "hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	op, _, err := first.beginTurn("hosted", "late", "hash-late")
+	op, _, err := fixtureBeginTurn(first, "hosted", "late", "hash-late")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1145,14 +1147,11 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		t.Fatal(err)
 	}
 	// Failed after its wait, holding the live final a wrong binding gave it.
-	first.mu.Lock()
-	rec := first.turns[op.ID]
+	rec, _ := first.Turn(op.ID)
 	rec.Status, rec.ProviderTurnID, rec.NativeThreadID, rec.FinalItemID = agentTurnFailed, turn, native, "earlier-answer:0"
 	rec.Error = &agentExecutionError{Source: "saved", Code: "result_not_saved", Message: "not saved"}
 	rec.Revision++
-	first.setTurnLocked(op.ID, &rec)
-	err = first.persistAndNotifyLocked()
-	first.mu.Unlock()
+	err = fixtureWriteTurn(first, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1189,25 +1188,25 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 
 	// Nano starts: the operation store reloads and reads not-saved answers.
 	h.server.turns, h.server.controlMetadata = h.prompts, h.control
-	store, err := newControlAgentExecutionStore(first.control, "run-2")
+	store, err := newControlAgentExecutionStore(first.Control(), "run-2")
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.server.agentExecutions = store
 	var reads atomic.Int32
-	store.useSavedResults(func(ctx context.Context, rec agentTurnRecord) (string, string, error) {
+	store.UseSavedResults(func(ctx context.Context, rec agentTurnRecord) (string, string, error) {
 		defer reads.Add(1)
 		return h.server.savedOperationResult(ctx, rec)
 	}, nil)
 	waitForCatalogWithin(t, time.Minute, func() bool { return reads.Load() >= 1 })
-	if got, _ := store.turn(op.ID); got.Status != agentTurnFailed {
+	if got, _ := store.Turn(op.ID); got.Status != agentTurnFailed {
 		t.Fatalf("operation on the older reader's projection = %+v; want it still waiting", got)
 	}
 	if upgrade == "re-read" {
 		reader(current)
 		waitForCatalogWithin(t, time.Minute, func() bool {
 			h.server.confirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
-			got, _ := store.turn(op.ID)
+			got, _ := store.Turn(op.ID)
 			return got.Status == agentTurnCompleted
 		})
 	} else {
@@ -1219,12 +1218,9 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 				t.Fatal(err)
 			}
 			backlog, inFlight := status.TranscriptChangeBacklog, status.TranscriptChangeInFlight
-			store.mu.Lock()
-			defer store.mu.Unlock()
-			job := store.savedResultJobs[op.ID]
-			return backlog == 0 && inFlight == 0 && job != nil && !job.reading
+			return backlog == 0 && inFlight == 0 && reads.Load() >= 1
 		})
-		if got, _ := store.turn(op.ID); got.Status != agentTurnFailed {
+		if got, _ := store.Turn(op.ID); got.Status != agentTurnFailed {
 			t.Fatalf("operation before the proof = %+v; want it still waiting", got)
 		}
 		// Restart the real background backfill at the proof boundary. Its
@@ -1245,11 +1241,11 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		h.service, h.server.catalog = service, service
 		service.SetTranscriptChanged(h.server.confirmDurableThread)
 		waitForCatalogWithin(t, time.Minute, func() bool {
-			got, _ := store.turn(op.ID)
+			got, _ := store.Turn(op.ID)
 			return got.Status == agentTurnCompleted
 		})
 	}
-	if got, _ := store.turn(op.ID); got.FinalItemID != "right-final:0" || got.FinalResponse != "the right answer" {
+	if got, _ := store.Turn(op.ID); got.FinalItemID != "right-final:0" || got.FinalResponse != "the right answer" {
 		t.Fatalf("operation = %+v; want the answer of the saved turn that consumed its prompt", got)
 	}
 }
@@ -1265,21 +1261,21 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
 	executions := newTestAgentExecutionStore(t, "run-1")
-	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, "hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	type prompt struct{ op, turn, transport string }
 	sent := map[string]*prompt{"answerer": {turn: "claude:shim:501"}, "absorbed": {turn: "claude:shim:500"}}
 	for _, name := range []string{"answerer", "absorbed"} {
-		op, _, err := executions.beginTurn("hosted", name, "hash-"+name)
+		op, _, err := fixtureBeginTurn(executions, "hosted", name, "hash-"+name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1314,13 +1310,10 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 	}
 	// Retention removes the absorbed prompt's operation from the committed
 	// rows and, on its reload, from the cache.
-	if _, err := executions.control.db.Exec(`DELETE FROM hosted_turn_operations WHERE operation_id=?`, sent["absorbed"].op); err != nil {
+	if _, err := executions.Control().CanonicalDatabase().Exec(`DELETE FROM hosted_turn_operations WHERE operation_id=?`, sent["absorbed"].op); err != nil {
 		t.Fatal(err)
 	}
-	executions.mu.Lock()
-	executions.resetControlCachesLocked()
-	reloadErr := loadControlExecutionRows(executions)
-	executions.mu.Unlock()
+	executions, reloadErr := newControlAgentExecutionStore(executions.Control(), "retained-run")
 	if reloadErr != nil {
 		t.Fatal(reloadErr)
 	}
@@ -1329,7 +1322,7 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 {"type":"attachment","uuid":"absorbed-queued","sessionId":"claude-settle","attachment":{"type":"queued_command","commandMode":"prompt","prompt":[{"type":"text","text":"absorbed prompt"}],"source_uuid":%q}}
 {"type":"assistant","uuid":"kept-shared","sessionId":"claude-settle","message":{"id":"kept-final","role":"assistant","content":[{"type":"text","text":"kept answer"}],"stop_reason":"end_turn"}}
 `, event("answerer"), event("absorbed")))
-	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.coreStore })
+	sess := h.attach("claude", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.CoreStore })
 	// Owing is empty before saved proof confirms anything, so the wait needs
 	// positive evidence: both prompts confirmed and the absorbed turn finished.
 	waitForCatalogWithin(t, time.Minute, func() bool {
@@ -1365,13 +1358,13 @@ func TestClaudeOwedPersonPromptFinishesAfterARestartOnALaterSavedCommit(t *testi
 	ctx := context.Background()
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	attach := func() *session {
-		sess := newFixtureSession(sessionConfig{ID: "nano-session", Provider: "claude", HostedThreadID: "hosted", Projection: newLiveProjection("claude", "hosted"), Turns: h.prompts, QueuedTurns: h.queue, SendAttempts: h.attempts, Metadata: h.control, AgentExecutions: newTestAgentExecutionStore(t, "run-1"), CompletedTurns: completed.coreStore}, native)
+		sess := newFixtureSession(sessionConfig{ID: "nano-session", Provider: "claude", HostedThreadID: "hosted", Projection: newLiveProjection("claude", "hosted"), Turns: h.prompts, QueuedTurns: h.queue, SendAttempts: h.attempts, Metadata: h.control, AgentExecutions: newTestAgentExecutionStore(t, "run-1"), CompletedTurns: completed.CoreStore}, native)
 		if err := sess.InitializeBinding(1); err != nil {
 			t.Fatal(err)
 		}
@@ -1491,7 +1484,7 @@ func TestReattachSettlesSavedPromptsAndPublishesOnlyTheRest(t *testing.T) {
 				// the person's prompt owes nothing more.
 				sess := h.attach(provider, nil, func(cfg *sessionConfig) {
 					cfg.AgentExecutions = newTestAgentExecutionStore(t, "run-1")
-					cfg.CompletedTurns = (&completedTurnStore{db: h.queue.Database()}).coreStore
+					cfg.CompletedTurns = (hostedstore.NewCompletedTurnStore(h.queue.Database())).CoreStore
 				})
 				waitForCatalogWithin(t, time.Minute, func() bool {
 					if _, err := sess.SettlePrompts(ctx); err != nil {
@@ -1859,8 +1852,8 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 	if _, expired, err := h.prompts.Expire(ctx, "unanswered", time.Now()); err != nil || !expired {
 		t.Fatalf("expire unanswered = %v, %v", expired, err)
 	}
-	completed := &completedTurnStore{db: h.queue.Database()}
-	core, err := completed.coreStore(ctx)
+	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1875,7 +1868,7 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 	}
 	sess := h.attach("claude", nil, func(cfg *sessionConfig) {
 		cfg.AgentExecutions = newTestAgentExecutionStore(t, "run-1")
-		cfg.CompletedTurns = completed.coreStore
+		cfg.CompletedTurns = completed.CoreStore
 	}) // "running" waits: its saved turn is open
 	h.appendSaved(t, `{"type":"assistant","uuid":"running-end","sessionId":"claude-settle","message":{"id":"running-message","role":"assistant","content":[{"type":"text","text":"running answer"}],"stop_reason":"end_turn"}}`+"\n")
 	saved := h.savedReader(sess)
@@ -2204,7 +2197,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	s, daemon, rec, _, _ := subscribedCodexServer(t, `[{"id":"turn-shared","status":"inProgress","startedAt":1787600000}]`)
 	var ops []agentTurnRecord
 	for _, action := range []string{"starter", "correction"} {
-		op, _, err := s.agentExecutions.beginTurn(rec.HostedThreadID, action, "hash-"+action)
+		op, _, err := fixtureBeginTurn(s.agentExecutions, rec.HostedThreadID, action, "hash-"+action)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2252,14 +2245,14 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	waitForClaude(t, "shared-turn reconnect", func() bool { return daemon.ResumeCount() > beforeResume && sess.Summary().Status == "ready" })
 	waitForClaude(t, "both operations finished", func() bool {
 		for _, op := range ops {
-			if got, _ := s.agentExecutions.turn(op.ID); !threadvalues.TurnTerminal(got.Status) {
+			if got, _ := s.agentExecutions.Turn(op.ID); !threadvalues.TurnTerminal(got.Status) {
 				return false
 			}
 		}
 		return true
 	})
 	for _, op := range ops {
-		got, _ := s.agentExecutions.turn(op.ID)
+		got, _ := s.agentExecutions.Turn(op.ID)
 		if got.Status != agentTurnCompleted || got.FinalItemID != "final-shared" || got.FinalResponse != "the shared answer" {
 			t.Fatalf("operation %s = status %s final %q %q; want the turn's final answer", op.ClientActionID, got.Status, got.FinalItemID, got.FinalResponse)
 		}
@@ -2272,7 +2265,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 		t.Fatalf("completed turn final = %q err=%v; want the final answer resume decoded", record.FinalMessageID, err)
 	}
 
-	late, _, err := s.agentExecutions.beginTurn(rec.HostedThreadID, "late", "hash-late")
+	late, _, err := fixtureBeginTurn(s.agentExecutions, rec.HostedThreadID, "late", "hash-late")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2282,8 +2275,8 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	proveSaved(late)
 	daemon.EmitThreadNotification(native, map[string]any{"method": "item/completed", "params": map[string]any{"threadId": native, "turnId": turn, "item": map[string]any{"id": "final-shared", "type": "agentMessage", "phase": "final_answer", "text": "the shared answer"}}})
 	daemon.EmitThreadNotification(native, map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": native, "turn": map[string]any{"id": turn, "status": "completed", "completedAt": 1787600100}}})
-	waitForClaude(t, "late proven member", func() bool { got, _ := s.agentExecutions.turn(late.ID); return got.Status == agentTurnCompleted })
-	if got, _ := s.agentExecutions.turn(late.ID); got.Status != agentTurnCompleted || got.FinalItemID != "final-shared" || got.FinalResponse != "the shared answer" {
+	waitForClaude(t, "late proven member", func() bool { got, _ := s.agentExecutions.Turn(late.ID); return got.Status == agentTurnCompleted })
+	if got, _ := s.agentExecutions.Turn(late.ID); got.Status != agentTurnCompleted || got.FinalItemID != "final-shared" || got.FinalResponse != "the shared answer" {
 		t.Fatalf("late operation = status %s final %q %q; want the turn's final answer", got.Status, got.FinalItemID, got.FinalResponse)
 	}
 }
@@ -2298,7 +2291,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 	ctx := context.Background()
 	s, daemon, rec, _, _ := subscribedCodexServer(t, `[{"id":"turn-human","status":"inProgress","startedAt":1787600000}]`)
-	op, _, err := s.agentExecutions.beginTurn(rec.HostedThreadID, "correction", "hash-correction")
+	op, _, err := fixtureBeginTurn(s.agentExecutions, rec.HostedThreadID, "correction", "hash-correction")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2335,10 +2328,10 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 		"threadId": native, "turn": map[string]any{"id": turn, "status": "completed", "completedAt": 1787600100},
 	}})
 	waitForClaude(t, "the turn's completion recorded", func() bool {
-		feed, err := s.completedTurns.after(rec.HostedThreadID, "", 10)
+		feed, err := s.completedTurns.After(rec.HostedThreadID, "", 10)
 		return err == nil && len(feed) == 1
 	})
-	if got, _ := s.agentExecutions.turn(op.ID); threadvalues.TurnTerminal(got.Status) {
+	if got, _ := s.agentExecutions.Turn(op.ID); threadvalues.TurnTerminal(got.Status) {
 		t.Fatalf("operation finished with the turn although its own row was never saved: %#v", got)
 	}
 
@@ -2348,8 +2341,8 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 		t.Fatalf("settle: %v %v", settled, err)
 	}
 	daemon.EmitThreadNotification(native, map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": native, "turn": map[string]any{"id": turn, "status": "completed", "completedAt": 1787600100}}})
-	waitForClaude(t, "proven correction", func() bool { got, _ := s.agentExecutions.turn(op.ID); return got.Status == agentTurnCompleted })
-	if got, _ := s.agentExecutions.turn(op.ID); got.Status != agentTurnCompleted || got.FinalItemID != "final-human" || got.FinalResponse != "done" {
+	waitForClaude(t, "proven correction", func() bool { got, _ := s.agentExecutions.Turn(op.ID); return got.Status == agentTurnCompleted })
+	if got, _ := s.agentExecutions.Turn(op.ID); got.Status != agentTurnCompleted || got.FinalItemID != "final-human" || got.FinalResponse != "done" {
 		t.Fatalf("proven operation = status %s final %q %q; want the turn's final answer", got.Status, got.FinalItemID, got.FinalResponse)
 	}
 }

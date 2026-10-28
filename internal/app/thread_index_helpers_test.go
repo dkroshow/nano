@@ -9,13 +9,3 @@ type threadMessagesResponse struct {
 	Count    int                   `json:"count"`
 	Messages []threadindex.Message `json:"messages"`
 }
-
-// Compatibility names for the hosted tests that move in the other lane.
-type catalogThreadName = threadindex.ThreadName
-type catalogIndexStatus = threadindex.IndexStatus
-type transcriptItem = threadindex.TranscriptItem
-type transcriptResponse = threadindex.TranscriptResponse
-
-const defaultThreadTranscriptView = threadindex.DefaultThreadTranscriptView
-const devThreadTranscriptView = threadindex.DevThreadTranscriptView
-const threadNameEvidence = threadindex.ThreadNameEvidence

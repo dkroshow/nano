@@ -25,14 +25,14 @@ func turnMigrationFixture(t *testing.T) (*controlMetadataStore, turns.LegacyTurn
 	}
 	t.Cleanup(func() { control.Close() })
 	for _, id := range []string{"current", "retired", "provisional"} {
-		if err := control.ensureHostedThread(id, "claude", presentationShared, "", "", ""); err != nil {
+		if err := control.EnsureHostedThread(id, "claude", presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := control.ClaimNativeID("retired", "claude", "native", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at='before' WHERE hosted_thread_id='retired'`); err != nil {
+	if _, err := control.CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at='before' WHERE hosted_thread_id='retired'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := control.ClaimNativeID("current", "claude", "native", false); err != nil {
@@ -76,7 +76,7 @@ func writeMigrationJSON(t *testing.T, path string, value any) {
 
 func TestThreadsTurnMigrationPreservesExactFactsAndRerunsWithoutImport(t *testing.T) {
 	control, paths, queue, attempts := turnMigrationFixture(t)
-	before := threadsDatabaseSnapshot(t, control.db)
+	before := threadsDatabaseSnapshot(t, control.CanonicalDatabase())
 	completed, err := sql.Open("sqlite", paths.Completed)
 	if err != nil {
 		t.Fatal(err)
@@ -86,22 +86,22 @@ func TestThreadsTurnMigrationPreservesExactFactsAndRerunsWithoutImport(t *testin
 	queueBytes, _ := os.ReadFile(paths.Queue)
 	attemptBytes, _ := os.ReadFile(paths.Attempts)
 	backup := filepath.Join(filepath.Dir(paths.Queue), "backup")
-	report, err := turns.MigrateTurnRecords(context.Background(), control.db, paths, backup)
+	report, err := turns.MigrateTurnRecords(context.Background(), control.CanonicalDatabase(), paths, backup)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Queued != 2 || report.Attempts != 2 || report.Completed != 2 || report.CompletedSequence != 99 || report.BackupDir != backup {
 		t.Fatalf("wrong reconciliation: %+v", report)
 	}
-	gotQueue, err := turns.LoadQueuedTurns(context.Background(), control.db)
+	gotQueue, err := turns.LoadQueuedTurns(context.Background(), control.CanonicalDatabase())
 	if err != nil || !reflect.DeepEqual(gotQueue, queue) {
 		t.Fatalf("queue order/fields changed: %+v, %v", gotQueue, err)
 	}
-	gotAttempts, err := turns.LoadSendAttempts(context.Background(), control.db)
+	gotAttempts, err := turns.LoadSendAttempts(context.Background(), control.CanonicalDatabase())
 	if err != nil || !reflect.DeepEqual(gotAttempts, attempts) {
 		t.Fatalf("attempt fields changed: %+v, %v", gotAttempts, err)
 	}
-	after := threadsDatabaseSnapshot(t, control.db)
+	after := threadsDatabaseSnapshot(t, control.CanonicalDatabase())
 	for table, rows := range before {
 		if table == "schema" || table == "version" || table == "sqlite_sequence" {
 			continue
@@ -147,15 +147,15 @@ func TestThreadsTurnMigrationPreservesExactFactsAndRerunsWithoutImport(t *testin
 	if err := os.WriteFile(paths.Queue, []byte("corrupt after successful cutover"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	second, err := turns.MigrateTurnRecords(context.Background(), control.db, paths, filepath.Join(backup, "must-not-be-created"))
+	second, err := turns.MigrateTurnRecords(context.Background(), control.CanonicalDatabase(), paths, filepath.Join(backup, "must-not-be-created"))
 	if err != nil || second != report {
 		t.Fatalf("rerun: %+v %v", second, err)
 	}
-	if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.db), after) {
+	if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.CanonicalDatabase()), after) {
 		t.Fatal("rerun mutated canonical data")
 	}
 	var nextID int64
-	if err := control.db.QueryRow(`INSERT INTO completed_turns(target_hosted_thread_id,provider,turn_id,final_message_id,completed_at,source,created_at) VALUES('current','claude','next','final-next','at','test','at') RETURNING id`).Scan(&nextID); err != nil || nextID != 100 {
+	if err := control.CanonicalDatabase().QueryRow(`INSERT INTO completed_turns(target_hosted_thread_id,provider,turn_id,final_message_id,completed_at,source,created_at) VALUES('current','claude','next','final-next','at','test','at') RETURNING id`).Scan(&nextID); err != nil || nextID != 100 {
 		t.Fatalf("completion cursor reused: %d %v", nextID, err)
 	}
 }
@@ -178,15 +178,15 @@ func TestThreadsTurnMigrationFailsWithoutPartialMutation(t *testing.T) {
 			case "backup-failure":
 				os.WriteFile(backup, []byte("occupied"), 0600)
 			case "future-schema":
-				control.db.Exec(`PRAGMA user_version=999`)
+				control.CanonicalDatabase().Exec(`PRAGMA user_version=999`)
 			case "unmarked-current-schema":
-				control.db.Exec(`PRAGMA user_version=20`)
+				control.CanonicalDatabase().Exec(`PRAGMA user_version=20`)
 			case "cancelled":
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithCancel(ctx)
 				cancel()
 			case "sql-conflict":
-				control.db.Exec(`CREATE TABLE completed_turns(id INTEGER); INSERT INTO completed_turns VALUES(123)`)
+				control.CanonicalDatabase().Exec(`CREATE TABLE completed_turns(id INTEGER); INSERT INTO completed_turns VALUES(123)`)
 			case "duplicate-completions", "future-completion-field", "future-completion-version":
 				completed, err := sql.Open("sqlite", paths.Completed)
 				if err != nil {
@@ -206,11 +206,11 @@ func TestThreadsTurnMigrationFailsWithoutPartialMutation(t *testing.T) {
 			case "corrupt-completions":
 				os.WriteFile(paths.Completed, []byte("corrupt"), 0600)
 			}
-			before := threadsDatabaseSnapshot(t, control.db)
-			if _, err := turns.MigrateTurnRecords(ctx, control.db, paths, backup); err == nil {
+			before := threadsDatabaseSnapshot(t, control.CanonicalDatabase())
+			if _, err := turns.MigrateTurnRecords(ctx, control.CanonicalDatabase(), paths, backup); err == nil {
 				t.Fatal("unsafe migration succeeded")
 			}
-			if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.db), before) {
+			if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.CanonicalDatabase()), before) {
 				t.Fatal("failed migration changed schema or records")
 			}
 		})
@@ -222,7 +222,7 @@ func TestThreadsStorePublicationKeepsOriginalUntilAllRecordsReconcile(t *testing
 	ctx := context.Background()
 	dir := filepath.Dir(legacy.Queue)
 	paths := state.StorePaths{Destination: filepath.Join(dir, "nano_threads.sqlite"), Control: filepath.Join(dir, "control-copy.sqlite"), BackupRoot: filepath.Join(dir, "migration-backups"), Turns: legacy}
-	before := threadsDatabaseSnapshot(t, control.db)
+	before := threadsDatabaseSnapshot(t, control.CanonicalDatabase())
 	if err := os.WriteFile(legacy.Queue, []byte("incomplete"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestThreadsStorePublicationKeepsOriginalUntilAllRecordsReconcile(t *testing
 	if _, err := os.Lstat(paths.Destination); !os.IsNotExist(err) {
 		t.Fatalf("failed candidate became canonical: %v", err)
 	}
-	if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.db), before) {
+	if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.CanonicalDatabase()), before) {
 		t.Fatal("failed candidate changed source")
 	}
 	writeMigrationJSON(t, legacy.Queue, queue)
@@ -243,7 +243,7 @@ func TestThreadsStorePublicationKeepsOriginalUntilAllRecordsReconcile(t *testing
 	if report.Queued != len(queue) || report.Attempts != len(attempts) || report.Completed != 2 {
 		t.Fatalf("wrong report: %+v", report)
 	}
-	if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.db), before) {
+	if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.CanonicalDatabase()), before) {
 		t.Fatal("publication rewrote old control store")
 	}
 	canonical, err := statedb.Open(ctx, paths.Destination)

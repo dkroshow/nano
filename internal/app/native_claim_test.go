@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"errors"
 	"testing"
@@ -33,10 +35,10 @@ func retiredRecoveryFixture(t *testing.T) (*controlMetadataStore, *agentExecutio
 	if err := executions.BindSession(record.ID, "recovery-session", "recovery-new", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at='2026-01-01T00:00:00Z' WHERE hosted_thread_id=? AND native_thread_id='recovery-old'`, record.ID); err != nil {
+	if _, err := control.CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at='2026-01-01T00:00:00Z' WHERE hosted_thread_id=? AND native_thread_id='recovery-old'`, record.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := control.db.Exec(`INSERT INTO hosted_native_recoveries(hosted_thread_id,client_recovery_id,old_native_id,new_native_id,state,record_json) VALUES(?,'recovery-key','recovery-old','recovery-new','activated','{}')`, record.ID); err != nil {
+	if _, err := control.CanonicalDatabase().Exec(`INSERT INTO hosted_native_recoveries(hosted_thread_id,client_recovery_id,old_native_id,new_native_id,state,record_json) VALUES(?,'recovery-key','recovery-old','recovery-new','activated','{}')`, record.ID); err != nil {
 		t.Fatal(err)
 	}
 	return control, executions, record
@@ -46,17 +48,17 @@ const revivedNativeID = "f2000067-f9db-51d0-919d-079cc251e891"
 
 func seedHostedNative(t *testing.T, store *agentExecutionStore, provider, nativeID, status string) agentSessionRecord {
 	t.Helper()
-	record, err := store.ensureSessionWithIdentity("", provider, presentationShared, "", "", "")
+	record, err := fixtureEnsureSessionWithIdentity(store, "", provider, presentationShared, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := hostedvalues.SkipOwnedNativeClaim(store.control.ClaimNativeID(record.ID, provider, nativeID, false)); err != nil {
+	if err := hostedvalues.SkipOwnedNativeClaim(store.Control().ClaimNativeID(record.ID, provider, nativeID, false)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateSession(record.ID, "nano-"+record.ID, nativeID, status, ""); err != nil {
 		t.Fatal(err)
 	}
-	updated, ok := store.session(record.ID)
+	updated, ok := store.Session(record.ID)
 	if !ok {
 		t.Fatal("missing hosted record")
 	}
@@ -65,7 +67,7 @@ func seedHostedNative(t *testing.T, store *agentExecutionStore, provider, native
 
 func activeOwner(t *testing.T, control *controlMetadataStore, provider, nativeID string) string {
 	t.Helper()
-	owner, err := control.activeNativeOwner(provider, nativeID)
+	owner, err := control.ActiveNativeOwner(provider, nativeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +77,7 @@ func activeOwner(t *testing.T, control *controlMetadataStore, provider, nativeID
 func TestClaimNativeIDDoesNotStealFromExitedOwner(t *testing.T) {
 	control, store := newTestHostedControl(t)
 	old := seedHostedNative(t, store, "claude", revivedNativeID, sessionStatusExited)
-	newRec, err := store.ensureSessionWithIdentity("", "claude", presentationShared, "", "", "")
+	newRec, err := fixtureEnsureSessionWithIdentity(store, "", "claude", presentationShared, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,18 +93,18 @@ func TestTransferNativeClaimMovesExitedOwnerAtomically(t *testing.T) {
 	control, store := newTestHostedControl(t)
 	old := seedHostedNative(t, store, "claude", revivedNativeID, sessionStatusExited)
 	newRec := seedHostedNative(t, store, "claude", "cs_other", agentSessionDetached)
-	if err := control.transferNativeClaim(newRec.ID, "claude", revivedNativeID, false); err != nil {
+	if err := control.TransferNativeClaim(newRec.ID, "claude", revivedNativeID, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := activeOwner(t, control, "claude", revivedNativeID); got != newRec.ID {
 		t.Fatalf("active owner = %q, want %q", got, newRec.ID)
 	}
 	var oldRetired string
-	if err := control.db.QueryRow(`SELECT COALESCE(retired_at,'') FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND native_thread_id=?`, old.ID, revivedNativeID).Scan(&oldRetired); err != nil || oldRetired == "" {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT COALESCE(retired_at,'') FROM hosted_thread_native_ids WHERE hosted_thread_id=? AND native_thread_id=?`, old.ID, revivedNativeID).Scan(&oldRetired); err != nil || oldRetired == "" {
 		t.Fatalf("old claim retired_at = %q err=%v", oldRetired, err)
 	}
 	var oldCurrent string
-	if err := control.db.QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, old.ID).Scan(&oldCurrent); err != nil || oldCurrent != revivedNativeID {
+	if err := control.CanonicalDatabase().QueryRow(`SELECT current_native_id FROM hosted_threads WHERE hosted_thread_id=?`, old.ID).Scan(&oldCurrent); err != nil || oldCurrent != revivedNativeID {
 		t.Fatalf("old current_native_id = %q err=%v", oldCurrent, err)
 	}
 }
@@ -110,17 +112,17 @@ func TestTransferNativeClaimMovesExitedOwnerAtomically(t *testing.T) {
 func TestTransferNativeClaimConflictsWhenOwnerIsLiveAttached(t *testing.T) {
 	_, store := newTestHostedControl(t)
 	owner := seedHostedNative(t, store, "claude", revivedNativeID, "ready")
-	challenger, err := store.ensureSessionWithIdentity("", "claude", presentationShared, "", "", "")
+	challenger, err := fixtureEnsureSessionWithIdentity(store, "", "claude", presentationShared, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := testServerWithSessions(&server{controlMetadata: store.control, agentExecutions: store, Registry: newSessionRegistry()}, map[string]*session{
+	s := testServerWithSessions(&server{controlMetadata: store.Control(), agentExecutions: store, Registry: newSessionRegistry()}, map[string]*session{
 		"live": configuredFixtureSession(t, sessionConfig{ID: "live", Provider: "claude", HostedThreadID: owner.ID}, revivedNativeID, "ready", ""),
 	})
 	if err := s.transferNativeClaim(challenger.ID, "claude", revivedNativeID); !errors.Is(err, errNativeClaimLive) {
 		t.Fatalf("transfer err = %v, want errNativeClaimLive", err)
 	}
-	if got := activeOwner(t, store.control, "claude", revivedNativeID); got != owner.ID {
+	if got := activeOwner(t, store.Control(), "claude", revivedNativeID); got != owner.ID {
 		t.Fatalf("active owner moved to %q", got)
 	}
 }
@@ -137,7 +139,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 	if got := activeOwner(t, control, "claude", revivedNativeID); got != owner.ID {
 		t.Fatalf("active owner = %q, want %q", got, owner.ID)
 	}
-	updated, ok := store.session(other.ID)
+	updated, ok := store.Session(other.ID)
 	if !ok || updated.Status != agentSessionDetached {
 		t.Fatalf("non-owner status = %+v", updated)
 	}
@@ -169,7 +171,7 @@ func TestResumeHistoricalHostedIDRedirectsToCurrentOwner(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
 	old := seedHostedNative(t, s.agentExecutions, "claude", claudeResumeThreadID, sessionStatusExited)
 	current := seedHostedNative(t, s.agentExecutions, "claude", "cs_tmp", agentSessionDetached)
-	if err := s.controlMetadata.transferNativeClaim(current.ID, "claude", claudeResumeThreadID, false); err != nil {
+	if err := s.controlMetadata.TransferNativeClaim(current.ID, "claude", claudeResumeThreadID, false); err != nil {
 		t.Fatal(err)
 	}
 	cwd := t.TempDir()
@@ -243,7 +245,7 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	if err := s.repairCanonicalNativeIdentity("claude", claudeResumeThreadID, current.ID); err != nil {
 		t.Fatal(err)
 	}
-	attachments.remember(attachmentRecord{
+	attachments.Remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: claudeResumeThreadID, HostedThreadID: current.ID,
 		Bin: "/stored/claude", Args: storedPosture, AttachedAt: "2026-08-25T13:02:50Z",
 	})
@@ -267,22 +269,23 @@ func TestNativeResolversSelectCurrentOwner(t *testing.T) {
 	row := catalogThread{Thread: threadindex.Thread{ID: "nth_pair", Provider: "claude", NativeID: identityNativeOld, Name: namedCatalog("keyboard owner")}}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	old := createIdentityHosted(t, store, "claude", identityNativeOld)
-	current, err := store.ensureSessionWithIdentity("", "claude", presentationShared, "", "", "")
+	current, err := fixtureEnsureSessionWithIdentity(store, "", "claude", presentationShared, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.control.transferNativeClaim(current.ID, "claude", identityNativeOld, false); err != nil {
+	if err := store.Control().TransferNativeClaim(current.ID, "claude", identityNativeOld, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateSession(current.ID, "nano-current", identityNativeOld, agentSessionDetached, ""); err != nil {
 		t.Fatal(err)
 	}
-	store.mu.Lock()
-	if rec, ok := store.sessions[old.ID]; ok {
-		rec.UpdatedAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
-		store.sessions[old.ID] = rec
+	if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_execution_sessions SET updated_at=? WHERE hosted_thread_id=?`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano), old.ID); err != nil {
+		t.Fatal(err)
 	}
-	store.mu.Unlock()
+	s.agentExecutions, err = newControlAgentExecutionStore(store.Control(), "resolver-read")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	status, body, raw := resolveIdentity(t, s, identityNativeOld)
 	if status != 200 || body.HostedThreadID != current.ID || body.MatchCount != 1 {
@@ -292,7 +295,7 @@ func TestNativeResolversSelectCurrentOwner(t *testing.T) {
 	if status != 200 || body.HostedThreadID != old.ID {
 		t.Fatalf("historical hosted identity = %d %#v (%s)", status, body, raw)
 	}
-	if rec, ok := store.sessionForNative("claude", identityNativeOld); !ok || rec.ID != current.ID {
+	if rec, ok := store.SessionForNative("claude", identityNativeOld); !ok || rec.ID != current.ID {
 		t.Fatalf("sessionForNative = %+v ok=%v", rec, ok)
 	}
 
@@ -305,7 +308,7 @@ func TestNativeResolversSelectCurrentOwner(t *testing.T) {
 func TestNativeResolversSingleRetiredClaimantResolves(t *testing.T) {
 	s, store := newIdentityServer(t, nil)
 	record := createIdentityHosted(t, store, "claude", identityNativeOld)
-	if _, err := store.control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at=? WHERE hosted_thread_id=?`, time.Now().UTC().Format(time.RFC3339Nano), record.ID); err != nil {
+	if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at=? WHERE hosted_thread_id=?`, time.Now().UTC().Format(time.RFC3339Nano), record.ID); err != nil {
 		t.Fatal(err)
 	}
 	status, body, raw := resolveIdentity(t, s, identityNativeOld)
@@ -321,15 +324,15 @@ func TestNativeResolversSingleRetiredClaimantResolves(t *testing.T) {
 func TestNativeResolversMultipleRetiredClaimantsStayAmbiguous(t *testing.T) {
 	s, store := newIdentityServer(t, nil)
 	first := createIdentityHosted(t, store, "claude", identityNativeOld)
-	second, err := store.ensureSessionWithIdentity("", "claude", presentationShared, "", "", "")
+	second, err := fixtureEnsureSessionWithIdentity(store, "", "claude", presentationShared, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.control.transferNativeClaim(second.ID, "claude", identityNativeOld, false); err != nil {
+	if err := store.Control().TransferNativeClaim(second.ID, "claude", identityNativeOld, false); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := store.control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at=? WHERE native_thread_id=?`, now, identityNativeOld); err != nil {
+	if _, err := store.Control().CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at=? WHERE native_thread_id=?`, now, identityNativeOld); err != nil {
 		t.Fatal(err)
 	}
 	_ = first
@@ -349,14 +352,12 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 			t.Run(provider+map[bool]string{false: "/native", true: "/hosted"}[named], func(t *testing.T) {
 				control, store := newTestHostedControl(t)
 				old := seedHostedNative(t, store, provider, revivedNativeID, sessionStatusExited)
-				if _, err := control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at='retired' WHERE hosted_thread_id=?`, old.ID); err != nil {
+				if _, err := control.CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at='retired' WHERE hosted_thread_id=?`, old.ID); err != nil {
 					t.Fatal(err)
 				}
-				app := &server{controlMetadata: control, agentExecutions: store,
-					attachments: &attachmentStore{byKey: map[attachmentKey]attachmentRecord{
-						{Provider: provider, NativeThreadID: revivedNativeID}: {Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID},
-					}},
-				}
+				attachments := newTestStore(t)
+				attachments.Remember(attachmentRecord{Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID})
+				app := &server{controlMetadata: control, agentExecutions: store, attachments: attachments}
 				req := spawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: revivedNativeID}}
 				if named {
 					req.HostedThreadID = old.ID
@@ -368,7 +369,7 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 				if req.HostedThreadID != before.HostedThreadID || activeOwner(t, control, provider, revivedNativeID) != "" {
 					t.Fatal("refused resume mutated request or ownership")
 				}
-				if rec, ok := store.sessionForNative(provider, revivedNativeID); ok {
+				if rec, ok := store.SessionForNative(provider, revivedNativeID); ok {
 					t.Fatalf("current-owner lookup selected retired record %+v", rec)
 				}
 			})
@@ -378,12 +379,12 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 
 func TestResumeRefusesUnownedNativeBeforeProviderStart(t *testing.T) {
 	app, _ := claudeResumeServer(t, "")
-	before := len(app.agentExecutions.sessions)
+	before := len(fixtureListSessions(app.agentExecutions))
 	_, err := app.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, Cwd: t.TempDir()}})
 	if err == nil {
 		t.Fatal("unowned native resume created a hosted record")
 	}
-	if len(app.agentExecutions.sessions) != before || len(app.SnapshotSessions()) != 0 {
+	if len(fixtureListSessions(app.agentExecutions)) != before || len(app.SnapshotSessions()) != 0 {
 		t.Fatal("unowned resume created session state before refusal")
 	}
 }
@@ -401,10 +402,10 @@ func TestResumeRefusesConflictingCanonicalOwners(t *testing.T) {
 	first := seedHostedNative(t, store, "claude", revivedNativeID, sessionStatusExited)
 	second := seedHostedNative(t, store, "claude", "other-native", "ready")
 	// Only the disposable fixture drops this index to simulate corrupt ownership.
-	if _, err := control.db.Exec(`DROP INDEX hosted_thread_active_native_id`); err != nil {
+	if _, err := control.CanonicalDatabase().Exec(`DROP INDEX hosted_thread_active_native_id`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := control.db.Exec(`UPDATE hosted_thread_native_ids SET native_thread_id=? WHERE hosted_thread_id=?`, revivedNativeID, second.ID); err != nil {
+	if _, err := control.CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET native_thread_id=? WHERE hosted_thread_id=?`, revivedNativeID, second.ID); err != nil {
 		t.Fatal(err)
 	}
 	app := &server{controlMetadata: control, agentExecutions: store}
@@ -417,7 +418,7 @@ func TestResumeRefusesConflictingCanonicalOwners(t *testing.T) {
 			t.Fatal("conflicting request changed hosted identity")
 		}
 	}
-	if rec, ok := store.sessionForNative("claude", revivedNativeID); ok {
+	if rec, ok := store.SessionForNative("claude", revivedNativeID); ok {
 		t.Fatalf("current-owner lookup selected conflicted record %+v", rec)
 	}
 }
@@ -428,8 +429,8 @@ func seedCanonicalResumeOwner(t *testing.T, app *server, provider, nativeID, cwd
 	if owner := activeOwner(t, app.controlMetadata, provider, nativeID); owner != "" {
 		return owner
 	}
-	hostedID := "nht_resume_fixture_" + agentHash([]byte(provider + "\x00" + nativeID))[:16]
-	if _, err := app.agentExecutions.ensureSessionWithIdentity(hostedID, provider, presentationShared, "", "", ""); err != nil {
+	hostedID := "nht_resume_fixture_" + hostedstore.AgentHash([]byte(provider + "\x00" + nativeID))[:16]
+	if _, err := fixtureEnsureSessionWithIdentity(app.agentExecutions, hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := app.controlMetadata.AppendEvent(metadataEvent{

@@ -24,17 +24,17 @@ func TestThreadsApplicationBindingRejectsInvalidDurableCounters(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer store.Close()
-			if err := store.ensureHostedThread("thread-a", "codex", presentationShared, "", "", ""); err != nil {
+			if err := store.EnsureHostedThread("thread-a", "codex", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := store.db.Exec(`UPDATE hosted_threads SET attachment_generation=?`, generation); err != nil {
+			if _, err := store.CanonicalDatabase().Exec(`UPDATE hosted_threads SET attachment_generation=?`, generation); err != nil {
 				t.Fatal(err)
 			}
-			before := threadsDatabaseSnapshot(t, store.db)
-			if got, err := store.beginTransportBinding("thread-a"); err == nil || got != 0 {
+			before := threadsDatabaseSnapshot(t, store.CanonicalDatabase())
+			if got, err := store.BeginTransportBinding("thread-a"); err == nil || got != 0 {
 				t.Fatalf("application accepted invalid durable epoch: %d, %v", got, err)
 			}
-			if after := threadsDatabaseSnapshot(t, store.db); !reflect.DeepEqual(after, before) {
+			if after := threadsDatabaseSnapshot(t, store.CanonicalDatabase()); !reflect.DeepEqual(after, before) {
 				t.Fatal("refused attachment changed canonical facts")
 			}
 		})
@@ -48,10 +48,10 @@ func TestThreadsPrimitivesUseCanonicalAttachmentCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	if err := store.ensureHostedThread("thread-a", "claude", presentationShared, "", "", ""); err != nil {
+	if err := store.EnsureHostedThread("thread-a", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	old, err := store.beginTransportBinding("thread-a")
+	old, err := store.BeginTransportBinding("thread-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestThreadsPrimitivesUseCanonicalAttachmentCounter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bound, err := threads.BeginTransportBinding(context.Background(), store.db, "thread-a")
+	bound, err := threads.BeginTransportBinding(context.Background(), store.CanonicalDatabase(), "thread-a")
 	if err != nil || bound.Generation != old+1 {
 		t.Fatalf("restarted binding: %+v, %v", bound, err)
 	}
@@ -87,7 +87,7 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer source.Close()
-	if err := source.ensureHostedThread("thread-a", "claude", presentationShared, "", "", ""); err != nil {
+	if err := source.EnsureHostedThread("thread-a", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := source.ClaimNativeID("thread-a", "claude", "settled-a", false); err != nil {
@@ -95,27 +95,27 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 	}
 	// A provisional handle retired before claims recorded resolutions, as
 	// existing stores hold; a claim can no longer retire one without its pair.
-	if _, err := source.db.Exec(`INSERT INTO hosted_thread_native_ids(hosted_thread_id,provider,native_thread_id,provisional,retired_at,first_seen_at,last_seen_at)
+	if _, err := source.CanonicalDatabase().Exec(`INSERT INTO hosted_thread_native_ids(hosted_thread_id,provider,native_thread_id,provisional,retired_at,first_seen_at,last_seen_at)
 		VALUES('thread-a','claude','provisional-a',1,'2026-10-01T00:00:01Z','2026-10-01T00:00:00Z','2026-10-01T00:00:01Z')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := source.ensureHostedThread("thread-b", "claude", presentationShared, "", "", ""); err != nil {
+	if err := source.EnsureHostedThread("thread-b", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := source.ClaimNativeID("thread-b", "claude", "provisional-b", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := source.beginTransportBinding("thread-a"); err != nil {
+	if _, err := source.BeginTransportBinding("thread-a"); err != nil {
 		t.Fatal(err)
 	}
 	// Reproduce the existing version-17 fixture in this disposable database.
 	// Its migration path is still owned by control until the store cutover.
-	if _, err := source.db.Exec(`DROP TABLE browser_duplicate_incidents; PRAGMA user_version=17; PRAGMA wal_autocheckpoint=0;`); err != nil {
+	if _, err := source.CanonicalDatabase().Exec(`DROP TABLE browser_duplicate_incidents; PRAGMA user_version=17; PRAGMA wal_autocheckpoint=0;`); err != nil {
 		t.Fatal(err)
 	}
-	before := threadsDatabaseSnapshot(t, source.db)
+	before := threadsDatabaseSnapshot(t, source.CanonicalDatabase())
 	backupPath := filepath.Join(dir, "before-migration.sqlite")
-	if err := threads.Backup(context.Background(), source.db, backupPath); err != nil {
+	if err := threads.Backup(context.Background(), source.CanonicalDatabase(), backupPath); err != nil {
 		t.Fatal(err)
 	}
 	backupDB, err := sql.Open("sqlite", backupPath)
@@ -137,10 +137,10 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err := candidate.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != controlSchemaVersion {
+	if err := candidate.CanonicalDatabase().QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != controlSchemaVersion {
 		t.Fatalf("migrated version %d, %v", version, err)
 	}
-	first := threadsDatabaseSnapshot(t, candidate.db)
+	first := threadsDatabaseSnapshot(t, candidate.CanonicalDatabase())
 	for table, rows := range before {
 		if table == "schema" || table == "version" {
 			continue
@@ -157,10 +157,10 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer candidate.Close()
-	if got := threadsDatabaseSnapshot(t, candidate.db); !reflect.DeepEqual(got, first) {
+	if got := threadsDatabaseSnapshot(t, candidate.CanonicalDatabase()); !reflect.DeepEqual(got, first) {
 		t.Fatal("migration rerun changed records")
 	}
-	if got := threadsDatabaseSnapshot(t, source.db); !reflect.DeepEqual(got, before) {
+	if got := threadsDatabaseSnapshot(t, source.CanonicalDatabase()); !reflect.DeepEqual(got, before) {
 		t.Fatal("copy migration changed source")
 	}
 	backupDB, err = sql.Open("sqlite", backupPath)

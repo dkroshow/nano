@@ -65,9 +65,9 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 		var record agentSessionRecord
 		var err error
 		if invoker == nil {
-			record, _, err = executions.beginSession(name, name, "codex", presentationShared)
+			record, _, err = fixtureBeginSession(executions, name, name, "codex", presentationShared)
 		} else {
-			record, _, err = executions.beginSessionWithInvoker(name, name, "codex", presentationShared, *invoker)
+			record, _, err = fixtureBeginSessionWithInvoker(executions, name, name, "codex", presentationShared, *invoker)
 		}
 		if err != nil {
 			t.Fatal(err)
@@ -75,7 +75,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 		if err := executions.BindSession(record.ID, "nano-"+name, native, "ready", presentationShared); err != nil {
 			t.Fatal(err)
 		}
-		record, _ = executions.session(record.ID)
+		record, _ = executions.Session(record.ID)
 		return record
 	}
 	relatedParent := hosted("p-related", "p-related", nil)
@@ -83,13 +83,13 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 	standaloneInvoker := hosted("p-standalone-invoker", "p-standalone-invoker", nil)
 	unrelatedInvoker := hosted("p-unrelated", "p-unrelated", nil)
 	related := hosted("w-related", "w-related", &unrelatedInvoker)
-	if _, err := metadata.appendOrchestrationAssignment(related.ID, "lineage-rel", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(executions, related.ID, "lineage-rel", &orchestrationAssignment{
 		AssignmentRole: "auditor", Focus: "Audit", RelatedHostedThreadID: relatedParent.ID,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	standalone := hosted("w-standalone", "w-standalone", &standaloneInvoker)
-	if _, _, _, err := executions.setSidebarPlacement(standalone.ID, sidebarPlacementStandalone); err != nil {
+	if _, _, _, err := executions.SetSidebarPlacement(standalone.ID, sidebarPlacementStandalone); err != nil {
 		t.Fatal(err)
 	}
 	hosted("w-invoker", "w-invoker", &invokerParent)

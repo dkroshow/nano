@@ -15,7 +15,6 @@ type threadCatalogServiceOptions = threadindex.Options
 // threadCatalogService composes saved catalog rows with the app's response types.
 type threadCatalogService struct {
 	*threadindex.Service
-	store *history.Store
 }
 
 func newThreadCatalogService(ctx context.Context, store *history.Store, options threadCatalogServiceOptions) (*threadCatalogService, error) {
@@ -25,7 +24,7 @@ func newThreadCatalogService(ctx context.Context, store *history.Store, options 
 	if err != nil {
 		return nil, err
 	}
-	return &threadCatalogService{Service: service, store: store}, nil
+	return &threadCatalogService{Service: service}, nil
 }
 func (s *threadCatalogService) ListThreads(ctx context.Context, q threadindex.ListQuery) (catalogPage, error) {
 	p, e := s.Service.ListThreads(ctx, q)
@@ -75,38 +74,4 @@ func catalogIdentities(keys []attachmentKey) []history.ThreadIdentity {
 		result[i] = history.ThreadIdentity{Provider: history.Provider(key.Provider), NativeThreadID: key.NativeThreadID}
 	}
 	return result
-}
-
-func threadMessageRole(kind string) (string, bool) { return threadindex.MessageRole(kind) }
-
-type threadMessage struct {
-	threadindex.Message
-	preview string
-}
-
-func collectThreadMessages(ctx context.Context, catalog threadindex.TranscriptCatalog, id string, query threadindex.MessagesQuery) ([]threadMessage, error) {
-	rows, err := threadindex.CollectThreadMessages(ctx, catalog, id, query)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]threadMessage, len(rows))
-	for i, row := range rows {
-		out[i] = threadMessage{Message: row, preview: row.Preview}
-	}
-	return out, nil
-}
-
-// Keep startup construction local while the catalog implementation lives in
-// threadindex. These forwarding methods preserve the shared construction seam.
-func (s *threadCatalogService) fileChanged(path string) {
-	s.Service.FileChanged(path)
-}
-func (s *threadCatalogService) setCreationNameSource(source func(context.Context) ([]history.ThreadNameRecord, error)) {
-	s.Service.SetCreationNameSource(source)
-}
-func (s *threadCatalogService) setTranscriptRepairPriority(priority func(history.TranscriptParserBackfillCandidate) int) {
-	s.Service.SetTranscriptRepairPriority(priority)
-}
-func (s *threadCatalogService) setTranscriptChanged(changed func(context.Context, threadindex.TranscriptChange)) {
-	s.Service.SetTranscriptChanged(changed)
 }

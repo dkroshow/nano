@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"fmt"
@@ -20,12 +22,12 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 	if req.Mode == "" {
 		req.Mode = "start"
 	}
-	presentationMode, err := normalizePresentationMode(req.PresentationMode)
+	presentationMode, err := hostedstore.NormalizePresentationMode(req.PresentationMode)
 	if err != nil {
 		return req, err
 	}
 	req.PresentationMode = presentationMode
-	sidebarPlacement, err := normalizeSidebarPlacement(req.SidebarPlacement)
+	sidebarPlacement, err := hostedstore.NormalizeSidebarPlacement(req.SidebarPlacement)
 	if err != nil {
 		return req, err
 	}
@@ -149,7 +151,7 @@ func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
 	if err != nil {
 		return fmt.Errorf("read canonical metadata for hosted thread %s: %w", req.HostedThreadID, err)
 	}
-	externalPosture, err := s.controlMetadata.wasExternalResumeRegistration(req.HostedThreadID)
+	externalPosture, err := s.controlMetadata.WasExternalResumeRegistration(req.HostedThreadID)
 	if err != nil {
 		return fmt.Errorf("read external Resume origin for hosted thread %s: %w", req.HostedThreadID, err)
 	}

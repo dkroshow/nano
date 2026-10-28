@@ -1,5 +1,7 @@
 package app
 
+import hostedstore "github.com/dkroshow/nano/internal/hosted"
+
 import (
 	"context"
 	"net/http"
@@ -28,7 +30,7 @@ func TestInteractSystemPromptQueuesIdempotentlyWithNotice(t *testing.T) {
 	if err != nil || second.ID != first.ID {
 		t.Fatalf("idempotent submit = %#v, %v; first %#v", second, err, first)
 	}
-	record, ok := s.agentExecutions.turn(first.ID)
+	record, ok := s.agentExecutions.Turn(first.ID)
 	if !ok {
 		t.Fatal("submitted operation missing")
 	}
@@ -64,7 +66,7 @@ func TestInteractTurnSubmitRejectsInvalidOriginBoundaries(t *testing.T) {
 func TestInteractCompletedTurnFeedAdvancesDurableCursor(t *testing.T) {
 	s, target := interactTestServer(t, false)
 	completed := mustCompletedStore(t)
-	s.completedTurns = newCompletedTurnSource(completed)
+	s.completedTurns = hostedstore.NewCompletedTurnSource(completed)
 	if _, _, err := recordTestCompletedTurn(completed, coreturns.Finish{HostedThreadID: target, Provider: "codex", TurnID: "turn-1", FinalMessageID: "final-1", Outcome: "completed", At: time.Now(), Source: "adapter"}); err != nil {
 		t.Fatal(err)
 	}
@@ -89,9 +91,9 @@ func TestInteractCompletedTurnFeedAdvancesDurableCursor(t *testing.T) {
 // person's prompt, names none. Boundary: the public completed-turn feed.
 func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *testing.T) {
 	s, target := interactTestServer(t, false)
-	completed := &completedTurnStore{db: s.queuedTurns.Database()}
-	s.completedTurns = newCompletedTurnSource(completed)
-	op, _, err := s.agentExecutions.beginTurn(target, "action-failed", "hash-failed")
+	completed := hostedstore.NewCompletedTurnStore(s.queuedTurns.Database())
+	s.completedTurns = hostedstore.NewCompletedTurnSource(completed)
+	op, _, err := fixtureBeginTurn(s.agentExecutions, target, "action-failed", "hash-failed")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func interactTestServer(t *testing.T, working bool, configure ...func(*sessionCo
 	}
 	t.Cleanup(func() { _ = stores.control.Close() })
 	executions, queue, attempts, turnStore := stores.executions, stores.queue, stores.attempts, stores.turns
-	record, _, err := executions.beginSession("target", "target-hash", "codex", presentationBackground)
+	record, _, err := fixtureBeginSession(executions, "target", "target-hash", "codex", presentationBackground)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,223 @@
+package hosted
+
+import (
+	"time"
+
+	"github.com/dkroshow/nano/internal/features/subscriptions"
+	interactmodel "github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/observability"
+	threadvalues "github.com/dkroshow/nano/internal/threads"
+)
+
+// SessionView is the hosted session response, including live attachment and durable metadata reads.
+type SessionView struct {
+	ID               string `json:"id"`
+	ClientSessionID  string `json:"clientSessionId,omitempty"`
+	Provider         string `json:"provider"`
+	PresentationMode string `json:"presentationMode"`
+	SidebarPlacement string `json:"sidebarPlacement"`
+	NanoSessionID    string `json:"nanoSessionId,omitempty"`
+	NativeThreadID   string `json:"nativeThreadId,omitempty"`
+	// NativeThreadIDProvisional marks a Claude shim stand-in (cs_…) that has not
+	// been rekeyed to a real provider id: the thread never completed its first
+	// prompt. Consumers must not resume or cite a provisional value.
+	NativeThreadIDProvisional bool                             `json:"nativeThreadIdProvisional,omitempty"`
+	InvokerHostedThreadID     string                           `json:"invokerHostedThreadId,omitempty"`
+	InvokerNativeThreadID     string                           `json:"invokerNativeThreadId,omitempty"`
+	InvokerProvider           string                           `json:"invokerProvider,omitempty"`
+	Subscriptions             subscriptions.Choices            `json:"subscriptions"`
+	Status                    string                           `json:"status"`
+	Error                     string                           `json:"error,omitempty"`
+	ThreadDiagnostics         []observability.ThreadDiagnostic `json:"threadDiagnostics,omitempty"`
+	Attached                  bool                             `json:"attached"`
+	Ready                     bool                             `json:"ready"`
+	Working                   bool                             `json:"working"`
+	TurnActive                bool                             `json:"turnActive"`
+	Waiting                   bool                             `json:"waiting,omitempty"`
+	Availability              string                           `json:"availability"`
+	AvailabilityReasons       []string                         `json:"availabilityReasons"`
+	LastHumanMessageAt        string                           `json:"lastHumanMessageAt,omitempty"`
+	AttachmentState           string                           `json:"attachmentState"`
+	CreatedAt                 string                           `json:"createdAt"`
+	UpdatedAt                 string                           `json:"updatedAt"`
+	Revision                  int64                            `json:"revision"`
+	Attachment                hostedAttachmentView             `json:"attachment"`
+	Metadata                  *hostedMetadataView              `json:"metadata,omitempty"`
+	Assignment                *AssignmentView                  `json:"assignment,omitempty"`
+	AssignmentUnavailable     bool                             `json:"assignmentUnavailable,omitempty"`
+	MetadataUnavailable       bool                             `json:"metadataUnavailable,omitempty"`
+	MetadataDegraded          bool                             `json:"metadataDegraded,omitempty"`
+}
+
+// TurnView is the public operation response with its immutable admission and saved-result evidence.
+type TurnView struct {
+	ID                     string                             `json:"id"`
+	HostedThreadID         string                             `json:"hostedThreadId"`
+	ClientActionID         string                             `json:"clientActionId"`
+	Provider               string                             `json:"provider"`
+	NanoSessionID          string                             `json:"nanoSessionId,omitempty"`
+	NativeThreadID         string                             `json:"nativeThreadId,omitempty"`
+	ProviderTurnID         string                             `json:"providerTurnId,omitempty"`
+	Status                 string                             `json:"status"`
+	Terminal               bool                               `json:"terminal"`
+	Error                  *agentExecutionError               `json:"error,omitempty"`
+	FinalItemID            string                             `json:"finalItemId,omitempty"`
+	FinalResponse          string                             `json:"finalResponse,omitempty"`
+	FinalResponseTruncated bool                               `json:"finalResponseTruncated"`
+	FinalResponseBytes     int                                `json:"finalResponseBytes,omitempty"`
+	QueuePosition          int                                `json:"queuePosition,omitempty"`
+	Origin                 string                             `json:"origin,omitempty"`
+	SenderHostedThreadID   string                             `json:"senderHostedThreadId,omitempty"`
+	SenderNativeThreadID   string                             `json:"senderNativeThreadId,omitempty"`
+	SenderProvider         string                             `json:"senderProvider,omitempty"`
+	SenderName             string                             `json:"senderName,omitempty"`
+	SenderSubmittedAt      string                             `json:"senderSubmittedAt,omitempty"`
+	Interactions           []interactmodel.PendingInteraction `json:"interactions"`
+	Assignment             *AssignmentView                    `json:"assignment,omitempty"`
+	AssignmentUnavailable  bool                               `json:"assignmentUnavailable,omitempty"`
+	CreatedAt              string                             `json:"createdAt"`
+	UpdatedAt              string                             `json:"updatedAt"`
+	Revision               int64                              `json:"revision"`
+}
+
+type executionFamilyMemberView struct {
+	HostedThreadID        string   `json:"hostedThreadId"`
+	Provider              string   `json:"provider"`
+	NativeThreadID        string   `json:"nativeThreadId,omitempty"`
+	InvokerHostedThreadID string   `json:"invokerHostedThreadId,omitempty"`
+	Status                string   `json:"status"`
+	OperationIDs          []string `json:"operationIds"`
+}
+
+// SessionView reads one hosted execution with its current runtime overlay.
+func (s *ViewService) SessionView(id string) SessionView {
+	rec, _ := s.Executions.Session(id)
+	view := SessionView{
+		ID: rec.ID, ClientSessionID: rec.ClientSessionID,
+		Provider: rec.Provider, PresentationMode: rec.PresentationMode, SidebarPlacement: rec.SidebarPlacement,
+		NanoSessionID: rec.NanoSessionID, NativeThreadID: rec.NativeThreadID,
+		InvokerHostedThreadID: rec.InvokerHostedThreadID,
+		InvokerNativeThreadID: rec.InvokerNativeThreadID, InvokerProvider: rec.InvokerProvider,
+		Subscriptions: storedSubscriptions(rec),
+		Status:        rec.Status, Error: rec.Error, CreatedAt: rec.CreatedAt,
+		UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
+	}
+	if sum, attached := s.Sessions.Session(id); attached {
+		view.NanoSessionID, view.NativeThreadID, view.Status = sum.ID, sum.ThreadID, sum.Status
+		view.Error, view.TurnActive, view.Waiting = sum.Error, sum.TurnActive, sum.Waiting
+		view.ThreadDiagnostics = sum.ThreadDiagnostics
+		view.MetadataDegraded = sum.MetadataDegraded
+		view.Attached = true
+		view.Ready, view.Working = sum.Ready, sum.Working
+	} else if waiting := s.Waiting(id); waiting != "" {
+		view.Status = waiting
+	}
+	view.NativeThreadIDProvisional = NativeThreadIDProvisional(view.Provider, view.NativeThreadID)
+	view.Attachment = s.AttachmentState(id)
+	if s.Metadata != nil && s.MetadataError == "" {
+		if metadata, err := s.Metadata.View(id); err == nil {
+			view.Metadata = s.DecorateMetadata(metadata, view.Attachment)
+		} else {
+			view.MetadataUnavailable = true
+		}
+		if assignment, err := s.Metadata.CurrentOrchestrationAssignment(id); err == nil {
+			view.Assignment = assignment
+		} else {
+			view.AssignmentUnavailable = true
+		}
+	} else {
+		view.MetadataUnavailable = true
+		view.AssignmentUnavailable = true
+	}
+	availability := s.AvailabilityFor(id, time.Now().UTC())
+	view.Availability = availability.State
+	view.AvailabilityReasons = availability.Reasons
+	view.LastHumanMessageAt = availability.Facts.LastHumanMessageAt
+	view.AttachmentState = availability.Facts.Attachment
+	return view
+}
+
+// DecorateMetadata adds read-time joins that are deliberately outside
+// immutable metadata events: attachment liveness and durable user-assigned
+// name provenance.  Neither changes the hosted revision.
+func (s *ViewService) DecorateMetadata(metadata hostedMetadataView, attachment hostedAttachmentView) *hostedMetadataView {
+	metadata.Attachment = attachment
+	if name, ok := s.Names.DurableNameRef(metadata.Provider, metadata.NativeThreadID); ok {
+		metadata.Name = name
+	} else if name, ok := s.Names.DurableName(metadata.Provider, metadata.NativeThreadID); ok {
+		// Compatibility for a catalog implementation that exposes the older
+		// value-only seam. The production catalog implements ThreadNameRefFor.
+		metadata.Name = hostedMetadataName{Value: name, Provenance: "manual"}
+	}
+	return &metadata
+}
+
+// AttachmentState is a read-time join of process liveness and the
+// normalized execution record. It deliberately does not write hosted_threads:
+// attachment liveness is volatile and must not manufacture a metadata revision.
+func (s *ViewService) AttachmentState(id string) hostedAttachmentView {
+	if attachment, attached := s.Sessions.Attachment(id); attached {
+		if attachment.State == "" {
+			attachment.State = "attached"
+		}
+		return attachment
+	}
+	if waiting := s.Waiting(id); waiting != "" {
+		return hostedAttachmentView{State: waiting, Provenance: "boot_reattach"}
+	}
+	if s.Executions == nil {
+		return hostedAttachmentView{State: "unavailable", Provenance: "execution_control", Error: "execution control unavailable"}
+	}
+	rec, ok := s.Executions.Session(id)
+	if !ok {
+		return hostedAttachmentView{State: "unavailable", Provenance: "execution_record", Error: "hosted execution record unavailable"}
+	}
+	state := rec.Status
+	if state == "" {
+		state = "detached"
+	}
+	return hostedAttachmentView{State: state, Provenance: "execution_record", Error: rec.Error}
+}
+
+// TurnView reads one operation with its live interactions and assignment snapshot.
+func (s *ViewService) TurnView(rec agentTurnRecord) TurnView {
+	view := TurnView{
+		ID: rec.ID, HostedThreadID: rec.HostedThreadID, ClientActionID: rec.ClientActionID,
+		Provider: rec.Provider, NanoSessionID: rec.NanoSessionID, NativeThreadID: rec.NativeThreadID,
+		ProviderTurnID: rec.ProviderTurnID, Status: rec.Status, Terminal: threadvalues.TurnTerminal(rec.Status),
+		Error: rec.Error, FinalItemID: rec.FinalItemID, FinalResponse: rec.FinalResponse,
+		FinalResponseTruncated: rec.FinalResponseTruncated, FinalResponseBytes: rec.FinalResponseBytes,
+		Origin: rec.Origin, SenderHostedThreadID: rec.SenderHostedThreadID, SenderNativeThreadID: rec.SenderNativeThreadID,
+		SenderProvider: rec.SenderProvider, SenderName: rec.SenderName, SenderSubmittedAt: rec.SenderSubmittedAt,
+		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
+		Interactions: []interactmodel.PendingInteraction{},
+	}
+	runtime, attached := s.Sessions.Turn(rec.HostedThreadID, !threadvalues.TurnTerminal(rec.Status))
+	if attached {
+		view.NanoSessionID = runtime.ID
+		if threadID := runtime.ThreadID; threadID != "" {
+			view.NativeThreadID = threadID
+		}
+		if !threadvalues.TurnTerminal(rec.Status) {
+			for _, interaction := range runtime.Interactions {
+				if interaction.TurnID == "" || rec.ProviderTurnID == "" || interaction.TurnID == rec.ProviderTurnID {
+					view.Interactions = append(view.Interactions, interaction)
+				}
+			}
+		}
+	}
+	if rec.Status == agentTurnQueued {
+		view.QueuePosition = s.Sessions.QueuePosition(rec.HostedThreadID, rec.TransportActionID)
+	}
+	if s.Metadata != nil && s.MetadataError == "" {
+		assignment, err := s.Metadata.operationOrchestrationAssignment(rec.AssignmentEventID)
+		if err != nil {
+			view.AssignmentUnavailable = true
+		} else {
+			view.Assignment = assignment
+		}
+	} else if rec.AssignmentEventID != nil {
+		view.AssignmentUnavailable = true
+	}
+	return view
+}

@@ -31,19 +31,19 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { control.Close() })
-	if _, err := turns.MigrateTurnRecords(ctx, control.db, turns.LegacyTurnPaths{}, filepath.Join(t.TempDir(), "migration")); err != nil {
+	if _, err := turns.MigrateTurnRecords(ctx, control.CanonicalDatabase(), turns.LegacyTurnPaths{}, filepath.Join(t.TempDir(), "migration")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateTurnTransactions(ctx, control.db, filepath.Join(t.TempDir(), "schema20.sqlite")); err != nil {
+	if _, err := turns.MigrateTurnTransactions(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema20.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := coreturns.MigrateCompletedTurnUsage(ctx, control.db, filepath.Join(t.TempDir(), "schema21.sqlite")); err != nil {
+	if _, err := coreturns.MigrateCompletedTurnUsage(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema21.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateMemberRecovery(ctx, control.db, filepath.Join(t.TempDir(), "schema22.sqlite")); err != nil {
+	if _, err := turns.MigrateMemberRecovery(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema22.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateParkedDiscard(ctx, control.db, filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
+	if _, err := turns.MigrateParkedDiscard(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
 		t.Fatal(err)
 	}
 	executions, err := newControlAgentExecutionStore(control, "test")
@@ -52,39 +52,45 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	}
 	old := createIdentityHosted(t, executions, "codex", identityNativeOld)
 	owner := createIdentityHosted(t, executions, "codex", identityNativeNew)
-	if err := control.transferNativeClaim(owner.ID, "codex", identityNativeOld, false); err != nil {
+	if err := control.TransferNativeClaim(owner.ID, "codex", identityNativeOld, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := executions.BindSession(owner.ID, "owner-runtime", identityNativeOld, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	owner, _, err = executions.sessionFromCanonical(owner.ID)
+	ownerMetadata, err := control.View(owner.ID)
+	owner.NativeThreadID = ownerMetadata.NativeThreadID
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := executions.beginSessionWithInvoker("child-alias", "child-hash", "codex", presentationShared, old)
+	child, _, err := fixtureBeginSessionWithInvoker(executions, "child-alias", "child-hash", "codex", presentationShared, old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldTurn, _, err := executions.beginTurn(old.ID, "old-action", "old-hash")
+	oldTurn, _, err := fixtureBeginTurn(executions, old.ID, "old-action", "old-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
-	childTurn, _, err := executions.beginTurnAttributed(child.ID, "child-action", "child-hash", turnAttribution{SenderHostedThreadID: old.ID, SenderNativeThreadID: identityNativeOld, SenderProvider: "codex"})
+	childTurn, _, err := fixtureHistoricalTurn(executions, child.ID, "child-action", "child-hash", turnAttribution{SenderHostedThreadID: old.ID, SenderNativeThreadID: identityNativeOld, SenderProvider: "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newQueuedTurnStore(control.db, path, testPromptStore(t, control.db))
+	// Reload the historical fixture rows so the runtime starts from their committed attribution.
+	executions, err = newControlAgentExecutionStore(control, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := newQueuedTurnStore(control.CanonicalDatabase(), path, testPromptStore(t, control.CanonicalDatabase()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Seeded after adoption, as the schema-20 rows retirement handles: an
 	// adopted journal row would carry the retiring hosted id, which the
 	// retirement check refuses.
-	if err := turns.SaveQueuedTurns(ctx, control.db, []queuedTurnRecord{{ClientActionID: "unconfirmed", Provider: "codex", HostedThreadID: old.ID, NativeThreadID: identityNativeOld, Text: "keep this evidence", State: submissionAccepted}}); err != nil {
+	if err := turns.SaveQueuedTurns(ctx, control.CanonicalDatabase(), []queuedTurnRecord{{ClientActionID: "unconfirmed", Provider: "codex", HostedThreadID: old.ID, NativeThreadID: identityNativeOld, Text: "keep this evidence", State: submissionAccepted}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := turns.SaveSendAttempts(ctx, control.db, []sendAttemptRecord{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
+	if err := turns.SaveSendAttempts(ctx, control.CanonicalDatabase(), []sendAttemptRecord{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
 		t.Fatal(err)
 	}
 	return retirementServerFixture{server: &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, Registry: newSessionRegistry()}, old: old, owner: owner, child: child, oldTurn: oldTurn, childTurn: childTurn}
@@ -109,7 +115,7 @@ func TestRetiredHostedHTTPKeepsCachesAndResolverConsistent(t *testing.T) {
 			if status != 200 || !preview.OK || preview.Applied {
 				t.Fatalf("preview: %+v status=%d", preview, status)
 			}
-			if _, ok := s.agentExecutions.session(f.old.ID); !ok {
+			if _, ok := s.agentExecutions.Session(f.old.ID); !ok {
 				t.Fatal("preview removed cached session")
 			}
 			request := fmt.Sprintf(`{"apply":true,"outboxDisposition":%q,"expectedFingerprint":%q}`, disposition, preview.Preview.Fingerprint)
@@ -123,17 +129,18 @@ func TestRetiredHostedHTTPKeepsCachesAndResolverConsistent(t *testing.T) {
 			if len(receipt.Resolutions) != 1 || receipt.Resolutions[0].HostedThreadID != f.owner.ID {
 				t.Fatalf("resolver proof: %+v", receipt.Resolutions)
 			}
-			if _, ok := s.agentExecutions.session(f.old.ID); ok {
+			if _, ok := s.agentExecutions.Session(f.old.ID); ok {
 				t.Fatal("cached retired session survived")
 			}
-			if _, ok := s.agentExecutions.turns[f.oldTurn.ID]; ok {
+			if _, ok := s.agentExecutions.Turn(f.oldTurn.ID); ok {
 				t.Fatal("cached retired operation survived")
 			}
-			child, _ := s.agentExecutions.session(f.child.ID)
+			child, _ := s.agentExecutions.Session(f.child.ID)
 			if child.InvokerHostedThreadID != f.owner.ID {
 				t.Fatal("cached child retains old invoker")
 			}
-			if s.agentExecutions.turns[f.childTurn.ID].SenderHostedThreadID != f.owner.ID {
+			childTurn, _ := s.agentExecutions.Turn(f.childTurn.ID)
+			if childTurn.SenderHostedThreadID != f.owner.ID {
 				t.Fatal("cached operation retains old sender")
 			}
 			queued, ok := s.queuedTurns.Get("unconfirmed")
@@ -152,21 +159,17 @@ func TestRetiredHostedHTTPKeepsCachesAndResolverConsistent(t *testing.T) {
 			if err := s.agentExecutions.UpdateSession(f.child.ID, "", "", "detached", ""); err != nil {
 				t.Fatal(err)
 			}
-			s.agentExecutions.mu.Lock()
-			rec := s.agentExecutions.turns[f.childTurn.ID]
-			touchAgentTurn(&rec)
-			s.agentExecutions.turns[rec.ID] = rec
-			err := s.agentExecutions.persistAndNotifyLocked()
-			s.agentExecutions.mu.Unlock()
+			rec, _ := s.agentExecutions.Turn(f.childTurn.ID)
+			err := s.agentExecutions.MarkTurnDelivery(rec.ID, rec.ProviderTurnID, rec.Status, rec.Error)
 			if err != nil {
 				t.Fatal(err)
 			}
 			var sender string
-			if err := s.controlMetadata.db.QueryRow(`SELECT sender_hosted_id FROM hosted_turn_operations WHERE operation_id=?`, f.childTurn.ID).Scan(&sender); err != nil || sender != f.owner.ID {
+			if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT sender_hosted_id FROM hosted_turn_operations WHERE operation_id=?`, f.childTurn.ID).Scan(&sender); err != nil || sender != f.owner.ID {
 				t.Fatalf("later write restored sender: %s %v", sender, err)
 			}
 			var old int
-			if err := s.controlMetadata.db.QueryRow(`SELECT count(*) FROM hosted_threads WHERE hosted_thread_id=?`, f.old.ID).Scan(&old); err != nil || old != 0 {
+			if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT count(*) FROM hosted_threads WHERE hosted_thread_id=?`, f.old.ID).Scan(&old); err != nil || old != 0 {
 				t.Fatal("later write revived retired record")
 			}
 			status, resolved, raw := resolveIdentity(t, s, identityNativeOld)
@@ -188,7 +191,7 @@ func TestRetiredHostedResolverFailureRollsBackDatabaseAndCaches(t *testing.T) {
 	f := newRetirementServer(t)
 	s := f.server
 	other := createIdentityHosted(t, s.agentExecutions, "claude", identityNativeNew)
-	if _, err := s.controlMetadata.db.Exec(`INSERT INTO hosted_thread_native_ids(hosted_thread_id,provider,native_thread_id,retired_at,first_seen_at,last_seen_at) VALUES(?,'claude',?,'retired','before','before')`, other.ID, identityNativeOld); err != nil {
+	if _, err := s.controlMetadata.CanonicalDatabase().Exec(`INSERT INTO hosted_thread_native_ids(hosted_thread_id,provider,native_thread_id,retired_at,first_seen_at,last_seen_at) VALUES(?,'claude',?,'retired','before','before')`, other.ID, identityNativeOld); err != nil {
 		t.Fatal(err)
 	}
 	preview := s.retireHostedRecords(context.Background(), state.RetirementRequest{OutboxDisposition: "repoint"})
@@ -199,14 +202,15 @@ func TestRetiredHostedResolverFailureRollsBackDatabaseAndCaches(t *testing.T) {
 	if result.OK || result.Applied || !strings.Contains(result.Error, "resolver proof") {
 		t.Fatalf("ambiguous resolver accepted: %+v", result)
 	}
-	if _, ok := s.agentExecutions.session(f.old.ID); !ok {
+	if _, ok := s.agentExecutions.Session(f.old.ID); !ok {
 		t.Fatal("rollback lost cached retired session")
 	}
 	if row, ok := s.queuedTurns.Get("unconfirmed"); !ok || row.HostedThreadID != f.old.ID {
 		t.Fatal("rollback changed outbox cache")
 	}
-	if row, ok, err := s.agentExecutions.sessionFromCanonical(f.old.ID); err != nil || !ok || row.ID != f.old.ID {
-		t.Fatalf("rollback lost durable session: %+v %v", row, err)
+	var retainedID string
+	if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT hosted_thread_id FROM hosted_threads WHERE hosted_thread_id=?`, f.old.ID).Scan(&retainedID); err != nil || retainedID != f.old.ID {
+		t.Fatalf("rollback lost durable session: %q %v", retainedID, err)
 	}
 }
 
@@ -221,9 +225,11 @@ func TestRetiredHostedRefusesRuntimeAndAttachmentReferences(t *testing.T) {
 			case "runtime-invoker":
 				s.RegisterSession(newFixtureSession(sessionConfig{HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}, ""))
 			case "attachment-owner":
-				s.attachments = &attachmentStore{byKey: map[attachmentKey]attachmentRecord{{}: {HostedThreadID: f.old.ID}}}
+				s.attachments = newTestStore(t)
+				s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.old.ID})
 			case "attachment-invoker":
-				s.attachments = &attachmentStore{byKey: map[attachmentKey]attachmentRecord{{}: {HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}}}
+				s.attachments = newTestStore(t)
+				s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID})
 			}
 			result := s.retireHostedRecords(context.Background(), state.RetirementRequest{OutboxDisposition: "repoint"})
 			if result.OK || result.Applied || !strings.Contains(result.Error, "reference") && !strings.Contains(result.Error, "edge") {

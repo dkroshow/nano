@@ -48,7 +48,7 @@ func TestThreadMessagesPrefersNewestBodiesAndKeepsUnavailablePreview(t *testing.
 	fake := &fakeMessagesCatalog{pages: map[string]threadindex.TranscriptResponse{"": page}, bodies: map[string]history.TranscriptRetainedBody{
 		"newer": {ItemID: "newer", Text: strings.Repeat("n", 150<<10), StoredBytes: 150 << 10},
 	}}
-	messages, err := collectThreadMessages(context.Background(), fake, "nth_one", threadindex.MessagesQuery{Tail: 2, Roles: map[string]bool{"agent": true}})
+	messages, err := threadindex.CollectThreadMessages(context.Background(), fake, "nth_one", threadindex.MessagesQuery{Tail: 2, Roles: map[string]bool{"agent": true}})
 	if err != nil || len(messages) != 2 || messages[1].Complete != true || messages[0].Complete != false || strings.Join(fake.bodyLoads, ",") != "newer" {
 		t.Fatalf("messages=%#v loads=%v err=%v", messages, fake.bodyLoads, err)
 	}
@@ -353,7 +353,7 @@ func TestThreadMessagesMarksALoadedRetainedPrefixIncomplete(t *testing.T) {
 	}}, bodies: map[string]history.TranscriptRetainedBody{
 		"prefix": {ItemID: "prefix", ContentRef: "body-prefix", Text: "retained prefix", Truncated: true, StoredBytes: 100, OriginalBytes: history.MaxTranscriptBodyBytes + 10},
 	}}
-	messages, err := collectThreadMessages(context.Background(), fake, "nth_one", threadindex.MessagesQuery{Tail: 1, Roles: map[string]bool{threadindex.MessageRoleAgent: true}})
+	messages, err := threadindex.CollectThreadMessages(context.Background(), fake, "nth_one", threadindex.MessagesQuery{Tail: 1, Roles: map[string]bool{threadindex.MessageRoleAgent: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestThreadMessagesRejectsInvalidQueryAndSurfacesBackendErrors(t *testing.T)
 // whether the hosted thread is missing or has not acquired a native id yet.
 func TestThreadMessagesValidatesQueryBeforeHostedLookup(t *testing.T) {
 	_, executions := newTestHostedControl(t)
-	if _, err := executions.ensureSessionWithIdentity("nht_unbound", "codex", presentationBackground, "", "", ""); err != nil {
+	if _, err := fixtureEnsureSessionWithIdentity(executions, "nht_unbound", "codex", presentationBackground, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	s := &server{catalog: &fakeMessagesCatalog{}, agentExecutions: executions}

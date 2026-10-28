@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -28,7 +29,7 @@ func (s *server) hostedThreadNativeID(hostedID string) (string, bool) {
 	if s.agentExecutions == nil {
 		return "", false
 	}
-	record, ok := s.agentExecutions.session(hostedID)
+	record, ok := s.agentExecutions.Session(hostedID)
 	if !ok {
 		return "", false
 	}
@@ -42,7 +43,7 @@ func (s *server) handleThreadMessages(w http.ResponseWriter, r *http.Request, ra
 		return
 	}
 	reference, err := url.PathUnescape(rawID)
-	if err == nil && hostedThreadReferencePattern.MatchString(reference) {
+	if err == nil && hosted.IsHostedReference(reference) {
 		// Query errors precede hosted lookup errors, as for native references.
 		if _, err := threadindex.ParseMessagesQuery(r); err != nil {
 			httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", err.Error())
