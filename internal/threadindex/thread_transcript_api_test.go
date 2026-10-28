@@ -194,6 +194,7 @@ func TestTranscriptEvidenceRouteMapsUnavailableAndCancellation(t *testing.T) {
 	}
 }
 
+// Query validation is tested here; method dispatch uses the real app route table.
 func TestTranscriptRejectsInvalidQueryAndMethods(t *testing.T) {
 	server := NewHandlers(&fakeTranscriptCatalog{})
 	for _, target := range []string{
@@ -214,11 +215,6 @@ func TestTranscriptRejectsInvalidQueryAndMethods(t *testing.T) {
 			t.Fatalf("%s error Cache-Control = %q", target, got)
 		}
 		assertCatalogErrorCode(t, recorder, "invalid_query")
-	}
-	recorder := httptest.NewRecorder()
-	indexTestRoutes(server).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/threads/nth_one/transcript", nil))
-	if recorder.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("POST status = %d", recorder.Code)
 	}
 }
 

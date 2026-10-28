@@ -72,4 +72,9 @@ func TestTranscriptNestedRouteAndQueryContract(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), `"items":[]`) || !strings.Contains(recorder.Body.String(), `"turns":[]`) {
 		t.Fatalf("typed pending body = %s", recorder.Body.String())
 	}
+	post := httptest.NewRecorder()
+	mux.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/api/v1/threads/nth_one/transcript", nil))
+	if post.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST status = %d", post.Code)
+	}
 }
