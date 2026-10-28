@@ -283,7 +283,6 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 	if len(catalog.assigned) != 1 || catalog.assigned[0].nativeID != "native-real" || catalog.assigned[0].name != "nano api fable" {
 		t.Fatalf("real bind assignments = %+v; want native-real named nano api fable", catalog.assigned)
 	}
-
 }
 
 // Older attachment records can lack PendingName even though the hosted

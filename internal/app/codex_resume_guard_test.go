@@ -98,7 +98,6 @@ func TestCodexDaemonReconnectsExistingSessionsWithoutAnotherRPC(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
-
 			sess := s.LookupSession(spawned.ID)
 			if sess != nil {
 				sess.Close()
@@ -126,7 +125,6 @@ func TestCodexDaemonReconnectOwnsResumeFailureFromDroppedSocket(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
-
 			sess := s.LookupSession(spawned.ID)
 			if sess != nil {
 				sess.Close()

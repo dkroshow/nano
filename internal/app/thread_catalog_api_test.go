@@ -568,7 +568,6 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	if len(catalog.assigned) != 1 {
 		t.Fatalf("a later bind replayed the staged name: %+v", catalog.assigned)
 	}
-
 }
 
 // A never-prompted Claude session carries its shim handle as a provisional
@@ -609,7 +608,6 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	if !reflect.DeepEqual(catalog.assigned, []struct{ provider, nativeID, name string }{{"claude", "native-real", "nano api fable"}}) {
 		t.Fatalf("real bind lost staged rename: %+v", catalog.assigned)
 	}
-
 }
 
 // memorySession builds a live session with a fixed creation time, so the

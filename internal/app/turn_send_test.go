@@ -1781,7 +1781,6 @@ func TestCodexPromptIsResentOnlyOnProofItsTurnDroppedIt(t *testing.T) {
 				case interrupted, completed:
 					status := map[frame]string{interrupted: "interrupted", completed: "completed"}[f]
 					runtime.emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"`+status+`"}}}`))
-
 				}
 			}
 			for _, f := range test.frames {
