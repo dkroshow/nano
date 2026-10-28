@@ -42,7 +42,7 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
+	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	completed := &completedTurnStore{db: h.queue.db}
@@ -73,7 +73,7 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 		if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: p.transport, ClaimToken: token, AttachmentEpoch: 1, Binding: binding}); err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.markTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
+		if err := executions.MarkTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -263,7 +263,7 @@ func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(priorLog) })
 	// D's turn is the projection's latest when A's late frames arrive.
-	sess.projection.setClaudeProviderTurnID(d.turn)
+	sess.projection.SetClaudeProviderTurnID(d.turn)
 	if _, err := owner.sendTurnWithEventID("prompt D", d.event); err != nil {
 		t.Fatal(err)
 	}

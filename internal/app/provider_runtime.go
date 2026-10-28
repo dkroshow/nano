@@ -40,10 +40,10 @@ func (sess *session) requireTransactionalTurnsLocked() error {
 	if sess.turns == nil {
 		return errors.New("transactional turns store is unavailable")
 	}
-	if sess.queuedTurns != nil && sess.queuedTurns.transactionStore() != sess.turns {
+	if sess.queuedTurns != nil && sess.queuedTurns.TransactionStore() != sess.turns {
 		return errors.New("transactional turn queue view is unavailable")
 	}
-	if sess.sendAttempts != nil && sess.sendAttempts.transactionStore() != sess.turns {
+	if sess.sendAttempts != nil && sess.sendAttempts.TransactionStore() != sess.turns {
 		return errors.New("transactional turn journal view is unavailable")
 	}
 	return nil
@@ -76,11 +76,11 @@ func (sess *session) ensureCoreSession() error {
 			}
 		}
 		var canonicalDB = func() *sql.DB {
-			if sess.queuedTurns != nil && sess.queuedTurns.database() != nil {
-				return sess.queuedTurns.database()
+			if sess.queuedTurns != nil && sess.queuedTurns.Database() != nil {
+				return sess.queuedTurns.Database()
 			}
 			if sess.metadata != nil {
-				return sess.metadata.canonicalDatabase()
+				return sess.metadata.CanonicalDatabase()
 			}
 			return nil
 		}()
@@ -96,10 +96,10 @@ func (sess *session) ensureCoreSession() error {
 			}
 			sess.turns = promptStore
 			if sess.queuedTurns != nil {
-				sess.queuedTurns.bindTransactionStore(promptStore)
+				sess.queuedTurns.BindTransactionStore(promptStore)
 			}
 			if sess.sendAttempts != nil {
-				sess.sendAttempts.bindTransactionStore(promptStore)
+				sess.sendAttempts.BindTransactionStore(promptStore)
 			}
 		}
 		sess.stateMu.Lock()
@@ -172,12 +172,12 @@ func (sess *session) recordCoreAsyncError(_ error) {
 	if sess == nil || sess.projection == nil {
 		return
 	}
-	sess.projection.recordDiagnostic(threadDiagnostic{
+	sess.projection.RecordDiagnostic(threadDiagnostic{
 		Code:    "async_session_event_failed",
 		Message: "An asynchronous session event could not be applied.",
 		Source:  "session",
 	}, false)
-	sess.projection.nudgeMetaRefresh()
+	sess.projection.NudgeMetaRefresh()
 	sess.notifyRuntime()
 }
 

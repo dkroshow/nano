@@ -511,7 +511,7 @@ func TestClaudeReconnectMidMessageKeepsNativeBlockIdentity(t *testing.T) {
 			// block shows with its own text only if the replay kept
 			// msg_open:0 and msg_open:1.
 			sess := sessionForNative(t, s)
-			texts := sess.liveText.currentTexts(context.Background())
+			texts := sess.liveText.CurrentTexts(context.Background())
 			if !slices.Contains(texts, "first block") || !slices.Contains(texts, "second block so far") {
 				t.Fatalf("live text after the replay = %q, want each block of the open message", texts)
 			}
@@ -682,7 +682,7 @@ func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
 	}
 	sess := sessionForNative(t, s)
 	count := 0
-	for _, text := range sess.liveText.currentTexts(context.Background()) {
+	for _, text := range sess.liveText.CurrentTexts(context.Background()) {
 		if text == "appended after the scan" {
 			count++
 		}
@@ -788,7 +788,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.markTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
+	if err := s.agentExecutions.MarkTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	operation := func() agentTurnRecord {

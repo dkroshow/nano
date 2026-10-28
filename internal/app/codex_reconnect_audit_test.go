@@ -154,7 +154,7 @@ func TestReconnectAuditZeroTurnReadyAndSingleDelivery(t *testing.T) {
 	if fake.turnStarts != 1 || sess.summary().Status != "ready" {
 		t.Fatalf("zero-turn recovery: starts=%d status=%s", fake.turnStarts, sess.summary().Status)
 	}
-	attempt, _ := sess.sendAttempts.get("first")
+	attempt, _ := sess.sendAttempts.Get("first")
 	if attempt.Status != sendAttemptAccepted || attempt.Reason == codexNativeMissing {
 		t.Fatalf("daemon-memory first delivery: %+v", attempt)
 	}
@@ -187,7 +187,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.hostedThreadID, sess.agentExecutions = hosted.ID, store
-	if err := store.bindSession(hosted.ID, sess.id, sess.threadID, "starting", presentationBackground); err != nil {
+	if err := store.BindSession(hosted.ID, sess.id, sess.threadID, "starting", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	sess.setStatus("starting")
@@ -207,11 +207,11 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if sess.summary().Status != "reconnect_failed" {
 		t.Fatalf("status=%s", sess.summary().Status)
 	}
-	attempt, _ := sess.sendAttempts.get(operation.TransportActionID)
+	attempt, _ := sess.sendAttempts.Get(operation.TransportActionID)
 	if attempt.Status != submissionParked || attempt.Reason != codexNativeMissing {
 		t.Fatalf("marker=%+v", attempt)
 	}
-	queued, _ := sess.queuedTurns.get(operation.TransportActionID)
+	queued, _ := sess.queuedTurns.Get(operation.TransportActionID)
 	if queued.Text != "retained source text" || queued.State != submissionParked {
 		t.Fatalf("retained=%+v", queued)
 	}
@@ -255,7 +255,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if reopened.codexMayBeZeroTurn() || reopened.currentThreadID() != request.ThreadID || reopened.hostedThreadID != hosted.ID {
 		t.Fatal("reboot lost containment or identity")
 	}
-	retained, _ := reopened.queuedTurns.get(operation.TransportActionID)
+	retained, _ := reopened.queuedTurns.Get(operation.TransportActionID)
 	if retained.Text != "retained source text" {
 		t.Fatal("reboot lost source text")
 	}
@@ -314,7 +314,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	}
 	hosted, _, _ := store.beginSession("terminal", "hash", "codex", presentationBackground)
 	sess.hostedThreadID, sess.agentExecutions = hosted.ID, store
-	_ = store.bindSession(hosted.ID, sess.id, sess.threadID, "reconnecting", presentationBackground)
+	_ = store.BindSession(hosted.ID, sess.id, sess.threadID, "reconnecting", presentationBackground)
 	operation, _, err := store.beginTurn(hosted.ID, "terminal-prompt", sendTextHash("retained"))
 	if err != nil {
 		t.Fatal(err)
@@ -440,7 +440,7 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 					"threadId": sess.threadID, "turnId": "journal-turn", "item": map[string]any{"id": "user-journal", "type": "userMessage",
 						"clientId": submissionEventID(sess.hostedThreadID, "journal-action"), "content": []map[string]any{{"type": "inputText", "text": "retained prompt"}}}}})
 				waitReconnectCondition(t, func() bool {
-					attempt, _ := sess.sendAttempts.get("journal-action")
+					attempt, _ := sess.sendAttempts.Get("journal-action")
 					return attempt.Status == sendAttemptAccepted && attempt.ProviderTurnID == "journal-turn"
 				})
 			}

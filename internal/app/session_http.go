@@ -191,7 +191,7 @@ func (sess *session) handleState(w http.ResponseWriter, r *http.Request) {
 	// and /api/sessions cannot disagree about model/effort/permission/tier.
 	out["posture"] = sess.posture()
 	if sess.metadata != nil {
-		if view, err := sess.metadata.view(sess.hostedThreadID); err == nil {
+		if view, err := sess.metadata.View(sess.hostedThreadID); err == nil {
 			view.Attachment = hostedAttachmentView{State: fmt.Sprint(out["status"]), Provenance: "live_session"}
 			if message, _ := out["error"].(string); message != "" {
 				view.Attachment.Error = message
@@ -501,7 +501,7 @@ func (sess *session) noteHumanPrompt(at time.Time) {
 	}
 	sess.stateMu.Unlock()
 	if sess.agentExecutions != nil && sess.hostedThreadID != "" {
-		if err := sess.agentExecutions.noteHumanPrompt(sess.hostedThreadID, at); err != nil {
+		if err := sess.agentExecutions.NoteHumanPrompt(sess.hostedThreadID, at); err != nil {
 			log.Printf("record human prompt time hosted=%s: %v", sess.hostedThreadID, err)
 		}
 	}

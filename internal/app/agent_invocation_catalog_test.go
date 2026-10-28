@@ -13,7 +13,7 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
+	if err := store.BindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	parent, _ = store.session(parent.ID)
@@ -21,7 +21,7 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(child.ID, "nano-child", "native-child", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 

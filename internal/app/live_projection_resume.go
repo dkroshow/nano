@@ -6,8 +6,8 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-// seedResumeTurns merges the provider's normalized prefix with already-live turns.
-func (p *liveProjection) seedResumeTurns(id string, seedTurns []*liveProjectionTurn) {
+// SeedResumeTurns merges the provider's normalized prefix with already-live turns.
+func (p *liveProjection) SeedResumeTurns(id string, seedTurns []*liveProjectionTurn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if id != "" {

@@ -886,7 +886,7 @@ func startCodexSession(sess *session, daemon *codexDaemon, req providerRequest) 
 	// and release whatever it holds.
 	sess.codex = daemon
 	if req.Mode == "resume" && sess.metadata != nil {
-		if view, err := sess.metadata.view(sess.hostedThreadID); err == nil {
+		if view, err := sess.metadata.View(sess.hostedThreadID); err == nil {
 			sess.seedCodexCanonicalOverrides(view)
 		}
 	}

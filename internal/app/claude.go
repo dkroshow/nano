@@ -327,7 +327,7 @@ func applyClaudeResumeOverlay(args []string, source sessionMetadata, hostedThrea
 	if source == nil {
 		return args
 	}
-	view, err := source.view(hostedThreadID)
+	view, err := source.View(hostedThreadID)
 	if err != nil {
 		return args
 	}
@@ -531,7 +531,7 @@ func (sess *session) adoptResolvedClaudeNative(handle, native string, anchor att
 		return anchor, fmt.Errorf("%w: no claim owner for %s", errClaudeRecoveryUnproven, handle)
 	}
 	pair := nativeResolution{Handle: handle, Native: native}
-	if err := sess.metadata.claimNativeIDResolving(sess.hostedThreadID, sess.provider, native, false, &pair); err != nil {
+	if err := sess.metadata.ClaimNativeIDResolving(sess.hostedThreadID, sess.provider, native, false, &pair); err != nil {
 		return anchor, fmt.Errorf("%w: record provisional %s as %s: %v", errClaudeRecoveryUnproven, handle, native, err)
 	}
 	sess.stateMu.Lock()
@@ -933,14 +933,14 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir protocol.Direc
 			// On every transport a result's turn is the prompt it names, never
 			// a frame tag or the prompt last sent.
 			id, named := c.sess.claudeAnsweredTurn(line)
-			c.sess.projection.setClaudeResultTurnID(id)
+			c.sess.projection.SetClaudeResultTurnID(id)
 			native := c.sess.currentThreadID()
 			if c.noteAnswered(line) && !named && c.unnamedLoggedFor != native {
 				c.unnamedLoggedFor = native
 				log.Printf("Claude result on %s names no prompt while one Nano wrote is unanswered; it finishes no operation (logged once per transcript)", c.sess.hostedThreadID)
 			}
 		case turn.known:
-			c.sess.projection.setClaudeFrameTurnID(turn.id)
+			c.sess.projection.SetClaudeFrameTurnID(turn.id)
 		}
 	}, dir, line, !replaying, replaying, at, seq)
 	if dir == protocol.Recv {
@@ -1267,7 +1267,7 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	if !closed && c.supersedes != "" && c.supersedes != sessionID && c.sess.metadata != nil && c.sess.hostedThreadID != "" {
 		if rec, ok := tr.durableAttachment(sessionID, model); ok && rec.ShimSessionID == c.supersedes {
 			pair := nativeResolution{Handle: c.supersedes, Native: sessionID}
-			if err := c.sess.metadata.claimNativeIDResolving(c.sess.hostedThreadID, c.sess.provider, sessionID, false, &pair); err != nil {
+			if err := c.sess.metadata.ClaimNativeIDResolving(c.sess.hostedThreadID, c.sess.provider, sessionID, false, &pair); err != nil {
 				log.Printf("claude %s: record provisional %s as %s: %v", c.sess.hostedThreadID, c.supersedes, sessionID, err)
 				// The child did complete its handshake: a later error result
 				// must not be read as a spawn that never started. The session
@@ -1466,7 +1466,7 @@ func (c *claudeSession) sendTurnWithEventID(text, eventID string, contexts ...co
 	}
 	turnID := ""
 	if c.sess.projection != nil {
-		turnID = c.sess.projection.currentTurnID()
+		turnID = c.sess.projection.CurrentTurnID()
 	}
 	c.releaseTurnIngressLocked()
 	c.turnIngressMu.Unlock()

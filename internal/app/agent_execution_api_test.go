@@ -44,7 +44,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			queue.turns, attempts.turns = turnStore, turnStore
 			clientID := provider + "-caller-session"
 			hosted, _, _ := store.beginSession(clientID, "request-hash", provider, presentationBackground)
-			_ = store.bindSession(hosted.ID, "nano-1", provider+"-native", "ready", presentationBackground)
+			_ = store.BindSession(hosted.ID, "nano-1", provider+"-native", "ready", presentationBackground)
 			sess := &session{id: "nano-1",
 				provider:         provider,
 				hostedThreadID:   hosted.ID,
@@ -132,7 +132,7 @@ func TestGuardedHostedTurnAdmissionRejectsWithoutSideEffectsAndPreservesReplay(t
 	if operation, found := store.turnForAction(worker.ID, actionID); found {
 		t.Fatalf("guarded rejection created operation %#v", operation)
 	}
-	if queued, found := sess.queuedTurns.first(sess.provider, sess.currentThreadID(), sess.hostedThreadID); found {
+	if queued, found := sess.queuedTurns.First(sess.provider, sess.currentThreadID(), sess.hostedThreadID); found {
 		t.Fatalf("guarded rejection created queue row %#v", queued)
 	}
 	if len(sess.sendOps) != 0 {
@@ -175,7 +175,7 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	hosted, _, _ := store.beginSession("codex-caller-session", "request-hash", "codex", presentationBackground)
-	_ = store.bindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationBackground)
+	_ = store.BindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationBackground)
 	queue := mustQueuedTurnStore(t)
 	attempts, err := newSendAttemptStore(queue.db, queue.path, "run-1", testPromptStore(t, queue.db))
 	if err != nil {
@@ -190,7 +190,7 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	}
 	queue.turns, attempts.turns = turnStore, turnStore
 	projection := newLiveProjection("codex", hosted.ID)
-	projection.setNativeThreadID("codex-native")
+	projection.SetNativeThreadID("codex-native")
 	sess := &session{id: "nano-1",
 		provider:         "codex",
 		hostedThreadID:   hosted.ID,
@@ -237,7 +237,7 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	if !ok || latest.Status != agentTurnDeliveryUnknown {
 		t.Fatalf("operation after bind failure = %#v found=%v", latest, ok)
 	}
-	queued, found := queue.get(latest.TransportActionID)
+	queued, found := queue.Get(latest.TransportActionID)
 	if !found || queued.Text == "" || queued.State != submissionUncertain {
 		t.Fatalf("text was not retained: %#v found=%v", queued, found)
 	}
@@ -246,9 +246,9 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 func TestAgentExecutionObserverUsesGrokPromptCompleteEvidence(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("grok-caller", "request-hash", "grok", presentationShared)
-	_ = store.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
-	_ = store.markTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
+	_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
 	sess := &session{provider: "grok",
 		hostedThreadID:  hosted.ID,
 		threadID:        "native-1",
@@ -273,9 +273,9 @@ func TestAgentExecutionObserverUsesGrokPromptCompleteEvidence(t *testing.T) {
 func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
-	_ = store.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
-	_ = store.markTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
+	_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
 	sess := &session{provider: "codex",
 		hostedThreadID:  hosted.ID,
 		threadID:        "native-1",
@@ -459,10 +459,10 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(parent.ID, "parent-nano", "parent-native", "ready", presentationShared); err != nil {
+	if err := store.BindSession(parent.ID, "parent-nano", "parent-native", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.claimNativeID(parent.ID, "claude", "parent-native", false); err != nil {
+	if err := control.ClaimNativeID(parent.ID, "claude", "parent-native", false); err != nil {
 		t.Fatal(err)
 	}
 	provider := newFakeAppServer(t)
@@ -542,7 +542,7 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared); err != nil {
+	if err := store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	projection := newLiveProjection("codex", hosted.ID)
@@ -605,9 +605,9 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 	shim := newFakeShim(t, func(c *shimConn) { c.answerRest() })
 	control, store := newTestHostedControl(t)
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
-	_ = store.bindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
+	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
-	if _, err := control.appendEvent(metadataEvent{HostedThreadID: hosted.ID, Field: postureFieldModel, Value: "opus", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := control.AppendEvent(metadataEvent{HostedThreadID: hosted.ID, Field: postureFieldModel, Value: "opus", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
 	attachments := newTestStore(t)
@@ -650,7 +650,7 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	shim := newFakeShim(t, func(c *shimConn) { c.answerRest() })
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
-	_ = store.bindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
+	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
 	attachments := newTestStore(t)
 	attachments.remember(attachmentRecord{
@@ -690,12 +690,12 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
-	_ = store.bindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
+	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	queued, _, _ := store.beginTurn(hosted.ID, "action-q", "hash-q")
-	_ = store.markTurnDelivery(queued.ID, "", agentTurnQueued, nil)
+	_ = store.MarkTurnDelivery(queued.ID, "", agentTurnQueued, nil)
 	waiting, _, _ := store.beginTurn(hosted.ID, "action-w", "hash-w")
-	_ = store.markTurnDelivery(waiting.ID, "claude:1", agentTurnRunning, nil)
-	_ = store.markWaiting(hosted.ID, "claude:1", true)
+	_ = store.MarkTurnDelivery(waiting.ID, "claude:1", agentTurnRunning, nil)
+	_ = store.MarkWaiting(hosted.ID, "claude:1", true)
 
 	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store, attachments: newTestStore(t)}
 	rec := httptest.NewRecorder()
@@ -726,7 +726,7 @@ func TestAgentSessionDetach(t *testing.T) {
 	shim := newFakeShim(t, func(c *shimConn) { c.answerRest() })
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
-	_ = store.bindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
+	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	attachments := newTestStore(t)
 	attachments.remember(attachmentRecord{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
@@ -743,7 +743,7 @@ func TestAgentSessionDetach(t *testing.T) {
 		t.Fatalf("detach with an open operation = %d, want 409", rec.Code)
 	}
 
-	_ = store.markSessionTurns(hosted.ID, agentTurnCompleted, nil)
+	_ = store.MarkSessionTurns(hosted.ID, agentTurnCompleted, nil)
 	rec = httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/detach", nil))
 	if rec.Code != http.StatusOK {
@@ -778,12 +778,12 @@ func TestAgentClientSessionIDIsPathSafe(t *testing.T) {
 func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	hosted, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
-	_ = store.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	old, _, _ := store.beginTurn(hosted.ID, "old-action", "old-prompt")
-	_ = store.markTurnDelivery(old.ID, "turn-old", agentTurnRunning, nil)
-	_ = store.markTurnTerminal("codex", "native-1", "turn-old", agentTurnCompleted, nil, "done", "item-old")
+	_ = store.MarkTurnDelivery(old.ID, "turn-old", agentTurnRunning, nil)
+	_ = store.MarkTurnTerminal("codex", "native-1", "turn-old", agentTurnCompleted, nil, "done", "item-old")
 	current, _, _ := store.beginTurn(hosted.ID, "current-action", "current-prompt")
-	_ = store.markTurnDelivery(current.ID, "turn-current", agentTurnWaiting, nil)
+	_ = store.MarkTurnDelivery(current.ID, "turn-current", agentTurnWaiting, nil)
 	sess := &session{id: "nano-1",
 		provider:       "codex",
 		hostedThreadID: hosted.ID,
@@ -819,7 +819,7 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "nano-lock-boundary", "native-lock-boundary", "ready", presentationShared); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano-lock-boundary", "native-lock-boundary", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	sess := &session{id: "nano-lock-boundary",
@@ -878,7 +878,7 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	hosted, _, _ := executions.beginSession("queue-active", "request-hash", "codex", presentationBackground)
-	_ = executions.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationBackground)
+	_ = executions.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationBackground)
 	var providerCalls atomic.Int32
 	sess := &session{id: "nano-1",
 		provider:         "codex",
@@ -938,14 +938,14 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.bindSession(hosted.ID, "nano-before-restart", "native-restart-stale", "ready", presentationBackground); err != nil {
+	if err := first.BindSession(hosted.ID, "nano-before-restart", "native-restart-stale", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	stale, _, err := first.beginTurn(hosted.ID, "stale-first-action", "stale-prompt-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.markTurnDelivery(stale.ID, "claude:stale", agentTurnRunning, nil); err != nil {
+	if err := first.MarkTurnDelivery(stale.ID, "claude:stale", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.control.Close(); err != nil {
@@ -960,7 +960,7 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = executions.control.Close() })
-	if err := executions.bindSession(hosted.ID, "nano-after-restart", "native-restart-stale", "ready", presentationBackground); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano-after-restart", "native-restart-stale", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	attempts, err := newTestSendAttemptStore(t, filepath.Join(dir, "send-attempts.json"), "run-after-restart")
@@ -1030,7 +1030,7 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "nano-claude-active", "native-claude-active", "ready", presentationBackground); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano-claude-active", "native-claude-active", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	var providerCalls atomic.Int32
@@ -1093,7 +1093,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "nano-accepted-first", "native-accepted-first", "ready", presentationBackground); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano-accepted-first", "native-accepted-first", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	var providerCalls atomic.Int32
@@ -1130,7 +1130,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if running.ProviderTurnID != "claude:1" {
 		t.Fatalf("first did not reach Claude: %#v", running)
 	}
-	if err := executions.markTurnTerminal("claude", "native-accepted-first", "claude:1", agentTurnCompleted, nil, "done", "item-1"); err != nil {
+	if err := executions.MarkTurnTerminal("claude", "native-accepted-first", "claude:1", agentTurnCompleted, nil, "done", "item-1"); err != nil {
 		t.Fatal(err)
 	}
 	sess.setTurnActive(false, "", 0, true)
@@ -1138,8 +1138,8 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row, _ := queue.get(running.TransportActionID)
-	attempt, _ := attempts.get(running.TransportActionID)
+	row, _ := queue.Get(running.TransportActionID)
+	attempt, _ := attempts.Get(running.TransportActionID)
 	if row.State != submissionAccepted || record.ClaimToken != "" || attempt.Confirmed || attempt.ProviderTerminalStatus != "" {
 		t.Fatalf("first accepted prompt retained dispatch ownership: row=%#v record=%#v attempt=%#v", row, record, attempt)
 	}
@@ -1163,7 +1163,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	op, _ := executions.turn(secondView.ID)
-	row2, _ := queue.get(op.TransportActionID)
+	row2, _ := queue.Get(op.TransportActionID)
 	t.Fatalf("prompt 2 never dispatched: op.status=%s row.state=%s calls=%d", op.Status, row2.State, providerCalls.Load())
 }
 
@@ -1186,17 +1186,17 @@ func TestHostedClaudeAcceptedPromptDoesNotHoldFollowupClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "nano-held-mismatch", "native-held-mismatch", "ready", presentationBackground); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano-held-mismatch", "native-held-mismatch", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	operation, _, err := executions.beginTurn(hosted.ID, "held-first", "held-first-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.markTurnDelivery(operation.ID, "claude:other", agentTurnRunning, nil); err != nil {
+	if err := executions.MarkTurnDelivery(operation.ID, "claude:other", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.markTurnTerminal("claude", "native-held-mismatch", "claude:other", agentTurnCompleted, nil, "other result", "other-item"); err != nil {
+	if err := executions.MarkTurnTerminal("claude", "native-held-mismatch", "claude:other", agentTurnCompleted, nil, "other result", "other-item"); err != nil {
 		t.Fatal(err)
 	}
 	seedAcceptedTransactionalTurn(t, turnStore, hosted.ID, model.ProviderClaude, "native-held-mismatch", operation.TransportActionID, "claude:1", "held prompt")
@@ -1287,7 +1287,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 		t.Fatalf("startup queued operation = %#v", queued)
 	}
 	queuedOperation, _ := executions.turn(queued.ID)
-	queuedRecord, ok := queue.get(queuedOperation.TransportActionID)
+	queuedRecord, ok := queue.Get(queuedOperation.TransportActionID)
 	if !ok || queuedRecord.HostedThreadID != hosted.ID || queuedRecord.NativeThreadID != "" {
 		t.Fatalf("pre-identity queue record = %#v, present=%v", queuedRecord, ok)
 	}
@@ -1324,7 +1324,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "nano-1", "cs_fast_start", "starting", presentationBackground); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano-1", "cs_fast_start", "starting", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	sess := &session{id: "nano-1",
@@ -1410,17 +1410,17 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	seedAcceptedTransactionalTurn(t, sess.turns, "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-action", "claude:9", "leave me alone")
 
 	(&server{}).confirmDurableItems(context.Background(), sess)
-	if accepted, ok := queue.get(queuedOperation.TransportActionID); !ok || accepted.State != submissionAccepted || accepted.Text == "" {
+	if accepted, ok := queue.Get(queuedOperation.TransportActionID); !ok || accepted.State != submissionAccepted || accepted.Text == "" {
 		t.Fatalf("completed turn changed accepted prompt = %#v, present=%v", accepted, ok)
 	}
-	attempt, ok := attempts.get(queuedOperation.TransportActionID)
+	attempt, ok := attempts.Get(queuedOperation.TransportActionID)
 	if !ok || attempt.Confirmed || attempt.ProviderTurnID != "shim-turn-fast-1" || attempt.NativeThreadID != "native-fast-start" {
 		t.Fatalf("completed turn changed accepted attempt = %#v, present=%v", attempt, ok)
 	}
-	if unrelated, ok := queue.get("unrelated-action"); !ok || unrelated.ProviderTurnID != "claude:9" {
+	if unrelated, ok := queue.Get("unrelated-action"); !ok || unrelated.ProviderTurnID != "claude:9" {
 		t.Fatalf("unrelated Claude submission changed = %#v, present=%v", unrelated, ok)
 	}
-	if unrelated, ok := attempts.get("unrelated-action"); !ok || unrelated.Confirmed {
+	if unrelated, ok := attempts.Get("unrelated-action"); !ok || unrelated.Confirmed {
 		t.Fatalf("unrelated Claude send attempt changed = %#v, present=%v", unrelated, ok)
 	}
 	followup := submitHostedTurn(t, s, hosted.ID, "claude-fast-followup", "dispatch after the confirmed first turn")
@@ -1458,7 +1458,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	}
 	// Real shim handles use cs_; only that provisional namespace may advance
 	// to the native ID on init. A different native thread must remain a conflict.
-	if err := executions.bindSession(hosted.ID, "nano-output-first", "cs_output_first", "starting", presentationBackground); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano-output-first", "cs_output_first", "starting", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	sess := &session{id: "nano-output-first",
@@ -1524,11 +1524,11 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if !ok || running.Status != agentTurnRunning || running.ProviderTurnID != "shim-turn-fast-1" || running.NativeThreadID != "native-fast-start" {
 		t.Fatalf("output-first public operation = %#v, error=%+v, present=%v", running, running.Error, ok)
 	}
-	exactSubmission, ok := queue.get(queuedOperation.TransportActionID)
+	exactSubmission, ok := queue.Get(queuedOperation.TransportActionID)
 	if !ok || exactSubmission.State != submissionAccepted || exactSubmission.ProviderTurnID != "shim-turn-fast-1" || exactSubmission.NativeThreadID != "native-fast-start" {
 		t.Fatalf("output-first queue row = %#v, present=%v", exactSubmission, ok)
 	}
-	exactAttempt, ok := attempts.get(queuedOperation.TransportActionID)
+	exactAttempt, ok := attempts.Get(queuedOperation.TransportActionID)
 	if !ok || exactAttempt.Status != sendAttemptAccepted || exactAttempt.Confirmed || exactAttempt.ProviderTurnID != "shim-turn-fast-1" {
 		t.Fatalf("output-first send attempt = %#v, present=%v", exactAttempt, ok)
 	}
@@ -1557,27 +1557,27 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if current, _ := executions.turn(operation.ID); current.Status != agentTurnRunning {
 		t.Fatalf("incomplete durable turn settled operation: %#v", current)
 	}
-	if attempt, _ := attempts.get(queuedOperation.TransportActionID); attempt.Confirmed {
+	if attempt, _ := attempts.Get(queuedOperation.TransportActionID); attempt.Confirmed {
 		t.Fatalf("incomplete durable turn confirmed send attempt: %#v", attempt)
 	}
-	if _, ok := queue.get(queuedOperation.TransportActionID); !ok {
+	if _, ok := queue.Get(queuedOperation.TransportActionID); !ok {
 		t.Fatal("incomplete durable turn scrubbed exact queue row")
 	}
 	completed, ok := executions.turn(operation.ID)
 	if !ok || completed.Status != agentTurnRunning || completed.ProviderTurnID != "shim-turn-fast-1" {
 		t.Fatalf("durable file evidence changed live operation = %#v, present=%v", completed, ok)
 	}
-	if accepted, ok := queue.get(queuedOperation.TransportActionID); !ok || accepted.State != submissionAccepted || accepted.Text == "" {
+	if accepted, ok := queue.Get(queuedOperation.TransportActionID); !ok || accepted.State != submissionAccepted || accepted.Text == "" {
 		t.Fatalf("durable file evidence changed accepted prompt = %#v, present=%v", accepted, ok)
 	}
-	exactAttempt, ok = attempts.get(queuedOperation.TransportActionID)
+	exactAttempt, ok = attempts.Get(queuedOperation.TransportActionID)
 	if !ok || exactAttempt.Confirmed || exactAttempt.ProviderTurnID != "shim-turn-fast-1" || exactAttempt.NativeThreadID != "native-fast-start" {
 		t.Fatalf("durable file evidence changed accepted attempt = %#v, present=%v", exactAttempt, ok)
 	}
-	if unrelated, ok := queue.get("unrelated-output-first"); !ok || unrelated.ProviderTurnID != "claude:9" {
+	if unrelated, ok := queue.Get("unrelated-output-first"); !ok || unrelated.ProviderTurnID != "claude:9" {
 		t.Fatalf("unrelated Claude submission changed = %#v, present=%v", unrelated, ok)
 	}
-	if unrelated, ok := attempts.get("unrelated-output-first"); !ok || unrelated.Confirmed {
+	if unrelated, ok := attempts.Get("unrelated-output-first"); !ok || unrelated.Confirmed {
 		t.Fatalf("unrelated Claude send attempt changed = %#v, present=%v", unrelated, ok)
 	}
 	// Claude saved turns share no id with the live turn, so a catalog change
@@ -1611,7 +1611,7 @@ func (t *fastStartingClaudeTransport) emitCompletionBeforeAck(prompt []byte) err
 	}
 	_ = json.Unmarshal(prompt, &user)
 	t.turnOrdinal++
-	t.owner.sess.projection.setClaudeProviderTurnID(fmt.Sprintf("shim-turn-fast-%d", t.turnOrdinal))
+	t.owner.sess.projection.SetClaudeProviderTurnID(fmt.Sprintf("shim-turn-fast-%d", t.turnOrdinal))
 	lines := []struct {
 		at   time.Time
 		line string
@@ -1654,7 +1654,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	t.Cleanup(func() { _ = stores.control.Close() })
 	executions, attempts, queue, turnStore := stores.executions, stores.attempts, stores.queue, stores.turns
 	hosted, _, _ := executions.beginSession("queue-cancel", "request-hash", "codex", presentationShared)
-	_ = executions.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
+	_ = executions.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	sess := &session{id: "nano-1",
 		provider:         "codex",
 		hostedThreadID:   hosted.ID,
@@ -1737,7 +1737,7 @@ func confirmedTestSender(t *testing.T, s *server, provider string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.bindSession(sender.ID, "nano-"+id, "native-"+id, "ready", presentationShared); err != nil {
+	if err := s.agentExecutions.BindSession(sender.ID, "nano-"+id, "native-"+id, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	return sender.ID
@@ -1787,7 +1787,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	hosted, _, _ := store.beginSession("caller-1", "request-hash", "codex", presentationShared)
-	_ = store.bindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, "nano-1", "codex-native", "ready", presentationShared)
 	sess := &session{id: "nano-1",
 		provider:         "codex",
 		hostedThreadID:   hosted.ID,
@@ -2088,7 +2088,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			}
 			// Queued behind the thread's running turn, as the submit route
 			// records it.
-			if err := s.agentExecutions.markTurnDelivery(op.ID, "", agentTurnQueued, nil); err != nil {
+			if err := s.agentExecutions.MarkTurnDelivery(op.ID, "", agentTurnQueued, nil); err != nil {
 				t.Fatal(err)
 			}
 			if test.uncertain {
@@ -2098,7 +2098,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				if _, err := sess.turns.Uncertain(ctx, turns.Uncertainty{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := s.agentExecutions.markTurnDelivery(op.ID, "", agentTurnDeliveryUnknown, nil); err != nil {
+				if err := s.agentExecutions.MarkTurnDelivery(op.ID, "", agentTurnDeliveryUnknown, nil); err != nil {
 					t.Fatal(err)
 				}
 			}

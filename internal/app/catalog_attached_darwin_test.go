@@ -291,7 +291,7 @@ func TestAttachedAbsentReplacedReleasedAndUnattached(t *testing.T) {
 	}
 
 	// Release: no watch remains, and later writes are not ingested.
-	c.service.releaseAttachedSource("session")
+	c.service.ReleaseAttachedSource("session")
 	if stats := c.service.files.Stats(); stats.Paths != 0 || stats.Files != 0 || stats.Directories != 0 {
 		t.Fatalf("watch stats after release = %+v, want none", stats)
 	}
@@ -510,7 +510,7 @@ func TestAttachmentTakesOverAnOutsideHold(t *testing.T) {
 	if len(c.service.outside) != 0 || !c.service.holdsAttachedSource(path) {
 		t.Fatalf("outside holds = %d, held %v; want the attachment's hold alone", len(c.service.outside), c.service.holdsAttachedSource(path))
 	}
-	c.service.releaseAttachedSource("session")
+	c.service.ReleaseAttachedSource("session")
 	if c.service.holdsAttachedSource(path) {
 		t.Fatal("a released attachment's file is still watched")
 	}

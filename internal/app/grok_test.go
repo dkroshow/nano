@@ -511,7 +511,7 @@ func TestSanitizeGrokWireBoundsKnownSensitiveFields(t *testing.T) {
 
 func TestGrokCompletedPromptNamesItsAnswer(t *testing.T) {
 	p := newLiveProjection("grok")
-	p.setNativeThreadID("s1")
+	p.SetNativeThreadID("s1")
 	at := time.UnixMilli(1000)
 	for index, text := range []string{"hello ", "world"} {
 		line := []byte(`{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":` + mustJSONText(text) + `}},"_meta":{"promptId":"p1","eventId":"chunk-` + fmt.Sprint(index) + `","agentTimestampMs":1000}}}`)
@@ -520,7 +520,7 @@ func TestGrokCompletedPromptNamesItsAnswer(t *testing.T) {
 	terminal := []byte(`{"method":"_x.ai/session_notification","params":{"sessionId":"s1","update":{"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"},"_meta":{"eventId":"s1-2"}}}`)
 	p.applyWire(protocol.Recv, terminal, at)
 
-	if got := p.finalAgentItemID("p1"); got == "" {
+	if got := p.FinalAgentItemID("p1"); got == "" {
 		t.Fatal("the completed prompt has no final answer")
 	}
 }
@@ -555,7 +555,7 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 		projection:     newLiveProjection("grok"),
 		subs:           map[chan wireEvent]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.projection.setNativeThreadID("parent-1")
+	sess.projection.SetNativeThreadID("parent-1")
 	g := &grokSession{sess: sess, seenPromptIDs: map[string]struct{}{}}
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
 	for _, line := range lines {
@@ -574,7 +574,7 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 
 func TestGrokAnswerAfterAToolIsTheFinalAnswer(t *testing.T) {
 	p := newLiveProjection("grok")
-	p.setNativeThreadID("s1")
+	p.SetNativeThreadID("s1")
 	at := time.UnixMilli(1000)
 	lines := []string{
 		`{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"I will run it."}},"_meta":{"promptId":"p1","eventId":"e1"}}}`,
@@ -589,7 +589,7 @@ func TestGrokAnswerAfterAToolIsTheFinalAnswer(t *testing.T) {
 		p.applyWire(protocol.Recv, []byte(line), at)
 	}
 	// The answer is the message after the tool, not the one before it.
-	if got := p.finalAgentItemID("p1"); got == "" || strings.Contains(got, "e1") {
+	if got := p.FinalAgentItemID("p1"); got == "" || strings.Contains(got, "e1") {
 		t.Fatalf("final item = %q, want the message after the tool", got)
 	}
 }

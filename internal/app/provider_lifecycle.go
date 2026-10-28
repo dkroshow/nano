@@ -2,9 +2,10 @@ package app
 
 import (
 	"context"
+	"time"
+
 	"github.com/dkroshow/nano/internal/lifecycle"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
-	"time"
 )
 
 // Provider parsing stays beside each transport. These are evidence readers,
@@ -95,7 +96,7 @@ func (sess *session) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted 
 	if sess.catalogSources == nil {
 		return true
 	}
-	if !sess.catalogSources.awaitAttachedCurrent(sess.id, fresh, neverPrompted, transport) {
+	if !sess.catalogSources.AwaitAttachedCurrent(sess.id, fresh, neverPrompted, transport) {
 		return false
 	}
 	for delay := time.Second; ; delay = min(2*delay, 30*time.Second) {

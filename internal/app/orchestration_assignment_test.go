@@ -36,7 +36,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err := control.db.QueryRow(`SELECT desired_disposition,effective_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, worker.ID, orchestrationAssignmentField).Scan(&desired, &effective); err != nil || desired != metadataDispositionConfirmed || effective != metadataDispositionConfirmed {
 		t.Fatalf("initial authoritative projection = %q/%q, err=%v", desired, effective, err)
 	}
-	metadataView, err := control.view(worker.ID)
+	metadataView, err := control.View(worker.ID)
 	if err != nil || metadataView.Fields[orchestrationAssignmentField].DesiredDisposition != metadataDispositionConfirmed || metadataView.Fields[orchestrationAssignmentField].EffectiveDisposition != metadataDispositionConfirmed || metadataView.Fields[orchestrationAssignmentField].DisplayDisposition != metadataDispositionConfirmed {
 		t.Fatalf("generic metadata assignment view = %#v, err=%v", metadataView.Fields[orchestrationAssignmentField], err)
 	}
@@ -52,7 +52,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil || !created || op1.AssignmentEventID == nil || *op1.AssignmentEventID != first.EventID {
 		t.Fatalf("first operation snapshot = %#v, created=%v err=%v", op1, created, err)
 	}
-	if err := store.markTurnDelivery(op1.ID, "provider-one", agentTurnRunning, nil); err != nil {
+	if err := store.MarkTurnDelivery(op1.ID, "provider-one", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,7 +124,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 		t.Fatalf("old retry event = %#v, status=%d", oldRetryResult, oldRetry.Code)
 	}
 	// Existing work keeps the old event after both reassignment and status upsert.
-	if err := store.markTurnDelivery(op1.ID, "", agentTurnCompleted, nil); err != nil {
+	if err := store.MarkTurnDelivery(op1.ID, "", agentTurnCompleted, nil); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := store.turn(op1.ID)
@@ -135,7 +135,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil || op2.AssignmentEventID == nil || *op2.AssignmentEventID != reassertResult.AssignmentEventID {
 		t.Fatalf("next operation snapshot = %#v, %v", op2, err)
 	}
-	if err := store.markTurnDelivery(op2.ID, "", agentTurnQueued, nil); err != nil {
+	if err := store.MarkTurnDelivery(op2.ID, "", agentTurnQueued, nil); err != nil {
 		t.Fatal(err)
 	}
 	queued, _ := store.turn(op2.ID)
@@ -170,7 +170,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil || op3.AssignmentEventID != nil {
 		t.Fatalf("cleared operation = %#v, %v", op3, err)
 	}
-	page, err := control.eventsAfter(worker.ID, 0, 20, metadataEventFilter{Field: orchestrationAssignmentField})
+	page, err := control.EventsAfter(worker.ID, 0, 20, metadataEventFilter{Field: orchestrationAssignmentField})
 	if err != nil || len(page.Events) != 4 {
 		t.Fatalf("assignment history = %#v, %v", page, err)
 	}
@@ -197,7 +197,7 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(worker.ID, "nano-worker", "native-worker", "ready", presentationShared); err != nil {
+	if err := store.BindSession(worker.ID, "nano-worker", "native-worker", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	prompts := make(chan string, 1)

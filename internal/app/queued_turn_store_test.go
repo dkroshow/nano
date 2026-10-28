@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
-	state "github.com/dkroshow/nano/internal/app/statestore"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
-	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"os"
 	"path/filepath"
 	"testing"
+
+	state "github.com/dkroshow/nano/internal/app/statestore"
+	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/edge/statewiring"
 )
 
 func TestQueuedTurnStoreBindProviderTurnPersistsAcceptedIdentity(t *testing.T) {
@@ -25,7 +26,7 @@ func TestQueuedTurnStoreBindProviderTurnPersistsAcceptedIdentity(t *testing.T) {
 	if err := store.bindProviderTurn("action-1", "turn-1"); err != nil {
 		t.Fatal(err)
 	}
-	got, ok := store.get("action-1")
+	got, ok := store.Get("action-1")
 	if !ok || got.State != submissionAccepted || got.ProviderTurnID != "turn-1" {
 		t.Fatalf("bound record = %#v found=%v", got, ok)
 	}
@@ -33,7 +34,7 @@ func TestQueuedTurnStoreBindProviderTurnPersistsAcceptedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok = reloaded.get("action-1")
+	got, ok = reloaded.Get("action-1")
 	if !ok || got.State != submissionAccepted || got.ProviderTurnID != "turn-1" {
 		t.Fatalf("reloaded bound record = %#v found=%v", got, ok)
 	}
@@ -88,13 +89,13 @@ func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
 	if err := store.bindProviderTurn("bound", "turn-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := store.byProviderTurn("codex", "native-thread", "", "turn-1"); !ok {
+	if _, ok := store.ByProviderTurn("codex", "native-thread", "", "turn-1"); !ok {
 		t.Fatal("exact identity should match")
 	}
-	if _, ok := store.byProviderTurn("codex", "other-thread", "", "turn-1"); ok {
+	if _, ok := store.ByProviderTurn("codex", "other-thread", "", "turn-1"); ok {
 		t.Fatal("specified other thread must not match")
 	}
-	if _, ok := store.byProviderTurn("claude", "native-thread", "", "turn-1"); ok {
+	if _, ok := store.ByProviderTurn("claude", "native-thread", "", "turn-1"); ok {
 		t.Fatal("specified other provider must not match")
 	}
 
@@ -107,7 +108,7 @@ func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
 	if _, err := store.db.Exec(`UPDATE queued_turns SET native_thread_id='', provider_turn_id='turn-empty-native' WHERE client_action_id='unthreaded'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := store.byProviderTurn("codex", "native-thread", "", "turn-empty-native"); ok {
+	if _, ok := store.ByProviderTurn("codex", "native-thread", "", "turn-empty-native"); ok {
 		t.Fatal("empty record nativeThreadID must not wildcard-match a specified thread")
 	}
 }
@@ -129,7 +130,7 @@ func TestQueuedTurnBindProviderTurnFailureLeavesPreviousState(t *testing.T) {
 	if err := store.bindProviderTurn("action-fail", "turn-1"); err == nil {
 		t.Fatal("expected bind persist failure")
 	}
-	got, ok := store.get("action-fail")
+	got, ok := store.Get("action-fail")
 	if !ok || got.State != submissionDelivering || got.ProviderTurnID != "" {
 		t.Fatalf("failed bind mutated record = %#v found=%v", got, ok)
 	}

@@ -599,12 +599,12 @@ func (sess *session) addPendingInteraction(p pendingInteraction) {
 	sess.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
 	sess.stateMu.Unlock()
 	if sess.projection != nil {
-		sess.projection.upsertInteraction(p)
+		sess.projection.UpsertInteraction(p)
 	}
 	sess.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
 	sess.notifyRuntime()
 	if sess.agentExecutions != nil && sess.hostedThreadID != "" {
-		if err := sess.agentExecutions.markWaiting(sess.hostedThreadID, p.TurnID, true); err != nil {
+		if err := sess.agentExecutions.MarkWaiting(sess.hostedThreadID, p.TurnID, true); err != nil {
 			log.Printf("mark hosted thread %s waiting: %v", sess.hostedThreadID, err)
 		}
 	}
@@ -657,7 +657,7 @@ func (sess *session) takePendingInteraction(id string) (pendingInteraction, bool
 		}
 	}
 	if ok && sess.projection != nil {
-		sess.projection.removeInteraction(id)
+		sess.projection.RemoveInteraction(id)
 	}
 	return p, ok
 }
@@ -671,7 +671,7 @@ func (sess *session) claimPendingInteraction(id string) (pendingInteraction, boo
 		sess.notifyRuntime()
 		if sess.agentExecutions != nil && sess.hostedThreadID != "" {
 			remaining := len(sess.pendingInteractionList()) > 0
-			if err := sess.agentExecutions.markWaiting(sess.hostedThreadID, p.TurnID, remaining); err != nil {
+			if err := sess.agentExecutions.MarkWaiting(sess.hostedThreadID, p.TurnID, remaining); err != nil {
 				log.Printf("resume hosted thread %s after interaction: %v", sess.hostedThreadID, err)
 			}
 		}
@@ -692,14 +692,14 @@ func (sess *session) drainPendingInteractions() []pendingInteraction {
 	sess.stateMu.Unlock()
 	if sess.projection != nil {
 		for _, interaction := range out {
-			sess.projection.removeInteraction(interaction.ID)
+			sess.projection.RemoveInteraction(interaction.ID)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
 	if len(out) > 0 {
 		sess.notifyRuntime()
 		if sess.agentExecutions != nil && sess.hostedThreadID != "" {
-			if err := sess.agentExecutions.markWaiting(sess.hostedThreadID, "", false); err != nil {
+			if err := sess.agentExecutions.MarkWaiting(sess.hostedThreadID, "", false); err != nil {
 				log.Printf("clear hosted thread %s interactions: %v", sess.hostedThreadID, err)
 			}
 		}

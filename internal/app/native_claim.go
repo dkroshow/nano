@@ -258,11 +258,11 @@ func (s *controlMetadataStore) inheritMissingDesiredPosture(targetID, sourceID s
 	if s == nil || targetID == "" || sourceID == "" || targetID == sourceID {
 		return nil
 	}
-	source, err := s.view(sourceID)
+	source, err := s.View(sourceID)
 	if err != nil {
 		return fmt.Errorf("read predecessor metadata %s: %w", sourceID, err)
 	}
-	target, err := s.view(targetID)
+	target, err := s.View(targetID)
 	if err != nil {
 		return fmt.Errorf("read target metadata %s: %w", targetID, err)
 	}
@@ -275,7 +275,7 @@ func (s *controlMetadataStore) inheritMissingDesiredPosture(targetID, sourceID s
 			continue
 		}
 		key := fmt.Sprintf("inherit:%s:%s:%s", sourceID, targetID, field)
-		if _, err := s.appendEvent(metadataEvent{
+		if _, err := s.AppendEvent(metadataEvent{
 			HostedThreadID: targetID, Field: field, Value: value,
 			Disposition: metadataDispositionRequested, Source: postureSourceCreation,
 			Freshness: metadataFreshnessLive, SourceEventKey: key,
@@ -291,7 +291,7 @@ func (s *controlMetadataStore) persistMissingResumeCwd(hostedID, cwd string) err
 	if s == nil || hostedID == "" || strings.TrimSpace(cwd) == "" {
 		return nil
 	}
-	view, err := s.view(hostedID)
+	view, err := s.View(hostedID)
 	if err != nil {
 		return err
 	}
@@ -299,7 +299,7 @@ func (s *controlMetadataStore) persistMissingResumeCwd(hostedID, cwd string) err
 		return nil
 	}
 	key := fmt.Sprintf("resume-cwd:%s:%s", hostedID, cwd)
-	_, err = s.appendEvent(metadataEvent{
+	_, err = s.AppendEvent(metadataEvent{
 		HostedThreadID: hostedID, Field: "cwd", Value: cwd,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation,
 		Freshness: metadataFreshnessLive, SourceEventKey: key,

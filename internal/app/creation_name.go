@@ -38,7 +38,7 @@ func (s *controlMetadataStore) creationName(hostedID string) (string, bool) {
 	if s == nil {
 		return "", false
 	}
-	name, ok, err := threads.ReadCreationName(context.Background(), s.readPool(), hostedID)
+	name, ok, err := threads.ReadCreationName(context.Background(), s.ReadPool(), hostedID)
 	if err != nil {
 		return "", false
 	}
@@ -70,7 +70,7 @@ func (s *controlMetadataStore) creationThreadNames(ctx context.Context) ([]histo
 	if s == nil {
 		return nil, nil
 	}
-	rows, err := s.readPool().QueryContext(ctx, `
+	rows, err := s.ReadPool().QueryContext(ctx, `
 SELECT h.provider,h.current_native_id,c.effective_value_json,c.updated_at
 FROM hosted_threads h
 JOIN hosted_thread_native_ids n

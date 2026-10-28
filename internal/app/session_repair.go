@@ -121,7 +121,7 @@ func (sess *session) stopDiscardAndRepairWithin(parent context.Context, actionID
 	// A fresh pass proves the file current after the stop. The wait follows
 	// this session's hold, so the recheck after it, whatever the waits found,
 	// names a replaced attachment as stale.
-	caughtUp := sess.catalogSources.awaitAttachedCurrent(sess.id, true, nil, ctx.Done())
+	caughtUp := sess.catalogSources.AwaitAttachedCurrent(sess.id, true, nil, ctx.Done())
 	var settleErr error
 	if caughtUp {
 		settleErr = sess.settleSavedPrompts(ctx)

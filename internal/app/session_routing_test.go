@@ -23,7 +23,7 @@ func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := metadata.readPool().Query(`SELECT hosted_thread_id FROM hosted_threads`)
+	rows, err := metadata.ReadPool().Query(`SELECT hosted_thread_id FROM hosted_threads`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	readDB := metadata.readPool()
+	readDB := metadata.ReadPool()
 	waitsBefore := readDB.Stats().WaitCount
 	held := make([]*sql.Conn, 0, 4)
 	for i := 0; i < 4; i++ {
@@ -155,10 +155,10 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 		if _, err := executions.ensureSessionWithIdentity(hosted, provider, presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := metadata.claimNativeID(hosted, provider, "native-"+provider, false); err != nil {
+		if err := metadata.ClaimNativeID(hosted, provider, "native-"+provider, false); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := metadata.appendEvent(metadataEvent{HostedThreadID: hosted, Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
+		if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hosted, Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -178,10 +178,10 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 	if _, err := executions.ensureSessionWithIdentity("nht_explicit", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := metadata.claimNativeID("nht_explicit", "claude", "native-explicit", false); err != nil {
+	if err := metadata.ClaimNativeID("nht_explicit", "claude", "native-explicit", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := metadata.appendEvent(metadataEvent{HostedThreadID: "nht_explicit", Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: "nht_explicit", Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
 

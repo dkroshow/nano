@@ -45,7 +45,7 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "nano", "native-repair", "ready", presentationShared); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano", "native-repair", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	queue, err := newQueuedTurnStore(control.db, path, testPromptStore(t, control.db))

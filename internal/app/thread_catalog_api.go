@@ -856,7 +856,7 @@ func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID stri
 		setUnknown()
 		return
 	}
-	view, err := s.controlMetadata.view(hostedID)
+	view, err := s.controlMetadata.View(hostedID)
 	if err != nil {
 		setUnknown()
 		return

@@ -52,7 +52,7 @@ func startingShim(t *testing.T, hold, speak <-chan struct{}) *fakeShim {
 func provisionallyAdopted(t *testing.T, sess *session, speak chan struct{}) {
 	t.Helper()
 	waitForClaude(t, "the shim id to be the recorded provisional identity", func() bool {
-		view, err := sess.metadata.view(sess.hostedThreadID)
+		view, err := sess.metadata.View(sess.hostedThreadID)
 		return err == nil && view.NativeThreadID == startingShimID
 	})
 	close(speak)

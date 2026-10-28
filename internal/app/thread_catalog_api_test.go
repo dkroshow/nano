@@ -283,10 +283,10 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.updateSession(worker.ID, "", "claude-native", "ready", ""); err != nil {
+	if err := store.UpdateSession(worker.ID, "", "claude-native", "ready", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.claimNativeID(worker.ID, "claude", "claude-native", false); err != nil {
+	if err := control.ClaimNativeID(worker.ID, "claude", "claude-native", false); err != nil {
 		t.Fatal(err)
 	}
 	fake := &fakeThreadCatalog{page: catalogPage{Items: []catalogThread{{
@@ -635,12 +635,12 @@ func memoryRowServer(t *testing.T) *server {
 		}
 		sess.hostedThreadID, sess.metadata, sess.attachmentGeneration = record.ID, metadata, generation
 		if sess.cwd != "" {
-			if _, err := metadata.appendEvent(metadataEvent{HostedThreadID: record.ID, Field: "cwd", Value: sess.cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: "cwd", Value: sess.cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if sess.model != "" {
-			if _, err := metadata.appendEvent(metadataEvent{HostedThreadID: record.ID, Field: postureFieldModel, Value: sess.model, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: postureFieldModel, Value: sess.model, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -967,7 +967,7 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
+	if err := store.BindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	parent, _ = store.session(parent.ID)
@@ -975,7 +975,7 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(child.ID, "nano-child", "native-child", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	fake := &fakeThreadCatalog{
@@ -1001,10 +1001,10 @@ func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent, _, _ := store.beginSession("parent", "parent", "codex", presentationShared)
-	_ = store.bindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared)
+	_ = store.BindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared)
 	parent, _ = store.session(parent.ID)
 	child, _, _ := store.beginSessionWithInvoker("child", "child", "grok", presentationShared, parent)
-	_ = store.bindSession(child.ID, "nano-child", "native-child", "ready", presentationShared)
+	_ = store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationShared)
 	if _, _, _, err := store.setSidebarPlacement(child.ID, sidebarPlacementStandalone); err != nil {
 		t.Fatal(err)
 	}
@@ -1032,13 +1032,13 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 	original, _, _ := store.beginSession("original", "original", "codex", presentationShared)
 	newParent, _, _ := store.beginSession("new-parent", "new-parent", "claude", presentationShared)
 	child, _, _ := store.beginSessionWithInvoker("child", "child", "codex", presentationShared, original, nil)
-	if err := store.bindSession(original.ID, "nano-original", "native-original", "ready", presentationShared); err != nil {
+	if err := store.BindSession(original.ID, "nano-original", "native-original", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(newParent.ID, "nano-new", "native-new", "ready", presentationShared); err != nil {
+	if err := store.BindSession(newParent.ID, "nano-new", "native-new", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(child.ID, "nano-child", "native-child", "ready", presentationShared); err != nil {
+	if err := store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := control.appendOrchestrationAssignment(child.ID, "move", &orchestrationAssignment{

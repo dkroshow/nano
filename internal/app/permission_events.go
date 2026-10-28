@@ -21,7 +21,8 @@ const (
 type permissionEvent = hosted.PermissionEvent
 type permissionEventPage = hosted.PermissionEventPage
 
-func (s *controlMetadataStore) appendPermissionEvent(event permissionEvent) error {
+// AppendPermissionEvent persists one provider permission observation.
+func (s *controlMetadataStore) AppendPermissionEvent(event permissionEvent) error {
 	if s == nil {
 		return fmt.Errorf("canonical metadata store unavailable")
 	}
@@ -126,7 +127,7 @@ func firstJSONText(value any, keys ...string) string {
 
 func (sess *session) permissionModeForEvent() string {
 	if sess.metadata != nil && sess.hostedThreadID != "" {
-		if mode := sess.metadata.posture(sess.hostedThreadID).PermissionMode; mode != "" {
+		if mode := sess.metadata.Posture(sess.hostedThreadID).PermissionMode; mode != "" {
 			return mode
 		}
 	}
@@ -150,14 +151,14 @@ func (sess *session) recordPermissionRequest(p pendingInteraction) error {
 	if !isPermissionInteraction(p) || sess.metadata == nil || sess.hostedThreadID == "" || sess.id == "" {
 		return nil
 	}
-	return sess.metadata.appendPermissionEvent(sess.permissionEvent(p, permissionEventRequested, "", "", "requested"))
+	return sess.metadata.AppendPermissionEvent(sess.permissionEvent(p, permissionEventRequested, "", "", "requested"))
 }
 
 func (sess *session) recordPermissionResolution(p pendingInteraction, decision, source, outcome string) error {
 	if !isPermissionInteraction(p) || sess.metadata == nil || sess.hostedThreadID == "" || sess.id == "" {
 		return nil
 	}
-	return sess.metadata.appendPermissionEvent(sess.permissionEvent(p, permissionEventResolved, decision, source, outcome))
+	return sess.metadata.AppendPermissionEvent(sess.permissionEvent(p, permissionEventResolved, decision, source, outcome))
 }
 
 func permissionDecisionSource(decision, outcome string) string {

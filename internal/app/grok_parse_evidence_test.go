@@ -30,9 +30,9 @@ func TestGrokOperationalModuleKeepsPromptAndNativeClock(t *testing.T) {
 func TestGrokOperationalModuleCannotPromoteUnknownReplayToResponse(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run")
 	hosted, _, _ := store.beginSession("caller", "hash", "grok", presentationShared)
-	_ = store.bindSession(hosted.ID, "nano", "native", "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, "nano", "native", "ready", presentationShared)
 	op, _, _ := store.beginTurn(hosted.ID, "action", "hash")
-	_ = store.markTurnDelivery(op.ID, "prompt", agentTurnRunning, nil)
+	_ = store.MarkTurnDelivery(op.ID, "prompt", agentTurnRunning, nil)
 	sess := &session{provider: "grok", hostedThreadID: hosted.ID, threadID: "native",
 		agentExecutions: store, projection: newLiveProjection("grok"), lifecycleState: testLifecycleSnapshot("ready", false)}
 	for _, message := range []struct {

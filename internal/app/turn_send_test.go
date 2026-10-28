@@ -55,15 +55,15 @@ func mustBindTransactionalTurnStore(t *testing.T, queue sessionQueue, attempts s
 	if queue == nil || attempts == nil {
 		t.Fatal("transactional turn fixture requires queue and journal views")
 	}
-	store, err := turns.OpenStore(context.Background(), queue.database())
+	store, err := turns.OpenStore(context.Background(), queue.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.AdoptLegacy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	queue.bindTransactionStore(store)
-	attempts.bindTransactionStore(store)
+	queue.BindTransactionStore(store)
+	attempts.BindTransactionStore(store)
 	return store
 }
 
@@ -101,7 +101,7 @@ func readySendTestSession(t *testing.T, store *sendAttemptStore, sender func(con
 	}
 	store.turns, queue.turns = turnStore, turnStore
 	projection := newLiveProjection("codex", "hosted-thread")
-	projection.setNativeThreadID("native-thread")
+	projection.SetNativeThreadID("native-thread")
 	return &session{id: "nano-session",
 		provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
 		projection: projection, turns: turnStore, sendAttempts: store, queuedTurns: queue,
@@ -118,7 +118,7 @@ func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context
 	}
 	t.Cleanup(func() { _ = stores.control.Close() })
 	projection := newLiveProjection("codex", "hosted-thread")
-	projection.setNativeThreadID("native-thread")
+	projection.SetNativeThreadID("native-thread")
 	sess := &session{
 		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
 		projection: projection, turns: stores.turns, sendAttempts: stores.attempts, queuedTurns: stores.queue,
@@ -226,11 +226,11 @@ func TestTurnSendWhileActiveIsPersistedBeforeAcknowledgement(t *testing.T) {
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("provider calls = %d, want 0", got)
 	}
-	queued, ok := sess.queuedTurns.get("queued-action")
+	queued, ok := sess.queuedTurns.Get("queued-action")
 	if !ok || queued.Text != "send this next" {
 		t.Fatalf("queued = %#v, found = %v", queued, ok)
 	}
-	journal, ok := attempts.get("queued-action")
+	journal, ok := attempts.Get("queued-action")
 	if !ok || journal.Status != sendAttemptQueued {
 		t.Fatalf("journal = %#v, found = %v", journal, ok)
 	}
@@ -255,7 +255,7 @@ func TestAcceptedSubmissionTextSurvivesRestart(t *testing.T) {
 	}
 	restarted := readySendTestSession(t, reloadedAttempts, nil)
 	restarted.restoreSubmissionOutbox()
-	accepted, ok := restarted.queuedTurns.get("restart-action")
+	accepted, ok := restarted.queuedTurns.Get("restart-action")
 	if !ok || accepted.State != submissionAccepted || accepted.Text != "survive the restart" {
 		t.Fatalf("accepted retained record = %#v, present=%v", accepted, ok)
 	}
@@ -288,10 +288,10 @@ func TestClaudeGenericConfirmationAndScrubFailClosed(t *testing.T) {
 	if _, err := attempts.confirmOnce("claude-guard"); err == nil {
 		t.Fatal("generic confirmation accepted a Claude submission")
 	}
-	if attempt, _ := attempts.get("claude-guard"); attempt.Confirmed {
+	if attempt, _ := attempts.Get("claude-guard"); attempt.Confirmed {
 		t.Fatal("generic confirmation changed Claude journal")
 	}
-	if _, ok := queue.get("claude-guard"); !ok {
+	if _, ok := queue.Get("claude-guard"); !ok {
 		t.Fatal("generic scrub removed Claude outbox row")
 	}
 	if _, err := attempts.confirmClaudeExactCompleted("claude-guard", "native-guard", "claude:4"); err == nil {
@@ -312,7 +312,7 @@ func TestAcceptedSubmissionRetryDoesNotMoveOutboxStateBackward(t *testing.T) {
 			t.Fatalf("attempt %d status = %d, body = %s", attempt+1, rec.Code, rec.Body.String())
 		}
 	}
-	submission, ok := sess.queuedTurns.get("stable-action")
+	submission, ok := sess.queuedTurns.Get("stable-action")
 	if !ok || submission.State != submissionAccepted {
 		t.Fatalf("retried accepted submission = %#v, found = %v", submission, ok)
 	}
@@ -353,7 +353,7 @@ func TestQueuedTurnSurvivesStoreReloadAndDrainsOnCompletion(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for {
-		if submission, ok := second.queuedTurns.get("queued-restart"); ok && submission.State == submissionAccepted {
+		if submission, ok := second.queuedTurns.Get("queued-restart"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -406,7 +406,7 @@ func TestQueuedTurnsDrainInSubmissionOrder(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for {
-		if submission, ok := sess.queuedTurns.get("ordered-0"); ok && submission.State == submissionAccepted {
+		if submission, ok := sess.queuedTurns.Get("ordered-0"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -430,7 +430,7 @@ func TestQueuedTurnsDrainInSubmissionOrder(t *testing.T) {
 	}
 	deadline = time.Now().Add(time.Second)
 	for {
-		if submission, ok := sess.queuedTurns.get("ordered-1"); ok && submission.State == submissionAccepted {
+		if submission, ok := sess.queuedTurns.Get("ordered-1"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -467,7 +467,7 @@ func TestQueuedTurnCanBeCanceledBeforeDelivery(t *testing.T) {
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("provider calls = %d, want 0", got)
 	}
-	if canceled, ok := sess.queuedTurns.get("cancel-queued"); !ok || canceled.State != string(turns.Refused) || canceled.Text != "never send" {
+	if canceled, ok := sess.queuedTurns.Get("cancel-queued"); !ok || canceled.State != string(turns.Refused) || canceled.Text != "never send" {
 		t.Fatalf("retained canceled turn = %#v, present=%v", canceled, ok)
 	}
 }
@@ -734,7 +734,7 @@ func TestQueuedTurnCompletionStillReleasesNext(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for {
-		if submission, ok := sess.queuedTurns.get("instant-1"); ok && submission.State == submissionAccepted {
+		if submission, ok := sess.queuedTurns.Get("instant-1"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -766,7 +766,7 @@ func TestFailedQueuedDeliveryBecomesParkedAndAllowsFollowingTurn(t *testing.T) {
 	sess.setTurnActive(false, "", 0, true)
 	deadline := time.Now().Add(time.Second)
 	for {
-		attempt, ok := attempts.get("failed-queued-0")
+		attempt, ok := attempts.Get("failed-queued-0")
 		if ok && attempt.Status == "parked" {
 			break
 		}
@@ -780,7 +780,7 @@ func TestFailedQueuedDeliveryBecomesParkedAndAllowsFollowingTurn(t *testing.T) {
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("provider calls = %d, want 2", got)
 	}
-	queued, ok := sess.queuedTurns.get("failed-queued-0")
+	queued, ok := sess.queuedTurns.Get("failed-queued-0")
 	if !ok || queued.State != submissionParked || queued.Text != "keep failed text" {
 		t.Fatalf("failed queue record = %#v, found = %v", queued, ok)
 	}
@@ -1107,7 +1107,7 @@ func BenchmarkSendAttemptStoreListThreadWithUnrelatedHistory(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if got := stores.attempts.listThread("codex", "target-thread"); len(got) != 3 {
+		if got := stores.attempts.ListThread("codex", "target-thread"); len(got) != 3 {
 			b.Fatalf("matching attempts = %d, want 3", len(got))
 		}
 	}
@@ -1183,7 +1183,7 @@ func TestSendAttemptStoreListThreadPreservesStatusFieldsAndOrdering(t *testing.T
 		t.Fatal(err)
 	}
 
-	got := stores.attempts.listThread("codex", "target")
+	got := stores.attempts.ListThread("codex", "target")
 	if len(got) != 3 || got[0].ClientActionID != "newer-orphan" || got[1].ClientActionID != "older" || got[2].ClientActionID != "parked" {
 		t.Fatalf("thread ordering/filter = %+v", got)
 	}
@@ -1239,7 +1239,7 @@ func TestDeliveryDeadlineExpiryShowsInRuntimeStatusUntilItAgesOut(t *testing.T) 
 	})
 	srv := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{sess.id: sess}}}
 	sess.deliveryExpiries = newDeliveryExpiries(time.Second, srv.publishProviderRuntime)
-	shown := func() int { return sess.projection.status().Runtime.DeliveryExpiries }
+	shown := func() int { return sess.projection.Status().Runtime.DeliveryExpiries }
 
 	if rec := postTurn(t, sess, context.Background(), "slow", "slow prompt"); rec.Code != http.StatusAccepted {
 		t.Fatalf("send = %d %s; want 202", rec.Code, rec.Body.String())
@@ -1314,7 +1314,7 @@ func TestSendAttemptConfirmationSurvivesLaterStatusWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reloaded, ok := restarted.get("action-race")
+	reloaded, ok := restarted.Get("action-race")
 	if !ok || !reloaded.Confirmed || reloaded.ConfirmedAt == "" || reloaded.Status != sendAttemptAccepted || reloaded.Reason != "" {
 		t.Fatalf("confirmation did not survive: %#v found=%v", reloaded, ok)
 	}
@@ -1527,11 +1527,11 @@ func newSettlementHarness(t *testing.T, provider string) *settlementHarness {
 		if err := h.control.ensureHostedThread("hosted", "claude", presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.control.claimNativeID("hosted", "claude", "cs_shim-handle", true); err != nil {
+		if err := h.control.ClaimNativeID("hosted", "claude", "cs_shim-handle", true); err != nil {
 			t.Fatal(err)
 		}
 		pair := nativeResolution{Handle: "cs_shim-handle", Native: fixture.native}
-		if err := h.control.claimNativeIDResolving("hosted", "claude", fixture.native, false, &pair); err != nil {
+		if err := h.control.ClaimNativeIDResolving("hosted", "claude", fixture.native, false, &pair); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1604,7 +1604,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 			if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
-			if err := executions.bindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
+			if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			completed := &completedTurnStore{db: h.queue.db}
@@ -1643,7 +1643,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 				if order != "answered settles first" || name != "starter" {
 					accept(p, name+" prompt")
 				}
-				if err := executions.markTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
+				if err := executions.MarkTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
 					t.Fatal(err)
 				}
 				if _, _, err := core.Started(ctx, coreturns.Start{HostedThreadID: "hosted", Provider: "claude", NativeThreadID: native, TurnID: p.turn, At: time.Now(), Source: "adapter"}); err != nil {
@@ -1673,7 +1673,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 						FinalMessageID: final + "-final:0", Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter", Usage: coreturns.Usage{InputTokens: &input, OutputTokens: &output}}); err != nil {
 						t.Fatal(err)
 					}
-					if err := executions.observeCandidate("claude", native, p.turn, final+"-final:0", "final_answer", final+" answer"); err != nil {
+					if err := executions.ObserveCandidate("claude", native, p.turn, final+"-final:0", "final_answer", final+" answer"); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -1801,7 +1801,7 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
+	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	completed := &completedTurnStore{db: h.queue.db}
@@ -1830,7 +1830,7 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 		if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: p.transport, ClaimToken: "claim-" + name, AttachmentEpoch: 1, Binding: binding}); err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.markTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
+		if err := executions.MarkTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1844,7 +1844,7 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 		FinalMessageID: "twin-final", Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter", Usage: coreturns.Usage{InputTokens: &input, OutputTokens: &output}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.observeCandidate("claude", native, "claude:shim:401", "twin-final", "final_answer", "twin answer"); err != nil {
+	if err := executions.ObserveCandidate("claude", native, "claude:shim:401", "twin-final", "final_answer", "twin answer"); err != nil {
 		t.Fatal(err)
 	}
 	event := func(name string) string { return submissionEventID("hosted", sent[name].transport) }
@@ -1891,7 +1891,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
+	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	completed := &completedTurnStore{db: h.queue.db}
@@ -1919,7 +1919,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 		if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: op.TransportActionID, ClaimToken: "claim-" + name, AttachmentEpoch: 1, Binding: binding}); err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.markTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
+		if err := executions.MarkTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, err := core.Started(ctx, coreturns.Start{HostedThreadID: "hosted", Provider: "claude", NativeThreadID: native, TurnID: turn, At: time.Now(), Source: "adapter"}); err != nil {
@@ -1931,7 +1931,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 			t.Fatal(err)
 		}
 	}
-	if err := executions.observeCandidate("claude", native, turnsByName["first"], "shared-final", "final_answer", "one answer"); err != nil {
+	if err := executions.ObserveCandidate("claude", native, turnsByName["first"], "shared-final", "final_answer", "one answer"); err != nil {
 		t.Fatal(err)
 	}
 	event := func(name string) string { return submissionEventID("hosted", transports[name]) }
@@ -1952,7 +1952,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 			return false
 		}
 		for _, transport := range transports {
-			if op, ok, err := executions.persistedTurnForTransportAction(ctx, "hosted", transport); err != nil || !ok || op.Status != agentTurnCompleted {
+			if op, ok, err := executions.PersistedTurnForTransportAction(ctx, "hosted", transport); err != nil || !ok || op.Status != agentTurnCompleted {
 				return false
 			}
 		}
@@ -1967,7 +1967,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 		}
 	}
 	for name, transport := range transports {
-		persisted, ok, err := executions.persistedTurnForTransportAction(ctx, "hosted", transport)
+		persisted, ok, err := executions.PersistedTurnForTransportAction(ctx, "hosted", transport)
 		if err != nil || !ok {
 			t.Fatalf("%s operation unreadable: %v", name, err)
 		}
@@ -1999,7 +1999,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
+	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	completed := &completedTurnStore{db: h.queue.db}
@@ -2014,10 +2014,10 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 	names := []string{"opener", "absorbed", "absorbedLater", "neverTaken", "neverTakenUnderHandle", "afterRestart"}
 	seqs := map[string]int{"opener": 44236, "absorbed": 44469, "absorbedLater": 44923, "neverTaken": 45015, "neverTakenUnderHandle": 45017, "afterRestart": 45020}
 	handle := "cs_process-death-handle"
-	if err := h.control.claimNativeID("hosted", "claude", handle, true); err != nil {
+	if err := h.control.ClaimNativeID("hosted", "claude", handle, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.control.claimNativeIDResolving("hosted", "claude", native, false, &nativeResolution{Handle: handle, Native: native}); err != nil {
+	if err := h.control.ClaimNativeIDResolving("hosted", "claude", native, false, &nativeResolution{Handle: handle, Native: native}); err != nil {
 		t.Fatal(err)
 	}
 	transports := map[string]string{}
@@ -2043,7 +2043,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 		if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: op.TransportActionID, ClaimToken: "claim-" + name, AttachmentEpoch: 1, Binding: binding}); err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.markTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
+		if err := executions.MarkTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, err := core.Started(ctx, coreturns.Start{HostedThreadID: "hosted", Provider: "claude", NativeThreadID: native, TurnID: turn, At: time.Now(), Source: "adapter"}); err != nil {
@@ -2081,7 +2081,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 		var got []string
 		for _, name := range names {
 			op := ""
-			if persisted, ok, err := executions.persistedTurnForTransportAction(ctx, "hosted", transports[name]); err == nil && ok {
+			if persisted, ok, err := executions.PersistedTurnForTransportAction(ctx, "hosted", transports[name]); err == nil && ok {
 				turn, _ := executions.turn(persisted.ID)
 				op = turn.Status
 			}
@@ -2137,10 +2137,10 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(child.ID, "nano-session", native, "ready", presentationShared); err != nil {
+	if err := executions.BindSession(child.ID, "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.control.claimNativeID(child.ID, "claude", native, false); err != nil {
+	if err := executions.control.ClaimNativeID(child.ID, "claude", native, false); err != nil {
 		t.Fatal(err)
 	}
 	completed := &completedTurnStore{db: h.queue.db}
@@ -2164,7 +2164,7 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: op.TransportActionID, ClaimToken: "claim-exited", AttachmentEpoch: 1, Binding: binding}); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.markTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
+	if err := executions.MarkTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	// Confirmed and owed before the thread's session ended.
@@ -2307,7 +2307,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	if _, err := first.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.bindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
+	if err := first.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	op, _, err := first.beginTurn("hosted", "late", "hash-late")
@@ -2432,7 +2432,7 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 	if _, err := executions.ensureSessionWithIdentity("hosted", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
+	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	completed := &completedTurnStore{db: h.queue.db}
@@ -2461,7 +2461,7 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 		if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: p.transport, ClaimToken: "claim-" + name, AttachmentEpoch: 1, Binding: binding}); err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.markTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
+		if err := executions.MarkTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, err := core.Started(ctx, coreturns.Start{HostedThreadID: "hosted", Provider: "claude", NativeThreadID: native, TurnID: p.turn, At: time.Now(), Source: "adapter"}); err != nil {
@@ -2473,7 +2473,7 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 		FinalMessageID: "kept-final", Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter", Usage: coreturns.Usage{InputTokens: &input, OutputTokens: &output}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.observeCandidate("claude", native, sent["answerer"].turn, "kept-final", "final_answer", "kept answer"); err != nil {
+	if err := executions.ObserveCandidate("claude", native, sent["answerer"].turn, "kept-final", "final_answer", "kept answer"); err != nil {
 		t.Fatal(err)
 	}
 	// Retention removes the absorbed prompt's operation from the committed
@@ -3398,7 +3398,7 @@ func TestClaudePromptSentWhileATurnWorksIsDeliveredAtOnce(t *testing.T) {
 	})
 	sess.provider = "claude"
 	sess.projection = newLiveProjection("claude", "hosted-thread")
-	sess.projection.setNativeThreadID("native-thread")
+	sess.projection.SetNativeThreadID("native-thread")
 	if err := sess.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
@@ -3523,7 +3523,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := s.agentExecutions.markTurnDelivery(op.ID, "turn-shared", agentTurnRunning, nil); err != nil {
+		if err := s.agentExecutions.MarkTurnDelivery(op.ID, "turn-shared", agentTurnRunning, nil); err != nil {
 			t.Fatal(err)
 		}
 		ops = append(ops, op)
@@ -3584,7 +3584,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.markTurnDelivery(late.ID, turn, agentTurnRunning, nil); err != nil {
+	if err := s.agentExecutions.MarkTurnDelivery(late.ID, turn, agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	proveSaved(late)
@@ -3608,7 +3608,7 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.markTurnDelivery(op.ID, "turn-human", agentTurnRunning, nil); err != nil {
+	if err := s.agentExecutions.MarkTurnDelivery(op.ID, "turn-human", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	s.reattachOnBoot()

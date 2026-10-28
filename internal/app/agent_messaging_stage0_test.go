@@ -23,12 +23,12 @@ func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentS
 		t.Fatal(err)
 	}
 	sender, _, _ := store.beginSession("sender", "sender", "claude", presentationShared)
-	if err := store.bindSession(sender.ID, "nano-sender", "019f0000-0000-7000-8000-000000000001", "ready", presentationShared); err != nil {
+	if err := store.BindSession(sender.ID, "nano-sender", "019f0000-0000-7000-8000-000000000001", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	sender, _ = store.session(sender.ID)
 	worker, _, _ := store.beginSessionWithInvoker("worker", "worker", "codex", presentationShared, sender, nil)
-	if err := store.bindSession(worker.ID, "nano-worker", "native-worker", "ready", presentationShared); err != nil {
+	if err := store.BindSession(worker.ID, "nano-worker", "native-worker", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	worker, _ = store.session(worker.ID)
@@ -47,7 +47,7 @@ func stage0Server(t *testing.T) (*server, *agentExecutionStore, *session, agentS
 	}
 	queue.turns, attempts.turns = turnStore, turnStore
 	projection := newLiveProjection("codex", worker.ID)
-	projection.setNativeThreadID("native-worker")
+	projection.SetNativeThreadID("native-worker")
 	sess := &session{id: "nano-worker",
 		provider:        "codex",
 		hostedThreadID:  worker.ID,
@@ -157,7 +157,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 		{name: "missing", body: `{"clientActionId":"missing","prompt":"hi"}`, code: "sender_required"},
 		{name: "unresolved", body: `{"clientActionId":"unresolved","prompt":"hi","senderThreadRef":"nht_nope"}`, code: "sender_not_hosted"},
 		{name: "provisional native id", body: `{"clientActionId":"provisional","prompt":"hi","senderThreadRef":"sender"}`, code: "sender_identity_incomplete", prepare: func(s *server, sender agentSessionRecord) {
-			if err := s.agentExecutions.bindSession(sender.ID, "nano-sender", "cs_provisional", "ready", presentationShared); err != nil {
+			if err := s.agentExecutions.BindSession(sender.ID, "nano-sender", "cs_provisional", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -176,7 +176,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 			if _, ok := store.turnForAction(worker.ID, strings.Split(strings.TrimPrefix(test.body, `{"clientActionId":"`), `"`)[0]); ok {
 				t.Fatalf("rejected request created an operation")
 			}
-			if got := sess.queuedTurns.queuedCount("codex", "native-worker", worker.ID); got != 0 {
+			if got := sess.queuedTurns.QueuedCount("codex", "native-worker", worker.ID); got != 0 {
 				t.Fatalf("rejected request queued %d turns", got)
 			}
 			select {
@@ -197,7 +197,7 @@ func TestInternalTurnHelperRejectsUnattributedAgentOriginBeforeArtifacts(t *test
 	if _, ok := store.turnForAction(worker.ID, "legacy-agent-action"); ok {
 		t.Fatal("unattributed internal agent action created an operation")
 	}
-	if got := sess.queuedTurns.queuedCount("codex", "native-worker", worker.ID); got != 0 {
+	if got := sess.queuedTurns.QueuedCount("codex", "native-worker", worker.ID); got != 0 {
 		t.Fatalf("unattributed internal agent action queued %d turns", got)
 	}
 	select {
@@ -220,21 +220,21 @@ func TestQueueDeliversHumanBeforeAgentBeforeSystem(t *testing.T) {
 	put("agent-2", turns.AgentOrigin)
 	put("human-1", turns.HumanOrigin)
 	put("legacy-1", "") // legacy records count as human
-	if got := q.position("human-1"); got != 1 {
+	if got := q.Position("human-1"); got != 1 {
 		t.Fatalf("human position = %d", got)
 	}
-	if got := q.position("legacy-1"); got != 2 {
+	if got := q.Position("legacy-1"); got != 2 {
 		t.Fatalf("legacy position = %d", got)
 	}
-	if got := q.position("agent-1"); got != 3 {
+	if got := q.Position("agent-1"); got != 3 {
 		t.Fatalf("agent-1 position = %d (should rise behind both human prompts)", got)
 	}
-	if got := q.position("sys-1"); got != 5 {
+	if got := q.Position("sys-1"); got != 5 {
 		t.Fatalf("system position = %d", got)
 	}
 	var order []string
 	for {
-		rec, ok := q.first("codex", "n", "h")
+		rec, ok := q.First("codex", "n", "h")
 		if !ok {
 			break
 		}
@@ -304,7 +304,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	}
 	// A retry must replay the original committed footer, not stamp a new
 	// submission time after the sender is renamed.
-	if err := store.markTurnDelivery(op.ID, "", agentTurnDeliveryPending, nil); err != nil {
+	if err := store.MarkTurnDelivery(op.ID, "", agentTurnDeliveryPending, nil); err != nil {
 		t.Fatalf("restore pending delivery = %v", err)
 	}
 	// Simulate a rename: the footer Nano would compose now differs.
@@ -331,15 +331,19 @@ type renamedCatalog struct{ name string }
 func (c renamedCatalog) ThreadNameFor(context.Context, string, string) (string, bool) {
 	return c.name, true
 }
+
 func (renamedCatalog) ListThreads(context.Context, catalogListQuery) (catalogPage, error) {
 	return catalogPage{}, nil
 }
+
 func (renamedCatalog) LoadThread(context.Context, string) (catalogThread, error) {
 	return catalogThread{}, nil
 }
+
 func (renamedCatalog) IndexStatus(context.Context) (catalogIndexStatus, error) {
 	return catalogIndexStatus{}, nil
 }
+
 func (renamedCatalog) RequestRefresh() bool { return false }
 
 // Catches: the newest human prompt time losing to an older one when the older

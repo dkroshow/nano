@@ -27,7 +27,7 @@ func (sess *session) codexZeroTurnEvidence(refusedAction string) bool {
 	}
 	var attempts []sendAttemptRecord
 	if sess.sendAttempts != nil {
-		attempts = sess.sendAttempts.listThread("codex", sess.currentThreadID())
+		attempts = sess.sendAttempts.ListThread("codex", sess.currentThreadID())
 	}
 	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
@@ -41,13 +41,13 @@ func (sess *session) codexZeroTurnEvidence(refusedAction string) bool {
 		}
 	}
 	if sess.agentExecutions != nil {
-		for _, operation := range sess.agentExecutions.turnsForHosted(sess.hostedThreadID) {
+		for _, operation := range sess.agentExecutions.TurnsForHosted(sess.hostedThreadID) {
 			if operation.ProviderTurnID != "" {
 				return false
 			}
 		}
 	}
-	return sess.projection == nil || len(sess.projection.turnList()) == 0
+	return sess.projection == nil || len(sess.projection.TurnList()) == 0
 }
 
 func (sess *session) codexZeroTurnNativeMissing(actionID string, err error) bool {
@@ -115,8 +115,8 @@ func (sess *session) failCodexReconnect(message string) error {
 		}
 		sess.publishTransactionalOutbox(record.Outbox)
 		if sess.agentExecutions != nil {
-			if operation, found := sess.agentExecutions.turnForTransportAction(queued.ClientActionID); found {
-				if err := sess.agentExecutions.markTurnDelivery(operation.ID, "", agentTurnFailed,
+			if operation, found := sess.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
+				if err := sess.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,
 					&agentExecutionError{Source: "reconnect", Code: "reconnect_failed", Message: message}); err != nil {
 					return fmt.Errorf("settle terminal operation: %w", err)
 				}

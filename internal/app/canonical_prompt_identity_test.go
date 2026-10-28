@@ -32,7 +32,7 @@ func TestNonCodexDeliveryPersistsExactProviderTurnBinding(t *testing.T) {
 				t.Fatalf("send = %d %s", rec.Code, rec.Body.String())
 			}
 			waitTurnSendDone(t, sess, "action-1")
-			journal, ok := attempts.get("action-1")
+			journal, ok := attempts.Get("action-1")
 			if !ok || journal.ProviderTurnID != tc.turnID || journal.Status != sendAttemptAccepted {
 				t.Fatalf("journal = %#v found=%v", journal, ok)
 			}

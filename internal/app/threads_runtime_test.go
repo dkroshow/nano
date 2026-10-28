@@ -281,7 +281,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 			defer resumed.control.Close()
 			switch name {
 			case "control.sqlite":
-				if _, err := resumed.control.view("rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
+				if _, err := resumed.control.View("rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
 					t.Fatalf("later schema reimported changed control facts: %v", err)
 				}
 			case "queued-turns.json":
@@ -289,7 +289,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 					t.Fatalf("later schema reimported changed queue: %+v", rows)
 				}
 			case "send-attempts.json":
-				if row, ok := resumed.attempts.get("rollback"); ok {
+				if row, ok := resumed.attempts.Get("rollback"); ok {
 					t.Fatalf("later schema reimported changed attempt: %+v", row)
 				}
 			case "turn-completed.sqlite":
@@ -326,7 +326,7 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if err := control.ensureHostedThread("owner", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.claimNativeID("owner", "claude", "native", false); err != nil {
+	if err := control.ClaimNativeID("owner", "claude", "native", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := control.Close(); err != nil {
@@ -365,7 +365,7 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if got := stores.queue.snapshot(); len(got) != 1 || got[0] != queued {
 		t.Fatalf("runtime queue changed imported evidence: %+v", got)
 	}
-	if got, ok := stores.attempts.get("action"); !ok || got != attempt {
+	if got, ok := stores.attempts.Get("action"); !ok || got != attempt {
 		t.Fatalf("runtime journal changed imported evidence: %+v", got)
 	}
 	if owner := activeOwner(t, stores.control, "claude", "native"); owner != "owner" {
@@ -390,10 +390,10 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resumed.control.Close()
-	if retained, ok := resumed.queue.get("action"); !ok || retained.State != string(turns.Accepted) || retained.Text != "unconfirmed prompt" || retained.ProviderTurnID != "provider-turn" {
+	if retained, ok := resumed.queue.Get("action"); !ok || retained.State != string(turns.Accepted) || retained.Text != "unconfirmed prompt" || retained.ProviderTurnID != "provider-turn" {
 		t.Fatalf("restart changed accepted prompt evidence: %+v", retained)
 	}
-	if got, ok := resumed.attempts.get("action"); !ok || got.Confirmed {
+	if got, ok := resumed.attempts.Get("action"); !ok || got.Confirmed {
 		t.Fatal("restart invented confirmation")
 	}
 	old, err = openCompletedTurnStore(legacyCompleted)
@@ -459,11 +459,11 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 		t.Fatalf("retention count = %d", len(rows))
 	}
 	for _, id := range []string{sendAttemptQueued, sendAttemptSending, sendAttemptTimeout, "unknown", "parked", "native-104", "other-104"} {
-		if _, ok := journal.get(id); !ok {
+		if _, ok := journal.Get(id); !ok {
 			t.Fatalf("retention lost %s", id)
 		}
 	}
-	if _, ok := journal.get("native-000"); ok {
+	if _, ok := journal.Get("native-000"); ok {
 		t.Fatal("old terminal history was not bounded")
 	}
 	retained, err := turns.LoadQueuedTurns(context.Background(), db)

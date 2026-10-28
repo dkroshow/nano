@@ -136,7 +136,7 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 	reads = h.catalogReads.Load()
 	warm.quiet("the thread is idle")
 	for range 5 {
-		h.sess.liveText.applied()
+		h.sess.liveText.Applied()
 	}
 	warm.quiet("nothing changed")
 	if got := h.catalogReads.Load() - reads; got != 1 {

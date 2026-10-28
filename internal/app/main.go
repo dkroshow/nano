@@ -855,7 +855,7 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 func (s *server) listedSessions(sessions []*session) []listedSession {
 	var summaryDB *sql.DB
 	if s.controlMetadata != nil {
-		summaryDB = s.controlMetadata.readPool()
+		summaryDB = s.controlMetadata.ReadPool()
 	}
 	hostedIDs := make([]string, 0, len(sessions))
 	for _, sess := range sessions {
@@ -904,7 +904,7 @@ func (s *server) detachedSessionViews(live map[attachmentKey]bool) []detachedSes
 func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionView {
 	var summaryDB *sql.DB
 	if s.controlMetadata != nil {
-		summaryDB = s.controlMetadata.readPool()
+		summaryDB = s.controlMetadata.ReadPool()
 	}
 	detachedIDs := make([]string, 0, len(records))
 	for _, record := range records {

@@ -97,7 +97,7 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 				agentExecutions:      executions,
 				metadata:             control,
 			}
-			if err := executions.bindSession(hostedID, sess.id, sess.threadID, "starting", presentationShared); err != nil {
+			if err := executions.BindSession(hostedID, sess.id, sess.threadID, "starting", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(sess.close)
@@ -306,13 +306,13 @@ while IFS= read -r request; do :; done
 					t.Fatalf("provider work was lost or inherited an old anchor: %+v, turn %q", sum, sess.turnID)
 				}
 				sess.drainQueuedTurn()
-				if row, ok := attempts.get("after-restart"); !ok || row.Status != sendAttemptQueued || sends.Load() != 0 {
+				if row, ok := attempts.Get("after-restart"); !ok || row.Status != sendAttemptQueued || sends.Load() != 0 {
 					t.Fatalf("running provider drained queued work: row=%+v, sends=%d", row, sends.Load())
 				}
 				return
 			}
 			waitTurnSendDone(t, sess, "after-restart")
-			if row, ok := attempts.get("after-restart"); !ok || row.Status != sendAttemptAccepted || sends.Load() != 1 {
+			if row, ok := attempts.Get("after-restart"); !ok || row.Status != sendAttemptAccepted || sends.Load() != 1 {
 				t.Fatalf("idle provider did not drain exactly once: row=%+v, sends=%d", row, sends.Load())
 			}
 		})
@@ -391,7 +391,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.created {
-				if _, err := sess.metadata.appendEvent(metadataEvent{HostedThreadID: sess.hostedThreadID, Field: postureFieldModel, Value: "grok-4.6",
+				if _, err := sess.metadata.AppendEvent(metadataEvent{HostedThreadID: sess.hostedThreadID, Field: postureFieldModel, Value: "grok-4.6",
 					Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Evidence: "grok_session_new_response",
 					NativeThreadID: sess.threadID, Freshness: metadataFreshnessLive, SourceEventKey: "test:session-new"}); err != nil {
 					t.Fatal(err)

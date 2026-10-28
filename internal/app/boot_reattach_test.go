@@ -69,7 +69,7 @@ func seedBootAttachments(t *testing.T, s *server) {
 		if _, err := s.agentExecutions.ensureSessionWithIdentity(record.HostedThreadID, record.Provider, presentationShared, record.InvokerHostedThreadID, record.InvokerNativeThreadID, record.InvokerProvider); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.controlMetadata.claimNativeID(record.HostedThreadID, record.Provider, record.NativeThreadID, record.Provisional()); err != nil {
+		if err := s.controlMetadata.ClaimNativeID(record.HostedThreadID, record.Provider, record.NativeThreadID, record.Provisional()); err != nil {
 			t.Fatal(err)
 		}
 		generation, err := s.controlMetadata.beginTransportBinding(record.HostedThreadID)
@@ -98,7 +98,7 @@ func seedBootAttachments(t *testing.T, s *server) {
 				continue
 			}
 			key := fmt.Sprintf("boot-fixture:%s:%d:%s:%s", record.HostedThreadID, generation, fact.field, fact.value)
-			if _, err := s.controlMetadata.appendEvent(metadataEvent{HostedThreadID: record.HostedThreadID, Field: fact.field, Value: fact.value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
+			if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: record.HostedThreadID, Field: fact.field, Value: fact.value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1304,7 +1304,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.bindSession(sender.ID, "nano-boot-sender", "sender-native", "ready", presentationShared); err != nil {
+	if err := s.agentExecutions.BindSession(sender.ID, "nano-boot-sender", "sender-native", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	s.catalog = renamedCatalog{name: "Boot sender"}
@@ -1513,10 +1513,10 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 		t.Fatal("cold catalog callback did not run after reattach")
 	}
 
-	if attempt, ok := attempts.get("cold-callback-action"); !ok || attempt.Confirmed {
+	if attempt, ok := attempts.Get("cold-callback-action"); !ok || attempt.Confirmed {
 		t.Fatalf("cold catalog callback changed historical journal row: %#v, found=%v", attempt, ok)
 	}
-	if _, ok := server.queuedTurns.get("cold-callback-action"); !ok {
+	if _, ok := server.queuedTurns.Get("cold-callback-action"); !ok {
 		t.Fatal("cold catalog callback scrubbed historical outbox row")
 	}
 }
@@ -1772,7 +1772,7 @@ func TestCodexTurnFinishedWhileNanoWasDownReachesTheCompletedTurnFeed(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.markTurnDelivery(op.ID, "turn-down", agentTurnRunning, nil); err != nil {
+	if err := s.agentExecutions.MarkTurnDelivery(op.ID, "turn-down", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	// An older finished turn comes first: the reply's items are parsed only
@@ -1885,10 +1885,10 @@ func TestResumeAnswerWithOlderTerminalTurnsNotifiesNobody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.markTurnDelivery(settled.ID, "turn-settled", agentTurnRunning, nil); err != nil {
+	if err := s.agentExecutions.MarkTurnDelivery(settled.ID, "turn-settled", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.markTurnTerminal("codex", rec.NativeThreadID, "turn-settled", agentTurnCompleted, nil, "settled", "answer-settled"); err != nil {
+	if err := s.agentExecutions.MarkTurnTerminal("codex", rec.NativeThreadID, "turn-settled", agentTurnCompleted, nil, "settled", "answer-settled"); err != nil {
 		t.Fatal(err)
 	}
 	dispatcher.Sweep("") // start the child's cursor where a running Nano would have it
@@ -1916,7 +1916,7 @@ func TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.markTurnDelivery(op.ID, "turn-live", agentTurnRunning, nil); err != nil {
+	if err := s.agentExecutions.MarkTurnDelivery(op.ID, "turn-live", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	dispatcher.Sweep("")

@@ -24,7 +24,7 @@ type codexResumeProjectionTurn struct {
 // resume history supplies the prefix while already-live fields win. Rows come
 // from the saved file, never from this response.
 func seedCodexResume(p resumeProjection, resp *codexResumeResponse) {
-	if p == nil || p.providerName() != "codex" {
+	if p == nil || p.ProviderName() != "codex" {
 		return
 	}
 	turns, valid := resp.projectionTurns()
@@ -82,7 +82,7 @@ func seedCodexResume(p resumeProjection, resp *codexResumeResponse) {
 		seedTurns = append(seedTurns, projectedTurn)
 	}
 
-	p.seedResumeTurns(codexObjectString(resp.thread, "id"), seedTurns)
+	p.SeedResumeTurns(codexObjectString(resp.thread, "id"), seedTurns)
 }
 
 // The RPC client supplies a result body after removing the transport envelope.

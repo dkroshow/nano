@@ -30,14 +30,14 @@ func grokRaceSession(t *testing.T, withCore bool) (*session, *agentExecutionStor
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(hosted.ID, "nano", "native-thread", "ready", presentationShared); err != nil {
+	if err := store.BindSession(hosted.ID, "nano", "native-thread", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	op, _, err := store.beginTurn(hosted.ID, "action", "hash")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnDelivery(op.ID, grokRacePrompt, agentTurnRunning, nil); err != nil {
+	if err := store.MarkTurnDelivery(op.ID, grokRacePrompt, agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	var sess *session
@@ -50,7 +50,7 @@ func grokRaceSession(t *testing.T, withCore bool) (*session, *agentExecutionStor
 	sess.hostedThreadID = hosted.ID
 	sess.agentExecutions = store
 	sess.projection = newLiveProjection("grok", hosted.ID)
-	sess.projection.setNativeThreadID("native-thread")
+	sess.projection.SetNativeThreadID("native-thread")
 	if withCore {
 		if err := sess.ensureCoreSession(); err != nil {
 			t.Fatal(err)

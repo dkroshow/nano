@@ -17,10 +17,10 @@ const (
 	threadDiagnosticLogSummary = observability.DiagnosticLogSummary
 )
 
-// recordDiagnostic adds one diagnostic to the thread's bounded list. With
+// RecordDiagnostic adds one diagnostic to the thread's bounded list. With
 // once, a diagnostic already listed for the same code, source and action is
 // not counted again.
-func (p *liveProjection) recordDiagnostic(diagnostic threadDiagnostic, once bool) {
+func (p *liveProjection) RecordDiagnostic(diagnostic threadDiagnostic, once bool) {
 	if p == nil || diagnostic.Code == "" {
 		return
 	}
@@ -45,8 +45,8 @@ func (p *liveProjection) recordDiagnostic(diagnostic threadDiagnostic, once bool
 	log.Printf("%s provider=%q hostedThreadId=%q diagnostic=%s", prefix, p.provider, p.hostedThreadID, structured)
 }
 
-// threadDiagnosticsSnapshot copies the bounded list.
-func (p *liveProjection) threadDiagnosticsSnapshot() []threadDiagnostic {
+// ThreadDiagnosticsSnapshot copies the bounded list.
+func (p *liveProjection) ThreadDiagnosticsSnapshot() []threadDiagnostic {
 	if p == nil {
 		return nil
 	}

@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	state "github.com/dkroshow/nano/internal/app/statestore"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
-	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	state "github.com/dkroshow/nano/internal/app/statestore"
+	turns "github.com/dkroshow/nano/internal/core/prompts"
+	coreturns "github.com/dkroshow/nano/internal/core/turns"
 )
 
 type retirementServerFixture struct {
@@ -54,7 +55,7 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	if err := control.transferNativeClaim(owner.ID, "codex", identityNativeOld, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(owner.ID, "owner-runtime", identityNativeOld, "ready", presentationShared); err != nil {
+	if err := executions.BindSession(owner.ID, "owner-runtime", identityNativeOld, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	owner, _, err = executions.sessionFromCanonical(owner.ID)
@@ -135,7 +136,7 @@ func TestRetiredHostedHTTPKeepsCachesAndResolverConsistent(t *testing.T) {
 			if s.agentExecutions.turns[f.childTurn.ID].SenderHostedThreadID != f.owner.ID {
 				t.Fatal("cached operation retains old sender")
 			}
-			queued, ok := s.queuedTurns.get("unconfirmed")
+			queued, ok := s.queuedTurns.Get("unconfirmed")
 			if disposition == "delete" {
 				if ok {
 					t.Fatal("cached outbox survived delete")
@@ -148,7 +149,7 @@ func TestRetiredHostedHTTPKeepsCachesAndResolverConsistent(t *testing.T) {
 			if _, _, err := s.queuedTurns.enqueue(queuedTurnRecord{ClientActionID: "later", Provider: "codex", HostedThreadID: f.child.ID, Text: "later evidence"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.agentExecutions.updateSession(f.child.ID, "", "", "detached", ""); err != nil {
+			if err := s.agentExecutions.UpdateSession(f.child.ID, "", "", "detached", ""); err != nil {
 				t.Fatal(err)
 			}
 			s.agentExecutions.mu.Lock()
@@ -201,7 +202,7 @@ func TestRetiredHostedResolverFailureRollsBackDatabaseAndCaches(t *testing.T) {
 	if _, ok := s.agentExecutions.session(f.old.ID); !ok {
 		t.Fatal("rollback lost cached retired session")
 	}
-	if row, ok := s.queuedTurns.get("unconfirmed"); !ok || row.HostedThreadID != f.old.ID {
+	if row, ok := s.queuedTurns.Get("unconfirmed"); !ok || row.HostedThreadID != f.old.ID {
 		t.Fatal("rollback changed outbox cache")
 	}
 	if row, ok, err := s.agentExecutions.sessionFromCanonical(f.old.ID); err != nil || !ok || row.ID != f.old.ID {

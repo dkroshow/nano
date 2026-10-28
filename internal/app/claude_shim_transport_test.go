@@ -19,7 +19,6 @@ import (
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
-
 	"github.com/gorilla/websocket"
 )
 
@@ -1099,7 +1098,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
 		t.Fatalf("status = %d, body = %s, want durable queued operation", rec.Code, rec.Body.String())
 	}
-	queued, ok := sess.queuedTurns.get("during-replay")
+	queued, ok := sess.queuedTurns.Get("during-replay")
 	if !ok || queued.Text != "deliver after replay" {
 		t.Fatalf("queued prompt = %+v, found = %v", queued, ok)
 	}
@@ -1118,7 +1117,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	}
 	defer result.claude.Close()
 	waitTurnSendDone(t, sess, "during-replay")
-	journal, ok := sess.sendAttempts.get("during-replay")
+	journal, ok := sess.sendAttempts.Get("during-replay")
 	if !ok || journal.Status != sendAttemptAccepted {
 		t.Fatalf("send journal = %+v, found = %v, want accepted", journal, ok)
 	}

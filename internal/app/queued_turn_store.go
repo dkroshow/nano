@@ -46,7 +46,8 @@ func newQueuedTurnStore(db *sql.DB, path string, store *turns.Store) (*queuedTur
 	return &queuedTurnStore{db: db, path: path, turns: store}, nil
 }
 
-func (s *queuedTurnStore) bootParksFor(provider, nativeThreadID, hostedThreadID string) []turns.BootPark {
+// BootParksFor reads prompts parked during boot for the attachment.
+func (s *queuedTurnStore) BootParksFor(provider, nativeThreadID, hostedThreadID string) []turns.BootPark {
 	if s == nil {
 		return nil
 	}
@@ -64,7 +65,8 @@ func (s *queuedTurnStore) bootParksFor(provider, nativeThreadID, hostedThreadID 
 	return result
 }
 
-func (s *queuedTurnStore) get(actionID string) (queuedTurnRecord, bool) {
+// Get reads compatibility evidence for an action.
+func (s *queuedTurnStore) Get(actionID string) (queuedTurnRecord, bool) {
 	if s == nil {
 		return queuedTurnRecord{}, false
 	}
@@ -72,7 +74,8 @@ func (s *queuedTurnStore) get(actionID string) (queuedTurnRecord, bool) {
 	return turns.LegacyQueuedTurn(record), err == nil
 }
 
-func (s *queuedTurnStore) first(provider, nativeThreadID, hostedThreadID string) (queuedTurnRecord, bool) {
+// First reads the next queued prompt for an attachment.
+func (s *queuedTurnStore) First(provider, nativeThreadID, hostedThreadID string) (queuedTurnRecord, bool) {
 	if s == nil {
 		return queuedTurnRecord{}, false
 	}
@@ -84,16 +87,16 @@ func (s *queuedTurnStore) first(provider, nativeThreadID, hostedThreadID string)
 	return queuedTurnRecord{}, false
 }
 
-// position is one-based within the target thread's delivery order: every
+// Position is one-based within the target thread's delivery order: every
 // queued record of a higher-priority class, plus earlier records of the same
 // class, count ahead of it. It can therefore increase when a human prompt
 // arrives behind an agent prompt. Zero means the action is no longer waiting
 // in Nano's text-bearing queue.
-func (s *queuedTurnStore) position(actionID string) int {
+func (s *queuedTurnStore) Position(actionID string) int {
 	if s == nil {
 		return 0
 	}
-	target, ok := s.get(actionID)
+	target, ok := s.Get(actionID)
 	if !ok || target.State != submissionQueued {
 		return 0
 	}
@@ -110,7 +113,8 @@ func (s *queuedTurnStore) position(actionID string) int {
 	return 0
 }
 
-func (s *queuedTurnStore) byProviderTurn(provider, nativeThreadID, hostedThreadID, turnID string) (queuedTurnRecord, bool) {
+// ByProviderTurn reads a prompt bound to the named provider turn.
+func (s *queuedTurnStore) ByProviderTurn(provider, nativeThreadID, hostedThreadID, turnID string) (queuedTurnRecord, bool) {
 	if s == nil || turnID == "" {
 		return queuedTurnRecord{}, false
 	}
@@ -121,13 +125,14 @@ func (s *queuedTurnStore) byProviderTurn(provider, nativeThreadID, hostedThreadI
 	return turns.LegacyQueuedTurn(records[0]), true
 }
 
-func (s *queuedTurnStore) listThread(provider, nativeThreadID, hostedThreadID string) []queuedTurnRecord {
-	return s.listThreadFrom(nil, provider, nativeThreadID, hostedThreadID)
+// ListThread reads compatibility records for a thread.
+func (s *queuedTurnStore) ListThread(provider, nativeThreadID, hostedThreadID string) []queuedTurnRecord {
+	return s.ListThreadFrom(nil, provider, nativeThreadID, hostedThreadID)
 }
 
-// listThreadFrom is listThread read through journal, or through the store's
+// ListThreadFrom is listThread read through journal, or through the store's
 // writer connection when journal is nil.
-func (s *queuedTurnStore) listThreadFrom(journal promptJournal, provider, nativeThreadID, hostedThreadID string) []queuedTurnRecord {
+func (s *queuedTurnStore) ListThreadFrom(journal promptJournal, provider, nativeThreadID, hostedThreadID string) []queuedTurnRecord {
 	if s == nil {
 		return nil
 	}
@@ -170,11 +175,11 @@ func sameQueuedThread(left, right queuedTurnRecord) bool {
 	return left.NativeThreadID != "" && left.NativeThreadID == right.NativeThreadID
 }
 
-// queuedCount is the number of records still queued for the target thread.
+// QueuedCount is the number of records still queued for the target thread.
 // Availability turns it into busy/queued_backlog for every listed thread, and
 // heartbeat wake gates and idle checks read that, so it reads only the
 // thread's own queued prompts.
-func (s *queuedTurnStore) queuedCount(provider, nativeThreadID, hostedThreadID string) int {
+func (s *queuedTurnStore) QueuedCount(provider, nativeThreadID, hostedThreadID string) int {
 	if s == nil {
 		return 0
 	}
@@ -204,18 +209,23 @@ func (s *queuedTurnStore) queued(hostedThreadID string) []queuedTurnRecord {
 	return result
 }
 
-func (s *queuedTurnStore) transactionStore() *turns.Store {
+// TransactionStore returns the canonical transactional prompt store.
+func (s *queuedTurnStore) TransactionStore() *turns.Store {
 	if s == nil {
 		return nil
 	}
 	return s.turns
 }
-func (s *queuedTurnStore) bindTransactionStore(store *turns.Store) {
+
+// BindTransactionStore sets the canonical transactional prompt store.
+func (s *queuedTurnStore) BindTransactionStore(store *turns.Store) {
 	if s != nil {
 		s.turns = store
 	}
 }
-func (s *queuedTurnStore) database() *sql.DB {
+
+// Database returns the prompt view’s database connection.
+func (s *queuedTurnStore) Database() *sql.DB {
 	if s == nil {
 		return nil
 	}

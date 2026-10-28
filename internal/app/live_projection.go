@@ -189,13 +189,15 @@ func (s *server) newSessionProjection(provider, hostedThreadID string) *liveProj
 	return projection
 }
 
-func (p *liveProjection) setNativeThreadID(id string) {
+// SetNativeThreadID sets the native identity represented by the view.
+func (p *liveProjection) SetNativeThreadID(id string) {
 	p.mu.Lock()
 	p.nativeThread = id
 	p.mu.Unlock()
 }
 
-func (p *liveProjection) setClaudeProviderTurnID(id string) {
+// SetClaudeProviderTurnID sets the provider identity of the current Claude turn.
+func (p *liveProjection) SetClaudeProviderTurnID(id string) {
 	if p == nil || p.provider != "claude" || id == "" {
 		return
 	}
@@ -204,10 +206,10 @@ func (p *liveProjection) setClaudeProviderTurnID(id string) {
 	p.mu.Unlock()
 }
 
-// setClaudeFrameTurnID adopts one spooled frame's own turn identity, empty
+// SetClaudeFrameTurnID adopts one spooled frame's own turn identity, empty
 // included: the shim tags only a Nano prompt's frames, so an unprompted
 // turn's frames clear the previous prompt's id instead of inheriting it.
-func (p *liveProjection) setClaudeFrameTurnID(id string) {
+func (p *liveProjection) SetClaudeFrameTurnID(id string) {
 	if p == nil || p.provider != "claude" {
 		return
 	}
@@ -216,9 +218,9 @@ func (p *liveProjection) setClaudeFrameTurnID(id string) {
 	p.mu.Unlock()
 }
 
-// setClaudeResultTurnID names the turn of the result about to be applied,
+// SetClaudeResultTurnID names the turn of the result about to be applied,
 // "" when it names none.
-func (p *liveProjection) setClaudeResultTurnID(id string) {
+func (p *liveProjection) SetClaudeResultTurnID(id string) {
 	if p == nil || p.provider != "claude" {
 		return
 	}
@@ -227,8 +229,8 @@ func (p *liveProjection) setClaudeResultTurnID(id string) {
 	p.mu.Unlock()
 }
 
-// claudeResultTurn is the turn the last applied Claude result named.
-func (p *liveProjection) claudeResultTurn() string {
+// ClaudeResultTurn is the turn the last applied Claude result named.
+func (p *liveProjection) ClaudeResultTurn() string {
 	if p == nil {
 		return ""
 	}
@@ -237,7 +239,8 @@ func (p *liveProjection) claudeResultTurn() string {
 	return p.claudeResultTurnID
 }
 
-func (p *liveProjection) currentTurnID() string {
+// CurrentTurnID reads the current projected turn identity.
+func (p *liveProjection) CurrentTurnID() string {
 	if p == nil {
 		return ""
 	}
@@ -249,10 +252,10 @@ func (p *liveProjection) currentTurnID() string {
 	return p.turnOrder[len(p.turnOrder)-1]
 }
 
-// ensureClaudeActiveTurn gives provider execution evidence a normalized turn
+// EnsureClaudeActiveTurn gives provider execution evidence a normalized turn
 // when no Nano-submitted prompt opened one. It reuses an existing in-progress
 // turn, so streaming deltas are keep-alives rather than new turns.
-func (p *liveProjection) ensureClaudeActiveTurn(startedAtMs int64) string {
+func (p *liveProjection) EnsureClaudeActiveTurn(startedAtMs int64) string {
 	if p == nil || p.provider != "claude" {
 		return ""
 	}
@@ -275,13 +278,13 @@ func (p *liveProjection) ensureClaudeActiveTurn(startedAtMs int64) string {
 }
 
 func (p *liveProjection) applyWire(dir protocol.Direction, line []byte, at time.Time) {
-	p.applyWireLive(dir, line, at, true, false)
+	p.ApplyWireLive(dir, line, at, true, false)
 }
 
-// applyWireLive keeps replay provenance separate from live browser emission.
+// ApplyWireLive keeps replay provenance separate from live browser emission.
 // Only the Claude shim's re-attach spool sets replay; other non-live
 // observations remain ordinary.
-func (p *liveProjection) applyWireLive(dir protocol.Direction, line []byte, at time.Time, live, replay bool, _ ...int64) {
+func (p *liveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at time.Time, live, replay bool, _ ...int64) {
 	if p.dropLiveTextDeltas && p.provider == "codex" && dir == protocol.Recv {
 		if turn, hidden := codexAgentTextDelta(line); hidden {
 			// Hidden text is still the turn's live work.
@@ -317,9 +320,9 @@ func (p *liveProjection) applyWireLive(dir protocol.Direction, line []byte, at t
 	p.adapterMu.Lock()
 	batch := p.adapter.Apply(dir, line, at)
 	if p.liveText != nil {
-		p.liveText.observeBatch(batch, providerTurnID)
+		p.liveText.ObserveBatch(batch, providerTurnID)
 		if claudeTurnClosed {
-			p.liveText.turnEnded(providerTurnID)
+			p.liveText.TurnEnded(providerTurnID)
 		}
 	}
 	// Taken before adapterMu is released, so frames record in parse order.
@@ -481,7 +484,8 @@ func (p *liveProjection) upsertTurnLocked(turn *liveProjectionTurn) {
 	}
 }
 
-func (p *liveProjection) updateRuntime(runtime liveProjectionRuntime) {
+// UpdateRuntime publishes the attachment’s runtime view.
+func (p *liveProjection) UpdateRuntime(runtime liveProjectionRuntime) {
 	runtime = liveview.CloneRuntime(runtime)
 	p.mu.Lock()
 	if liveview.RuntimeEqual(p.runtime, runtime) {
@@ -497,7 +501,8 @@ func (p *liveProjection) updateRuntime(runtime liveProjectionRuntime) {
 	p.mu.Unlock()
 }
 
-func (p *liveProjection) updateTokenUsage(raw json.RawMessage) {
+// UpdateTokenUsage records current provider token usage.
+func (p *liveProjection) UpdateTokenUsage(raw json.RawMessage) {
 	raw = liveview.TruncateJSON(raw, 16<<10)
 	p.mu.Lock()
 	if bytes.Equal(p.runtime.TokenUsage, raw) {
@@ -509,7 +514,8 @@ func (p *liveProjection) updateTokenUsage(raw json.RawMessage) {
 	p.mu.Unlock()
 }
 
-func (p *liveProjection) updateError(message string) {
+// UpdateError records the latest live error.
+func (p *liveProjection) UpdateError(message string) {
 	message = threads.TruncateText(message, 4<<10)
 	p.mu.Lock()
 	if p.runtime.LastError == message {
@@ -521,7 +527,8 @@ func (p *liveProjection) updateError(message string) {
 	p.mu.Unlock()
 }
 
-func (p *liveProjection) nudgeMetaRefresh() {
+// NudgeMetaRefresh publishes a view metadata refresh.
+func (p *liveProjection) NudgeMetaRefresh() {
 	p.mu.Lock()
 	p.appendLocked(liveProjectionUpdate{Op: projectionMetaRefresh})
 	p.mu.Unlock()
@@ -567,16 +574,17 @@ func wireNudgesProjectionMeta(provider string, dir protocol.Direction, line []by
 	}
 }
 
-func (p *liveProjection) updateCompletedTurn(turnID, status string, durationMS int64, completedAtMs int64, turnError ...json.RawMessage) {
+// UpdateCompletedTurn records terminal evidence for a projected turn.
+func (p *liveProjection) UpdateCompletedTurn(turnID, status string, durationMS int64, completedAtMs int64, turnError ...json.RawMessage) {
 	p.mu.Lock()
 	p.updateCompletedTurnLocked(turnID, status, durationMS, completedAtMs, turnError...)
 	p.mu.Unlock()
 }
 
-// completeTurnUnlessWorked records a saved turn end unless the turn has done
+// CompleteTurnUnlessWorked records a saved turn end unless the turn has done
 // live work since version was read. Live work records under mu, so the check
 // and the end are one step.
-func (p *liveProjection) completeTurnUnlessWorked(turnID string, version uint64, status string, durationMS, completedAtMs int64) bool {
+func (p *liveProjection) CompleteTurnUnlessWorked(turnID string, version uint64, status string, durationMS, completedAtMs int64) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if work := p.turnWork[turnID]; work != nil && work.version != version {
@@ -615,7 +623,8 @@ func (p *liveProjection) updateCompletedTurnLocked(turnID, status string, durati
 	p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: turn, Runtime: cloneRuntimePtr(p.runtime)})
 }
 
-func (p *liveProjection) latestTerminalTurnID() string {
+// LatestTerminalTurnID reads the newest terminal turn identity.
+func (p *liveProjection) LatestTerminalTurnID() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for index := len(p.turnOrder) - 1; index >= 0; index-- {
@@ -626,9 +635,9 @@ func (p *liveProjection) latestTerminalTurnID() string {
 	return ""
 }
 
-// finalAgentItemID names a turn's final answer by source id, the identity
+// FinalAgentItemID names a turn's final answer by source id, the identity
 // records outside this projection use; saved history carries the same one.
-func (p *liveProjection) finalAgentItemID(turnID string) string {
+func (p *liveProjection) FinalAgentItemID(turnID string) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.finalAnswerIDLocked(turnID)
@@ -643,8 +652,8 @@ func (p *liveProjection) finalAnswerIDLocked(turnID string) string {
 	return ""
 }
 
-// turnList copies the projection's turns, oldest first.
-func (p *liveProjection) turnList() []liveProjectionTurn {
+// TurnList copies the projection's turns, oldest first.
+func (p *liveProjection) TurnList() []liveProjectionTurn {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	turns := make([]liveProjectionTurn, 0, len(p.turnOrder))
@@ -661,7 +670,8 @@ func cloneRuntimePtr(runtime liveProjectionRuntime) *liveProjectionRuntime {
 	return &out
 }
 
-func (p *liveProjection) upsertInteraction(interaction pendingInteraction) {
+// UpsertInteraction records a pending provider interaction.
+func (p *liveProjection) UpsertInteraction(interaction pendingInteraction) {
 	interaction = liveview.CloneInteraction(interaction)
 	p.mu.Lock()
 	if _, exists := p.interactions[interaction.ID]; !exists {
@@ -677,7 +687,8 @@ func (p *liveProjection) upsertInteraction(interaction pendingInteraction) {
 	p.mu.Unlock()
 }
 
-func (p *liveProjection) removeInteraction(id string) {
+// RemoveInteraction removes a resolved interaction from the view.
+func (p *liveProjection) RemoveInteraction(id string) {
 	if id == "" {
 		return
 	}
@@ -708,9 +719,9 @@ func (p *liveProjection) interactionsLocked() []pendingInteraction {
 	return interactions
 }
 
-// status is the thread's runtime and pending questions at the current
+// Status is the thread's runtime and pending questions at the current
 // revision, without rows: what a file-only pane's stream carries.
-func (p *liveProjection) status() liveTextStatus {
+func (p *liveProjection) Status() liveTextStatus {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return liveTextStatus{Epoch: p.epoch, Revision: p.revision, Runtime: liveview.CloneRuntime(p.runtime), Interactions: p.interactionsLocked()}
@@ -839,9 +850,9 @@ func durableTerminalAuthoritative(exact durableTurnEvidence, found bool, wireEvi
 		wireEvidenceAtMs <= exact.Turn.CompletedAtMs
 }
 
-// retainedTurnEvidence is a retained turn, the time of its newest start, end
+// RetainedTurnEvidence is a retained turn, the time of its newest start, end
 // or live work, and its work counter.
-func (p *liveProjection) retainedTurnEvidence(turnID string) (liveProjectionTurn, int64, uint64, bool) {
+func (p *liveProjection) RetainedTurnEvidence(turnID string) (liveProjectionTurn, int64, uint64, bool) {
 	if p == nil || turnID == "" {
 		return liveProjectionTurn{}, 0, 0, false
 	}
@@ -909,10 +920,10 @@ func (p *liveProjection) appendLocked(update liveProjectionUpdate) {
 	}
 }
 
-// subscribe registers a subscriber for every later update. A caller reads
+// Subscribe registers a subscriber for every later update. A caller reads
 // the state it sends first only after subscribing, so no update falls
 // between them.
-func (p *liveProjection) subscribe() (ch chan liveProjectionUpdate, cancel func()) {
+func (p *liveProjection) Subscribe() (ch chan liveProjectionUpdate, cancel func()) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	ch = make(chan liveProjectionUpdate, 256)
@@ -1040,18 +1051,22 @@ func cloneUpdate(update liveProjectionUpdate) liveProjectionUpdate {
 	return out
 }
 
-func (p *liveProjection) providerName() string {
+// ProviderName reports the view’s provider.
+func (p *liveProjection) ProviderName() string {
 	if p == nil {
 		return ""
 	}
 	return p.provider
 }
 
-func (p *liveProjection) dropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
+// DropsLiveTextDeltas reports whether live text delta publication is disabled.
+func (p *liveProjection) DropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
 
-func (p *liveProjection) setLiveText(observer liveTextObserver) { p.liveText = observer }
+// SetLiveText connects the observer of ordered parsed evidence.
+func (p *liveProjection) SetLiveText(observer liveTextObserver) { p.liveText = observer }
 
-func (p *liveProjection) turnActive() bool {
+// TurnActive reports whether the projected turn is active.
+func (p *liveProjection) TurnActive() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.runtime.TurnActive

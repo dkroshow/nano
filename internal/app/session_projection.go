@@ -33,7 +33,7 @@ func (sess *session) publishProjectionRuntime() {
 		runtime.TurnID, runtime.TurnStartedAtMs = "", 0
 	}
 	sess.stateMu.Unlock()
-	sess.projection.updateRuntime(runtime)
+	sess.projection.UpdateRuntime(runtime)
 }
 
 func (sess *session) applyLiveRuntimeWire(dir protocol.Direction, line []byte, at time.Time) {
@@ -52,7 +52,7 @@ func (sess *session) setLiveTokenUsage(raw json.RawMessage) {
 	sess.stateMu.Lock()
 	sess.tokenUsage = append(json.RawMessage(nil), raw...)
 	sess.stateMu.Unlock()
-	sess.projection.updateTokenUsage(raw)
+	sess.projection.UpdateTokenUsage(raw)
 }
 
 func (sess *session) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage) {
@@ -90,7 +90,7 @@ func (sess *session) setLiveError(message string) {
 	sess.stateMu.Lock()
 	sess.lastError = message
 	sess.stateMu.Unlock()
-	sess.projection.updateError(message)
+	sess.projection.UpdateError(message)
 }
 
 // reconcileDurableTurn settles the session's open turn from its saved status
@@ -106,12 +106,12 @@ func (sess *session) reconcileDurableTurn(ctx context.Context) {
 	sessionTurnActive := sess.workActiveLocked()
 	sess.stateMu.Unlock()
 	if turnID == "" {
-		turnID = sess.projection.currentTurnID()
+		turnID = sess.projection.CurrentTurnID()
 	}
 	if turnID == "" {
 		return
 	}
-	liveTurn, wireEvidenceAtMs, version, retained := sess.projection.retainedTurnEvidence(turnID)
+	liveTurn, wireEvidenceAtMs, version, retained := sess.projection.RetainedTurnEvidence(turnID)
 	if !retained {
 		return
 	}
@@ -133,7 +133,7 @@ func (sess *session) reconcileDurableTurn(ctx context.Context) {
 	// and only if the turn did no live work while it was read.
 	sess.stateMu.Lock()
 	if sess.attachmentGeneration != generation || threadID != "" && sess.threadID != threadID ||
-		!sess.projection.completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
+		!sess.projection.CompleteTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
 		sess.workActiveLocked() && sess.turnID != turnID {
 		sess.stateMu.Unlock()
 		return
@@ -179,7 +179,7 @@ func (sess *session) handleConversationView(w http.ResponseWriter, r *http.Reque
 	}
 	snapshot, err := sess.fileConversationSnapshot(r.Context(), view, before, limit)
 	if err != nil {
-		sess.liveText.writeBackendError(w, err)
+		sess.liveText.WriteBackendError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, snapshot)

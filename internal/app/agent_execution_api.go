@@ -260,7 +260,7 @@ func (s *server) handleAgentSessionCreate(w http.ResponseWriter, r *http.Request
 	resolved.HostedThreadID = record.ID
 	sess, err := s.spawnSession(resolved)
 	if err != nil {
-		_ = s.agentExecutions.updateSession(record.ID, "", record.NativeThreadID, sessionStatusExited, err.Error())
+		_ = s.agentExecutions.UpdateSession(record.ID, "", record.NativeThreadID, sessionStatusExited, err.Error())
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -340,7 +340,7 @@ func (s *server) handleHostedThreadClose(w http.ResponseWriter, _ *http.Request,
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.agentExecutions.updateSession(record.ID, "", "", sessionStatusExited, "closed"); err != nil {
+	if err := s.agentExecutions.UpdateSession(record.ID, "", "", sessionStatusExited, "closed"); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -363,7 +363,7 @@ func (s *server) handleHostedThreadMetadataRead(w http.ResponseWriter, r *http.R
 	if !s.canonicalMetadataAvailable(w) {
 		return
 	}
-	view, err := s.controlMetadata.view(record.ID)
+	view, err := s.controlMetadata.View(record.ID)
 	if err == sql.ErrNoRows {
 		httpapi.WriteNotFound(w)
 		return
@@ -389,7 +389,7 @@ func (s *server) handleHostedThreadMetadataChanges(w http.ResponseWriter, r *htt
 		httpapi.WriteHTTPError(w, "afterRevision must be a non-negative integer", http.StatusBadRequest)
 		return
 	}
-	view, err := s.controlMetadata.view(record.ID)
+	view, err := s.controlMetadata.View(record.ID)
 	if err == sql.ErrNoRows {
 		httpapi.WriteNotFound(w)
 		return
@@ -432,14 +432,14 @@ func (s *server) handleHostedThreadMetadataEvents(w http.ResponseWriter, r *http
 		httpapi.WriteHTTPError(w, "after/limit or metadata event filters are invalid", http.StatusBadRequest)
 		return
 	}
-	if _, err := s.controlMetadata.view(record.ID); err == sql.ErrNoRows {
+	if _, err := s.controlMetadata.View(record.ID); err == sql.ErrNoRows {
 		httpapi.WriteNotFound(w)
 		return
 	} else if err != nil {
 		httpapi.WriteHTTPError(w, "canonical metadata unavailable: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	page, err := s.controlMetadata.eventsAfter(record.ID, after, limit, filter)
+	page, err := s.controlMetadata.EventsAfter(record.ID, after, limit, filter)
 	if err != nil {
 		httpapi.WriteHTTPError(w, "canonical metadata unavailable: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -664,7 +664,7 @@ func (s *server) handleHostedThreadDetach(w http.ResponseWriter, _ *http.Request
 	}
 	// The attachment record survives — that is the difference from close:
 	// boot reattach and click-resume both restore a detached thread.
-	_ = s.agentExecutions.updateSession(record.ID, "", "", agentSessionDetached, "")
+	_ = s.agentExecutions.UpdateSession(record.ID, "", "", agentSessionDetached, "")
 	httpapi.WriteJSON(w, s.agentSessionView(record.ID))
 }
 
@@ -1022,7 +1022,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "busy"}
 		}
 		if sess.queuedTurns != nil {
-			if _, queued := sess.queuedTurns.first(sess.provider, sess.currentThreadID(), sess.hostedThreadID); queued {
+			if _, queued := sess.queuedTurns.First(sess.provider, sess.currentThreadID(), sess.hostedThreadID); queued {
 				return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "queuedBacklog"}
 			}
 		}
@@ -1041,7 +1041,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 		return agentTurnRecord{}, false, err
 	}
 	if !created && s.turnSubmissionDeliveryUnknown(record) {
-		_ = s.agentExecutions.markTurnDelivery(record.ID, "", agentTurnDeliveryUnknown, &agentExecutionError{
+		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnDeliveryUnknown, &agentExecutionError{
 			Source: "delivery", Code: "nano_restarted", Message: "Nano restarted after provider delivery began",
 		})
 		latest, _ := s.agentExecutions.turn(record.ID)
@@ -1089,7 +1089,7 @@ func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub h
 		return agentTurnRecord{}, false, err
 	}
 	if !created && s.turnSubmissionDeliveryUnknown(record) {
-		_ = s.agentExecutions.markTurnDelivery(record.ID, "", agentTurnDeliveryUnknown, &agentExecutionError{Source: "delivery", Code: "nano_restarted", Message: "Nano restarted after provider delivery began"})
+		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnDeliveryUnknown, &agentExecutionError{Source: "delivery", Code: "nano_restarted", Message: "Nano restarted after provider delivery began"})
 		latest, _ := s.agentExecutions.turn(record.ID)
 		return latest, true, nil
 	}
@@ -1106,12 +1106,12 @@ func (s *server) submitExistingHostedTurn(hostedThreadID, actionID string, sub h
 
 func (s *server) finishHostedTurnSubmission(sess *session, record agentTurnRecord, created bool, op *turnSendOperation, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
 	if err != nil {
-		_ = s.agentExecutions.markTurnDelivery(record.ID, "", agentTurnFailed, &agentExecutionError{Source: "delivery", Message: err.Error()})
+		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnFailed, &agentExecutionError{Source: "delivery", Message: err.Error()})
 		sess.notifyRuntime()
 		return record, false, err
 	}
 	if responseStatus == http.StatusAccepted && reason == "queued_for_next_turn" {
-		_ = s.agentExecutions.markTurnDelivery(record.ID, "", agentTurnQueued, nil)
+		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", agentTurnQueued, nil)
 	} else if responseStatus != 0 || op == nil {
 		state := agentTurnDeliveryUnknown
 		if responseStatus >= http.StatusBadRequest {
@@ -1121,7 +1121,7 @@ func (s *server) finishHostedTurnSubmission(sess *session, record agentTurnRecor
 		if reason == "reconnect_failed" {
 			code = reason
 		}
-		_ = s.agentExecutions.markTurnDelivery(record.ID, "", state, &agentExecutionError{Source: "delivery", Code: code, Message: reason})
+		_ = s.agentExecutions.MarkTurnDelivery(record.ID, "", state, &agentExecutionError{Source: "delivery", Code: code, Message: reason})
 		if state == agentTurnFailed {
 			sess.notifyRuntime()
 		}
@@ -1147,12 +1147,12 @@ func (s *server) needsTurnSubmissionReconciliation(record agentTurnRecord) bool 
 		}
 	}
 	if queue != nil {
-		if _, ok := queue.get(record.TransportActionID); ok {
+		if _, ok := queue.Get(record.TransportActionID); ok {
 			return false
 		}
 	}
 	if attempts != nil {
-		if _, ok := attempts.get(record.TransportActionID); ok {
+		if _, ok := attempts.Get(record.TransportActionID); ok {
 			return false
 		}
 	}
@@ -1167,7 +1167,7 @@ func (s *server) turnSubmissionDeliveryUnknown(record agentTurnRecord) bool {
 	if sess := s.sessionForHostedThread(record.HostedThreadID); sess != nil && sess.sendAttempts != nil {
 		attempts = sess.sendAttempts
 	}
-	attempt, ok := attempts.get(record.TransportActionID)
+	attempt, ok := attempts.Get(record.TransportActionID)
 	return ok && (attempt.Status == sendAttemptSending || attempt.Status == sendAttemptAccepted)
 }
 
@@ -1330,7 +1330,7 @@ func (s *server) agentSessionView(id string) agentSessionView {
 	view.NativeThreadIDProvisional = nativeThreadIDProvisional(view.Provider, view.NativeThreadID)
 	view.Attachment = s.hostedAttachmentState(id)
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
-		if metadata, err := s.controlMetadata.view(id); err == nil {
+		if metadata, err := s.controlMetadata.View(id); err == nil {
 			view.Metadata = s.decorateHostedMetadata(metadata, view.Attachment)
 		} else {
 			view.MetadataUnavailable = true
@@ -1438,7 +1438,7 @@ func (s *server) agentTurnView(rec agentTurnRecord) agentTurnView {
 		}
 	}
 	if rec.Status == agentTurnQueued {
-		view.QueuePosition = queue.position(rec.TransportActionID)
+		view.QueuePosition = queue.Position(rec.TransportActionID)
 	}
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
 		assignment, err := s.controlMetadata.operationOrchestrationAssignment(rec.AssignmentEventID)
@@ -1501,7 +1501,7 @@ func (s *server) closeHostedThreadForRecordCore(record agentSessionRecord) error
 			}
 		}
 	}
-	if err := s.agentExecutions.markSessionTurns(record.ID, agentTurnInterrupted, &agentExecutionError{
+	if err := s.agentExecutions.MarkSessionTurns(record.ID, agentTurnInterrupted, &agentExecutionError{
 		Source: "client", Code: "session_closed",
 		Message: "the hosted thread was closed while detached",
 	}); err != nil {
@@ -1511,7 +1511,7 @@ func (s *server) closeHostedThreadForRecordCore(record agentSessionRecord) error
 	// public close and bulk-close handlers repeat this update with their own
 	// reason, but doing it here prevents a concurrent attachment from slipping
 	// into the detached-close gap.
-	return s.agentExecutions.updateSession(record.ID, "", "", sessionStatusExited, "closed")
+	return s.agentExecutions.UpdateSession(record.ID, "", "", sessionStatusExited, "closed")
 }
 
 // dropQueuedTurns removes undelivered queued prompts for the thread: an
@@ -1522,7 +1522,7 @@ func (s *server) dropQueuedTurns(record agentSessionRecord) error {
 		return nil
 	}
 	for {
-		rec, ok := s.queuedTurns.first(record.Provider, record.NativeThreadID, record.ID)
+		rec, ok := s.queuedTurns.First(record.Provider, record.NativeThreadID, record.ID)
 		if !ok {
 			return nil
 		}

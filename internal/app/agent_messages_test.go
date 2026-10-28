@@ -215,7 +215,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 	for _, status := range []string{agentSessionDetached, sessionStatusExited} {
 		t.Run(status, func(t *testing.T) {
 			s, store, sess, sender, recipient, prompts := stage0Server(t)
-			if err := store.updateSession(recipient.ID, "", recipient.NativeThreadID, status, ""); err != nil {
+			if err := store.UpdateSession(recipient.ID, "", recipient.NativeThreadID, status, ""); err != nil {
 				t.Fatal(err)
 			}
 			recipient, _ = store.session(recipient.ID)
@@ -223,7 +223,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 			if rec.Code != http.StatusCreated || message.Status != agentMessageUnread {
 				t.Fatalf("send = %d %+v %s", rec.Code, message, rec.Body.String())
 			}
-			if got := sess.queuedTurns.queuedCount(sess.provider, sess.currentThreadID(), sess.hostedThreadID); got != 0 {
+			if got := sess.queuedTurns.QueuedCount(sess.provider, sess.currentThreadID(), sess.hostedThreadID); got != 0 {
 				t.Fatalf("inbox send queued %d prompt turns", got)
 			}
 			select {
@@ -482,7 +482,7 @@ func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
 	if first.Code != http.StatusAccepted {
 		t.Fatalf("first=%d %s", first.Code, first.Body.String())
 	}
-	queued, ok := sess.queuedTurns.get("queued-human")
+	queued, ok := sess.queuedTurns.Get("queued-human")
 	if !ok || !strings.Contains(queued.Text, "[nano: 1 unread") || queued.TextHash == queued.RequestHash || queued.RequestHash != turnRequestHash("Queued", true) {
 		t.Fatalf("queued record = %+v", queued)
 	}
@@ -495,7 +495,7 @@ func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
 	if retry.Code != http.StatusAccepted {
 		t.Fatalf("retry=%d %s", retry.Code, retry.Body.String())
 	}
-	again, _ := sess.queuedTurns.get("queued-human")
+	again, _ := sess.queuedTurns.Get("queued-human")
 	if again.Text != queued.Text {
 		t.Fatalf("retry rewrote queued text: before=%q after=%q", queued.Text, again.Text)
 	}

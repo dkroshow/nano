@@ -10,9 +10,9 @@ func TestCodexOperationalResponseUsesNativeTextInWireAndResume(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			store := newTestAgentExecutionStore(t, "run-1")
 			hosted, _, _ := store.beginSession("caller", "request", "codex", presentationShared)
-			_ = store.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
+			_ = store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 			op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt")
-			_ = store.markTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
+			_ = store.MarkTurnDelivery(op.ID, "turn-1", agentTurnRunning, nil)
 			sess := &session{provider: "codex", hostedThreadID: hosted.ID, agentExecutions: store}
 			answer := json.RawMessage(`{"id":"answer","type":"agentMessage","phase":"final_answer","text":"  native answer\n","summary":["unrelated summary"]}`)
 			if route == "wire" {

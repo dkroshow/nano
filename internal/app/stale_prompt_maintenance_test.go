@@ -212,7 +212,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 					t.Fatalf("expired %s is still published", entry.ActionID)
 				}
 			}
-			for _, attempt := range h.attempts.listThread(test.provider, h.fixture.native) {
+			for _, attempt := range h.attempts.ListThread(test.provider, h.fixture.native) {
 				if slices.Contains(expired, attempt.ClientActionID) {
 					t.Fatalf("delivery list still shows expired %s", attempt.ClientActionID)
 				}

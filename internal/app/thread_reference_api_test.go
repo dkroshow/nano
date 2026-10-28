@@ -15,7 +15,7 @@ func TestNativeRecoveryRetiredAliasKeepsHistoricalRouteWhileReplacementLive(t *t
 	record := createReferenceHostedRecord(t, store, threadReferenceUUID)
 	const replacement = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 	const sessionID = "replacement-session"
-	if err := store.bindSession(record.ID, sessionID, replacement, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, sessionID, replacement, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.control.db.Exec(`CREATE TABLE IF NOT EXISTS hosted_native_recoveries(hosted_thread_id TEXT,old_native_id TEXT,new_native_id TEXT,state TEXT,record_json TEXT,client_recovery_id TEXT)`); err != nil {
@@ -62,7 +62,7 @@ func createReferenceHostedRecord(t *testing.T, store *agentExecutionStore, nativ
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(record.ID, "nano-"+record.ID, nativeID, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-"+record.ID, nativeID, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	updated, ok := store.session(record.ID)
@@ -187,7 +187,7 @@ func TestThreadReferenceNativeHistoricalFallbackAndHostedDirect(t *testing.T) {
 func TestThreadReferenceActiveOwnerBeatsRetiredNativeHistory(t *testing.T) {
 	s, store := newThreadReferenceServer(t, nil)
 	first := createReferenceHostedRecord(t, store, threadReferenceUUID)
-	if err := store.bindSession(first.ID, "nano-"+first.ID, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "ready", presentationShared); err != nil {
+	if err := store.BindSession(first.ID, "nano-"+first.ID, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	current := createReferenceHostedRecord(t, store, threadReferenceUUID)
@@ -208,7 +208,7 @@ func TestThreadReferenceCrossProviderNativeCollisionDoesNotGuess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(other.ID, "nano-"+other.ID, threadReferenceUUID, "ready", presentationShared); err != nil {
+	if err := store.BindSession(other.ID, "nano-"+other.ID, threadReferenceUUID, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	store.mu.Lock()

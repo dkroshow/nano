@@ -74,7 +74,7 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 	if err := metadata.ensureHostedThread("nht_resume_canonical", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := metadata.claimNativeID("nht_resume_canonical", "claude", "native-resume", false); err != nil {
+	if err := metadata.ClaimNativeID("nht_resume_canonical", "claude", "native-resume", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, event := range []metadataEvent{
@@ -82,7 +82,7 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 		{HostedThreadID: "nht_resume_canonical", Field: postureFieldModel, Value: "canonical-model", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive},
 		{HostedThreadID: "nht_resume_canonical", Field: postureFieldPermissionMode, Value: "acceptEdits", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive},
 	} {
-		if _, err := metadata.appendEvent(event); err != nil {
+		if _, err := metadata.AppendEvent(event); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -117,7 +117,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 	if _, err := executions.ensureSessionWithIdentity(hostedID, "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := metadata.claimNativeID(hostedID, "claude", "native-historical", false); err != nil {
+	if err := metadata.ClaimNativeID(hostedID, "claude", "native-historical", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, event := range []metadataEvent{
@@ -130,7 +130,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		// attachment's stale effort flag.
 		{HostedThreadID: hostedID, Field: postureFieldEffort, Value: "", Disposition: metadataDispositionCleared, Source: postureSourceOperator, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-resume:effort:clear"},
 	} {
-		if _, err := metadata.appendEvent(event); err != nil {
+		if _, err := metadata.AppendEvent(event); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -258,24 +258,24 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 			var desired metadataEvent
 			var err error
 			if test.settlement == metadataDispositionCleared {
-				desired, err = metadata.appendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: "", Disposition: metadataDispositionCleared, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":cleared"})
+				desired, err = metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: "", Disposition: metadataDispositionCleared, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":cleared"})
 			} else if test.desired != "" {
-				desired, err = metadata.appendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":requested"})
+				desired, err = metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":requested"})
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			if test.settlement == metadataDispositionConfirmed || test.settlement == metadataDispositionRejected {
-				if _, err := metadata.appendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: test.settlement, Source: postureSourceProvider, Freshness: metadataFreshnessLive, CausationEventID: &desired.ID, SourceEventKey: test.name + ":settlement"}); err != nil {
+				if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: test.settlement, Source: postureSourceProvider, Freshness: metadataFreshnessLive, CausationEventID: &desired.ID, SourceEventKey: test.name + ":settlement"}); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if test.effective != "" && (test.settlement != metadataDispositionConfirmed || test.effective != test.desired) {
-				if _, err := metadata.appendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.effective, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":effective"}); err != nil {
+				if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.effective, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":effective"}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			view, err := metadata.view(hostedID)
+			view, err := metadata.View(hostedID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -350,16 +350,16 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 	if _, err := s.agentExecutions.ensureSessionWithIdentity("nht_overlay", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.controlMetadata.claimNativeID("nht_overlay", "claude", claudeResumeThreadID, false); err != nil {
+	if err := s.controlMetadata.ClaimNativeID("nht_overlay", "claude", claudeResumeThreadID, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.controlMetadata.appendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: "cwd", Value: rec.Cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:cwd"}); err != nil {
+	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: "cwd", Value: rec.Cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:cwd"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.controlMetadata.appendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldPermissionMode, Value: "bypassPermissions", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:permission"}); err != nil {
+	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldPermissionMode, Value: "bypassPermissions", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:permission"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.controlMetadata.appendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldModel, Value: "haiku", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Evidence: postureEvidenceSetModel, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldModel, Value: "haiku", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Evidence: postureEvidenceSetModel, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -377,7 +377,7 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("fallback args = %#v, want the overlay applied: %#v", args, want)
 	}
-	view, err := s.controlMetadata.view("nht_overlay")
+	view, err := s.controlMetadata.View("nht_overlay")
 	if err != nil || view.Fields[postureFieldModel].DesiredEventID == nil {
 		t.Fatalf("canonical overlay intent missing after fallback: view=%#v err=%v", view, err)
 	}

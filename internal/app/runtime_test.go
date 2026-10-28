@@ -1104,7 +1104,7 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 			}
 			shown := func() (pane, rail int64) {
 				summary, _ := sess.volatileSummary(false)
-				return sess.projection.status().Runtime.CompactingSinceMs, sessionRuntimeInfo(summary).CompactingSinceMs
+				return sess.projection.Status().Runtime.CompactingSinceMs, sessionRuntimeInfo(summary).CompactingSinceMs
 			}
 			apply(test.start)
 			if pane, rail := shown(); pane != test.since || rail != test.since {

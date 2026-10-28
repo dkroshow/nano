@@ -103,7 +103,7 @@ func TestCodexReconnectPromptRetriesAndDrainsOnce(t *testing.T) {
 	if got := deliveries.Load(); got != 1 {
 		t.Fatalf("provider deliveries = %d, want exactly one", got)
 	}
-	if queued, ok := sess.queuedTurns.get("recovery-action"); !ok || queued.State != submissionAccepted {
+	if queued, ok := sess.queuedTurns.Get("recovery-action"); !ok || queued.State != submissionAccepted {
 		t.Fatalf("submission lost or not accepted: %+v", queued)
 	}
 	sess.setTurnActive(true, "recovered-turn-1", time.Now().UnixMilli(), true)
@@ -113,7 +113,7 @@ func TestCodexReconnectPromptRetriesAndDrainsOnce(t *testing.T) {
 	if got := deliveries.Load(); got != 2 {
 		t.Fatalf("two queued prompts produced %d deliveries", got)
 	}
-	if queued, ok := sess.queuedTurns.get("second-recovery-action"); !ok || queued.State != submissionAccepted {
+	if queued, ok := sess.queuedTurns.Get("second-recovery-action"); !ok || queued.State != submissionAccepted {
 		t.Fatalf("second submission lost or not accepted: %+v", queued)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -169,10 +169,10 @@ func TestGrokFileLiveHTTPChunkStarts(t *testing.T) {
 					p["_meta"].(map[string]any)["isReplay"] = true
 					line, _ = json.Marshal(msg)
 				}
-				h.sess.projection.(*liveProjection).applyWireLive(protocol.Recv, line, time.Now(), true, false)
+				h.sess.projection.(*liveProjection).ApplyWireLive(protocol.Recv, line, time.Now(), true, false)
 			}
 			// An outbox change follows all frames and is the stream's ordered barrier.
-			h.sess.liveText.outboxChanged(prompts.OutboxEntry{ActionID: "barrier", PresentationText: "Barrier.", State: prompts.Uncertain})
+			h.sess.liveText.OutboxChanged(prompts.OutboxEntry{ActionID: "barrier", PresentationText: "Barrier.", State: prompts.Uncertain})
 			v.expect("ordered barrier", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:barrier") })
 			reply := v.view.reply()
 			if mode == "thinking then reply" {
@@ -263,10 +263,10 @@ func (v *grokHTTPViewer) barrier(h *liveTextHarness) {
 	h.barriers++
 	action := fmt.Sprintf("http-barrier-%d", h.barriers)
 	e := prompts.OutboxEntry{ActionID: action, PresentationText: "Barrier.", State: prompts.Uncertain}
-	h.sess.liveText.outboxChanged(e)
+	h.sess.liveText.OutboxChanged(e)
 	v.expect("ordered barrier", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:"+action) })
 	e.State = prompts.Refused
-	h.sess.liveText.outboxChanged(e)
+	h.sess.liveText.OutboxChanged(e)
 	v.expect("barrier removed", func(liveTextMessage) bool { return !containsEntry(v.view.live, "prompt:"+action) })
 }
 
@@ -301,7 +301,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				for _, state := range []prompts.DeliveryState{prompts.Queued, prompts.Parked, prompts.Delivering, prompts.Uncertain} {
 					e := capturedGrokPrompt(h, 1, "", "")
 					e.State = state
-					h.sess.liveText.outboxChanged(e)
+					h.sess.liveText.OutboxChanged(e)
 					v.expect("stuck prompt state", func(liveTextMessage) bool {
 						return len(v.view.live) == 1 && v.view.live[0].State == string(state) && v.view.live[0].ActionID == "action-1"
 					})
@@ -311,7 +311,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				// and status for the existing Resend and Discard controls.
 				e := capturedGrokPrompt(h, 1, "", "")
 				e.State = prompts.Refused
-				h.sess.liveText.outboxChanged(e)
+				h.sess.liveText.OutboxChanged(e)
 				v.expect("refused prompt", func(liveTextMessage) bool { return len(v.view.live) == 0 })
 				if _, err := h.sess.turns.Cancel(context.Background(), "action-1"); err != nil {
 					t.Fatal(err)
@@ -321,7 +321,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				h.sess.liveText.outboxChanged(record.Outbox)
+				h.sess.liveText.OutboxChanged(record.Outbox)
 				v.expect("resend action", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:action-2") })
 				// This harness's prompt store is separate from its control
 				// metadata store, so use the journal's ordinary direct read.
@@ -359,7 +359,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				if mode == "old prompt without key" {
 					e = capturedGrokPrompt(h, 1, turn, "")
 				}
-				h.sess.liveText.outboxChanged(e)
+				h.sess.liveText.OutboxChanged(e)
 				v.expect("old prompt", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:action-1") })
 				// The file binds the prompt's turn only when its first output arrives.
 				if mode == "old binding after save" {
@@ -369,7 +369,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				if mode == "old binding after save" {
 					waitGrokRows(t, h, 2)
 					e = capturedGrokPrompt(h, 1, turn, "")
-					h.sess.liveText.outboxChanged(e)
+					h.sess.liveText.OutboxChanged(e)
 				}
 				v.expect("old prompt turn handoff", func(liveTextMessage) bool { return len(v.view.live) == 0 && len(v.view.rows) > 0 })
 				return
@@ -416,7 +416,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 			e := capturedGrokPrompt(h, n, turn, key)
 			id := "prompt:" + e.ActionID
 			v.view.expectSaved[id] = e.PresentationText
-			h.sess.liveText.outboxChanged(e)
+			h.sess.liveText.OutboxChanged(e)
 			v.expect("prompt live", func(liveTextMessage) bool { return containsEntry(v.view.live, id) })
 			h.save(rows[:1])
 			v.expect("prompt saved", func(liveTextMessage) bool { return !containsEntry(v.view.live, id) })
@@ -487,7 +487,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				}
 				v.view.neverSaved["unsaved:"+first] = true
 				next := capturedGrokPrompt(h, 3, "faba0187-d4df-57e1-a801-ee8918d62ba0", "11111111-aaaa-4aaa-8aaa-000000000003")
-				h.sess.liveText.outboxChanged(next)
+				h.sess.liveText.OutboxChanged(next)
 				// The actual cut row arrives with the next prompt; same exact key.
 				h.save([][]byte{rows[2], saved[8]})
 			} else if !savedBeforeFinal {
@@ -588,7 +588,7 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 				return v.hasReply("ply.") && containsEntry(v.view.live, first) && !containsEntry(v.view.live, second)
 			})
 			next := capturedGrokPrompt(h, 2, "88ce28f6-903f-56ee-b7ac-f9c8426e4262", "11111111-aaaa-4aaa-8aaa-000000000002")
-			h.sess.liveText.outboxChanged(next)
+			h.sess.liveText.OutboxChanged(next)
 			v.barrier(h)
 			h.save(saved[4:5])
 			v.expect("unsaved segment superseded", func(liveTextMessage) bool { return len(v.view.live) == 0 })
@@ -613,7 +613,7 @@ func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
 	h := newLiveTextHarnessFor(t, "grok", transcriptListQuery{View: defaultThreadTranscriptView, Limit: 40})
 	h.save(fixtureLines(t, "grok-turns.saved.jsonl")[:1])
 	waitGrokRows(t, h, 1)
-	h.sess.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-http"})
+	h.sess.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-http"})
 	v := openGrokHTTP(t, h)
 	if len(v.view.rows) != 1 || v.view.rows[0].Text != "Neutral prompt 1." {
 		t.Fatalf("saved HTTP rows = %#v", v.view.rows)
@@ -626,7 +626,7 @@ func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
 	if len(v.view.rows) != 1 {
 		t.Fatalf("saved HTTP rows after live text = %#v", v.view.rows)
 	}
-	h.sess.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
+	h.sess.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
 	v.expect("stopped status", func(m liveTextMessage) bool { return m.Status != nil && !m.Status.Runtime.TurnActive })
 	rec := httptest.NewRecorder()
 	h.sess.handleConversationView(rec, httptest.NewRequest(http.MethodGet, "/conversation?view=messages", nil), conversationViewMessages)

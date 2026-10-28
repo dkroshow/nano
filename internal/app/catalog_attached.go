@@ -28,14 +28,15 @@ import (
 type attachedSourceCatalog interface {
 	// bindAttachedSource holds the owner's native files. With background,
 	// their catch-up pass waits behind foreground sources, for a bounded time.
-	bindAttachedSource(owner, provider, nativeID, cwd, known string, background bool)
-	releaseAttachedSource(owner string)
+	BindAttachedSource(owner, provider, nativeID, cwd, known string, background bool)
+	// ReleaseAttachedSource releases the attachment’s catalog file holds.
+	ReleaseAttachedSource(owner string)
 	// awaitAttachedCurrent waits until the owner's saved files are proven
 	// current, and reports false when the owner is released or cancel closes
 	// first. With fresh, proof taken before the call does not count.
 	// neverPrompted, when set, reads the caller's evidence that its Grok
 	// session was never prompted.
-	awaitAttachedCurrent(owner string, fresh bool, neverPrompted func() bool, cancel <-chan struct{}) bool
+	AwaitAttachedCurrent(owner string, fresh bool, neverPrompted func() bool, cancel <-chan struct{}) bool
 }
 
 // attachedOwner is one attachment's hold. An unresolved attachment holds no
@@ -122,10 +123,10 @@ const (
 	attachedRetryMax   = 5 * time.Minute
 )
 
-// bindAttachedSource resolves an attachment's native files and holds them.
+// BindAttachedSource resolves an attachment's native files and holds them.
 // An unresolved identity holds nothing; it is reported as an attachment
 // without held files, never answered with a root walk.
-func (s *threadCatalogService) bindAttachedSource(owner, provider, nativeID, cwd, known string, background bool) {
+func (s *threadCatalogService) BindAttachedSource(owner, provider, nativeID, cwd, known string, background bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	paths, unresolved := s.attachedSourcePaths(ctx, provider, nativeID, cwd, known)
@@ -240,9 +241,9 @@ func (s *threadCatalogService) newCatchUpLocked(paths []string) *attachedCatchUp
 	return catchUp
 }
 
-// releaseAttachedSource ends the owner's hold. Files no other attachment
+// ReleaseAttachedSource ends the owner's hold. Files no other attachment
 // holds stop being watched and lose their transient state.
-func (s *threadCatalogService) releaseAttachedSource(owner string) {
+func (s *threadCatalogService) ReleaseAttachedSource(owner string) {
 	s.attachedMu.Lock()
 	s.releaseOwnerLocked(owner)
 	s.attachedMu.Unlock()
@@ -312,14 +313,14 @@ func (s *threadCatalogService) holdsAttachedSource(path string) bool {
 	return s.held[path] != nil
 }
 
-// awaitAttachedCurrent is a resumed attachment's readiness wait
+// AwaitAttachedCurrent is a resumed attachment's readiness wait
 // (provider_lifecycle.go). Proof is skipped only on positive evidence that the
 // thread was never prompted, so its first prompt, which creates the file, is
 // not held. A provisional identity is such evidence: it holds no file. So is
 // neverPrompted for a Grok session whose watched transcript does not exist:
 // Grok writes updates.jsonl with the first turn. An owner holding no file for
 // any other reason waits, and logs why, until an identity binds one.
-func (s *threadCatalogService) awaitAttachedCurrent(owner string, fresh bool, neverPrompted func() bool, cancel <-chan struct{}) bool {
+func (s *threadCatalogService) AwaitAttachedCurrent(owner string, fresh bool, neverPrompted func() bool, cancel <-chan struct{}) bool {
 	for {
 		s.attachedMu.Lock()
 		current := s.owners[owner]

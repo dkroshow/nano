@@ -47,7 +47,7 @@ func createIdentityHosted(t *testing.T, store *agentExecutionStore, provider, na
 		t.Fatal(err)
 	}
 	if nativeID != "" {
-		if err := store.bindSession(record.ID, "nano-"+record.ID, nativeID, "ready", presentationShared); err != nil {
+		if err := store.BindSession(record.ID, "nano-"+record.ID, nativeID, "ready", presentationShared); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -172,7 +172,7 @@ func TestIdentityResolveSurvivesResumeRebind(t *testing.T) {
 	}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
-	if err := store.bindSession(record.ID, "nano-resume", identityNativeOld, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-resume", identityNativeOld, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,7 +191,7 @@ func TestIdentityResolveFollowsClaudeRespawn(t *testing.T) {
 	}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	record := createIdentityHosted(t, store, "claude", identityNativeOld)
-	if err := store.bindSession(record.ID, "nano-respawn", identityNativeNew, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-respawn", identityNativeNew, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,7 +234,7 @@ func TestIdentityResolveLabelsClaudeProvisionalUntilProviderUUIDArrives(t *testi
 	}
 
 	resolveTestProvisional(t, store.control, record.ID, "claude", "cs_provisional", identityNativeNew)
-	if err := store.bindSession(record.ID, "nano-real", identityNativeNew, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-real", identityNativeNew, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	status, body, raw = resolveIdentity(t, s, record.ID)

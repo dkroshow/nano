@@ -162,7 +162,7 @@ func TestIngestReceiptsCoverRepairAndFastPublication(t *testing.T) {
 	// Attachment readiness waits for that pass, rather than just its receipt.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if !service.awaitAttachedCurrent("owner", true, nil, ctx.Done()) {
+	if !service.AwaitAttachedCurrent("owner", true, nil, ctx.Done()) {
 		t.Fatal("repair did not finish its attachment catch-up")
 	}
 	repair := published()

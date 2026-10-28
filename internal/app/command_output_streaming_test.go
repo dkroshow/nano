@@ -100,7 +100,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 		t.Fatalf("command output bytes=%d marker=%t truncated=%t original=%d", len(output), strings.Contains(output, "live command output truncated"), command.ContentTruncated, command.OriginalBytes)
 	}
 	if final, _, found := liveReaderItemForTest(sess.projection, "agent-1"); !found || final.Text != "EXACT FINAL MESSAGE" || !final.Complete ||
-		sess.projection.finalAgentItemID("stream-turn") != "agent-1" {
+		sess.projection.FinalAgentItemID("stream-turn") != "agent-1" {
 		t.Fatalf("final message mismatch: present=%t text=%q done=%t", found, final.Text, final.Complete)
 	}
 	sess.projection.(*liveProjection).adapterMu.Lock()

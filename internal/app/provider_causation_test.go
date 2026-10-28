@@ -55,7 +55,7 @@ func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*se
 func requested(t *testing.T, sess *session, field, value string) int64 {
 	t.Helper()
 	sess.recordPosture([]postureEntry{{Field: field, Value: value, Source: postureSourceOperator, Evidence: "test"}}, metadataFreshnessLive)
-	view, err := sess.metadata.view(sess.hostedThreadID)
+	view, err := sess.metadata.View(sess.hostedThreadID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func requested(t *testing.T, sess *session, field, value string) int64 {
 
 func fieldStrings(t *testing.T, store *controlMetadataStore, hosted, field string) (metadataCurrentView, string, string) {
 	t.Helper()
-	v, err := store.view(hosted)
+	v, err := store.View(hosted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func fieldStrings(t *testing.T, store *controlMetadataStore, hosted, field strin
 
 func finishCausationTurn(t *testing.T, sess *session, actionID string) {
 	t.Helper()
-	accepted, ok := sess.queuedTurns.get(actionID)
+	accepted, ok := sess.queuedTurns.Get(actionID)
 	if !ok || accepted.ProviderTurnID == "" {
 		t.Fatalf("accepted turn %q has no provider identity: %#v", actionID, accepted)
 	}
@@ -154,7 +154,7 @@ func TestRunCodexHandshakeAcceptsGranularApprovalPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForSessionStatus(t, s, sess.id, "ready")
-	view, err := control.view(sess.hostedThreadID)
+	view, err := control.View(sess.hostedThreadID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,12 +290,12 @@ func TestDuplicateSettingsNotificationAddsNoEventsOrRevisionAndOtherThreadDoesNo
 	d.handleNotification("thread/settings/updated", payload)
 	var events int
 	_ = store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events`).Scan(&events)
-	revision := func() int64 { v, _ := store.view(sess.hostedThreadID); return v.Revision }()
+	revision := func() int64 { v, _ := store.View(sess.hostedThreadID); return v.Revision }()
 	d.handleNotification("thread/settings/updated", payload)
 	d.handleNotification("thread/settings/updated", json.RawMessage(`{"threadId":"other","threadSettings":{"model":"other"}}`))
 	var after int
 	_ = store.db.QueryRow(`SELECT count(*) FROM thread_metadata_events`).Scan(&after)
-	v, _ := store.view(sess.hostedThreadID)
+	v, _ := store.View(sess.hostedThreadID)
 	if after != events || v.Revision != revision {
 		t.Fatalf("duplicate/other notification mutated events %d→%d revision %d→%d", events, after, revision, v.Revision)
 	}
@@ -367,7 +367,7 @@ func TestClaudeReplayLiveBoundaryKeepsCanonicalMetadataReadable(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("model evidence events = %d, want replayed and live occurrences", count)
 	}
-	view, err := store.view(sess.hostedThreadID)
+	view, err := store.View(sess.hostedThreadID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ func TestSettingsDedupeDistinguishesCausalRequestsAndCanonicalizesJSON(t *testin
 // Boundary: canonical metadata receives the provider's Ultrafast setting.
 func TestUltrafastSettingEvidenceSettlesOnlyTheRequestedTier(t *testing.T) {
 	sess, store := causationTestSession(t, "nht_speed_evidence")
-	if _, err := store.appendEvent(metadataEvent{HostedThreadID: sess.hostedThreadID, Field: postureFieldServiceTier, Value: "ultrafast", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: sess.hostedThreadID, Field: postureFieldServiceTier, Value: "ultrafast", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatalf("provider-advertised Ultrafast must be valid canonical intent: %v", err)
 	}
 	sess.beginTurnCausation(map[string]string{postureFieldServiceTier: "ultrafast"})

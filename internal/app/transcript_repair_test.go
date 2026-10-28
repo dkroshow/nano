@@ -25,9 +25,11 @@ type repairCatalog struct {
 	wait  func(cancel <-chan struct{}) bool
 }
 
-func (*repairCatalog) bindAttachedSource(string, string, string, string, string, bool) {}
-func (*repairCatalog) releaseAttachedSource(string)                                    {}
-func (c *repairCatalog) awaitAttachedCurrent(_ string, fresh bool, _ func() bool, cancel <-chan struct{}) bool {
+func (*repairCatalog) BindAttachedSource(string, string, string, string, string, bool) {}
+
+func (*repairCatalog) ReleaseAttachedSource(string) {}
+
+func (c *repairCatalog) AwaitAttachedCurrent(_ string, fresh bool, _ func() bool, cancel <-chan struct{}) bool {
 	c.waits.Add(1)
 	if !fresh {
 		return false

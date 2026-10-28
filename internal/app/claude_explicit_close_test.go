@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	turns "github.com/dkroshow/nano/internal/core/prompts"
 )
 
 func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
@@ -149,7 +150,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := store.bindSession(hosted.ID, "old-nano", "native-1", "ready", presentationShared); err != nil {
+			if err := store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			op, _, err := store.beginTurn(hosted.ID, "queued-action", "hash")
@@ -213,7 +214,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if _, ok := s.attachments.get("claude", "native-1"); !ok {
 				t.Fatal("failed stop erased attachment")
 			}
-			if _, ok := s.queuedTurns.first("claude", "native-1", hosted.ID); !ok {
+			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); !ok {
 				t.Fatal("failed stop removed queued prompt")
 			}
 			reject.Store(false)
@@ -224,7 +225,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if _, ok := s.attachments.get("claude", "native-1"); ok {
 				t.Fatal("successful retry retained attachment")
 			}
-			if _, ok := s.queuedTurns.first("claude", "native-1", hosted.ID); ok {
+			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); ok {
 				t.Fatal("successful retry left queued prompt")
 			}
 		})
@@ -327,7 +328,7 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 	if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest); err != nil {
 		t.Fatal(err)
 	}
-	_ = store.bindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared)
 	op, _, _ := store.beginTurn(hosted.ID, "pending", "hash")
 	attachments := newTestStore(t)
 	attachments.remember(attachmentRecord{Provider: "claude", NativeThreadID: sess.currentThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
@@ -383,7 +384,7 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 			if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.bindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared); err != nil {
+			if err := store.BindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			op, _, err := store.beginTurn(hosted.ID, "pending", "hash")

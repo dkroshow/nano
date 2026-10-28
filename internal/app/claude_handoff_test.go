@@ -46,7 +46,7 @@ func newClaudeHandoff(t *testing.T) *claudeHandoff {
 	h.threadID = h.catalog.threadID(t, handoffNative, 2)
 
 	h.projection = newLiveProjection("claude", "hosted-handoff")
-	h.projection.setNativeThreadID(handoffNative)
+	h.projection.SetNativeThreadID(handoffNative)
 	h.session = &session{id: "session-handoff", threadID: handoffNative, provider: "claude",
 		hostedThreadID: "hosted-handoff", projection: h.projection}
 	server := h.catalog.server
@@ -109,7 +109,7 @@ func (h *claudeHandoff) submit(t *testing.T, action, providerTurn, text string) 
 		}},
 	}
 	h.session.publishTransactionalOutbox(entry)
-	h.projection.setClaudeProviderTurnID(providerTurn)
+	h.projection.SetClaudeProviderTurnID(providerTurn)
 	eventID := submissionEventID("hosted-handoff", action)
 	h.projection.applyWire(protocol.Send, []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":%q}]}}`, eventID, text)), time.Now())
 	return eventID

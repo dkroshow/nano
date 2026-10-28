@@ -295,10 +295,10 @@ func TestThreadPinsSurviveNativeReplacementAndReopen(t *testing.T) {
 	old := f.pin(t, map[string]any{"text": "before replacement", "itemId": "nit_" + pinNativeA + "_t3-2"})
 
 	seedPinTranscript(t, f.store, f.root, pinNativeB, 3, nil)
-	if err := hostedvalues.SkipOwnedNativeClaim(f.executions.control.claimNativeID(f.hosted.ID, "claude", pinNativeB, false)); err != nil {
+	if err := hostedvalues.SkipOwnedNativeClaim(f.executions.control.ClaimNativeID(f.hosted.ID, "claude", pinNativeB, false)); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.executions.updateSession(f.hosted.ID, "nano-"+f.hosted.ID, pinNativeB, "ready", ""); err != nil {
+	if err := f.executions.UpdateSession(f.hosted.ID, "nano-"+f.hosted.ID, pinNativeB, "ready", ""); err != nil {
 		t.Fatal(err)
 	}
 	fresh := f.pin(t, map[string]any{"text": "after replacement"})

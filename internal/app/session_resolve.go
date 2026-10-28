@@ -152,7 +152,7 @@ func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
 	if s.controlMetadata == nil || s.controlMetadataErr != "" {
 		return errHostedControlUnavailable
 	}
-	view, err := s.controlMetadata.view(req.HostedThreadID)
+	view, err := s.controlMetadata.View(req.HostedThreadID)
 	if err != nil {
 		return fmt.Errorf("read canonical metadata for hosted thread %s: %w", req.HostedThreadID, err)
 	}
@@ -266,7 +266,7 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 		// wrote for the resolved native. The native's record is the current
 		// one, with the anchor of any later turn: resume it. spawnSession
 		// retires the handle's record the re-key did not get to forget.
-		native, err := s.controlStore().resolvedNative(context.Background(), req.HostedThreadID, "claude", req.ThreadID)
+		native, err := s.controlStore().ResolvedNative(context.Background(), req.HostedThreadID, "claude", req.ThreadID)
 		if err != nil {
 			return req, err
 		}

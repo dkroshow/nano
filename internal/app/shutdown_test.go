@@ -115,7 +115,7 @@ func TestStoppingNanoQueuesInternalSendsForTheNextProcess(t *testing.T) {
 	}
 
 	projection := newLiveProjection("codex", "hosted-thread")
-	projection.setNativeThreadID("native-thread")
+	projection.SetNativeThreadID("native-thread")
 	next := &session{
 		id: "next-process", provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
 		projection: projection, turns: sess.turns, sendAttempts: sess.sendAttempts, queuedTurns: sess.queuedTurns,

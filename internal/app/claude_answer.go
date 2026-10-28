@@ -172,7 +172,7 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 			}
 		}
 	}
-	op, ok, err := a.ops.persistedTurnForTransportAction(ctx, a.hosted, record.Outbox.ActionID)
+	op, ok, err := a.ops.PersistedTurnForTransportAction(ctx, a.hosted, record.Outbox.ActionID)
 	if err != nil {
 		log.Printf("Claude answer of %s on %s: operation unreadable: %v", record.Outbox.ActionID, a.hosted, err)
 		return
@@ -189,12 +189,12 @@ func (a claudeAnswers) finishOwed(ctx context.Context, store *coreturns.Store, r
 	if (!threadvalues.TurnTerminal(op.Status) || threadvalues.AnswerNotSaved(op)) && record.Outbox.State == prompts.Confirmed && owns {
 		// The answer is already read: it finishes the operation now, with no
 		// saved-result wait whose later commit no pass would revisit.
-		if err := a.ops.finishResolvedTurn(op.ID, record.ProviderTurnID, answer.outcome, executionErr, answer.text, answer.finalID); err != nil {
+		if err := a.ops.FinishResolvedTurn(op.ID, record.ProviderTurnID, answer.outcome, executionErr, answer.text, answer.finalID); err != nil {
 			log.Printf("Claude answer of %s on %s: finish operation %s: %v", record.Outbox.ActionID, a.hosted, op.ID, err)
 			return
 		}
 		// The committed row, not the cache, says what the operation holds.
-		if op, ok, err = a.ops.persistedTurnForTransportAction(ctx, a.hosted, record.Outbox.ActionID); err != nil || !ok {
+		if op, ok, err = a.ops.PersistedTurnForTransportAction(ctx, a.hosted, record.Outbox.ActionID); err != nil || !ok {
 			return
 		}
 	}
@@ -277,7 +277,7 @@ func (s *server) claudeOwedPass(hosted string) {
 		return
 	}
 	resolve := func(handle string) string {
-		native, err := s.controlMetadata.resolvedNative(ctx, hosted, string(model.ProviderClaude), handle)
+		native, err := s.controlMetadata.ResolvedNative(ctx, hosted, string(model.ProviderClaude), handle)
 		if err != nil {
 			return ""
 		}

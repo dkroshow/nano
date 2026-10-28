@@ -187,7 +187,7 @@ func TestAgentSessionViewMarksProvisionalNativeID(t *testing.T) {
 	}
 	s := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: store}
 
-	if err := store.bindSession(hosted.ID, "nano-1", "cs_eec9373f24115d539dd1c06786b96b36", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(hosted.ID, "nano-1", "cs_eec9373f24115d539dd1c06786b96b36", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	if view := s.agentSessionView(hosted.ID); !view.NativeThreadIDProvisional {
@@ -195,7 +195,7 @@ func TestAgentSessionViewMarksProvisionalNativeID(t *testing.T) {
 	}
 
 	resolveTestProvisional(t, store.control, hosted.ID, "claude", "cs_eec9373f24115d539dd1c06786b96b36", "2dd36191-9386-542b-a1ef-bed95e638620")
-	if err := store.bindSession(hosted.ID, "nano-1", "2dd36191-9386-542b-a1ef-bed95e638620", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(hosted.ID, "nano-1", "2dd36191-9386-542b-a1ef-bed95e638620", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	if view := s.agentSessionView(hosted.ID); view.NativeThreadIDProvisional {

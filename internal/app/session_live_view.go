@@ -16,7 +16,7 @@ import (
 
 // handleLiveStream is a file-only pane's one stream.
 func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
-	pane, err := sess.liveText.requestPane(r)
+	pane, err := sess.liveText.RequestPane(r)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -31,10 +31,10 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 	// whenever a later update changes it; the loop's messages carry rows and
 	// live text only. The projection closes a subscription that falls behind,
 	// and the stream ends so the browser reconnects to a fresh status.
-	updates, cancel := sess.projection.subscribe()
+	updates, cancel := sess.projection.Subscribe()
 	defer cancel()
-	pane.start()
-	defer pane.stop()
+	pane.Start()
+	defer pane.Stop()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -42,7 +42,7 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 		_, err := fmt.Fprintf(w, "data: %s\n\n", raw)
 		return err == nil
 	}
-	status := sess.projection.status()
+	status := sess.projection.Status()
 	writeStatus := func() bool {
 		raw, err := json.Marshal(struct {
 			Type   string          `json:"type"`
@@ -60,15 +60,15 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-pane.doneChannel():
+		case <-pane.DoneChannel():
 			// A failed read leaves its error message to deliver.
-			for _, raw := range pane.take() {
+			for _, raw := range pane.Take() {
 				write(raw)
 			}
 			flusher.Flush()
 			return
-		case <-pane.readyChannel():
-			for _, raw := range pane.take() {
+		case <-pane.ReadyChannel():
+			for _, raw := range pane.Take() {
 				if !write(raw) {
 					return
 				}
@@ -101,7 +101,7 @@ func (sess *session) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 // fileConversationItems reads a file-only thread's saved rows for agents, in
 // the conversation item shape. Live text never appears here.
 func (sess *session) fileConversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
-	return sess.liveText.conversationItems(ctx, view, before, limit)
+	return sess.liveText.ConversationItems(ctx, view, before, limit)
 }
 
 // fileConversationSnapshot is the agent snapshot of a file-only thread: saved
@@ -113,7 +113,7 @@ func (sess *session) fileConversationSnapshot(ctx context.Context, view conversa
 	if err != nil {
 		return liveProjectionSnapshot{}, err
 	}
-	status := sess.projection.status()
+	status := sess.projection.Status()
 	return liveProjectionSnapshot{Version: liveProjectionVersion, Provider: sess.provider, NativeThreadID: sess.currentThreadID(),
 		Epoch: status.Epoch, Revision: status.Revision, Items: items, Turns: []liveProjectionTurn{},
 		Runtime: status.Runtime, Interactions: status.Interactions, Page: page}, nil
@@ -130,16 +130,16 @@ func (sess *session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		httpapi.WriteHTTPError(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	updates, cancel := sess.projection.subscribe()
+	updates, cancel := sess.projection.Subscribe()
 	defer cancel()
 	snapshot, err := sess.fileConversationSnapshot(r.Context(), view, "", transcriptFirstPaintRows)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	pane := sess.liveText.rowsPane(view)
-	pane.start()
-	defer pane.stop()
+	pane := sess.liveText.RowsPane(view)
+	pane.Start()
+	defer pane.Stop()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	write := func(value any) bool {
@@ -160,11 +160,11 @@ func (sess *session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		select {
 		case <-r.Context().Done():
 			return
-		case <-pane.doneChannel():
+		case <-pane.DoneChannel():
 			return
-		case <-pane.readyChannel():
+		case <-pane.ReadyChannel():
 			changed := false
-			for _, raw := range pane.take() {
+			for _, raw := range pane.Take() {
 				var message struct {
 					Type string `json:"type"`
 				}

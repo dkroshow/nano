@@ -32,7 +32,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := executions.bindSession(record.ID, "session", "native-hosted", "ready", presentationShared); err != nil {
+			if err := executions.BindSession(record.ID, "session", "native-hosted", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			sess := memorySession("session", "codex", "native-hosted", "ready", "/work", "model", now)
@@ -111,7 +111,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.bindSession(record.ID, "", "native-hosted", sessionStatusExited, presentationShared); err != nil {
+		if err := executions.BindSession(record.ID, "", "native-hosted", sessionStatusExited, presentationShared); err != nil {
 			t.Fatal(err)
 		}
 		fake := &fakeFleetCatalog{

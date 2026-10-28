@@ -48,6 +48,7 @@ type grokSessionCallError struct {
 }
 
 func (e *grokSessionCallError) Error() string { return e.method + ": " + e.err.Error() }
+
 func (e *grokSessionCallError) Unwrap() error { return e.err }
 
 // grokSession is the connection-bound ACP proxy. The Grok leader, not this
@@ -512,7 +513,7 @@ func (sess *session) grokNeverPrompted(ctx context.Context) bool {
 		}
 	}
 	for after := int64(0); ; {
-		page, err := sess.metadata.eventsAfter(sess.hostedThreadID, after, 200, metadataEventFilter{Source: postureSourceProvider})
+		page, err := sess.metadata.EventsAfter(sess.hostedThreadID, after, 200, metadataEventFilter{Source: postureSourceProvider})
 		if err != nil || len(page.Events) == 0 {
 			return false
 		}
@@ -683,7 +684,7 @@ func (sess *session) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {
 	// excludes Grok replay from present-tense lifecycle evidence.
 	sess.setTurnActive(false, "", 0, false)
 	if sess.agentExecutions != nil && sess.hostedThreadID != "" {
-		err := sess.agentExecutions.markSessionTurns(sess.hostedThreadID, agentTurnInterrupted, &agentExecutionError{
+		err := sess.agentExecutions.MarkSessionTurns(sess.hostedThreadID, agentTurnInterrupted, &agentExecutionError{
 			Source: "transport", Code: "grok_prompt_missing_after_reload",
 			Message: "Grok no longer has the prompt that was unfinished in session replay",
 		})

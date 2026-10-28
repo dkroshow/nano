@@ -53,7 +53,7 @@ const (
 // startLiveText builds the file-only loop for every session constructor.
 func (s *server) startLiveText(sess *session) {
 	sess.liveText = newLiveTextLoop(s, sess)
-	sess.projection.setLiveText(sess.liveText)
+	sess.projection.SetLiveText(sess.liveText)
 }
 
 // liveTextEntry is one piece of live text as panes see it.
@@ -171,10 +171,10 @@ func newLiveTextLoop(srv *server, sess *session) *liveTextLoop {
 	return &liveTextLoop{srv: srv, sess: sess, wake: make(chan struct{}, 1)}
 }
 
-// observeBatch takes the live adapter's parsed changes for one frame. Only
+// ObserveBatch takes the live adapter's parsed changes for one frame. Only
 // top-level assistant text with an exact native id becomes live text; a
 // provisional block index never matches a saved row.
-func (l *liveTextLoop) observeBatch(batch model.Batch, turn string) {
+func (l *liveTextLoop) ObserveBatch(batch model.Batch, turn string) {
 	if l == nil {
 		return
 	}
@@ -225,17 +225,18 @@ func (l *liveTextLoop) observeBatch(batch model.Batch, turn string) {
 	})
 }
 
-func (l *liveTextLoop) turnEnded(turn string) {
+// TurnEnded observes completion of a provider turn.
+func (l *liveTextLoop) TurnEnded(turn string) {
 	if l == nil || turn == "" {
 		return
 	}
 	l.post(func(in *liveTextInbox) { in.events = append(in.events, liveTextEvent{turnEnded: turn}) })
 }
 
-// outboxChanged posts outbox changes together, so a pane sees them in one
+// OutboxChanged posts outbox changes together, so a pane sees them in one
 // change: a resent prompt replaces the one it retires with no moment showing
 // neither.
-func (l *liveTextLoop) outboxChanged(entries ...prompts.OutboxEntry) {
+func (l *liveTextLoop) OutboxChanged(entries ...prompts.OutboxEntry) {
 	if l == nil || len(entries) == 0 {
 		return
 	}
@@ -246,7 +247,8 @@ func (l *liveTextLoop) outboxChanged(entries ...prompts.OutboxEntry) {
 	})
 }
 
-func (l *liveTextLoop) applied() {
+// Applied notifies the view that saved transcript evidence changed.
+func (l *liveTextLoop) Applied() {
 	if l == nil {
 		return
 	}
@@ -315,10 +317,10 @@ func inboxEmpty(in liveTextInbox) bool {
 	return len(in.events) == 0 && !in.applied && len(in.subscribe) == 0 && len(in.unsubscribe) == 0 && !in.warm && len(in.texts) == 0
 }
 
-// currentTexts is the text of the prompts and replies this thread shows as
+// CurrentTexts is the text of the prompts and replies this thread shows as
 // live text now, for links in text the file has not saved. A stopped loop
 // holds none.
-func (l *liveTextLoop) currentTexts(ctx context.Context) []string {
+func (l *liveTextLoop) CurrentTexts(ctx context.Context) []string {
 	answer := make(chan []string, 1)
 	l.mu.Lock()
 	if !l.running {
@@ -343,7 +345,7 @@ func (l *liveTextLoop) sessionWorking() bool {
 	if l.sess == nil || l.sess.projection == nil {
 		return false
 	}
-	return l.sess.projection.turnActive()
+	return l.sess.projection.TurnActive()
 }
 
 func (l *liveTextLoop) reset() {
@@ -463,7 +465,7 @@ func (l *liveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 		}
 		current = &liveTextEntry{ID: id, Kind: "prompt", ActionID: entry.ActionID, key: l.promptKey(entry), rank: rank}
 		if l.sess != nil && l.sess.agentExecutions != nil {
-			turn, found, err := l.sess.agentExecutions.persistedTurnForTransportAction(context.Background(), l.hostedID(), entry.ActionID)
+			turn, found, err := l.sess.agentExecutions.PersistedTurnForTransportAction(context.Background(), l.hostedID(), entry.ActionID)
 			if err != nil {
 				log.Printf("live text submission metadata %s: %v", l.hostedID(), err)
 			} else if found && turn.Origin == turnOriginAgent && turn.SenderSubmittedAt != "" {

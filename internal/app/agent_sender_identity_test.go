@@ -130,7 +130,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					if _, exists := store.turnForAction(worker.ID, "identity-check"); exists {
 						t.Fatal("refused sender created a turn")
 					}
-					if workerSession.queuedTurns.queuedCount(worker.Provider, worker.NativeThreadID, worker.ID) != 0 || len(prompts) != 0 {
+					if workerSession.queuedTurns.QueuedCount(worker.Provider, worker.NativeThreadID, worker.ID) != 0 || len(prompts) != 0 {
 						t.Fatal("refused sender queued or delivered a turn")
 					}
 					var messages int

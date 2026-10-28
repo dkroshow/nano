@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"strings"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/hosted"
 )
 
 // posture_view.go — the one posture struct every surface serves (coordination
@@ -35,7 +35,7 @@ func (sess *session) posture() sessionPosture {
 	if sess.metadata == nil {
 		return sessionPosture{}
 	}
-	return sess.metadata.posture(sess.hostedThreadID)
+	return sess.metadata.Posture(sess.hostedThreadID)
 }
 
 // markMetadataDegraded reports that a newer observation did not enter the
@@ -64,7 +64,7 @@ func (sess *session) recordPosture(entries []postureEntry, freshness string) {
 		if entry.Source == postureSourceProvider {
 			disposition = metadataDispositionConfirmed
 		}
-		appended, err := sess.metadata.appendEvent(metadataEvent{
+		appended, err := sess.metadata.AppendEvent(metadataEvent{
 			HostedThreadID: sess.hostedThreadID, Field: entry.Field, Value: entry.Value,
 			Disposition: disposition, Source: entry.Source, Evidence: entry.Evidence,
 			NativeThreadID: sess.currentThreadID(), NanoSessionID: sess.id,
@@ -104,7 +104,7 @@ func (sess *session) snapshotProviderCausation(values map[string]string) provide
 	if sess.metadata == nil || len(values) == 0 {
 		return nil
 	}
-	view, err := sess.metadata.view(sess.hostedThreadID)
+	view, err := sess.metadata.View(sess.hostedThreadID)
 	if err != nil {
 		return nil
 	}
@@ -216,7 +216,7 @@ func (sess *session) recordProviderEvidence(seam string, values map[string]strin
 				id := cause.EventID
 				causeID = &id
 			}
-			appended, err := sess.metadata.appendEvent(metadataEvent{
+			appended, err := sess.metadata.AppendEvent(metadataEvent{
 				HostedThreadID: sess.hostedThreadID, Field: field, Value: value,
 				Disposition: disposition, Source: postureSourceProvider, Evidence: seam,
 				NativeThreadID: nativeID, NanoSessionID: sess.id,
@@ -261,7 +261,7 @@ func (sess *session) recordProviderRejection(seam string, snapshot providerCausa
 	committed, failed := false, false
 	for field, causal := range snapshot {
 		id := causal.EventID
-		appended, err := sess.metadata.appendEvent(metadataEvent{
+		appended, err := sess.metadata.AppendEvent(metadataEvent{
 			HostedThreadID: sess.hostedThreadID, Field: field, Value: causal.Value,
 			Disposition: metadataDispositionRejected, Source: postureSourceProvider,
 			Evidence: seam, NativeThreadID: nativeID, NanoSessionID: sess.id,

@@ -27,7 +27,7 @@ type recordingSources struct {
 	onBind   func()
 }
 
-func (r *recordingSources) bindAttachedSource(owner, provider, nativeID, cwd, known string, background bool) {
+func (r *recordingSources) BindAttachedSource(owner, provider, nativeID, cwd, known string, background bool) {
 	bind := provider + "/" + nativeID + "@" + cwd + "|" + known
 	if background {
 		bind += "|background"
@@ -38,9 +38,9 @@ func (r *recordingSources) bindAttachedSource(owner, provider, nativeID, cwd, kn
 	}
 }
 
-func (r *recordingSources) releaseAttachedSource(string) { r.releases++ }
+func (r *recordingSources) ReleaseAttachedSource(string) { r.releases++ }
 
-func (r *recordingSources) awaitAttachedCurrent(string, bool, func() bool, <-chan struct{}) bool {
+func (r *recordingSources) AwaitAttachedCurrent(string, bool, func() bool, <-chan struct{}) bool {
 	return true
 }
 

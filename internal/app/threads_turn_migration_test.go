@@ -5,14 +5,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	state "github.com/dkroshow/nano/internal/app/statestore"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
-	"github.com/dkroshow/nano/internal/edge/statewiring"
-	statedb "github.com/dkroshow/nano/internal/state/db"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	state "github.com/dkroshow/nano/internal/app/statestore"
+	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/edge/statewiring"
+	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
 func turnMigrationFixture(t *testing.T) (*controlMetadataStore, turns.LegacyTurnPaths, []turns.QueuedTurn, []turns.SendAttempt) {
@@ -28,16 +29,16 @@ func turnMigrationFixture(t *testing.T) (*controlMetadataStore, turns.LegacyTurn
 			t.Fatal(err)
 		}
 	}
-	if err := control.claimNativeID("retired", "claude", "native", false); err != nil {
+	if err := control.ClaimNativeID("retired", "claude", "native", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at='before' WHERE hosted_thread_id='retired'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.claimNativeID("current", "claude", "native", false); err != nil {
+	if err := control.ClaimNativeID("current", "claude", "native", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.claimNativeID("provisional", "claude", "cs_provisional", true); err != nil {
+	if err := control.ClaimNativeID("provisional", "claude", "cs_provisional", true); err != nil {
 		t.Fatal(err)
 	}
 	paths := turns.LegacyTurnPaths{Queue: filepath.Join(dir, "queued-turns.json"), Attempts: filepath.Join(dir, "send-attempts.json"), Completed: filepath.Join(dir, "turn-completed.sqlite")}
@@ -276,7 +277,7 @@ func TestThreadsStorePublicationKeepsOriginalUntilAllRecordsReconcile(t *testing
 		t.Fatal(err)
 	}
 	defer view.Close()
-	if got, err := view.view("current"); err != nil || got.NativeThreadID != "native" {
+	if got, err := view.View("current"); err != nil || got.NativeThreadID != "native" {
 		t.Fatalf("migrated identity unavailable: %+v %v", got, err)
 	}
 }

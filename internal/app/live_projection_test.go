@@ -27,11 +27,11 @@ type liveFixtureLine struct {
 // pending questions, as one snapshot without rows.
 func projectionStateForTest(view sessionProjection) liveProjectionSnapshot {
 	p := view.(*liveProjection)
-	status := p.status()
+	status := p.Status()
 	p.mu.Lock()
 	native := p.nativeThread
 	p.mu.Unlock()
-	return liveProjectionSnapshot{NativeThreadID: native, Turns: p.turnList(), Runtime: status.Runtime, Interactions: status.Interactions}
+	return liveProjectionSnapshot{NativeThreadID: native, Turns: p.TurnList(), Runtime: status.Runtime, Interactions: status.Interactions}
 }
 
 func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
@@ -238,7 +238,7 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 			sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
 		}, true},
 		{"replayed old output during the read", nil, func(sess *session) {
-			sess.projection.(*liveProjection).applyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
+			sess.projection.(*liveProjection).ApplyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
 		}, false},
 		{"nothing since the saved completion", nil, nil, false},
 	} {
@@ -278,8 +278,8 @@ func TestCompletedTurnNamesItsFinalAnswerNotItsCommentary(t *testing.T) {
 	} {
 		p.applyWire(protocol.Recv, []byte(line), at)
 	}
-	p.updateCompletedTurn("turn-1", "completed", 1500, at.UnixMilli())
-	if turns := p.turnList(); len(turns) != 1 || turns[0].DurationMS != 1500 || turns[0].FinalItemID != "final-1" {
+	p.UpdateCompletedTurn("turn-1", "completed", 1500, at.UnixMilli())
+	if turns := p.TurnList(); len(turns) != 1 || turns[0].DurationMS != 1500 || turns[0].FinalItemID != "final-1" {
 		t.Fatalf("completed turns = %#v, want final-1", turns)
 	}
 }
@@ -294,11 +294,11 @@ func TestCodexProjectionSelectsFinalAnswerWithinTerminalTurn(t *testing.T) {
 	} {
 		p.applyWire(protocol.Recv, []byte(line), at)
 	}
-	p.updateCompletedTurn("turn-1", "completed", 10, at.UnixMilli())
+	p.UpdateCompletedTurn("turn-1", "completed", 10, at.UnixMilli())
 	p.applyWire(protocol.Recv, []byte(`{"method":"item/completed","params":{"turnId":"turn-2","item":{"id":"failed-partial","type":"agentMessage","text":"partial"}}}`), at)
-	p.updateCompletedTurn("turn-2", "failed", 5, at.UnixMilli(), json.RawMessage(`{"message":"boom"}`))
+	p.UpdateCompletedTurn("turn-2", "failed", 5, at.UnixMilli(), json.RawMessage(`{"message":"boom"}`))
 
-	turns := p.turnList()
+	turns := p.TurnList()
 	if len(turns) != 2 {
 		t.Fatalf("turns = %#v", turns)
 	}
@@ -340,7 +340,7 @@ func TestCodexResumeSeedsFiveCompleteTurnsAndActiveTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedCodexResume(p, decodedCodexResume(response))
-	turnsAfter := p.turnList()
+	turnsAfter := p.TurnList()
 
 	if got, want := len(turnsAfter), 6; got != want {
 		t.Fatalf("turns = %d, want %d: %#v", got, want, turnsAfter)
@@ -360,9 +360,9 @@ func TestLiveProjectionPrunesOnlyWholeCompletedTurns(t *testing.T) {
 		turnID := fmt.Sprintf("turn-%d", ordinal)
 		line := fmt.Sprintf(`{"method":"item/completed","params":{"turnId":%q,"item":{"id":%q,"type":"agentMessage","text":"done"}}}`, turnID, "msg-"+turnID)
 		p.applyWire(protocol.Recv, []byte(line), at)
-		p.updateCompletedTurn(turnID, "completed", 1, at.UnixMilli())
+		p.UpdateCompletedTurn(turnID, "completed", 1, at.UnixMilli())
 	}
-	turns := p.turnList()
+	turns := p.TurnList()
 	if got, want := len(turns), 5; got != want {
 		t.Fatalf("turns = %d, want %d", got, want)
 	}
@@ -375,35 +375,35 @@ func TestClaudeProjectionUsesShimTurnIDs(t *testing.T) {
 	p := newLiveProjection("claude")
 	at := time.Now()
 	for ordinal := 1; ordinal <= 2; ordinal++ {
-		p.setClaudeProviderTurnID(fmt.Sprintf("shim-turn-%d", ordinal))
+		p.SetClaudeProviderTurnID(fmt.Sprintf("shim-turn-%d", ordinal))
 		prompt := fmt.Sprintf(`{"type":"user","message":{"role":"user","content":"prompt %d"}}`, ordinal)
 		p.applyWire(protocol.Send, []byte(prompt), at)
 		p.applyWire(protocol.Recv, []byte(`{"type":"result","subtype":"success"}`), at.Add(time.Second))
 	}
-	turns := p.turnList()
+	turns := p.TurnList()
 	if len(turns) != 2 || turns[0].ID != "shim-turn-1" || turns[1].ID != "shim-turn-2" {
 		t.Fatalf("turns = %#v", turns)
 	}
 }
 
 func applyClaudeFinalMessageForTest(p *liveProjection, at time.Time, live, replay bool) {
-	p.applyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"message_start","message":{"id":"final-1"}}}`), at, live, replay)
-	p.applyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text"}}}`), at, live, replay)
-	p.applyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"text":"done"}}}`), at, live, replay)
-	p.applyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`), at, live, replay)
+	p.ApplyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"message_start","message":{"id":"final-1"}}}`), at, live, replay)
+	p.ApplyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text"}}}`), at, live, replay)
+	p.ApplyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"text":"done"}}}`), at, live, replay)
+	p.ApplyWireLive(protocol.Recv, []byte(`{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`), at, live, replay)
 }
 
 func TestClaudeLiveProjectionKeepsCompletedTurnIdentity(t *testing.T) {
 	p := newLiveProjection("claude")
 	at := time.Date(2026, time.August, 27, 5, 44, 0, 0, time.UTC)
-	p.setClaudeProviderTurnID("shim-turn-1")
+	p.SetClaudeProviderTurnID("shim-turn-1")
 
-	p.applyWireLive(protocol.Send, []byte(`{"type":"user","message":{"role":"user","content":"inspect"}}`), at.Add(-time.Second), true, false)
+	p.ApplyWireLive(protocol.Send, []byte(`{"type":"user","message":{"role":"user","content":"inspect"}}`), at.Add(-time.Second), true, false)
 	applyClaudeFinalMessageForTest(p, at.Add(-time.Millisecond), true, false)
 	result := []byte(`{"type":"result","subtype":"success"}`)
-	p.setClaudeResultTurnID("shim-turn-1") // the turn the session loop finds the result names
-	p.applyWireLive(protocol.Recv, result, at, true, false)
-	p.applyWireLive(protocol.Recv, result, at.Add(time.Second), true, false)
+	p.SetClaudeResultTurnID("shim-turn-1") // the turn the session loop finds the result names
+	p.ApplyWireLive(protocol.Recv, result, at, true, false)
+	p.ApplyWireLive(protocol.Recv, result, at.Add(time.Second), true, false)
 
 	turns := projectionStateForTest(p).Turns
 	if len(turns) != 1 || turns[0].ID != "shim-turn-1" || turns[0].FinalItemID == "" {
@@ -414,13 +414,13 @@ func TestClaudeLiveProjectionKeepsCompletedTurnIdentity(t *testing.T) {
 func TestClaudeProjectionUsesResultErrorAndAbortEvidence(t *testing.T) {
 	p := newLiveProjection("claude")
 	at := time.Now()
-	p.setClaudeProviderTurnID("shim-turn-1")
+	p.SetClaudeProviderTurnID("shim-turn-1")
 	p.applyWire(protocol.Send, []byte(`{"type":"user","message":{"role":"user","content":"first"}}`), at)
-	p.setClaudeResultTurnID("shim-turn-1")
+	p.SetClaudeResultTurnID("shim-turn-1")
 	p.applyWire(protocol.Recv, []byte(`{"type":"result","is_error":true,"subtype":"error_during_execution","result":"failed","terminal_reason":"error"}`), at.Add(time.Second))
-	p.setClaudeProviderTurnID("shim-turn-2")
+	p.SetClaudeProviderTurnID("shim-turn-2")
 	p.applyWire(protocol.Send, []byte(`{"type":"user","message":{"role":"user","content":"second"}}`), at.Add(2*time.Second))
-	p.setClaudeResultTurnID("shim-turn-2")
+	p.SetClaudeResultTurnID("shim-turn-2")
 	p.applyWire(protocol.Recv, []byte(`{"type":"result","is_error":true,"terminal_reason":"aborted_streaming"}`), at.Add(3*time.Second))
 
 	turns := projectionStateForTest(p).Turns
@@ -445,7 +445,7 @@ func TestCompletedProviderUserMessageDoesNotSettleThePrompt(t *testing.T) {
 	turnStore := mustBindTransactionalTurnStore(t, queue, store)
 	seedAcceptedTransactionalTurn(t, turnStore, "hosted-thread", model.ProviderCodex, "native-thread", "action-wire-confirm", "turn-1", "ship it now")
 	projection := newLiveProjection("codex", "hosted-thread")
-	projection.setNativeThreadID("native-thread")
+	projection.SetNativeThreadID("native-thread")
 	sess := &session{id: "session-wire-confirm",
 		provider:       "codex",
 		hostedThreadID: "hosted-thread",
@@ -461,22 +461,22 @@ func TestCompletedProviderUserMessageDoesNotSettleThePrompt(t *testing.T) {
 	agent := []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"agent-1","type":"agentMessage","text":"Working"}}}`)
 
 	sess.recordWire(protocol.Recv, started)
-	if record, _ := store.get("action-wire-confirm"); record.Confirmed {
+	if record, _ := store.Get("action-wire-confirm"); record.Confirmed {
 		t.Fatalf("item/started confirmed the send before the provider completed its user item: %#v", record)
 	}
 	sess.recordWire(protocol.Recv, completed)
-	if record, ok := store.get("action-wire-confirm"); !ok || record.Confirmed || record.Status != sendAttemptAccepted {
+	if record, ok := store.Get("action-wire-confirm"); !ok || record.Confirmed || record.Status != sendAttemptAccepted {
 		t.Fatalf("completed provider user item settled accepted prompt: %#v, found=%v", record, ok)
 	}
 	sess.recordWire(protocol.Recv, agent)
-	if record, ok := store.get("action-wire-confirm"); !ok || record.Confirmed {
+	if record, ok := store.Get("action-wire-confirm"); !ok || record.Confirmed {
 		t.Fatalf("agent activity settled the accepted prompt: %#v, found=%v", record, ok)
 	}
 }
 
 func TestClaudeFable51CompletedTurnKeepsStandaloneNextIdentity(t *testing.T) {
 	p := newLiveProjection("claude")
-	p.setClaudeProviderTurnID("claude:shim-fable:1")
+	p.SetClaudeProviderTurnID("claude:shim-fable:1")
 	p.applyWire(protocol.Send, []byte(`{"type":"user","uuid":"user-1","message":{"role":"user","content":[{"type":"text","text":"Inspect"}]}}`), time.Now())
 	for _, line := range []string{
 		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_body"}}}`,
@@ -490,11 +490,11 @@ func TestClaudeFable51CompletedTurnKeepsStandaloneNextIdentity(t *testing.T) {
 		`{"type":"result","subtype":"success","is_error":false}`,
 	} {
 		if strings.Contains(line, `"type":"result"`) {
-			p.setClaudeResultTurnID("claude:shim-fable:1")
+			p.SetClaudeResultTurnID("claude:shim-fable:1")
 		}
 		p.applyWire(protocol.Recv, []byte(line), time.Now())
 	}
-	turns := p.turnList()
+	turns := p.TurnList()
 	if len(turns) != 1 || turns[0].ID != "claude:shim-fable:1" || turns[0].FinalItemID != "msg_next:0" {
 		t.Fatalf("completed split Fable turn = %#v", turns)
 	}
@@ -505,7 +505,7 @@ func TestClaudeFable51CompletedTurnKeepsStandaloneNextIdentity(t *testing.T) {
 // projection's subscription, flooded past its queue.
 func TestLiveProjectionClosesALaggingSubscriber(t *testing.T) {
 	p := newLiveProjection("codex")
-	ch, cancel := p.subscribe()
+	ch, cancel := p.Subscribe()
 	defer cancel()
 	p.mu.Lock()
 	for i := 0; i < cap(ch)+10; i++ {
@@ -583,7 +583,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "session-99", "native-99", "ready", presentationBackground); err != nil {
+	if err := executions.BindSession(hosted.ID, "session-99", "native-99", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 
@@ -607,7 +607,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 		// turn. The prompt target has none until its own prompt starts one.
 		if id != "session-99" {
 			sess.turnID = "open-turn"
-			sess.projection.updateRuntime(liveProjectionRuntime{TurnActive: true, TurnID: "open-turn"})
+			sess.projection.UpdateRuntime(liveProjectionRuntime{TurnActive: true, TurnID: "open-turn"})
 		}
 		sess.savedTurn = func(context.Context, string) (durableTurnEvidence, bool) {
 			durableCalls.Add(1)
@@ -779,7 +779,7 @@ func (c *savedHistoryCatalog) ResolveThreadReference(_ context.Context, referenc
 func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	nativeThreadID := "native-thread"
 	p := newLiveProjection("codex", "hosted-thread")
-	p.setNativeThreadID(nativeThreadID)
+	p.SetNativeThreadID(nativeThreadID)
 	fake := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: transcriptResponse{
 		ThreadID: "nth-owner",
 		Items:    []transcriptItem{{ID: "durable-0", OwnerItemID: "retained-0", ProjectedSeq: 1, TurnID: "turn-0"}},

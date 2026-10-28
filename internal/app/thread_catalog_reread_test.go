@@ -518,7 +518,7 @@ func TestTranscriptRereadDeferredCatchUpIsNotReady(t *testing.T) {
 	s := f.service
 	growSyntheticReread(t, f, f.path)
 	s.holdAttachedSource("deferred-attachment", []string{f.path})
-	defer s.releaseAttachedSource("deferred-attachment")
+	defer s.ReleaseAttachedSource("deferred-attachment")
 	catchUp := s.attachedCatchUpFor("deferred-attachment")
 	s.queueMu.Lock()
 	batch := s.takeDirtyLocked(2)

@@ -32,8 +32,8 @@ func TestInteractSystemPromptQueuesIdempotentlyWithNotice(t *testing.T) {
 	if !ok {
 		t.Fatal("submitted operation missing")
 	}
-	queued, ok := s.queuedTurns.get(record.TransportActionID)
-	if !ok || queued.Text != "wake\n\n[from nano]\n\n unread line exactly " || s.queuedTurns.queuedCount("codex", "native-target", target) != 1 {
+	queued, ok := s.queuedTurns.Get(record.TransportActionID)
+	if !ok || queued.Text != "wake\n\n[from nano]\n\n unread line exactly " || s.queuedTurns.QueuedCount("codex", "native-target", target) != 1 {
 		t.Fatalf("queued prompt = %#v", queued)
 	}
 }
@@ -119,7 +119,7 @@ func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *tes
 func TestInteractLifecycleReportsCoordinatorFacts(t *testing.T) {
 	s, target := interactTestServer(t, true)
 	sess := s.sessionForHostedThread(target)
-	sess.projection.recordDiagnostic(threadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
+	sess.projection.RecordDiagnostic(threadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
 	state, err := interactTestClient(t, s).ReadLifecycle(context.Background(), target)
 	if err != nil || !state.Attached || !state.Ready || !state.Working || !state.TurnActive || state.Availability != availabilityBusy || state.AttachmentState != "live" {
 		t.Fatalf("lifecycle state = %#v, %v", state, err)
@@ -153,7 +153,7 @@ func interactTestServer(t *testing.T, working bool) (*server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(record.ID, "nano-target", "native-target", "ready", presentationBackground); err != nil {
+	if err := executions.BindSession(record.ID, "nano-target", "native-target", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	notices := interact.NewNotices()

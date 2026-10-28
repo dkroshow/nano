@@ -178,7 +178,7 @@ func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID str
 	if _, err := s.agentExecutions.ensureSessionWithIdentity(hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.controlMetadata.claimNativeID(hostedID, provider, nativeID, nativeThreadIDProvisional(provider, nativeID)); err != nil {
+	if err := s.controlMetadata.ClaimNativeID(hostedID, provider, nativeID, nativeThreadIDProvisional(provider, nativeID)); err != nil {
 		t.Fatal(err)
 	}
 	generation, err := s.controlMetadata.beginTransportBinding(hostedID)
@@ -204,7 +204,7 @@ func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID str
 			continue
 		}
 		key := fmt.Sprintf("fixture:%s:%d:%s:%s", hostedID, generation, field.field, field.value)
-		if _, err := s.controlMetadata.appendEvent(metadataEvent{HostedThreadID: hostedID, Field: field.field, Value: field.value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
+		if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: field.field, Value: field.value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -279,7 +279,7 @@ func seedHistoricalHostedClaudeWithoutAttachment(t *testing.T, s *server) string
 	if _, err := s.agentExecutions.ensureSessionWithIdentity(hostedID, "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.agentExecutions.bindSession(hostedID, "old-nano", claudeResumeThreadID, sessionStatusExited, presentationShared); err != nil {
+	if err := s.agentExecutions.BindSession(hostedID, "old-nano", claudeResumeThreadID, sessionStatusExited, presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	for _, event := range []metadataEvent{
@@ -288,7 +288,7 @@ func seedHistoricalHostedClaudeWithoutAttachment(t *testing.T, s *server) string
 		{HostedThreadID: hostedID, Field: postureFieldEffort, Value: "high", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-no-attachment:effort"},
 		{HostedThreadID: hostedID, Field: postureFieldPermissionMode, Value: "bypassPermissions", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-no-attachment:permission"},
 	} {
-		if _, err := s.controlMetadata.appendEvent(event); err != nil {
+		if _, err := s.controlMetadata.AppendEvent(event); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -784,7 +784,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				}
 			}
 			if tc.committed {
-				if err := control.claimNativeIDResolving(hostedID, "claude", "native-real", false, &nativeResolution{Handle: handle, Native: "native-real"}); err != nil {
+				if err := control.ClaimNativeIDResolving(hostedID, "claude", "native-real", false, &nativeResolution{Handle: handle, Native: "native-real"}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -801,7 +801,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				store.remember(kept)
 			}
 			if tc.succeeded {
-				if err := control.claimNativeID(hostedID, "claude", "native-2", false); err != nil {
+				if err := control.ClaimNativeID(hostedID, "claude", "native-2", false); err != nil {
 					t.Fatal(err)
 				}
 			}

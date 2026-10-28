@@ -17,7 +17,7 @@ func TestNativeRecoveryRetiredAliasCannotResume(t *testing.T) {
 			t.Fatal("retired alias resumed")
 		}
 	}
-	view, err := control.view(record.ID)
+	view, err := control.View(record.ID)
 	if err != nil || view.NativeThreadID != "recovery-new" {
 		t.Fatal("retired alias reclaimed current identity")
 	}
@@ -28,7 +28,7 @@ func retiredRecoveryFixture(t *testing.T) (*controlMetadataStore, *agentExecutio
 	t.Helper()
 	control, executions := newTestHostedControl(t)
 	record := seedHostedNative(t, executions, "codex", "recovery-old", "ready")
-	if err := executions.bindSession(record.ID, "recovery-session", "recovery-new", "ready", presentationShared); err != nil {
+	if err := executions.BindSession(record.ID, "recovery-session", "recovery-new", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at='2026-01-01T00:00:00Z' WHERE hosted_thread_id=? AND native_thread_id='recovery-old'`, record.ID); err != nil {
@@ -48,10 +48,10 @@ func seedHostedNative(t *testing.T, store *agentExecutionStore, provider, native
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := hostedvalues.SkipOwnedNativeClaim(store.control.claimNativeID(record.ID, provider, nativeID, false)); err != nil {
+	if err := hostedvalues.SkipOwnedNativeClaim(store.control.ClaimNativeID(record.ID, provider, nativeID, false)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.updateSession(record.ID, "nano-"+record.ID, nativeID, status, ""); err != nil {
+	if err := store.UpdateSession(record.ID, "nano-"+record.ID, nativeID, status, ""); err != nil {
 		t.Fatal(err)
 	}
 	updated, ok := store.session(record.ID)
@@ -77,7 +77,7 @@ func TestClaimNativeIDDoesNotStealFromExitedOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := control.claimNativeID(newRec.ID, "claude", revivedNativeID, false); !errors.Is(err, errNativeClaimOwned) {
+	if err := control.ClaimNativeID(newRec.ID, "claude", revivedNativeID, false); !errors.Is(err, errNativeClaimOwned) {
 		t.Fatalf("claimNativeID err = %v, want errNativeClaimOwned", err)
 	}
 	if got := activeOwner(t, control, "claude", revivedNativeID); got != old.ID {
@@ -134,7 +134,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 		agentExecutions: store,
 		lifecycleState:  testLifecycleSnapshot("ready", false)}
 	sess.updateHostedThread(agentSessionDetached, "")
-	if err := hostedvalues.SkipOwnedNativeClaim(store.bindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
+	if err := hostedvalues.SkipOwnedNativeClaim(store.BindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
 		t.Fatal(err)
 	}
 	if got := activeOwner(t, control, "claude", revivedNativeID); got != owner.ID {
@@ -149,7 +149,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 func TestResumeReusesExitedOwnerInsteadOfMinting(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
 	old := seedHostedNative(t, s.agentExecutions, "claude", claudeResumeThreadID, sessionStatusExited)
-	if _, err := s.controlMetadata.appendEvent(metadataEvent{
+	if _, err := s.controlMetadata.AppendEvent(metadataEvent{
 		HostedThreadID: old.ID, Field: "cwd", Value: s.defaults.cwd,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 	}); err != nil {
@@ -176,7 +176,7 @@ func TestResumeHistoricalHostedIDRedirectsToCurrentOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	cwd := t.TempDir()
-	if _, err := s.controlMetadata.appendEvent(metadataEvent{
+	if _, err := s.controlMetadata.AppendEvent(metadataEvent{
 		HostedThreadID: current.ID, Field: "cwd", Value: cwd,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 	}); err != nil {
@@ -199,7 +199,7 @@ func TestInheritMissingCwdFromPredecessor(t *testing.T) {
 	control, store := newTestHostedControl(t)
 	old := seedHostedNative(t, store, "claude", revivedNativeID, sessionStatusExited)
 	cwd := t.TempDir()
-	if _, err := control.appendEvent(metadataEvent{
+	if _, err := control.AppendEvent(metadataEvent{
 		HostedThreadID: old.ID, Field: "cwd", Value: cwd,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 	}); err != nil {
@@ -213,7 +213,7 @@ func TestInheritMissingCwdFromPredecessor(t *testing.T) {
 	if activeOwner(t, control, "claude", revivedNativeID) != current.ID {
 		t.Fatal("repair did not transfer the claim")
 	}
-	view, err := control.view(current.ID)
+	view, err := control.View(current.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	s, attachments := bootReattachServer(t, shim.wsURL(), "")
 	predecessor := seedHostedNative(t, s.agentExecutions, "claude", claudeResumeThreadID, sessionStatusExited)
 	cwd := t.TempDir()
-	if _, err := s.controlMetadata.appendEvent(metadataEvent{
+	if _, err := s.controlMetadata.AppendEvent(metadataEvent{
 		HostedThreadID: predecessor.ID, Field: "cwd", Value: cwd,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 	}); err != nil {
@@ -279,7 +279,7 @@ func TestNativeResolversSelectCurrentOwner(t *testing.T) {
 	if err := store.control.transferNativeClaim(current.ID, "claude", identityNativeOld, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.updateSession(current.ID, "nano-current", identityNativeOld, agentSessionDetached, ""); err != nil {
+	if err := store.UpdateSession(current.ID, "nano-current", identityNativeOld, agentSessionDetached, ""); err != nil {
 		t.Fatal(err)
 	}
 	store.mu.Lock()
@@ -437,13 +437,13 @@ func seedCanonicalResumeOwner(t *testing.T, app *server, provider, nativeID, cwd
 	if _, err := app.agentExecutions.ensureSessionWithIdentity(hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.controlMetadata.appendEvent(metadataEvent{
+	if _, err := app.controlMetadata.AppendEvent(metadataEvent{
 		HostedThreadID: hostedID, Field: "cwd", Value: cwd, SourceEventKey: "fixture-cwd:" + hostedID,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.controlMetadata.claimNativeID(hostedID, provider, nativeID, nativeThreadIDProvisional(provider, nativeID)); err != nil {
+	if err := app.controlMetadata.ClaimNativeID(hostedID, provider, nativeID, nativeThreadIDProvisional(provider, nativeID)); err != nil {
 		t.Fatal(err)
 	}
 	return hostedID

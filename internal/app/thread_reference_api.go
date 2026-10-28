@@ -3,11 +3,12 @@ package app
 import (
 	"context"
 	"errors"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 var nativeThreadReferencePattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -207,7 +208,7 @@ func (s *server) liveHostedSession(hostedID string) (sessionSummary, bool) {
 	if oldest == nil {
 		return sessionSummary{}, false
 	}
-	return oldest.volatileSummary(s.agentExecutions.sessionNeedsAttention(hostedID))
+	return oldest.volatileSummary(s.agentExecutions.SessionNeedsAttention(hostedID))
 }
 
 func (s *server) liveNativeSession(nativeID string) *sessionSummary {

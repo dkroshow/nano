@@ -19,13 +19,23 @@ type liveTextStream struct {
 	pane *liveTextPane
 }
 
-func (s *liveTextStream) start()                        { s.loop.subscribe(s.pane) }
-func (s *liveTextStream) stop()                         { s.loop.unsubscribe(s.pane) }
-func (s *liveTextStream) doneChannel() <-chan struct{}  { return s.pane.done }
-func (s *liveTextStream) readyChannel() <-chan struct{} { return s.pane.ready }
-func (s *liveTextStream) take() [][]byte                { return s.pane.take() }
+// Start starts the pane’s ordered stream.
+func (s *liveTextStream) Start() { s.loop.subscribe(s.pane) }
 
-func (l *liveTextLoop) requestPane(r *http.Request) (sessionPane, error) {
+// Stop releases the pane’s subscription.
+func (s *liveTextStream) Stop() { s.loop.unsubscribe(s.pane) }
+
+// DoneChannel closes when the pane stream ends.
+func (s *liveTextStream) DoneChannel() <-chan struct{} { return s.pane.done }
+
+// ReadyChannel signals that pane bytes are available.
+func (s *liveTextStream) ReadyChannel() <-chan struct{} { return s.pane.ready }
+
+// Take takes the pane’s pending encoded bytes.
+func (s *liveTextStream) Take() [][]byte { return s.pane.take() }
+
+// RequestPane creates a pane for the validated request parameters.
+func (l *liveTextLoop) RequestPane(r *http.Request) (sessionPane, error) {
 	query, err := parseTranscriptListQuery(r)
 	if err != nil {
 		return nil, err
@@ -33,7 +43,8 @@ func (l *liveTextLoop) requestPane(r *http.Request) (sessionPane, error) {
 	return &liveTextStream{loop: l, pane: newLiveTextPane(query)}, nil
 }
 
-func (l *liveTextLoop) rowsPane(view conversationView) sessionPane {
+// RowsPane creates a saved-row pane for a conversation view.
+func (l *liveTextLoop) RowsPane(view conversationView) sessionPane {
 	query := transcriptListQuery{View: defaultThreadTranscriptView, Limit: 1}
 	if view == conversationViewFull {
 		query.View, query.HiddenSpecified = devThreadTranscriptView, true
@@ -43,11 +54,13 @@ func (l *liveTextLoop) rowsPane(view conversationView) sessionPane {
 	return &liveTextStream{loop: l, pane: pane}
 }
 
-func (l *liveTextLoop) writeBackendError(w http.ResponseWriter, err error) {
+// WriteBackendError writes a transcript backend failure to the HTTP response.
+func (l *liveTextLoop) WriteBackendError(w http.ResponseWriter, err error) {
 	writeTranscriptBackendError(w, err)
 }
 
-func (l *liveTextLoop) conversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
+// ConversationItems reads a bounded page of conversation items.
+func (l *liveTextLoop) ConversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
 	catalog, ok := l.srv.catalog.(threadTranscriptCatalog)
 	if !ok {
 		return nil, nil, "", errors.New("catalog unavailable")

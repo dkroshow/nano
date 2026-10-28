@@ -49,7 +49,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 			return nil, err
 		}
 		failRegistration := func(cause error) error {
-			if updateErr := s.agentExecutions.updateSession(record.ID, "", "", sessionStatusExited, cause.Error()); updateErr != nil {
+			if updateErr := s.agentExecutions.UpdateSession(record.ID, "", "", sessionStatusExited, cause.Error()); updateErr != nil {
 				return fmt.Errorf("%w (also failed to mark hosted thread %s retryable: %v)", cause, record.ID, updateErr)
 			}
 			return cause
@@ -247,7 +247,7 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 		sess.stateMu.Lock()
 		presentationMode, status, threadID := sess.presentationMode, sess.connectionStatusLocked(), sess.threadID
 		sess.stateMu.Unlock()
-		if err := sess.agentExecutions.bindSession(
+		if err := sess.agentExecutions.BindSession(
 			sess.hostedThreadID, sess.id, threadID, status, presentationMode,
 		); err != nil {
 			log.Printf("bind hosted thread %s: %v", sess.hostedThreadID, err)

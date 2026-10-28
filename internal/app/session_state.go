@@ -99,11 +99,11 @@ func (sess *session) closeProvider(requireReady bool) error {
 func (sess *session) summary() sessionSummary {
 	view, err := hostedMetadataView{}, error(sql.ErrNoRows)
 	if sess.metadata != nil {
-		view, err = sess.metadata.view(sess.hostedThreadID)
+		view, err = sess.metadata.View(sess.hostedThreadID)
 	}
 	needsAttention := false
 	if sess.agentExecutions != nil {
-		needsAttention = sess.agentExecutions.sessionNeedsAttention(sess.hostedThreadID)
+		needsAttention = sess.agentExecutions.SessionNeedsAttention(sess.hostedThreadID)
 	}
 	summary := sess.summaryWith(view, err, needsAttention)
 	if summary.Metadata != nil {
@@ -154,7 +154,7 @@ func (sess *session) summaryWith(view hostedMetadataView, viewErr error, needsAt
 	sess.stateMu.Unlock()
 	summary.RunningTurnInput = sess.acceptsRunningTurnInput()
 	if sess.projection != nil {
-		summary.ThreadDiagnostics = sess.projection.threadDiagnosticsSnapshot()
+		summary.ThreadDiagnostics = sess.projection.ThreadDiagnosticsSnapshot()
 	}
 	summary.NeedsAttention = needsAttention
 	summary.FileTranscript = true
@@ -262,7 +262,7 @@ func (sess *session) settleAgentTurnsOnExit(closed bool) {
 			Source: "client", Code: "session_closed", Message: "the caller closed the hosted thread",
 		}
 	}
-	if err := sess.agentExecutions.markSessionTurns(sess.hostedThreadID, turnStatus, executionErr); err != nil {
+	if err := sess.agentExecutions.MarkSessionTurns(sess.hostedThreadID, turnStatus, executionErr); err != nil {
 		log.Printf("settle turns for exited hosted thread %s: %v", sess.hostedThreadID, err)
 	}
 }
@@ -278,14 +278,14 @@ func (sess *session) updateHostedThread(status, message string) {
 		return
 	}
 	if sess.metadata != nil {
-		if err := hostedvalues.SkipOwnedNativeClaim(sess.metadata.claimNativeID(sess.hostedThreadID, sess.provider, sess.currentThreadID(), nativeThreadIDProvisional(sess.provider, sess.currentThreadID()))); err != nil {
+		if err := hostedvalues.SkipOwnedNativeClaim(sess.metadata.ClaimNativeID(sess.hostedThreadID, sess.provider, sess.currentThreadID(), nativeThreadIDProvisional(sess.provider, sess.currentThreadID()))); err != nil {
 			log.Printf("claim canonical native id for %s: %v", sess.hostedThreadID, err)
 		}
 	}
 	if sess.agentExecutions == nil {
 		return
 	}
-	if err := sess.agentExecutions.updateSession(
+	if err := sess.agentExecutions.UpdateSession(
 		sess.hostedThreadID, sess.id, sess.currentThreadID(), status, message,
 	); err != nil {
 		log.Printf("update hosted thread %s: %v", sess.hostedThreadID, err)

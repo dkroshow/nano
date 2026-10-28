@@ -273,5 +273,5 @@ func (s *controlMetadataStore) appendOrchestrationAssignment(hostedID, actionID 
 	if assignment == nil {
 		disposition = metadataDispositionCleared
 	}
-	return s.appendEvent(metadataEvent{HostedThreadID: hostedID, Field: orchestrationAssignmentField, Value: assignmentEventValue(assignment), Disposition: disposition, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + hostedID + ":" + actionID, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
+	return s.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: orchestrationAssignmentField, Value: assignmentEventValue(assignment), Disposition: disposition, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + hostedID + ":" + actionID, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
 }

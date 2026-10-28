@@ -52,20 +52,20 @@ func TestAgentChangesEmitSemanticTransitionsOnly(t *testing.T) {
 	op, _, _ := store.beginTurn(hosted.ID, "action-1", "prompt-hash")
 
 	base := store.changes.since("", nil)
-	if err := store.bindSession(hosted.ID, "nano-2", "native-1", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(hosted.ID, "nano-2", "native-1", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.updateSession(hosted.ID, "nano-3", "", "ready", ""); err != nil {
+	if err := store.UpdateSession(hosted.ID, "nano-3", "", "ready", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnDelivery(op.ID, "", agentTurnDeliveryPending, nil); err != nil {
+	if err := store.MarkTurnDelivery(op.ID, "", agentTurnDeliveryPending, nil); err != nil {
 		t.Fatal(err)
 	}
 	if page := store.changes.since(base.Bookmark, nil); len(page.Transitions) != 0 {
 		t.Fatalf("bulk-touch and same-status marks emitted %+v, want silence", page.Transitions)
 	}
 
-	if err := store.markTurnDelivery(op.ID, "", agentTurnQueued, nil); err != nil {
+	if err := store.MarkTurnDelivery(op.ID, "", agentTurnQueued, nil); err != nil {
 		t.Fatal(err)
 	}
 	page := store.changes.since(base.Bookmark, nil)
@@ -111,7 +111,7 @@ func TestAgentChangesLongPollWakes(t *testing.T) {
 
 	go func() {
 		time.Sleep(30 * time.Millisecond)
-		_ = store.markTurnDelivery(op.ID, "", agentTurnRunning, nil)
+		_ = store.MarkTurnDelivery(op.ID, "", agentTurnRunning, nil)
 	}()
 	start := time.Now()
 	page := store.waitChanges(context.Background(), base.Bookmark, 3*time.Second, nil)

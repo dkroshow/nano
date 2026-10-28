@@ -283,7 +283,7 @@ func (s *server) handleBulkCloseTree(w http.ResponseWriter, r *http.Request, roo
 			failures = append(failures, err.Error())
 		} else if err := s.dropQueuedTurns(member); err != nil {
 			failures = append(failures, "drop queued prompts: "+err.Error())
-		} else if err := s.agentExecutions.updateSession(member.ID, "", "", sessionStatusExited, "closed by bulk close"); err != nil {
+		} else if err := s.agentExecutions.UpdateSession(member.ID, "", "", sessionStatusExited, "closed by bulk close"); err != nil {
 			failures = append(failures, "record close: "+err.Error())
 		}
 		if current, found, readErr := s.agentExecutions.sessionFromCanonical(member.ID); readErr != nil {

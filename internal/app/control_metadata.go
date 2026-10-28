@@ -60,10 +60,10 @@ type metadataEventView = hosted.MetadataEventView
 
 type metadataEventFilter = hosted.MetadataEventFilter
 
-// eventsAfter exposes immutable evidence with a bounded event-id cursor. It
+// EventsAfter exposes immutable evidence with a bounded event-id cursor. It
 // intentionally has no JSON posture fallback: callers refetch current state
 // when their revision/change cursor is behind.
-func (s *controlMetadataStore) eventsAfter(hostedID string, after int64, limit int, filter metadataEventFilter) (metadataEventPage, error) {
+func (s *controlMetadataStore) EventsAfter(hostedID string, after int64, limit int, filter metadataEventFilter) (metadataEventPage, error) {
 	if s == nil {
 		return metadataEventPage{}, fmt.Errorf("canonical metadata unavailable")
 	}
@@ -480,7 +480,8 @@ func (s *controlMetadataStore) Close() error {
 	return errors.Join(readErr, s.db.Close())
 }
 
-func (s *controlMetadataStore) readPool() *sql.DB {
+// ReadPool returns the canonical read connection pool.
+func (s *controlMetadataStore) ReadPool() *sql.DB {
 	if s != nil && s.readDB != nil {
 		return s.readDB
 	}
@@ -663,9 +664,9 @@ type nativeResolution = hosted.NativeResolution
 // reachable only through it.
 var errUnresolvedProvisional = errors.New("provisional native would be retired without its exact resolution")
 
-// resolvedNative is the native a provisional handle of the hosted thread was
+// ResolvedNative is the native a provisional handle of the hosted thread was
 // recorded to resolve to, or "" while it has none.
-func (s *controlMetadataStore) resolvedNative(ctx context.Context, hostedID, provider, handle string) (string, error) {
+func (s *controlMetadataStore) ResolvedNative(ctx context.Context, hostedID, provider, handle string) (string, error) {
 	if s == nil || hostedID == "" || handle == "" {
 		return "", nil
 	}
@@ -677,17 +678,18 @@ func (s *controlMetadataStore) resolvedNative(ctx context.Context, hostedID, pro
 	return resolved.String, err
 }
 
-func (s *controlMetadataStore) claimNativeID(hostedID, provider, nativeID string, provisional bool) error {
-	return s.claimNativeIDResolving(hostedID, provider, nativeID, provisional, nil)
+// ClaimNativeID binds an unclaimed native identity to a hosted thread.
+func (s *controlMetadataStore) ClaimNativeID(hostedID, provider, nativeID string, provisional bool) error {
+	return s.ClaimNativeIDResolving(hostedID, provider, nativeID, provisional, nil)
 }
 
-// claimNativeIDResolving claims nativeID for the hosted thread. Whatever the
+// ClaimNativeIDResolving claims nativeID for the hosted thread. Whatever the
 // caller, a claim that would retire the current provisional handle must carry
 // that handle's exact resolution to nativeID, which it records once in the
 // same transaction; a resolution never changes. A claim of the native already
 // current with a resolution succeeds only when that resolution is already
 // recorded, so a retry after a commit whose report failed is idempotent.
-func (s *controlMetadataStore) claimNativeIDResolving(hostedID, provider, nativeID string, provisional bool, pair *nativeResolution) error {
+func (s *controlMetadataStore) ClaimNativeIDResolving(hostedID, provider, nativeID string, provisional bool, pair *nativeResolution) error {
 	if s == nil || hostedID == "" || provider == "" || nativeID == "" {
 		return fmt.Errorf("hosted id, provider, and native id are required")
 	}
@@ -780,11 +782,11 @@ func (s *controlMetadataStore) claimNativeIDResolving(hostedID, provider, native
 	return nil
 }
 
-// appendEvent atomically records evidence and reconciles it into one current
+// AppendEvent atomically records evidence and reconciles it into one current
 // row. Requested/cleared update desired; fresh confirmed/rejected evidence
 // updates effective. Historical/replayed provider evidence only establishes an
 // observed baseline when effective is still unknown.
-func (s *controlMetadataStore) appendEvent(event metadataEvent) (metadataEvent, error) {
+func (s *controlMetadataStore) AppendEvent(event metadataEvent) (metadataEvent, error) {
 	// Callers may reuse a prior return value for a retry. Commit status belongs
 	// to this invocation, never to the immutable event row it happened to name.
 	event.Committed = false
@@ -1011,13 +1013,13 @@ func projectMetadataDisplay(entry *metadataCurrentView, desiredFreshness, effect
 	}
 }
 
-// posture is the canonical display projection from the thread's view.
+// Posture is the canonical display projection from the thread's view.
 // Empty/unknown stays empty, never a product default.
-func (s *controlMetadataStore) posture(hostedID string) sessionPosture {
+func (s *controlMetadataStore) Posture(hostedID string) sessionPosture {
 	if hostedID == "" {
 		return sessionPosture{}
 	}
-	view, err := s.view(hostedID)
+	view, err := s.View(hostedID)
 	if err != nil {
 		return sessionPosture{}
 	}
@@ -1045,11 +1047,11 @@ func postureFromFields(fields map[string]metadataCurrentView) sessionPosture {
 	return p
 }
 
-// view reads one thread's committed metadata from the read pool. It is a
+// View reads one thread's committed metadata from the read pool. It is a
 // standalone read, never part of a write transaction, so it need not queue for
 // the one writer connection behind durable writes and other reads.
-func (s *controlMetadataStore) view(hostedID string) (hostedMetadataView, error) {
-	return s.viewFrom(s.readPool(), hostedID)
+func (s *controlMetadataStore) View(hostedID string) (hostedMetadataView, error) {
+	return s.viewFrom(s.ReadPool(), hostedID)
 }
 
 func (s *controlMetadataStore) viewFrom(db *sql.DB, hostedID string) (hostedMetadataView, error) {
@@ -1322,7 +1324,7 @@ func (s *controlMetadataStore) importLegacyAttachmentsUntil(records []attachment
 			}
 			keyMaterial := r.HostedThreadID + "\x00" + r.Provider + "\x00" + r.NativeThreadID + "\x00" + fact.field + "\x00" + fact.value
 			entry := metadataEvent{HostedThreadID: r.HostedThreadID, Field: fact.field, Value: fact.value, Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Evidence: "legacy_attachment_baseline", NativeThreadID: r.NativeThreadID, Freshness: metadataFreshnessHistorical, SourceEventKey: "legacy-attachment:" + agentHash([]byte(keyMaterial))}
-			if _, err := s.appendEvent(entry); err != nil {
+			if _, err := s.AppendEvent(entry); err != nil {
 				return err
 			}
 			processed++
@@ -1342,9 +1344,9 @@ func (s *controlMetadataStore) markMigrationComplete(name, fingerprint string) e
 	return s.integrityCheck()
 }
 
-// canonicalDatabase supplies the shared transaction owner when composing the
+// CanonicalDatabase supplies the shared transaction owner when composing the
 // prompt and lifecycle stores; it never opens another database.
-func (s *controlMetadataStore) canonicalDatabase() *sql.DB {
+func (s *controlMetadataStore) CanonicalDatabase() *sql.DB {
 	if s == nil {
 		return nil
 	}

@@ -79,10 +79,10 @@ func TestControlEnsureSessionPreservesHistoricalIdentityWhenInvokerIsOmitted(t *
 					if err != nil {
 						t.Fatal(err)
 					}
-					if err := control.claimNativeID(historical.ID, provider, nativeID, false); err != nil {
+					if err := control.ClaimNativeID(historical.ID, provider, nativeID, false); err != nil {
 						t.Fatal(err)
 					}
-					if err := store.updateSession(historical.ID, "old-nano-session", nativeID, sessionStatusExited, "closed"); err != nil {
+					if err := store.UpdateSession(historical.ID, "old-nano-session", nativeID, sessionStatusExited, "closed"); err != nil {
 						t.Fatal(err)
 					}
 					if reloadCanonical {
@@ -195,20 +195,20 @@ func TestPersistedTurnForTransportActionReadsCommittedRowsNotTheCache(t *testing
 	store.mu.Lock()
 	store.resetControlCachesLocked() // the reset of a failed write, with no reload
 	store.mu.Unlock()
-	if _, cached := store.turnForTransportAction(op.TransportActionID); cached {
+	if _, cached := store.TurnForTransportAction(op.TransportActionID); cached {
 		t.Fatal("the reset cache still showed the operation; the case needs it gone")
 	}
-	persisted, found, err := store.persistedTurnForTransportAction(ctx, hosted.ID, op.TransportActionID)
+	persisted, found, err := store.PersistedTurnForTransportAction(ctx, hosted.ID, op.TransportActionID)
 	if err != nil || !found || persisted.ID != op.ID || threadvalues.TurnTerminal(persisted.Status) {
 		t.Fatalf("persisted read = %+v found=%v err=%v; want the open operation", persisted, found, err)
 	}
-	if _, found, err := store.persistedTurnForTransportAction(ctx, hosted.ID, "never-delivered"); err != nil || found {
+	if _, found, err := store.PersistedTurnForTransportAction(ctx, hosted.ID, "never-delivered"); err != nil || found {
 		t.Fatalf("absent action: found=%v err=%v; want positive absence", found, err)
 	}
 	if _, err := control.db.Exec(`DROP TABLE hosted_turn_operations`); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := store.persistedTurnForTransportAction(ctx, hosted.ID, op.TransportActionID); err == nil || found {
+	if _, found, err := store.PersistedTurnForTransportAction(ctx, hosted.ID, op.TransportActionID); err == nil || found {
 		t.Fatalf("unreadable store: found=%v err=%v; want an error, not absence", found, err)
 	}
 }
@@ -339,7 +339,7 @@ func TestControlExecutionTargetedUpdatesLeaveUnrelatedRowsUntouched(t *testing.T
 	if err := control.db.QueryRow(`SELECT revision,updated_at FROM hosted_execution_sessions WHERE hosted_thread_id=?`, b.ID).Scan(&bRev, &bUpdated); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.updateSession(a.ID, "nano-a", "", "ready", ""); err != nil {
+	if err := store.UpdateSession(a.ID, "nano-a", "", "ready", ""); err != nil {
 		t.Fatal(err)
 	}
 	var gotRev int64
@@ -363,7 +363,7 @@ func TestControlExecutionTargetedUpdatesLeaveUnrelatedRowsUntouched(t *testing.T
 	if err := control.db.QueryRow(`SELECT revision,updated_at FROM hosted_turn_operations WHERE operation_id=?`, second.ID).Scan(&secondRev, &secondUpdated); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnDelivery(first.ID, "provider-a", agentTurnRunning, nil); err != nil {
+	if err := store.MarkTurnDelivery(first.ID, "provider-a", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	var gotTurnRev int64
@@ -432,10 +432,10 @@ func TestControlExecutionCASRejectsStaleSessionAndTurnWriters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.updateSession(hosted.ID, "writer-a", "", "ready", "A"); err != nil {
+	if err := a.UpdateSession(hosted.ID, "writer-a", "", "ready", "A"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.updateSession(hosted.ID, "writer-b", "", "ready", "B"); !errors.Is(err, errExecutionConflict) {
+	if err := b.UpdateSession(hosted.ID, "writer-b", "", "ready", "B"); !errors.Is(err, errExecutionConflict) {
 		t.Fatalf("stale session err=%v", err)
 	}
 	var nano string
@@ -445,13 +445,13 @@ func TestControlExecutionCASRejectsStaleSessionAndTurnWriters(t *testing.T) {
 	if nano != "writer-a" {
 		t.Fatalf("stale writer overwrote session: %q", nano)
 	}
-	if err := a.markTurnDelivery(turn.ID, "provider-a", agentTurnRunning, nil); err != nil {
+	if err := a.MarkTurnDelivery(turn.ID, "provider-a", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.markTurnDelivery(turn.ID, "provider-b", agentTurnDeliveryUnknown, nil); !errors.Is(err, errExecutionConflict) {
+	if err := b.MarkTurnDelivery(turn.ID, "provider-b", agentTurnDeliveryUnknown, nil); !errors.Is(err, errExecutionConflict) {
 		t.Fatalf("stale turn err=%v", err)
 	}
-	if b.sessionNeedsAttention(hosted.ID) {
+	if b.SessionNeedsAttention(hosted.ID) {
 		t.Fatal("failed write left speculative attention after cache reload")
 	}
 	var providerTurn string
@@ -486,7 +486,7 @@ func TestControlExecutionCASRejectsStalePrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.markTurnDelivery(turn.ID, "provider", agentTurnRunning, nil); err != nil {
+	if err := a.MarkTurnDelivery(turn.ID, "provider", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	b.mu.Lock()
@@ -653,7 +653,7 @@ func TestAgentExecutionStorePersistsInvocationEdge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
+	if err := store.BindSession(parent.ID, "nano-parent", "native-parent", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	parent, _ = store.session(parent.ID)
@@ -661,7 +661,7 @@ func TestAgentExecutionStorePersistsInvocationEdge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(child.ID, "nano-child", "native-child", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 
@@ -696,7 +696,7 @@ func TestAgentExecutionStoreIdempotencyAndFinalSelection(t *testing.T) {
 	if _, _, err := store.beginSession("caller-session", "different", "codex", presentationBackground); err == nil {
 		t.Fatal("session id accepted different parameters")
 	}
-	if err := store.bindSession(session.ID, "nano-1", "native-1", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(session.ID, "nano-1", "native-1", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 
@@ -710,20 +710,20 @@ func TestAgentExecutionStoreIdempotencyAndFinalSelection(t *testing.T) {
 	if _, _, err := store.beginTurn(session.ID, "action-1", "different"); err == nil {
 		t.Fatal("action id accepted a different prompt")
 	}
-	if err := store.markTurnDelivery(turn.ID, "provider-turn-1", agentTurnRunning, nil); err != nil {
+	if err := store.MarkTurnDelivery(turn.ID, "provider-turn-1", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.observeCandidate("codex", "native-1", "provider-turn-1", "commentary", "commentary", "work in progress"); err != nil {
+	if err := store.ObserveCandidate("codex", "native-1", "provider-turn-1", "commentary", "commentary", "work in progress"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.observeCandidate("codex", "native-1", "provider-turn-1", "final", "final_answer", "complete answer"); err != nil {
+	if err := store.ObserveCandidate("codex", "native-1", "provider-turn-1", "final", "final_answer", "complete answer"); err != nil {
 		t.Fatal(err)
 	}
 	// Later commentary cannot replace explicit final-answer evidence.
-	if err := store.observeCandidate("codex", "native-1", "provider-turn-1", "late", "commentary", "late note"); err != nil {
+	if err := store.ObserveCandidate("codex", "native-1", "provider-turn-1", "late", "commentary", "late note"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnTerminal("codex", "native-1", "provider-turn-1", agentTurnCompleted, nil, "", ""); err != nil {
+	if err := store.MarkTurnTerminal("codex", "native-1", "provider-turn-1", agentTurnCompleted, nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -745,7 +745,7 @@ func TestAgentExecutionStoreGuardSerializesCreationAndPreservesReplay(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(hosted.ID, "nano-guarded", "native-guarded", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(hosted.ID, "nano-guarded", "native-guarded", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 
@@ -799,7 +799,7 @@ func TestAgentExecutionStoreGuardRejectsWithoutCreatingOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(hosted.ID, "nano-guard-reject", "native-guard-reject", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(hosted.ID, "nano-guard-reject", "native-guard-reject", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	rejected := errors.New("superseded")
@@ -816,12 +816,12 @@ func TestAgentExecutionStoreGuardRejectsWithoutCreatingOperation(t *testing.T) {
 func TestAgentExecutionStoreFailureNeverLeaksCandidateResponse(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	session, _, _ := store.beginSession("caller-session", "request-hash", "claude", presentationBackground)
-	_ = store.bindSession(session.ID, "nano-1", "native-1", "ready", presentationBackground)
+	_ = store.BindSession(session.ID, "nano-1", "native-1", "ready", presentationBackground)
 	turn, _, _ := store.beginTurn(session.ID, "action-1", "prompt-hash")
-	_ = store.markTurnDelivery(turn.ID, "claude:1", agentTurnRunning, nil)
-	_ = store.observeCandidate("claude", "native-1", "claude:1", "assistant-1", "", "partial answer")
+	_ = store.MarkTurnDelivery(turn.ID, "claude:1", agentTurnRunning, nil)
+	_ = store.ObserveCandidate("claude", "native-1", "claude:1", "assistant-1", "", "partial answer")
 	wantErr := &agentExecutionError{Source: "provider", Code: "error", Message: "Claude failed"}
-	if err := store.markTurnTerminal("claude", "native-1", "claude:1", agentTurnFailed, wantErr, "", ""); err != nil {
+	if err := store.MarkTurnTerminal("claude", "native-1", "claude:1", agentTurnFailed, wantErr, "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -837,10 +837,10 @@ func TestAgentExecutionStoreFailureNeverLeaksCandidateResponse(t *testing.T) {
 func TestAgentExecutionStoreKeepsProjectionTruncationExplicit(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	session, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
-	_ = store.bindSession(session.ID, "nano-1", "native-1", "ready", presentationShared)
+	_ = store.BindSession(session.ID, "nano-1", "native-1", "ready", presentationShared)
 	turn, _, _ := store.beginTurn(session.ID, "action-1", "prompt-hash")
-	_ = store.markTurnDelivery(turn.ID, "turn-1", agentTurnRunning, nil)
-	if err := store.markTurnTerminal(
+	_ = store.MarkTurnDelivery(turn.ID, "turn-1", agentTurnRunning, nil)
+	if err := store.MarkTurnTerminal(
 		"codex", "native-1", "turn-1", agentTurnCompleted, nil, "bounded projection", "item-1",
 		agentResultMeta{Bytes: 100_000, Truncated: true},
 	); err != nil {
@@ -860,12 +860,12 @@ func TestAgentExecutionStoreRestartMakesUncertainStatesExplicit(t *testing.T) {
 	}
 	session, _, _ := first.beginSession("creating", "request-hash", "codex", presentationShared)
 	bound, _, _ := first.beginSession("bound", "request-hash-2", "claude", presentationBackground)
-	_ = first.bindSession(bound.ID, "nano-1", "native-1", "ready", presentationBackground)
+	_ = first.BindSession(bound.ID, "nano-1", "native-1", "ready", presentationBackground)
 	turn, _, _ := first.beginTurn(bound.ID, "action-1", "prompt-hash")
 	queuedSession, _, _ := first.beginSession("queued", "request-hash-3", "codex", presentationBackground)
-	_ = first.bindSession(queuedSession.ID, "nano-2", "native-2", "ready", presentationBackground)
+	_ = first.BindSession(queuedSession.ID, "nano-2", "native-2", "ready", presentationBackground)
 	queuedTurn, _, _ := first.beginTurn(queuedSession.ID, "action-2", "prompt-hash-2")
-	_ = first.markTurnDelivery(queuedTurn.ID, "", agentTurnQueued, nil)
+	_ = first.MarkTurnDelivery(queuedTurn.ID, "", agentTurnQueued, nil)
 
 	second, err := newAgentExecutionStore(path, "run-2")
 	if err != nil {
@@ -901,7 +901,7 @@ func TestAgentExecutionStoreLongPollWaitsForRevision(t *testing.T) {
 		rec, _ := store.waitTurn(context.Background(), turn.ID, turn.Revision, time.Second)
 		done <- rec
 	}()
-	if err := store.markTurnDelivery(turn.ID, "provider-turn", agentTurnRunning, nil); err != nil {
+	if err := store.MarkTurnDelivery(turn.ID, "provider-turn", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -918,8 +918,8 @@ func TestAgentExecutionStoreSettlesOpenTurnsWhenSessionEnds(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	session, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
 	first, _, _ := store.beginTurn(session.ID, "action-1", "prompt-hash-1")
-	_ = store.markTurnDelivery(first.ID, "provider-turn-1", agentTurnRunning, nil)
-	if err := store.markSessionTurns(session.ID, agentTurnDeliveryUnknown, &agentExecutionError{Source: "transport", Message: "lost"}); err != nil {
+	_ = store.MarkTurnDelivery(first.ID, "provider-turn-1", agentTurnRunning, nil)
+	if err := store.MarkSessionTurns(session.ID, agentTurnDeliveryUnknown, &agentExecutionError{Source: "transport", Message: "lost"}); err != nil {
 		t.Fatal(err)
 	}
 	uncertain, _ := store.turn(first.ID)
@@ -928,7 +928,7 @@ func TestAgentExecutionStoreSettlesOpenTurnsWhenSessionEnds(t *testing.T) {
 	}
 
 	second, _, _ := store.beginTurn(session.ID, "action-2", "prompt-hash-2")
-	if err := store.markSessionTurns(session.ID, agentTurnInterrupted, &agentExecutionError{Source: "client", Message: "closed"}); err != nil {
+	if err := store.MarkSessionTurns(session.ID, agentTurnInterrupted, &agentExecutionError{Source: "client", Message: "closed"}); err != nil {
 		t.Fatal(err)
 	}
 	interrupted, _ := store.turn(second.ID)
@@ -987,7 +987,7 @@ func TestSetPresentationCanonicalAuthorityAndStaleRebinds(t *testing.T) {
 	}
 
 	// A rebind and a resume both carry the spawn-time mode; canonical wins.
-	if err := store.bindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared); err != nil {
+	if err := store.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	if got, ok := store.presentationModeFor(hosted.ID); !ok || got != presentationBackground {
@@ -1074,7 +1074,7 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(session.ID, "nano-1", "native-1", "ready", presentationBackground); err != nil {
+	if err := store.BindSession(session.ID, "nano-1", "native-1", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
 	var ids []string
@@ -1083,15 +1083,15 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.markTurnDelivery(turn.ID, "shared-turn", agentTurnRunning, nil); err != nil {
+		if err := store.MarkTurnDelivery(turn.ID, "shared-turn", agentTurnRunning, nil); err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, turn.ID)
 	}
-	if err := store.observeCandidate("codex", "native-1", "shared-turn", "final", "final_answer", "answer to the correction"); err != nil {
+	if err := store.ObserveCandidate("codex", "native-1", "shared-turn", "final", "final_answer", "answer to the correction"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnTerminal("codex", "native-1", "shared-turn", agentTurnCompleted, nil, "", ""); err != nil {
+	if err := store.MarkTurnTerminal("codex", "native-1", "shared-turn", agentTurnCompleted, nil, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range ids {
@@ -1100,7 +1100,7 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 		}
 	}
 	for _, id := range ids[:2] {
-		if err := store.finishJoinedTurn(id, "shared-turn", agentTurnCompleted, nil, "answer to the correction", "final", agentResultMeta{}); err != nil {
+		if err := store.FinishJoinedTurn(id, "shared-turn", agentTurnCompleted, nil, "answer to the correction", "final", agentResultMeta{}); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := store.turn(id)
@@ -1114,10 +1114,10 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 	// A late member takes the answer only from a member of the same native
 	// thread and turn. A record that lost its native thread, as an old one
 	// may have, supplies nothing, even with the named final id.
-	if answer, _, ok := store.sharedTurnResult(session.ID, "codex", "native-1", "shared-turn", "final"); !ok || answer != "answer to the correction" {
+	if answer, _, ok := store.SharedTurnResult(session.ID, "codex", "native-1", "shared-turn", "final"); !ok || answer != "answer to the correction" {
 		t.Fatalf("shared result = %q %v; want the finished members' answer", answer, ok)
 	}
-	if err := store.observeCandidate("codex", "native-1", "shared-turn", "final-unscoped", "final_answer", "unscoped answer"); err != nil {
+	if err := store.ObserveCandidate("codex", "native-1", "shared-turn", "final-unscoped", "final_answer", "unscoped answer"); err != nil {
 		t.Fatal(err)
 	}
 	store.mu.Lock()
@@ -1125,7 +1125,7 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 	unscoped.NativeThreadID = ""
 	store.setTurnLocked(unscoped.ID, &unscoped)
 	store.mu.Unlock()
-	if answer, _, ok := store.sharedTurnResult(session.ID, "codex", "native-1", "shared-turn", "final-unscoped"); ok {
+	if answer, _, ok := store.SharedTurnResult(session.ID, "codex", "native-1", "shared-turn", "final-unscoped"); ok {
 		t.Fatalf("a record with no native thread supplied %q", answer)
 	}
 }
@@ -1240,8 +1240,8 @@ func TestAgentExecutionResumedTurnsPreserveMatchingAndReplyOrder(t *testing.T) {
 		{ProviderTurnID: "turn-saved-proof", Status: agentTurnCompleted, Response: "saved proof answer", ItemID: "saved-proof-item", FinishOnSavedProof: true},
 		{ProviderTurnID: "turn-shared", Status: agentTurnCompleted, Response: "shared answer", ItemID: "shared-item"},
 	}
-	matches := store.resumedTurnMatches("target", "codex", "native", marks)
-	ended, err := store.markResumedTurnsTerminal("target", "codex", "native", marks, matches)
+	matches := store.ResumedTurnMatches("target", "codex", "native", marks)
+	ended, err := store.MarkResumedTurnsTerminal("target", "codex", "native", marks, matches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1300,16 +1300,16 @@ func TestAgentExecutionResumedTurnsRevalidateMatches(t *testing.T) {
 		change func(*agentExecutionStore, string, string) error
 	}{
 		{"finished", false, func(store *agentExecutionStore, hosted, operation string) error {
-			return store.markTurnTerminal("codex", "native", "turn", agentTurnCompleted, nil, "live answer", "live-item")
+			return store.MarkTurnTerminal("codex", "native", "turn", agentTurnCompleted, nil, "live answer", "live-item")
 		}},
 		{"rebound", false, func(store *agentExecutionStore, hosted, operation string) error {
-			return store.markTurnDelivery(operation, "other-turn", agentTurnRunning, nil)
+			return store.MarkTurnDelivery(operation, "other-turn", agentTurnRunning, nil)
 		}},
 		{"removed", false, func(store *agentExecutionStore, hosted, operation string) error {
 			return store.removeSession(hosted)
 		}},
 		{"native changed", true, func(store *agentExecutionStore, hosted, operation string) error {
-			return store.bindSession(hosted, "nano", "other-native", "ready", presentationShared)
+			return store.BindSession(hosted, "nano", "other-native", "ready", presentationShared)
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -1319,24 +1319,24 @@ func TestAgentExecutionResumedTurnsRevalidateMatches(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := store.bindSession(hosted.ID, "nano", "native", "ready", presentationShared); err != nil {
+			if err := store.BindSession(hosted.ID, "nano", "native", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			op, _, err := store.beginTurn(hosted.ID, "action", "hash")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := store.markTurnDelivery(op.ID, "turn", agentTurnRunning, nil); err != nil {
+			if err := store.MarkTurnDelivery(op.ID, "turn", agentTurnRunning, nil); err != nil {
 				t.Fatal(err)
 			}
 			marks := []agentTerminalTurn{{ProviderTurnID: "turn", Status: agentTurnCompleted, Response: "resume answer", ItemID: "resume-item"}}
-			matches := store.resumedTurnMatches(hosted.ID, "codex", "native", marks)
+			matches := store.ResumedTurnMatches(hosted.ID, "codex", "native", marks)
 			if err := test.change(store, hosted.ID, op.ID); err != nil {
 				t.Fatal(err)
 			}
 			before, existed := store.turn(op.ID)
 			changed := store.changed
-			ended, err := store.markResumedTurnsTerminal(hosted.ID, "codex", "native", marks, matches)
+			ended, err := store.MarkResumedTurnsTerminal(hosted.ID, "codex", "native", marks, matches)
 			if err != nil || !slices.Equal(ended, []bool{test.ended}) {
 				t.Fatalf("ended while down = %v, err=%v; want %v", ended, err, test.ended)
 			}
@@ -1376,7 +1376,7 @@ func TestAgentExecutionThreadWorkDoesNotScanFleet(t *testing.T) {
 			started := time.Now()
 			for range 100 {
 				if name == "bind" {
-					if err := store.bindSession("indexed-host-0", "nano", "", "ready", presentationShared); err != nil {
+					if err := store.BindSession("indexed-host-0", "nano", "", "ready", presentationShared); err != nil {
 						t.Fatal(err)
 					}
 					continue
@@ -1582,7 +1582,7 @@ func TestAgentExecutionIndexedAttentionTracksLatestAndMoves(t *testing.T) {
 			}
 		}
 		for _, hosted := range []string{"target", "other"} {
-			if got := store.sessionNeedsAttention(hosted); got != step.attention[hosted] {
+			if got := store.SessionNeedsAttention(hosted); got != step.attention[hosted] {
 				t.Fatalf("after %s/%s single attention[%s]=%v want=%v", step.id, step.status, hosted, got, step.attention[hosted])
 			}
 		}
@@ -1591,7 +1591,7 @@ func TestAgentExecutionIndexedAttentionTracksLatestAndMoves(t *testing.T) {
 			t.Fatalf("after %s/%s fleet attention=%v want=%v", step.id, step.status, got, step.attention)
 		}
 		got["other"] = false
-		if store.sessionNeedsAttention("other") != step.attention["other"] {
+		if store.SessionNeedsAttention("other") != step.attention["other"] {
 			t.Fatal("caller changed the cached attention map")
 		}
 	}
@@ -1615,7 +1615,7 @@ func TestAgentExecutionIndexedBindingsPreserveTurnUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnDelivery(terminal.ID, "", agentTurnCompleted, nil); err != nil {
+	if err := store.MarkTurnDelivery(terminal.ID, "", agentTurnCompleted, nil); err != nil {
 		t.Fatal(err)
 	}
 	terminal, _ = store.turn(terminal.ID)
@@ -1624,8 +1624,8 @@ func TestAgentExecutionIndexedBindingsPreserveTurnUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	for index, apply := range []func() error{
-		func() error { return store.bindSession("bound", "bound-nano", "", "ready", presentationShared) },
-		func() error { return store.updateSession("bound", "updated-nano", "", "reconnecting", "") },
+		func() error { return store.BindSession("bound", "bound-nano", "", "ready", presentationShared) },
+		func() error { return store.UpdateSession("bound", "updated-nano", "", "reconnecting", "") },
 	} {
 		if err := apply(); err != nil {
 			t.Fatal(err)
@@ -1652,7 +1652,7 @@ func TestAgentExecutionLiveHostedSessionSelectsOnlyMatchingSummary(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnDelivery(turn.ID, "", agentTurnFailed, nil); err != nil {
+	if err := store.MarkTurnDelivery(turn.ID, "", agentTurnFailed, nil); err != nil {
 		t.Fatal(err)
 	}
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1718,12 +1718,12 @@ func TestUpdateSessionThatChangesNothingSavesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.updateSession(hosted.ID, "nano-1", "native", "ready", ""); err != nil {
+	if err := store.UpdateSession(hosted.ID, "nano-1", "native", "ready", ""); err != nil {
 		t.Fatal(err)
 	}
 	session, _ := store.session(hosted.ID)
 	turn, _ := store.turn(op.ID)
-	if err := store.updateSession(hosted.ID, "nano-1", "native", "ready", ""); err != nil {
+	if err := store.UpdateSession(hosted.ID, "nano-1", "native", "ready", ""); err != nil {
 		t.Fatal(err)
 	}
 	again, _ := store.session(hosted.ID)
@@ -1731,7 +1731,7 @@ func TestUpdateSessionThatChangesNothingSavesNothing(t *testing.T) {
 	if again.Revision != session.Revision || turnAgain.Revision != turn.Revision {
 		t.Fatalf("an update that changes nothing moved revisions: session %d -> %d, turn %d -> %d", session.Revision, again.Revision, turn.Revision, turnAgain.Revision)
 	}
-	if err := store.updateSession(hosted.ID, "nano-2", "", "", ""); err != nil {
+	if err := store.UpdateSession(hosted.ID, "nano-2", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	moved, _ := store.turn(op.ID)
@@ -1760,7 +1760,7 @@ func TestMarkWaitingResumesTheNewestOpenTurnAcrossTrimmedFractions(t *testing.T)
 		store.setTurnLocked(rec.ID, &rec)
 	}
 	store.mu.Unlock()
-	if err := store.markWaiting("target", "", false); err != nil {
+	if err := store.MarkWaiting("target", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if rec, _ := store.turn("newer"); rec.Status != agentTurnRunning {

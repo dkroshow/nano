@@ -71,7 +71,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.bindSession(record.ID, "nano-"+name, native, "ready", presentationShared); err != nil {
+		if err := executions.BindSession(record.ID, "nano-"+name, native, "ready", presentationShared); err != nil {
 			t.Fatal(err)
 		}
 		record, _ = executions.session(record.ID)

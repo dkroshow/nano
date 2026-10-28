@@ -26,7 +26,7 @@ func (sess *session) recordAgentTurnDelivery(transportActionID string, result js
 	if sess.agentExecutions == nil || sess.hostedThreadID == "" {
 		return
 	}
-	rec, ok := sess.agentExecutions.turnForTransportAction(transportActionID)
+	rec, ok := sess.agentExecutions.TurnForTransportAction(transportActionID)
 	if !ok {
 		return
 	}
@@ -45,7 +45,7 @@ func (sess *session) recordAgentTurnDelivery(transportActionID string, result js
 		status = agentTurnDeliveryUnknown
 		deliveryErr = errors.New("provider accepted the turn without returning a turn identity")
 	}
-	if err := sess.agentExecutions.markTurnDelivery(rec.ID, turnID, status, deliveryExecutionError(deliveryErr)); err != nil {
+	if err := sess.agentExecutions.MarkTurnDelivery(rec.ID, turnID, status, deliveryExecutionError(deliveryErr)); err != nil {
 		log.Printf("record agent turn delivery %s: %v", rec.ID, err)
 	}
 	sess.reconcileAgentOperations()
@@ -87,7 +87,7 @@ func (sess *session) observeAgentExecutionWire(dir protocol.Direction, line []by
 			if item == nil || item.Type != model.ItemAgentMessage {
 				continue
 			}
-			if err := sess.agentExecutions.observeCandidate(
+			if err := sess.agentExecutions.ObserveCandidate(
 				"codex", threadID, turnID, item.NativeItemID, item.Phase, item.Text,
 			); err != nil {
 				log.Printf("record agent response candidate %s: %v", turnID, err)
@@ -105,7 +105,7 @@ func (sess *session) observeAgentExecutionWire(dir protocol.Direction, line []by
 			executionErr = codexExecutionError(turn["error"], status)
 		}
 		if !sess.finishesOnSavedProof("codex", turnID) {
-			if err := sess.agentExecutions.markTurnTerminal("codex", threadID, turnID, status, executionErr, "", ""); err != nil {
+			if err := sess.agentExecutions.MarkTurnTerminal("codex", threadID, turnID, status, executionErr, "", ""); err != nil {
 				log.Printf("record agent terminal turn %s: %v", turnID, err)
 			}
 		}
@@ -150,7 +150,7 @@ func (sess *session) observeGrokAgentWire(line []byte) {
 			}
 		}
 		text, itemID := parsed.Text, threadvalues.FirstNonEmpty(parsed.CallID, candidate+"/agentMessage")
-		if err := sess.agentExecutions.observeCandidate("grok", sessionID, promptID, itemID, "final_answer", text); err != nil {
+		if err := sess.agentExecutions.ObserveCandidate("grok", sessionID, promptID, itemID, "final_answer", text); err != nil {
 			log.Printf("record Grok response candidate %s: %v", promptID, err)
 		}
 	}
@@ -186,9 +186,9 @@ func (sess *session) observeGrokAgentTerminal(sessionID, promptID, status, code 
 	}
 	itemID := ""
 	if status == agentTurnCompleted && sess.projection != nil {
-		itemID = sess.projection.finalAgentItemID(promptID)
+		itemID = sess.projection.FinalAgentItemID(promptID)
 	}
-	if err := sess.agentExecutions.markTurnTerminal(
+	if err := sess.agentExecutions.MarkTurnTerminal(
 		"grok", sessionID, promptID, status, executionErr, "", itemID, agentResultMeta{},
 	); err != nil {
 		log.Printf("record Grok terminal turn %s: %v", promptID, err)
@@ -205,7 +205,7 @@ func (sess *session) observeClaudeAgentResult(line []byte) {
 	}
 	// The turn of the prompt the result names (claudeAnsweredTurn), on every
 	// transport; a result naming none completes no operation.
-	turnID := sess.projection.claudeResultTurn()
+	turnID := sess.projection.ClaudeResultTurn()
 	status, detail := claudeProjectionTerminal(line)
 	var executionErr *agentExecutionError
 	if status == agentTurnFailed {
@@ -218,16 +218,16 @@ func (sess *session) observeClaudeAgentResult(line []byte) {
 	}
 	itemID := ""
 	if sess.projection != nil {
-		itemID = sess.projection.finalAgentItemID(turnID)
+		itemID = sess.projection.FinalAgentItemID(turnID)
 	}
 	if sess.finishesOnSavedProof("claude", turnID) {
 		// The result names an execution, not the saved consumption of the
 		// prompt: its operation finishes once its own saved row is proven.
 		// Keep the answer for that moment.
-		if err := sess.agentExecutions.observeCandidate("claude", sess.currentThreadID(), turnID, itemID, "final_answer", response); err != nil {
+		if err := sess.agentExecutions.ObserveCandidate("claude", sess.currentThreadID(), turnID, itemID, "final_answer", response); err != nil {
 			log.Printf("record Claude agent answer for turn %s: %v", turnID, err)
 		}
-	} else if err := sess.agentExecutions.markTurnTerminal("claude", sess.currentThreadID(), turnID, status, executionErr, response, itemID, agentResultMeta{}); err != nil {
+	} else if err := sess.agentExecutions.MarkTurnTerminal("claude", sess.currentThreadID(), turnID, status, executionErr, response, itemID, agentResultMeta{}); err != nil {
 		log.Printf("record Claude agent terminal turn %s: %v", turnID, err)
 	}
 	if status != agentTurnCompleted {
@@ -397,7 +397,7 @@ func (sess *session) finishesOnSavedProof(provider, turnID string, openOperation
 	// The bounded result reader checks each prompt's saved proof itself.
 	// Start its deadline on provider completion even if no file row arrives.
 	if sess.agentExecutions != nil {
-		if sess.agentExecutions.readsSavedResults() {
+		if sess.agentExecutions.ReadsSavedResults() {
 			return false
 		}
 	}
@@ -414,7 +414,7 @@ func (sess *session) finishesOnSavedProof(provider, turnID string, openOperation
 	var open []agentTurnRecord
 	if len(openOperations) == 0 {
 		if sess.agentExecutions != nil {
-			open = sess.agentExecutions.openTurnsForProviderTurn(sess.hostedThreadID, provider, turnID)
+			open = sess.agentExecutions.OpenTurnsForProviderTurn(sess.hostedThreadID, provider, turnID)
 		}
 	} else {
 		open = openOperations[0]
@@ -444,7 +444,7 @@ func (sess *session) finishJoinedAgentTurns(ctx context.Context, turnID string) 
 	if err != nil {
 		return
 	}
-	open := sess.agentExecutions.openTurnsForProviderTurn(sess.hostedThreadID, sess.provider, turnID)
+	open := sess.agentExecutions.OpenTurnsForProviderTurn(sess.hostedThreadID, sess.provider, turnID)
 	if len(open) == 0 {
 		return
 	}
@@ -462,7 +462,7 @@ func (sess *session) finishJoinedAgentTurns(ctx context.Context, turnID string) 
 	// answer.
 	response, itemID, meta := "", "", agentResultMeta{}
 	if turn.Outcome == agentTurnCompleted && turn.FinalMessageID != "" {
-		response, meta, _ = sess.agentExecutions.sharedTurnResult(sess.hostedThreadID, sess.provider, sess.currentThreadID(), turnID, turn.FinalMessageID)
+		response, meta, _ = sess.agentExecutions.SharedTurnResult(sess.hostedThreadID, sess.provider, sess.currentThreadID(), turnID, turn.FinalMessageID)
 		itemID = turn.FinalMessageID
 	}
 	// Missing wire text cannot hold the operation open indefinitely: its
@@ -472,7 +472,7 @@ func (sess *session) finishJoinedAgentTurns(ctx context.Context, turnID string) 
 		if err != nil || prompt.Outbox.State != prompts.Confirmed {
 			continue
 		}
-		if err := sess.agentExecutions.finishJoinedTurn(op.ID, turnID, turn.Outcome, executionErr, response, itemID, meta); err != nil {
+		if err := sess.agentExecutions.FinishJoinedTurn(op.ID, turnID, turn.Outcome, executionErr, response, itemID, meta); err != nil {
 			log.Printf("finish joined agent turn %s: %v", op.ID, err)
 		}
 	}
@@ -485,7 +485,7 @@ func (sess *session) reconcileAgentOperations() {
 	if sess.agentExecutions == nil || sess.hostedThreadID == "" || sess.projection == nil {
 		return
 	}
-	for _, turn := range sess.projection.turnList() {
+	for _, turn := range sess.projection.TurnList() {
 		if turn.ID == "" || !codexResumeTurnTerminal(turn.Status) {
 			continue
 		}
@@ -496,7 +496,7 @@ func (sess *session) reconcileAgentOperations() {
 		if sess.finishesOnSavedProof(sess.provider, turn.ID) {
 			continue
 		}
-		_ = sess.agentExecutions.markTurnTerminal(
+		_ = sess.agentExecutions.MarkTurnTerminal(
 			sess.provider, sess.currentThreadID(), turn.ID, turn.Status, executionErr,
 			"", turn.FinalItemID, agentResultMeta{},
 		)
@@ -531,7 +531,7 @@ func (sess *session) observeCodexResume(resp *codexResumeResponse) {
 		positions = append(positions, position)
 		marks = append(marks, mark)
 	}
-	matches := sess.agentExecutions.resumedTurnMatches(sess.hostedThreadID, "codex", threadID, marks)
+	matches := sess.agentExecutions.ResumedTurnMatches(sess.hostedThreadID, "codex", threadID, marks)
 	// Only a turn whose operation is still live uses its final answer, so the
 	// reply's items are parsed from the earliest such turn, and not at all
 	// without one: parsing every turn of every resumed thread was the largest
@@ -549,7 +549,7 @@ func (sess *session) observeCodexResume(resp *codexResumeResponse) {
 			marks[i].FinishOnSavedProof = sess.finishesOnSavedProof("codex", marks[i].ProviderTurnID, matches[i].OpenOperations)
 		}
 	}
-	endedWhileDown, _ := sess.agentExecutions.markResumedTurnsTerminal(sess.hostedThreadID, "codex", threadID, marks, matches)
+	endedWhileDown, _ := sess.agentExecutions.MarkResumedTurnsTerminal(sess.hostedThreadID, "codex", threadID, marks, matches)
 	for i, turn := range terminalTurns {
 		if endedWhileDown[i] {
 			sess.observeCodexResumedTurnFinish(threadID, turn)
@@ -595,13 +595,13 @@ func (sess *session) observeCodexResumedTurnFinish(nativeThreadID string, turn c
 	finish := coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: nativeThreadID,
 		TurnID: turn.ID, Outcome: turn.Status, At: at, Source: "adapter"}
 	if sess.queuedTurns != nil {
-		if prompt, found := sess.queuedTurns.byProviderTurn(sess.provider, nativeThreadID, sess.hostedThreadID, turn.ID); found {
+		if prompt, found := sess.queuedTurns.ByProviderTurn(sess.provider, nativeThreadID, sess.hostedThreadID, turn.ID); found {
 			finish.ActionID = prompt.ClientActionID
 		}
 	}
 	// The final message resume decoded wins; the projection may not hold it.
 	if finish.FinalMessageID = codexResumeFinalItemID(turn); finish.FinalMessageID == "" && sess.projection != nil {
-		finish.FinalMessageID = sess.projection.finalAgentItemID(turn.ID)
+		finish.FinalMessageID = sess.projection.FinalAgentItemID(turn.ID)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

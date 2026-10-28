@@ -191,7 +191,7 @@ func (s *server) liveFileEvidence(ctx context.Context, sessionID string) []strin
 	if session == nil || session.liveText == nil {
 		return nil
 	}
-	texts := session.liveText.currentTexts(ctx)
+	texts := session.liveText.CurrentTexts(ctx)
 	var blobs []string
 	total := 0
 	for index := len(texts) - 1; index >= 0 && total < fileEvidenceMaxBytes; index-- {

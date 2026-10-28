@@ -283,7 +283,7 @@ func TestHeartbeatAttachmentAPIRequiresReasonAndRejectsClosedTarget(t *testing.T
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("pause without reason = %d %s", recorder.Code, recorder.Body.String())
 	}
-	if err := s.agentExecutions.updateSession(target.ID, target.NanoSessionID, target.NativeThreadID, sessionStatusExited, "closed"); err != nil {
+	if err := s.agentExecutions.UpdateSession(target.ID, target.NanoSessionID, target.NativeThreadID, sessionStatusExited, "closed"); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := json.Marshal(map[string]any{

@@ -36,11 +36,11 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			h.server.agentExecutions = store
 			turn, item := h.fixture.turns["new"], test.item
 			var err error
-			if err := store.markTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
+			if err := store.MarkTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
 				t.Fatal(err)
 			}
 			if test.path != "projection" {
-				if err := store.observeCandidate(test.provider, h.fixture.native, turn, item, "final_answer", "wire prefix"); err != nil {
+				if err := store.ObserveCandidate(test.provider, h.fixture.native, turn, item, "final_answer", "wire prefix"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -56,11 +56,11 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 					} {
 						sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(fmt.Sprintf(frame, h.fixture.native, turn)), at)
 					}
-					sess.projection.updateCompletedTurn(turn, agentTurnCompleted, 1000, at.UnixMilli())
+					sess.projection.UpdateCompletedTurn(turn, agentTurnCompleted, 1000, at.UnixMilli())
 					sess.reconcileAgentOperations()
 					break
 				}
-				sess.projection.setClaudeProviderTurnID(turn)
+				sess.projection.SetClaudeProviderTurnID(turn)
 				sess.projection.(*liveProjection).applyWire(protocol.Send, []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":"new prompt"}]}}`, submissionEventID("hosted", "new"))), at)
 				for _, frame := range []string{
 					`{"type":"assistant","session_id":%[1]q,"uuid":"new-event","message":{"id":"new-message","role":"assistant","content":[{"type":"text","text":"wire prefix"}],"stop_reason":"end_turn"}}`,
@@ -70,7 +70,7 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 					sess.projection.(*liveProjection).applyWire(protocol.Recv, []byte(fmt.Sprintf(frame, h.fixture.native)), at)
 				}
 				result := []byte(fmt.Sprintf(`{"type":"result","subtype":"success","is_error":false,"result":"wire result","session_id":%q,"duration_ms":1000}`, h.fixture.native))
-				sess.projection.setClaudeResultTurnID(turn) // as the session loop names it
+				sess.projection.SetClaudeResultTurnID(turn) // as the session loop names it
 				sess.projection.(*liveProjection).applyWire(protocol.Recv, result, at)
 				sess.observeClaudeAgentResult(result)
 			case "wire":
@@ -80,14 +80,14 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 					frame, _ := json.Marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": h.fixture.native, "turn": map[string]any{"id": turn, "status": "completed"}}})
 					sess.observeAgentExecutionWire(protocol.Recv, frame)
 				} else {
-					err = store.markTurnTerminal(test.provider, h.fixture.native, turn, agentTurnCompleted, nil, "", "")
+					err = store.MarkTurnTerminal(test.provider, h.fixture.native, turn, agentTurnCompleted, nil, "", "")
 				}
 			case "joined":
-				err = store.finishJoinedTurn(op.ID, turn, agentTurnCompleted, nil, "incomplete owner", item, agentResultMeta{})
+				err = store.FinishJoinedTurn(op.ID, turn, agentTurnCompleted, nil, "incomplete owner", item, agentResultMeta{})
 			case "resume":
 				marks := []agentTerminalTurn{{ProviderTurnID: turn, Status: agentTurnCompleted, Response: "resume prefix", ItemID: item}}
-				matches := store.resumedTurnMatches(op.HostedThreadID, "codex", h.fixture.native, marks)
-				_, err = store.markResumedTurnsTerminal(op.HostedThreadID, "codex", h.fixture.native, marks, matches)
+				matches := store.ResumedTurnMatches(op.HostedThreadID, "codex", h.fixture.native, marks)
+				_, err = store.MarkResumedTurnsTerminal(op.HostedThreadID, "codex", h.fixture.native, marks, matches)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -127,10 +127,10 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 		}
 		return text, id, err
 	})
-	if err := store.markTurnDelivery(op.ID, "turn-late", agentTurnRunning, nil); err != nil {
+	if err := store.MarkTurnDelivery(op.ID, "turn-late", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.markTurnTerminal("codex", h.fixture.native, "turn-late", agentTurnCompleted, nil, "unsaved wire", "late-answer"); err != nil {
+	if err := store.MarkTurnTerminal("codex", h.fixture.native, "turn-late", agentTurnCompleted, nil, "unsaved wire", "late-answer"); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -228,7 +228,7 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := restarted.bindSession(op.HostedThreadID, "next-session", h.fixture.native, "ready", presentationShared); err != nil {
+			if err := restarted.BindSession(op.HostedThreadID, "next-session", h.fixture.native, "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			restarted.useSavedResults(h.server.savedOperationResult, nil)
@@ -277,7 +277,7 @@ func TestCatalogCommitCompletesAnOperationWhoseAnswerOutlastedItsWait(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := first.bindSession(hosted.ID, "session", "native-thread", "ready", presentationShared); err != nil {
+			if err := first.BindSession(hosted.ID, "session", "native-thread", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			op, _, err := first.beginTurn(hosted.ID, "action", "prompt-hash")
@@ -388,7 +388,7 @@ func TestOperationResultJobKeepsItsDeadlineAndItsAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := store.bindSession(hosted.ID, "session", "native-thread", "ready", presentationShared); err != nil {
+			if err := store.BindSession(hosted.ID, "session", "native-thread", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			op, _, err := store.beginTurn(hosted.ID, "action", "prompt-hash")
@@ -455,7 +455,7 @@ func (h *settlementHarness) savedResultOperation(t *testing.T, action string, re
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(hosted.ID, "session", h.fixture.native, "ready", presentationShared); err != nil {
+	if err := store.BindSession(hosted.ID, "session", h.fixture.native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	op, _, err := store.beginTurn(hosted.ID, action, "prompt-hash")

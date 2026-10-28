@@ -74,7 +74,7 @@ func TestThreadsPrimitivesUseCanonicalAttachmentCounter(t *testing.T) {
 	if err != nil || late.Snapshot != current || late.Drain {
 		t.Fatalf("old provider evidence crossed durable fence: %+v, %v", late, err)
 	}
-	view, err := store.view("thread-a")
+	view, err := store.View("thread-a")
 	if err != nil || view.AttachmentGeneration != bound.Generation || view.Revision != bound.Revision {
 		t.Fatalf("canonical view disagrees with binding: %+v, %v", view, err)
 	}
@@ -90,7 +90,7 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 	if err := source.ensureHostedThread("thread-a", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := source.claimNativeID("thread-a", "claude", "settled-a", false); err != nil {
+	if err := source.ClaimNativeID("thread-a", "claude", "settled-a", false); err != nil {
 		t.Fatal(err)
 	}
 	// A provisional handle retired before claims recorded resolutions, as
@@ -102,7 +102,7 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 	if err := source.ensureHostedThread("thread-b", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := source.claimNativeID("thread-b", "claude", "provisional-b", true); err != nil {
+	if err := source.ClaimNativeID("thread-b", "claude", "provisional-b", true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := source.beginTransportBinding("thread-a"); err != nil {

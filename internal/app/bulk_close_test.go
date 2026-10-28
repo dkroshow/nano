@@ -33,7 +33,7 @@ func createBulkCloseMember(t *testing.T, store *agentExecutionStore, clientID st
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.bindSession(record.ID, "nano-"+clientID, "native-"+clientID, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-"+clientID, "native-"+clientID, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	record, _ = store.session(record.ID)
@@ -133,14 +133,14 @@ func TestBulkCloseKeepsResumedHostedAliasesInOneVisibleTree(t *testing.T) {
 	s, store, _ := newBulkCloseTestServer(t)
 	oldRoot := createBulkCloseMember(t, store, "old-root", agentSessionRecord{})
 	child := createBulkCloseMember(t, store, "child", oldRoot)
-	if err := store.updateSession(oldRoot.ID, "", "", sessionStatusExited, "closed"); err != nil {
+	if err := store.UpdateSession(oldRoot.ID, "", "", sessionStatusExited, "closed"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.control.db.Exec(`UPDATE hosted_thread_native_ids SET retired_at=? WHERE hosted_thread_id=? AND provider=? AND native_thread_id=? AND retired_at IS NULL`, time.Now().UTC().Format(time.RFC3339Nano), oldRoot.ID, oldRoot.Provider, oldRoot.NativeThreadID); err != nil {
 		t.Fatal(err)
 	}
 	newRoot := createBulkCloseMember(t, store, "new-root", agentSessionRecord{})
-	if err := store.bindSession(newRoot.ID, "nano-new-root", oldRoot.NativeThreadID, "ready", presentationShared); err != nil {
+	if err := store.BindSession(newRoot.ID, "nano-new-root", oldRoot.NativeThreadID, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 
@@ -244,7 +244,7 @@ func TestChildCreationQueuedBehindTreeMutationCannotUseClosedInvoker(t *testing.
 		t.Fatalf("child creation escaped relationship lock: %d %s", recorder.Code, recorder.Body.String())
 	case <-time.After(25 * time.Millisecond):
 	}
-	if err := store.updateSession(root.ID, "", "", sessionStatusExited, "closed by bulk close"); err != nil {
+	if err := store.UpdateSession(root.ID, "", "", sessionStatusExited, "closed by bulk close"); err != nil {
 		t.Fatal(err)
 	}
 	s.relationshipMu.Unlock()

@@ -77,7 +77,7 @@ func (s *server) publicCompletedTurn(ctx context.Context, hosted string, row com
 	// operation is the one delivered under it, if any: a person's prompt has
 	// none, and retention removes old ones.
 	if row.ClientActionID != "" {
-		op, found, err := s.agentExecutions.persistedTurnForTransportAction(ctx, hosted, row.ClientActionID)
+		op, found, err := s.agentExecutions.PersistedTurnForTransportAction(ctx, hosted, row.ClientActionID)
 		if err != nil {
 			return item, false
 		}
@@ -103,7 +103,7 @@ func (s *server) publicCompletedTurn(ctx context.Context, hosted string, row com
 		return item, true
 	}
 	resolve := func(handle string) string {
-		native, err := s.controlMetadata.resolvedNative(ctx, hosted, string(model.ProviderClaude), handle)
+		native, err := s.controlMetadata.ResolvedNative(ctx, hosted, string(model.ProviderClaude), handle)
 		if err != nil {
 			return ""
 		}

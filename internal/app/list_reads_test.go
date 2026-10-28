@@ -120,12 +120,12 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := executions.bindSession(record.ID, sessID, native, "ready", presentationShared); err != nil {
+			if err := executions.BindSession(record.ID, sessID, native, "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			for _, fact := range [][2]string{{"cwd", cwd}, {postureFieldModel, model}} {
 				field, value := fact[0], fact[1]
-				if _, err := metadata.appendEvent(metadataEvent{HostedThreadID: record.ID, Field: field, Value: value,
+				if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: field, Value: value,
 					Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 					SourceEventKey: record.ID + "-" + field}); err != nil {
 					t.Fatal(err)
@@ -164,10 +164,10 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.markTurnDelivery(turn.ID, "codex:failed", agentTurnRunning, nil); err != nil {
+	if err := executions.MarkTurnDelivery(turn.ID, "codex:failed", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.markTurnTerminal("codex", "failed-live", "codex:failed", agentTurnFailed,
+	if err := executions.MarkTurnTerminal("codex", "failed-live", "codex:failed", agentTurnFailed,
 		&agentExecutionError{Source: "provider", Code: "error", Message: "failed"}, "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -527,17 +527,17 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 			if _, err := executions.ensureSessionWithIdentity(id, "codex", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
-			if err := executions.updateSession(id, "", fmt.Sprintf("exited-%03d", i), sessionStatusExited, ""); err != nil {
+			if err := executions.UpdateSession(id, "", fmt.Sprintf("exited-%03d", i), sessionStatusExited, ""); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if err := executions.updateSession(f.hostedBy["outside-live"], "", "outside-live", sessionStatusExited, ""); err != nil {
+		if err := executions.UpdateSession(f.hostedBy["outside-live"], "", "outside-live", sessionStatusExited, ""); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := executions.ensureSessionWithIdentity("nht_rebooting", "codex", presentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := executions.updateSession("nht_rebooting", "", "rebooting", sessionStatusExited, ""); err != nil {
+		if err := executions.UpdateSession("nht_rebooting", "", "rebooting", sessionStatusExited, ""); err != nil {
 			t.Fatal(err)
 		}
 		rebooting := attachmentRecord{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
@@ -587,7 +587,7 @@ func TestAvailabilityReadsOnlyItsThreadsPrompts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sess.queuedTurns.bindTransactionStore(store)
+		sess.queuedTurns.BindTransactionStore(store)
 		submit := func(hosted, native, action string) {
 			if _, _, err := store.Submit(ctx, turns.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
 				ActionID: action, ProviderText: "prompt " + action, TextHash: action, RequestHash: action}); err != nil {

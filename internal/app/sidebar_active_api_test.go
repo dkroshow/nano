@@ -509,10 +509,10 @@ func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(parentHosted.ID, "sess-parent", "related-parent", "ready", presentationShared); err != nil {
+	if err := executions.BindSession(parentHosted.ID, "sess-parent", "related-parent", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(childHosted.ID, "sess-child", "related-child", "ready", presentationShared); err != nil {
+	if err := executions.BindSession(childHosted.ID, "sess-child", "related-child", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := metadata.appendOrchestrationAssignment(childHosted.ID, "rel-1", &orchestrationAssignment{

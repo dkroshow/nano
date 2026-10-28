@@ -11,7 +11,6 @@ import (
 	"time"
 
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
-
 	"github.com/gorilla/websocket"
 )
 
@@ -639,7 +638,7 @@ func TestCodexResumeSendsTheThreadsServiceTier(t *testing.T) {
 	s := newResumeTestServer(t, fake.wsURL())
 	const threadID = "0199a213-abcd-7000-8000-00000000071e"
 	hostedID := seedCanonicalResumeOwner(t, s, "codex", threadID, s.defaults.cwd)
-	if _, err := s.controlMetadata.appendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldServiceTier, Value: "default",
+	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldServiceTier, Value: "default",
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "tier:" + hostedID}); err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +654,7 @@ func TestCodexResumeSendsTheThreadsServiceTier(t *testing.T) {
 
 	fake.setResumeErrorSequence("thread not found")
 	waitForSessionStatus(t, s, resume().ID, "exited")
-	view, err := s.controlMetadata.view(hostedID)
+	view, err := s.controlMetadata.View(hostedID)
 	if err != nil || view.Fields[postureFieldServiceTier].DesiredDisposition != metadataDispositionRequested {
 		t.Fatalf("tier after a failed resume = %+v (%v), want still requested", view.Fields[postureFieldServiceTier], err)
 	}

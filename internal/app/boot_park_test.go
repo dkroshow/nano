@@ -74,29 +74,29 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 		}
 	}
 
-	got, ok := stores.queue.get(stage5BadQueuedAction)
+	got, ok := stores.queue.Get(stage5BadQueuedAction)
 	if !ok {
 		t.Fatal("boot repair removed the offending row")
 	}
 	if got.State != submissionParked || got.Text != "" {
 		t.Fatalf("boot repair row = %+v, want retained parked row", got)
 	}
-	if _, deliverable := stores.queue.first(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); deliverable {
+	if _, deliverable := stores.queue.First(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); deliverable {
 		t.Fatal("boot-parked row remained eligible for delivery")
 	}
-	gotAttempt, ok := stores.attempts.get(stage5BadQueuedAction)
+	gotAttempt, ok := stores.attempts.Get(stage5BadQueuedAction)
 	if !ok || gotAttempt.Status != submissionParked || gotAttempt.Reason != "boot_incomplete_outbox:text" {
 		t.Fatalf("boot repair journal marker = %+v, present=%v", gotAttempt, ok)
 	}
 
 	projection := newLiveProjection(queued.Provider, queued.HostedThreadID, "nano-fixture")
-	projection.setNativeThreadID(queued.NativeThreadID)
+	projection.SetNativeThreadID(queued.NativeThreadID)
 	sess := &session{
 		provider: queued.Provider, hostedThreadID: queued.HostedThreadID,
 		threadID: queued.NativeThreadID, projection: projection, queuedTurns: stores.queue,
 	}
 	sess.restoreQueuedTurnBootDiagnostics()
-	diagnostics := projection.threadDiagnosticsSnapshot()
+	diagnostics := projection.ThreadDiagnosticsSnapshot()
 	if len(diagnostics) != 1 || diagnostics[0].Code != "boot_incomplete_outbox" ||
 		diagnostics[0].Source != "turn-store-boot" || diagnostics[0].ActionID != stage5BadQueuedAction ||
 		!strings.Contains(diagnostics[0].Message, "missing: text") {
@@ -111,7 +111,7 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 		t.Fatalf("park marker did not survive the next boot: %v", err)
 	}
 	t.Cleanup(func() { _ = reopened.control.Close() })
-	if parks := reopened.queue.bootParksFor(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); len(parks) != 1 || parks[0].ActionID != stage5BadQueuedAction {
+	if parks := reopened.queue.BootParksFor(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); len(parks) != 1 || parks[0].ActionID != stage5BadQueuedAction {
 		t.Fatalf("reopened boot diagnostics = %#v", parks)
 	}
 }

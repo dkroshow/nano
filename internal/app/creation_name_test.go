@@ -48,7 +48,7 @@ func TestCreationThreadNamesProjectsConfirmedCurrentIdentity(t *testing.T) {
 	if err := control.recordCreationName(hosted.ID, "created title"); err != nil {
 		t.Fatal(err)
 	}
-	if err := executions.bindSession(hosted.ID, "nano", "native-projection", "ready", presentationShared); err != nil {
+	if err := executions.BindSession(hosted.ID, "nano", "native-projection", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
 

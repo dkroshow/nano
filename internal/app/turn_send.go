@@ -75,7 +75,8 @@ func newSendAttemptStore(db *sql.DB, path, runID string, store *prompts.Store) (
 	return &sendAttemptStore{db: db, path: path, runID: runID, turns: store}, nil
 }
 
-func (s *sendAttemptStore) get(actionID string) (sendAttemptRecord, bool) {
+// Get reads compatibility evidence for an action.
+func (s *sendAttemptStore) Get(actionID string) (sendAttemptRecord, bool) {
 	if s == nil {
 		return sendAttemptRecord{}, false
 	}
@@ -87,7 +88,8 @@ func (s *sendAttemptStore) get(actionID string) (sendAttemptRecord, bool) {
 	return prompts.LegacySendAttempt(prompts.Record{}, attempt), err == nil
 }
 
-func (s *sendAttemptStore) listThread(provider, nativeThreadID string) []sendAttemptRecord {
+// ListThread reads compatibility records for a thread.
+func (s *sendAttemptStore) ListThread(provider, nativeThreadID string) []sendAttemptRecord {
 	if s == nil || nativeThreadID == "" {
 		return nil
 	}
@@ -172,7 +174,7 @@ func (sess *session) handleTurn(w http.ResponseWriter, r *http.Request) {
 		}
 		currentRunID := ""
 		if sess.sendAttempts != nil {
-			currentRunID = sess.sendAttempts.runIdentity()
+			currentRunID = sess.sendAttempts.RunIdentity()
 		}
 		if handled := writeExistingAttempt(w, rec, currentRunID); handled {
 			return
@@ -302,13 +304,13 @@ func (sess *session) handleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 		threadID = sess.currentThreadID()
 	}
 	views := make([]promptView, 0)
-	if sess.sendAttempts == nil || sess.sendAttempts.transactionStore() == nil || threadID == "" {
+	if sess.sendAttempts == nil || sess.sendAttempts.TransactionStore() == nil || threadID == "" {
 		httpapi.WriteJSON(w, map[string]any{"operations": views})
 		return
 	}
-	var journal promptJournal = sess.sendAttempts.transactionStore()
+	var journal promptJournal = sess.sendAttempts.TransactionStore()
 	if sess.metadata != nil {
-		if pool := sess.metadata.readPool(); pool != nil {
+		if pool := sess.metadata.ReadPool(); pool != nil {
 			journal = prompts.NewJournal(pool)
 		}
 	}
@@ -319,7 +321,7 @@ func (sess *session) handleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 	}
 	texts := make(map[string]string)
 	if sess.queuedTurns != nil {
-		for _, queued := range sess.queuedTurns.listThreadFrom(journal, sess.provider, threadID, sess.hostedThreadID) {
+		for _, queued := range sess.queuedTurns.ListThreadFrom(journal, sess.provider, threadID, sess.hostedThreadID) {
 			texts[queued.ClientActionID] = queued.Text
 		}
 	}
@@ -1331,7 +1333,7 @@ func claudeSubmissionBinding(entry prompts.OutboxEntry, nativeThreadID string) p
 // other handle is unresolved, and its prompts wait.
 func (sess *session) resolveClaudeHandle(ctx context.Context, handle string) string {
 	if sess.metadata != nil {
-		native, err := sess.metadata.resolvedNative(ctx, sess.hostedThreadID, sess.provider, handle)
+		native, err := sess.metadata.ResolvedNative(ctx, sess.hostedThreadID, sess.provider, handle)
 		if err != nil {
 			log.Printf("resolve provisional %s of %s: %v", handle, sess.hostedThreadID, err)
 		} else if native != "" {
@@ -1386,14 +1388,14 @@ func (sess *session) restoreQueuedTurnBootDiagnostics() {
 	if sess == nil || sess.projection == nil || sess.queuedTurns == nil {
 		return
 	}
-	for _, parked := range sess.queuedTurns.bootParksFor(sess.provider, sess.currentThreadID(), sess.hostedThreadID) {
+	for _, parked := range sess.queuedTurns.BootParksFor(sess.provider, sess.currentThreadID(), sess.hostedThreadID) {
 		diagnostic := threadDiagnostic{
 			Code:     "boot_incomplete_outbox",
 			Message:  "durable queued turn was parked because required fields are missing: " + strings.Join(parked.Missing, ","),
 			Source:   "turn-store-boot",
 			ActionID: parked.ActionID,
 		}
-		sess.projection.recordDiagnostic(diagnostic, true)
+		sess.projection.RecordDiagnostic(diagnostic, true)
 	}
 }
 
@@ -1419,7 +1421,7 @@ func (sess *session) drainQueuedTurn() {
 	if sess.queuedTurns == nil {
 		return
 	}
-	queued, ok := sess.queuedTurns.first(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
+	queued, ok := sess.queuedTurns.First(sess.provider, sess.currentThreadID(), sess.hostedThreadID)
 	if !ok {
 		return
 	}
@@ -1468,7 +1470,7 @@ func (sess *session) cancelQueuedTurnAction(actionID, by string) (queuedTurnReco
 	}
 	// Live text, which shows the prompt until a saved row settles it, drops
 	// it when told.
-	if record, _, err := sess.queuedTurns.transactionStore().Get(context.Background(), actionID); err == nil {
+	if record, _, err := sess.queuedTurns.TransactionStore().Get(context.Background(), actionID); err == nil {
 		sess.publishLiveOutbox(record.Outbox)
 	}
 	return queued, nil
@@ -1485,11 +1487,11 @@ const (
 // canceled, an uncertain or parked one expired. The operation that sent it
 // ends in the same transaction (endDiscardedOperation).
 func cancelQueuedTurnStores(queue sessionQueue, ops sessionExecutions, actionID, by string) (queuedTurnRecord, error) {
-	if queue == nil || queue.transactionStore() == nil {
+	if queue == nil || queue.TransactionStore() == nil {
 		return queuedTurnRecord{}, fmt.Errorf("transactional turns store is unavailable")
 	}
 	ctx := context.Background()
-	record, attempt, err := queue.transactionStore().Get(ctx, actionID)
+	record, attempt, err := queue.TransactionStore().Get(ctx, actionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return queuedTurnRecord{}, errQueuedTurnNotFound
 	}
@@ -1534,12 +1536,12 @@ func endDiscardedOperation(queue sessionQueue, ops sessionExecutions, prior prom
 	if ops == nil {
 		return hosted.ErrOperationReadUnavailable
 	}
-	op, found, err := ops.persistedTurnForTransportAction(context.Background(), prior.Outbox.HostedThreadID, prior.Outbox.ActionID)
+	op, found, err := ops.PersistedTurnForTransportAction(context.Background(), prior.Outbox.HostedThreadID, prior.Outbox.ActionID)
 	if err != nil {
 		return err
 	}
 	if !found {
-		tx, err := queue.database().Begin()
+		tx, err := queue.Database().Begin()
 		if err != nil {
 			return err
 		}
@@ -1558,7 +1560,7 @@ func endDiscardedOperation(queue sessionQueue, ops sessionExecutions, prior prom
 		ended.Code = "prompt_discarded"
 		ended.Message = who + " discarded the prompt; its provider is not known to have taken it, and Nano will not wait for an answer"
 	}
-	return ops.markTurnDeliveryWith(op.ID, "", agentTurnInterrupted, ended, end)
+	return ops.MarkTurnDeliveryWith(op.ID, "", agentTurnInterrupted, ended, end)
 }
 
 // handleTurnDeliveryResend is the person's Resend of a prompt Nano holds: if
@@ -1772,18 +1774,23 @@ func (s *server) publishProviderRuntime(provider string) {
 	}
 }
 
-func (s *sendAttemptStore) transactionStore() *prompts.Store {
+// TransactionStore returns the canonical transactional prompt store.
+func (s *sendAttemptStore) TransactionStore() *prompts.Store {
 	if s == nil {
 		return nil
 	}
 	return s.turns
 }
-func (s *sendAttemptStore) bindTransactionStore(store *prompts.Store) {
+
+// BindTransactionStore sets the canonical transactional prompt store.
+func (s *sendAttemptStore) BindTransactionStore(store *prompts.Store) {
 	if s != nil {
 		s.turns = store
 	}
 }
-func (s *sendAttemptStore) runIdentity() string {
+
+// RunIdentity returns the process identity attached to delivery evidence.
+func (s *sendAttemptStore) RunIdentity() string {
 	if s == nil {
 		return ""
 	}
