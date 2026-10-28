@@ -62,6 +62,9 @@ func writeParsedBatchTx(ctx context.Context, tx *sql.Tx, projectionID int64, nat
 	changes := compactParsedChanges(batch.Changes)
 	starts := parsedTurnDisplayStarts(batch.Observations)
 	owners := make(map[string]TranscriptTurn)
+	// Saved turns this batch adds rows to, and those with a snapshot in it,
+	// which that snapshot's write positions.
+	joined, snapshots := map[string]bool{}, map[string]bool{}
 	for _, change := range changes {
 		if change.Turn == nil {
 			continue
@@ -71,6 +74,7 @@ func writeParsedBatchTx(ctx context.Context, tx *sql.Tx, projectionID int64, nat
 			return err
 		}
 		owners[change.Turn.Key] = view
+		snapshots[view.Key] = true
 	}
 	for _, entry := range parsedFileEntries(batch, changes, recordSource) {
 		if entry.record != nil {
@@ -81,6 +85,7 @@ func writeParsedBatchTx(ctx context.Context, tx *sql.Tx, projectionID int64, nat
 			if err := writeParsedRecordViewTx(ctx, tx, projectionID, nativeThreadID, owner, entry); err != nil {
 				return err
 			}
+			joined[owner.Key] = true
 			continue
 		}
 		item := *entry.item
@@ -94,6 +99,7 @@ func writeParsedBatchTx(ctx context.Context, tx *sql.Tx, projectionID int64, nat
 			if item.TurnKey != "" {
 				owners[item.TurnKey] = owner
 			}
+			joined[owner.Key] = true
 		}
 		_, replay, err := writeParsedTranscriptItemTx(ctx, tx, projectionID, nativeThreadID, owner, item)
 		if err != nil {
@@ -109,6 +115,21 @@ func writeParsedBatchTx(ctx context.Context, tx *sql.Tx, projectionID int64, nat
 			continue
 		}
 		if _, err := writeParsedTranscriptTurnTx(ctx, tx, projectionID, *change.Turn, starts[change.Turn.Key]); err != nil {
+			return err
+		}
+	}
+	// A record after a turn's completion can add an item to a turn saved by an
+	// earlier append, with no new snapshot of that turn; its positions follow
+	// its items here, as a snapshot write would set them. A completed turn's
+	// completion position is its end.
+	for key := range joined {
+		if key == "" || snapshots[key] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE conversation_turns SET start_seq=COALESCE((SELECT MIN(projected_seq) FROM conversation_items i WHERE i.projection_id=conversation_turns.projection_id AND i.turn_key=conversation_turns.turn_key),0),end_seq=COALESCE((SELECT MAX(projected_seq) FROM conversation_items i WHERE i.projection_id=conversation_turns.projection_id AND i.turn_key=conversation_turns.turn_key),0) WHERE projection_id=? AND turn_key=?`, projectionID, key); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE conversation_turns SET completion_seq=end_seq WHERE projection_id=? AND turn_key=? AND completion_seq>0`, projectionID, key); err != nil {
 			return err
 		}
 	}

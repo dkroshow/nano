@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -408,5 +409,57 @@ func TestTranscriptNoopAppendKeepsTheSavedCopy(t *testing.T) {
 	}
 	if turn.Usage == nil || turn.Usage.Input == nil || *turn.Usage.Input != 6 {
 		t.Fatalf("turn usage after a zero-byte append and a restart = %+v, want input 6", turn.Usage)
+	}
+}
+
+// A record after a turn's completion can still add an item to that turn.
+// Found by WI-6423's closure check on a real rollout: thread settings applied
+// just after task_complete, saved by the next append, left the completed
+// turn's end and completion positions one row short of a full rebuild of the
+// same bytes (2 of 547 turns). Boundary: the store's append path against a
+// full rebuild.
+func TestTranscriptAppendRefreshesTheTurnALateItemJoins(t *testing.T) {
+	rows := []string{
+		`{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}`,
+		`{"type":"response_item","payload":{"type":"message","id":"msg-a","role":"assistant","content":[{"type":"output_text","text":"Done"}]}}`,
+		`{"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-a"}}`,
+		`{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"default"}}}`,
+		`{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-b"}}`,
+	}
+	positions := func(store *Store) map[int][3]int64 {
+		t.Helper()
+		out := map[int][3]int64{}
+		result, err := store.db.QueryContext(context.Background(), `SELECT ordinal, start_seq, end_seq, COALESCE(completion_seq,0) FROM conversation_turns`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer result.Close()
+		for result.Next() {
+			var ordinal int
+			var start, end, completion int64
+			if err := result.Scan(&ordinal, &start, &end, &completion); err != nil {
+				t.Fatal(err)
+			}
+			out[ordinal] = [3]int64{start, end, completion}
+		}
+		return out
+	}
+	dir := t.TempDir()
+	appended, err := Open(filepath.Join(dir, "appended.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer appended.Close()
+	target := newCodexAppendTarget(t, appended, filepath.Join(dir, "appended"))
+	target.apply(t, []byte(strings.Join(rows[:3], "\n")+"\n"))
+	target.apply(t, []byte(strings.Join(rows, "\n")+"\n"))
+	rebuilt, err := Open(filepath.Join(dir, "rebuilt.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rebuilt.Close()
+	newCodexAppendTarget(t, rebuilt, filepath.Join(dir, "rebuilt")).apply(t, []byte(strings.Join(rows, "\n")+"\n"))
+	if got, want := positions(appended), positions(rebuilt); !reflect.DeepEqual(got, want) {
+		t.Fatalf("turn start, end and completion positions after appends %v, after a full rebuild %v", got, want)
 	}
 }
