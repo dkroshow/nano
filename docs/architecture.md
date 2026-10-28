@@ -11,10 +11,11 @@ under [decisions/](decisions/) say why each piece is the way it is.
 
 The `internal/app` package is the server; `cmd/nanod` calls its entry point. It
 uses `internal/config` to parse every flag into one `Config` value before it opens a
-store or a listener, builds the HTTP router (`routes.go`), and holds the map
-of live sessions. Each live session owns one connection to a provider
-runtime, a bounded in-memory buffer of its wire events, and the live-text
-loop that turns streamed output into what a pane shows.
+store or a listener, builds the HTTP router (`routes.go`), and composes the
+session registry from `internal/sessions`. That package owns live attachments,
+provider connections, lifecycle application, prompt delivery and ordered wire
+events. The app keeps hosted identity and admission, catalog composition, and
+the live-text loop that reconciles saved rows with streamed output.
 
 `internal/` also holds the packages the server is built from. Each package's doc
 comment states what it may depend on, and import tests hold the direction
@@ -22,6 +23,7 @@ for the parsing module, the state layer and lifecycle.
 
 | Package | Owns |
 | --- | --- |
+| `sessions` | Live attachment state and its registry, provider wiring, lifecycle application, prompt delivery and wire ordering. It consumes owner services through explicit inputs and small interfaces; it never imports `app`. |
 | `providers`, `providers/{codex,claude,grok}` | The five turn operations and capability declaration of each provider adapter. Adapters take values and return normalized evidence; they never see the app. |
 | `wire`, `wire/{codex,claude,grok}` | The live connection to each runtime: Codex JSON-RPC over WebSocket, the Claude shim's framed stdio, Grok's ACP process. |
 | `transcriptparse` | Pure readers of provider transcript bytes, file and wire, for all three providers (below). No Nano dependency. |
@@ -35,8 +37,8 @@ for the parsing module, the state layer and lifecycle.
 | `features/{mail,heartbeat,subscriptions,feedback}` | Durable inbox, scheduled wakes, child-completion notices, operator notes. Each depends on `interact`, never on providers. |
 | `config` | Process flags, defaults and resolved filesystem paths; opens no stores or workers. |
 | `usage`, `usageclients` | Account-usage polling, retention and read models; read-only Claude and Codex clients. Grok launch-policy glue stays in `app`. |
-| `setup` | Read-only Claude context sources and the workspace skills cache. Session handlers stay in `app`. |
-| `observability` | Bounded request measurements and rotating process logs. Stateful diagnostics handlers stay in `app`. |
+| `setup` | Read-only Claude context sources and the workspace skills cache. Session receiver handlers live in `sessions`. |
+| `observability` | Bounded request measurements and rotating process logs. Session diagnostics handlers live in `sessions`; server diagnostics stay in `app`. |
 | `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution; content-free browser evidence. |
 | `httpapi`, `httpapi/remoteauth` | HTTP transport conventions, compression, discovery document delivery and connection measurement; the password-guarded remote listener and its store. |
 | `state/db`, `app/persistence`, `app/statestore`, `edge/statewiring` | The shared SQLite connection policy and the composition of table owners at the program edge. |
