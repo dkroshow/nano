@@ -95,3 +95,18 @@ func collectThreadMessages(ctx context.Context, catalog threadTranscriptCatalog,
 	}
 	return out, nil
 }
+
+// Keep startup construction local while the catalog implementation lives in
+// threadindex. These forwarding methods preserve the shared construction seam.
+func (s *threadCatalogService) fileChanged(path string) {
+	s.Service.FileChanged(path)
+}
+func (s *threadCatalogService) setCreationNameSource(source func(context.Context) ([]history.ThreadNameRecord, error)) {
+	s.Service.SetCreationNameSource(source)
+}
+func (s *threadCatalogService) setTranscriptRepairPriority(priority func(history.TranscriptParserBackfillCandidate) int) {
+	s.Service.SetTranscriptRepairPriority(priority)
+}
+func (s *threadCatalogService) setTranscriptChanged(changed func(context.Context, transcriptChange)) {
+	s.Service.SetTranscriptChanged(changed)
+}
