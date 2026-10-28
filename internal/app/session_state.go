@@ -278,7 +278,7 @@ func (sess *session) updateHostedThread(status, message string) {
 		return
 	}
 	if sess.metadata != nil {
-		if err := skipOwnedNativeClaim(sess.metadata.claimNativeID(sess.hostedThreadID, sess.provider, sess.currentThreadID(), nativeThreadIDProvisional(sess.provider, sess.currentThreadID()))); err != nil {
+		if err := hostedvalues.SkipOwnedNativeClaim(sess.metadata.claimNativeID(sess.hostedThreadID, sess.provider, sess.currentThreadID(), nativeThreadIDProvisional(sess.provider, sess.currentThreadID()))); err != nil {
 			log.Printf("claim canonical native id for %s: %v", sess.hostedThreadID, err)
 		}
 	}

@@ -539,7 +539,7 @@ func (s *agentExecutionStore) bindSession(id, nanoSessionID, nativeThreadID, sta
 	if nativeThreadID != "" {
 		rec.NativeThreadID = nativeThreadID
 		if s.control != nil && rec.Provider != "" && rec.Provider != "unknown" {
-			if err := skipOwnedNativeClaim(s.control.claimNativeID(id, rec.Provider, nativeThreadID, nativeThreadIDProvisional(rec.Provider, nativeThreadID))); err != nil {
+			if err := hosted.SkipOwnedNativeClaim(s.control.claimNativeID(id, rec.Provider, nativeThreadID, nativeThreadIDProvisional(rec.Provider, nativeThreadID))); err != nil {
 				return err
 			}
 		}

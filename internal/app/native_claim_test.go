@@ -48,7 +48,7 @@ func seedHostedNative(t *testing.T, store *agentExecutionStore, provider, native
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := skipOwnedNativeClaim(store.control.claimNativeID(record.ID, provider, nativeID, false)); err != nil {
+	if err := hostedvalues.SkipOwnedNativeClaim(store.control.claimNativeID(record.ID, provider, nativeID, false)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.updateSession(record.ID, "nano-"+record.ID, nativeID, status, ""); err != nil {
@@ -134,7 +134,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 		agentExecutions: store,
 		lifecycleState:  testLifecycleSnapshot("ready", false)}
 	sess.updateHostedThread(agentSessionDetached, "")
-	if err := skipOwnedNativeClaim(store.bindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
+	if err := hostedvalues.SkipOwnedNativeClaim(store.bindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
 		t.Fatal(err)
 	}
 	if got := activeOwner(t, control, "claude", revivedNativeID); got != owner.ID {

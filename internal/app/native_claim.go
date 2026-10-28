@@ -12,16 +12,9 @@ import (
 )
 
 var (
-	errNativeClaimOwned = errors.New("native identity is owned by another hosted record")
+	errNativeClaimOwned = hostedvalues.ErrNativeClaimOwned
 	errNativeClaimLive  = errors.New("native identity is live-attached on another hosted record")
 )
-
-func skipOwnedNativeClaim(err error) error {
-	if errors.Is(err, errNativeClaimOwned) {
-		return nil
-	}
-	return err
-}
 
 // nativeOwners names the hosted threads a native conversation belongs to: its
 // current owner, read by its index, or, for a native no hosted thread holds

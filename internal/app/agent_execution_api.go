@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	prompts "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
@@ -977,7 +978,7 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 	if err != nil {
 		return agentTurnRecord{}, false, fmt.Errorf("%w: %v", errUnreadFooterUnavailable, err)
 	}
-	sub.Origin = normalizeTurnOrigin(sub.Origin)
+	sub.Origin = string(prompts.NormalizeOrigin(prompts.Origin(sub.Origin)))
 	sub.Attribution.Origin = sub.Origin
 	hash := hostedTurnPromptHash(prompt, requireIdle)
 	if sub.NextTurn {

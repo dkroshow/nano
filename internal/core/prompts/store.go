@@ -531,7 +531,7 @@ func (s *Store) RebindNativeThread(ctx context.Context, hostedThreadID string, p
 }
 
 func (s *Store) Submit(ctx context.Context, request Submission) (Record, bool, error) {
-	request.Origin = normalizeOrigin(request.Origin)
+	request.Origin = NormalizeOrigin(request.Origin)
 	if request.HostedThreadID == "" || request.Provider == "" || request.ActionID == "" || request.ProviderText == "" || request.TextHash == "" || request.RequestHash == "" {
 		return Record{}, false, errors.New("prompts: submission requires owner, provider, action, text, and hashes")
 	}
@@ -1557,7 +1557,8 @@ func sameAdmission(record Record, request Submission) bool {
 		record.RequestHash == request.RequestHash && record.Origin == request.Origin
 }
 
-func normalizeOrigin(origin Origin) Origin {
+// NormalizeOrigin defaults an unrecognized origin to a human submission.
+func NormalizeOrigin(origin Origin) Origin {
 	switch origin {
 	case AgentOrigin, SystemOrigin:
 		return origin

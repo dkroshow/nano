@@ -34,7 +34,7 @@ const (
 	sendAttemptFailed                      = "failed"
 	sendAttemptRefused                     = "refused"
 	sendAttemptTimeout                     = "timeout"
-	sendAttemptInterruptedBeforeTranscript = "interrupted_before_transcript"
+	sendAttemptInterruptedBeforeTranscript = prompts.ReasonInterruptedBeforeTranscript
 	maxSendAttempts                        = 100
 	turnDeliveryTimeout                    = 30 * time.Second
 	// promptSlowDelivery is how long a prompt may wait for its provider to
@@ -81,10 +81,10 @@ func (s *sendAttemptStore) get(actionID string) (sendAttemptRecord, bool) {
 	}
 	record, attempt, err := s.turns.Get(context.Background(), actionID)
 	if err == nil {
-		return sendAttemptRecordFromTransactional(record, attempt), true
+		return prompts.LegacySendAttempt(record, attempt), true
 	}
 	attempt, err = s.turns.GetAttempt(context.Background(), actionID)
-	return sendAttemptRecordFromTransactional(prompts.Record{}, attempt), err == nil
+	return prompts.LegacySendAttempt(prompts.Record{}, attempt), err == nil
 }
 
 func (s *sendAttemptStore) listThread(provider, nativeThreadID string) []sendAttemptRecord {
@@ -101,36 +101,10 @@ func (s *sendAttemptStore) listThread(provider, nativeThreadID string) []sendAtt
 			continue // hidden for good; its journal stays in the store
 		}
 		record := prompts.Record{Outbox: prompts.OutboxEntry{State: entry.OutboxState}}
-		rows = append(rows, sendAttemptRecordFromTransactional(record, entry.Attempt))
+		rows = append(rows, prompts.LegacySendAttempt(record, entry.Attempt))
 	}
 	sort.Slice(rows, func(i, j int) bool { return threadvalues.TimestampBefore(rows[j].UpdatedAt, rows[i].UpdatedAt) })
 	return rows
-}
-
-func sendAttemptRecordFromTransactional(record prompts.Record, attempt prompts.Attempt) sendAttemptRecord {
-	status := string(attempt.State)
-	switch attempt.State {
-	case prompts.JournalUnknown:
-		status = "unknown"
-	case prompts.JournalConfirmed:
-		status = sendAttemptAccepted
-	}
-	if attempt.State == prompts.JournalRefused && attempt.Reason == sendAttemptInterruptedBeforeTranscript {
-		status = sendAttemptInterruptedBeforeTranscript
-	}
-	if record.Outbox.State == prompts.Parked {
-		status = "parked"
-	}
-	if record.Outbox.State == prompts.Uncertain && attempt.Reason == prompts.ReasonStopped {
-		status = "unknown" // held by a Stop, for the person to resend or discard
-	}
-	return sendAttemptRecord{
-		ClientActionID: attempt.ActionID, Provider: string(attempt.Provider), NativeThreadID: attempt.NativeThreadID,
-		TextHash: attempt.TextHash, Status: status, RunID: attempt.RunID, Reason: attempt.Reason, CreatedAt: attempt.CreatedAt, UpdatedAt: attempt.UpdatedAt,
-		Confirmed: attempt.Confirmed, ConfirmedAt: attempt.ConfirmedAt, ProviderTurnID: attempt.ProviderTurnID,
-		ProviderTerminalStatus: attempt.ProviderTerminal, ProviderTerminalAt: attempt.ProviderTerminalAt,
-		CanonicalMessageID: attempt.CanonicalItemID, IdentityConflict: attempt.IdentityConflict,
-	}
 }
 
 func sendTextHash(text string) string {
@@ -575,7 +549,7 @@ func (sess *session) queueOrStartTurnSendLockedPreparedPresentation(actionID, te
 		// The person discarded it before this attempt reached Nano.
 		return nil, http.StatusConflict, "discarded", nil
 	}
-	origin = normalizeTurnOrigin(origin)
+	origin = string(prompts.NormalizeOrigin(prompts.Origin(origin)))
 	if presentationText == "" {
 		presentationText = text
 	}
@@ -1523,10 +1497,10 @@ func cancelQueuedTurnStores(queue sessionQueue, ops sessionExecutions, actionID,
 		return queuedTurnRecord{}, err
 	}
 	if record.Outbox.State == prompts.Expired || record.Outbox.State == prompts.Refused {
-		return queuedTurnRecordFromTransactional(record), errPromptEnded
+		return prompts.LegacyQueuedTurn(record), errPromptEnded
 	}
 	if err := refusePromptAction(string(record.Provider), record, promptDiscard); err != nil {
-		return queuedTurnRecordFromTransactional(record), err
+		return prompts.LegacyQueuedTurn(record), err
 	}
 	if record.Outbox.State == prompts.Queued && attempt.State != prompts.JournalQueued {
 		return queuedTurnRecord{}, errQueuedTurnDelivering
@@ -1546,7 +1520,7 @@ func cancelQueuedTurnStores(queue sessionQueue, ops sessionExecutions, actionID,
 	if err := endDiscardedOperation(queue, ops, record, by, end); err != nil {
 		return queuedTurnRecord{}, err
 	}
-	return queuedTurnRecordFromTransactional(ended), nil
+	return prompts.LegacyQueuedTurn(ended), nil
 }
 
 // endDiscardedOperation makes end, the prompt's own ending, and ends the

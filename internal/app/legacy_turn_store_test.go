@@ -66,7 +66,7 @@ func (s *queuedTurnStore) snapshot() []queuedTurnRecord {
 	}
 	result := make([]queuedTurnRecord, 0, len(records))
 	for _, record := range records {
-		result = append(result, queuedTurnRecordFromTransactional(record))
+		result = append(result, turns.LegacyQueuedTurn(record))
 	}
 	return result
 }
@@ -267,7 +267,7 @@ func (s *sendAttemptStore) snapshot() []sendAttemptRecord {
 	result := make([]sendAttemptRecord, 0, len(attempts))
 	for _, attempt := range attempts {
 		record, _, _ := s.turns.Get(context.Background(), attempt.ActionID)
-		result = append(result, sendAttemptRecordFromTransactional(record, attempt))
+		result = append(result, turns.LegacySendAttempt(record, attempt))
 	}
 	return result
 }

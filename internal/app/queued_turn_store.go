@@ -4,16 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
 const (
-	submissionQueued     = "queued"
-	submissionDelivering = "delivering"
-	submissionAccepted   = "accepted"
-	submissionUncertain  = "uncertain"
-	submissionParked     = "parked"
+	submissionQueued     = string(turns.Queued)
+	submissionDelivering = string(turns.Delivering)
+	submissionAccepted   = string(turns.Accepted)
+	submissionUncertain  = string(turns.Uncertain)
+	submissionParked     = string(turns.Parked)
 )
 
 // queuedTurnRecord is the schema-20 compatibility shape exposed by the read
@@ -23,19 +24,10 @@ const (
 type queuedTurnRecord = turns.QueuedTurn
 
 const (
-	turnOriginHuman  = "human"
-	turnOriginAgent  = "agent"
-	turnOriginSystem = "system"
+	turnOriginHuman  = string(turns.HumanOrigin)
+	turnOriginAgent  = string(turns.AgentOrigin)
+	turnOriginSystem = string(turns.SystemOrigin)
 )
-
-func normalizeTurnOrigin(origin string) string {
-	switch origin {
-	case turnOriginAgent, turnOriginSystem:
-		return origin
-	default:
-		return turnOriginHuman
-	}
-}
 
 // queuedTurnStore is the schema-20 compatibility read view of the prompt
 // store: every read is answered by the transactional store, so finished
@@ -77,7 +69,7 @@ func (s *queuedTurnStore) get(actionID string) (queuedTurnRecord, bool) {
 		return queuedTurnRecord{}, false
 	}
 	record, _, err := s.turns.Get(context.Background(), actionID)
-	return queuedTurnRecordFromTransactional(record), err == nil
+	return turns.LegacyQueuedTurn(record), err == nil
 }
 
 func (s *queuedTurnStore) first(provider, nativeThreadID, hostedThreadID string) (queuedTurnRecord, bool) {
@@ -126,7 +118,7 @@ func (s *queuedTurnStore) byProviderTurn(provider, nativeThreadID, hostedThreadI
 	if err != nil || len(records) != 1 {
 		return queuedTurnRecord{}, false
 	}
-	return queuedTurnRecordFromTransactional(records[0]), true
+	return turns.LegacyQueuedTurn(records[0]), true
 }
 
 func (s *queuedTurnStore) listThread(provider, nativeThreadID, hostedThreadID string) []queuedTurnRecord {
@@ -151,7 +143,7 @@ func (s *queuedTurnStore) listThreadFrom(journal promptJournal, provider, native
 		return rows
 	}
 	for _, record := range records {
-		if rec := queuedTurnRecordFromTransactional(record); queuedTurnMatches(rec, provider, nativeThreadID, hostedThreadID) {
+		if rec := turns.LegacyQueuedTurn(record); queuedTurnMatches(rec, provider, nativeThreadID, hostedThreadID) {
 			rows = append(rows, rec)
 		}
 	}
@@ -207,23 +199,9 @@ func (s *queuedTurnStore) queued(hostedThreadID string) []queuedTurnRecord {
 	}
 	result := make([]queuedTurnRecord, 0, len(records))
 	for _, record := range records {
-		result = append(result, queuedTurnRecordFromTransactional(record))
+		result = append(result, turns.LegacyQueuedTurn(record))
 	}
 	return result
-}
-
-func queuedTurnRecordFromTransactional(record turns.Record) queuedTurnRecord {
-	providerTurnID := record.ProviderTurnID
-	if providerTurnID == "" && record.Outbox.Binding != nil && record.Outbox.Binding.Scope.NativeTurnID != nil {
-		providerTurnID = *record.Outbox.Binding.Scope.NativeTurnID
-	}
-	return queuedTurnRecord{
-		ClientActionID: record.Outbox.ActionID, Provider: string(record.Provider), HostedThreadID: record.Outbox.HostedThreadID,
-		NativeThreadID: record.NativeThreadID, Text: record.ProviderText, PresentationText: record.Outbox.PresentationText,
-		TextHash: record.TextHash, RequestHash: record.RequestHash, State: string(record.Outbox.State), Origin: string(record.Origin),
-		CreatedAt: record.CreatedAt, ProviderTurnID: providerTurnID,
-		ProviderTerminalStatus: record.ProviderTerminal, ProviderTerminalAt: record.ProviderTerminalAt,
-	}
 }
 
 func (s *queuedTurnStore) transactionStore() *turns.Store {
