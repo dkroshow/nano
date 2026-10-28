@@ -9,6 +9,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/observability"
@@ -205,7 +206,7 @@ type session struct {
 
 	// mcp caches the projected MCP tool registry served by
 	// /api/sessions/{id}/mcp, invalidated from the wire (mcp_inventory.go).
-	mcp mcpInventoryCache
+	mcp inspection.MCPCache
 	// skills is shared across every session because app-server scopes its
 	// skills/list answer to cwd, not to one provider thread.
 	skills *setup.SkillsListCache

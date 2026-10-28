@@ -3,13 +3,15 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/httpapi"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	filemodel "github.com/dkroshow/nano/internal/files"
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/setup"
 )
 
 const (
@@ -36,7 +38,7 @@ func (s *server) handleGeneralFileRead(w http.ResponseWriter, r *http.Request) {
 		writeGeneralFileError(w, err)
 		return
 	}
-	meta, content, inspectErr := filemodel.Inspect(path, protectedInstructionRoots())
+	meta, content, inspectErr := filemodel.Inspect(path, setup.ProtectedProviderRoots())
 	if inspectErr != nil {
 		writeGeneralFileError(w, inspectErr)
 		return
@@ -63,7 +65,7 @@ func (s *server) handleGeneralFileMtime(w http.ResponseWriter, r *http.Request) 
 		writeGeneralFileError(w, &filemodel.Error{Code: "not_found", Message: "File not found", Status: http.StatusNotFound})
 		return
 	}
-	writeGeneralFileJSON(w, http.StatusOK, map[string]any{"path": path, "mtime": statMtime(info)})
+	writeGeneralFileJSON(w, http.StatusOK, map[string]any{"path": path, "mtime": filemodel.ModificationTime(info)})
 }
 
 func (s *server) handleGeneralFileWrite(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +90,7 @@ func (s *server) handleGeneralFileWrite(w http.ResponseWriter, r *http.Request) 
 		writeGeneralFileError(w, err)
 		return
 	}
-	meta, _, inspectErr := filemodel.Inspect(path, protectedInstructionRoots())
+	meta, _, inspectErr := filemodel.Inspect(path, setup.ProtectedProviderRoots())
 	if inspectErr != nil {
 		writeGeneralFileError(w, inspectErr)
 		return
@@ -97,7 +99,7 @@ func (s *server) handleGeneralFileWrite(w http.ResponseWriter, r *http.Request) 
 		writeGeneralFileError(w, &filemodel.Error{Code: "read_only", Message: meta.ReadOnlyReason, Status: http.StatusForbidden})
 		return
 	}
-	if request.Mtime != nil && absFloat(meta.Mtime-*request.Mtime) > mtimeConflictEpsilon {
+	if request.Mtime != nil && math.Abs(meta.Mtime-*request.Mtime) > filemodel.ModificationTimeTolerance {
 		httpapi.WriteErrorEnvelope(w, http.StatusConflict, httpapi.ErrorEnvelope{Error: httpapi.Error{
 			Code: "mtime_conflict", Message: "File changed on disk since it was read", Details: map[string]float64{"mtime": meta.Mtime},
 		}})
@@ -109,11 +111,11 @@ func (s *server) handleGeneralFileWrite(w http.ResponseWriter, r *http.Request) 
 		writeGeneralFileError(w, &filemodel.Error{Code: "write_failed", Message: "Cannot stat file", Status: http.StatusInternalServerError})
 		return
 	}
-	if err := writeFileAtomic(path, []byte(request.Content), info.Mode().Perm()); err != nil {
+	if err := filemodel.WriteAtomic(path, []byte(request.Content), info.Mode().Perm()); err != nil {
 		writeGeneralFileError(w, &filemodel.Error{Code: "write_failed", Message: err.Error(), Status: http.StatusInternalServerError})
 		return
 	}
-	meta, _, inspectErr = filemodel.Inspect(path, protectedInstructionRoots())
+	meta, _, inspectErr = filemodel.Inspect(path, setup.ProtectedProviderRoots())
 	if inspectErr != nil {
 		writeGeneralFileError(w, inspectErr)
 		return

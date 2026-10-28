@@ -18,6 +18,8 @@ import (
 	"os"
 	"sort"
 	"sync"
+
+	filemodel "github.com/dkroshow/nano/internal/files"
 )
 
 // attachmentProviderDefault is the provider assumed for records written before
@@ -419,7 +421,7 @@ func (s *attachmentStore) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	// Reuse the shared atomic writer (instruction_files.go): temp + rename, so
+	// Use the shared atomic writer: temp + rename, so
 	// a concurrent reader never sees a half-written file.
-	return writeFileAtomic(s.path, data, 0o644)
+	return filemodel.WriteAtomic(s.path, data, 0o644)
 }

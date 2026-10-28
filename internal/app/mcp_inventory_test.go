@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/inspection"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -159,7 +160,7 @@ func TestMCPInventoryStale(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := mcpInventoryStale(tc.provider, tc.dir, tc.line); got != tc.want {
+			if got := inspection.MCPInventoryStale(tc.provider, tc.dir, tc.line); got != tc.want {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
@@ -168,24 +169,24 @@ func TestMCPInventoryStale(t *testing.T) {
 
 // A generation bump during an in-flight fetch must not cache the stale result.
 func TestMCPCacheDropsResultInvalidatedMidFetch(t *testing.T) {
-	cache := &mcpInventoryCache{}
-	_, generation := cache.cached()
-	cache.invalidate() // as if a startup notification landed mid-fetch
-	cache.store(&mcpInventory{Servers: []mcpServer{{Name: "stale"}}}, generation)
-	if cached, _ := cache.cached(); cached != nil {
+	cache := &inspection.MCPCache{}
+	_, generation := cache.Cached()
+	cache.Invalidate() // as if a startup notification landed mid-fetch
+	cache.Store(&mcpInventory{Servers: []mcpServer{{Name: "stale"}}}, generation)
+	if cached, _ := cache.Cached(); cached != nil {
 		t.Errorf("cached a stale inventory: %+v", cached)
 	}
 
-	_, generation = cache.cached()
-	cache.store(&mcpInventory{Servers: []mcpServer{{Name: "fresh"}}}, generation)
-	cached, _ := cache.cached()
+	_, generation = cache.Cached()
+	cache.Store(&mcpInventory{Servers: []mcpServer{{Name: "fresh"}}}, generation)
+	cached, _ := cache.Cached()
 	if cached == nil || cached.Servers[0].Name != "fresh" {
 		t.Errorf("did not cache a current inventory: %+v", cached)
 	}
 }
 
 func TestProjectMCPInventoryMalformed(t *testing.T) {
-	inventory := projectMCPInventory(json.RawMessage(`not json`))
+	inventory := inspection.ProjectMCPInventory(json.RawMessage(`not json`))
 	if inventory == nil || len(inventory.Servers) != 0 {
 		t.Errorf("malformed response: got %+v, want an empty inventory", inventory)
 	}

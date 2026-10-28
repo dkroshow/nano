@@ -14,12 +14,11 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"time"
 
+	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/inspection"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 const mcpInventoryTimeout = 30 * time.Second
@@ -35,38 +34,12 @@ const mcpInventoryDetail = "toolsAndAuthOnly"
 type mcpInventory = inspection.MCPInventory
 type mcpServer = inspection.MCPServer
 
-// mcpInventoryCache is a session's cached registry. The generation counter is
-// what makes lock-free fetching safe: an invalidation that lands while a fetch
-// is in flight bumps it, so the completing fetch serves its result to the
-// caller but declines to cache a snapshot it already knows is stale.
-type mcpInventoryCache struct{ inspection.MCPCache }
-
-func (c *mcpInventoryCache) invalidate() {
-	c.Invalidate()
-}
-
-func (c *mcpInventoryCache) cached() (*mcpInventory, uint64) {
-	return c.Cached()
-}
-
-func (c *mcpInventoryCache) store(inventory *mcpInventory, generation uint64) {
-	c.Store(inventory, generation)
-}
-
-// mcpInventoryStale reports whether a wire line means the cached registry can
-// no longer be trusted: tool inventories fill in as MCP servers start, which is
-// exactly what mcpServer/startupStatus/updated announces. Any status counts —
-// a server going away invalidates just as much as one becoming ready.
-func mcpInventoryStale(provider string, dir protocol.Direction, line []byte) bool {
-	return inspection.MCPInventoryStale(provider, dir, line)
-}
-
 // mcpServers returns the cached registry, fetching it from app-server on a
 // miss. The app-server call deliberately runs without the cache lock held: it
 // can take seconds, and an invalidation arriving from the wire in the meantime
 // must not block behind it.
 func (sess *session) mcpServers(ctx context.Context) (*mcpInventory, error) {
-	cached, generation := sess.mcp.cached()
+	cached, generation := sess.mcp.Cached()
 	if cached != nil {
 		return cached, nil
 	}
@@ -76,16 +49,9 @@ func (sess *session) mcpServers(ctx context.Context) (*mcpInventory, error) {
 	if err := sess.codex.CallForSession(ctx, sess, "mcpServerStatus/list", params, &raw); err != nil {
 		return nil, err
 	}
-	inventory := projectMCPInventory(raw)
-	sess.mcp.store(inventory, generation)
+	inventory := inspection.ProjectMCPInventory(raw)
+	sess.mcp.Store(inventory, generation)
 	return inventory, nil
-}
-
-// projectMCPInventory reduces a ListMcpServerStatusResponse to names and tool
-// names. McpServerStatus.tools is a map keyed by tool name, so the keys are the
-// registry; sorting them keeps the panel's rendering stable across fetches.
-func projectMCPInventory(raw json.RawMessage) *mcpInventory {
-	return inspection.ProjectMCPInventory(raw)
 }
 
 func (sess *session) handleMCPServers(w http.ResponseWriter, r *http.Request) {

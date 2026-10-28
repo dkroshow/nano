@@ -104,8 +104,8 @@ func TestGeneralFileReadCanonicalizesSymlinkButMutationRequiresReturnedPath(t *t
 	if err := json.Unmarshal(readRecorder.Body.Bytes(), &meta); err != nil {
 		t.Fatal(err)
 	}
-	if meta.Path != canonicalPath(target) {
-		t.Fatalf("canonical path = %q, want %q", meta.Path, canonicalPath(target))
+	if meta.Path != filemodel.CanonicalPath(target) {
+		t.Fatalf("canonical path = %q, want %q", meta.Path, filemodel.CanonicalPath(target))
 	}
 	mtimeRecorder := httptest.NewRecorder()
 	server.handleGeneralFileMtime(mtimeRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/files/mtime?path="+url.QueryEscape(alias), nil))
@@ -117,12 +117,12 @@ func TestGeneralFileReadCanonicalizesSymlinkButMutationRequiresReturnedPath(t *t
 func TestGeneralFileWriteConflictForcePermissionsAndNoCreation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notes.md")
 	writeTestFile(t, path, "v1\n")
-	path = canonicalPath(path)
+	path = filemodel.CanonicalPath(path)
 	if err := os.Chmod(path, 0640); err != nil {
 		t.Fatal(err)
 	}
 	info, _ := os.Stat(path)
-	mtime := statMtime(info)
+	mtime := filemodel.ModificationTime(info)
 	server := &server{}
 	put := func(path, content string, mtime *float64) *httptest.ResponseRecorder {
 		t.Helper()
@@ -193,7 +193,7 @@ func TestGeneralFileResolutionUsesOnlyCurrentThreadLiveEvidence(t *testing.T) {
 	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": sess}}}
 
 	path, by, err := server.resolveGeneralFile(context.Background(), filepath.ToSlash(relative), "", "", "session-1")
-	if err != nil || path != canonicalPath(first) || by != "thread-evidence" {
+	if err != nil || path != filemodel.CanonicalPath(first) || by != "thread-evidence" {
 		t.Fatalf("live evidence = %q, %q, %v", path, by, err)
 	}
 
@@ -222,8 +222,8 @@ func TestGeneralFileEvidenceUsesPathBoundariesAndDedupesSymlinkAliases(t *testin
 	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": sess}}}
 
 	path, _, err := server.resolveGeneralFile(context.Background(), "reports/pulse.md", "", "", "session-1")
-	if err != nil || path != canonicalPath(target) {
-		t.Fatalf("deduped evidence = %q, %v; want %q", path, err, canonicalPath(target))
+	if err != nil || path != filemodel.CanonicalPath(target) {
+		t.Fatalf("deduped evidence = %q, %v; want %q", path, err, filemodel.CanonicalPath(target))
 	}
 }
 
@@ -263,8 +263,8 @@ func TestGeneralFileResolvesFromSavedHistoryOlderThanTheLiveRows(t *testing.T) {
 	}}}
 
 	path, by, err := server.resolveGeneralFile(context.Background(), "reports/older.md", "", "thread-1", "session-1")
-	if err != nil || path != canonicalPath(target) || by != "thread-evidence" {
-		t.Fatalf("saved evidence = %q, %q, %v; want %q by thread-evidence", path, by, err, canonicalPath(target))
+	if err != nil || path != filemodel.CanonicalPath(target) || by != "thread-evidence" {
+		t.Fatalf("saved evidence = %q, %q, %v; want %q by thread-evidence", path, by, err, filemodel.CanonicalPath(target))
 	}
 }
 
@@ -285,7 +285,7 @@ func TestGeneralFileSearchesTheSessionsSavedHistoryWithoutAThreadID(t *testing.T
 	}}}
 
 	path, _, err := server.resolveGeneralFile(context.Background(), "reports/older.md", "", "", "session-1")
-	if err != nil || path != canonicalPath(target) || !reflect.DeepEqual(catalog.searched, []string{"thread-1"}) {
+	if err != nil || path != filemodel.CanonicalPath(target) || !reflect.DeepEqual(catalog.searched, []string{"thread-1"}) {
 		t.Fatalf("session-only request = %q, %v; searched %v, want thread-1", path, err, catalog.searched)
 	}
 }
@@ -322,8 +322,8 @@ func TestGeneralFileResolvesRepoRelativeLinkFromNestedDocument(t *testing.T) {
 
 	server := &server{}
 	path, by, err := server.resolveGeneralFile(context.Background(), "analysis/model-routing.md", docDir, "", "")
-	if err != nil || path != canonicalPath(target) || by != "suffix" {
-		t.Fatalf("suffix resolve = %q, %q, %v; want %q by suffix", path, by, err, canonicalPath(target))
+	if err != nil || path != filemodel.CanonicalPath(target) || by != "suffix" {
+		t.Fatalf("suffix resolve = %q, %q, %v; want %q by suffix", path, by, err, filemodel.CanonicalPath(target))
 	}
 }
 
@@ -334,8 +334,8 @@ func TestGeneralFileResolvesBareFilenameFromAncestorDirectory(t *testing.T) {
 
 	server := &server{}
 	path, by, err := server.resolveGeneralFile(context.Background(), "AGENTS.md", docDir, "", "")
-	if err != nil || path != canonicalPath(target) || by != "ancestor" {
-		t.Fatalf("ancestor resolve = %q, %q, %v; want %q by ancestor", path, by, err, canonicalPath(target))
+	if err != nil || path != filemodel.CanonicalPath(target) || by != "ancestor" {
+		t.Fatalf("ancestor resolve = %q, %q, %v; want %q by ancestor", path, by, err, filemodel.CanonicalPath(target))
 	}
 }
 
@@ -355,8 +355,8 @@ func TestGeneralFileSuffixAmbiguityListsCandidatesShortestFirst(t *testing.T) {
 	if err == nil || err.Code != "ambiguous_path" || len(err.Candidates) != 2 {
 		t.Fatalf("ambiguous suffix = %#v", err)
 	}
-	if err.Candidates[0] != canonicalPath(near) || err.Candidates[1] != canonicalPath(far) {
-		t.Fatalf("candidate order = %v; want %q first", err.Candidates, canonicalPath(near))
+	if err.Candidates[0] != filemodel.CanonicalPath(near) || err.Candidates[1] != filemodel.CanonicalPath(far) {
+		t.Fatalf("candidate order = %v; want %q first", err.Candidates, filemodel.CanonicalPath(near))
 	}
 }
 
@@ -389,8 +389,8 @@ func TestGeneralFileFallsBackToTheThreadWorkingDirectory(t *testing.T) {
 
 	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": {id: "session-1", cwd: threadRepo}}}}
 	path, by, err := server.resolveGeneralFile(context.Background(), "analysis/routing.md", docDir, "", "session-1")
-	if err != nil || path != canonicalPath(target) || by != "thread-cwd" {
-		t.Fatalf("thread-cwd resolve = %q, %q, %v; want %q by thread-cwd", path, by, err, canonicalPath(target))
+	if err != nil || path != filemodel.CanonicalPath(target) || by != "thread-cwd" {
+		t.Fatalf("thread-cwd resolve = %q, %q, %v; want %q by thread-cwd", path, by, err, filemodel.CanonicalPath(target))
 	}
 }
 
@@ -407,7 +407,7 @@ func TestGeneralFileEvidenceOutranksAnAmbiguousFilesystemGuess(t *testing.T) {
 	server := &server{sessionRegistry: sessionRegistry{sessions: map[string]*session{"session-1": liveEvidenceSession("wrote " + far)}}}
 
 	path, by, err := server.resolveGeneralFile(context.Background(), "docs/notes.md", docDir, "", "session-1")
-	if err != nil || path != canonicalPath(far) || by != "thread-evidence" {
-		t.Fatalf("evidence over ambiguity = %q, %q, %v; want %q by thread-evidence", path, by, err, canonicalPath(far))
+	if err != nil || path != filemodel.CanonicalPath(far) || by != "thread-evidence" {
+		t.Fatalf("evidence over ambiguity = %q, %q, %v; want %q by thread-evidence", path, by, err, filemodel.CanonicalPath(far))
 	}
 }

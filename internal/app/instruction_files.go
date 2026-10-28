@@ -11,17 +11,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/setup"
 )
 
-const maxInstructionFileBytes = 1 << 20 // files beyond this are view/edit-rejected
+const maxInstructionFileBytes = filemodel.MaxBytes // files beyond this are view/edit-rejected
 
 // instructionFilePolicy holds canonical (symlink-resolved) roots: writes must
 // land under a writeRoot; protectedRoots are always view-only, enforcing the
@@ -49,41 +51,6 @@ type instructionFileMeta struct {
 	Mtime float64 `json:"mtime"`
 }
 
-// canonicalPath cleans, absolutizes, and resolves symlinks so policy checks
-// compare real filesystem locations, not spellings.
-func canonicalPath(p string) string {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return filepath.Clean(p)
-	}
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		return resolved
-	}
-	return abs
-}
-
-// statMtime returns a file's modification time as unix seconds,
-// the unit the write-conflict contract compares.
-func statMtime(fi os.FileInfo) float64 {
-	return float64(fi.ModTime().UnixNano()) / 1e9
-}
-
-func underRoot(path, root string) bool {
-	return root != "" && (path == root || strings.HasPrefix(path, root+string(os.PathSeparator)))
-}
-
-func protectedInstructionRoots() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	return []string{
-		canonicalPath(filepath.Join(home, ".codex")),
-		canonicalPath(filepath.Join(home, ".claude")),
-		canonicalPath(filepath.Join(home, ".grok")),
-	}
-}
-
 func instructionEvidence(src setup.InstructionFileSource) string {
 	if src.Evidence != "" {
 		return src.Evidence
@@ -99,7 +66,7 @@ func instructionEvidence(src setup.InstructionFileSource) string {
 // them); Claude paths are documented-expected from Claude Code's memory loading
 // rules, but not wire-attested as exact prompt input.
 func (sess *session) instructionFileSources() ([]setup.InstructionFileSource, instructionFilePolicy) {
-	pol := instructionFilePolicy{protectedRoots: protectedInstructionRoots()}
+	pol := instructionFilePolicy{protectedRoots: setup.ProtectedProviderRoots()}
 	var sources []setup.InstructionFileSource
 	switch sess.provider {
 	case "codex":
@@ -131,14 +98,14 @@ func (sess *session) instructionFileSources() ([]setup.InstructionFileSource, in
 			roots = []string{cwd}
 		}
 		for _, r := range roots {
-			pol.writeRoots = append(pol.writeRoots, canonicalPath(r))
+			pol.writeRoots = append(pol.writeRoots, filemodel.CanonicalPath(r))
 		}
 	case "claude":
 		sess.stateMu.Lock()
 		initRaw := sess.state["init"]
 		sess.stateMu.Unlock()
 		sources = append(sources, setup.ClaudeInstructionSources(sess.cwd, initRaw)...)
-		pol.writeRoots = []string{canonicalPath(sess.cwd)}
+		pol.writeRoots = []string{filemodel.CanonicalPath(sess.cwd)}
 	}
 	return sources, pol
 }
@@ -174,7 +141,7 @@ func inspectInstructionFile(provider string, src setup.InstructionFileSource, po
 	}
 	meta.Exists = true
 	meta.SizeBytes = fi.Size()
-	meta.Mtime = statMtime(fi)
+	meta.Mtime = filemodel.ModificationTime(fi)
 	if !fi.Mode().IsRegular() {
 		meta.ReadOnlyReason = "not a regular file"
 		return meta, nil
@@ -193,16 +160,16 @@ func inspectInstructionFile(provider string, src setup.InstructionFileSource, po
 		return meta, nil
 	}
 
-	canon := canonicalPath(src.Path)
+	canon := filemodel.CanonicalPath(src.Path)
 	for _, root := range pol.protectedRoots {
-		if underRoot(canon, root) {
+		if filemodel.UnderRoot(canon, root) {
 			meta.ReadOnlyReason = "view-only: nano is read-only toward " + root
 			return meta, content
 		}
 	}
 	inWriteRoot := false
 	for _, root := range pol.writeRoots {
-		if underRoot(canon, root) {
+		if filemodel.UnderRoot(canon, root) {
 			inWriteRoot = true
 			break
 		}
@@ -264,7 +231,7 @@ func (sess *session) handleInstructionFileMtime(w http.ResponseWriter, r *http.R
 		httpapi.WriteHTTPError(w, "file not found", http.StatusNotFound)
 		return
 	}
-	httpapi.WriteJSON(w, map[string]any{"path": src.Path, "mtime": statMtime(fi)})
+	httpapi.WriteJSON(w, map[string]any{"path": src.Path, "mtime": filemodel.ModificationTime(fi)})
 }
 
 func (sess *session) handleInstructionFileWrite(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +263,7 @@ func (sess *session) handleInstructionFileWrite(w http.ResponseWriter, r *http.R
 		httpapi.WriteHTTPError(w, "read-only: "+meta.ReadOnlyReason, http.StatusForbidden)
 		return
 	}
-	if req.Mtime != nil && absFloat(meta.Mtime-*req.Mtime) > mtimeConflictEpsilon {
+	if req.Mtime != nil && math.Abs(meta.Mtime-*req.Mtime) > filemodel.ModificationTimeTolerance {
 		httpapi.WriteErrorEnvelope(w, http.StatusConflict, httpapi.ErrorEnvelope{Error: httpapi.Error{
 			Code: "mtime_conflict", Message: "File changed on disk since it was read", Details: map[string]float64{"mtime": meta.Mtime},
 		}})
@@ -304,13 +271,13 @@ func (sess *session) handleInstructionFileWrite(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	canon := canonicalPath(src.Path) // write the symlink target, never replace a link
+	canon := filemodel.CanonicalPath(src.Path) // write the symlink target, never replace a link
 	fi, err := os.Stat(canon)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := writeFileAtomic(canon, []byte(req.Content), fi.Mode().Perm()); err != nil {
+	if err := filemodel.WriteAtomic(canon, []byte(req.Content), fi.Mode().Perm()); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -319,33 +286,4 @@ func (sess *session) handleInstructionFileWrite(w http.ResponseWriter, r *http.R
 		"path": src.Path, "mtime": meta.Mtime, "sizeBytes": meta.SizeBytes,
 	})
 	httpapi.WriteJSON(w, map[string]any{"file": meta})
-}
-
-const mtimeConflictEpsilon = 0.01 // seconds; below this, treat mtimes as equal
-
-func absFloat(v float64) float64 {
-	if v < 0 {
-		return -v
-	}
-	return v
-}
-
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".nano-write-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // no-op once renamed
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }

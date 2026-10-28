@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	filemodel "github.com/dkroshow/nano/internal/files"
 )
 
 // newFileOnlyClaude is newClaudeHandoff for a session wired as production
@@ -55,8 +57,8 @@ func TestFileOnlyClaudeFileOpensBySavedOrLiveEvidence(t *testing.T) {
 			Path       string `json:"path"`
 			ResolvedBy string `json:"resolvedBy"`
 		}
-		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &file) != nil || file.Path != canonicalPath(want) || file.ResolvedBy != "thread-evidence" {
-			t.Fatalf("%s: %d %s; want %q by thread-evidence", name, rec.Code, rec.Body.String(), canonicalPath(want))
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &file) != nil || file.Path != filemodel.CanonicalPath(want) || file.ResolvedBy != "thread-evidence" {
+			t.Fatalf("%s: %d %s; want %q by thread-evidence", name, rec.Code, rec.Body.String(), filemodel.CanonicalPath(want))
 		}
 	}
 }

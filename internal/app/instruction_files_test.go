@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/setup"
 )
 
@@ -29,7 +30,7 @@ func TestInstructionFileEditableUnderWriteRoot(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "AGENTS.md")
 	writeTestFile(t, path, "# hello\n")
-	pol := instructionFilePolicy{writeRoots: []string{canonicalPath(dir)}}
+	pol := instructionFilePolicy{writeRoots: []string{filemodel.CanonicalPath(dir)}}
 
 	meta, content := inspectOne(path, pol)
 	if !meta.Exists || !meta.Editable {
@@ -49,8 +50,8 @@ func TestInstructionFileProtectedRootViewOnly(t *testing.T) {
 	writeTestFile(t, path, "global instructions\n")
 	// Protected wins even when the file is also under a write root.
 	pol := instructionFilePolicy{
-		writeRoots:     []string{canonicalPath(dir)},
-		protectedRoots: []string{canonicalPath(dir)},
+		writeRoots:     []string{filemodel.CanonicalPath(dir)},
+		protectedRoots: []string{filemodel.CanonicalPath(dir)},
 	}
 
 	meta, content := inspectOne(path, pol)
@@ -69,7 +70,7 @@ func TestInstructionFileOutsideRootsViewOnly(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "AGENTS.md")
 	writeTestFile(t, path, "elsewhere\n")
-	pol := instructionFilePolicy{writeRoots: []string{canonicalPath(t.TempDir())}}
+	pol := instructionFilePolicy{writeRoots: []string{filemodel.CanonicalPath(t.TempDir())}}
 
 	meta, content := inspectOne(path, pol)
 	if meta.Editable {
@@ -89,7 +90,7 @@ func TestInstructionFileSymlinkEscape(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	pol := instructionFilePolicy{writeRoots: []string{canonicalPath(inside)}}
+	pol := instructionFilePolicy{writeRoots: []string{filemodel.CanonicalPath(inside)}}
 
 	meta, _ := inspectOne(link, pol)
 	if meta.Editable {
@@ -99,7 +100,7 @@ func TestInstructionFileSymlinkEscape(t *testing.T) {
 
 func TestInstructionFileBinaryAndOversized(t *testing.T) {
 	dir := t.TempDir()
-	pol := instructionFilePolicy{writeRoots: []string{canonicalPath(dir)}}
+	pol := instructionFilePolicy{writeRoots: []string{filemodel.CanonicalPath(dir)}}
 
 	binary := filepath.Join(dir, "bin.md")
 	if err := os.WriteFile(binary, []byte{'a', 0x00, 'b'}, 0644); err != nil {
@@ -186,7 +187,7 @@ func TestInstructionFileWriteHappyPathConflictAndForce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	goodMtime := statMtime(fi)
+	goodMtime := filemodel.ModificationTime(fi)
 
 	putBody := func(body map[string]any) *httptest.ResponseRecorder {
 		raw, _ := json.Marshal(body)
@@ -236,8 +237,8 @@ func TestInstructionFileWriteDeniedOutsideRoots(t *testing.T) {
 	}
 	writeTestFile(t, protected, "global\n")
 	pol := instructionFilePolicy{
-		writeRoots:     []string{canonicalPath(t.TempDir())},
-		protectedRoots: []string{canonicalPath(filepath.Join(home, ".codex"))},
+		writeRoots:     []string{filemodel.CanonicalPath(t.TempDir())},
+		protectedRoots: []string{filemodel.CanonicalPath(filepath.Join(home, ".codex"))},
 	}
 	meta, _ := inspectOne(protected, pol)
 	if meta.Editable {

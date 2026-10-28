@@ -8,6 +8,7 @@ import (
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/protocol"
 )
 
@@ -366,8 +367,8 @@ func (sess *session) applyWireSemantic(gate func() error, dir protocol.Direction
 	sess.applyLiveRuntimeWire(dir, line, at)
 	// An MCP server changing startup state means the cached tool registry is
 	// stale; the next panel fetch re-asks app-server (mcp_inventory.go).
-	if mcpInventoryStale(sess.provider, dir, line) {
-		sess.mcp.invalidate()
+	if inspection.MCPInventoryStale(sess.provider, dir, line) {
+		sess.mcp.Invalidate()
 	}
 	if sess.projection != nil && wireNudgesProjectionMeta(sess.provider, dir, line) {
 		sess.projection.nudgeMetaRefresh()

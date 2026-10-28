@@ -299,10 +299,10 @@ func Inspect(path string, protectedRoots []string) (Meta, []byte, *Error) {
 	}
 	meta := Meta{
 		Path: path, Basename: filepath.Base(path), SizeBytes: info.Size(),
-		Mtime: float64(info.ModTime().UnixNano()) / 1e9, Editable: true,
+		Mtime: ModificationTime(info), Editable: true,
 	}
 	for _, root := range protectedRoots {
-		if underRoot(path, root) {
+		if UnderRoot(path, root) {
 			meta.Editable = false
 			meta.ReadOnlyReason = "Nano is read-only toward " + root
 			break
@@ -436,7 +436,8 @@ func canonicalPath(path string) string {
 	return absolute
 }
 
-func underRoot(path, root string) bool {
+// UnderRoot reports whether a canonical path lies at or below a canonical root.
+func UnderRoot(path, root string) bool {
 	return root != "" && (path == root || strings.HasPrefix(path, root+string(os.PathSeparator)))
 }
 
