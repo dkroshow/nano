@@ -28,6 +28,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -1007,13 +1008,7 @@ func enhancedTurns(turns []transcriptTurn) []transcriptTurn {
 
 // liveTextStatus is a thread's runtime and pending questions at a projection
 // revision. Only the stream handler writes it, and it never carries rows.
-type liveTextStatus struct {
-	// Epoch names the projection; revisions order statuses within one.
-	Epoch        string                `json:"epoch"`
-	Revision     int64                 `json:"revision"`
-	Runtime      liveProjectionRuntime `json:"runtime"`
-	Interactions []pendingInteraction  `json:"interactions"`
-}
+type liveTextStatus = liveview.Status
 
 // replyMatch and promptMatch look up the exact identities a provider's saved
 // rows carry: a Claude reply's message block and prompt's stamped UUID; a

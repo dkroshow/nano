@@ -27,13 +27,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"log"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/providers"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -93,17 +94,7 @@ const (
 // pendingInteraction is one parked server request, as the UI and any external
 // client see it. Params are carried verbatim: the card renders from the wire
 // payload rather than from a nano re-description of it.
-type pendingInteraction struct {
-	ID        string          `json:"id"`     // the JSON-RPC request id, verbatim
-	Method    string          `json:"method"` // the schema method name
-	Kind      string          `json:"kind"`
-	ThreadID  string          `json:"threadId"`
-	TurnID    string          `json:"turnId,omitempty"`
-	ItemID    string          `json:"itemId,omitempty"`
-	CreatedAt string          `json:"createdAt"`
-	ExpiresAt string          `json:"expiresAt,omitempty"` // autoResolutionMs deadline
-	Params    json.RawMessage `json:"params"`
-}
+type pendingInteraction = interact.PendingInteraction
 
 // interactionRouting is what one server request says about where it belongs.
 // threadID is empty for connection-level requests, which never become dialogs.

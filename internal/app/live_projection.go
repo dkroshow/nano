@@ -23,6 +23,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -48,7 +49,7 @@ const (
 	projectionMetaRefresh       = "meta.refresh"
 )
 
-type conversationView string
+type conversationView = liveview.View
 
 const (
 	conversationViewFull     conversationView = "full"
@@ -58,40 +59,9 @@ const (
 // liveProjectionItem is intentionally provider-neutral at the wire boundary.
 // Item contains only the normalized fields the conversation renderer needs;
 // provider protocol envelopes never cross this API.
-type liveProjectionItem struct {
-	ID               string         `json:"id"`
-	NativeItemID     string         `json:"nativeItemID,omitempty"`
-	DurableItemID    string         `json:"durableItemID,omitempty"`
-	ClientActionID   string         `json:"clientActionId,omitempty"`
-	ProjectedSeq     int64          `json:"projectedSeq,omitempty"`
-	TurnID           string         `json:"turnId,omitempty"`
-	TurnOrdinal      int            `json:"turnOrdinal,omitempty"`
-	Type             string         `json:"type"`
-	Category         string         `json:"category,omitempty"`
-	Role             string         `json:"role,omitempty"`
-	Phase            string         `json:"phase,omitempty"`
-	Text             string         `json:"text,omitempty"`
-	Status           string         `json:"status"`
-	Done             bool           `json:"done"`
-	CreatedAt        string         `json:"createdAt,omitempty"`
-	ToolName         string         `json:"toolName,omitempty"`
-	CallID           string         `json:"callID,omitempty"`
-	ContentRef       string         `json:"contentRef,omitempty"`
-	ContentTruncated bool           `json:"contentTruncated,omitempty"`
-	OriginalBytes    int            `json:"originalBytes,omitempty"`
-	Item             map[string]any `json:"item,omitempty"`
-	DurationMS       int64          `json:"durationMs,omitempty"`
-}
+type liveProjectionItem = liveview.Item
 
-type liveProjectionTurn struct {
-	ID            string          `json:"id"`
-	Status        string          `json:"status"`
-	StartedAtMs   int64           `json:"startedAtMs,omitempty"`
-	CompletedAtMs int64           `json:"completedAtMs,omitempty"`
-	DurationMS    int64           `json:"durationMs,omitempty"`
-	FinalItemID   string          `json:"finalItemID,omitempty"`
-	Error         json.RawMessage `json:"error,omitempty"`
-}
+type liveProjectionTurn = liveview.Turn
 
 // liveTurnWork is one turn's compact completion facts: ids and times, no
 // text.
@@ -102,52 +72,13 @@ type liveTurnWork struct {
 	version     uint64 // bumped with every such work
 }
 
-type liveProjectionRuntime struct {
-	SessionStatus     string          `json:"sessionStatus,omitempty"`
-	ThreadStatus      string          `json:"threadStatus,omitempty"`
-	TurnActive        bool            `json:"turnActive"`
-	TurnID            string          `json:"turnId,omitempty"`
-	TurnStartedAtMs   int64           `json:"turnStartedAtMs,omitempty"`
-	CompactingSinceMs int64           `json:"compactingSinceMs,omitempty"`
-	TokenUsage        json.RawMessage `json:"tokenUsage,omitempty"`
-	LastError         string          `json:"lastError,omitempty"`
-	// DeliveryExpiries counts the provider's recent delivery deadline
-	// expiries, across all its threads (deliveryExpiries).
-	DeliveryExpiries int `json:"deliveryExpiries,omitempty"`
-}
+type liveProjectionRuntime = liveview.Runtime
 
-type liveProjectionSnapshot struct {
-	Version        int                   `json:"version"`
-	Provider       string                `json:"provider"`
-	NativeThreadID string                `json:"nativeThreadID,omitempty"`
-	Epoch          string                `json:"epoch"`
-	Revision       int64                 `json:"revision"`
-	Items          []liveProjectionItem  `json:"items"`
-	Turns          []liveProjectionTurn  `json:"turns"`
-	Runtime        liveProjectionRuntime `json:"runtime"`
-	Interactions   []pendingInteraction  `json:"interactions"`
-	Page           *liveProjectionPage   `json:"page,omitempty"`
-}
+type liveProjectionSnapshot = liveview.Snapshot
 
-type liveProjectionPage struct {
-	HasMoreBefore    bool    `json:"hasMoreBefore"`
-	NextBeforeCursor *string `json:"nextBeforeCursor,omitempty"`
-	Source           string  `json:"source,omitempty"`
-	start            int
-	view             conversationView
-}
+type liveProjectionPage = liveview.Page
 
-type liveProjectionUpdate struct {
-	Version     int                     `json:"version"`
-	Op          string                  `json:"op"`
-	Epoch       string                  `json:"epoch"`
-	Revision    int64                   `json:"revision"`
-	Snapshot    *liveProjectionSnapshot `json:"snapshot,omitempty"`
-	Runtime     *liveProjectionRuntime  `json:"runtime,omitempty"`
-	Turn        *liveProjectionTurn     `json:"turn,omitempty"`
-	Interaction *pendingInteraction     `json:"interaction,omitempty"`
-	RequestID   string                  `json:"requestID,omitempty"`
-}
+type liveProjectionUpdate = liveview.Update
 
 type liveAdapter interface {
 	Apply(protocol.Direction, []byte, time.Time) model.Batch
@@ -807,11 +738,7 @@ func (p *liveProjection) status() liveTextStatus {
 
 // durableTurnEvidence is the saved status of one live turn, read by its exact
 // native turn id.
-type durableTurnEvidence struct {
-	Turn liveProjectionTurn
-	// Newer reports a later saved conversation turn, which ends this one.
-	Newer bool
-}
+type durableTurnEvidence = liveview.DurableTurnEvidence
 
 // savedTurnEvidence reads the saved status of a Codex or Grok turn by exact
 // native turn id. Claude saved turns carry no id the live turn shares, so a
