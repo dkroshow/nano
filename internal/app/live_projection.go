@@ -32,9 +32,9 @@ const (
 	liveProjectionTextCap        = 32 << 10
 	liveProjectionOutputCap      = 64 << 10
 	liveProjectionStateItemCap   = 1024
-	liveProjectionStateTurnCap   = 256
+	liveProjectionStateTurnCap   = liveview.StateTurnCap
 	liveProjectionItemPayloadCap = 96 << 10
-	liveProjectionTurnTail       = 5
+	liveProjectionTurnTail       = liveview.TurnTail
 	transcriptFirstPaintRows     = liveview.FirstPaintRows
 	conversationPageMaxRows      = liveview.PageMaxRows
 )

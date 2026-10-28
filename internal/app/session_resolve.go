@@ -2,20 +2,12 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 )
-
-func newSessionID() string {
-	b := make([]byte, 4)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
 
 // resolveSpawn fills flag defaults and absolutizes cwd — the single place
 // spawn parameters get resolved, shared by spawnSession and the preview

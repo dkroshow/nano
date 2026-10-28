@@ -581,14 +581,10 @@ func grokCurrentModel(raw json.RawMessage) string {
 	return ""
 }
 
-func fetchGrokModels(ctx context.Context, defaults sessionDefaults) (json.RawMessage, error) {
-	request := providerRequest{
-		Mode: "start", Cwd: defaults.cwd, GrokBin: defaults.grokBin,
-		GrokLeaderSocket: defaults.grokLeaderSocket,
-	}
+func fetchGrokModels(ctx context.Context, request providerRequest) (json.RawMessage, error) {
 	command := grokCommand(request)
 	cmd := exec.Command(command[0], command[1:]...)
-	cmd.Dir = grokProbeCwd(defaults.cwd)
+	cmd.Dir = grokProbeCwd(request.Cwd)
 	cmd.Env = grokProcessEnv()
 	client := protocol.NewClientCmd(cmd)
 	client.JSONRPCVersion = grokJSONRPCVersion

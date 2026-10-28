@@ -1136,7 +1136,7 @@ func (s *server) handleCodexModels(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleGrokModels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	models, err := fetchGrokModels(ctx, s.defaults)
+	models, err := fetchGrokModels(ctx, providerRequest{Mode: "start", Cwd: s.defaults.cwd, GrokBin: s.defaults.grokBin, GrokLeaderSocket: s.defaults.grokLeaderSocket})
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
