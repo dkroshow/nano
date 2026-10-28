@@ -15,7 +15,6 @@ import (
 	prompts "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/lifecycle"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -1003,35 +1002,23 @@ func (s *server) submitHostedTurnFull(hostedThreadID, actionID string, sub hoste
 		return agentTurnRecord{}, false, errHostedThreadNotAttached
 	}
 	if requireIdle {
-		sess.sendMu.Lock()
-		defer sess.sendMu.Unlock()
-		sess.stateMu.Lock()
-		status, permission := sess.connectionStatusLocked(), sess.lifecyclePermissionLocked()
-		sess.stateMu.Unlock()
-		// A thread resting since a restart had no work open (bootWorkOpen) and
-		// is attaching for this prompt, so it is idle: the prompt queues behind
-		// the attach, as an idle thread's would start.
-		restingIdle := waited == "resting" && status == "starting"
-		switch {
-		case status == sessionStatusExited:
-			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
-		case sess.nanoIsStopping() || status != "ready" && !restingIdle:
-			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "notReady"}
-		case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.corePromptInFlight()):
-			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "busy"}
-		}
-		if sess.queuedTurns != nil {
-			if _, queued := sess.queuedTurns.First(sess.provider, sess.ThreadID(), sess.hostedThreadID); queued {
-				return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "queuedBacklog"}
+		var result agentTurnRecord
+		var replay bool
+		reason, err := sess.withIdleDelivery(waited == "resting", func() error {
+			record, created, err := s.agentExecutions.beginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
+			if err != nil {
+				return err
 			}
+			op, responseStatus, reason, err := sess.queueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
+			result, replay, err = s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+			return err
+		})
+		if reason != "" {
+			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: reason}
 		}
-		record, created, err := s.agentExecutions.beginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
-		if err != nil {
-			return agentTurnRecord{}, false, err
-		}
-		op, responseStatus, reason, err := sess.queueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
-		return s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+		return result, replay, err
 	}
+
 	record, created, err := s.agentExecutions.beginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
 	if err != nil {
 		if errors.Is(err, errAgentTurnIdempotencyConflict) {

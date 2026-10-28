@@ -245,20 +245,5 @@ func (s *server) threadBusy(hosted string) bool {
 	if sess == nil {
 		return false
 	}
-	sess.stateMu.Lock()
-	active := sess.workActiveLocked() || sess.turnRestoreInProgress
-	sess.stateMu.Unlock()
-	if active {
-		return true
-	}
-	sess.sendMu.Lock()
-	defer sess.sendMu.Unlock()
-	for _, op := range sess.sendOps {
-		select {
-		case <-op.done:
-		default:
-			return true
-		}
-	}
-	return false
+	return sess.busyForMaintenance()
 }
