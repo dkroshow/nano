@@ -191,8 +191,8 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.setStatus("starting")
-	request := spawnRequest{Provider: "codex", Mode: "resume", ThreadID: sess.threadID, bootReattach: &bootProviderControl{}, codexZeroTurnResume: true}
-	if err := startCodexSession(sess, daemon, request); err != nil {
+	request := spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.threadID, bootReattach: &bootProviderControl{}, codexZeroTurnResume: true}}
+	if err := startCodexSession(sess, daemon, request.providerRequest); err != nil {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.summary().Status == "ready" })
@@ -245,7 +245,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	}
 	reopened.turns = mustBindTransactionalTurnStore(t, reopened.queuedTurns, reopened.sendAttempts)
 	reopened.setStatus("starting")
-	if err := startCodexSession(reopened, daemon, request); err != nil {
+	if err := startCodexSession(reopened, daemon, request.providerRequest); err != nil {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool {
@@ -427,7 +427,7 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 			sess.turns = mustBindTransactionalTurnStore(t, sess.queuedTurns, sess.sendAttempts)
 			fake.setReplyDelay("thread/resume", 100*time.Millisecond)
 			sess.setStatus("starting")
-			if err := startCodexSession(sess, daemon, spawnRequest{Provider: "codex", Mode: "resume", ThreadID: sess.threadID, bootReattach: &bootProviderControl{}}); err != nil {
+			if err := startCodexSession(sess, daemon, providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.threadID, bootReattach: &bootProviderControl{}}); err != nil {
 				t.Fatal(err)
 			}
 			waitReconnectCondition(t, func() bool { return fake.resumeCount() >= 1 })

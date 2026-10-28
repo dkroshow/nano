@@ -102,14 +102,12 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 			}
 			t.Cleanup(sess.close)
 
-			startGrokSession(sess, spawnRequest{
-				Provider: "grok", Mode: "resume", ThreadID: sess.threadID,
+			startGrokSession(sess, providerRequest{Provider: "grok", Mode: "resume", ThreadID: sess.threadID,
 				Cwd: stateDir, GrokBin: bin,
 				bootReattach: &bootProviderControl{
 					loadTimeout:      50 * time.Millisecond,
 					retryBackoffBase: 5 * time.Millisecond,
-				},
-			})
+				}})
 
 			waitForGrokAttempts(t, stateDir, 1)
 			waitForGrokStatus(t, sess, "reconnecting")
@@ -290,7 +288,7 @@ while IFS= read -r request; do :; done
 			if tc.mode == "start" {
 				requestedID = ""
 			}
-			err = runGrokHandshake(sess, spawnRequest{Mode: tc.mode, ThreadID: requestedID, Cwd: t.TempDir(), GrokBin: bin})
+			err = runGrokHandshake(sess, providerRequest{Mode: tc.mode, ThreadID: requestedID, Cwd: t.TempDir(), GrokBin: bin})
 			if tc.identity == "wrong" {
 				if err == nil || !strings.Contains(err.Error(), "sessionId") || sends.Load() != 0 || sess.summary().Status == "ready" {
 					t.Fatalf("mismatched native identity accepted: err=%v, sends=%d", err, sends.Load())
@@ -443,7 +441,7 @@ printf '%%s\n' '{"jsonrpc":"2.0","id":2,"result":%s}'
 			}
 			handshake := make(chan error, 1)
 			go func() {
-				handshake <- runGrokHandshake(sess, spawnRequest{Mode: "resume", ThreadID: sess.threadID, Cwd: sess.cwd, GrokBin: bin})
+				handshake <- runGrokHandshake(sess, providerRequest{Mode: "resume", ThreadID: sess.threadID, Cwd: sess.cwd, GrokBin: bin})
 			}()
 
 			if tc.ready {

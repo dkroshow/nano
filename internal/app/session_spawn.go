@@ -261,9 +261,9 @@ func (s *server) spawnSession(req spawnRequest) (*session, error) {
 	}
 
 	if req.Mode != "resume" {
-		sess.recordPosture(creationPostureEntries(req), metadataFreshnessLive)
+		sess.recordPosture(creationPostureEntries(req.providerRequest), metadataFreshnessLive)
 	}
-	if err := sess.beginProviderSpawn(req, s.codex, func() { s.discardSpawn(sess) }); err != nil {
+	if err := sess.beginProviderSpawn(req.providerRequest, s.codex, func() { s.discardSpawn(sess) }); err != nil {
 		s.discardSpawn(sess)
 		return nil, err
 	}

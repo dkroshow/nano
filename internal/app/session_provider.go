@@ -10,7 +10,7 @@ import (
 // the POST answers with, so only the failures a caller can act on — an
 // already-attached thread, a resume ladder that found nothing to attach to —
 // come back as errors here. Handshake failures land on the session itself.
-func (sess *session) beginProviderSpawn(req spawnRequest, daemon *codexDaemon, discard func()) error {
+func (sess *session) beginProviderSpawn(req providerRequest, daemon *codexDaemon, discard func()) error {
 	if err := sess.ensureCoreSession(); err != nil {
 		return err
 	}
@@ -30,7 +30,7 @@ func (sess *session) beginProviderSpawn(req spawnRequest, daemon *codexDaemon, d
 
 // beginProviderSpawnLegacy is the c2: asynchronous attachment shim. Provider
 // adapters replace it when their Start and Resume operations return evidence.
-func (sess *session) beginProviderSpawnLegacy(req spawnRequest, daemon *codexDaemon, discard func()) error {
+func (sess *session) beginProviderSpawnLegacy(req providerRequest, daemon *codexDaemon, discard func()) error {
 	if req.Provider == "codex" {
 		return startCodexSession(sess, daemon, req)
 	}
@@ -88,7 +88,7 @@ func (sess *session) beginProviderSpawnLegacy(req spawnRequest, daemon *codexDae
 	return nil
 }
 
-func (sess *session) resumeClaudeForSpawn(req spawnRequest) error {
+func (sess *session) resumeClaudeForSpawn(req providerRequest) error {
 	// The manual path calls this synchronously because its rungs decide WHICH
 	// session the operator gets (attach, respawn, or refuse), and the refusal is
 	// the frozen 409 the frontend routes on. Boot runs the same work behind its

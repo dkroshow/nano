@@ -335,13 +335,13 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 		if !req.externalResumePosture && req.AllowedTools == "" && req.PermissionMode != "bypassPermissions" {
 			req.AllowedTools = s.defaults.allowedTools
 		}
-		req.ClaudeArgs = claudeArgs(req)
+		req.ClaudeArgs = claudeArgs(req.providerRequest)
 	}
 	// A stored command supplies the stream transport baseline. A record-less
 	// historical resume rebuilds that baseline above. Only after either source
 	// exists may canonical hosted posture and identity replace stale values.
 	if req.HostedThreadID != "" {
-		req.ClaudeArgs = claudeCanonicalResumeArgs(req.ClaudeArgs, req)
+		req.ClaudeArgs = claudeCanonicalResumeArgs(req.ClaudeArgs, req.providerRequest)
 	}
 	return req, nil
 }

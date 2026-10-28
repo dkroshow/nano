@@ -126,7 +126,7 @@ func TestSpawnSessionCommitsPriorityBeforeImmediateThreadStartAndSettles(t *test
 		received <- struct{}{}
 	})
 	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"})
+	sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestRunCodexHandshakeAcceptsGranularApprovalPolicy(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.setStartResult(map[string]any{"model": "gpt-test", "approvalPolicy": map[string]any{"granular": map[string]any{"filesystem": "on-request"}}, "thread": map[string]any{"id": "thread-granular", "cwd": t.TempDir()}})
 	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd})
+	sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestCodexTypedStartRejectionSettlesCreationWithoutEffectiveValue(t *testing
 	fake := newFakeAppServer(t)
 	fake.setStartError("policy rejected start")
 	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"})
+	sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestCodexTransportFailureLeavesCreationPending(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.setDropStart(true)
 	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), sessionRegistry: sessionRegistry{sessions: map[string]*session{}}, agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"})
+	sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}

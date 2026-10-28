@@ -156,9 +156,7 @@ func TestCodexReconnectBootTimeoutRecovers(t *testing.T) {
 	server := newResumeTestServer(t, fake.wsURL())
 	server.codex.resumeTimeout = 30 * time.Millisecond
 	seedCanonicalResumeOwner(t, server, "codex", "boot-timeout", server.defaults.cwd)
-	sess, err := server.spawnSession(spawnRequest{
-		Provider: "codex", Mode: "resume", ThreadID: "boot-timeout", bootReattach: &bootProviderControl{},
-	})
+	sess, err := server.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: "boot-timeout", bootReattach: &bootProviderControl{}}})
 	if err != nil {
 		t.Fatal(err)
 	}

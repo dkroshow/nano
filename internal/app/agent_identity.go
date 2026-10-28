@@ -22,6 +22,6 @@ This hostedThreadId is your durable Nano identity: retain it, and cite it as inv
 // to mint the block: a bound hosted identity plus this server's origin. Fresh
 // starts and Claude fallback resumes both provide it; a fallback therefore
 // preserves identity even when no attachment argv survived.
-func identityInjectable(req spawnRequest) bool {
+func identityInjectable(req providerRequest) bool {
 	return req.HostedThreadID != "" && req.apiOrigin != ""
 }

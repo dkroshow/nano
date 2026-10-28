@@ -95,7 +95,7 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", claudeModelFlag, "legacy-model", "--permission-mode", "bypassPermissions"},
 	})
 	s := &server{defaults: sessionDefaults{cwd: legacyCwd, claudeBin: "/claude"}, attachments: attachments, controlMetadata: metadata}
-	resolved, err := s.resolveSpawn(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"})
+	resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		t.Fatalf("API display model = %s, want observed fold", got)
 	}
 
-	resolved, err := s.resolveSpawn(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"})
+	resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 			}
 			args := applyClaudeResumeOverlay([]string{"-p", claudeModelFlag, "stale"}, metadata, hostedID)
 			if test.want == "" {
-				args = claudeCanonicalResumeArgs(args, spawnRequest{})
+				args = claudeCanonicalResumeArgs(args, (spawnRequest{}).providerRequest)
 				if strings.Contains(strings.Join(args, " "), "stale") {
 					t.Fatalf("cleared Claude resume retained stale argv %#v", args)
 				}

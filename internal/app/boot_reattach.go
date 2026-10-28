@@ -23,14 +23,6 @@ import (
 	"time"
 )
 
-type bootProviderControl struct {
-	handshakeSlots chan struct{}
-	// Tests shorten session/load and backoff without changing production values.
-	// Zero always selects the provider default.
-	loadTimeout      time.Duration
-	retryBackoffBase time.Duration
-}
-
 // bootReattach is one boot's set of stored attachments that are not live yet.
 // Registration takes minutes for hundreds of threads, so HTTP opens first and
 // the set reports each waiting thread as "starting" while the background loop
@@ -72,29 +64,12 @@ func (s *server) prepareBootReattach() {
 			boot.byHosted[rec.HostedThreadID] = rec
 		}
 		if boot.controls[rec.Provider] == nil {
-			control := &bootProviderControl{}
-			if limit := providerLifecycleCapabilities(rec.Provider).BootHandshakeLimit; limit > 0 {
-				control.handshakeSlots = make(chan struct{}, limit)
-			}
+			control := newBootProviderControl(providerLifecycleCapabilities(rec.Provider).BootHandshakeLimit)
 			boot.controls[rec.Provider] = control
 		}
 	}
 	s.boot = boot
 	s.restart.addThreads(boot.order)
-}
-
-// holdHandshakeSlot takes one of the provider's boot handshake slots for
-// sess's attach and returns its release. The slot goes back once: when the
-// attach starts waiting for its saved catch-up, or when it ends.
-func (c *bootProviderControl) holdHandshakeSlot(sess *session) func() {
-	if c == nil || c.handshakeSlots == nil {
-		return func() {}
-	}
-	c.handshakeSlots <- struct{}{}
-	var once sync.Once
-	release := func() { once.Do(func() { <-c.handshakeSlots }) }
-	sess.holdHandshakeRelease(release)
-	return release
 }
 
 // state reports a stored thread that still waits for its registration:
@@ -473,18 +448,18 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 			presentationMode = canonical
 		}
 	}
-	sess, err := s.spawnSession(spawnRequest{
-		Provider:                rec.Provider,
-		Mode:                    "resume",
-		ThreadID:                rec.NativeThreadID,
-		HostedThreadID:          rec.HostedThreadID,
-		InvokerHostedThreadID:   rec.InvokerHostedThreadID,
-		InvokerNativeThreadID:   rec.InvokerNativeThreadID,
-		InvokerProvider:         rec.InvokerProvider,
-		PresentationMode:        presentationMode,
-		PendingName:             rec.PendingName,
-		codexZeroTurnResume:     providerLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
-		bootReattach:            boot.controls[rec.Provider],
+	sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: rec.Provider,
+		Mode:           "resume",
+		ThreadID:       rec.NativeThreadID,
+		HostedThreadID: rec.HostedThreadID,
+
+		codexZeroTurnResume: providerLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
+		bootReattach:        boot.controls[rec.Provider]}, InvokerHostedThreadID: rec.InvokerHostedThreadID,
+		InvokerNativeThreadID: rec.InvokerNativeThreadID,
+		InvokerProvider:       rec.InvokerProvider,
+		PresentationMode:      presentationMode,
+		PendingName:           rec.PendingName,
+
 		immediateRuntimePublish: immediateRuntimePublish,
 		restart:                 restart,
 		// A thread the sidebar does not show catches up after the visible

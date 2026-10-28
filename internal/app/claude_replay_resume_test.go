@@ -51,7 +51,7 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 				}
 			} else {
 				seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-				sess, err := s.spawnSession(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, bootReattach: &bootProviderControl{}})
+				sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, bootReattach: &bootProviderControl{}}})
 				if err != nil {
 					t.Fatal(err)
 				}

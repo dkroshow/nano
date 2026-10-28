@@ -1086,7 +1086,7 @@ func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	switch resolved.Provider {
 	case "codex":
-		method, params := codexSessionRequest(resolved)
+		method, params := codexSessionRequest(resolved.providerRequest)
 		out := map[string]any{
 			"provider":      "codex",
 			"method":        method,
@@ -1102,13 +1102,13 @@ func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
 	case "claude":
 		httpapi.WriteJSON(w, map[string]any{
 			"provider": "claude",
-			"argv":     claudeCommand(resolved),
+			"argv":     claudeCommand(resolved.providerRequest),
 		})
 	case "grok":
-		method, params := grokSessionRequest(resolved)
+		method, params := grokSessionRequest(resolved.providerRequest)
 		httpapi.WriteJSON(w, map[string]any{
 			"provider": "grok",
-			"argv":     grokCommand(resolved),
+			"argv":     grokCommand(resolved.providerRequest),
 			"initialize": map[string]any{
 				"protocolVersion": 1, "clientCapabilities": map[string]any{},
 			},

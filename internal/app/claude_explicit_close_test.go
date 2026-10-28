@@ -324,7 +324,7 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "close-test")
 	hosted, _, _ := store.beginSession("live-close", "hash", "claude", presentationShared)
 	sess.hostedThreadID, sess.agentExecutions = hosted.ID, store
-	if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL())); err != nil {
+	if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest); err != nil {
 		t.Fatal(err)
 	}
 	_ = store.bindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared)
@@ -380,7 +380,7 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 				t.Fatal(err)
 			}
 			sess.hostedThreadID, sess.agentExecutions = hosted.ID, store
-			if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL())); err != nil {
+			if _, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest); err != nil {
 				t.Fatal(err)
 			}
 			if err := store.bindSession(hosted.ID, sess.id, sess.currentThreadID(), "ready", presentationShared); err != nil {

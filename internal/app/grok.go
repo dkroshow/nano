@@ -127,7 +127,7 @@ func resolveGrokBin(override string) string {
 	return "grok"
 }
 
-func grokCommand(req spawnRequest) []string {
+func grokCommand(req providerRequest) []string {
 	bin := resolveGrokBin(req.GrokBin)
 	args := []string{"--sandbox", "off"}
 	args = append(args, "agent")
@@ -152,7 +152,7 @@ func grokCommand(req spawnRequest) []string {
 // must ride this request rather than only the short-lived stdio client's argv.
 // Grok 1.0.3 exposes only auto and always-approve as per-session ACP options;
 // the other permission modes remain configuration/CLI concerns.
-func grokSessionRequest(req spawnRequest) (string, map[string]any) {
+func grokSessionRequest(req providerRequest) (string, map[string]any) {
 	if req.Mode == "resume" {
 		return "session/load", map[string]any{
 			"cwd": req.Cwd, "mcpServers": []any{}, "sessionId": req.ThreadID,
@@ -213,7 +213,7 @@ func grokSelectedEffort(raw json.RawMessage) (string, error) {
 // grokVerifyRequestedEffort rejects a fresh session whose provider-selected
 // effort differs from Nano's request. A resumed session is observed but not
 // compared with creation intent because it already has provider-owned state.
-func grokVerifyRequestedEffort(req spawnRequest, raw json.RawMessage) (string, error) {
+func grokVerifyRequestedEffort(req providerRequest, raw json.RawMessage) (string, error) {
 	selected, err := grokSelectedEffort(raw)
 	if err != nil {
 		return "", err
@@ -258,7 +258,7 @@ func grokProbeCwd(configured string) string {
 	return string(filepath.Separator)
 }
 
-func startGrokSession(sess *session, req spawnRequest) {
+func startGrokSession(sess *session, req providerRequest) {
 	go func() {
 		defer req.bootReattach.holdHandshakeSlot(sess)()
 		if grokSessionClosed(sess) {
@@ -286,7 +286,7 @@ func startGrokSession(sess *session, req spawnRequest) {
 // retryGrokBootLoad is deliberately narrower than general Grok recovery. A
 // fresh start, manual resume, initialize failure, or provider refusal keeps the
 // existing one-attempt behavior.
-func retryGrokBootLoad(sess *session, req spawnRequest, firstErr error) error {
+func retryGrokBootLoad(sess *session, req providerRequest, firstErr error) error {
 	err := firstErr
 	for attempt := 1; attempt <= grokBootLoadAttempts; attempt++ {
 		if err == nil || !grokLoadTimedOut(err) {
@@ -330,7 +330,7 @@ func grokSessionClosed(sess *session) bool {
 	return sess.closed
 }
 
-func runGrokHandshake(sess *session, req spawnRequest) error {
+func runGrokHandshake(sess *session, req providerRequest) error {
 	sess.beginTurnRestore()
 	defer sess.cancelTurnRestore()
 	command := grokCommand(req)
@@ -579,7 +579,7 @@ func grokCurrentModel(raw json.RawMessage) string {
 }
 
 func fetchGrokModels(ctx context.Context, defaults sessionDefaults) (json.RawMessage, error) {
-	request := spawnRequest{
+	request := providerRequest{
 		Mode: "start", Cwd: defaults.cwd, GrokBin: defaults.grokBin,
 		GrokLeaderSocket: defaults.grokLeaderSocket,
 	}

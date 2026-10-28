@@ -186,7 +186,7 @@ func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testin
 			// its new-session allowlist or a broader permission mode.
 			catalog.thread.Metadata.Permission = unknownCatalogValue()
 			s.catalog = catalog
-			resolved, err := s.resolveSpawn(spawnRequest{Provider: provider, Mode: "resume", ThreadID: nativeID})
+			resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -256,7 +256,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	catalog.thread.Metadata.Permission = unknownCatalogValue()
 	s.catalog = catalog
 
-	firstResolved, err := s.resolveSpawn(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID})
+	firstResolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	waitForSessionStatus(t, s, first.ID, sessionStatusExited)
 
-	retry, err := s.resolveSpawn(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID})
+	retry, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -64,7 +64,7 @@ func controlResponder(t *testing.T, payload func(subtype string) any) *fakeShim 
 func startControlSession(t *testing.T, shim *fakeShim) (*session, *claudeSession) {
 	t.Helper()
 	sess, _ := claudeTestSession(t)
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()))
+	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}

@@ -573,7 +573,7 @@ func TestClaudeSendTurnPersistsAndClearsTheAnchor(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
 	sess.updateTurnAnchor = anchors.set
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()))
+	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -646,7 +646,7 @@ func TestClaudeFirstTurnAnchorIsPersistedOnceTheInitLineLands(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
 	sess.updateTurnAnchor = anchors.set
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()))
+	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}

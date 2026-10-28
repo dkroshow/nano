@@ -322,12 +322,11 @@ func waitForClaudeThreadID(t *testing.T, sess *session, want string) {
 }
 
 func claudeShimSpawnRequest(sess *session, shimURL string) spawnRequest {
-	return spawnRequest{
-		Provider:     "claude",
+	return spawnRequest{providerRequest: providerRequest{Provider: "claude",
 		Cwd:          sess.cwd,
 		Model:        "sonnet",
 		ClaudeBin:    "/fake/claude",
-		ClaudeShimWS: shimURL,
+		ClaudeShimWS: shimURL},
 	}
 }
 
@@ -351,7 +350,7 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 	sess.pendingName = "overnight run"
 	sess.displayName = "overnight run"
 	req := claudeShimSpawnRequest(sess, shim.wsURL())
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess, req.providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -370,7 +369,7 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 	recs := attachments.all()
 	want := attachmentRecord{
 		Provider: "claude", NativeThreadID: "shim-1", HostedThreadID: sess.hostedThreadID,
-		Bin: "/fake/claude", Args: claudeArgs(req), ShimSessionID: "shim-1",
+		Bin: "/fake/claude", Args: claudeArgs(req.providerRequest), ShimSessionID: "shim-1",
 		PendingName: "overnight run",
 	}
 	if len(recs) != 1 || !reflect.DeepEqual(recs[0], want) {
@@ -430,7 +429,7 @@ func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
 
 	sess, attachments := claudeTestSession(t)
 	req := claudeShimSpawnRequest(sess, shim.wsURL())
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess, req.providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -451,8 +450,8 @@ func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
 	if startParams.Bin != "/fake/claude" || startParams.Cwd != sess.cwd {
 		t.Fatalf("session/start params = %+v", startParams)
 	}
-	if !reflect.DeepEqual(startParams.Args, claudeArgs(req)) {
-		t.Fatalf("session/start args = %#v, want %#v", startParams.Args, claudeArgs(req))
+	if !reflect.DeepEqual(startParams.Args, claudeArgs(req.providerRequest)) {
+		t.Fatalf("session/start args = %#v, want %#v", startParams.Args, claudeArgs(req.providerRequest))
 	}
 
 	waitForClaudeThreadID(t, sess, "native-1")
@@ -470,7 +469,7 @@ func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
 	// for the native id), leaving exactly the real one.
 	want := attachmentRecord{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: sess.hostedThreadID,
-		Bin: "/fake/claude", Args: claudeArgs(req),
+		Bin: "/fake/claude", Args: claudeArgs(req.providerRequest),
 		ShimSessionID: "cs_shim1",
 	}
 	waitForClaude(t, "attachment record", func() bool {
@@ -495,7 +494,7 @@ func TestClaudeShimSendTurnRecordsSendOnce(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()))
+	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -531,7 +530,7 @@ func TestClaudeShimSendTurnPreservesSubmissionEventUUID(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()))
+	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -579,7 +578,7 @@ func TestClaudeShimChildDeathMarksSessionExited(t *testing.T) {
 				tc.end(c)
 			})
 			sess, _ := claudeTestSession(t)
-			claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()))
+			claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.wsURL()).providerRequest)
 			if err != nil {
 				t.Fatalf("startClaudeSession: %v", err)
 			}
@@ -611,7 +610,7 @@ func TestClaudeShimUnreachableFallsBackToDirectChild(t *testing.T) {
 	sess, attachments := claudeTestSession(t)
 	req := claudeShimSpawnRequest(sess, deadURL)
 	req.ClaudeBin = fakeClaudeBinary(t)
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess, req.providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -646,7 +645,7 @@ func TestDirectClaudeChildCarriesTheNanoEntrypoint(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	req := claudeShimSpawnRequest(sess, "") // no shim: the direct child path
 	req.ClaudeBin = bin
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess, req.providerRequest)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}

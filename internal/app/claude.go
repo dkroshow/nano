@@ -225,7 +225,7 @@ const claudeNoToolsSentinel = "__nano_status_no_tools__"
 // claudeArgs builds the exact argv (after the binary name) for a resolved
 // spawn request. Used by both startClaudeSession and /api/sessions/preview,
 // so the New Window dialog's command pane cannot drift from what runs.
-func claudeArgs(req spawnRequest) []string {
+func claudeArgs(req providerRequest) []string {
 	args := []string{
 		"-p", "--verbose",
 		"--input-format", "stream-json",
@@ -287,7 +287,7 @@ const claudeModelFlag = "--model"
 // Attachment argv remains a transport fragment for protocol, resume lineage,
 // and --allowed-tools: Nano does not yet model a lossless tool allow-list, so
 // preserving it avoids silently narrowing the resumed child's capabilities.
-func claudeCanonicalResumeArgs(args []string, req spawnRequest) []string {
+func claudeCanonicalResumeArgs(args []string, req providerRequest) []string {
 	without := argvDropPairs(args, map[string]bool{
 		claudeModelFlag: true, "--effort": true, "--permission-mode": true,
 	})
@@ -340,7 +340,7 @@ func applyClaudeResumeOverlay(args []string, source sessionMetadata, hostedThrea
 // claudeCommand is the argv a spawn request would run, for the New Window
 // dialog's command pane. A resume previews its `--resume` fallback rung: the
 // attach rung it tries first runs no command at all.
-func claudeCommand(req spawnRequest) []string {
+func claudeCommand(req providerRequest) []string {
 	if req.ClaudeBin == "" {
 		req.ClaudeBin = resolveClaudeBin("")
 	}
@@ -376,7 +376,7 @@ func resolveClaudeBin(configured string) string {
 // startClaudeSession begins streaming a hosted session's wire into the
 // session's event buffer. The session id arrives asynchronously on the
 // system.init line.
-func startClaudeSession(sess *session, req spawnRequest) (*claudeSession, error) {
+func startClaudeSession(sess *session, req providerRequest) (*claudeSession, error) {
 	if req.ClaudeBin == "" {
 		req.ClaudeBin = resolveClaudeBin("")
 	}
@@ -396,7 +396,7 @@ func startClaudeSession(sess *session, req spawnRequest) (*claudeSession, error)
 //     conversation from the native transcript but not a turn in flight;
 //  3. someone else holds the session → refuse. Falling back here would spawn a
 //     second child racing the first over one transcript.
-func resumeClaudeSession(sess *session, req spawnRequest) (*claudeSession, error) {
+func resumeClaudeSession(sess *session, req providerRequest) (*claudeSession, error) {
 	posture := claudeSpawnPosture{Bin: req.ClaudeBin, Args: req.ClaudeArgs}
 	// Identity at spawn, the codex idiom (codex.go's pre-claim): take the thread
 	// id before any wire traffic, whichever rung ends up hosting the session.
@@ -600,7 +600,7 @@ func (sess *session) provisionalMayHaveDelivered(ctx context.Context, handle str
 // naming the path while it is still in hand: without the check the child spawns,
 // finds no transcript under the path derived from its cwd, and dies with a raw
 // error the operator has to decode.
-func requireResumeCwd(req spawnRequest) error {
+func requireResumeCwd(req providerRequest) error {
 	if fi, err := os.Stat(req.Cwd); err != nil || !fi.IsDir() {
 		return fmt.Errorf("cannot resume claude thread %s: its working directory %s is gone — the project was moved or deleted", req.ThreadID, req.Cwd)
 	}

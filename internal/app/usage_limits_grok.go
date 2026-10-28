@@ -52,11 +52,10 @@ var newGrokUsageClient = func(command []string, cwd string) grokUsageClient {
 // the client also kills and reaps the short-lived stdio child.
 func fetchGrokUsage(ctx context.Context, defaults sessionDefaults) *usageProviderSnapshot {
 	out := &usageProviderSnapshot{Provider: "grok", Buckets: []usageBucket{}}
-	request := spawnRequest{
-		Mode: "start", Cwd: defaults.cwd, GrokBin: resolveGrokBin(defaults.grokBin),
-		GrokLeaderSocket: defaults.grokLeaderSocket,
+	request := spawnRequest{providerRequest: providerRequest{Mode: "start", Cwd: defaults.cwd, GrokBin: resolveGrokBin(defaults.grokBin),
+		GrokLeaderSocket: defaults.grokLeaderSocket},
 	}
-	command := grokCommand(request)
+	command := grokCommand(request.providerRequest)
 	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
 		return out.Fail("Grok executable is not configured", nil)
 	}

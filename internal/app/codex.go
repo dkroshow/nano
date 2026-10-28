@@ -396,7 +396,7 @@ func (d *codexDaemon) reconnectSessionLoop(sess *session) {
 		progress, _ := json.Marshal(map[string]any{"attempts": attempt, "retrying": true, "timeoutMs": timeout.Milliseconds()})
 		sess.setState("codexReconnect", progress)
 		sess.observeConnection(lifecycle.EventLinkLost)
-		req := spawnRequest{Provider: "codex", Mode: "resume", ThreadID: sess.currentThreadID()}
+		req := providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.currentThreadID()}
 		err := runCodexHandshakeWithTimeout(context.Background(), sess, d, req, timeout)
 		if err == nil {
 			sess.setState("codexReconnect", json.RawMessage(`{"retrying":false}`))
@@ -720,7 +720,7 @@ func stringField(obj map[string]json.RawMessage, key string) string {
 	return ""
 }
 
-func codexThreadParams(req spawnRequest) map[string]any {
+func codexThreadParams(req providerRequest) map[string]any {
 	p := map[string]any{
 		"cwd":            req.Cwd,
 		"approvalPolicy": req.Approval,
@@ -776,7 +776,7 @@ func codexThreadParams(req spawnRequest) map[string]any {
 // Nano's identity block. Caller text stays first and verbatim; the block is
 // purely additive. baseInstructions is never touched — it replaces Codex's
 // built-in system prompt, so appending there would change its meaning.
-func codexDeveloperInstructions(req spawnRequest) string {
+func codexDeveloperInstructions(req providerRequest) string {
 	dev := req.DeveloperInstructions
 	if !identityInjectable(req) {
 		return dev
@@ -792,7 +792,7 @@ func codexDeveloperInstructions(req spawnRequest) string {
 // spawn request. Resume is intentionally narrow: it sends no caller
 // cwd/model/sandbox overrides. It does send the thread's service tier, because
 // Codex otherwise resumes at its config's tier.
-func codexResumeParams(req spawnRequest) map[string]any {
+func codexResumeParams(req providerRequest) map[string]any {
 	p := map[string]any{"threadId": req.ThreadID}
 	if req.ServiceTier != "" {
 		p["serviceTier"] = req.ServiceTier
@@ -800,7 +800,7 @@ func codexResumeParams(req spawnRequest) map[string]any {
 	return p
 }
 
-func codexSessionRequest(req spawnRequest) (string, map[string]any) {
+func codexSessionRequest(req providerRequest) (string, map[string]any) {
 	if req.Mode == "resume" {
 		return "thread/resume", codexResumeParams(req)
 	}
@@ -878,7 +878,7 @@ func (sess *session) seedCodexTurnOverrides(folded map[string]postureEntry, lega
 	overlayFold(folded, postureFieldServiceTier, &sess.turnServiceTier)
 }
 
-func startCodexSession(sess *session, daemon *codexDaemon, req spawnRequest) error {
+func startCodexSession(sess *session, daemon *codexDaemon, req providerRequest) error {
 	sess.codexZeroTurnEligible = req.Mode == "start" || req.codexZeroTurnResume
 	// Set before any handshake runs: close() reaches the daemon through this
 	// field, and a session torn down mid-handshake must be able to unsubscribe
@@ -1064,7 +1064,7 @@ func (sess *session) runCodexZeroTurnRecovery() {
 				return
 			}
 		}
-		req := spawnRequest{Provider: "codex", Mode: "resume", ThreadID: sess.currentThreadID()}
+		req := providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.currentThreadID()}
 		err := runCodexHandshakeWithTimeout(context.Background(), sess, sess.codex, req, codexZeroTurnRecoveryAttemptTimeout)
 		if err == nil || !sess.codexZeroTurnRecoveryNeeded() {
 			return
@@ -1098,11 +1098,11 @@ func (sess *session) runCodexZeroTurnRecovery() {
 // launch it on a background goroutine after the starting session is published,
 // so the ready transition re-checks under stateMu that the session was not
 // closed while the handshake was in flight.
-func runCodexHandshake(sess *session, daemon *codexDaemon, req spawnRequest) error {
+func runCodexHandshake(sess *session, daemon *codexDaemon, req providerRequest) error {
 	return runCodexHandshakeContext(context.Background(), sess, daemon, req)
 }
 
-func runCodexHandshakeContext(parent context.Context, sess *session, daemon *codexDaemon, req spawnRequest) error {
+func runCodexHandshakeContext(parent context.Context, sess *session, daemon *codexDaemon, req providerRequest) error {
 	timeout := codexHandshakeTimeout
 	if req.Mode == "resume" && daemon.resumeTimeout > 0 {
 		timeout = daemon.resumeTimeout
@@ -1110,7 +1110,7 @@ func runCodexHandshakeContext(parent context.Context, sess *session, daemon *cod
 	return runCodexHandshakeWithTimeout(parent, sess, daemon, req, timeout)
 }
 
-func runCodexHandshakeWithTimeout(parent context.Context, sess *session, daemon *codexDaemon, req spawnRequest, timeout time.Duration) error {
+func runCodexHandshakeWithTimeout(parent context.Context, sess *session, daemon *codexDaemon, req providerRequest, timeout time.Duration) error {
 	sess.codexHandshakeMu.Lock()
 	defer sess.codexHandshakeMu.Unlock()
 	releaseSlot := func() {}

@@ -51,13 +51,12 @@ func TestArgvSingletonHelpers(t *testing.T) {
 // text first and verbatim — and baseInstructions is never touched, because it
 // replaces the built-in system prompt rather than extending it.
 func TestCodexIdentityInjection(t *testing.T) {
-	base := spawnRequest{
-		Provider: "codex", Cwd: "/w", Approval: "never", Sandbox: "workspace-write",
-		HostedThreadID: "nht_test123", apiOrigin: "http://127.0.0.1:7999",
+	base := spawnRequest{providerRequest: providerRequest{Provider: "codex", Cwd: "/w", Approval: "never", Sandbox: "workspace-write",
+		HostedThreadID: "nht_test123", apiOrigin: "http://127.0.0.1:7999"},
 	}
 
 	t.Run("block alone when the caller sent none", func(t *testing.T) {
-		p := codexThreadParams(base)
+		p := codexThreadParams(base.providerRequest)
 		dev, _ := p["developerInstructions"].(string)
 		if !strings.Contains(dev, "hostedThreadId: nht_test123") ||
 			!strings.Contains(dev, "http://127.0.0.1:7999/api/v1/hosted-threads/nht_test123") ||
@@ -70,7 +69,7 @@ func TestCodexIdentityInjection(t *testing.T) {
 		req := base
 		req.DeveloperInstructions = "caller rules"
 		req.BaseInstructions = "caller base"
-		p := codexThreadParams(req)
+		p := codexThreadParams(req.providerRequest)
 		dev, _ := p["developerInstructions"].(string)
 		if !strings.HasPrefix(dev, "caller rules\n\n") || !strings.Contains(dev, "nht_test123") {
 			t.Fatalf("developerInstructions = %q, want caller text first, block appended", dev)
@@ -82,14 +81,14 @@ func TestCodexIdentityInjection(t *testing.T) {
 	t.Run("no hosted id (preview posture) means no block", func(t *testing.T) {
 		req := base
 		req.HostedThreadID = ""
-		if _, ok := codexThreadParams(req)["developerInstructions"]; ok {
+		if _, ok := codexThreadParams(req.providerRequest)["developerInstructions"]; ok {
 			t.Fatal("preview-posture request minted an identity block")
 		}
 	})
 	t.Run("no origin (resume-resolved request) means no block", func(t *testing.T) {
 		req := base
 		req.apiOrigin = ""
-		if _, ok := codexThreadParams(req)["developerInstructions"]; ok {
+		if _, ok := codexThreadParams(req.providerRequest)["developerInstructions"]; ok {
 			t.Fatal("origin-less request minted an identity block")
 		}
 	})
@@ -98,10 +97,8 @@ func TestCodexIdentityInjection(t *testing.T) {
 // Claude injection: the identity flag rides argv as a singleton pair, absent
 // whenever the request cannot honestly name a hosted identity.
 func TestClaudeArgsIdentityFlag(t *testing.T) {
-	req := spawnRequest{
-		Provider: "claude", HostedThreadID: "nht_claude1", apiOrigin: "http://127.0.0.1:7999",
-	}
-	args := claudeArgs(req)
+	req := spawnRequest{providerRequest: providerRequest{Provider: "claude", HostedThreadID: "nht_claude1", apiOrigin: "http://127.0.0.1:7999"}}
+	args := claudeArgs(req.providerRequest)
 	block := singletonValue(t, args, claudeIdentityFlag)
 	if !strings.Contains(block, "hostedThreadId: nht_claude1") ||
 		!strings.Contains(block, "provider: claude") {
@@ -113,7 +110,7 @@ func TestClaudeArgsIdentityFlag(t *testing.T) {
 		"no origin":    func(r spawnRequest) spawnRequest { r.apiOrigin = ""; return r },
 	} {
 		t.Run(name, func(t *testing.T) {
-			for _, a := range claudeArgs(strip(req)) {
+			for _, a := range claudeArgs(strip(req).providerRequest) {
 				if a == claudeIdentityFlag {
 					t.Fatalf("argv minted an identity flag without %s", name)
 				}
@@ -159,7 +156,7 @@ func TestClaudeStartSpawnCarriesIdentity(t *testing.T) {
 	migrateTestControl(t, s.controlMetadata)
 	s.defaults.apiOrigin = "http://127.0.0.1:7999"
 
-	sess, err := s.spawnSession(spawnRequest{Provider: "claude", Cwd: t.TempDir()})
+	sess, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "claude", Cwd: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("start spawn: %v", err)
 	}

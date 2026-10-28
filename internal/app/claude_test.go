@@ -134,7 +134,7 @@ func TestClaudeBypassPermissionsDoesNotApplyAllowedToolsDefault(t *testing.T) {
 }
 
 func TestClaudeStatusClassifierSentinelDisablesAllTools(t *testing.T) {
-	args := claudeArgs(spawnRequest{PermissionMode: "bypassPermissions", AllowedTools: claudeNoToolsSentinel})
+	args := claudeArgs(providerRequest{PermissionMode: "bypassPermissions", AllowedTools: claudeNoToolsSentinel})
 	if !containsArgPair(args, "--tools", "") {
 		t.Fatalf("status classifier argv does not disable tools: %#v", args)
 	}
@@ -144,7 +144,7 @@ func TestClaudeStatusClassifierSentinelDisablesAllTools(t *testing.T) {
 }
 
 func TestClaudeAllowedToolsReadGrepBashCurlParityRegression(t *testing.T) {
-	args := claudeArgs(spawnRequest{AllowedTools: "Read,Grep"})
+	args := claudeArgs(providerRequest{AllowedTools: "Read,Grep"})
 	if !containsArgPair(args, "--allowed-tools", "Read") || !containsArgPair(args, "--allowed-tools", "Grep") {
 		t.Fatalf("Read,Grep probe lost its requested tools: %#v", args)
 	}

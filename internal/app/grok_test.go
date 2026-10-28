@@ -14,21 +14,20 @@ import (
 )
 
 func TestGrokCommandUsesDurableLeaderAndFixedSandbox(t *testing.T) {
-	req := spawnRequest{
-		Mode: "start", GrokBin: "/opt/grok", GrokLeaderSocket: "/tmp/grok.sock",
-		Model: "grok-4.7", Effort: "high", PermissionMode: "default",
+	req := spawnRequest{providerRequest: providerRequest{Mode: "start", GrokBin: "/opt/grok", GrokLeaderSocket: "/tmp/grok.sock",
+		Model: "grok-4.7", Effort: "high", PermissionMode: "default"},
 	}
 	want := []string{
 		"/opt/grok", "--sandbox", "off", "agent",
 		"--model", "grok-4.7", "--reasoning-effort", "high", "--leader",
 		"--leader-socket", "/tmp/grok.sock", "stdio",
 	}
-	if got := grokCommand(req); !reflect.DeepEqual(got, want) {
+	if got := grokCommand(req.providerRequest); !reflect.DeepEqual(got, want) {
 		t.Fatalf("grokCommand = %#v, want %#v", got, want)
 	}
 
 	req.Mode = "resume"
-	got := strings.Join(grokCommand(req), " ")
+	got := strings.Join(grokCommand(req.providerRequest), " ")
 	if strings.Contains(got, "--model") || strings.Contains(got, "--reasoning-effort") {
 		t.Fatalf("resume command overrides native posture: %s", got)
 	}
@@ -70,16 +69,12 @@ func TestResolveGrokSpawnAcceptsSupportedSessionPermissionPosture(t *testing.T) 
 	cwd := t.TempDir()
 	s := &server{defaults: sessionDefaults{cwd: cwd}}
 	for _, mode := range []string{"", "auto", "bypassPermissions"} {
-		resolved, err := s.resolveSpawn(spawnRequest{
-			Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: mode,
-		})
+		resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: mode}})
 		if err != nil || resolved.PermissionMode != mode {
 			t.Fatalf("resolveSpawn(%q) = mode %q, error %v", mode, resolved.PermissionMode, err)
 		}
 	}
-	_, err := s.resolveSpawn(spawnRequest{
-		Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: "acceptEdits",
-	})
+	_, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: "acceptEdits"}})
 	if err == nil || !strings.Contains(err.Error(), "Grok permissionMode") {
 		t.Fatalf("unsupported resolveSpawn error = %v", err)
 	}
@@ -96,7 +91,7 @@ func TestGrokSessionRequestCarriesEffortAndPermissionModeOnlyOnNewSession(t *tes
 		{name: "bypass", mode: "bypassPermissions", meta: map[string]any{"yoloMode": true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			method, params := grokSessionRequest(spawnRequest{Mode: "start", Cwd: "/work", Effort: "xhigh", PermissionMode: tc.mode})
+			method, params := grokSessionRequest(providerRequest{Mode: "start", Cwd: "/work", Effort: "xhigh", PermissionMode: tc.mode})
 			meta, hasMeta := params["_meta"]
 			wantMeta := map[string]any{"reasoningEffort": "xhigh"}
 			for key, value := range tc.meta {
@@ -108,9 +103,7 @@ func TestGrokSessionRequestCarriesEffortAndPermissionModeOnlyOnNewSession(t *tes
 			}
 		})
 	}
-	method, params := grokSessionRequest(spawnRequest{
-		Mode: "resume", Cwd: "/work", ThreadID: "native", PermissionMode: "bypassPermissions",
-	})
+	method, params := grokSessionRequest(providerRequest{Mode: "resume", Cwd: "/work", ThreadID: "native", PermissionMode: "bypassPermissions"})
 	if method != "session/load" || params["sessionId"] != "native" || params["_meta"] != nil {
 		t.Fatalf("resume request = %q %#v", method, params)
 	}
@@ -136,10 +129,10 @@ func TestGrokRequestedEffortMustMatchProviderSelection(t *testing.T) {
 	selectedHigh := json.RawMessage(`{"_meta":{"x.ai/sessionConfig":{"options":[` +
 		`{"category":"mode","id":"xhigh","selected":false},` +
 		`{"category":"mode","id":"high","selected":true}]}}}`)
-	if _, err := grokVerifyRequestedEffort(spawnRequest{Mode: "start", Effort: "xhigh"}, selectedHigh); err == nil || !strings.Contains(err.Error(), "requested xhigh") {
+	if _, err := grokVerifyRequestedEffort(providerRequest{Mode: "start", Effort: "xhigh"}, selectedHigh); err == nil || !strings.Contains(err.Error(), "requested xhigh") {
 		t.Fatalf("mismatch error = %v", err)
 	}
-	if got, err := grokVerifyRequestedEffort(spawnRequest{Mode: "resume", Effort: "xhigh"}, selectedHigh); err != nil || got != "high" {
+	if got, err := grokVerifyRequestedEffort(providerRequest{Mode: "resume", Effort: "xhigh"}, selectedHigh); err != nil || got != "high" {
 		t.Fatalf("resume observation = %q, %v; want high without creation rejection", got, err)
 	}
 }
@@ -151,7 +144,7 @@ func TestGrokProviderSelectionSettlesCanonicalEffectiveEffort(t *testing.T) {
 	result := json.RawMessage(`{"_meta":{"x.ai/sessionConfig":{"options":[` +
 		`{"category":"mode","id":"xhigh","selected":true},` +
 		`{"category":"mode","id":"high","selected":false}]}}}`)
-	selected, err := grokVerifyRequestedEffort(spawnRequest{Mode: "start", Effort: "xhigh"}, result)
+	selected, err := grokVerifyRequestedEffort(providerRequest{Mode: "start", Effort: "xhigh"}, result)
 	if err != nil {
 		t.Fatal(err)
 	}

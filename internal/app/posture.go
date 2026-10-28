@@ -38,7 +38,7 @@ func postureEntriesFor(source, evidence string, fields ...postureFieldValue) []p
 	return entries
 }
 
-func creationPostureEntries(req spawnRequest) []postureEntry {
+func creationPostureEntries(req providerRequest) []postureEntry {
 	permission := req.PermissionMode
 	if req.Provider == "codex" {
 		permission = req.Approval

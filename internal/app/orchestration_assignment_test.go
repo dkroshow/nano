@@ -277,8 +277,8 @@ func TestOrchestrationAssignmentNormalizesAndValidatesTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstHash, _ := json.Marshal(spawnRequest{Provider: "claude", ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byAlias})
-	secondHash, _ := json.Marshal(spawnRequest{Provider: "claude", ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byID})
+	firstHash, _ := json.Marshal(spawnRequest{providerRequest: providerRequest{Provider: "claude"}, ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byAlias})
+	secondHash, _ := json.Marshal(spawnRequest{providerRequest: providerRequest{Provider: "claude"}, ClientSessionID: "retry", InvokerThreadRef: parent.ID, Assignment: byID})
 	if agentHash(firstHash) != agentHash(secondHash) {
 		t.Fatalf("normalized target aliases changed creation hash: %s != %s", firstHash, secondHash)
 	}

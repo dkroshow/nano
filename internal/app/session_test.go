@@ -28,9 +28,7 @@ func TestCompletedTurnSourceDoesNotRequireHeartbeat(t *testing.T) {
 func TestResolveSpawnRejectsInvalidSessionStartSource(t *testing.T) {
 	cwd := t.TempDir()
 	s := &server{defaults: sessionDefaults{cwd: cwd}}
-	_, err := s.resolveSpawn(spawnRequest{
-		Provider: "codex", Mode: "start", Cwd: cwd, SessionStartSource: "nano",
-	})
+	_, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: cwd, SessionStartSource: "nano"}})
 	if err == nil || !strings.Contains(err.Error(), "sessionStartSource") {
 		t.Fatalf("resolveSpawn error = %v, want a sessionStartSource complaint", err)
 	}
@@ -40,9 +38,7 @@ func TestResolveSpawnAcceptsKnownSessionStartSourceValues(t *testing.T) {
 	cwd := t.TempDir()
 	s := &server{defaults: sessionDefaults{cwd: cwd}}
 	for _, value := range []string{"", "startup", "clear"} {
-		if _, err := s.resolveSpawn(spawnRequest{
-			Provider: "codex", Mode: "start", Cwd: cwd, SessionStartSource: value,
-		}); err != nil {
+		if _, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: cwd, SessionStartSource: value}}); err != nil {
 			t.Fatalf("resolveSpawn(%q) error = %v", value, err)
 		}
 	}
@@ -52,7 +48,7 @@ func TestResolveSpawnDefaultsCodexServiceTierToStandard(t *testing.T) {
 	cwd := t.TempDir()
 	s := &server{defaults: sessionDefaults{cwd: cwd}}
 
-	resolved, err := s.resolveSpawn(spawnRequest{Provider: "codex", Mode: "start", Cwd: cwd})
+	resolved, err := s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: cwd}})
 	if err != nil {
 		t.Fatalf("resolve codex start: %v", err)
 	}
@@ -60,9 +56,7 @@ func TestResolveSpawnDefaultsCodexServiceTierToStandard(t *testing.T) {
 		t.Fatalf("default service tier = %q, want explicit Standard", resolved.ServiceTier)
 	}
 
-	resolved, err = s.resolveSpawn(spawnRequest{
-		Provider: "codex", Mode: "start", Cwd: cwd, ServiceTier: "priority",
-	})
+	resolved, err = s.resolveSpawn(spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: cwd, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatalf("resolve priority codex start: %v", err)
 	}

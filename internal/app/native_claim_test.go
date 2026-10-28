@@ -10,7 +10,7 @@ func TestNativeRecoveryRetiredAliasCannotResume(t *testing.T) {
 	control, executions, record := retiredRecoveryFixture(t)
 	s := &server{controlMetadata: control, agentExecutions: executions}
 	for _, hosted := range []string{"", record.ID} {
-		req := spawnRequest{Provider: "codex", Mode: "resume", ThreadID: "recovery-old", HostedThreadID: hosted}
+		req := spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: "recovery-old", HostedThreadID: hosted}}
 		if err := s.resolveResumeHostedIdentity(&req); err == nil {
 			t.Fatal("retired alias resumed")
 		}
@@ -153,7 +153,7 @@ func TestResumeReusesExitedOwnerInsteadOfMinting(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	req := spawnRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}
+	req := spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}}
 	resolved, err := s.resolveSpawn(req)
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestResumeHistoricalHostedIDRedirectsToCurrentOwner(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	req := spawnRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, HostedThreadID: old.ID}
+	req := spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, HostedThreadID: old.ID}}
 	resolved, err := s.resolveSpawn(req)
 	if err != nil {
 		t.Fatal(err)
@@ -360,7 +360,7 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 						{provider: provider, nativeThreadID: revivedNativeID}: {Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID},
 					}},
 				}
-				req := spawnRequest{Provider: provider, Mode: "resume", ThreadID: revivedNativeID}
+				req := spawnRequest{providerRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: revivedNativeID}}
 				if named {
 					req.HostedThreadID = old.ID
 				}
@@ -382,7 +382,7 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 func TestResumeRefusesUnownedNativeBeforeProviderStart(t *testing.T) {
 	app, _ := claudeResumeServer(t, "")
 	before := len(app.agentExecutions.sessions)
-	_, err := app.spawnSession(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, Cwd: t.TempDir()})
+	_, err := app.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, Cwd: t.TempDir()}})
 	if err == nil {
 		t.Fatal("unowned native resume created a hosted record")
 	}
@@ -393,7 +393,7 @@ func TestResumeRefusesUnownedNativeBeforeProviderStart(t *testing.T) {
 
 func TestResumeRefusesWithoutCanonicalStore(t *testing.T) {
 	app := &server{}
-	req := spawnRequest{Provider: "codex", Mode: "resume", ThreadID: revivedNativeID}
+	req := spawnRequest{providerRequest: providerRequest{Provider: "codex", Mode: "resume", ThreadID: revivedNativeID}}
 	if err := app.resolveResumeHostedIdentity(&req); err == nil {
 		t.Fatal("resume accepted without canonical ownership store")
 	}
@@ -412,7 +412,7 @@ func TestResumeRefusesConflictingCanonicalOwners(t *testing.T) {
 	}
 	app := &server{controlMetadata: control, agentExecutions: store}
 	for _, named := range []string{"", first.ID, second.ID} {
-		req := spawnRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, HostedThreadID: named}
+		req := spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: revivedNativeID, HostedThreadID: named}}
 		if err := app.resolveResumeHostedIdentity(&req); err == nil {
 			t.Fatal("conflicting owners selected by row order")
 		}

@@ -1160,17 +1160,17 @@ func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
 // Public resume separately requires a canonical owner before reaching this seam.
 func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	_, err := s.resolveClaudeResume(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID})
+	_, err := s.resolveClaudeResume(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
 	if err == nil || !strings.Contains(err.Error(), "no attachment record") {
 		t.Fatalf("err = %v, want a refusal to guess the cwd", err)
 	}
 	cwd := t.TempDir()
-	req, err := s.resolveClaudeResume(spawnRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd})
+	req, err := s.resolveClaudeResume(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	args := claudeResumeArgs(req.ClaudeArgs, claudeResumeThreadID)
-	want := append(claudeArgs(spawnRequest{AllowedTools: "Read,Grep"}), claudeResumeFlag, claudeResumeThreadID)
+	want := append(claudeArgs(providerRequest{AllowedTools: "Read,Grep"}), claudeResumeFlag, claudeResumeThreadID)
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("record-less transport args = %#v, want %#v", args, want)
 	}
@@ -1207,7 +1207,7 @@ func TestClaudeCanonicalResumeArgsPreservesTransportAllowlist(t *testing.T) {
 		"-p", "--model", "old-model", "--effort", "low", "--permission-mode", "default",
 		"--allowed-tools", "Read", "--allowed-tools", "Grep", claudeResumeFlag, "native-1",
 	}
-	got := claudeCanonicalResumeArgs(stored, spawnRequest{Model: "canonical-model", Effort: "high", PermissionMode: "bypassPermissions"})
+	got := claudeCanonicalResumeArgs(stored, providerRequest{Model: "canonical-model", Effort: "high", PermissionMode: "bypassPermissions"})
 	if containsArgPair(got, claudeModelFlag, "old-model") || containsArgPair(got, "--effort", "low") || containsArgPair(got, "--permission-mode", "default") {
 		t.Fatalf("stale canonical fields survived: %#v", got)
 	}
@@ -1222,9 +1222,8 @@ func TestClaudeCanonicalResumeArgsPreservesTransportAllowlist(t *testing.T) {
 // Canonical posture passes into the provider builder after ownership resolves.
 func TestClaudeResumeTransportWithoutAttachmentCarriesPosture(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	req, err := s.resolveClaudeResume(spawnRequest{
-		Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
-		Model: "claude-opus-4-1", PermissionMode: "bypassPermissions", Effort: "high",
+	req, err := s.resolveClaudeResume(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
+		Model: "claude-opus-4-1", PermissionMode: "bypassPermissions", Effort: "high"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1254,9 +1253,7 @@ func TestClaudeResumeRefusesMissingWorkingDirectory(t *testing.T) {
 	gone := filepath.Join(t.TempDir(), "deleted-project")
 	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, gone)
 
-	_, err := s.spawnSession(spawnRequest{
-		Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone,
-	})
+	_, err := s.spawnSession(spawnRequest{providerRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
 	if err == nil {
 		t.Fatal("resume into a missing directory succeeded")
 	}
