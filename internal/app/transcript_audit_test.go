@@ -320,7 +320,7 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := &threadCatalogService{store: store}
+	service := newStoredCatalog(t, store)
 	messages, err := service.LoadTranscriptAuditReference(ctx, applied.ThreadID, written.ProjectionKey, written.LatestSeq, 1, 999, []transcriptAuditScope{transcriptAuditMessages})
 	if err != nil || !messages.CapReached || messages.CapReason != "rows" || messages.StartSeq != 6 || messages.EndSeq != 105 || len(messages.Rows) != 100 {
 		t.Fatalf("bounded messages = %#v err=%v", messages, err)

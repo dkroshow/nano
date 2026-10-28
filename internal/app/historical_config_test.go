@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	"github.com/dkroshow/nano/internal/history"
 )
 
@@ -302,10 +304,7 @@ func TestReadCodexResolutionTargetUsesSessionMetadata(t *testing.T) {
 	}
 	later := "/catalog/latest-turn"
 	sources := []catalogSourceDetail{{Path: path}}
-	thread := catalogThread{
-		Metadata: catalogMetadata{CWD: catalogValue{State: "known", Value: &later}},
-		Sources:  &sources,
-	}
+	thread := catalogThread{Thread: threadindex.Thread{Metadata: catalogMetadata{CWD: catalogValue{State: "known", Value: &later}}, Sources: &sources}}
 	target := readCodexResolutionTarget(thread)
 	if target.CWD != "/recorded/session" || target.ModelProvider != "openai" || target.ApprovalsReviewer != "auto_review" {
 		t.Fatalf("target = %#v", target)
@@ -334,12 +333,9 @@ func TestNonProjectRootMarkersIgnoreProjectLayer(t *testing.T) {
 
 func testCodexCatalogThread(cwd, model string) catalogThread {
 	evidence := "session_meta"
-	return catalogThread{
-		Provider: "codex",
-		Metadata: catalogMetadata{
-			CWD:    catalogValue{State: "known", Value: &cwd, Evidence: &evidence},
-			Model:  catalogValue{State: "known", Value: &model, Evidence: &evidence},
-			Effort: catalogValue{State: "unknown"},
-		},
-	}
+	return catalogThread{Thread: threadindex.Thread{Provider: "codex", Metadata: catalogMetadata{
+		CWD:    catalogValue{State: "known", Value: &cwd, Evidence: &evidence},
+		Model:  catalogValue{State: "known", Value: &model, Evidence: &evidence},
+		Effort: catalogValue{State: "unknown"},
+	}}}
 }

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,209 +18,8 @@ import (
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
-
-const (
-	// limit bounds a GET /api/v1/threads response, live and supervisor rows
-	// included; a larger request is clamped to the maximum. One exception: a
-	// page's first row always comes with its complete supervisor chain, so a
-	// chain longer than the limit makes that page exceed it.
-	defaultThreadCatalogLimit = 100
-	maxThreadCatalogLimit     = 250
-	maxThreadCatalogIDBytes   = 256
-
-	defaultThreadTranscriptLimit = 40
-	maxThreadTranscriptLimit     = 100
-	maxThreadTranscriptTurnLimit = 20
-	maxThreadTranscriptBytes     = 256 << 10
-	maxThreadEvidenceBytes       = 8 << 20
-	maxThreadRetainedBodyBytes   = 8 << 20
-	defaultThreadTranscriptView  = "enhanced"
-	devThreadTranscriptView      = "dev"
-	legacyThreadTranscriptView   = "readable"
-	threadTranscriptTaxonomy     = "transcript-categories-v2"
-	clientClosedRequestStatus    = 499
-	catalogEventHeartbeat        = 30 * time.Second
-	maxThreadNameRequestBytes    = 4 << 10
-)
-
-// enhancedHiddenCategories is the Enhanced view's default profile: every
-// category but messages, so Enhanced shows user and agent messages only.
-var enhancedHiddenCategories = []string{"reasoning", "toolCall", "toolResult", "subagent", "system", "error", "unclassified"}
-
-var (
-	errThreadCatalogUnavailable      = errors.New("thread catalog unavailable")
-	errCatalogThreadNotFound         = errors.New("catalog thread not found")
-	errInvalidTranscriptCursor       = errors.New("invalid transcript cursor")
-	errTranscriptCursorStale         = errors.New("transcript cursor stale")
-	errTranscriptEvidenceLarge       = errors.New("transcript evidence exceeds limit")
-	errTranscriptEvidenceUnavailable = errors.New("transcript evidence unavailable")
-)
-
-type catalogListQuery struct {
-	IncludeSubagents    bool
-	IncludeGuardians    bool
-	IncludeProgrammatic bool
-	Archived            string
-	ThreadID            string
-	// Identities narrows the read to these threads; internal only, never
-	// parsed from a request.
-	Identities  []attachmentKey
-	CreatedFrom *time.Time
-	CreatedTo   *time.Time
-	UpdatedFrom *time.Time
-	UpdatedTo   *time.Time
-	Limit       int
-	Cursor      string
-}
-
-type catalogValue struct {
-	State    string  `json:"state"`
-	Value    *string `json:"value"`
-	Evidence *string `json:"evidence"`
-}
-
-type catalogMetadata struct {
-	CWD              catalogValue `json:"cwd"`
-	Model            catalogValue `json:"model"`
-	Effort           catalogValue `json:"effort"`
-	Priority         catalogValue `json:"priority"`
-	Permission       catalogValue `json:"permission"`
-	HistoricalBranch catalogValue `json:"historicalBranch"`
-	Origin           catalogValue `json:"origin"`
-}
-
-type catalogSourceSummary struct {
-	Status          string `json:"status"`
-	Conflict        bool   `json:"conflict"`
-	DiagnosticCount int    `json:"diagnosticCount"`
-	LastIndexedAt   string `json:"lastIndexedAt,omitempty"`
-}
-
-type catalogSourceDetail struct {
-	RootKind         string   `json:"rootKind"`
-	Path             string   `json:"path"`
-	Generation       int64    `json:"generation"`
-	ParserVersion    string   `json:"parserVersion,omitempty"`
-	Status           string   `json:"status"`
-	Archived         bool     `json:"archived"`
-	IdentityEvidence string   `json:"identityEvidence,omitempty"`
-	DiagnosticCount  int      `json:"diagnosticCount"`
-	Diagnostics      []string `json:"diagnostics"`
-	Error            *string  `json:"error"`
-	LastIndexedAt    *string  `json:"lastIndexedAt"`
-}
-
-// catalogThreadName is the user-assigned name overlay. It is null on threads
-// without a name record (never a synthesized value); evidence is always
-// user_assigned, the read-time evidence class for the truth file.
-type catalogThreadName struct {
-	Value      string `json:"value"`
-	Provenance string `json:"provenance"`
-	Evidence   string `json:"evidence"`
-}
-
-const threadNameEvidence = "user_assigned"
-
-type catalogThread struct {
-	ID                    string                 `json:"id"`
-	Provider              string                 `json:"provider"`
-	NativeID              string                 `json:"nativeId"`
-	Kind                  string                 `json:"kind"`
-	ParentNativeID        string                 `json:"parentNativeId,omitempty"`
-	HostedThreadID        string                 `json:"hostedThreadId,omitempty"`
-	HostedStatus          string                 `json:"hostedStatus,omitempty"`
-	InvokerHostedThreadID string                 `json:"invokerHostedThreadId,omitempty"`
-	InvokerNativeThreadID string                 `json:"invokerNativeThreadId,omitempty"`
-	InvokerProvider       string                 `json:"invokerProvider,omitempty"`
-	SidebarPlacement      string                 `json:"sidebarPlacement,omitempty"`
-	ProviderVersion       *string                `json:"providerVersion,omitempty"`
-	Name                  *catalogThreadName     `json:"name"`
-	Title                 *string                `json:"title"`
-	Preview               *string                `json:"preview"`
-	CreatedAt             *string                `json:"createdAt"`
-	UpdatedAt             *string                `json:"updatedAt"`
-	Archived              bool                   `json:"archived"`
-	Metadata              catalogMetadata        `json:"metadata"`
-	Interaction           string                 `json:"interaction"`
-	Source                catalogSourceSummary   `json:"source"`
-	Sources               *[]catalogSourceDetail `json:"sources,omitempty"`
-	Transient             bool                   `json:"transient,omitempty"`
-	// Runtime is the volatile hosted-session overlay, stamped at response time
-	// from the session registry (runtime.go) — never stored in SQLite, never
-	// part of catalog_version. Absent = no nano session attached.
-	Runtime *runtimeInfo `json:"runtime,omitempty"`
-	// Assignment is the current canonical hosted-thread assignment. It is a
-	// read-time overlay beside hosted identity, never catalog storage.
-	Assignment            *orchestrationAssignmentView `json:"assignment,omitempty"`
-	AssignmentUnavailable bool                         `json:"assignmentUnavailable,omitempty"`
-	// CurrentResolution is the passive, current-environment provider setup. It
-	// is attached only by the detail endpoint; list responses stay fast.
-	CurrentResolution *currentResolution `json:"currentResolution,omitempty"`
-	// Fleet is the read-time fleet-state classification (fleet_status.go): whose
-	// court the ball is in and whether the loop is still alive. Computed per
-	// response from the projected messages, never stored in SQLite and never
-	// part of catalog_version. Absent when the catalog cannot classify the row.
-	Fleet *fleetState `json:"fleet,omitempty"`
-	// court is the saved-file evidence Fleet was computed from, kept so the
-	// fleet feed can re-evaluate the time bound without reading it again.
-	court fleetCourtMessage
-	// Took is how long the thread's work actually took: the sum of its turns'
-	// native durations, with the count of turns that sum covers. Detail-only,
-	// deliberately — the two surfaces that show it (the read-only pane's info
-	// bar and Details) both already fetch the detail response, so putting it on
-	// catalog rows would buy nothing and cost an index-time computation, a
-	// schema addition and per-window staleness. Absent when no turn carries a
-	// duration; never a wall-clock first-to-last span.
-	Took *catalogThreadTook `json:"took,omitempty"`
-	// Starred is an operator pin overlay. It is stored in a sibling
-	// SQLite file, never in the catalog, and stamped at response time.
-	Starred bool `json:"starred"`
-	// Mail is the durable-inbox count overlay: total, unread, and
-	// read-but-undispositioned mail for the row's hosted thread. Read-time only,
-	// from control.sqlite; absent without a hosted identity or without mail.
-	Mail *agentMailCounts `json:"mail,omitempty"`
-}
-
-type catalogThreadTook struct {
-	DurationMS int64 `json:"durationMs"`
-	Turns      int64 `json:"turns"`
-}
-
-type catalogPage struct {
-	Items          []catalogThread `json:"items"`
-	NextCursor     *string         `json:"nextCursor"`
-	CatalogVersion int64           `json:"catalogVersion"`
-}
-
-type catalogRootStatus struct {
-	Provider        string  `json:"provider"`
-	RootKind        string  `json:"rootKind,omitempty"`
-	State           string  `json:"state"`
-	SourceCount     int     `json:"sourceCount"`
-	LastCompletedAt *string `json:"lastCompletedAt"`
-	Error           *string `json:"error"`
-}
-
-type catalogInteractionCounts struct {
-	Interactive  int `json:"interactive"`
-	Programmatic int `json:"programmatic"`
-	Unclassified int `json:"unclassified"`
-}
-
-type catalogIndexStatus struct {
-	State                    string                   `json:"state"`
-	CatalogVersion           int64                    `json:"catalogVersion"`
-	Roots                    []catalogRootStatus      `json:"roots"`
-	InteractionCounts        catalogInteractionCounts `json:"interactionCounts"`
-	TranscriptChangeWorkers  int                      `json:"transcriptChangeWorkers"`
-	TranscriptChangeBacklog  int                      `json:"transcriptChangeBacklog"`
-	TranscriptChangeInFlight int                      `json:"transcriptChangeInFlight"`
-	// NamesError is set when the thread-names truth file is unreadable or
-	// malformed; the catalog keeps serving the last good names and reports
-	// degraded. Null when the file is healthy or absent.
-	NamesError *string `json:"namesError"`
-}
 
 type threadCatalog interface {
 	ListThreads(context.Context, catalogListQuery) (catalogPage, error)
@@ -236,21 +34,6 @@ type threadCatalog interface {
 type threadCatalogStream interface {
 	SubscribeCatalog() (<-chan catalogChange, func())
 	CatalogVersion(context.Context) (int64, error)
-}
-
-// threadCatalogNamer is the rename write surface. It resolves the nano id to the
-// truth-file key, writes only the file (never the store), and requests a refresh
-// so the existing scan chain converges every open tab. Optional so a catalog
-// without a names file (or a test stub) reports the endpoint unavailable.
-type threadCatalogNamer interface {
-	RenameThread(ctx context.Context, id, name string) (catalogThreadName, error)
-	ClearThreadName(ctx context.Context, id string) error
-	// AssignThreadName writes by the truth-file's own key — the spawn-time
-	// path, used before any catalog row exists for the thread.
-	AssignThreadName(provider, nativeID, name string) error
-	// AssignThreadNameIfEmpty applies a staged pre-bind operator rename without
-	// overwriting a name already stored for the provider identity.
-	AssignThreadNameIfEmpty(provider, nativeID, name string) error
 }
 
 // handleSessionName renames a live session before or after its native thread
@@ -273,7 +56,7 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	}
 	name, err := history.ValidateThreadName(payload.Name)
 	if err != nil {
-		writeThreadNameError(w, threadNameInvalidError{reason: err.Error()})
+		threadindex.WriteThreadNameError(w, threadNameInvalidError{Reason: err.Error()})
 		return
 	}
 
@@ -309,7 +92,7 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	}
 
 	if err := namer.AssignThreadName(provider, nativeID, name); err != nil {
-		writeThreadNameError(w, err)
+		threadindex.WriteThreadNameError(w, err)
 		return
 	}
 	sess.SetDisplayName(name)
@@ -330,140 +113,12 @@ func (s *server) assignSpawnName(provider, nativeThreadID, name string) {
 	}
 }
 
-type transcriptListQuery struct {
-	Limit            int
-	Before           string
-	BeforeNativeTurn string
-	BeforeTurn       int
-	TurnLimit        int
-	View             string
-	HiddenCategories []string
-	HiddenSpecified  bool
-}
-
-type transcriptProjection struct {
-	Key               string  `json:"key,omitempty"`
-	ParserVersion     string  `json:"parserVersion,omitempty"`
-	SchemaVersion     int     `json:"schemaVersion"`
-	State             string  `json:"state"`
-	SourceStatus      string  `json:"sourceStatus"`
-	LastIndexedAt     *string `json:"lastIndexedAt"`
-	EvidenceAvailable bool    `json:"evidenceAvailable"`
-	ItemCount         int64   `json:"itemCount"`
-	ErrorSummary      *string `json:"errorSummary,omitempty"`
-}
-
-type transcriptPageInfo struct {
-	StartSeq         int64   `json:"startSeq"`
-	EndSeq           int64   `json:"endSeq"`
-	LatestSeq        int64   `json:"latestSeq"`
-	SnapshotHeadSeq  int64   `json:"snapshotHeadSeq"`
-	HasMoreBefore    bool    `json:"hasMoreBefore"`
-	StartsMidTurn    bool    `json:"startsMidTurn"`
-	NextBeforeCursor *string `json:"nextBeforeCursor"`
-}
-
-type transcriptItem struct {
-	ID               string          `json:"id"`
-	OwnerItemID      string          `json:"-"`
-	ProjectedSeq     int64           `json:"projectedSeq"`
-	TurnID           string          `json:"turnId,omitempty"`
-	NativeItemID     string          `json:"nativeItemId,omitempty"`
-	Type             string          `json:"type"`
-	Category         string          `json:"category"`
-	Status           string          `json:"status,omitempty"`
-	Role             string          `json:"role,omitempty"`
-	Text             string          `json:"text,omitempty"`
-	ToolName         string          `json:"toolName,omitempty"`
-	CallID           string          `json:"callId,omitempty"`
-	Detail           json.RawMessage `json:"detail,omitempty"`
-	CreatedAt        *string         `json:"createdAt"`
-	Phase            string          `json:"phase,omitempty"`
-	FilterTags       []string        `json:"filterTags,omitempty"`
-	Synthetic        bool            `json:"synthetic,omitempty"`
-	Sidechain        bool            `json:"sidechain"`
-	IsFinalAnswer    bool            `json:"isFinalAnswer"`
-	ContentRef       string          `json:"contentRef,omitempty"`
-	ContentTruncated bool            `json:"contentTruncated"`
-	OriginalBytes    int64           `json:"originalBytes,omitempty"`
-}
-
-type transcriptTurn struct {
-	ID                 string          `json:"id"`
-	Ordinal            int             `json:"ordinal"`
-	StartSeq           int64           `json:"startSeq"`
-	EndSeq             int64           `json:"endSeq"`
-	Status             string          `json:"status"`
-	CompletionEvidence string          `json:"completionEvidence,omitempty"`
-	FinalItemID        string          `json:"finalItemId,omitempty"`
-	FinalitySource     string          `json:"finalitySource,omitempty"`
-	FinalityConfidence string          `json:"finalityConfidence,omitempty"`
-	DurationMS         int64           `json:"durationMs,omitempty"`
-	NativeTurnID       string          `json:"nativeTurnId,omitempty"`
-	Config             json.RawMessage `json:"config,omitempty"`
-	StartedAt          *string         `json:"startedAt"`
-	CompletedAt        *string         `json:"completedAt"`
-}
-
-type transcriptResponse struct {
-	ThreadID         string               `json:"threadId"`
-	View             string               `json:"view"`
-	Taxonomy         string               `json:"taxonomy"`
-	HiddenCategories []string             `json:"hiddenCategories"`
-	Items            []transcriptItem     `json:"items"`
-	Turns            []transcriptTurn     `json:"turns"`
-	Page             transcriptPageInfo   `json:"page"`
-	Projection       transcriptProjection `json:"projection"`
-}
-
-type threadTranscriptCatalog interface {
-	LoadTranscript(context.Context, string, transcriptListQuery) (transcriptResponse, error)
-}
-
-type threadCompletedTranscriptCatalog interface {
-	LoadCompletedTranscriptTurn(context.Context, string, string) (transcriptResponse, error)
-}
-
-type savedTurnStatusCatalog interface {
-	ReadSavedTurnStatus(ctx context.Context, threadID, nativeTurnID string) (history.SavedTurnStatus, bool, error)
-}
-
-type threadUsageCatalog interface {
-	LoadThreadUsage(context.Context, string, int, int) (history.ThreadUsagePage, error)
-	ListThreadUsageTotals(context.Context, history.ThreadUsageListQuery) (history.ThreadUsageListPage, error)
-}
-
-type transcriptEvidenceResponse struct {
-	ThreadID          string  `json:"threadId"`
-	ItemID            string  `json:"itemId"`
-	ProjectionKey     string  `json:"projectionKey"`
-	Provider          string  `json:"provider"`
-	SourcePath        string  `json:"sourcePath"`
-	SourceLine        int     `json:"sourceLine"`
-	SourceRowType     string  `json:"sourceRowType,omitempty"`
-	SourcePayloadType string  `json:"sourcePayloadType,omitempty"`
-	RawBytes          int     `json:"rawBytes"`
-	SHA256            string  `json:"sha256"`
-	ValidJSON         bool    `json:"validJson"`
-	ValidUTF8         bool    `json:"validUtf8"`
-	Raw               *string `json:"raw,omitempty"`
-	RawBase64         string  `json:"rawBase64,omitempty"`
-}
-
-type threadTranscriptEvidenceCatalog interface {
-	LoadTranscriptEvidence(context.Context, string, string) (transcriptEvidenceResponse, error)
-}
-
-type threadTranscriptBodyCatalog interface {
-	LoadTranscriptBody(context.Context, string, string) (history.TranscriptRetainedBody, error)
-}
-
 func (s *server) handleCatalogThreads(w http.ResponseWriter, r *http.Request) {
 	if s.catalog == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
 	}
-	query, err := parseCatalogListQuery(r)
+	query, err := threadindex.ParseCatalogListQuery(r)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", err.Error())
 		return
@@ -473,7 +128,7 @@ func (s *server) handleCatalogThreads(w http.ResponseWriter, r *http.Request) {
 		writeCatalogBackendError(w, err)
 		return
 	}
-	writeCatalogPageJSON(w, r, http.StatusOK, page)
+	threadindex.WriteCatalogPageJSON(w, r, http.StatusOK, page)
 }
 
 // listCatalogPage is the unified list read behind GET /api/v1/threads: durable
@@ -495,7 +150,7 @@ func (s *server) listCatalogPage(ctx context.Context, query catalogListQuery) (c
 	// overlay pass, so the one compose pass stamps `runtime` on every class.
 	var after, last *history.ThreadCursor
 	if query.Cursor != "" {
-		after, _ = decodeThreadCatalogCursor(query.Cursor)
+		after, _ = threadindex.DecodeThreadCatalogCursor(query.Cursor)
 	}
 	if page.NextCursor != nil {
 		key := listKey(page.Items[len(page.Items)-1])
@@ -525,7 +180,7 @@ func (s *server) listCatalogPage(ctx context.Context, query catalogListQuery) (c
 	page.NextCursor = nil
 	if len(items) > 0 && (cut || last != nil) {
 		key := listKey(items[len(items)-1])
-		encoded, err := encodeThreadCatalogCursor(&key)
+		encoded, err := threadindex.EncodeThreadCatalogCursor(&key)
 		if err != nil {
 			return catalogPage{}, err
 		}
@@ -641,7 +296,7 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 	found := make(map[attachmentKey]catalogThread, len(keys))
 	for start := 0; start < len(keys); start += history.MaxThreadIdentities {
 		query := catalogListQuery{
-			Identities:       keys[start:min(start+history.MaxThreadIdentities, len(keys))],
+			Identities:       catalogIdentities(keys[start:min(start+history.MaxThreadIdentities, len(keys))]),
 			IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true, Archived: archivedIncludeFilter,
 		}
 		query.Limit = 2 * len(query.Identities)
@@ -686,40 +341,20 @@ func memoryThreadRow(sess sessions.Summary) catalogThread {
 			Value: sess.Name, Provenance: "manual", Evidence: threadNameEvidence,
 		}
 	}
-	return catalogThread{
-		ID:                    memoryThreadIDPrefix + sess.ID,
-		Provider:              sess.Provider,
-		NativeID:              sess.ThreadID,
-		Kind:                  memoryThreadKind,
-		HostedThreadID:        sess.HostedThreadID,
-		InvokerHostedThreadID: sess.InvokerHostedThreadID,
-		InvokerNativeThreadID: sess.InvokerNativeThreadID,
-		InvokerProvider:       sess.InvokerProvider,
-		SidebarPlacement:      sess.SidebarPlacement,
-		CreatedAt:             &createdAt,
-		UpdatedAt:             &createdAt,
-		Metadata: catalogMetadata{
-			CWD: runtimeCatalogValue(sess.Cwd),
-			// The posture cells serve the same unified projection as the
-			// summary and /state (posture_view.go, decision 4) — which is what
-			// lights up effort/priority/permission for a live row, and shows
-			// the creation-request model before the provider's own handshake
-			// reports one.
-			Model:            runtimeCatalogValue(sess.Posture.Model),
-			Effort:           runtimeCatalogValue(sess.Posture.Effort),
-			Priority:         runtimeCatalogValue(sess.Posture.ServiceTier),
-			Permission:       runtimeCatalogValue(sess.Posture.PermissionMode),
-			HistoricalBranch: unknownCatalogValue(),
-			Origin:           unknownCatalogValue(),
-		},
-		Interaction: memoryThreadInteraction,
-		Name:        name,
-		// Source summarizes the provider files behind a thread; a memory row
-		// exists precisely because none have been indexed yet.
-		Source:    catalogSourceSummary{},
-		Transient: true,
-		Runtime:   &runtime,
-	}
+	return catalogThread{Thread: threadindex.Thread{ID: memoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: memoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: catalogMetadata{
+		CWD: runtimeCatalogValue(sess.Cwd),
+		// The posture cells serve the same unified projection as the
+		// summary and /state (posture_view.go, decision 4) — which is what
+		// lights up effort/priority/permission for a live row, and shows
+		// the creation-request model before the provider's own handshake
+		// reports one.
+		Model:            runtimeCatalogValue(sess.Posture.Model),
+		Effort:           runtimeCatalogValue(sess.Posture.Effort),
+		Priority:         runtimeCatalogValue(sess.Posture.ServiceTier),
+		Permission:       runtimeCatalogValue(sess.Posture.PermissionMode),
+		HistoricalBranch: unknownCatalogValue(),
+		Origin:           unknownCatalogValue(),
+	}, Interaction: memoryThreadInteraction, Name: name, Source: catalogSourceSummary{}}, HostedThreadID: sess.HostedThreadID, InvokerHostedThreadID: sess.InvokerHostedThreadID, InvokerNativeThreadID: sess.InvokerNativeThreadID, InvokerProvider: sess.InvokerProvider, SidebarPlacement: sess.SidebarPlacement, Transient: true, Runtime: &runtime}
 }
 
 // runtimeCatalogValue makes one metadata cell from a live session field: known
@@ -986,457 +621,6 @@ func (s *server) handleCatalogThreadRead(w http.ResponseWriter, r *http.Request,
 	writeCatalogJSON(w, http.StatusOK, thread)
 }
 
-func (s *server) handleThreadTranscriptBody(w http.ResponseWriter, r *http.Request, rawThreadID, rawItemID string) {
-	w.Header().Set("Cache-Control", "private, no-store")
-	catalog, ok := s.catalog.(threadTranscriptBodyCatalog)
-	if s.catalog == nil || !ok {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	threadID, itemID := rawThreadID, rawItemID
-	if strings.TrimSpace(threadID) == "" || strings.TrimSpace(itemID) == "" {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_body_id", "Invalid transcript body path")
-		return
-	}
-	response, err := catalog.LoadTranscriptBody(r.Context(), threadID, itemID)
-	if err != nil {
-		writeTranscriptBackendError(w, err)
-		return
-	}
-	body, err := json.Marshal(response)
-	if err != nil || len(body) > maxThreadRetainedBodyBytes {
-		httpapi.WriteError(w, http.StatusInternalServerError, "body_error", "Retained transcript body request failed")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
-}
-
-func (s *server) handleThreadTranscriptEvidence(w http.ResponseWriter, r *http.Request, rawThreadID, rawItemID string) {
-	w.Header().Set("Cache-Control", "private, no-store")
-	catalog, ok := s.catalog.(threadTranscriptEvidenceCatalog)
-	if s.catalog == nil || !ok {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	threadID, itemID := rawThreadID, rawItemID
-	if strings.TrimSpace(threadID) == "" || strings.TrimSpace(itemID) == "" {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_evidence_id", "Invalid transcript evidence path")
-		return
-	}
-	response, err := catalog.LoadTranscriptEvidence(r.Context(), threadID, itemID)
-	if err != nil {
-		writeTranscriptBackendError(w, err)
-		return
-	}
-	body, err := json.Marshal(response)
-	if err != nil || response.RawBytes > maxThreadEvidenceBytes {
-		httpapi.WriteError(w, http.StatusInternalServerError, "evidence_error", "Transcript evidence request failed")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
-}
-
-func (s *server) handleThreadUsage(w http.ResponseWriter, r *http.Request, rawID string) {
-	w.Header().Set("Cache-Control", "private, no-store")
-	catalog, ok := s.catalog.(threadUsageCatalog)
-	if s.catalog == nil || !ok {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	reference := rawID
-	if strings.TrimSpace(reference) == "" {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_thread_id", "Invalid thread id")
-		return
-	}
-	afterOrdinal := 0
-	if raw := strings.TrimSpace(r.URL.Query().Get("afterOrdinal")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 0 {
-			httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", "afterOrdinal must be a non-negative integer")
-			return
-		}
-		afterOrdinal = value
-	}
-	limit := history.DefaultThreadUsageTurnLimit
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 {
-			httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", "limit must be a positive integer")
-			return
-		}
-		limit = value
-	}
-	id, err := s.resolveThreadReference(r.Context(), reference)
-	if err != nil {
-		writeThreadReferenceError(w, err)
-		return
-	}
-	page, err := catalog.LoadThreadUsage(r.Context(), id, afterOrdinal, limit)
-	if err != nil {
-		writeCatalogBackendError(w, err)
-		return
-	}
-	if page.Turns == nil {
-		page.Turns = []history.ThreadUsageTurn{}
-	}
-	writeCatalogJSON(w, http.StatusOK, page)
-}
-
-func (s *server) handleThreadUsageList(w http.ResponseWriter, r *http.Request) {
-	catalog, ok := s.catalog.(threadUsageCatalog)
-	if s.catalog == nil || !ok {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	query := history.ThreadUsageListQuery{Archived: history.ArchivedExclude}
-	if provider := strings.TrimSpace(r.URL.Query().Get("provider")); provider != "" {
-		query.Provider = history.Provider(provider)
-		if query.Provider != history.ProviderClaude && query.Provider != history.ProviderCodex && query.Provider != history.ProviderGrok {
-			httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", "provider must be claude, codex, or grok")
-			return
-		}
-	}
-	if kind := strings.TrimSpace(r.URL.Query().Get("kind")); kind != "" {
-		query.Kind = history.ThreadKind(kind)
-	}
-	switch archived := strings.TrimSpace(r.URL.Query().Get("archived")); archived {
-	case "", "exclude":
-		query.Archived = history.ArchivedExclude
-	case "include":
-		query.Archived = history.ArchivedInclude
-	case "only":
-		query.Archived = history.ArchivedOnly
-	default:
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", "archived must be include, exclude, or only")
-		return
-	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 {
-			httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", "limit must be a positive integer")
-			return
-		}
-		query.Limit = value
-	}
-	query.AfterID = strings.TrimSpace(r.URL.Query().Get("cursor"))
-	page, err := catalog.ListThreadUsageTotals(r.Context(), query)
-	if err != nil {
-		writeCatalogBackendError(w, err)
-		return
-	}
-	if page.Items == nil {
-		page.Items = []history.ThreadUsageTotals{}
-	}
-	writeCatalogJSON(w, http.StatusOK, page)
-}
-
-func (s *server) handleThreadTranscript(w http.ResponseWriter, r *http.Request, rawID string) {
-	// Error responses must never become reusable transcript representations.
-	// The successful path replaces this with its private revalidation policy.
-	w.Header().Set("Cache-Control", "private, no-store")
-	catalog, ok := s.catalog.(threadTranscriptCatalog)
-	if s.catalog == nil || !ok {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	reference := rawID
-	if strings.TrimSpace(reference) == "" {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_thread_id", "Invalid thread id")
-		return
-	}
-	query, err := parseTranscriptListQuery(r)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", err.Error())
-		return
-	}
-	id, err := s.resolveThreadReference(r.Context(), reference)
-	if err != nil {
-		writeThreadReferenceError(w, err)
-		return
-	}
-	response, err := catalog.LoadTranscript(r.Context(), id, query)
-	if err != nil {
-		writeTranscriptBackendError(w, err)
-		return
-	}
-	if response.Items == nil {
-		response.Items = []transcriptItem{}
-	}
-	if response.Turns == nil {
-		response.Turns = []transcriptTurn{}
-	}
-	body, err := json.Marshal(response)
-	if err != nil || len(body) > maxThreadTranscriptBytes {
-		httpapi.WriteError(w, http.StatusInternalServerError, "transcript_error", "Transcript request failed")
-		return
-	}
-	etag := transcriptETag(body)
-	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Vary", "Accept-Encoding")
-	if requestETagMatches(r.Header.Get("If-None-Match"), etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
-}
-
-func (s *server) threadNamerAndID(w http.ResponseWriter, r *http.Request) (threadCatalogNamer, string, bool) {
-	w.Header().Set("Cache-Control", "private, no-store")
-	namer, ok := s.catalog.(threadCatalogNamer)
-	if s.catalog == nil || !ok {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return nil, "", false
-	}
-	id := strings.TrimSpace(r.PathValue("threadId"))
-	if id == "" {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_thread_id", "Invalid thread id")
-		return nil, "", false
-	}
-	return namer, id, true
-}
-
-// Thread names write only the truth file; the catalog worker reconciles the
-// derived copy asynchronously with a names-only refresh.
-func (s *server) handleThreadNameSet(w http.ResponseWriter, r *http.Request) {
-	namer, id, ok := s.threadNamerAndID(w, r)
-	if !ok {
-		return
-	}
-	var payload struct {
-		Name string `json:"name"`
-	}
-	body := http.MaxBytesReader(w, r.Body, maxThreadNameRequestBytes)
-	if err := json.NewDecoder(body).Decode(&payload); err != nil {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_name", `Request body must be {"name": "..."}`)
-		return
-	}
-	name, err := namer.RenameThread(r.Context(), id, payload.Name)
-	if err != nil {
-		writeThreadNameError(w, err)
-		return
-	}
-	writeCatalogJSON(w, http.StatusOK, map[string]catalogThreadName{"name": name})
-}
-
-func (s *server) handleThreadNameClear(w http.ResponseWriter, r *http.Request) {
-	namer, id, ok := s.threadNamerAndID(w, r)
-	if !ok {
-		return
-	}
-	if err := namer.ClearThreadName(r.Context(), id); err != nil {
-		writeThreadNameError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func writeThreadNameError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, errInvalidThreadName):
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_name", err.Error())
-	case errors.Is(err, history.ErrThreadNamesMalformed):
-		httpapi.WriteError(w, http.StatusConflict, "names_file_malformed",
-			"Thread names file is malformed; repair it by hand before renaming — nano will not overwrite broken truth")
-
-	case errors.Is(err, errCatalogThreadNotFound):
-		httpapi.WriteError(w, http.StatusNotFound, "thread_not_found", "Thread not found")
-	case errors.Is(err, errNamesFileDisabled):
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "names_unavailable", "Thread names are not configured")
-	case errors.Is(err, context.Canceled):
-		httpapi.WriteError(w, clientClosedRequestStatus, "request_cancelled", "Request was cancelled")
-	default:
-		httpapi.WriteError(w, http.StatusInternalServerError, "name_error", "Thread name update failed")
-	}
-}
-
-func parseTranscriptListQuery(r *http.Request) (transcriptListQuery, error) {
-	q := r.URL.Query()
-	query := transcriptListQuery{
-		Limit:  defaultThreadTranscriptLimit,
-		Before: strings.TrimSpace(q.Get("before")),
-		View:   strings.TrimSpace(q.Get("view")),
-	}
-	if query.View == "" {
-		query.View = defaultThreadTranscriptView
-	}
-	if query.View == legacyThreadTranscriptView {
-		query.View = defaultThreadTranscriptView
-	}
-	if query.View != defaultThreadTranscriptView && query.View != devThreadTranscriptView {
-		return query, errors.New("view must be enhanced or dev")
-	}
-	var hiddenSpecified bool
-	if _, ok := q["hide"]; ok {
-		hiddenSpecified = true
-		query.HiddenSpecified = true
-		values := make([]string, 0)
-		for _, raw := range q["hide"] {
-			for _, value := range strings.Split(raw, ",") {
-				value = strings.TrimSpace(value)
-				if value != "" {
-					values = append(values, value)
-				}
-			}
-		}
-		if len(values) == 1 && values[0] == "none" {
-			values = nil
-		} else {
-			for _, value := range values {
-				if value == "none" {
-					return query, errors.New("hide=none cannot be combined with categories")
-				}
-			}
-		}
-		query.HiddenCategories = values
-	}
-	if !hiddenSpecified && query.View == defaultThreadTranscriptView {
-		query.HiddenCategories = append([]string(nil), enhancedHiddenCategories...)
-	}
-	canonical, err := canonicalTranscriptCategories(query.HiddenCategories)
-	if err != nil {
-		return query, err
-	}
-	query.HiddenCategories = canonical
-	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value <= 0 {
-			return query, errors.New("limit must be a positive integer")
-		}
-		query.Limit = value
-	}
-	if query.Limit > maxThreadTranscriptLimit {
-		query.Limit = maxThreadTranscriptLimit
-	}
-	_, hasBeforeNativeTurn := q["beforeNativeTurn"]
-	_, hasBeforeTurn := q["beforeTurn"]
-	_, hasTurnLimit := q["turnLimit"]
-	if hasBeforeNativeTurn && hasBeforeTurn {
-		return query, errors.New("beforeNativeTurn and beforeTurn cannot be combined")
-	}
-	if (hasBeforeNativeTurn || hasBeforeTurn) != hasTurnLimit {
-		return query, errors.New("turnLimit requires exactly one turn boundary")
-	}
-	if query.Before != "" && hasTurnLimit {
-		return query, errors.New("before cursor and turn window cannot be combined")
-	}
-	if hasBeforeNativeTurn {
-		query.BeforeNativeTurn = strings.TrimSpace(q.Get("beforeNativeTurn"))
-		if query.BeforeNativeTurn == "" {
-			return query, errors.New("beforeNativeTurn must not be empty")
-		}
-	}
-	if hasBeforeTurn {
-		value, err := strconv.Atoi(strings.TrimSpace(q.Get("beforeTurn")))
-		if err != nil || value <= 0 {
-			return query, errors.New("beforeTurn must be a positive integer")
-		}
-		query.BeforeTurn = value
-	}
-	if hasTurnLimit {
-		value, err := strconv.Atoi(strings.TrimSpace(q.Get("turnLimit")))
-		if err != nil || value <= 0 || value > maxThreadTranscriptTurnLimit {
-			return query, fmt.Errorf("turnLimit must be an integer from 1 to %d", maxThreadTranscriptTurnLimit)
-		}
-		query.TurnLimit = value
-	}
-	return query, nil
-}
-
-func canonicalTranscriptCategories(values []string) ([]string, error) {
-	order := []string{"messages", "reasoning", "toolCall", "toolResult", "subagent", "system", "error", "unclassified"}
-	known := make(map[string]bool, len(order))
-	for _, category := range order {
-		known[category] = true
-	}
-	seen := make(map[string]bool, len(values))
-	for _, category := range values {
-		if !known[category] {
-			return nil, fmt.Errorf("unknown transcript category %q", category)
-		}
-		seen[category] = true
-	}
-	canonical := make([]string, 0, len(seen))
-	for _, category := range order {
-		if seen[category] {
-			canonical = append(canonical, category)
-		}
-	}
-	return canonical, nil
-}
-
-func writeTranscriptBackendError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, errInvalidTranscriptCursor):
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_cursor", "Invalid transcript cursor")
-	case errors.Is(err, errTranscriptCursorStale):
-		httpapi.WriteError(w, http.StatusConflict, "transcript_changed", "Transcript changed; reload the newest page")
-	case errors.Is(err, errCatalogThreadNotFound):
-		httpapi.WriteError(w, http.StatusNotFound, "thread_not_found", "Thread not found")
-	case errors.Is(err, errThreadCatalogUnavailable):
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-	case errors.Is(err, errTranscriptEvidenceLarge):
-		httpapi.WriteError(w, http.StatusRequestEntityTooLarge, "evidence_too_large", "Native transcript row exceeds the evidence response limit")
-	case errors.Is(err, errTranscriptEvidenceUnavailable):
-		httpapi.WriteError(w, http.StatusGone, "evidence_unavailable", "Native transcript evidence is no longer available")
-	case errors.Is(err, history.ErrTranscriptBodyUnavailable):
-		httpapi.WriteError(w, http.StatusGone, "body_unavailable", "Retained transcript body is no longer available")
-	case errors.Is(err, context.Canceled):
-		httpapi.WriteError(w, clientClosedRequestStatus, "request_cancelled", "Request was cancelled")
-	case errors.Is(err, context.DeadlineExceeded):
-		httpapi.WriteError(w, http.StatusGatewayTimeout, "request_timeout", "Request timed out")
-	default:
-		httpapi.WriteError(w, http.StatusInternalServerError, "transcript_error", "Transcript request failed")
-	}
-}
-
-func transcriptETag(body []byte) string {
-	digest := sha256.Sum256(body)
-	return fmt.Sprintf("\"%x\"", digest[:16])
-}
-
-func requestETagMatches(header, etag string) bool {
-	for _, candidate := range strings.Split(header, ",") {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "*" || candidate == etag || strings.TrimPrefix(candidate, "W/") == etag {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *server) handleCatalogIndexStatus(w http.ResponseWriter, r *http.Request) {
-	if s.catalog == nil {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	status, err := s.catalog.IndexStatus(r.Context())
-	if err != nil {
-		writeCatalogBackendError(w, err)
-		return
-	}
-	if status.Roots == nil {
-		status.Roots = []catalogRootStatus{}
-	}
-	writeCatalogJSON(w, http.StatusOK, status)
-}
-
-// handleCatalogRefresh is Explorer's Refresh: the only request that walks the
-// provider roots (a full recovery walk).
-func (s *server) handleCatalogRefresh(w http.ResponseWriter, r *http.Request) {
-	if s.catalog == nil {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	writeCatalogJSON(w, http.StatusAccepted, map[string]bool{"accepted": s.catalog.RequestRefresh()})
-}
-
 // handleCatalogIndexEvents streams catalog_version bumps as Server-Sent Events.
 // The first event on every connect is the current version (contract item 2:
 // version-on-connect closes the missed-while-disconnected hole), then one event
@@ -1588,7 +772,7 @@ func writeCatalogChangeEvent(w io.Writer, change catalogChange) {
 		CatalogVersion int64    `json:"catalogVersion"`
 		ThreadIDs      []string `json:"threadIds,omitempty"`
 		Refresh        bool     `json:"refresh,omitempty"`
-	}{CatalogVersion: catalogVersion(change.Version), ThreadIDs: change.ThreadIDs, Refresh: change.Refresh}
+	}{CatalogVersion: threadindex.CatalogVersion(change.Version), ThreadIDs: change.ThreadIDs, Refresh: change.Refresh}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return
@@ -1636,117 +820,45 @@ func writeFleetEvent(w io.Writer, transition fleetTransition) {
 	fmt.Fprintf(w, "event: fleet\ndata: %s\n\n", payload)
 }
 
-func parseCatalogListQuery(r *http.Request) (catalogListQuery, error) {
-	q := r.URL.Query()
-	query := catalogListQuery{
-		Archived: strings.TrimSpace(q.Get("archived")),
-		ThreadID: strings.TrimSpace(q.Get("threadId")),
-		Cursor:   strings.TrimSpace(q.Get("cursor")),
-		Limit:    defaultThreadCatalogLimit,
-	}
-	if len(query.ThreadID) > maxThreadCatalogIDBytes {
-		return query, fmt.Errorf("threadId must be at most %d bytes", maxThreadCatalogIDBytes)
-	}
-	if query.Archived == "" {
-		query.Archived = "include"
-	}
-	if query.Archived != "include" && query.Archived != "exclude" && query.Archived != "only" {
-		return query, errors.New("archived must be include, exclude, or only")
-	}
-	if raw := strings.TrimSpace(q.Get("includeSubagents")); raw != "" {
-		v, err := strconv.ParseBool(raw)
-		if err != nil {
-			return query, errors.New("includeSubagents must be true or false")
-		}
-		query.IncludeSubagents = v
-	}
-	if raw := strings.TrimSpace(q.Get("includeGuardians")); raw != "" {
-		v, err := strconv.ParseBool(raw)
-		if err != nil {
-			return query, errors.New("includeGuardians must be true or false")
-		}
-		query.IncludeGuardians = v
-	}
-	if raw := strings.TrimSpace(q.Get("includeProgrammatic")); raw != "" {
-		v, err := strconv.ParseBool(raw)
-		if err != nil {
-			return query, errors.New("includeProgrammatic must be true or false")
-		}
-		query.IncludeProgrammatic = v
-	}
-	timeBounds := []struct {
-		param string
-		at    **time.Time
-	}{
-		{"createdFrom", &query.CreatedFrom},
-		{"createdTo", &query.CreatedTo},
-		{"updatedFrom", &query.UpdatedFrom},
-		{"updatedTo", &query.UpdatedTo},
-	}
-	for _, b := range timeBounds {
-		raw := strings.TrimSpace(q.Get(b.param))
-		if raw == "" {
-			continue
-		}
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			return query, fmt.Errorf("%s must be an RFC3339 timestamp", b.param)
-		}
-		*b.at = &parsed
-	}
-	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
-		v, err := strconv.Atoi(raw)
-		if err != nil || v <= 0 {
-			return query, errors.New("limit must be a positive integer")
-		}
-		query.Limit = v
-	}
-	if query.Limit > maxThreadCatalogLimit {
-		query.Limit = maxThreadCatalogLimit
-	}
-	return query, nil
+type catalogThread struct {
+	threadindex.Thread
+	HostedThreadID        string `json:"hostedThreadId,omitempty"`
+	HostedStatus          string `json:"hostedStatus,omitempty"`
+	InvokerHostedThreadID string `json:"invokerHostedThreadId,omitempty"`
+	InvokerNativeThreadID string `json:"invokerNativeThreadId,omitempty"`
+	InvokerProvider       string `json:"invokerProvider,omitempty"`
+	SidebarPlacement      string `json:"sidebarPlacement,omitempty"`
+	Transient             bool   `json:"transient,omitempty"`
+	// Runtime is the volatile hosted-session overlay, stamped at response time
+	// from the session registry (runtime.go) — never stored in SQLite, never
+	// part of catalog_version. Absent = no nano session attached.
+	Runtime *runtimeInfo `json:"runtime,omitempty"`
+	// Assignment is the current canonical hosted-thread assignment. It is a
+	// read-time overlay beside hosted identity, never catalog storage.
+	Assignment            *orchestrationAssignmentView `json:"assignment,omitempty"`
+	AssignmentUnavailable bool                         `json:"assignmentUnavailable,omitempty"`
+	// CurrentResolution is the passive, current-environment provider setup. It
+	// is attached only by the detail endpoint; list responses stay fast.
+	CurrentResolution *currentResolution `json:"currentResolution,omitempty"`
+	// Fleet is the read-time fleet-state classification (fleet_status.go): whose
+	// court the ball is in and whether the loop is still alive. Computed per
+	// response from the projected messages, never stored in SQLite and never
+	// part of catalog_version. Absent when the catalog cannot classify the row.
+	Fleet *fleetState `json:"fleet,omitempty"`
+	// court is the saved-file evidence Fleet was computed from, kept so the
+	// fleet feed can re-evaluate the time bound without reading it again.
+	court fleetCourtMessage
+	// Starred is an operator pin overlay. It is stored in a sibling
+	// SQLite file, never in the catalog, and stamped at response time.
+	Starred bool `json:"starred"`
+	// Mail is the durable-inbox count overlay: total, unread, and
+	// read-but-undispositioned mail for the row's hosted thread. Read-time only,
+	// from control.sqlite; absent without a hosted identity or without mail.
+	Mail *agentMailCounts `json:"mail,omitempty"`
 }
 
-func writeCatalogBackendError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, errInvalidThreadCatalogCursor):
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_cursor", "Invalid thread catalog cursor")
-	case errors.Is(err, errCatalogThreadNotFound):
-		httpapi.WriteError(w, http.StatusNotFound, "thread_not_found", "Thread not found")
-	case errors.Is(err, errThreadCatalogUnavailable):
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-	default:
-		httpapi.WriteError(w, http.StatusInternalServerError, "catalog_error", "Thread catalog request failed")
-	}
-}
-
-func writeCatalogJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	if w.Header().Get("Cache-Control") == "" {
-		w.Header().Set("Cache-Control", "private, no-cache")
-	}
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
-}
-
-// writeCatalogPageJSON gives the window endpoint a stable validator. Runtime
-// and fleet overlays are part of the representation, so the hash changes when
-// a visible overlay changes even though catalog_version does not.
-func writeCatalogPageJSON(w http.ResponseWriter, r *http.Request, status int, value any) {
-	body, err := json.Marshal(value)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusInternalServerError, "encode_error", "Catalog response failed")
-		return
-	}
-	etag := transcriptETag(body)
-	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Vary", "Accept-Encoding")
-	if requestETagMatches(r.Header.Get("If-None-Match"), etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = w.Write(body)
+type catalogPage struct {
+	Items          []catalogThread `json:"items"`
+	NextCursor     *string         `json:"nextCursor"`
+	CatalogVersion int64           `json:"catalogVersion"`
 }

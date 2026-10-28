@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // warmReader is the browser's end of one warm stream.
@@ -159,7 +160,7 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 // loop would make a second read for every save of a shown thread.
 func TestWarmPaneSharesTheScreenPanesPage(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/live?limit=40&view=enhanced&hide=reasoning,toolCall,toolResult,subagent,system,error,unclassified", nil)
-	screen, err := parseTranscriptListQuery(req)
+	screen, err := threadindex.ParseTranscriptListQuery(req)
 	if err != nil {
 		t.Fatal(err)
 	}

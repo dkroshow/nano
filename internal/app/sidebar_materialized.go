@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 var errSidebarMaterializedUnavailable = errThreadCatalogUnavailable
@@ -203,8 +204,8 @@ func (s *server) materializeSidebar(ctx context.Context, now time.Time) error {
 	threads = append(threads, s.memorySidebarThreadRows(threads, runtime.summaries)...)
 	s.composeCatalogThreads(ctx, threads, runtime, true)
 	query := sidebarDefaultQuery(now)
-	active, nodes := projectSidebar(threads, query, catalogVersion(graph.CatalogVersion))
-	s.sidebar.replace(threads, query, active, nodes, catalogVersion(graph.CatalogVersion))
+	active, nodes := projectSidebar(threads, query, threadindex.CatalogVersion(graph.CatalogVersion))
+	s.sidebar.replace(threads, query, active, nodes, threadindex.CatalogVersion(graph.CatalogVersion))
 	return nil
 }
 
@@ -587,7 +588,7 @@ func pageSidebarHistory(nodes []*sidebarNode, parentRef string, cursor *history.
 	result := sidebarActiveResponse{Items: items, Roots: []string{}, CatalogVersion: version, Revision: revision}
 	if end < len(inactive) {
 		last := inactive[end-1].thread
-		encoded, err := encodeThreadCatalogCursor(&history.ThreadCursor{ID: last.ID, UpdatedAt: parseCatalogTimePtr(last.UpdatedAt)})
+		encoded, err := threadindex.EncodeThreadCatalogCursor(&history.ThreadCursor{ID: last.ID, UpdatedAt: parseCatalogTimePtr(last.UpdatedAt)})
 		if err != nil {
 			return sidebarActiveResponse{}, err
 		}
@@ -746,8 +747,8 @@ func (s *server) repairSidebarCatalogRows(ctx context.Context, change catalogCha
 	}
 	rows := s.graphRowsToThreads(graph.Rows, time.Now())
 	s.composeCatalogThreads(ctx, rows, s.sidebarRuntimeSnapshot(), true)
-	version := catalogVersion(change.Version)
-	if graphVersion := catalogVersion(graph.CatalogVersion); graphVersion > version {
+	version := threadindex.CatalogVersion(change.Version)
+	if graphVersion := threadindex.CatalogVersion(graph.CatalogVersion); graphVersion > version {
 		version = graphVersion
 	}
 	s.sidebar.applyCatalogRows(rows, version)

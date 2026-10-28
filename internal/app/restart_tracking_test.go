@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	"github.com/dkroshow/nano/internal/lifecycle"
 )
 
@@ -40,7 +42,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	s.prepareBootReattach()
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
-	threads := []catalogThread{{ID: "nth_starred", Provider: "codex", NativeID: "starred", HostedThreadID: "nht_starred", Starred: true, UpdatedAt: &updated}}
+	threads := []catalogThread{{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred", UpdatedAt: &updated}, HostedThreadID: "nht_starred", Starred: true}}
 	s.attachRuntimeOverlayBatch(context.Background(), threads, s.sidebarRuntimeSnapshot())
 	query := sidebarDefaultQuery(now)
 	active, nodes := projectSidebar(threads, query, 1)

@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -538,30 +537,14 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	}
 	target := server.LookupSession("session-99")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	service := &threadCatalogService{transcriptChanges: make(map[string]*pendingTranscriptChange)}
-	service.transcriptChangedCond = sync.NewCond(&service.transcriptChangedMu)
-	service.transcriptChangeWorkerWg.Add(transcriptChangeWorkerCount)
-	for worker := 0; worker < transcriptChangeWorkerCount; worker++ {
-		go service.runTranscriptChangeWorker(ctx)
+	nativeIDs := make([]string, changedTranscripts)
+	for i := range nativeIDs {
+		nativeIDs[i] = fmt.Sprintf("native-%d", i)
 	}
-	t.Cleanup(func() {
-		cancel()
-		service.transcriptChangedMu.Lock()
-		service.transcriptChangeStopping = true
-		service.transcriptChangedCond.Broadcast()
-		service.transcriptChangedMu.Unlock()
-		service.transcriptChangeWorkerWg.Wait()
-	})
+	service, paths := queuedCatalogFixture(t, "codex", nativeIDs)
 	var callbacks, active, maxActive atomic.Int32
-	// The cold recovery scan starts before main wires the live callback. Queue
-	// all parser-bump changes first to prove that startup ordering loses none.
-	for index := 0; index < changedTranscripts; index++ {
-		service.notifyTranscriptChanged(transcriptChange{
-			ThreadID: fmt.Sprintf("nth_%d", index), Provider: "codex", NativeThreadID: fmt.Sprintf("native-%d", index),
-		})
-	}
-	service.setTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+
+	service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
 		current := active.Add(1)
 		for current > maxActive.Load() && !maxActive.CompareAndSwap(maxActive.Load(), current) {
 		}
@@ -578,11 +561,12 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	}
 	// One update lands while nth_0 is in flight and must run again. Repeated
 	// updates to a still-queued thread coalesce into its pending run.
-	service.notifyTranscriptChanged(transcriptChange{ThreadID: "nth_0", Provider: "codex", NativeThreadID: "native-0"})
-	service.notifyTranscriptChanged(transcriptChange{ThreadID: "nth_4999", Provider: "codex", NativeThreadID: "native-4999"})
-	service.notifyTranscriptChanged(transcriptChange{ThreadID: "nth_4999", Provider: "codex", NativeThreadID: "native-4999"})
-	if backlog, inFlight := service.transcriptChangeStatus(); backlog != changedTranscripts || inFlight != transcriptChangeWorkerCount {
-		t.Fatalf("storm status = backlog %d in-flight %d", backlog, inFlight)
+	appendCallbackFixture(t, service, paths[0])
+	appendCallbackFixture(t, service, paths[changedTranscripts-1])
+	appendCallbackFixture(t, service, paths[changedTranscripts-1])
+	waitForCatalog(t, func() bool { status := service.IngestStatus(); return status.Queued == 0 && status.InFlight == 0 })
+	if status, err := service.IndexStatus(context.Background()); err != nil || status.TranscriptChangeBacklog != changedTranscripts || status.TranscriptChangeInFlight != transcriptChangeWorkerCount {
+		t.Fatalf("storm status = %#v, %v", status, err)
 	}
 
 	assertPrompt := func(name string, call func() *httptest.ResponseRecorder) *httptest.ResponseRecorder {
@@ -644,7 +628,11 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	close(blocked)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		backlog, inFlight := service.transcriptChangeStatus()
+		status, err := service.IndexStatus(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		backlog, inFlight := status.TranscriptChangeBacklog, status.TranscriptChangeInFlight
 		if backlog == 0 && inFlight == 0 {
 			break
 		}

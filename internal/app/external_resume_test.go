@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	"github.com/dkroshow/nano/internal/history"
 )
 
@@ -36,14 +38,10 @@ func externalResumeCatalog(t *testing.T, provider, nativeID, cwd string) *fakeTh
 		evidence := string(history.EvidenceNativeDurable)
 		return catalogValue{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 	}
-	row := catalogThread{
-		ID: "nth_external", Provider: provider, NativeID: nativeID, Kind: "main",
-		Metadata: catalogMetadata{
-			CWD: known(cwd), Model: known("gpt-external"), Effort: known("high"),
-			Priority: known("priority"), Permission: known("never"),
-		},
-		Source: catalogSourceSummary{Status: string(history.SourcePresent)},
-	}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_external", Provider: provider, NativeID: nativeID, Kind: "main", Metadata: catalogMetadata{
+		CWD: known(cwd), Model: known("gpt-external"), Effort: known("high"),
+		Priority: known("priority"), Permission: known("never"),
+	}, Source: catalogSourceSummary{Status: string(history.SourcePresent)}}}
 	detail := row
 	detail.Sources = &[]catalogSourceDetail{{
 		RootKind: "codex_sessions", Path: source, Status: string(history.SourcePresent),

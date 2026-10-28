@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 )
 
@@ -262,7 +264,7 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 }
 
 func TestNativeResolversSelectCurrentOwner(t *testing.T) {
-	row := catalogThread{ID: "nth_pair", Provider: "claude", NativeID: identityNativeOld, Name: namedCatalog("keyboard owner")}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_pair", Provider: "claude", NativeID: identityNativeOld, Name: namedCatalog("keyboard owner")}}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	old := createIdentityHosted(t, store, "claude", identityNativeOld)
 	current, err := store.ensureSessionWithIdentity("", "claude", presentationShared, "", "", "")

@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func TestNativeRecoveryIdentityAliasSurvives(t *testing.T) {
@@ -94,10 +96,7 @@ func TestIdentityResolveUnknownRefIs404(t *testing.T) {
 }
 
 func TestIdentityResolveNameNativeAndHosted(t *testing.T) {
-	row := catalogThread{
-		ID: "nth_named", Provider: "codex", NativeID: identityNativeOld,
-		Name: namedCatalog("graph classifier"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z"),
-	}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_named", Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("graph classifier"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z")}}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
 
@@ -118,14 +117,8 @@ func TestIdentityResolveNameNativeAndHosted(t *testing.T) {
 
 func TestIdentityResolveDuplicateNamesPickMostRecentlyUpdated(t *testing.T) {
 	s, _ := newIdentityServer(t, []catalogThread{
-		{
-			ID: "nth_older", Provider: "codex", NativeID: identityNativeOld,
-			Name: namedCatalog("shared name"), UpdatedAt: identityStamp("2026-01-01T00:00:00Z"),
-		},
-		{
-			ID: "nth_newer", Provider: "claude", NativeID: identityNativeNew,
-			Name: namedCatalog("shared name"), UpdatedAt: identityStamp("2026-08-20T00:00:00Z"),
-		},
+		{Thread: threadindex.Thread{ID: "nth_older", Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("shared name"), UpdatedAt: identityStamp("2026-01-01T00:00:00Z")}},
+		{Thread: threadindex.Thread{ID: "nth_newer", Provider: "claude", NativeID: identityNativeNew, Name: namedCatalog("shared name"), UpdatedAt: identityStamp("2026-08-20T00:00:00Z")}},
 	})
 	status, body, raw := resolveIdentity(t, s, "shared%20name")
 	if status != http.StatusOK {
@@ -138,10 +131,7 @@ func TestIdentityResolveDuplicateNamesPickMostRecentlyUpdated(t *testing.T) {
 }
 
 func TestIdentityResolveFollowsRename(t *testing.T) {
-	row := catalogThread{
-		ID: "nth_renamed", Provider: "codex", NativeID: identityNativeOld,
-		Name: namedCatalog("old name"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z"),
-	}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_renamed", Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("old name"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z")}}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
 
@@ -166,10 +156,7 @@ func TestIdentityResolveFollowsRename(t *testing.T) {
 }
 
 func TestIdentityResolveSurvivesResumeRebind(t *testing.T) {
-	row := catalogThread{
-		ID: "nth_resume", Provider: "codex", NativeID: identityNativeOld,
-		Name: namedCatalog("resume me"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z"),
-	}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_resume", Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("resume me"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z")}}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
 	if err := store.BindSession(record.ID, "nano-resume", identityNativeOld, "ready", presentationShared); err != nil {
@@ -185,10 +172,7 @@ func TestIdentityResolveSurvivesResumeRebind(t *testing.T) {
 }
 
 func TestIdentityResolveFollowsClaudeRespawn(t *testing.T) {
-	row := catalogThread{
-		ID: "nth_claude", Provider: "claude", NativeID: identityNativeOld,
-		Name: namedCatalog("claude owner"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z"),
-	}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_claude", Provider: "claude", NativeID: identityNativeOld, Name: namedCatalog("claude owner"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z")}}
 	s, store := newIdentityServer(t, []catalogThread{row})
 	record := createIdentityHosted(t, store, "claude", identityNativeOld)
 	if err := store.BindSession(record.ID, "nano-respawn", identityNativeNew, "ready", presentationShared); err != nil {
@@ -239,9 +223,7 @@ func TestIdentityResolveLabelsClaudeProvisionalUntilProviderUUIDArrives(t *testi
 }
 
 func TestIdentityResolveResultsAreNotStored(t *testing.T) {
-	s, store := newIdentityServer(t, []catalogThread{{
-		Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("cached"),
-	}})
+	s, store := newIdentityServer(t, []catalogThread{{Thread: threadindex.Thread{Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("cached")}}})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
 	rec := httptest.NewRecorder()
 	s.handleIdentityResolve(rec, httptest.NewRequest(http.MethodGet, "/api/v1/identity/resolve?ref="+record.ID, nil))

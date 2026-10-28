@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -83,13 +82,14 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(catalog.Close)
-			catalog.setTranscriptChanged(func(context.Context, transcriptChange) {})
+			catalog.SetTranscriptChanged(func(context.Context, transcriptChange) {})
+			attached := &pausedAttachedCatalog{threadCatalogService: catalog}
 			if tc.exits {
-				catalog.projectionMu.Lock() // the saved file cannot catch up
-				var once sync.Once
-				t.Cleanup(func() { once.Do(catalog.projectionMu.Unlock) })
-				defer once.Do(catalog.projectionMu.Unlock)
+				release := attached.pause()
+				t.Cleanup(release)
+				defer release()
 			}
+
 			if err := metadata.ensureHostedThread(sess.HostedThreadID(), "grok", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
@@ -100,7 +100,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			sess.ConfigureRegistration(nil, nil, false, catalog)
+			sess.ConfigureRegistration(nil, nil, false, attached)
 			sess.ReserveNativeID(sess.ThreadID())
 			if tc.prompted {
 				seedAcceptedTransactionalTurn(t, sess.PromptStore(), sess.HostedThreadID(), model.ProviderGrok, sess.ThreadID(), "earlier", "prompt-earlier", "earlier prompt")

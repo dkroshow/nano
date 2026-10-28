@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
@@ -487,11 +489,11 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		return &value
 	}
 	threads := []catalogThread{
-		{ID: "nth_starred", Provider: "codex", NativeID: "starred-idle", HostedThreadID: "nht_starred-idle", Starred: true, UpdatedAt: updated(40 * 24 * time.Hour)},
-		{ID: "nth_root", Provider: "codex", NativeID: "root-idle", HostedThreadID: "nht_root-idle", UpdatedAt: updated(time.Hour)},
-		{ID: "nth_child", Provider: "codex", NativeID: "child-idle", HostedThreadID: "nht_child-idle", UpdatedAt: updated(time.Minute)},
-		{ID: "nth_child_wake", Provider: "codex", NativeID: "child-wake", HostedThreadID: "nht_child-wake", UpdatedAt: updated(time.Minute)},
-		{ID: "nth_child_quiet", Provider: "codex", NativeID: "child-quiet", HostedThreadID: "nht_child-quiet", UpdatedAt: updated(time.Minute)},
+		{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred-idle", UpdatedAt: updated(40 * 24 * time.Hour)}, HostedThreadID: "nht_starred-idle", Starred: true},
+		{Thread: threadindex.Thread{ID: "nth_root", Provider: "codex", NativeID: "root-idle", UpdatedAt: updated(time.Hour)}, HostedThreadID: "nht_root-idle"},
+		{Thread: threadindex.Thread{ID: "nth_child", Provider: "codex", NativeID: "child-idle", UpdatedAt: updated(time.Minute)}, HostedThreadID: "nht_child-idle"},
+		{Thread: threadindex.Thread{ID: "nth_child_wake", Provider: "codex", NativeID: "child-wake", UpdatedAt: updated(time.Minute)}, HostedThreadID: "nht_child-wake"},
+		{Thread: threadindex.Thread{ID: "nth_child_quiet", Provider: "codex", NativeID: "child-quiet", UpdatedAt: updated(time.Minute)}, HostedThreadID: "nht_child-quiet"},
 	}
 	s.attachRuntimeOverlayBatch(ctx, threads, s.sidebarRuntimeSnapshot())
 	query := sidebarDefaultQuery(now)
@@ -857,8 +859,8 @@ func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
 	threads := []catalogThread{
-		{ID: "nth_codex_visible", Provider: "codex", NativeID: "codex-visible", Starred: true, UpdatedAt: &updated},
-		{ID: "nth_claude_visible", Provider: "claude", NativeID: claudeResumeThreadID, Starred: true, UpdatedAt: &updated},
+		{Thread: threadindex.Thread{ID: "nth_codex_visible", Provider: "codex", NativeID: "codex-visible", UpdatedAt: &updated}, Starred: true},
+		{Thread: threadindex.Thread{ID: "nth_claude_visible", Provider: "claude", NativeID: claudeResumeThreadID, UpdatedAt: &updated}, Starred: true},
 	}
 	s.attachRuntimeOverlayBatch(context.Background(), threads, s.sidebarRuntimeSnapshot())
 	query := sidebarDefaultQuery(now)
@@ -1402,22 +1404,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	text := "synthetic cold-callback-action"
 	seedAcceptedTransactionalTurn(t, turnStore, remembered.HostedThreadID, model.ProviderClaude, claudeResumeThreadID, "cold-callback-action", "claude:1", text)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	service := &threadCatalogService{transcriptChanges: make(map[string]*pendingTranscriptChange)}
-	service.transcriptChangedCond = sync.NewCond(&service.transcriptChangedMu)
-	service.transcriptChangeWorkerWg.Add(1)
-	go service.runTranscriptChangeWorker(ctx)
-	t.Cleanup(func() {
-		cancel()
-		service.transcriptChangedMu.Lock()
-		service.transcriptChangeStopping = true
-		service.transcriptChangedCond.Broadcast()
-		service.transcriptChangedMu.Unlock()
-		service.transcriptChangeWorkerWg.Wait()
-	})
-	service.notifyTranscriptChanged(transcriptChange{
-		ThreadID: "nth-cold-callback", Provider: "claude", NativeThreadID: claudeResumeThreadID,
-	})
+	service, _ := queuedCatalogFixture(t, "claude", []string{claudeResumeThreadID})
 	// This is the production order: the catalog's catch-up queues changes,
 	// boot reattachment reconstructs the shim spool, and only then can a worker
 	// invoke the callback main registered.
@@ -1433,7 +1420,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	}
 	waitForSessionStatus(t, server, restarted.ID(), "ready")
 	callbackDone := make(chan struct{})
-	service.setTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+	service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
 		server.confirmDurableThread(ctx, change)
 		close(callbackDone)
 	})

@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 )
@@ -17,6 +19,7 @@ type applicationRoute struct {
 }
 
 func applicationRoutes(s *server) []applicationRoute {
+	index := threadindex.NewHandlers(s.catalog)
 	sessionRoute := func(operation func(http.ResponseWriter, *http.Request, *sessions.Session)) http.HandlerFunc {
 		return s.sessionOperation(operation)
 	}
@@ -147,25 +150,27 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/files/read", "files.read", s.handleGeneralFileRead},
 		{http.MethodGet, "/api/v1/files/mtime", "files.mtime", s.handleGeneralFileMtime},
 		{http.MethodPut, "/api/v1/files/write", "files.write", s.handleGeneralFileWrite},
-		{http.MethodGet, "/api/v1/search/messages", "search.messages", s.handleConversationSearchMessages},
-		{http.MethodGet, "/api/v1/search/status", "search.status", s.handleConversationSearchStatus},
-		{http.MethodGet, "/api/v1/usage/threads", "usage.threads", s.handleThreadUsageList},
+		{http.MethodGet, "/api/v1/search/messages", "search.messages", index.HandleConversationSearchMessages},
+		{http.MethodGet, "/api/v1/search/status", "search.status", index.HandleConversationSearchStatus},
+		{http.MethodGet, "/api/v1/usage/threads", "usage.threads", index.HandleThreadUsageList},
 		{http.MethodGet, "/api/v1/threads", "threads.list", s.handleCatalogThreads},
 		{http.MethodGet, "/api/v1/threads/{threadId}", "threads.read", func(w http.ResponseWriter, r *http.Request) { s.handleCatalogThreadRead(w, r, r.PathValue("threadId")) }},
 		{http.MethodGet, "/api/v1/threads/{threadId}/transcript/body/{itemId}", "threads.transcript.body", func(w http.ResponseWriter, r *http.Request) {
-			s.handleThreadTranscriptBody(w, r, r.PathValue("threadId"), r.PathValue("itemId"))
+			index.HandleThreadTranscriptBody(w, r, r.PathValue("threadId"), r.PathValue("itemId"))
 		}},
 		{http.MethodGet, "/api/v1/threads/{threadId}/transcript/evidence/{itemId}", "threads.transcript.evidence", func(w http.ResponseWriter, r *http.Request) {
-			s.handleThreadTranscriptEvidence(w, r, r.PathValue("threadId"), r.PathValue("itemId"))
+			index.HandleThreadTranscriptEvidence(w, r, r.PathValue("threadId"), r.PathValue("itemId"))
 		}},
-		{http.MethodGet, "/api/v1/threads/{threadId}/usage", "threads.usage", func(w http.ResponseWriter, r *http.Request) { s.handleThreadUsage(w, r, r.PathValue("threadId")) }},
-		{http.MethodGet, "/api/v1/threads/{threadId}/transcript", "threads.transcript", func(w http.ResponseWriter, r *http.Request) { s.handleThreadTranscript(w, r, r.PathValue("threadId")) }},
+		{http.MethodGet, "/api/v1/threads/{threadId}/usage", "threads.usage", func(w http.ResponseWriter, r *http.Request) { index.HandleThreadUsage(w, r, r.PathValue("threadId")) }},
+		{http.MethodGet, "/api/v1/threads/{threadId}/transcript", "threads.transcript", func(w http.ResponseWriter, r *http.Request) {
+			index.HandleThreadTranscript(w, r, r.PathValue("threadId"))
+		}},
 		{http.MethodGet, "/api/v1/threads/{threadId}/messages", "threads.messages", func(w http.ResponseWriter, r *http.Request) { s.handleThreadMessages(w, r, r.PathValue("threadId")) }},
 		{http.MethodPut, "/api/v1/threads/{threadId}/starred", "threads.starred", func(w http.ResponseWriter, r *http.Request) { s.handleThreadStarred(w, r, r.PathValue("threadId")) }},
-		{http.MethodPut, "/api/v1/threads/{threadId}/name", "threads.name", s.handleThreadNameSet},
-		{http.MethodDelete, "/api/v1/threads/{threadId}/name", "threads.name.clear", s.handleThreadNameClear},
-		{http.MethodGet, "/api/v1/thread-index/status", "threadIndex.status", s.handleCatalogIndexStatus},
-		{http.MethodPost, "/api/v1/thread-index/refresh", "threadIndex.refresh", s.handleCatalogRefresh},
+		{http.MethodPut, "/api/v1/threads/{threadId}/name", "threads.name", index.HandleThreadNameSet},
+		{http.MethodDelete, "/api/v1/threads/{threadId}/name", "threads.name.clear", index.HandleThreadNameClear},
+		{http.MethodGet, "/api/v1/thread-index/status", "threadIndex.status", index.HandleCatalogIndexStatus},
+		{http.MethodPost, "/api/v1/thread-index/refresh", "threadIndex.refresh", index.HandleCatalogRefresh},
 		{http.MethodGet, "/api/v1/thread-index/events", "threadIndex.events", s.handleCatalogIndexEvents},
 		{http.MethodGet, "/api/v1/fleet/changes", "fleet.changes", s.handleFleetChanges},
 		{http.MethodGet, "/api/v1/sidebar/threads", "sidebar.threads", s.handleSidebarThreads},

@@ -14,14 +14,6 @@ type savedRowsCatalog interface {
 	LoadSavedUserRows(context.Context, string, history.SavedUserKeys) ([]history.SavedUserRow, error)
 }
 
-func (s *threadCatalogService) LoadSavedUserRows(ctx context.Context, threadID string, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-	return s.store.ReadSavedUserRows(ctx, threadID, keys)
-}
-
-func (s *threadCatalogService) LoadSavedTurnFinal(ctx context.Context, threadID, projectionKey, turnKey string) (history.SavedTurnFinal, error) {
-	return s.store.ReadSavedTurnFinal(ctx, threadID, projectionKey, turnKey)
-}
-
 func (s *server) savedPromptsFor(sess *sessions.Session) sessions.SavedPromptReader {
 	return func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 		return s.savedPromptRows(ctx, sess.ThreadID(), keys)

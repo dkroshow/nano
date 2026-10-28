@@ -173,7 +173,7 @@ func TestSidebarNativeBindShowsAtOnce(t *testing.T) {
 	s, _ := sidebarActiveFixture(t, time.Now())
 	sess := memorySession(t, "pending-bind", "codex", "", "starting", "/fixture", "gpt-test", time.Now())
 	s.RegisterSession(sess)
-	s.catalog.(*threadCatalogService).hub = newCatalogHub()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := s.startSidebarMaterializer(ctx, time.Now()); err != nil {

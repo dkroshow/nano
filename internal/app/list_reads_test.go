@@ -179,7 +179,7 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 		t.Fatal(err)
 	}
 
-	f.catalog = &countingCatalog{threadCatalogService: &threadCatalogService{store: store}}
+	f.catalog = &countingCatalog{threadCatalogService: newStoredCatalog(t, store)}
 	s := testServerWithSessions(&server{
 		catalog: f.catalog, Registry: newSessionRegistry(),
 		attachments: attachments, threadStars: stars,
@@ -402,7 +402,7 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 	if _, err := store.ApplySource(ctx, guardian); err != nil {
 		t.Fatal(err)
 	}
-	catalog := &countingCatalog{threadCatalogService: &threadCatalogService{store: store}}
+	catalog := &countingCatalog{threadCatalogService: newStoredCatalog(t, store)}
 	s := &server{catalog: catalog}
 
 	keys := make([]attachmentKey, 1200)

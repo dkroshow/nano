@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
@@ -26,8 +28,8 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 	}
 
 	catalog := &fakeThreadCatalog{page: catalogPage{Items: []catalogThread{
-		{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"},
-		{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"},
+		{Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
+		{Thread: threadindex.Thread{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"}},
 	}}}
 	s := &server{catalog: catalog, Registry: newSessionRegistry(), agentExecutions: store}
 	rec := httptest.NewRecorder()

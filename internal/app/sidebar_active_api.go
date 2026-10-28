@@ -15,6 +15,7 @@ import (
 	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -137,7 +138,7 @@ func (s *server) handleSidebarThreadHistory(w http.ResponseWriter, r *http.Reque
 	}
 	var cursor *history.ThreadCursor
 	if rawCursor := strings.TrimSpace(r.URL.Query().Get("cursor")); rawCursor != "" {
-		cursor, err = decodeThreadCatalogCursor(rawCursor)
+		cursor, err = threadindex.DecodeThreadCatalogCursor(rawCursor)
 		if err != nil {
 			httpapi.WriteError(w, http.StatusBadRequest, "invalid_cursor", "Invalid thread catalog cursor")
 			return
@@ -176,20 +177,6 @@ func parseSidebarActiveQuery(r *http.Request, now time.Time) (catalogListQuery, 
 	}
 	query.UpdatedFrom = &parsed
 	return query, nil
-}
-
-func (s *threadCatalogService) ListSidebarGraph(ctx context.Context, params history.SidebarGraphParams) (history.SidebarGraph, error) {
-	if s == nil || s.store == nil {
-		return history.SidebarGraph{}, errThreadCatalogUnavailable
-	}
-	return s.store.ListSidebarGraph(ctx, params)
-}
-
-func (s *threadCatalogService) LoadThreadsByIDs(ctx context.Context, ids []string) ([]history.Thread, error) {
-	if s == nil || s.store == nil {
-		return nil, errThreadCatalogUnavailable
-	}
-	return s.store.LoadThreadsByIDs(ctx, ids)
 }
 
 func (s *server) sidebarGraphCatalog() (sidebarGraphSource, error) {
@@ -671,7 +658,7 @@ func (s *server) assembleSidebarGraph(ctx context.Context, graph history.Sidebar
 		threads = append(threads, memoryRows...)
 	}
 	s.attachStarredOverlay(threads)
-	return assembleSidebarThreads(threads), catalogVersion(graph.CatalogVersion)
+	return assembleSidebarThreads(threads), threadindex.CatalogVersion(graph.CatalogVersion)
 }
 
 // memorySidebarThreadRows can trust the sidebar graph's rescue keys: every

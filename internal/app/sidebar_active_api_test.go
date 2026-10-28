@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
+
 	"github.com/dkroshow/nano/internal/history"
 )
 
@@ -137,8 +139,6 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 func TestSidebarDeltaRidesCatalogEventStream(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
 	s, _ := sidebarActiveFixture(t, now)
-	service := s.catalog.(*threadCatalogService)
-	service.hub = newCatalogHub()
 
 	srv := httptest.NewServer(http.HandlerFunc(s.handleCatalogIndexEvents))
 	defer srv.Close()
@@ -231,8 +231,8 @@ func TestSidebarManualCloseOverridesWatchedFleetUntilTreeDisappears(t *testing.T
 		t.Fatal("an explicit star should retain the closed row")
 	}
 	closed.Starred = false
-	parent := catalogThread{ID: "parent", Provider: "codex", NativeID: "parent-native", HostedThreadID: "hosted-parent", HostedStatus: sessionStatusExited, Fleet: watched}
-	child := catalogThread{ID: "child", Provider: "codex", NativeID: "child-native", HostedThreadID: "hosted-child", HostedStatus: "ready", InvokerHostedThreadID: parent.HostedThreadID, Fleet: watched}
+	parent := catalogThread{Thread: threadindex.Thread{ID: "parent", Provider: "codex", NativeID: "parent-native"}, HostedThreadID: "hosted-parent", HostedStatus: sessionStatusExited, Fleet: watched}
+	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", HostedStatus: "ready", InvokerHostedThreadID: parent.HostedThreadID, Fleet: watched}
 	child.Runtime = &runtimeInfo{Attached: true, Status: "ready", TurnActive: true}
 	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{parent, child}, sidebarRuntimeSnapshot{})
@@ -248,16 +248,8 @@ func TestSidebarManualCloseOverridesWatchedFleetUntilTreeDisappears(t *testing.T
 }
 
 func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
-	root := catalogThread{
-		ID: "root", Provider: "codex", NativeID: "root-native",
-		HostedThreadID: "hosted-root", HostedStatus: sessionStatusExited,
-	}
-	child := catalogThread{
-		ID: "child", Provider: "codex", NativeID: "child-native",
-		HostedThreadID: "hosted-child", HostedStatus: agentSessionDetached,
-		InvokerHostedThreadID: root.HostedThreadID,
-		Runtime:               &runtimeInfo{Detached: true},
-	}
+	root := catalogThread{Thread: threadindex.Thread{ID: "root", Provider: "codex", NativeID: "root-native"}, HostedThreadID: "hosted-root", HostedStatus: sessionStatusExited}
+	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", HostedStatus: agentSessionDetached, InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true}}
 	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child}, sidebarRuntimeSnapshot{})
 	if nodes[0].included || nodes[1].included {
@@ -279,12 +271,9 @@ func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
 // stayed resting. A resting thread keeps its place like an attached one; a
 // detached one is still history. Boundary: sidebar assembly.
 func TestSidebarKeepsRestingThreadsActive(t *testing.T) {
-	root := catalogThread{ID: "root", Provider: "codex", NativeID: "root-native", HostedThreadID: "hosted-root",
-		Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
-	child := catalogThread{ID: "child", Provider: "codex", NativeID: "child-native", HostedThreadID: "hosted-child",
-		InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
-	detached := catalogThread{ID: "detached", Provider: "codex", NativeID: "detached-native", HostedThreadID: "hosted-detached",
-		Runtime: &runtimeInfo{Detached: true}}
+	root := catalogThread{Thread: threadindex.Thread{ID: "root", Provider: "codex", NativeID: "root-native"}, HostedThreadID: "hosted-root", Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
+	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
+	detached := catalogThread{Thread: threadindex.Thread{ID: "detached", Provider: "codex", NativeID: "detached-native"}, HostedThreadID: "hosted-detached", Runtime: &runtimeInfo{Detached: true}}
 	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child, detached}, sidebarRuntimeSnapshot{})
 	included := map[string]bool{}
@@ -308,12 +297,8 @@ func TestSidebarActiveRelatedLineageBeatsInvokerAndNative(t *testing.T) {
 }
 
 func TestSidebarStandaloneSuppressesInvokerUntilAssignmentMovesThread(t *testing.T) {
-	parent := catalogThread{ID: "parent", Provider: "codex", NativeID: "parent-native", HostedThreadID: "hosted-parent"}
-	child := catalogThread{
-		ID: "child", Provider: "grok", NativeID: "child-native", HostedThreadID: "hosted-child",
-		InvokerHostedThreadID: parent.HostedThreadID, InvokerNativeThreadID: parent.NativeID,
-		InvokerProvider: parent.Provider, SidebarPlacement: sidebarPlacementStandalone,
-	}
+	parent := catalogThread{Thread: threadindex.Thread{ID: "parent", Provider: "codex", NativeID: "parent-native"}, HostedThreadID: "hosted-parent"}
+	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "grok", NativeID: "child-native"}, HostedThreadID: "hosted-child", InvokerHostedThreadID: parent.HostedThreadID, InvokerNativeThreadID: parent.NativeID, InvokerProvider: parent.Provider, SidebarPlacement: sidebarPlacementStandalone}
 	index := indexSidebarThreads([]catalogThread{parent, child})
 	if index.byID[child.ID].parentID != "" {
 		t.Fatalf("standalone child parent = %q", index.byID[child.ID].parentID)
@@ -525,7 +510,7 @@ func sidebarActiveFixture(t *testing.T, now time.Time) (*server, map[string]stri
 		t.Fatal(err)
 	}
 
-	svc := &threadCatalogService{store: store}
+	svc := newStoredCatalog(t, store)
 	attached := memorySession(t, "sess-attached", "codex", "attached-recent", "ready", "/w/att", "gpt-5.6-sol", now)
 	parentLive := memorySession(t, "sess-parent", "codex", "related-parent", "ready", "/w/related-parent", "gpt-5.6-sol", now, func(cfg *sessionConfig) { cfg.HostedThreadID = parentHosted.ID })
 	if response := postTurn(t, parentLive, context.Background(), "parent-work", "working"); response.Code != http.StatusOK {
@@ -739,7 +724,7 @@ func TestSidebarHostedRecordsPicksTheNewerRecordAcrossTrimmedFractions(t *testin
 		"nht_newer": {ID: "nht_newer", Provider: "codex", NativeThreadID: "native-1", Status: sessionStatusExited, UpdatedAt: at.Add(time.Microsecond).Format(time.RFC3339Nano)},
 	}
 	s := &server{agentExecutions: store}
-	records, found := s.sidebarHostedRecords([]catalogThread{{Provider: "codex", NativeID: "native-1"}})
+	records, found := s.sidebarHostedRecords([]catalogThread{{Thread: threadindex.Thread{Provider: "codex", NativeID: "native-1"}}})
 	if !found[0] || records[0].ID != "nht_newer" {
 		t.Fatalf("sidebar record = %q (found %v), want the newer nht_newer", records[0].ID, found[0])
 	}

@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // A harness notification can wake Claude without Nano sending a user line.
@@ -47,10 +49,10 @@ func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing
 func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	fake := &fakeThreadCatalog{
 		page: catalogPage{Items: []catalogThread{
-			{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:01Z")},
-			{ID: "nth_2", Provider: "claude", NativeID: "native-idle", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:00Z")},
+			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:01Z")}},
+			{Thread: threadindex.Thread{ID: "nth_2", Provider: "claude", NativeID: "native-idle", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		}},
-		thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"},
+		thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"}},
 	}
 	s := &server{catalog: fake, Registry: newSessionRegistry()}
 	s.runtime = s
@@ -197,7 +199,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 	attachments := newTestStore(t)
 	attachments.remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	s := &server{
-		catalog:     &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}},
+		catalog:     &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}}},
 		attachments: attachments,
 		Registry:    newSessionRegistry(),
 	}

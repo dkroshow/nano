@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func operatorSendForTest(t *testing.T, s *server, recipient agentSessionRecord, clientID, subject, body string) (*httptest.ResponseRecorder, agentMessageView) {
@@ -141,7 +143,7 @@ func TestAgentMailCountsAndCatalogOverlay(t *testing.T) {
 		t.Fatalf("sender unexpectedly received disposition feedback: %+v", got)
 	}
 
-	rows := []catalogThread{{ID: "nth_x", HostedThreadID: recipient.ID}, {ID: "nth_y"}}
+	rows := []catalogThread{{Thread: threadindex.Thread{ID: "nth_x"}, HostedThreadID: recipient.ID}, {Thread: threadindex.Thread{ID: "nth_y"}}}
 	s.attachMailOverlay(rows)
 	if rows[0].Mail == nil || rows[0].Mail.Total != 3 || rows[0].Mail.Seen != 2 {
 		t.Fatalf("mail overlay = %+v", rows[0].Mail)

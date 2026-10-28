@@ -24,6 +24,7 @@ import (
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -818,7 +819,7 @@ func (s *server) handleConversationHistory(w http.ResponseWriter, r *http.Reques
 		writeTranscriptBackendError(w, err)
 		return
 	}
-	query, err := parseTranscriptListQuery(r)
+	query, err := threadindex.ParseTranscriptListQuery(r)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return

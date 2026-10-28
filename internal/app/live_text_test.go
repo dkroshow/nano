@@ -45,10 +45,8 @@ type liveTextHarness struct {
 	service    *threadCatalogService
 	store      *history.Store
 	file       string
-	// held keeps catalog apply notices from the loop; scanDelay holds each
-	// catalog scan before it projects a file.
+	// held keeps catalog apply notices from the loop.
 	held         atomic.Bool
-	scanDelay    atomic.Int64
 	barriers     int
 	catalogReads atomic.Int64
 	lastQueries  atomic.Int64 // pages asked in the newest read
@@ -130,7 +128,6 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query transcript
 	h := &liveTextHarness{t: t, store: store, file: file}
 	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
 		Roots: []history.SourceRoot{{Provider: history.Provider(provider), Kind: rootKind, Path: root}}, DisableWatcher: true,
-		projectSourceStarted: func(history.SourceCandidate) { time.Sleep(time.Duration(h.scanDelay.Load())) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +151,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query transcript
 	h.projection = cfg.Projection.(*liveProjection)
 	h.queue = cfg.QueuedTurns
 	h.journal = cfg.SendAttempts
-	service.setTranscriptChanged(func(context.Context, transcriptChange) {
+	service.SetTranscriptChanged(func(context.Context, transcriptChange) {
 		if !h.held.Load() {
 			sess.LiveTextService().Applied()
 		}
@@ -1826,7 +1823,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				seedTestSessionRegistry(&h.srv.Registry, map[string]*session{sess.ID(): sess})
 				sess.ConfigureSavedReaders(nil, h.srv.savedPromptsFor(sess), nil, nil, nil)
 				var settledCommits atomic.Int32
-				h.service.setTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+				h.service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
 					sess.LiveTextService().Applied()
 					h.srv.confirmDurableThread(ctx, change)
 					settledCommits.Add(1)
@@ -2375,7 +2372,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
 	seedBootAttachments(t, srv)
 	writeClaudeTestSpool(t, srv.defaults.claudeShimSpools, hosted, spool...)
-	h.service.setTranscriptChanged(srv.confirmDurableThread)
+	h.service.SetTranscriptChanged(srv.confirmDurableThread)
 	srv.prepareBootReattach()
 	srv.reattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
 	fresh := srv.SessionForThread("claude", native)

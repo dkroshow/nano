@@ -411,8 +411,8 @@ func TestThreadMessagesWalksBackwardForAShortPage(t *testing.T) {
 	if recorder := messagesRequest(t, &server{catalog: bounded}, "/api/v1/threads/nth_one/messages"); recorder.Body.Len() != 0 {
 		t.Fatalf("bounded walk body = %q", recorder.Body.String())
 	}
-	if len(bounded.queries) != maxThreadMessagePages {
-		t.Fatalf("page walk = %d, want at most %d", len(bounded.queries), maxThreadMessagePages)
+	if len(bounded.queries) != 3 {
+		t.Fatalf("page walk = %d, want at most %d", len(bounded.queries), 3)
 	}
 }
 

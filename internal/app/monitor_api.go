@@ -265,7 +265,7 @@ func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
 	requests, streams := s.requests.Report()
 	var ingest *ingestStatus
 	if catalog, ok := s.catalog.(*threadCatalogService); ok {
-		status := catalog.ingestStatus()
+		status := catalog.IngestStatus()
 		ingest = &status
 	}
 	w.Header().Set("Cache-Control", "no-cache")
@@ -293,7 +293,7 @@ func (s *server) handleIngestReceipts(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")
-	httpapi.WriteJSON(w, map[string]any{"receipts": catalog.ingestReceipts()})
+	httpapi.WriteJSON(w, map[string]any{"receipts": catalog.IngestReceipts()})
 }
 
 type monitorTurn = observability.ActiveTurn

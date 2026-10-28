@@ -28,6 +28,7 @@ for the parsing module, the state layer and lifecycle.
 | `wire`, `wire/{codex,claude,grok}` | The live connection to each runtime: Codex JSON-RPC over WebSocket, the Claude shim's framed stdio, Grok's ACP process. |
 | `transcriptparse` | Pure readers of provider transcript bytes, file and wire, for all three providers (below). No Nano dependency. |
 | `history` | Discovery and read-only projection of the native session files under `~/.codex`, `~/.claude` and `~/.grok`. |
+| `threadindex` | Saved-thread catalog orchestration, provider-file ingestion, name projection, bounded transcript reads and their HTTP API. It consumes explicit provider path functions; app keeps runtime, hosted, mail and setup overlays and the combined event stream. |
 | `catalog` | The kqueue watcher over held files, the FSEvents trigger that finds sessions Nano did not start, the conflated index-change stream, and the fleet read models the sidebar and Thread Explorer share. |
 | `threads` | Durable hosted-thread state: identity, metadata, execution sessions, operations, attachment generations. |
 | `core/prompts`, `core/turns`, `core/session` | Durable prompt delivery through provider acceptance; the per-turn record and usage; the mutable runtime of one hosted thread. |

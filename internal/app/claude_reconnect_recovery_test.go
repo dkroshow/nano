@@ -1,7 +1,5 @@
 package app
 
-import replayfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
-
 import (
 	"context"
 	"fmt"
@@ -14,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	replayfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"

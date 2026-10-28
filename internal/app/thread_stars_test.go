@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func openTestThreadStars(t *testing.T) *threadStarsStore {
@@ -97,8 +99,8 @@ func TestAttachStarredOverlayMarksMatchingRows(t *testing.T) {
 	}
 	s := &server{threadStars: store}
 	threads := []catalogThread{
-		{ID: "nth_a", Provider: "codex", NativeID: "native-a"},
-		{ID: "nth_b", Provider: "claude", NativeID: "native-b"},
+		{Thread: threadindex.Thread{ID: "nth_a", Provider: "codex", NativeID: "native-a"}},
+		{Thread: threadindex.Thread{ID: "nth_b", Provider: "claude", NativeID: "native-b"}},
 	}
 	s.attachStarredOverlay(threads)
 	if !threads[0].Starred || threads[1].Starred {
@@ -129,9 +131,7 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 
 func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	store := openTestThreadStars(t)
-	catalog := &fakeThreadCatalog{thread: catalogThread{
-		ID: "nth_1", Provider: "codex", NativeID: "native-1", Title: strPtr("Pinned"),
-	}}
+	catalog := &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Title: strPtr("Pinned")}}}
 	s := &server{catalog: catalog, threadStars: store, Registry: newSessionRegistry()}
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{"starred":true}`))
@@ -168,7 +168,7 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 	ch := hub.subscribe()
 	t.Cleanup(func() { hub.unsubscribe(ch) })
 	s := &server{
-		catalog:       &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}},
+		catalog:       &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
 		threadStars:   store,
 		runtimeEvents: hub,
 		Registry:      newSessionRegistry(),
@@ -191,7 +191,7 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 
 func TestThreadStarredEndpointRejectsMissingBody(t *testing.T) {
 	s := &server{
-		catalog:     &fakeThreadCatalog{thread: catalogThread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}},
+		catalog:     &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
 		threadStars: openTestThreadStars(t),
 	}
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{}`))

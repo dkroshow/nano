@@ -24,10 +24,6 @@ type fileEvidenceCatalog interface {
 	FindFileEvidenceBlobs(context.Context, string, string, int, int) ([]string, error)
 }
 
-func (s *threadCatalogService) FindFileEvidenceBlobs(ctx context.Context, threadID, basename string, maxRows, maxBytes int) ([]string, error) {
-	return s.store.FindFileEvidenceBlobs(ctx, threadID, basename, maxRows, maxBytes)
-}
-
 func (s *server) handleGeneralFileRead(w http.ResponseWriter, r *http.Request) {
 	requested := strings.TrimSpace(r.URL.Query().Get("path"))
 	path, resolvedBy, err := s.resolveGeneralFile(r.Context(), requested,

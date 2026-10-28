@@ -1182,7 +1182,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	} else {
 		// One reader behind, under an upgrade whose marker this file lacks.
 		reader(strings.Replace(current, "claude-reader-v36", "claude-reader-v35", 1))
-		h.service.setTranscriptChanged(h.server.confirmDurableThread)
+		h.service.SetTranscriptChanged(h.server.confirmDurableThread)
 	}
 
 	// Nano starts: the operation store reloads and reads not-saved answers.
@@ -1212,7 +1212,11 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		// The read has finished and parked, and no earlier commit's
 		// notification is still due, so only the proof can wake it.
 		waitForCatalogWithin(t, time.Minute, func() bool {
-			backlog, inFlight := h.service.transcriptChangeStatus()
+			status, err := h.service.IndexStatus(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			backlog, inFlight := status.TranscriptChangeBacklog, status.TranscriptChangeInFlight
 			store.mu.Lock()
 			defer store.mu.Unlock()
 			job := store.savedResultJobs[op.ID]
@@ -1577,7 +1581,7 @@ func TestSavedCommitSettlesPromptsWithoutReattach(t *testing.T) {
 				return savedPrompts(ctx, keys)
 			})
 			seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
-			h.service.setTranscriptChanged(func(ctx context.Context, change transcriptChange) {
+			h.service.SetTranscriptChanged(func(ctx context.Context, change transcriptChange) {
 				running.Add(1)
 				defer running.Add(-1)
 				h.server.confirmDurableThread(ctx, change)

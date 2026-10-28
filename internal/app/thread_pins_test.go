@@ -97,7 +97,7 @@ func newPinFixture(t *testing.T) *pinFixture {
 	t.Cleanup(func() { pins.Close() })
 	s := &server{
 		Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control,
-		catalog: &threadCatalogService{store: store}, threadPins: pins,
+		catalog: newStoredCatalog(t, store), threadPins: pins,
 	}
 	mux := http.NewServeMux()
 	mountRoutes(mux, applicationRoutes(s))

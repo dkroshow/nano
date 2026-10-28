@@ -21,22 +21,17 @@ const (
 	maxTranscriptAuditRequestBytes = 16 << 10
 	maxTranscriptAuditResultBytes  = 96 << 10
 	maxTranscriptAuditRows         = 200
-	maxTranscriptAuditReference    = 100
-	maxTranscriptAuditDifferences  = 20
-	maxTranscriptAuditPending      = 8
-	maxTranscriptAuditHistory      = 100
-	transcriptAuditTTL             = 30 * time.Second
+
+	maxTranscriptAuditDifferences = 20
+	maxTranscriptAuditPending     = 8
+	maxTranscriptAuditHistory     = 100
+	transcriptAuditTTL            = 30 * time.Second
 )
 
 var (
-	errTranscriptAuditReferenceChanged    = errors.New("transcript audit reference changed")
 	errTranscriptAuditIdempotencyConflict = errors.New("transcript audit client action conflicts with an existing request")
 	errTranscriptAuditPendingLimit        = errors.New("too many transcript audits are pending")
 )
-
-type transcriptAuditScope string
-
-const transcriptAuditMessages transcriptAuditScope = "messages"
 
 type transcriptAuditRequest struct {
 	ID                     string                 `json:"auditId"`
@@ -122,26 +117,6 @@ type transcriptAuditResult struct {
 	PageID               string                      `json:"pageId,omitempty"`
 	ViewMode             string                      `json:"viewMode,omitempty"`
 	Build                string                      `json:"build,omitempty"`
-}
-
-type transcriptAuditReferenceRow struct {
-	ID               string `json:"id"`
-	ProjectedSeq     int64  `json:"projectedSeq"`
-	Category         string `json:"category"`
-	Role             string `json:"role,omitempty"`
-	Text             string `json:"text,omitempty"`
-	ContentTruncated bool   `json:"contentTruncated"`
-}
-
-type transcriptAuditReference struct {
-	ProjectionKey   string                        `json:"projectionKey"`
-	SnapshotHeadSeq int64                         `json:"snapshotHeadSeq"`
-	StartSeq        int64                         `json:"startSeq"`
-	EndSeq          int64                         `json:"endSeq"`
-	HasMoreBefore   bool                          `json:"hasMoreBefore"`
-	CapReached      bool                          `json:"capReached"`
-	CapReason       string                        `json:"capReason,omitempty"`
-	Rows            []transcriptAuditReferenceRow `json:"rows"`
 }
 
 type transcriptAuditStore struct {
@@ -552,57 +527,4 @@ func writeTranscriptAuditEvent(w io.Writer, event transcriptAuditEvent) {
 	if err == nil {
 		fmt.Fprintf(w, "event: transcript-audit\ndata: %s\n\n", payload)
 	}
-}
-
-func (s *threadCatalogService) LoadTranscriptAuditReference(ctx context.Context, threadID, projectionKey string, snapshotHead, minSeq, maxSeq int64, scopes []transcriptAuditScope) (transcriptAuditReference, error) {
-	hidden := make([]history.TranscriptCategory, 0, len(history.TranscriptCategories))
-	for _, category := range history.TranscriptCategories {
-		if category != history.CategoryMessages {
-			hidden = append(hidden, category)
-		}
-	}
-	before := int64(0)
-	if maxSeq > 0 {
-		if maxSeq > snapshotHead {
-			maxSeq = snapshotHead
-		}
-		before = maxSeq + 1
-	}
-	page, err := s.store.ReadTranscript(ctx, history.TranscriptReadRequest{
-		ThreadID: threadID, Limit: maxTranscriptAuditReference, MaxBytes: maxThreadTranscriptBytes,
-		HiddenCategories: hidden, ExpectedProjectionKey: projectionKey, SnapshotHeadSeq: snapshotHead, BeforeSeq: before,
-	})
-	if err != nil {
-		return transcriptAuditReference{}, err
-	}
-	if page.Projection.Key != projectionKey || page.SnapshotHeadSeq != snapshotHead {
-		return transcriptAuditReference{}, errTranscriptAuditReferenceChanged
-	}
-	result := transcriptAuditReference{
-		ProjectionKey: page.Projection.Key, SnapshotHeadSeq: page.SnapshotHeadSeq,
-		HasMoreBefore: page.HasMoreBefore,
-		Rows:          make([]transcriptAuditReferenceRow, 0, len(page.Items)),
-	}
-	for _, item := range page.Items {
-		if minSeq > 0 && item.ProjectedSeq < minSeq {
-			continue
-		}
-		result.Rows = append(result.Rows, transcriptAuditReferenceRow{
-			ID: item.ID, ProjectedSeq: item.ProjectedSeq, Category: string(item.Category), Role: string(item.Role),
-			Text: item.Text, ContentTruncated: item.ContentTruncated,
-		})
-	}
-	if len(result.Rows) > 0 {
-		result.StartSeq = result.Rows[0].ProjectedSeq
-		result.EndSeq = result.Rows[len(result.Rows)-1].ProjectedSeq
-	}
-	result.CapReached = page.HasMoreBefore && (minSeq == 0 || page.StartSeq > minSeq)
-	if result.CapReached {
-		if len(page.Items) >= maxTranscriptAuditReference {
-			result.CapReason = "rows"
-		} else {
-			result.CapReason = "bytes"
-		}
-	}
-	return result, nil
 }

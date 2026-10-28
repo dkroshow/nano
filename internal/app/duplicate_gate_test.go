@@ -146,11 +146,7 @@ func newGateCatalog(t *testing.T, codexFixtures, claudeFixtures []string, extraC
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { service.Close() })
-	select {
-	case <-service.catalogReady:
-	case <-time.After(time.Minute):
-		t.Fatal("catalog did not start")
-	}
+
 	service.RequestRefresh() // the explicit discovery a new store needs
 	return &gateCatalog{service: service, server: &server{catalog: service},
 		roots: map[history.Provider]string{history.ProviderCodex: codexRoot, history.ProviderClaude: project}}

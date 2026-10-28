@@ -7,21 +7,13 @@ import (
 
 // A known deferred re-read must label an unsaved reply, without suppressing the diagnostic.
 func TestLiveTextUnsavedReplyLabelsQueuedAndBuildingRereads(t *testing.T) {
-	f := newParserBudgetFixture(t, 1)
-	f.service.Close()
-	catalog := synchronousRereadService(f)
+	catalog := &deferredDiagnosticCatalog{fakeThreadCatalog: &fakeThreadCatalog{}}
 	for _, state := range []string{"ordinary", "queued", "building"} {
 		t.Run(state, func(t *testing.T) {
 			srv := &server{catalog: catalog, browserDiagnostics: newBrowserDiagnosticStore(10)}
-			sess := newFixtureSession(sessionConfig{Provider: "codex", HostedThreadID: "synthetic-hosted"}, f.stored(t).Projection.NativeThreadID)
+			sess := newFixtureSession(sessionConfig{Provider: "codex", HostedThreadID: "synthetic-hosted"}, "native-thread")
 			loop := &liveTextLoop{srv: srv, sess: sess, awaiting: map[string]awaitedReply{"missing-reply": {finishedAt: time.Now().Add(-time.Minute)}}}
-			if state == "queued" {
-				catalog.enqueueTranscriptReread(f.threadID)
-			}
-			if state == "building" {
-				catalog.finishTranscriptReread(f.threadID, false)
-				catalog.rereadBuilding = f.threadID
-			}
+			catalog.deferred = state != "ordinary"
 			loop.checkUnsaved("missing-reply")
 			events := srv.browserDiagnostics.recent(10, "", "", "file.reply.unsaved")
 			if len(events) != 1 {
@@ -37,3 +29,10 @@ func TestLiveTextUnsavedReplyLabelsQueuedAndBuildingRereads(t *testing.T) {
 		})
 	}
 }
+
+type deferredDiagnosticCatalog struct {
+	*fakeThreadCatalog
+	deferred bool
+}
+
+func (c *deferredDiagnosticCatalog) DeferredTranscriptReread(string) bool { return c.deferred }

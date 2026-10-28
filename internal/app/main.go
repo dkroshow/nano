@@ -277,7 +277,7 @@ func construct(cfg config.Config) *application {
 		// nothing and never walks a root.
 		catalogRefresh = func(path string) {
 			if path = filepath.Clean(path); path != "." && path != "" {
-				catalogService.fileChanged(path)
+				catalogService.FileChanged(path)
 			}
 		}
 	}
@@ -416,7 +416,7 @@ func construct(cfg config.Config) *application {
 		log.Fatalf("initialize mail notices: %v", err)
 	}
 	if catalogService != nil && controlMetadata != nil {
-		catalogService.setCreationNameSource(controlMetadata.creationThreadNames)
+		catalogService.SetCreationNameSource(controlMetadata.creationThreadNames)
 	}
 	s.hostMonitor = newHostMonitor(filepath.Join(cfg.Paths.DataDir, "health"), filepath.Join(cfg.Paths.DataDir, "deploys.jsonl"))
 	go s.hostMonitor.run(context.Background())
@@ -425,8 +425,8 @@ func construct(cfg config.Config) *application {
 		go s.usageLimitsPoller.run(context.Background())
 	}
 	if catalogService != nil {
-		catalogService.setTranscriptRepairPriority(s.transcriptRepairPriority)
-		catalogService.setTranscriptChanged(s.confirmDurableThread)
+		catalogService.SetTranscriptRepairPriority(s.transcriptRepairPriority)
+		catalogService.SetTranscriptChanged(s.confirmDurableThread)
 	}
 	if catalogStore != nil {
 		if providerHomes, err := configuredProviderHomes(); err != nil {

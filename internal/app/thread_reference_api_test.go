@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const threadReferenceUUID = "11111111-2222-4333-8444-555555555555"
@@ -86,7 +88,7 @@ func TestThreadReferenceRejectsTruncatedNativeUUID(t *testing.T) {
 }
 
 func TestThreadReferenceCatalogCompatibilityInputResolvesExactRow(t *testing.T) {
-	row := catalogThread{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}}
 	s, _ := newThreadReferenceServer(t, nil)
 	fake := s.catalog.(*fakeThreadCatalog)
 	fake.thread = row
@@ -102,8 +104,8 @@ func TestThreadReferenceCatalogCompatibilityInputResolvesExactRow(t *testing.T) 
 
 func TestThreadReferenceSameProviderDuplicateCatalogRowsUseCurrentOwner(t *testing.T) {
 	rows := []catalogThread{
-		{ID: "nth_first", Provider: "codex", NativeID: threadReferenceUUID},
-		{ID: "nth_second", Provider: "codex", NativeID: threadReferenceUUID},
+		{Thread: threadindex.Thread{ID: "nth_first", Provider: "codex", NativeID: threadReferenceUUID}},
+		{Thread: threadindex.Thread{ID: "nth_second", Provider: "codex", NativeID: threadReferenceUUID}},
 	}
 	s, store := newThreadReferenceServer(t, rows)
 	record := createReferenceHostedRecord(t, store, threadReferenceUUID)
@@ -148,7 +150,7 @@ func TestThreadReferenceNativeLiveHostedContinuation(t *testing.T) {
 }
 
 func TestThreadReferenceNativeHistoricalFallbackAndHostedDirect(t *testing.T) {
-	row := catalogThread{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}
+	row := catalogThread{Thread: threadindex.Thread{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}}
 	s, store := newThreadReferenceServer(t, []catalogThread{row})
 	record := createReferenceHostedRecord(t, store, threadReferenceUUID)
 	store.mu.Lock()

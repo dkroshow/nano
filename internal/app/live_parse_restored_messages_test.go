@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -36,7 +37,7 @@ func TestRestoredCodexMessagesKeepCanonicalTypes(t *testing.T) {
 // Enhanced shows user and agent messages only; Dev shows everything.
 func TestEnhancedDefaultShowsOnlyMessages(t *testing.T) {
 	for _, view := range []string{"enhanced", "dev"} {
-		query, err := parseTranscriptListQuery(httptest.NewRequest("GET", "/?view="+view, nil))
+		query, err := threadindex.ParseTranscriptListQuery(httptest.NewRequest("GET", "/?view="+view, nil))
 		if err != nil {
 			t.Fatal(err)
 		}

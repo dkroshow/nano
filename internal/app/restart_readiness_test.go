@@ -21,16 +21,17 @@ import (
 // fake app server, with its rollout indexed by a real catalog that the test
 // can pause. A paused catalog leaves the attachment's catch-up pending.
 type restartWindow struct {
-	s       *server
-	fake    *fakeAppServer
-	rec     attachmentRecord
-	catalog *threadCatalogService
-	path    string
+	s        *server
+	fake     *fakeAppServer
+	rec      attachmentRecord
+	catalog  *threadCatalogService
+	attached *pausedAttachedCatalog
+	t        *testing.T
+	path     string
 	// failReads makes every catalog read of the rollout fail; failedReads
 	// counts them. failSavedRows makes the settlement read of saved prompts
 	// fail.
-	failReads     atomic.Bool
-	failedReads   atomic.Int32
+	failReads     catalogReadFailure
 	failSavedRows atomic.Bool
 }
 
@@ -54,7 +55,7 @@ func newRestartWindow(t *testing.T) *restartWindow {
 	s, store := bootReattachServer(t, "", fake.WSURL())
 	rec := bootCodexRecord(t)
 	root := t.TempDir()
-	w := &restartWindow{s: s, fake: fake, path: filepath.Join(root, "rollout-"+rec.NativeThreadID+".jsonl")}
+	w := &restartWindow{s: s, fake: fake, t: t, path: filepath.Join(root, "rollout-"+rec.NativeThreadID+".jsonl")}
 	writeSettlementFile(t, w.path, fmt.Sprintf(`{"type":"session_meta","payload":{"id":%q,"cwd":"/disposable","timestamp":"2026-10-08T17:00:00Z"}}
 {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-earlier"}}
 {"type":"event_msg","payload":{"type":"user_message","message":"earlier prompt"}}
@@ -68,14 +69,6 @@ func newRestartWindow(t *testing.T) *restartWindow {
 	t.Cleanup(func() { historyStore.Close() })
 	w.catalog, err = newThreadCatalogService(ctx, historyStore, threadCatalogServiceOptions{
 		Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: root}},
-		projectSource: func(ctx context.Context, candidate history.SourceCandidate, stored history.StoredSource, exists bool,
-			header history.TranscriptCheckpoint, hasCheckpoint bool, at time.Time) (history.SourceProjection, *preparedTranscript, error) {
-			if w.failReads.Load() && candidate.Path == w.path {
-				w.failedReads.Add(1)
-				return history.SourceProjection{}, nil, errors.New("rollout read failed")
-			}
-			return w.catalog.projectSource(ctx, candidate, stored, exists, header, hasCheckpoint, at)
-		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,24 +79,43 @@ func newRestartWindow(t *testing.T) *restartWindow {
 		id, err := w.catalog.ResolveThreadReference(ctx, rec.NativeThreadID)
 		return err == nil && id != ""
 	})
-	s.catalog, s.catalogSources = failingSavedRows{w.catalog, &w.failSavedRows}, w.catalog
-	w.catalog.setTranscriptChanged(s.confirmDurableThread)
+	w.attached = &pausedAttachedCatalog{threadCatalogService: w.catalog}
+	w.failReads = catalogReadFailure{t: t, path: w.path, catalog: w.catalog}
+	t.Cleanup(func() { w.failReads.Store(false) })
+	s.catalog, s.catalogSources = failingSavedRows{w.catalog, &w.failSavedRows}, w.attached
+	w.catalog.SetTranscriptChanged(s.confirmDurableThread)
 	store.remember(rec)
 	seedBootAttachments(t, s)
 	w.rec = store.records()[0]
 	return w
 }
 
-// pause holds the catalog's worker, so no file is read until resume.
-func (w *restartWindow) pause() func() {
-	w.catalog.projectionMu.Lock()
-	var once bool
-	return func() {
-		if !once {
-			once = true
-			w.catalog.projectionMu.Unlock()
-		}
+// pause holds the readiness result consumed by the attachment while the real index may continue working.
+func (w *restartWindow) pause() func() { return w.attached.pause() }
+
+// A read failure is a real permission failure on this test's disposable rollout.
+type catalogReadFailure struct {
+	t       *testing.T
+	path    string
+	catalog *threadCatalogService
+}
+
+func (f *catalogReadFailure) Store(fail bool) {
+	mode := os.FileMode(0600)
+	if fail {
+		mode = 0
 	}
+	if err := os.Chmod(f.path, mode); err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		f.t.Fatal(err)
+	}
+	at := time.Now().Add(time.Second)
+	if err := os.Chtimes(f.path, at, at); err != nil {
+		f.t.Fatal(err)
+	}
+	f.catalog.RequestPathRefresh([]string{f.path})
 }
 
 // appendSaved writes rows Codex saved; a held file's watch queues the read.
@@ -230,6 +242,9 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				w.failReads.Store(test.failing)
 				w.failSavedRows.Store(test.unread)
 				w.fake.SetResumeTurns(json.RawMessage(resumeTurns))
+				if test.failing {
+					w.fake.SetResumeResult(map[string]any{"model": "gpt-test", "thread": map[string]any{"id": native, "cwd": "/tmp", "path": w.path, "turns": json.RawMessage(resumeTurns)}})
+				}
 				go w.s.reattachOnBoot()
 				waitForClaude(t, "the boot shell", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
@@ -259,6 +274,9 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				release = w.pause()
 				w.appendSaved(t, savedPromptTurn(hosted, "p1", turn))
 				w.fake.SetResumeTurns(json.RawMessage(resumeTurns))
+				if test.failing {
+					w.fake.SetResumeResult(map[string]any{"model": "gpt-test", "thread": map[string]any{"id": native, "cwd": "/tmp", "path": w.path, "turns": json.RawMessage(resumeTurns)}})
+				}
 				resumes = w.fake.ResumeCount()
 				w.fake.DropConnections()
 				waitForClaude(t, "the link loss", func() bool { return sess.Summary().Status == "reconnecting" })
@@ -293,20 +311,22 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 			case test.early:
 				// The pass that finds no file, then the one that indexes it,
 				// both land before readiness starts to wait.
-				var catchUp *attachedCatchUp
 				waitForClaude(t, "the pass that found no file", func() bool {
-					catchUp = w.catalog.attachedCatchUpFor(sess.ID())
-					return catchUp != nil && w.catalog.passedSince(catchUp.after)
+					status := w.catalog.IngestStatus()
+					return status.Attachments > 0 && status.Queued == 0 && status.InFlight == 0
 				})
 				writeRollout()
-				waitForClaude(t, "the written file indexed", func() bool {
-					select {
-					case <-catchUp.done:
-						return true
-					default:
-						return false
+				current := make(chan bool, 1)
+				go func() { current <- w.catalog.AwaitAttachedCurrent(sess.ID(), true, nil, ctx.Done()) }()
+				select {
+				case ok := <-current:
+					if !ok {
+						t.Fatal("written file failed catch-up")
 					}
-				})
+				case <-time.After(time.Second):
+					t.Fatal("written file did not catch up")
+				}
+
 				if status := sess.Summary().Status; status != "starting" {
 					t.Fatalf("the resume answer was processed before the file was indexed (status %s)", status)
 				}
@@ -332,9 +352,10 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				w.failSavedRows.Store(false) // the retry now reads them
 			}
 			if test.failing {
-				waitForClaude(t, "a failed catalog read", func() bool { return w.failedReads.Load() > 0 })
+				waitForClaude(t, "a failed catalog read", func() bool { return w.catalog.IngestStatus().FailingSources > 0 })
 				notReady("while the catalog cannot read the saved file")
 				w.failReads.Store(false) // the held-file retry now succeeds
+
 			}
 
 			waitForClaudeWithin(t, time.Minute, "the queued prompt sent", func() bool {

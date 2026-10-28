@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // liveTextOf recovers the application-owned loop at application composition sites.
@@ -38,7 +39,7 @@ func (s *liveTextStream) Take() [][]byte { return s.pane.take() }
 
 // RequestPane creates a pane for the validated request parameters.
 func (l *liveTextLoop) RequestPane(r *http.Request) (sessions.Pane, error) {
-	query, err := parseTranscriptListQuery(r)
+	query, err := threadindex.ParseTranscriptListQuery(r)
 	if err != nil {
 		return nil, err
 	}

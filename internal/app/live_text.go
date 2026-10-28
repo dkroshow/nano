@@ -645,7 +645,7 @@ func (l *liveTextLoop) checkUnsaved(key string) {
 	elapsed := time.Since(finishedAt)
 	label := ""
 	if l.srv != nil {
-		if catalog, ok := l.srv.catalog.(*threadCatalogService); ok && catalog.deferredTranscriptReread(threadID) {
+		if catalog, ok := l.srv.catalog.(interface{ DeferredTranscriptReread(string) bool }); ok && catalog.DeferredTranscriptReread(threadID) {
 			label = "deferred re-read"
 		}
 	}
