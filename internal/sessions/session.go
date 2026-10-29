@@ -56,24 +56,7 @@ type Session struct {
 	completedTurns   func(context.Context) (*coreturns.Store, error)
 	// savedTurn reads the saved status of one turn by exact native turn id,
 	// to settle a live turn whose terminal event was lost.
-	savedTurn    func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool)
-	savedPrompts SavedPromptReader
-	// savedPromptsIn reads saved user rows in a named native thread, for a
-	// Claude prompt whose exact native is not the current one; savedTurnFinal
-	// reads a decided saved turn's own final answer from the catalog.
-	savedPromptsIn savedPromptNativeReader
-	savedTurnFinal savedTurnFinalReader
-	// owedHint says this hosted thread may have Claude prompts that owe their
-	// member completion: set when settlement records one or an owed read finds
-	// one, cleared only when a member step reads none. It only gates the pass;
-	// the owed rows are the fact.
-	owedHint atomic.Bool
-	// memberDirty records a member step a trigger asked for while settleMu
-	// was held (requestMemberStep, releaseSettle).
-	memberDirty atomic.Bool
-	// memberCursor is the delivery sequence the next member step starts its
-	// owed read from. Guarded by settleMu.
-	memberCursor uint64
+	savedTurn func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool)
 	// settleWaiting names the delivered prompts a later saved commit may
 	// settle: each one this attachment delivered, and each whose saved turn
 	// was still open when settlement last ran. While it is empty, a saved
@@ -83,12 +66,6 @@ type Session struct {
 	// a turn ended without taking is held for the person, never sent again by
 	// itself: Stop means stop. Guarded by stateMu.
 	stoppedTurns map[string]bool
-	// discardedUnknown names the actions the person discarded before Nano had
-	// them, so an attempt still on its way is refused. Guarded by sendMu.
-	discardedUnknown map[string]bool
-	// settleMu runs one settlement pass at a time, so an older pass never
-	// restores a prompt a newer one settled.
-	settleMu sync.Mutex
 	// releaseHandshakeSlot gives back the boot handshake slot this session's
 	// provider attach holds (boot_reattach.go); nil when it holds none.
 	// savedCaughtUp: an attach of this session has waited for its saved
@@ -153,14 +130,7 @@ type Session struct {
 	// metadataName reads the names-store overlay with its provenance. It is
 	// separate from displayName, which is only the immediate pre-catalog UI
 	// value while a new native id has not yet been indexed.
-	metadataName func(provider, nativeThreadID string) (hostedstore.MetadataName, bool)
-
-	// Submitted prompts are idempotent operations keyed by the browser's
-	// clientActionId. sendAttempts carries their small hash-only journal across
-	// Nano restarts; sendOps lets duplicate requests join an in-flight send.
-	sendAttempts    Journal
-	queuedTurns     Queue
-	turns           *prompts.Store
+	metadataName    func(provider, nativeThreadID string) (hostedstore.MetadataName, bool)
 	core            *coresession.Session
 	coreMu          sync.RWMutex
 	coreOnce        sync.Once
@@ -168,7 +138,6 @@ type Session struct {
 	providerAdapter providers.Adapter
 	agentExecutions Executions
 	metadata        Metadata
-	appendUnread    func(string, string) string
 	// metadataDegraded means a newer observation failed to enter the canonical
 	// log. It never makes the last committed canonical record unreadable; API
 	// reads derive unavailable directly from control.sqlite instead.
@@ -187,19 +156,10 @@ type Session struct {
 	restartProgress      func(observability.RestartStep)
 	restartFailure       func(string)
 	catalogBackground    bool // hidden at boot: its catalog holds wait behind foreground ones, bounded
-	sendMu               sync.Mutex
-	sendOps              map[string]*turnSendOperation
-	// nanoStopping is the server's stop flag. Once it is set, no delivery
-	// starts; see claimAndStartTransactionalTurnLocked.
-	nanoStopping *atomic.Bool
-	// deliveryExpiries is the server's count of recent delivery deadline
-	// expiries per provider, shown in this session's runtime status. Nil-safe.
-	deliveryExpiries *DeliveryExpiries
 	// lastHumanPromptAt is the newest browser-path (human-origin) prompt on
 	// this attachment, a hard availability fact. Durable copy:
 	// hosted_threads.last_human_prompt_at via agentExecutions.noteHumanPrompt.
 	lastHumanPromptAt time.Time
-	turnSender        func(context.Context, string) (json.RawMessage, error) // test seam
 	// A daemon reconnect may begin while the previous thread handshake is still
 	// unwinding its response. Serialize the whole bind transaction per session so
 	// its identity, attachment record, and ready transition cannot interleave.
@@ -304,6 +264,8 @@ type Session struct {
 	// liveText is set for a provider switched to file-only transcripts.
 	liveText *LiveTextLoop
 	wire     Wire
+
+	delivery Delivery
 }
 
 // Wire owns the ordered raw event history, retained spool and event subscribers.
@@ -315,6 +277,51 @@ type Wire struct {
 	seq    int64
 	subs   map[chan wire.Event]struct{}
 	spool  *wireSpool
+}
+
+// Delivery owns prompt admission, delivery, settlement and interaction operations.
+type Delivery struct {
+	session      *Session
+	savedPrompts SavedPromptReader
+	// savedPromptsIn reads saved user rows in a named native thread, for a
+	// Claude prompt whose exact native is not the current one; savedTurnFinal
+	// reads a decided saved turn's own final answer from the catalog.
+	savedPromptsIn savedPromptNativeReader
+	savedTurnFinal savedTurnFinalReader
+	// owedHint says this hosted thread may have Claude prompts that owe their
+	// member completion: set when settlement records one or an owed read finds
+	// one, cleared only when a member step reads none. It only gates the pass;
+	// the owed rows are the fact.
+	owedHint atomic.Bool
+	// memberDirty records a member step a trigger asked for while settleMu
+	// was held (requestMemberStep, releaseSettle).
+	memberDirty atomic.Bool
+	// memberCursor is the delivery sequence the next member step starts its
+	// owed read from. Guarded by settleMu.
+	memberCursor uint64
+	// discardedUnknown names the actions the person discarded before Nano had
+	// them, so an attempt still on its way is refused. Guarded by sendMu.
+	discardedUnknown map[string]bool
+	// settleMu runs one settlement pass at a time, so an older pass never
+	// restores a prompt a newer one settled.
+	settleMu sync.Mutex
+
+	// Submitted prompts are idempotent operations keyed by the browser's
+	// clientActionId. sendAttempts carries their small hash-only journal across
+	// Nano restarts; sendOps lets duplicate requests join an in-flight send.
+	sendAttempts Journal
+	queuedTurns  Queue
+	turns        *prompts.Store
+	appendUnread func(string, string) string
+	sendMu       sync.Mutex
+	sendOps      map[string]*turnSendOperation
+	// nanoStopping is the server's stop flag. Once it is set, no delivery
+	// starts; see claimAndStartTransactionalTurnLocked.
+	nanoStopping *atomic.Bool
+	// deliveryExpiries is the server's count of recent delivery deadline
+	// expiries per provider, shown in this session's runtime status. Nil-safe.
+	deliveryExpiries *DeliveryExpiries
+	turnSender       func(context.Context, string) (json.RawMessage, error) // test seam
 }
 
 // Summary is the public snapshot of an attachment identity, lifecycle, and provider settings.

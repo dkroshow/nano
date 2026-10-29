@@ -129,7 +129,7 @@ func (sess *Session) setTurnActiveState(active bool, turnID string, startedAtMs 
 		sess.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 		if drain {
-			sess.kickQueuedTurnDrain()
+			sess.delivery.kickQueuedTurnDrain()
 		}
 	}
 }
@@ -164,7 +164,7 @@ func (sess *Session) publishRestoredTurnState(drain bool, status string) {
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
-		sess.kickQueuedTurnDrain()
+		sess.delivery.kickQueuedTurnDrain()
 	}
 }
 

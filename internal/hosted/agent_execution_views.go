@@ -206,7 +206,7 @@ func (s *ViewService) TurnView(rec ownedthreads.TurnRecord) TurnView {
 			view.NativeThreadID = threadID
 		}
 		if !threadvalues.TurnTerminal(rec.Status) {
-			for _, interaction := range runtime.PendingInteractionList() {
+			for _, interaction := range runtime.Delivery().PendingInteractionList() {
 				if interaction.TurnID == "" || rec.ProviderTurnID == "" || interaction.TurnID == rec.ProviderTurnID {
 					view.Interactions = append(view.Interactions, interaction)
 				}
@@ -214,7 +214,7 @@ func (s *ViewService) TurnView(rec ownedthreads.TurnRecord) TurnView {
 		}
 	}
 	if rec.Status == ownedthreads.AgentTurnQueued {
-		view.QueuePosition = s.sessionForHosted(rec.HostedThreadID).QueuePositionOr(rec.TransportActionID, s.Queue)
+		view.QueuePosition = s.sessionForHosted(rec.HostedThreadID).Delivery().QueuePositionOr(rec.TransportActionID, s.Queue)
 	}
 	if s.Metadata != nil && s.MetadataError == "" {
 		assignment, err := s.Metadata.OperationOrchestrationAssignment(rec.AssignmentEventID)

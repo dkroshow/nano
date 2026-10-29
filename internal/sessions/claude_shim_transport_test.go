@@ -973,7 +973,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	go func() {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn", strings.NewReader(`{"text":"deliver after replay","clientActionId":"during-replay"}`))
-		sess.HandleTurn(rec, req)
+		sess.delivery.HandleTurn(rec, req)
 		submitted <- rec
 	}()
 	// Admission publishes the owner snapshot before acknowledging the prompt,
@@ -990,7 +990,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
 		t.Fatalf("status = %d, body = %s, want durable queued operation", rec.Code, rec.Body.String())
 	}
-	queued, ok := sess.queuedTurns.Get("during-replay")
+	queued, ok := sess.delivery.queuedTurns.Get("during-replay")
 	if !ok || queued.Text != "deliver after replay" {
 		t.Fatalf("queued prompt = %+v, found = %v", queued, ok)
 	}
@@ -1009,7 +1009,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	}
 	defer result.claude.Close()
 	waitTurnSendDone(t, sess, "during-replay")
-	journal, ok := sess.sendAttempts.Get("during-replay")
+	journal, ok := sess.delivery.sendAttempts.Get("during-replay")
 	if !ok || journal.Status != sendAttemptAccepted {
 		t.Fatalf("send journal = %+v, found = %v, want accepted", journal, ok)
 	}

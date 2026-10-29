@@ -120,15 +120,15 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				})
 				t.Cleanup(func() {
 					close(release)
-					for _, done := range sess.InFlightDeliveries() {
+					for _, done := range sess.Delivery().InFlightDeliveries() {
 						<-done
 					} // finish before the stores close
 				})
 				saved := h.savedReader(sess)
 				h.setSavedReader(sess, func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-					go postTurn(t, sess, context.Background(), "later", "later prompt")
+					go postTurn(t, sess.Delivery(), context.Background(), "later", "later prompt")
 					for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
-						sending := len(sess.InFlightDeliveries()) > 0
+						sending := len(sess.Delivery().InFlightDeliveries()) > 0
 						if sending {
 							break
 						}

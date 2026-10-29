@@ -83,7 +83,7 @@ type turnSendOperation struct {
 }
 
 // HandleTurn accepts a prompt for this attachment.
-func (sess *Session) HandleTurn(w http.ResponseWriter, r *http.Request) {
+func (sess *Delivery) HandleTurn(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Text           string `json:"text"`
 		ClientActionID string `json:"clientActionId"`
@@ -104,7 +104,7 @@ func (sess *Session) HandleTurn(w http.ResponseWriter, r *http.Request) {
 	// request Nano already accepted must be answered idempotently even while the
 	// provider is still in its boot window.
 	if rec, ok := sess.sendAttempt(req.ClientActionID); ok {
-		if rec.Provider != sess.provider || rec.TextHash != TurnRequestHash(req.Text, req.NextTurn) {
+		if rec.Provider != sess.session.provider || rec.TextHash != TurnRequestHash(req.Text, req.NextTurn) {
 			writeTurnDeliveryFailure(w, http.StatusConflict, req.ClientActionID, "clientActionId does not match this message")
 			return
 		}
@@ -123,16 +123,16 @@ func (sess *Session) HandleTurn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	sess.stateMu.Lock()
-	status := sess.connectionStatusLocked()
-	sess.stateMu.Unlock()
+	sess.session.stateMu.Lock()
+	status := sess.session.connectionStatusLocked()
+	sess.session.stateMu.Unlock()
 	// Starting is a durable queueing state: provider setup and a boot replay
 	// can both take time, but neither makes the operator's submitted text
 	// invalid. queueOrStartTurnSend persists it and markTransportReady drains it.
-	if sess.rejectFailedReconnect(w) {
+	if sess.session.rejectFailedReconnect(w) {
 		return
 	}
-	recoveringCodex := sess.codex != nil && (status == "reconnecting" || status == "reconnect_parked")
+	recoveringCodex := sess.session.codex != nil && (status == "reconnecting" || status == "reconnect_parked")
 	if status != "ready" && status != "starting" && !recoveringCodex {
 		httpapi.WriteHTTPError(w, "session is "+status, http.StatusConflict)
 		return
@@ -152,7 +152,7 @@ func (sess *Session) HandleTurn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	sess.noteHumanPrompt(time.Now().UTC())
+	sess.session.noteHumanPrompt(time.Now().UTC())
 	op, responseStatus, reason, err := sess.QueueOrStartTurnSendPreparedPresentation(req.ClientActionID, delivered, delivered, TurnRequestHash(req.Text, req.NextTurn), turnOriginHuman, req.NextTurn)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusConflict)
@@ -241,10 +241,10 @@ func writeExistingAttempt(w http.ResponseWriter, rec prompts.SendAttempt, curren
 // registrations and durable writes. A journal row with no prompt record
 // predates the prompt store and has no state to show; a discarded or expired
 // prompt is hidden for good.
-func (sess *Session) HandleTurnDeliveryList(w http.ResponseWriter, r *http.Request) {
+func (sess *Delivery) HandleTurnDeliveryList(w http.ResponseWriter, r *http.Request) {
 	threadID := r.URL.Query().Get("thread")
 	if threadID == "" {
-		threadID = sess.ThreadID()
+		threadID = sess.session.ThreadID()
 	}
 	views := make([]prompts.View, 0)
 	if sess.sendAttempts == nil || sess.sendAttempts.TransactionStore() == nil || threadID == "" {
@@ -252,19 +252,19 @@ func (sess *Session) HandleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var journal prompts.JournalReader = sess.sendAttempts.TransactionStore()
-	if sess.metadata != nil {
-		if pool := sess.metadata.ReadPool(); pool != nil {
+	if sess.session.metadata != nil {
+		if pool := sess.session.metadata.ReadPool(); pool != nil {
 			journal = prompts.NewJournal(pool)
 		}
 	}
-	rows, err := journal.ListThreadAttempts(r.Context(), model.Provider(sess.provider), threadID)
+	rows, err := journal.ListThreadAttempts(r.Context(), model.Provider(sess.session.provider), threadID)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	texts := make(map[string]string)
 	if sess.queuedTurns != nil {
-		for _, queued := range sess.queuedTurns.ListThreadFrom(journal, sess.provider, threadID, sess.hostedThreadID) {
+		for _, queued := range sess.queuedTurns.ListThreadFrom(journal, sess.session.provider, threadID, sess.session.hostedThreadID) {
 			texts[queued.ClientActionID] = queued.Text
 		}
 	}
@@ -284,14 +284,14 @@ func (sess *Session) HandleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 // as the journal lists it. The browser's request watchdog is deliberately
 // shorter than the provider-delivery deadline, so this is how a tab whose
 // Answer was lost learns what Nano did with its send.
-func (sess *Session) HandleTurnDeliveryRead(w http.ResponseWriter, r *http.Request, actionID string) {
+func (sess *Delivery) HandleTurnDeliveryRead(w http.ResponseWriter, r *http.Request, actionID string) {
 	if actionID == "" || len(actionID) > 200 {
 		httpapi.WriteHTTPError(w, "clientActionId is required", http.StatusBadRequest)
 		return
 	}
 	if sess.turns != nil {
 		record, attempt, err := sess.turns.Get(r.Context(), actionID)
-		if err == nil && string(record.Provider) == sess.provider {
+		if err == nil && string(record.Provider) == sess.session.provider {
 			httpapi.WriteJSON(w, sess.promptView(record.Outbox, attempt))
 			return
 		}
@@ -300,7 +300,7 @@ func (sess *Session) HandleTurnDeliveryRead(w http.ResponseWriter, r *http.Reque
 }
 
 // HandleTurnDeliveryCancel cancels a queued prompt through the prompt owner.
-func (sess *Session) HandleTurnDeliveryCancel(w http.ResponseWriter, _ *http.Request, actionID string) {
+func (sess *Delivery) HandleTurnDeliveryCancel(w http.ResponseWriter, _ *http.Request, actionID string) {
 	sess.cancelQueuedTurn(w, actionID)
 }
 
@@ -425,28 +425,28 @@ func writePromptActionRefusal(w http.ResponseWriter, refusal *PromptActionRefuse
 	}})
 }
 
-func (sess *Session) promptView(entry prompts.OutboxEntry, attempt prompts.Attempt) prompts.View {
+func (sess *Delivery) promptView(entry prompts.OutboxEntry, attempt prompts.Attempt) prompts.View {
 	view := prompts.View{
 		ClientActionID: entry.ActionID, Provider: string(attempt.Provider), NativeThreadID: attempt.NativeThreadID,
 		TextHash: attempt.TextHash, State: string(entry.State), CreatedAt: attempt.CreatedAt, UpdatedAt: attempt.UpdatedAt,
 		ProviderTurnID: attempt.ProviderTurnID, CanonicalMessageID: attempt.CanonicalItemID, IdentityConflict: attempt.IdentityConflict,
 	}
-	view.AllowedActions, view.Label = PromptPresentation(sess.provider, entry)
+	view.AllowedActions, view.Label = PromptPresentation(sess.session.provider, entry)
 	return view
 }
 
-func (sess *Session) queueOrStartTurnSend(actionID, text string) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) queueOrStartTurnSend(actionID, text string) (*turnSendOperation, int, string, error) {
 	return sess.queueOrStartTurnSendOrigin(actionID, text, turnOriginHuman)
 }
 
 // queueOrStartTurnSendOrigin is the origin-aware entry point. The browser
 // path submits human-origin prompts; the agent API submits agent- or
 // system-origin prompts. Origin decides queue class (queued_turn_store.go).
-func (sess *Session) queueOrStartTurnSendOrigin(actionID, text, origin string) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) queueOrStartTurnSendOrigin(actionID, text, origin string) (*turnSendOperation, int, string, error) {
 	return sess.queueOrStartTurnSendPrepared(actionID, text, SendTextHash(text), origin)
 }
 
-func (sess *Session) queueOrStartTurnSendPrepared(actionID, text, requestHash, origin string) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) queueOrStartTurnSendPrepared(actionID, text, requestHash, origin string) (*turnSendOperation, int, string, error) {
 	return sess.QueueOrStartTurnSendPreparedPresentation(actionID, text, text, requestHash, origin, false)
 }
 
@@ -454,26 +454,26 @@ func (sess *Session) queueOrStartTurnSendPrepared(actionID, text, requestHash, o
 // from Nano's browser row. Agent attribution and inbox markers belong only to
 // the provider transport; the durable caller prompt remains the presentation.
 // nextTurn holds an ordinary prompt until the running turn ends.
-func (sess *Session) QueueOrStartTurnSendPreparedPresentation(actionID, text, presentationText, requestHash, origin string, nextTurn bool) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) QueueOrStartTurnSendPreparedPresentation(actionID, text, presentationText, requestHash, origin string, nextTurn bool) (*turnSendOperation, int, string, error) {
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
 	return sess.QueueOrStartTurnSendLockedPreparedPresentation(actionID, text, presentationText, requestHash, origin, nextTurn)
 }
 
-func (sess *Session) queueOrStartTurnSendLocked(actionID, text string) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) queueOrStartTurnSendLocked(actionID, text string) (*turnSendOperation, int, string, error) {
 	return sess.queueOrStartTurnSendLockedOrigin(actionID, text, turnOriginHuman)
 }
 
-func (sess *Session) queueOrStartTurnSendLockedOrigin(actionID, text, origin string) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) queueOrStartTurnSendLockedOrigin(actionID, text, origin string) (*turnSendOperation, int, string, error) {
 	return sess.queueOrStartTurnSendLockedPrepared(actionID, text, SendTextHash(text), origin)
 }
 
-func (sess *Session) queueOrStartTurnSendLockedPrepared(actionID, text, requestHash, origin string) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) queueOrStartTurnSendLockedPrepared(actionID, text, requestHash, origin string) (*turnSendOperation, int, string, error) {
 	return sess.QueueOrStartTurnSendLockedPreparedPresentation(actionID, text, text, requestHash, origin, false)
 }
 
 // QueueOrStartTurnSendLockedPreparedPresentation submits a prepared prompt while the caller holds the idle-delivery fence.
-func (sess *Session) QueueOrStartTurnSendLockedPreparedPresentation(actionID, text, presentationText, requestHash, origin string, nextTurn bool) (*turnSendOperation, int, string, error) {
+func (sess *Delivery) QueueOrStartTurnSendLockedPreparedPresentation(actionID, text, presentationText, requestHash, origin string, nextTurn bool) (*turnSendOperation, int, string, error) {
 	if sess.discardedUnknown[actionID] {
 		// The person discarded it before this attempt reached Nano.
 		return nil, http.StatusConflict, "discarded", nil
@@ -495,11 +495,11 @@ func (sess *Session) QueueOrStartTurnSendLockedPreparedPresentation(actionID, te
 
 // submissionPermissionLocked is whether this session admits a prompt now: the
 // lifecycle's submission permission, or the reason it does not.
-func (sess *Session) submissionPermissionLocked() (lifecycle.Submission, string) {
-	sess.stateMu.Lock()
-	status, permission := sess.connectionStatusLocked(), sess.lifecyclePermissionLocked()
-	activationPending := sess.recoveryActivationPending
-	sess.stateMu.Unlock()
+func (sess *Delivery) submissionPermissionLocked() (lifecycle.Submission, string) {
+	sess.session.stateMu.Lock()
+	status, permission := sess.session.connectionStatusLocked(), sess.session.lifecyclePermissionLocked()
+	activationPending := sess.session.recoveryActivationPending
+	sess.session.stateMu.Unlock()
 	switch {
 	case activationPending:
 		return permission.Submit, "native_recovery_not_activated"
@@ -511,12 +511,12 @@ func (sess *Session) submissionPermissionLocked() (lifecycle.Submission, string)
 	return permission.Submit, ""
 }
 
-func (sess *Session) admitTransactionalTurnLocked(actionID, text, presentationText, requestHash, origin string, nextTurn bool, permission lifecycle.Submission) (*turnSendOperation, int, string, error) {
-	if err := sess.ensureDeliveryCoordinator(); err != nil {
+func (sess *Delivery) admitTransactionalTurnLocked(actionID, text, presentationText, requestHash, origin string, nextTurn bool, permission lifecycle.Submission) (*turnSendOperation, int, string, error) {
+	if err := sess.session.ensureDeliveryCoordinator(); err != nil {
 		return nil, 0, "", err
 	}
-	result, err := sess.core.Admit(context.Background(), prompts.Submission{
-		HostedThreadID: sess.hostedThreadID, Provider: model.Provider(sess.provider), NativeThreadID: sess.ThreadID(),
+	result, err := sess.session.core.Admit(context.Background(), prompts.Submission{
+		HostedThreadID: sess.session.hostedThreadID, Provider: model.Provider(sess.session.provider), NativeThreadID: sess.session.ThreadID(),
 		ActionID: actionID, ProviderText: text, PresentationText: presentationText,
 		TextHash: SendTextHash(text), RequestHash: requestHash, Origin: prompts.Origin(origin), NextTurn: nextTurn,
 	}, permission)
@@ -536,22 +536,22 @@ func (sess *Session) admitTransactionalTurnLocked(actionID, text, presentationTe
 // startAdmittedTurnLocked starts delivery of a prompt just stored as queued,
 // as the session's permission allows: now, into the running turn, or for the
 // next turn.
-func (sess *Session) startAdmittedTurnLocked(actionID string, permission lifecycle.Submission) (*turnSendOperation, int, string, error) {
-	if permission == lifecycle.QueuePrompt && !sess.CorePromptInFlight() {
+func (sess *Delivery) startAdmittedTurnLocked(actionID string, permission lifecycle.Submission) (*turnSendOperation, int, string, error) {
+	if permission == lifecycle.QueuePrompt && !sess.session.CorePromptInFlight() {
 		if op, status, reason, err := sess.claimAndStartTransactionalTurnLocked(actionID, false, true); err != nil || op != nil {
 			return op, status, reason, err
 		}
 	}
-	if permission != lifecycle.SendNow || sess.CorePromptInFlight() {
-		if sess.codex != nil {
-			sess.codex.requestSessionRecovery(sess)
+	if permission != lifecycle.SendNow || sess.session.CorePromptInFlight() {
+		if sess.session.codex != nil {
+			sess.session.codex.requestSessionRecovery(sess.session)
 		}
 		return nil, http.StatusAccepted, "queued_for_next_turn", nil
 	}
 	return sess.claimAndStartTransactionalTurnLocked(actionID, false, false)
 }
 
-func (sess *Session) nanoIsStopping() bool {
+func (sess *Delivery) nanoIsStopping() bool {
 	return sess.nanoStopping != nil && sess.nanoStopping.Load()
 }
 
@@ -569,8 +569,8 @@ func turnRecordHTTPStatus(record prompts.Record) int {
 // claimAndStartTransactionalTurnLocked claims the next prompt and starts its
 // delivery. With runningTurn it claims only a prompt that may join the turn
 // running now, and names that turn so the provider refuses any other.
-func (sess *Session) claimAndStartTransactionalTurnLocked(requestActionID string, queuedDelivery, runningTurn bool) (*turnSendOperation, int, string, error) {
-	if err := sess.ensureDeliveryCoordinator(); err != nil {
+func (sess *Delivery) claimAndStartTransactionalTurnLocked(requestActionID string, queuedDelivery, runningTurn bool) (*turnSendOperation, int, string, error) {
+	if err := sess.session.ensureDeliveryCoordinator(); err != nil {
 		return nil, 0, "", err
 	}
 	// A stopping Nano starts no delivery its exit could cut off. The prompt
@@ -578,15 +578,15 @@ func (sess *Session) claimAndStartTransactionalTurnLocked(requestActionID string
 	if sess.nanoIsStopping() {
 		return nil, http.StatusAccepted, "queued_for_next_turn", nil
 	}
-	sess.stateMu.Lock()
-	epoch := sess.lifecycleState.Epoch
-	sess.stateMu.Unlock()
-	claim, runningTurnID := sess.core.Claim, ""
+	sess.session.stateMu.Lock()
+	epoch := sess.session.lifecycleState.Epoch
+	sess.session.stateMu.Unlock()
+	claim, runningTurnID := sess.session.core.Claim, ""
 	if runningTurn {
-		if _, runningTurnID = sess.activeTurn(); runningTurnID == "" {
+		if _, runningTurnID = sess.session.activeTurn(); runningTurnID == "" {
 			return nil, http.StatusAccepted, "queued_for_next_turn", nil
 		}
-		claim = sess.core.ClaimRunningTurn
+		claim = sess.session.core.ClaimRunningTurn
 	}
 	record, claimed, err := claim(context.Background(), epoch)
 	if err != nil {
@@ -602,7 +602,7 @@ func (sess *Session) claimAndStartTransactionalTurnLocked(requestActionID string
 	return op, 0, "", nil
 }
 
-func (sess *Session) startTransactionalTurnLocked(record prompts.Record, wasQueued bool, runningTurnID string) *turnSendOperation {
+func (sess *Delivery) startTransactionalTurnLocked(record prompts.Record, wasQueued bool, runningTurnID string) *turnSendOperation {
 	if sess.sendOps == nil {
 		sess.sendOps = map[string]*turnSendOperation{}
 	}
@@ -629,18 +629,18 @@ func (sess *Session) startTransactionalTurnLocked(record prompts.Record, wasQueu
 	return op
 }
 
-func (sess *Session) runTransactionalTurnSend(op *turnSendOperation, claimed prompts.Record) {
+func (sess *Delivery) runTransactionalTurnSend(op *turnSendOperation, claimed prompts.Record) {
 	ctx, cancel := context.WithTimeout(context.Background(), turnDeliveryTimeout)
 	defer cancel()
-	scope := sess.deliveryScope()
+	scope := sess.session.deliveryScope()
 	if op.runningTurnID != "" {
 		scope.NativeTurnID = &op.runningTurnID
 	}
-	codex := sess.provider == string(model.ProviderCodex)
+	codex := sess.session.provider == string(model.ProviderCodex)
 	if codex {
-		sess.expectCodexEcho(codexEchoWait{actionID: op.actionID, claimToken: op.claimToken, claimEpoch: op.attachmentEpoch, scope: scope})
+		sess.session.expectCodexEcho(codexEchoWait{actionID: op.actionID, claimToken: op.claimToken, claimEpoch: op.attachmentEpoch, scope: scope})
 	}
-	delivery, deliveryErr := sess.core.Deliver(ctx, claimed, scope, sess.deliverySettings(), op.wasQueued)
+	delivery, deliveryErr := sess.session.core.Deliver(ctx, claimed, scope, sess.session.deliverySettings(), op.wasQueued)
 	providerResult := delivery.Provider
 	result := providerResult.Receipt
 	nativeMissing := providerResult.FailureCode == codexNativeMissing
@@ -686,7 +686,7 @@ func (sess *Session) runTransactionalTurnSend(op *turnSendOperation, claimed pro
 		}
 	}
 	if codex {
-		sess.deliveredCodexEcho(op.actionID, delivery.Record.Outbox.State == prompts.Uncertain && delivery.Record.Outbox.Binding == nil)
+		sess.session.deliveredCodexEcho(op.actionID, delivery.Record.Outbox.State == prompts.Uncertain && delivery.Record.Outbox.Binding == nil)
 	}
 	// Any attempt may have reached the provider; a pass drops what cannot settle.
 	sess.awaitSavedPrompt(op.actionID)
@@ -694,25 +694,25 @@ func (sess *Session) runTransactionalTurnSend(op *turnSendOperation, claimed pro
 	turnID := providerTurnIDFromStart(result)
 	if accepted {
 		if op.runningTurnID == "" {
-			sess.acceptProviderTurn(turnID)
+			sess.session.acceptProviderTurn(turnID)
 		}
-		sess.stateMu.Lock()
-		sess.codexZeroTurnEligible = false
-		sess.stateMu.Unlock()
-		if observe := lifecycleProviders[sess.provider].accepted; observe != nil && op.runningTurnID == "" {
-			observe(sess)
+		sess.session.stateMu.Lock()
+		sess.session.codexZeroTurnEligible = false
+		sess.session.stateMu.Unlock()
+		if observe := lifecycleProviders[sess.session.provider].accepted; observe != nil && op.runningTurnID == "" {
+			observe(sess.session)
 		}
 	}
 	definiteFailure := delivery.Record.Outbox.State == prompts.Refused || delivery.Record.Outbox.State == prompts.Parked
 	if !requeued {
 		sess.recordAgentTurnDelivery(op.actionID, result, deliveryErr, definiteFailure)
 	}
-	if release := lifecycleProviders[sess.provider].release; release != nil {
-		release(sess)
+	if release := lifecycleProviders[sess.session.provider].release; release != nil {
+		release(sess.session)
 	}
 	if nativeMissing {
-		if err := sess.containCodexNativeMissing(deliveryErr.Error()); err != nil {
-			log.Printf("settle native-missing session %s: %v", sess.id, err)
+		if err := sess.session.containCodexNativeMissing(deliveryErr.Error()); err != nil {
+			log.Printf("settle native-missing session %s: %v", sess.session.id, err)
 		}
 	}
 	close(op.done)
@@ -722,31 +722,31 @@ func (sess *Session) runTransactionalTurnSend(op *turnSendOperation, claimed pro
 	sess.SettleWaitingPrompts(context.Background())
 }
 
-func (sess *Session) publishTransactionalOutbox(entry prompts.OutboxEntry) {
-	sess.PublishLiveOutbox(entry)
+func (sess *Delivery) publishTransactionalOutbox(entry prompts.OutboxEntry) {
+	sess.session.PublishLiveOutbox(entry)
 }
 
 // restoreSubmissionOutbox recreates the presentation rows owned by unsettled
 // prompt records, after settling those the saved transcript already proves.
-func (sess *Session) restoreSubmissionOutbox() {
+func (sess *Delivery) restoreSubmissionOutbox() {
 	sess.restoreQueuedTurnBootDiagnostics()
-	if err := sess.ensureDeliveryCoordinator(); err != nil {
-		log.Printf("restore transactional turn coordinator %s: %v", sess.hostedThreadID, err)
+	if err := sess.session.ensureDeliveryCoordinator(); err != nil {
+		log.Printf("restore transactional turn coordinator %s: %v", sess.session.hostedThreadID, err)
 		return
 	}
 	settleCtx, cancel := context.WithTimeout(context.Background(), savedPromptSettleTimeout)
 	sess.settleSavedPrompts(settleCtx)
 	cancel()
-	sess.stateMu.Lock()
-	epoch := sess.lifecycleState.Epoch
-	sess.stateMu.Unlock()
-	restored, err := sess.core.Restore(context.Background(), epoch)
+	sess.session.stateMu.Lock()
+	epoch := sess.session.lifecycleState.Epoch
+	sess.session.stateMu.Unlock()
+	restored, err := sess.session.core.Restore(context.Background(), epoch)
 	if err != nil {
-		log.Printf("restore transactional turn outbox %s: %v", sess.hostedThreadID, err)
+		log.Printf("restore transactional turn outbox %s: %v", sess.session.hostedThreadID, err)
 		return
 	}
 	for _, diagnostic := range restored.Diagnostics {
-		log.Printf("restore transactional turn %s: %s", sess.hostedThreadID, diagnostic.Code)
+		log.Printf("restore transactional turn %s: %s", sess.session.hostedThreadID, diagnostic.Code)
 	}
 }
 
@@ -756,22 +756,22 @@ const savedPromptSettleTimeout = 10 * time.Second
 
 // awaitSavedPrompt marks a delivered prompt for settlement on a later saved
 // commit.
-func (sess *Session) awaitSavedPrompt(actionID string) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	if sess.settleWaiting == nil {
-		sess.settleWaiting = make(map[string]bool)
+func (sess *Delivery) awaitSavedPrompt(actionID string) {
+	sess.session.stateMu.Lock()
+	defer sess.session.stateMu.Unlock()
+	if sess.session.settleWaiting == nil {
+		sess.session.settleWaiting = make(map[string]bool)
 	}
-	sess.settleWaiting[actionID] = true
+	sess.session.settleWaiting[actionID] = true
 }
 
 // SettleWaitingPrompts settles saved prompts after a saved commit, but only
 // while a delivered prompt waits for its saved row or a Claude prompt still
 // owes its member completion: a thread with neither reads nothing.
-func (sess *Session) SettleWaitingPrompts(ctx context.Context) {
-	sess.stateMu.Lock()
-	waiting := len(sess.settleWaiting) > 0
-	sess.stateMu.Unlock()
+func (sess *Delivery) SettleWaitingPrompts(ctx context.Context) {
+	sess.session.stateMu.Lock()
+	waiting := len(sess.session.settleWaiting) > 0
+	sess.session.stateMu.Unlock()
 	// A Claude member that still owes its completion also needs the pass:
 	// its own saved commit may have been the last ordinary waiter's.
 	if !waiting && !sess.owedHint.Load() {
@@ -782,9 +782,9 @@ func (sess *Session) SettleWaitingPrompts(ctx context.Context) {
 	// Commits come often while a turn runs; log only the ones that settle.
 	outcomes, err := sess.SettlePrompts(ctx)
 	if err != nil {
-		log.Printf("settle saved prompts %s: %v", sess.hostedThreadID, err)
+		log.Printf("settle saved prompts %s: %v", sess.session.hostedThreadID, err)
 	} else if outcomes[transcript.SettlementSettled] > 0 {
-		log.Printf("settle saved prompts %s: outcomes=%v", sess.hostedThreadID, outcomes)
+		log.Printf("settle saved prompts %s: outcomes=%v", sess.session.hostedThreadID, outcomes)
 	}
 }
 
@@ -794,12 +794,12 @@ func (sess *Session) SettleWaitingPrompts(ctx context.Context) {
 // be proven, for any reason, stays published. It reads only this thread's
 // saved rows that carry those identities, and logs counts, never text. The
 // error is why the saved rows could not be read.
-func (sess *Session) settleSavedPrompts(ctx context.Context) error {
+func (sess *Delivery) settleSavedPrompts(ctx context.Context) error {
 	outcomes, err := sess.SettlePrompts(ctx)
 	if err != nil {
-		log.Printf("settle saved prompts %s: %v", sess.hostedThreadID, err)
+		log.Printf("settle saved prompts %s: %v", sess.session.hostedThreadID, err)
 	} else if outcomes != nil {
-		log.Printf("settle saved prompts %s: outcomes=%v", sess.hostedThreadID, outcomes)
+		log.Printf("settle saved prompts %s: outcomes=%v", sess.session.hostedThreadID, outcomes)
 	}
 	return err
 }
@@ -813,27 +813,27 @@ func (sess *Session) settleSavedPrompts(ctx context.Context) error {
 // one that predates the attachment, waits for the next attach instead, so it
 // adds no saved commit of its own; while any Claude prompt owes its member
 // completion, though, every saved commit runs a whole pass, which reads it too.
-func (sess *Session) SettlePrompts(ctx context.Context) (map[transcript.Settlement]int, error) {
+func (sess *Delivery) SettlePrompts(ctx context.Context) (map[transcript.Settlement]int, error) {
 	if sess == nil || sess.turns == nil || sess.savedPrompts == nil {
 		return nil, nil
 	}
 	sess.settleMu.Lock()
 	defer sess.releaseSettle()
-	sess.stateMu.Lock()
-	waiting := maps.Clone(sess.settleWaiting)
-	sess.stateMu.Unlock()
+	sess.session.stateMu.Lock()
+	waiting := maps.Clone(sess.session.settleWaiting)
+	sess.session.stateMu.Unlock()
 	savedIn := func(ctx context.Context, native string, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-		if native == sess.ThreadID() || sess.savedPromptsIn == nil {
+		if native == sess.session.ThreadID() || sess.savedPromptsIn == nil {
 			return sess.savedPrompts(ctx, keys)
 		}
 		return sess.savedPromptsIn(ctx, native, keys)
 	}
 	var resolve func(string) string
-	if sess.provider == string(model.ProviderClaude) {
+	if sess.session.provider == string(model.ProviderClaude) {
 		resolve = sess.claudeResolver(ctx)
 	}
-	live := &liveSettlement{watched: waiting, sess: sess}
-	results, err := settleThreadPromptsResolving(ctx, sess.turns, savedIn, sess.hostedThreadID, sess.provider, sess.ThreadID(), resolve, live)
+	live := &liveSettlement{watched: waiting, sess: sess.session}
+	results, err := settleThreadPromptsResolving(ctx, sess.turns, savedIn, sess.session.hostedThreadID, sess.session.provider, sess.session.ThreadID(), resolve, live)
 	if err != nil {
 		return nil, err
 	}
@@ -851,7 +851,7 @@ func (sess *Session) SettlePrompts(ctx context.Context) (map[transcript.Settleme
 	if outcomes[settlementResent] > 0 {
 		sess.kickQueuedTurnDrain() // a resent prompt waits for the next turn
 	}
-	claude := sess.provider == string(model.ProviderClaude)
+	claude := sess.session.provider == string(model.ProviderClaude)
 	for actionID, outcome := range results {
 		if outcome != transcript.SettlementSettled {
 			continue
@@ -955,7 +955,7 @@ func settleThreadPromptsResolving(ctx context.Context, store *prompts.Store, sav
 				break
 			}
 			outcome = settlementResent
-			live.sess.publishResent(retired, resent)
+			live.sess.delivery.publishResent(retired, resent)
 		case outcome == transcript.SettlementNotSaved && record.Outbox.State == prompts.Accepted &&
 			(live.turnEnded(ctx, record) || claudeTakenAfter(provider, record, records, results, current, resolve)):
 			held, ok, err := store.HoldUntaken(ctx, entry.ActionID, record.Revision, prompts.ReasonTurnEnded)
@@ -1095,7 +1095,7 @@ func (l *liveSettlement) turnEnded(ctx context.Context, record prompts.Record) b
 // before the interrupt that produces the evidence.
 func (l *liveSettlement) stoppedTurn(record prompts.Record) bool {
 	binding := record.Outbox.Binding
-	return l != nil && binding != nil && binding.Scope.NativeTurnID != nil && l.sess.turnStopped(*binding.Scope.NativeTurnID)
+	return l != nil && binding != nil && binding.Scope.NativeTurnID != nil && l.sess.delivery.turnStopped(*binding.Scope.NativeTurnID)
 }
 
 // claudeTakenAfter reports a Claude prompt Claude never took: no saved row
@@ -1150,43 +1150,43 @@ func claudeHandedAt(turnID string) (spool string, sequence int64, ok bool) {
 
 // publishResent shows a prompt resent for the next turn in place of the one
 // it retires, both in one live-text change.
-func (sess *Session) publishResent(retired, resent prompts.Record) {
-	sess.PublishLiveOutbox(retired.Outbox, resent.Outbox)
+func (sess *Delivery) publishResent(retired, resent prompts.Record) {
+	sess.session.PublishLiveOutbox(retired.Outbox, resent.Outbox)
 }
 
 // keepWaiting records one settlement pass: of the prompts it saw waiting,
 // only those it keeps still wait, and each kept prompt waits. A prompt
 // delivered during the pass keeps waiting.
-func (sess *Session) keepWaiting(seen, keep map[string]bool) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
+func (sess *Delivery) keepWaiting(seen, keep map[string]bool) {
+	sess.session.stateMu.Lock()
+	defer sess.session.stateMu.Unlock()
 	for actionID := range seen {
 		if !keep[actionID] {
-			delete(sess.settleWaiting, actionID)
+			delete(sess.session.settleWaiting, actionID)
 		}
 	}
 	for actionID := range keep {
-		if sess.settleWaiting == nil {
-			sess.settleWaiting = make(map[string]bool)
+		if sess.session.settleWaiting == nil {
+			sess.session.settleWaiting = make(map[string]bool)
 		}
-		sess.settleWaiting[actionID] = true
+		sess.session.settleWaiting[actionID] = true
 	}
 	// With nothing waiting, no prompt of an ended stopped turn can be resent;
 	// the turn still running may yet take a prompt sent after its Stop.
-	if len(sess.settleWaiting) == 0 {
-		for turnID := range sess.stoppedTurns {
-			if turnID != sess.turnID || !sess.workActiveLocked() {
-				delete(sess.stoppedTurns, turnID)
+	if len(sess.session.settleWaiting) == 0 {
+		for turnID := range sess.session.stoppedTurns {
+			if turnID != sess.session.turnID || !sess.session.workActiveLocked() {
+				delete(sess.session.stoppedTurns, turnID)
 			}
 		}
 	}
 }
 
 // turnStopped reports whether the operator stopped this native turn.
-func (sess *Session) turnStopped(nativeTurnID string) bool {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.stoppedTurns[nativeTurnID]
+func (sess *Delivery) turnStopped(nativeTurnID string) bool {
+	sess.session.stateMu.Lock()
+	defer sess.session.stateMu.Unlock()
+	return sess.session.stoppedTurns[nativeTurnID]
 }
 
 // ClaudeSettlementEntry gives a Claude prompt its exact saved identity: the
@@ -1258,17 +1258,17 @@ func claudeSubmissionBinding(entry prompts.OutboxEntry, nativeThreadID string) p
 // landed in: the resolution the claim owner recorded, else this session's own
 // child when it ran under that handle and announced the current native. Any
 // other handle is unresolved, and its prompts wait.
-func (sess *Session) resolveClaudeHandle(ctx context.Context, handle string) string {
-	if sess.metadata != nil {
-		native, err := sess.metadata.ResolvedNative(ctx, sess.hostedThreadID, sess.provider, handle)
+func (sess *Delivery) resolveClaudeHandle(ctx context.Context, handle string) string {
+	if sess.session.metadata != nil {
+		native, err := sess.session.metadata.ResolvedNative(ctx, sess.session.hostedThreadID, sess.session.provider, handle)
 		if err != nil {
-			log.Printf("resolve provisional %s of %s: %v", handle, sess.hostedThreadID, err)
+			log.Printf("resolve provisional %s of %s: %v", handle, sess.session.hostedThreadID, err)
 		} else if native != "" {
 			return native
 		}
 	}
-	current := sess.ThreadID()
-	if c := sess.claude; c != nil && c.tr != nil && c.initSeen.Load() && current != "" && !ClaudeNativeIDProvisional(current) {
+	current := sess.session.ThreadID()
+	if c := sess.session.claude; c != nil && c.tr != nil && c.initSeen.Load() && current != "" && !ClaudeNativeIDProvisional(current) {
 		if rec, ok := c.tr.durableAttachment("", ""); ok && rec.ShimSessionID == handle {
 			return current
 		}
@@ -1279,7 +1279,7 @@ func (sess *Session) resolveClaudeHandle(ctx context.Context, handle string) str
 // releaseSettle ends a hold of settleMu. A member step a trigger asked for
 // while the lock was held (memberDirty) runs after the release, under a new
 // hold, so no trigger is lost and none waits on the lock.
-func (sess *Session) releaseSettle() {
+func (sess *Delivery) releaseSettle() {
 	for {
 		sess.settleMu.Unlock()
 		if !sess.memberDirty.Load() || !sess.settleMu.TryLock() {
@@ -1292,7 +1292,7 @@ func (sess *Session) releaseSettle() {
 // RequestMemberStep asks for a member step without waiting for settleMu: the
 // request is recorded first, so a holder that releases after a failed TryLock
 // here still sees it.
-func (sess *Session) RequestMemberStep() {
+func (sess *Delivery) RequestMemberStep() {
 	sess.memberDirty.Store(true)
 	if sess.settleMu.TryLock() {
 		sess.runMemberStepHeld()
@@ -1304,51 +1304,51 @@ func (sess *Session) RequestMemberStep() {
 // cleared before the step reads anything, so a trigger during the step asks
 // again; a step that stops on an error or its deadline leaves its owed
 // prompts for the next trigger.
-func (sess *Session) runMemberStepHeld() {
+func (sess *Delivery) runMemberStepHeld() {
 	sess.memberDirty.Store(false)
 	ctx, cancel := context.WithTimeout(context.Background(), savedPromptSettleTimeout)
 	defer cancel()
 	sess.memberStepLocked(ctx)
 }
 
-func (sess *Session) restoreQueuedTurnBootDiagnostics() {
-	if sess == nil || sess.projection == nil || sess.queuedTurns == nil {
+func (sess *Delivery) restoreQueuedTurnBootDiagnostics() {
+	if sess == nil || sess.session.projection == nil || sess.queuedTurns == nil {
 		return
 	}
-	for _, parked := range sess.queuedTurns.BootParksFor(sess.provider, sess.ThreadID(), sess.hostedThreadID) {
+	for _, parked := range sess.queuedTurns.BootParksFor(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID) {
 		diagnostic := observability.ThreadDiagnostic{
 			Code:     "boot_incomplete_outbox",
 			Message:  "durable queued turn was parked because required fields are missing: " + strings.Join(parked.Missing, ","),
 			Source:   "turn-store-boot",
 			ActionID: parked.ActionID,
 		}
-		sess.projection.RecordDiagnostic(diagnostic, true)
+		sess.session.projection.RecordDiagnostic(diagnostic, true)
 	}
 }
 
-func (sess *Session) kickQueuedTurnDrain() {
+func (sess *Delivery) kickQueuedTurnDrain() {
 	if sess.queuedTurns != nil {
 		go sess.drainQueuedTurn()
 	}
 }
 
-func (sess *Session) drainQueuedTurn() {
-	if blocked := lifecycleProviders[sess.provider].ingressBlocked; blocked != nil && blocked(sess) {
+func (sess *Delivery) drainQueuedTurn() {
+	if blocked := lifecycleProviders[sess.session.provider].ingressBlocked; blocked != nil && blocked(sess.session) {
 		return
 	}
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
-	sess.stateMu.Lock()
-	permission := sess.lifecyclePermissionLocked()
-	sess.stateMu.Unlock()
+	sess.session.stateMu.Lock()
+	permission := sess.session.lifecyclePermissionLocked()
+	sess.session.stateMu.Unlock()
 	runningTurn := permission.Submit == lifecycle.QueuePrompt
-	if permission.Submit != lifecycle.SendNow && !runningTurn || sess.CorePromptInFlight() {
+	if permission.Submit != lifecycle.SendNow && !runningTurn || sess.session.CorePromptInFlight() {
 		return
 	}
 	if sess.queuedTurns == nil {
 		return
 	}
-	queued, ok := sess.queuedTurns.First(sess.provider, sess.ThreadID(), sess.hostedThreadID)
+	queued, ok := sess.queuedTurns.First(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID)
 	if !ok {
 		return
 	}
@@ -1357,7 +1357,7 @@ func (sess *Session) drainQueuedTurn() {
 	}
 }
 
-func (sess *Session) cancelQueuedTurn(w http.ResponseWriter, actionID string) {
+func (sess *Delivery) cancelQueuedTurn(w http.ResponseWriter, actionID string) {
 	if actionID == "" || len(actionID) > 200 {
 		httpapi.WriteHTTPError(w, "clientActionId is required", http.StatusBadRequest)
 		return
@@ -1382,10 +1382,10 @@ func (sess *Session) cancelQueuedTurn(w http.ResponseWriter, actionID string) {
 }
 
 // CancelQueuedTurnAction discards an eligible queued prompt and its operation atomically.
-func (sess *Session) CancelQueuedTurnAction(actionID, by string) (prompts.QueuedTurn, error) {
+func (sess *Delivery) CancelQueuedTurnAction(actionID, by string) (prompts.QueuedTurn, error) {
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
-	queued, err := CancelQueuedTurnStores(sess.queuedTurns, sess.agentExecutions, actionID, by)
+	queued, err := CancelQueuedTurnStores(sess.queuedTurns, sess.session.agentExecutions, actionID, by)
 	if errors.Is(err, ErrQueuedTurnNotFound) {
 		// An attempt may still be on its way; it must not land after this.
 		if sess.discardedUnknown == nil {
@@ -1399,7 +1399,7 @@ func (sess *Session) CancelQueuedTurnAction(actionID, by string) (prompts.Queued
 	// Live text, which shows the prompt until a saved row settles it, drops
 	// it when told.
 	if record, _, err := sess.queuedTurns.TransactionStore().Get(context.Background(), actionID); err == nil {
-		sess.PublishLiveOutbox(record.Outbox)
+		sess.session.PublishLiveOutbox(record.Outbox)
 	}
 	return queued, nil
 }
@@ -1496,7 +1496,7 @@ func endDiscardedOperation(queue Queue, ops Executions, prior prompts.Record, by
 // promptActionRefusal allows it, the prompt is retired and its exact text sent
 // once as a new prompt. A repeated Resend (a second click, another tab)
 // answers with the prompt the first one made.
-func (sess *Session) HandleTurnDeliveryResend(w http.ResponseWriter, _ *http.Request, actionID string) {
+func (sess *Delivery) HandleTurnDeliveryResend(w http.ResponseWriter, _ *http.Request, actionID string) {
 	if actionID == "" || len(actionID) > 200 {
 		httpapi.WriteHTTPError(w, "clientActionId is required", http.StatusBadRequest)
 		return
@@ -1509,7 +1509,7 @@ func (sess *Session) HandleTurnDeliveryResend(w http.ResponseWriter, _ *http.Req
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
 	record, _, err := sess.turns.Get(ctx, actionID)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && record.Outbox.HostedThreadID != sess.hostedThreadID {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && record.Outbox.HostedThreadID != sess.session.hostedThreadID {
 		httpapi.WriteError(w, http.StatusNotFound, "not_found", "Nano does not have this prompt")
 		return
 	}
@@ -1523,7 +1523,7 @@ func (sess *Session) HandleTurnDeliveryResend(w http.ResponseWriter, _ *http.Req
 			return
 		}
 	}
-	if err := refusePromptAction(sess.provider, record, promptResend); err != nil {
+	if err := refusePromptAction(sess.session.provider, record, promptResend); err != nil {
 		writePromptActionRefusal(w, err.(*PromptActionRefused))
 		return
 	}
@@ -1542,7 +1542,7 @@ func (sess *Session) HandleTurnDeliveryResend(w http.ResponseWriter, _ *http.Req
 		refusal := &PromptActionRefused{actionID: actionID, state: retired.Outbox.State, reason: "This prompt changed just now, so it was not resent."}
 		if current, _, err := sess.turns.Get(ctx, actionID); err == nil {
 			refusal.state = current.Outbox.State
-			if reason := promptActionRefusal(sess.provider, current.Outbox, promptResend); reason != "" {
+			if reason := promptActionRefusal(sess.session.provider, current.Outbox, promptResend); reason != "" {
 				refusal.reason = reason
 			}
 		}
@@ -1550,7 +1550,7 @@ func (sess *Session) HandleTurnDeliveryResend(w http.ResponseWriter, _ *http.Req
 		return
 	}
 	if resent.Origin == prompts.HumanOrigin {
-		sess.noteHumanPrompt(time.Now().UTC())
+		sess.session.noteHumanPrompt(time.Now().UTC())
 	}
 	sess.publishResent(retired, resent)
 	if _, _, _, err := sess.startAdmittedTurnLocked(resent.Outbox.ActionID, permission); err != nil {

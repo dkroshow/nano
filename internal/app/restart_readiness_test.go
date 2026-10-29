@@ -239,7 +239,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				}()
 				waitForClaude(t, "the boot shell", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
-					return sess != nil && sess.PromptStore() != nil
+					return sess != nil && sess.Delivery().PromptStore() != nil
 				})
 			case !test.reattach:
 				// p1 was accepted into turn-p1 before Nano stopped; Codex
@@ -267,7 +267,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				go fixtureOwners(w.s).attachmentCoordinator().ReattachOnBoot()
 				waitForClaude(t, "the boot shell", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
-					return sess != nil && sess.PromptStore() != nil
+					return sess != nil && sess.Delivery().PromptStore() != nil
 				})
 			default:
 				fixtureOwners(w.s).attachmentCoordinator().ReattachOnBoot()
@@ -280,14 +280,14 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				// before Codex's echo of p1 arrives; in the gap Codex saves p1
 				// and the turn's interruption.
 				w.fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": turn}})
-				if rec := postTurn(t, sess, ctx, "p1", "p1 prompt"); rec.Code != http.StatusOK {
+				if rec := postTurn(t, sess.Delivery(), ctx, "p1", "p1 prompt"); rec.Code != http.StatusOK {
 					t.Fatalf("p1 delivery = %d %s", rec.Code, rec.Body.String())
 				}
 				sentBefore = []string{"p1 prompt"}
 				w.fake.EmitThreadNotification(native, map[string]any{"method": "turn/started", "params": map[string]any{
 					"threadId": native, "turn": map[string]any{"id": turn, "status": "inProgress", "items": []any{}}}})
 				waitForClaude(t, "turn-p1 working", func() bool {
-					record, _, err := sess.PromptStore().Get(ctx, "p1")
+					record, _, err := sess.Delivery().PromptStore().Get(ctx, "p1")
 					return err == nil && record.ProviderTurnID == turn && sess.Summary().TurnActive
 				})
 				release = w.pause()
@@ -311,7 +311,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 
 			// p2 is typed while the thread cannot take it yet.
 			w.fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "turn-p2"}})
-			if rec := postTurn(t, sess, ctx, "p2", "p2 prompt"); rec.Code != http.StatusAccepted {
+			if rec := postTurn(t, sess.Delivery(), ctx, "p2", "p2 prompt"); rec.Code != http.StatusAccepted {
 				t.Fatalf("p2 admission = %d %s; want queued", rec.Code, rec.Body.String())
 			}
 			notReady := func(why string) {

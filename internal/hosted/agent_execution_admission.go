@@ -158,12 +158,12 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	if requireIdle {
 		var result ownedthreads.TurnRecord
 		var replay bool
-		reason, err := sess.WithIdleDelivery(waited == "resting", func() error {
+		reason, err := sess.Delivery().WithIdleDelivery(waited == "resting", func() error {
 			record, created, err := s.Executions.BeginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
 			if err != nil {
 				return err
 			}
-			op, responseStatus, reason, err := sess.QueueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
+			op, responseStatus, reason, err := sess.Delivery().QueueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
 			result, replay, err = s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 			return err
 		})
@@ -194,7 +194,7 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	if sess == nil {
 		return record, !created, errHostedThreadNotAttached
 	}
-	op, responseStatus, reason, err := sess.QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
+	op, responseStatus, reason, err := sess.Delivery().QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
 	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
@@ -220,7 +220,7 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 			}
 		}
 		if sess := s.sessionForHosted(hostedThreadID); sess != nil {
-			if row, ok := sess.QueuedPrompt(record.TransportActionID); ok && row.Text != "" {
+			if row, ok := sess.Delivery().QueuedPrompt(record.TransportActionID); ok && row.Text != "" {
 				sub.Delivered = row.Text
 			}
 		}
@@ -240,7 +240,7 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 	if sess == nil {
 		return record, true, errHostedThreadNotAttached
 	}
-	op, responseStatus, reason, err := sess.QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
+	op, responseStatus, reason, err := sess.Delivery().QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
 	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
@@ -276,12 +276,12 @@ func (s *Controller) needsTurnSubmissionReconciliation(record ownedthreads.TurnR
 	if record.Status != ownedthreads.AgentTurnDeliveryPending {
 		return false
 	}
-	return !s.sessionForHosted(record.HostedThreadID).HasDeliveryEvidence(record.TransportActionID, s.Queue, s.SendAttempts)
+	return !s.sessionForHosted(record.HostedThreadID).Delivery().HasDeliveryEvidence(record.TransportActionID, s.Queue, s.SendAttempts)
 }
 
 func (s *Controller) turnSubmissionDeliveryUnknown(record ownedthreads.TurnRecord) bool {
 	if record.Status != ownedthreads.AgentTurnDeliveryPending || record.RunID == s.Executions.RunID() {
 		return false
 	}
-	return s.sessionForHosted(record.HostedThreadID).DeliveryWasAttempted(record.TransportActionID, s.SendAttempts)
+	return s.sessionForHosted(record.HostedThreadID).Delivery().DeliveryWasAttempted(record.TransportActionID, s.SendAttempts)
 }

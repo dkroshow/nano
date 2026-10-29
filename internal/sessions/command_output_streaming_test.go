@@ -46,7 +46,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 	queuedText := "next prompt after large command output"
 	// Held for the next turn: this test needs the prompt released by the turn's end.
 	queued := httptest.NewRecorder()
-	sess.HandleTurn(queued, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn",
+	sess.delivery.HandleTurn(queued, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn",
 		strings.NewReader(`{"text":`+string(mustJSON(t, queuedText))+`,"clientActionId":"command-output-next","nextTurn":true}`)))
 	if queued.Code != http.StatusAccepted || !strings.Contains(queued.Body.String(), `"status":"queued"`) {
 		t.Fatalf("next prompt was not queued: status=%d body=%s", queued.Code, queued.Body.String())

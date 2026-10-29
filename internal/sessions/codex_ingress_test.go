@@ -34,7 +34,7 @@ func TestCodexTextDeltaIngressDoesNotWaitForOutstandingProviderCall(t *testing.T
 
 	response := make(chan int, 1)
 	go func() {
-		response <- postTurn(t, sess, context.Background(), "callback-interlock", "exercise callback interlock").Code
+		response <- postTurn(t, sess.Delivery(), context.Background(), "callback-interlock", "exercise callback interlock").Code
 	}()
 	select {
 	case <-providerEntered:

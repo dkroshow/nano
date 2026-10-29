@@ -43,7 +43,7 @@ func (s *Controller) HandleHostedThreadInteraction(w http.ResponseWriter, r *htt
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.HandleInteraction(w, r, r.PathValue("requestId"))
+	sess.Delivery().HandleInteraction(w, r, r.PathValue("requestId"))
 }
 
 // HandleHostedThreadInterrupt serves the attached hosted session.
@@ -53,7 +53,7 @@ func (s *Controller) HandleHostedThreadInterrupt(w http.ResponseWriter, r *http.
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.HandleInterrupt(w, r)
+	sess.Delivery().HandleInterrupt(w, r)
 }
 
 // HandleHostedThreadLive streams one pane of a file-only thread: its status

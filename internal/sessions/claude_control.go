@@ -511,13 +511,13 @@ func (c *claudeSession) parkControlRequest(requestID string, request json.RawMes
 		CreatedAt: time.Now().Format(time.RFC3339Nano),
 		Params:    append(json.RawMessage(nil), request...),
 	}
-	if c.sess.rejectStatusInteraction(pending) {
+	if c.sess.delivery.rejectStatusInteraction(pending) {
 		if err := c.respondControl(requestID, claudeRefusal(probe.Subtype)); err != nil {
 			log.Printf("claude status session %s: declining %s: %v", c.sess.id, probe.Subtype, err)
 		}
 		return
 	}
-	c.sess.addPendingInteraction(pending)
+	c.sess.delivery.addPendingInteraction(pending)
 }
 
 // claudeInteractionKind maps an inbound subtype onto the card kind that renders

@@ -118,7 +118,7 @@ func TestClaudeResultSavedRowsBindToAnsweredPrompt(t *testing.T) {
 
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := sess.SettlePrompts(ctx); err == nil {
+		if _, err := sess.Delivery().SettlePrompts(ctx); err == nil {
 			done := true
 			for _, p := range order {
 				if op, _ := executions.Turn(p.op); !threads.TurnTerminal(op.Status) {

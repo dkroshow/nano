@@ -92,23 +92,25 @@ func New(cfg Config) *Session {
 		forgetAttachment:      cfg.ForgetAttachment,
 		updateTurnAnchor:      cfg.UpdateTurnAnchor,
 		updateShimSession:     cfg.UpdateShimSession,
-		turns:                 cfg.Turns,
 		agentExecutions:       cfg.AgentExecutions,
 		metadata:              cfg.Metadata,
-		appendUnread:          cfg.AppendUnread,
 		pendingTurnCausation:  []turnCausationEntry{},
 		lastSettingsEvidence:  map[string]turnCausationEntry{},
-		sendOps:               map[string]*turnSendOperation{},
-		nanoStopping:          cfg.NanoStopping,
-		deliveryExpiries:      cfg.DeliveryExpiries,
 		processStarted:        cfg.ProcessStarted,
-		sendAttempts:          cfg.SendAttempts,
-		queuedTurns:           cfg.QueuedTurns,
 		completedTurns:        cfg.CompletedTurns,
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
+		delivery: Delivery{
+			turns:            cfg.Turns,
+			appendUnread:     cfg.AppendUnread,
+			sendOps:          map[string]*turnSendOperation{},
+			nanoStopping:     cfg.NanoStopping,
+			deliveryExpiries: cfg.DeliveryExpiries,
+			sendAttempts:     cfg.SendAttempts,
+			queuedTurns:      cfg.QueuedTurns},
 	}
 	sess.wire.session = sess
+	sess.delivery.session = sess
 	return sess
 }
 
@@ -129,9 +131,9 @@ func (sess *Session) InitializeBinding(generation int64) error {
 // ConfigureSavedReaders connects the catalog reads before registration.
 func (sess *Session) ConfigureSavedReaders(turn func(context.Context, string) (liveview.DurableTurnEvidence, bool), prompts SavedPromptReader, nativePrompts savedPromptNativeReader, final savedTurnFinalReader, sweep func(string)) {
 	sess.savedTurn = turn
-	sess.savedPrompts = prompts
-	sess.savedPromptsIn = nativePrompts
-	sess.savedTurnFinal = final
+	sess.delivery.savedPrompts = prompts
+	sess.delivery.savedPromptsIn = nativePrompts
+	sess.delivery.savedTurnFinal = final
 	sess.subscriptionSweep = sweep
 }
 

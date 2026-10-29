@@ -79,7 +79,7 @@ func TestDurableReconciliationLeavesWeakOrMismatchedEvidenceWorking(t *testing.T
 
 func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
 	sess, _ := readyTransactionalSendTestSession(t, nil)
-	store, err := coreturns.OpenStore(context.Background(), sess.queuedTurns.Database())
+	store, err := coreturns.OpenStore(context.Background(), sess.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}

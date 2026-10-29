@@ -210,7 +210,7 @@ func (s *AttachmentCoordinator) expireStalePrompts(ctx context.Context, apply bo
 func (s *AttachmentCoordinator) settleStaleThread(ctx context.Context, hosted string, records []prompts.Record) error {
 	var err error
 	if sess := s.Registry.SessionForHostedThread(hosted); sess != nil {
-		_, err = sess.SettlePrompts(ctx)
+		_, err = sess.Delivery().SettlePrompts(ctx)
 	} else {
 		var all []prompts.Record
 		if all, err = s.Turns.List(ctx, hosted); err != nil {
@@ -246,5 +246,5 @@ func (s *AttachmentCoordinator) threadBusy(hosted string) bool {
 	if sess == nil {
 		return false
 	}
-	return sess.BusyForMaintenance()
+	return sess.Delivery().BusyForMaintenance()
 }

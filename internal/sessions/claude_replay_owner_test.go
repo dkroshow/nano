@@ -28,7 +28,7 @@ type replayOwnerHarness struct {
 func newReplayOwnerHarness(t *testing.T) *replayOwnerHarness {
 	t.Helper()
 	base, _ := claudeTestSession(t)
-	turns, err := coreturns.OpenStore(context.Background(), base.queuedTurns.Database())
+	turns, err := coreturns.OpenStore(context.Background(), base.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func (h *replayOwnerHarness) resume(t *testing.T) error {
 		}
 	}
 	b := h.base
-	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.metadata, Turns: b.turns, QueuedTurns: b.queuedTurns, SendAttempts: b.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.rememberAttachment, ForgetAttachment: b.forgetAttachment})
+	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.metadata, Turns: b.delivery.turns, QueuedTurns: b.delivery.queuedTurns, SendAttempts: b.delivery.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.rememberAttachment, ForgetAttachment: b.forgetAttachment})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func (h *replayOwnerHarness) seed(t *testing.T, action string, backlog int) (str
 	b.Background(backlog)
 	h.shim.Frames = b.Frames
 	fixture.WriteSpool(t, h.dir, b.Key, b.Frames...)
-	seedRecoveryPrompt(t, h.base.turns, b.Key, "native-1", action, turn, "prompt")
+	seedRecoveryPrompt(t, h.base.delivery.turns, b.Key, "native-1", action, turn, "prompt")
 	h.projection = func() *LiveProjection {
 		return newResultProjection("claude", map[string]string{turn: "msg_final:0"})
 	}
@@ -79,7 +79,7 @@ func (h *replayOwnerHarness) seed(t *testing.T, action string, backlog int) (str
 func (h *replayOwnerHarness) count(t *testing.T, turn string) int {
 	t.Helper()
 	var n int
-	if err := h.base.queuedTurns.Database().QueryRow(`SELECT count(*) FROM completed_turns WHERE target_hosted_thread_id=? AND turn_id=? AND outcome<>''`, h.base.HostedThreadID(), turn).Scan(&n); err != nil {
+	if err := h.base.delivery.queuedTurns.Database().QueryRow(`SELECT count(*) FROM completed_turns WHERE target_hosted_thread_id=? AND turn_id=? AND outcome<>''`, h.base.HostedThreadID(), turn).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n

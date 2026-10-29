@@ -40,7 +40,7 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 			if tc.refusals > 1 {
 				waitForClaude(t, "the bounded reconnect attempts to park", func() bool { return sess.Summary().Status == "reconnect_parked" })
 				for repeat := 0; repeat < 2; repeat++ {
-					if response := postTurn(t, sess, context.Background(), "after-parking", "prompt to a parked thread"); response.Code != http.StatusAccepted && response.Code != http.StatusOK {
+					if response := postTurn(t, sess.Delivery(), context.Background(), "after-parking", "prompt to a parked thread"); response.Code != http.StatusAccepted && response.Code != http.StatusOK {
 						t.Fatalf("parked prompt: %d %s", response.Code, response.Body.String())
 					}
 				}

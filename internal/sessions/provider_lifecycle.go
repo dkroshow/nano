@@ -101,7 +101,7 @@ func (sess *Session) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted 
 	}
 	for delay := time.Second; ; delay = min(2*delay, 30*time.Second) {
 		ctx, cancel := context.WithTimeout(context.Background(), savedPromptSettleTimeout)
-		err := sess.settleSavedPrompts(ctx)
+		err := sess.delivery.settleSavedPrompts(ctx)
 		cancel()
 		if err == nil {
 			return true

@@ -94,7 +94,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 		{"saved read fails", func(*sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool { return true }
 		}, func(t *testing.T, sess *sessions.Session, _ *repairCatalog) {
-			seedAcceptedTransactionalTurn(t, sess.PromptStore(), "hosted", model.ProviderCodex, "thread", "delivered", "turn-1", "delivered prompt")
+			seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), "hosted", model.ProviderCodex, "thread", "delivered", "turn-1", "delivered prompt")
 			sess.ConfigureSavedReaders(nil, func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) {
 				return nil, errors.New("synthetic saved read failure")
 			}, nil, nil, nil)
@@ -118,7 +118,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 		{"attachment replaced during a failed settlement", func(*sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool { return true }
 		}, func(t *testing.T, sess *sessions.Session, _ *repairCatalog) {
-			seedAcceptedTransactionalTurn(t, sess.PromptStore(), "hosted", model.ProviderCodex, "thread", "delivered", "turn-1", "delivered prompt")
+			seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), "hosted", model.ProviderCodex, "thread", "delivered", "turn-1", "delivered prompt")
 			sess.ConfigureSavedReaders(nil, func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) {
 				if err := sess.InitializeBinding(4); err != nil {
 					panic(err)
@@ -136,7 +136,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 				fake.EmitThreadNotification("thread", map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "thread", "turn": map[string]any{"id": "turn-1", "status": "interrupted"}}})
 			}
 			fake.EmitThreadNotification("thread", map[string]any{"id": 42, "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "thread", "turnId": "turn-1", "itemId": "q", "command": "pwd"}})
-			waitReconnectCondition(t, func() bool { return len(sess.PendingInteractionList()) > 0 })
+			waitReconnectCondition(t, func() bool { return len(sess.Delivery().PendingInteractionList()) > 0 })
 		}, "saved_copy_not_ready"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 				tc.setup(t, sess, catalog)
 			}
 			const text = "queued prompt"
-			if _, _, err := sess.PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: "hosted", Provider: model.ProviderCodex,
+			if _, _, err := sess.Delivery().PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: "hosted", Provider: model.ProviderCodex,
 				NativeThreadID: "thread", ActionID: "queued", ProviderText: text, PresentationText: text,
 				TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: prompts.HumanOrigin}); err != nil {
 				t.Fatal(err)
@@ -160,7 +160,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 			if len(response.Discarded) != 1 || response.Discarded[0].ClientActionID != "queued" || response.Discarded[0].Text != text {
 				t.Fatalf("discarded prompts = %+v", response.Discarded)
 			}
-			if record, _, err := sess.PromptStore().Get(context.Background(), "queued"); err != nil || record.Outbox.State != prompts.Refused {
+			if record, _, err := sess.Delivery().PromptStore().Get(context.Background(), "queued"); err != nil || record.Outbox.State != prompts.Refused {
 				t.Fatalf("queued prompt = %s, %v; want refused", record.Outbox.State, err)
 			}
 			// A retry of the same action returns the same answer without a

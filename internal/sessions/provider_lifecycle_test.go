@@ -15,7 +15,7 @@ import (
 
 func TestSessionLifecycleWaitingBlocksSendAndDisconnectedWork(t *testing.T) {
 	sess := lifecycleTestSession("ready", true, "current")
-	sess.addPendingInteraction(interact.PendingInteraction{ID: "permission", TurnID: "current"})
+	sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "permission", TurnID: "current"})
 	if sum := sess.Summary(); !sum.Waiting {
 		t.Fatal("waiting interaction missing")
 	}
@@ -176,7 +176,7 @@ func TestProviderRestartWaitingSettlesWithReadiness(t *testing.T) {
 			sess.provider = provider
 			sess.beginTurnRestore()
 			epoch, sequence := sess.evidenceCoordinates()
-			sess.addPendingInteraction(interact.PendingInteraction{ID: "request", TurnID: "current"})
+			sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "request", TurnID: "current"})
 			if sum := sess.Summary(); sum.Waiting || sum.TurnActive {
 				t.Fatal("pending replay became current before readiness")
 			}
@@ -186,7 +186,7 @@ func TestProviderRestartWaitingSettlesWithReadiness(t *testing.T) {
 			if !sess.Summary().Waiting {
 				t.Fatal("readiness lost pending provider request")
 			}
-			sess.takePendingInteraction("request")
+			sess.delivery.takePendingInteraction("request")
 			if got := sess.lifecycleState.State.Work; got != lifecycle.Working {
 				t.Fatalf("answer did not resume work: %s", got)
 			}

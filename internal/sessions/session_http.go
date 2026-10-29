@@ -239,13 +239,13 @@ func (sess *Session) HandleState(w http.ResponseWriter, r *http.Request) {
 		// parked request. `controlInit` rides along in the state map above and
 		// carries the model catalog the switcher renders.
 		out["turnOptions"] = sess.turnOptionsPayload()
-		out["pendingInteractions"] = sess.PendingInteractionList()
+		out["pendingInteractions"] = sess.delivery.PendingInteractionList()
 		httpapi.WriteJSON(w, out)
 		return
 	}
 	if sess.provider == "grok" {
 		out["turnOptions"] = sess.turnOptionsPayload()
-		out["pendingInteractions"] = sess.PendingInteractionList()
+		out["pendingInteractions"] = sess.delivery.PendingInteractionList()
 		httpapi.WriteJSON(w, out)
 		return
 	}
@@ -254,7 +254,7 @@ func (sess *Session) HandleState(w http.ResponseWriter, r *http.Request) {
 	// Server-owned pending interactions. The bounded wire buffer means a tab
 	// opened after the request landed cannot find it by replay, so the snapshot
 	// is the truth and the feed event is only the nudge (interactions.go).
-	out["pendingInteractions"] = sess.PendingInteractionList()
+	out["pendingInteractions"] = sess.delivery.PendingInteractionList()
 	httpapi.WriteJSON(w, out)
 }
 
@@ -274,7 +274,7 @@ func (sess *Session) HandleState(w http.ResponseWriter, r *http.Request) {
 // by coresession.InterruptHandoffTimeout and reports the failure instead of
 // hanging (2026-09-21 incident, where a backlogged loop froze this endpoint for
 // minutes).
-func (sess *Session) HandleInterrupt(w http.ResponseWriter, r *http.Request) {
+func (sess *Delivery) HandleInterrupt(w http.ResponseWriter, r *http.Request) {
 	body, err := sess.interruptTurn(r.Context())
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
@@ -283,30 +283,30 @@ func (sess *Session) HandleInterrupt(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, body)
 }
 
-func (sess *Session) interruptTurn(ctx context.Context) (map[string]any, error) {
-	sess.stateMu.Lock()
-	active := sess.workActiveLocked()
-	sess.stateMu.Unlock()
-	threadID, turnID := sess.activeTurn()
+func (sess *Delivery) interruptTurn(ctx context.Context) (map[string]any, error) {
+	sess.session.stateMu.Lock()
+	active := sess.session.workActiveLocked()
+	sess.session.stateMu.Unlock()
+	threadID, turnID := sess.session.activeTurn()
 	if !active {
 		return map[string]any{"interrupted": false, "reason": "no turn in flight"}, nil
 	}
-	if err := sess.ensureProviderCoordinator(); err != nil {
+	if err := sess.session.ensureProviderCoordinator(); err != nil {
 		return nil, err
 	}
-	scope := sess.deliveryScope()
+	scope := sess.session.deliveryScope()
 	if turnID != "" {
 		scope.NativeTurnID = &turnID
 		// Recorded before the provider hears of it, so the turn's end can
 		// never be read as a prompt lost without a Stop.
-		sess.stateMu.Lock()
-		if sess.stoppedTurns == nil {
-			sess.stoppedTurns = make(map[string]bool)
+		sess.session.stateMu.Lock()
+		if sess.session.stoppedTurns == nil {
+			sess.session.stoppedTurns = make(map[string]bool)
 		}
-		sess.stoppedTurns[turnID] = true
-		sess.stateMu.Unlock()
+		sess.session.stoppedTurns[turnID] = true
+		sess.session.stateMu.Unlock()
 	}
-	result, err := sess.core.Interrupt(ctx, providers.InterruptRequest{Scope: scope})
+	result, err := sess.session.core.Interrupt(ctx, providers.InterruptRequest{Scope: scope})
 	if errors.Is(err, coresession.ErrInterruptNotAccepted) {
 		// The stop button must fail loudly rather than hang. Core kept the
 		// interrupt at the front of the session queue, so it still reaches the

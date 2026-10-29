@@ -30,7 +30,7 @@ func TestClaudeUnfinishedPromptsWaitForABusyWriterOncePerThread(t *testing.T) {
 	hosted := sess.HostedThreadID()
 	native := sess.ThreadID()
 	ctx := context.Background()
-	completed, err := coreturns.OpenStore(ctx, sess.queuedTurns.Database())
+	completed, err := coreturns.OpenStore(ctx, sess.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestClaudeUnfinishedPromptsWaitForABusyWriterOncePerThread(t *testing.T) {
 				return
 			default:
 			}
-			tx, err := sess.queuedTurns.Database().BeginTx(ctx, nil)
+			tx, err := sess.delivery.queuedTurns.Database().BeginTx(ctx, nil)
 			if err != nil {
 				return
 			}

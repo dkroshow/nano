@@ -91,7 +91,7 @@ func TestHandleInterruptWithoutTurn(t *testing.T) {
 	sess.threadID = "thread_a"
 
 	rec := httptest.NewRecorder()
-	sess.HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
+	sess.delivery.HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
 	}

@@ -148,7 +148,7 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 			if status == "interrupted" {
 				// A turn interrupted before it recorded its input saves nothing,
 				// so no saved commit may follow to settle a prompt it dropped.
-				go sess.SettleWaitingPrompts(context.Background())
+				go sess.delivery.SettleWaitingPrompts(context.Background())
 			}
 		}
 	}
@@ -233,7 +233,7 @@ func (sess *Session) observeCodexTurnInput(line []byte) {
 					if sess.bindCodexEcho(echoed) {
 						// Its turn may be saved and ended already, so no
 						// later saved commit would settle it.
-						sess.SettleWaitingPrompts(context.Background())
+						sess.delivery.SettleWaitingPrompts(context.Background())
 					}
 				}()
 			}
@@ -328,15 +328,15 @@ func (sess *Session) deliveredCodexEcho(actionID string, unbound bool) {
 // it, exactly as an on-time reply would have, so its saved row can settle it.
 func (sess *Session) bindCodexEcho(wait codexEchoWait) bool {
 	binding, _ := sess.submissionBinding(wait.scope, wait.turnID, SubmissionEventID(sess.hostedThreadID, wait.actionID))
-	record, err := sess.turns.Accepted(context.Background(), prompts.Acceptance{
+	record, err := sess.delivery.turns.Accepted(context.Background(), prompts.Acceptance{
 		ActionID: wait.actionID, ClaimToken: wait.claimToken, AttachmentEpoch: wait.claimEpoch, Binding: binding,
 	})
 	if err != nil {
 		log.Printf("bind echoed prompt %s: %v", sess.hostedThreadID, err)
 		return false
 	}
-	sess.publishTransactionalOutbox(record.Outbox)
-	sess.awaitSavedPrompt(wait.actionID)
+	sess.delivery.publishTransactionalOutbox(record.Outbox)
+	sess.delivery.awaitSavedPrompt(wait.actionID)
 	return true
 }
 

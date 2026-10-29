@@ -39,7 +39,7 @@ func stoppingServer(t *testing.T) (*server, *sessions.Session, *prompts.Store, c
 
 func startDelivery(t *testing.T, sess *sessions.Session, sends *atomic.Int32, actionID string) {
 	t.Helper()
-	go postTurn(t, sess, context.Background(), actionID, "in flight at the stop")
+	go postTurn(t, sess.Delivery(), context.Background(), actionID, "in flight at the stop")
 	deadline := time.Now().Add(5 * time.Second)
 	for sends.Load() == 0 {
 		if time.Now().After(deadline) {
@@ -92,7 +92,9 @@ func TestStopWaitsBoundedlyForInFlightDeliveries(t *testing.T) {
 func TestStopEndsByItsDeadlineWhenAStepBlocks(t *testing.T) {
 	s, sess, _, _, _ := stoppingServer(t)
 	entered, release := make(chan struct{}), make(chan struct{})
-	go func() { sess.WithIdleDelivery(false, func() error { close(entered); <-release; return nil }) }()
+	go func() {
+		sess.Delivery().WithIdleDelivery(false, func() error { close(entered); <-release; return nil })
+	}()
 	<-entered
 	t.Cleanup(func() { close(release) })
 	started := time.Now()
@@ -113,7 +115,7 @@ func TestStoppingNanoQueuesInternalSendsForTheNextProcess(t *testing.T) {
 	s, sess, store, release, sends := stoppingServer(t)
 	close(release)
 	s.stopping.Store(true)
-	op, status, reason, err := sess.QueueOrStartTurnSendPreparedPresentation("during-stop", "sent while stopping", "sent while stopping", "", turnOriginAgent, false)
+	op, status, reason, err := sess.Delivery().QueueOrStartTurnSendPreparedPresentation("during-stop", "sent while stopping", "sent while stopping", "", turnOriginAgent, false)
 	if err != nil || op != nil || status != http.StatusAccepted || reason != "queued_for_next_turn" {
 		t.Fatalf("send during stop = %v, %d, %q, %v; want queued", op, status, reason, err)
 	}

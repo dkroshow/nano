@@ -76,7 +76,7 @@ func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, thread
 	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
 	// Stop transport work before the shared database cleanup.
 	t.Cleanup(func() {
-		for _, done := range sess.InFlightDeliveries() {
+		for _, done := range sess.Delivery().InFlightDeliveries() {
 			select {
 			case <-done:
 			case <-time.After(time.Second):
@@ -181,7 +181,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 			if _, ok := fixtureTurnForAction(store, worker.ID, strings.Split(strings.TrimPrefix(test.body, `{"clientActionId":"`), `"`)[0]); ok {
 				t.Fatalf("rejected request created an operation")
 			}
-			if got := sess.QueuedPromptCount(); got != 0 {
+			if got := sess.Delivery().QueuedPromptCount(); got != 0 {
 				t.Fatalf("rejected request queued %d turns", got)
 			}
 			select {
@@ -202,7 +202,7 @@ func TestInternalTurnHelperRejectsUnattributedAgentOriginBeforeArtifacts(t *test
 	if _, ok := fixtureTurnForAction(store, worker.ID, "legacy-agent-action"); ok {
 		t.Fatal("unattributed internal agent action created an operation")
 	}
-	if got := sess.QueuedPromptCount(); got != 0 {
+	if got := sess.Delivery().QueuedPromptCount(); got != 0 {
 		t.Fatalf("unattributed internal agent action queued %d turns", got)
 	}
 	select {
@@ -264,7 +264,7 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 		t.Fatalf("active = %+v", v)
 	}
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"status":"completed"}}}`))
-	if response := postTurn(t, sess, context.Background(), "human-recent", "hello"); response.Code != http.StatusOK {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "human-recent", "hello"); response.Code != http.StatusOK {
 		t.Fatalf("human prompt = %d %s", response.Code, response.Body.String())
 	}
 	<-prompts
@@ -283,12 +283,12 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	}
 	// Pending interaction holds the thread.
 	fake.EmitNotification(map[string]any{"id": "req-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": sess.ThreadID()}})
-	waitForClaude(t, "pending permissions", func() bool { return len(sess.PendingInteractionList()) == 1 })
+	waitForClaude(t, "pending permissions", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
 	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
 		t.Fatalf("pending interaction = %+v", v)
 	}
 	response := httptest.NewRecorder()
-	sess.HandleInteraction(response, httptest.NewRequest(http.MethodPost, "/interactions/req-1", strings.NewReader(`{"decision":"decline"}`)), sess.PendingInteractionList()[0].ID)
+	sess.Delivery().HandleInteraction(response, httptest.NewRequest(http.MethodPost, "/interactions/req-1", strings.NewReader(`{"decision":"decline"}`)), sess.Delivery().PendingInteractionList()[0].ID)
 	if response.Code != http.StatusOK {
 		t.Fatalf("interaction decline = %d %s", response.Code, response.Body.String())
 	}

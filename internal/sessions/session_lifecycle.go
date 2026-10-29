@@ -77,7 +77,7 @@ func (sess *Session) applyLifecycleObservationLocked(observation lifecycle.Obser
 		// observation, and the drain reads the current turn only after the
 		// caller releases stateMu.
 		if workingLifecycle(out.Snapshot.State) && !workingLifecycle(before.State) && core.TurnCapabilities().RunningTurnInput {
-			sess.kickQueuedTurnDrain()
+			sess.delivery.kickQueuedTurnDrain()
 		}
 	}
 	return before.State != out.Snapshot.State, out.Drain
@@ -140,13 +140,13 @@ func (sess *Session) observeConnection(event lifecycle.Event) {
 		return
 	}
 	if status == StatusExited {
-		sess.settleAgentTurnsOnExit(closed)
+		sess.delivery.settleAgentTurnsOnExit(closed)
 	}
 	sess.PublishProjectionRuntime()
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
-		sess.kickQueuedTurnDrain()
+		sess.delivery.kickQueuedTurnDrain()
 	}
 }
 

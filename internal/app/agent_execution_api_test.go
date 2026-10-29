@@ -703,7 +703,7 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	f := newProviderRuntimeFixture(t, sessions.Config{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID}, "native-1", "")
 	sess := f.session
 	f.codex.EmitNotification(map[string]any{"id": 1, "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "native-1", "turnId": "turn-current"}})
-	waitForClaude(t, "the current turn's interaction", func() bool { return len(sess.PendingInteractionList()) == 1 })
+	waitForClaude(t, "the current turn's interaction", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
 
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*sessions.Session{"nano-1": sess})
 	oldRecord, _ := store.Turn(old.ID)
@@ -1203,7 +1203,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if snapshot.Turns[0].DurationMS < 0 {
 		t.Fatalf("Claude projection duration = %dms", snapshot.Turns[0].DurationMS)
 	}
-	seedAcceptedTransactionalTurn(t, sess.PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-action", "claude:9", "leave me alone")
+	seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-action", "claude:9", "leave me alone")
 
 	sessions.ReconcileSavedTranscript(context.Background(), sess)
 	if accepted, ok := queue.Get(queuedOperation.TransportActionID); !ok || accepted.State != submissionAccepted || accepted.Text == "" {
@@ -1314,7 +1314,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if snapshot.Turns[0].FinalItemID != "" {
 		t.Fatalf("result-free projection claimed a terminal item: %#v", snapshot.Turns[0])
 	}
-	seedAcceptedTransactionalTurn(t, sess.PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-output-first", "claude:9", "leave me alone")
+	seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-output-first", "claude:9", "leave me alone")
 
 	sessions.ReconcileSavedTranscript(context.Background(), sess)
 	if current, _ := executions.Turn(operation.ID); current.Status != agentTurnRunning {
@@ -1787,7 +1787,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			action := op.TransportActionID
-			if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: target, Provider: model.ProviderCodex, NativeThreadID: "native-target", ActionID: action,
+			if _, _, err := sess.Delivery().PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: target, Provider: model.ProviderCodex, NativeThreadID: "native-target", ActionID: action,
 				ProviderText: "ask", PresentationText: "ask", TextHash: sendTextHash("ask"), RequestHash: sendTextHash("ask"), Origin: prompts.AgentOrigin}); err != nil {
 				t.Fatal(err)
 			}
@@ -1797,10 +1797,10 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			if test.uncertain {
-				if _, claimed, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: target, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+				if _, claimed, err := sess.Delivery().PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: target, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 					t.Fatalf("claim = %v, %v", claimed, err)
 				}
-				if _, err := sess.PromptStore().Uncertain(ctx, prompts.Uncertainty{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
+				if _, err := sess.Delivery().PromptStore().Uncertain(ctx, prompts.Uncertainty{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
 					t.Fatal(err)
 				}
 				if err := s.agentExecutions.MarkTurnDelivery(op.ID, "", agentTurnDeliveryUnknown, nil); err != nil {
@@ -1814,11 +1814,11 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 					request.SetPathValue("operationId", op.ID)
 					fixtureOwners(s).hostedController().HandleOperationCancel(rec, request)
 				} else {
-					sess.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/"+action, nil), action)
+					sess.Delivery().HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/"+action, nil), action)
 				}
 				return rec
 			}
-			before, _, err := sess.PromptStore().Get(ctx, action)
+			before, _, err := sess.Delivery().PromptStore().Get(ctx, action)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1830,7 +1830,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			if rec := discard(); rec.Code != http.StatusInternalServerError {
 				t.Fatalf("discard with a failing operation write = %d %s; want 500", rec.Code, rec.Body.String())
 			}
-			kept, _, err := sess.PromptStore().Get(ctx, action)
+			kept, _, err := sess.Delivery().PromptStore().Get(ctx, action)
 			if opKept, _ := s.agentExecutions.Turn(op.ID); err != nil || kept.Outbox.State != before.Outbox.State || opKept.Status != opBefore.Status {
 				t.Fatalf("after a failed discard: prompt %s, operation %s, %v; want %s and %s unchanged", kept.Outbox.State, opKept.Status, err, before.Outbox.State, opBefore.Status)
 			}
@@ -1844,7 +1844,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 			if ended.Status != agentTurnInterrupted || ended.Error == nil || ended.Error.Source != test.source || ended.Error.Code != test.code {
 				t.Fatalf("operation = %s %+v; want interrupted by %s with %s", ended.Status, ended.Error, test.source, test.code)
 			}
-			if after, _, err := sess.PromptStore().Get(ctx, action); err != nil || after.Outbox.State != test.ended {
+			if after, _, err := sess.Delivery().PromptStore().Get(ctx, action); err != nil || after.Outbox.State != test.ended {
 				t.Fatalf("prompt = %s, %v; want %s", after.Outbox.State, err, test.ended)
 			}
 		})

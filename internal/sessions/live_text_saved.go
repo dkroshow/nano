@@ -98,7 +98,7 @@ func (l *LiveTextLoop) replyMatch(turns map[string]string) history.TranscriptMat
 // confirmed before a restart, still claims its row. A turn whose claims cannot
 // be read is left out of this tick's keys: without them its row is unproven.
 func (l *LiveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, []string) {
-	if l.sess.PromptStore() == nil {
+	if l.sess.delivery.PromptStore() == nil {
 		return nil, nil
 	}
 	claimed := make(map[string][]string)
@@ -107,7 +107,7 @@ func (l *LiveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, [
 	for _, turn := range turns {
 		ok, read := readable[turn]
 		if !read {
-			events, err := l.sess.PromptStore().TurnEvents(context.Background(), l.sess.HostedThreadID(), model.ProviderCodex, l.sess.ThreadID(), turn)
+			events, err := l.sess.delivery.PromptStore().TurnEvents(context.Background(), l.sess.HostedThreadID(), model.ProviderCodex, l.sess.ThreadID(), turn)
 			if ok = err == nil; !ok {
 				log.Printf("live text turn events %s: %v", turn, err)
 			} else if len(events) > 0 {
@@ -335,7 +335,7 @@ func settledProjection(state string) bool {
 // Codex prompt with only a turn key is left out: its turn may hold several
 // rows, and the browser's record read covers it.
 func (l *LiveTextLoop) promptsSavedIn(rows []threadindex.TranscriptItem) ([]string, error) {
-	if l.sess == nil || l.sess.PromptStore() == nil {
+	if l.sess == nil || l.sess.delivery.PromptStore() == nil {
 		return nil, nil
 	}
 	var oldest time.Time
@@ -355,7 +355,7 @@ func (l *LiveTextLoop) promptsSavedIn(rows []threadindex.TranscriptItem) ([]stri
 	if len(page) == 0 || oldest.IsZero() {
 		return nil, nil
 	}
-	candidates, err := l.sess.PromptStore().TailCandidates(context.Background(), l.hostedID(), oldest)
+	candidates, err := l.sess.delivery.PromptStore().TailCandidates(context.Background(), l.hostedID(), oldest)
 	if err != nil {
 		return nil, err
 	}

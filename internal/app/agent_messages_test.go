@@ -243,7 +243,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 			if rec.Code != http.StatusCreated || message.Status != featuremail.Unread {
 				t.Fatalf("send = %d %+v %s", rec.Code, message, rec.Body.String())
 			}
-			if got := sess.QueuedPromptCount(); got != 0 {
+			if got := sess.Delivery().QueuedPromptCount(); got != 0 {
 				t.Fatalf("inbox send queued %d prompt turns", got)
 			}
 			select {
@@ -460,7 +460,7 @@ func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 		s, _, sess, sender, recipient, prompts, _ := stage0Server(t)
 		_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "mail-human", "Mail", "Unread", nil)
 		rec := httptest.NewRecorder()
-		sess.HandleTurn(rec, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(`{"text":"Hello","clientActionId":"human-turn"}`)))
+		sess.Delivery().HandleTurn(rec, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(`{"text":"Hello","clientActionId":"human-turn"}`)))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("submit=%d %s", rec.Code, rec.Body.String())
 		}
@@ -496,7 +496,7 @@ func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
 	// Held for the next turn, so it stays queued while the turn works.
 	request := `{"text":"Queued","clientActionId":"queued-human","nextTurn":true}`
 	first := httptest.NewRecorder()
-	sess.HandleTurn(first, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
+	sess.Delivery().HandleTurn(first, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
 	if first.Code != http.StatusAccepted {
 		t.Fatalf("first=%d %s", first.Code, first.Body.String())
 	}
@@ -509,7 +509,7 @@ func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
 		t.Fatal(err)
 	}
 	retry := httptest.NewRecorder()
-	sess.HandleTurn(retry, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
+	sess.Delivery().HandleTurn(retry, httptest.NewRequest(http.MethodPost, "/turn", strings.NewReader(request)))
 	if retry.Code != http.StatusAccepted {
 		t.Fatalf("retry=%d %s", retry.Code, retry.Body.String())
 	}

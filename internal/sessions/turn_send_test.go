@@ -35,9 +35,9 @@ func waitTurnSendDone(t *testing.T, sess *Session, actionID string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		sess.sendMu.Lock()
-		op := sess.sendOps[actionID]
-		sess.sendMu.Unlock()
+		sess.delivery.sendMu.Lock()
+		op := sess.delivery.sendOps[actionID]
+		sess.delivery.sendMu.Unlock()
 		if op != nil {
 			select {
 			case <-op.done:
@@ -68,9 +68,10 @@ func readySendTestSession(t *testing.T, store *turns.LegacyJournal, sender func(
 	projection := newDeliveryTestProjection("codex")
 	return sessionWithOwners(&Session{id: "nano-session",
 		provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
-		projection: projection, turns: turnStore, sendAttempts: store, queuedTurns: queue,
-		sendOps: map[string]*turnSendOperation{}, turnSender: sender,
-		lifecycleState: testLifecycleSnapshot("ready", false)})
+		projection:     projection,
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		delivery: Delivery{turns: turnStore, sendAttempts: store, queuedTurns: queue,
+			sendOps: map[string]*turnSendOperation{}, turnSender: sender}})
 }
 
 func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context, string) (json.RawMessage, error)) (*Session, *turns.Store) {
@@ -92,9 +93,10 @@ func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context
 
 	sess := sessionWithOwners(&Session{
 		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
-		projection: projection, turns: store, sendAttempts: attempts, queuedTurns: queue,
-		sendOps: map[string]*turnSendOperation{}, turnSender: sender,
+		projection:     projection,
 		lifecycleState: testLifecycleSnapshot("ready", false),
+		delivery: Delivery{turns: store, sendAttempts: attempts, queuedTurns: queue,
+			sendOps: map[string]*turnSendOperation{}, turnSender: sender},
 	})
 	return sess, store
 }
@@ -114,7 +116,7 @@ func TestTransactionalTurnCommitsClaimBeforeProviderAndBindsExactResult(t *testi
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
 	store = opened
-	response := postTurn(t, sess, context.Background(), "transactional-action", "deliver once")
+	response := postTurn(t, sess.Delivery(), context.Background(), "transactional-action", "deliver once")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -125,7 +127,7 @@ func TestTransactionalTurnCommitsClaimBeforeProviderAndBindsExactResult(t *testi
 	if err != nil || record.Outbox.State != turns.Accepted || attempt.State != turns.JournalAccepted || record.ProviderTurnID != "provider-turn" || record.Outbox.Binding == nil {
 		t.Fatalf("accepted transaction: record=%+v attempt=%+v err=%v", record, attempt, err)
 	}
-	retry := postTurn(t, sess, context.Background(), "transactional-action", "deliver once")
+	retry := postTurn(t, sess.Delivery(), context.Background(), "transactional-action", "deliver once")
 	if retry.Code != http.StatusOK || calls.Load() != 1 {
 		t.Fatalf("retry status=%d calls=%d body=%s", retry.Code, calls.Load(), retry.Body.String())
 	}
@@ -148,7 +150,7 @@ func TestTransactionalRestoreMarksStaleClaimUncertainBeforeReplay(t *testing.T) 
 		t.Fatalf("claim=%v err=%v", claimed, err)
 	}
 	sess.lifecycleState.Epoch = 2
-	sess.restoreSubmissionOutbox()
+	sess.delivery.restoreSubmissionOutbox()
 	record, attempt, err := store.Get(context.Background(), "stale-action")
 	if err != nil || record.Outbox.State != turns.Uncertain || attempt.State != turns.JournalUnknown {
 		t.Fatalf("restored record=%+v attempt=%+v err=%v", record, attempt, err)
@@ -164,7 +166,7 @@ func TestTransactionalTransportLossStaysUncertainAndNeverAutoRetries(t *testing.
 		calls.Add(1)
 		return nil, errors.New("connection lost after provider write")
 	})
-	response := postTurn(t, sess, context.Background(), "uncertain-action", "do not duplicate")
+	response := postTurn(t, sess.Delivery(), context.Background(), "uncertain-action", "do not duplicate")
 	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"status":"timeout"`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -172,7 +174,7 @@ func TestTransactionalTransportLossStaysUncertainAndNeverAutoRetries(t *testing.
 	if err != nil || record.Outbox.State != turns.Uncertain || attempt.State != turns.JournalUnknown || record.ClaimToken != "" || attempt.ClaimToken == "" {
 		t.Fatalf("uncertain record=%+v attempt=%+v err=%v", record, attempt, err)
 	}
-	retry := postTurn(t, sess, context.Background(), "uncertain-action", "do not duplicate")
+	retry := postTurn(t, sess.Delivery(), context.Background(), "uncertain-action", "do not duplicate")
 	if retry.Code != http.StatusAccepted || calls.Load() != 1 {
 		t.Fatalf("retry status=%d calls=%d body=%s", retry.Code, calls.Load(), retry.Body.String())
 	}
@@ -190,14 +192,14 @@ func TestTurnSendWhileActiveIsPersistedBeforeAcknowledgement(t *testing.T) {
 	})
 	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
 
-	rec := postTurn(t, sess, context.Background(), "queued-action", "send this next")
+	rec := postTurn(t, sess.Delivery(), context.Background(), "queued-action", "send this next")
 	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("provider calls = %d, want 0", got)
 	}
-	queued, ok := sess.queuedTurns.Get("queued-action")
+	queued, ok := sess.delivery.queuedTurns.Get("queued-action")
 	if !ok || queued.Text != "send this next" {
 		t.Fatalf("queued = %#v, found = %v", queued, ok)
 	}
@@ -216,7 +218,7 @@ func TestAcceptedSubmissionTextSurvivesRestart(t *testing.T) {
 	sess := readySendTestSession(t, attempts, func(context.Context, string) (json.RawMessage, error) {
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	if rec := postTurn(t, sess, context.Background(), "restart-action", "survive the restart"); rec.Code != http.StatusOK {
+	if rec := postTurn(t, sess.Delivery(), context.Background(), "restart-action", "survive the restart"); rec.Code != http.StatusOK {
 		t.Fatalf("send status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
@@ -225,8 +227,8 @@ func TestAcceptedSubmissionTextSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := readySendTestSession(t, reloadedAttempts, nil)
-	restarted.restoreSubmissionOutbox()
-	accepted, ok := restarted.queuedTurns.Get("restart-action")
+	restarted.delivery.restoreSubmissionOutbox()
+	accepted, ok := restarted.delivery.queuedTurns.Get("restart-action")
 	if !ok || accepted.State != submissionAccepted || accepted.Text != "survive the restart" {
 		t.Fatalf("accepted retained record = %#v, present=%v", accepted, ok)
 	}
@@ -279,11 +281,11 @@ func TestAcceptedSubmissionRetryDoesNotMoveOutboxStateBackward(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
 	for attempt := 0; attempt < 2; attempt++ {
-		if rec := postTurn(t, sess, context.Background(), "stable-action", "send once"); rec.Code != http.StatusOK {
+		if rec := postTurn(t, sess.Delivery(), context.Background(), "stable-action", "send once"); rec.Code != http.StatusOK {
 			t.Fatalf("attempt %d status = %d, body = %s", attempt+1, rec.Code, rec.Body.String())
 		}
 	}
-	submission, ok := sess.queuedTurns.Get("stable-action")
+	submission, ok := sess.delivery.queuedTurns.Get("stable-action")
 	if !ok || submission.State != submissionAccepted {
 		t.Fatalf("retried accepted submission = %#v, found = %v", submission, ok)
 	}
@@ -298,7 +300,7 @@ func TestQueuedTurnSurvivesStoreReloadAndDrainsOnCompletion(t *testing.T) {
 	}
 	first := readySendTestSession(t, attempts, nil)
 	first.lifecycleState = testLifecycleSnapshot(first.connectionStatusLocked(), true)
-	if rec := postTurn(t, first, context.Background(), "queued-restart", "after restart"); rec.Code != http.StatusAccepted {
+	if rec := postTurn(t, first.Delivery(), context.Background(), "queued-restart", "after restart"); rec.Code != http.StatusAccepted {
 		t.Fatalf("queue status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
@@ -324,7 +326,7 @@ func TestQueuedTurnSurvivesStoreReloadAndDrainsOnCompletion(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for {
-		if submission, ok := second.queuedTurns.Get("queued-restart"); ok && submission.State == submissionAccepted {
+		if submission, ok := second.delivery.queuedTurns.Get("queued-restart"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -343,11 +345,11 @@ func TestDuplicateQueuedActionIsStoredOnce(t *testing.T) {
 	sess := readySendTestSession(t, attempts, nil)
 	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
 	for i := 0; i < 2; i++ {
-		if rec := postTurn(t, sess, context.Background(), "same-queued-action", "only once"); rec.Code != http.StatusAccepted {
+		if rec := postTurn(t, sess.Delivery(), context.Background(), "same-queued-action", "only once"); rec.Code != http.StatusAccepted {
 			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 		}
 	}
-	if records := QueueSnapshot(sess.queuedTurns.(*turns.LegacyQueue)); len(records) != 1 || records[0].ClientActionID != "same-queued-action" {
+	if records := QueueSnapshot(sess.delivery.queuedTurns.(*turns.LegacyQueue)); len(records) != 1 || records[0].ClientActionID != "same-queued-action" {
 		t.Fatalf("queue records = %#v, want one action", records)
 	}
 }
@@ -366,7 +368,7 @@ func TestQueuedTurnsDrainInSubmissionOrder(t *testing.T) {
 	})
 	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
 	for i, text := range []string{"first next", "second next"} {
-		if rec := postTurn(t, sess, context.Background(), fmt.Sprintf("ordered-%d", i), text); rec.Code != http.StatusAccepted {
+		if rec := postTurn(t, sess.Delivery(), context.Background(), fmt.Sprintf("ordered-%d", i), text); rec.Code != http.StatusAccepted {
 			t.Fatalf("queue %d status = %d, body = %s", i, rec.Code, rec.Body.String())
 		}
 	}
@@ -377,7 +379,7 @@ func TestQueuedTurnsDrainInSubmissionOrder(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for {
-		if submission, ok := sess.queuedTurns.Get("ordered-0"); ok && submission.State == submissionAccepted {
+		if submission, ok := sess.delivery.queuedTurns.Get("ordered-0"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -401,7 +403,7 @@ func TestQueuedTurnsDrainInSubmissionOrder(t *testing.T) {
 	}
 	deadline = time.Now().Add(time.Second)
 	for {
-		if submission, ok := sess.queuedTurns.Get("ordered-1"); ok && submission.State == submissionAccepted {
+		if submission, ok := sess.delivery.queuedTurns.Get("ordered-1"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -424,12 +426,12 @@ func TestQueuedTurnCanBeCanceledBeforeDelivery(t *testing.T) {
 	})
 	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
 	sess.agentExecutions = &unlinkedPromptExecutions{} // a Discard ends any operation the prompt carries
-	if rec := postTurn(t, sess, context.Background(), "cancel-queued", "never send"); rec.Code != http.StatusAccepted {
+	if rec := postTurn(t, sess.Delivery(), context.Background(), "cancel-queued", "never send"); rec.Code != http.StatusAccepted {
 		t.Fatalf("queue status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
 	cancel := httptest.NewRecorder()
-	sess.HandleTurnDeliveryCancel(cancel, httptest.NewRequest(http.MethodDelete, "/api/sessions/nano-session/turn-delivery/cancel-queued", nil), "cancel-queued")
+	sess.delivery.HandleTurnDeliveryCancel(cancel, httptest.NewRequest(http.MethodDelete, "/api/sessions/nano-session/turn-delivery/cancel-queued", nil), "cancel-queued")
 	if cancel.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, body = %s", cancel.Code, cancel.Body.String())
 	}
@@ -438,7 +440,7 @@ func TestQueuedTurnCanBeCanceledBeforeDelivery(t *testing.T) {
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("provider calls = %d, want 0", got)
 	}
-	if canceled, ok := sess.queuedTurns.Get("cancel-queued"); !ok || canceled.State != string(turns.Refused) || canceled.Text != "never send" {
+	if canceled, ok := sess.delivery.queuedTurns.Get("cancel-queued"); !ok || canceled.State != string(turns.Refused) || canceled.Text != "never send" {
 		t.Fatalf("retained canceled turn = %#v, present=%v", canceled, ok)
 	}
 }
@@ -454,13 +456,13 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 	const text = "no, budget requests go to me"
 	ctx := context.Background()
 	submit := func(t *testing.T, sess *Session) {
-		if _, _, err := sess.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: "hosted-thread", Provider: model.ProviderCodex, NativeThreadID: "native-thread", ActionID: "prompt",
+		if _, _, err := sess.delivery.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: "hosted-thread", Provider: model.ProviderCodex, NativeThreadID: "native-thread", ActionID: "prompt",
 			ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: turns.HumanOrigin}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	deliver := func(t *testing.T, sess *Session) {
-		if rec := postTurn(t, sess, ctx, "prompt", text); rec.Code != http.StatusOK {
+		if rec := postTurn(t, sess.Delivery(), ctx, "prompt", text); rec.Code != http.StatusOK {
 			t.Fatalf("send status = %d, body = %s", rec.Code, rec.Body.String())
 		}
 		waitTurnSendDone(t, sess, "prompt")
@@ -478,9 +480,9 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 	act := func(t *testing.T, sess *Session, action string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		if action == promptDiscard {
-			sess.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/nano-session/turn-delivery/prompt", nil), "prompt")
+			sess.delivery.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/nano-session/turn-delivery/prompt", nil), "prompt")
 		} else {
-			sess.HandleTurnDeliveryResend(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn-delivery/prompt/resend", nil), "prompt")
+			sess.delivery.HandleTurnDeliveryResend(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn-delivery/prompt/resend", nil), "prompt")
 		}
 		return rec
 	}
@@ -502,47 +504,47 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 		{name: "accepted, not yet saved", state: turns.Accepted, discard: "refused", resend: "refused", setup: deliver},
 		{name: "saved", state: turns.Confirmed, discard: "refused", resend: "refused", setup: func(t *testing.T, sess *Session) {
 			deliver(t, sess)
-			if _, settled, err := sess.PromptStore().Settle(ctx, "prompt"); err != nil || !settled {
+			if _, settled, err := sess.delivery.PromptStore().Settle(ctx, "prompt"); err != nil || !settled {
 				t.Fatalf("settle = %v, %v", settled, err)
 			}
 		}},
 		{name: "uncertain after the delivery deadline", state: turns.Uncertain, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			submit(t, sess)
 			record := claim(t, sess)
-			answer := sess.turnSender
-			defer func() { sess.turnSender = answer }()
-			sess.turnSender = func(ctx context.Context, _ string) (json.RawMessage, error) { <-ctx.Done(); return nil, ctx.Err() }
+			answer := sess.delivery.turnSender
+			defer func() { sess.delivery.turnSender = answer }()
+			sess.delivery.turnSender = func(ctx context.Context, _ string) (json.RawMessage, error) { <-ctx.Done(); return nil, ctx.Err() }
 			deadline, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 			defer cancel()
 			_, _ = sess.core.Deliver(deadline, record, sess.deliveryScope(), sess.deliverySettings(), false)
 		}},
 		{name: "held after a Stop", state: turns.Uncertain, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			deliver(t, sess)
-			record, _, err := sess.PromptStore().Get(ctx, "prompt")
+			record, _, err := sess.delivery.PromptStore().Get(ctx, "prompt")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, held, err := sess.PromptStore().HoldUntaken(ctx, "prompt", record.Revision, turns.ReasonStopped); err != nil || !held {
+			if _, held, err := sess.delivery.PromptStore().HoldUntaken(ctx, "prompt", record.Revision, turns.ReasonStopped); err != nil || !held {
 				t.Fatalf("hold = %v, %v", held, err)
 			}
 			sess.setTurnActive(false, "", 0, true) // the Stop ended the turn
 		}},
 		{name: "parked", state: turns.Parked, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			submit(t, sess)
-			if _, claimed, err := sess.PromptStore().Claim(ctx, turns.ClaimRequest{HostedThreadID: "hosted-thread", Token: "park", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+			if _, claimed, err := sess.delivery.PromptStore().Claim(ctx, turns.ClaimRequest{HostedThreadID: "hosted-thread", Token: "park", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 				t.Fatalf("claim = %v, %v", claimed, err)
 			}
-			if _, err := sess.PromptStore().Refused(ctx, turns.Refusal{ActionID: "prompt", ClaimToken: "park", AttachmentEpoch: 1, State: turns.Parked}); err != nil {
+			if _, err := sess.delivery.PromptStore().Refused(ctx, turns.Refusal{ActionID: "prompt", ClaimToken: "park", AttachmentEpoch: 1, State: turns.Parked}); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "discarded before", state: turns.Expired, discard: "ended", resend: "refused", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			deliver(t, sess)
-			record, _, err := sess.PromptStore().Get(ctx, "prompt")
+			record, _, err := sess.delivery.PromptStore().Get(ctx, "prompt")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, held, err := sess.PromptStore().HoldUntaken(ctx, "prompt", record.Revision, turns.ReasonStopped); err != nil || !held {
+			if _, held, err := sess.delivery.PromptStore().HoldUntaken(ctx, "prompt", record.Revision, turns.ReasonStopped); err != nil || !held {
 				t.Fatalf("hold = %v, %v", held, err)
 			}
 			if rec := act(t, sess, promptDiscard); rec.Code != http.StatusOK {
@@ -561,12 +563,12 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 				sess.agentExecutions = &unlinkedPromptExecutions{} // a Discard ends any operation the prompt carries
 				var sent atomic.Int32
 				var sentText atomic.Value
-				sess.turnSender = func(_ context.Context, delivered string) (json.RawMessage, error) {
+				sess.delivery.turnSender = func(_ context.Context, delivered string) (json.RawMessage, error) {
 					sentText.Store(delivered)
 					return json.RawMessage(fmt.Sprintf(`{"turn":{"id":"provider-turn-%d"}}`, sent.Add(1))), nil
 				}
 				test.setup(t, sess)
-				before, _, _ := sess.PromptStore().Get(ctx, "prompt")
+				before, _, _ := sess.delivery.PromptStore().Get(ctx, "prompt")
 				if before.Outbox.State != test.state {
 					t.Fatalf("setup left the prompt %q, want %q", before.Outbox.State, test.state)
 				}
@@ -585,7 +587,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 				sentBefore := sent.Load()
 
 				rec := act(t, sess, action)
-				after, _, _ := sess.PromptStore().Get(ctx, "prompt")
+				after, _, _ := sess.delivery.PromptStore().Get(ctx, "prompt")
 				switch outcome {
 				case "refused":
 					var refusal struct {
@@ -623,7 +625,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 						}
 						if test.ended == "" {
 							// The lost attempt arrives after all.
-							if late := postTurn(t, sess, ctx, "prompt", text); late.Code == http.StatusOK || late.Code == http.StatusAccepted {
+							if late := postTurn(t, sess.Delivery(), ctx, "prompt", text); late.Code == http.StatusOK || late.Code == http.StatusAccepted {
 								t.Fatalf("a discarded attempt was admitted late: %d %s", late.Code, late.Body.String())
 							}
 						} else if after.Outbox.State != test.ended || after.ProviderText != text {
@@ -678,7 +680,7 @@ func TestQueuedTurnCompletionStillReleasesNext(t *testing.T) {
 	})
 	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
 	for i, text := range []string{"instant first", "still released"} {
-		if rec := postTurn(t, sess, context.Background(), fmt.Sprintf("instant-%d", i), text); rec.Code != http.StatusAccepted {
+		if rec := postTurn(t, sess.Delivery(), context.Background(), fmt.Sprintf("instant-%d", i), text); rec.Code != http.StatusAccepted {
 			t.Fatalf("queue %d status = %d, body = %s", i, rec.Code, rec.Body.String())
 		}
 	}
@@ -705,7 +707,7 @@ func TestQueuedTurnCompletionStillReleasesNext(t *testing.T) {
 	}
 	deadline := time.Now().Add(time.Second)
 	for {
-		if submission, ok := sess.queuedTurns.Get("instant-1"); ok && submission.State == submissionAccepted {
+		if submission, ok := sess.delivery.queuedTurns.Get("instant-1"); ok && submission.State == submissionAccepted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -730,7 +732,7 @@ func TestFailedQueuedDeliveryBecomesParkedAndAllowsFollowingTurn(t *testing.T) {
 	})
 	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
 	for i, text := range []string{"keep failed text", "must not overtake"} {
-		if rec := postTurn(t, sess, context.Background(), fmt.Sprintf("failed-queued-%d", i), text); rec.Code != http.StatusAccepted {
+		if rec := postTurn(t, sess.Delivery(), context.Background(), fmt.Sprintf("failed-queued-%d", i), text); rec.Code != http.StatusAccepted {
 			t.Fatalf("queue %d status = %d, body = %s", i, rec.Code, rec.Body.String())
 		}
 	}
@@ -751,11 +753,11 @@ func TestFailedQueuedDeliveryBecomesParkedAndAllowsFollowingTurn(t *testing.T) {
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("provider calls = %d, want 2", got)
 	}
-	queued, ok := sess.queuedTurns.Get("failed-queued-0")
+	queued, ok := sess.delivery.queuedTurns.Get("failed-queued-0")
 	if !ok || queued.State != submissionParked || queued.Text != "keep failed text" {
 		t.Fatalf("failed queue record = %#v, found = %v", queued, ok)
 	}
-	if view, code := readPrompt(t, sess, "failed-queued-0"); code != http.StatusOK || view.State != string(turns.Parked) || !slices.Equal(view.AllowedActions, []string{promptResend, promptDiscard}) {
+	if view, code := readPrompt(t, sess.Delivery(), "failed-queued-0"); code != http.StatusOK || view.State != string(turns.Parked) || !slices.Equal(view.AllowedActions, []string{promptResend, promptDiscard}) {
 		t.Fatalf("parked read = %d %+v", code, view)
 	}
 }
@@ -778,10 +780,10 @@ func TestTurnSendDuplicateActionRunsProviderOnce(t *testing.T) {
 	})
 
 	firstDone := make(chan *httptest.ResponseRecorder, 1)
-	go func() { firstDone <- postTurn(t, sess, context.Background(), "action-1", "hello") }()
+	go func() { firstDone <- postTurn(t, sess.Delivery(), context.Background(), "action-1", "hello") }()
 	<-started
 	secondDone := make(chan *httptest.ResponseRecorder, 1)
-	go func() { secondDone <- postTurn(t, sess, context.Background(), "action-1", "hello") }()
+	go func() { secondDone <- postTurn(t, sess.Delivery(), context.Background(), "action-1", "hello") }()
 	close(release)
 
 	for _, rec := range []*httptest.ResponseRecorder{<-firstDone, <-secondDone} {
@@ -799,13 +801,13 @@ func TestTurnSendDuplicateActionRunsProviderOnce(t *testing.T) {
 	nextTurn := func(actionID, text string) *httptest.ResponseRecorder {
 		body := `{"text":` + string(mustJSON(t, text)) + `,"clientActionId":` + string(mustJSON(t, actionID)) + `,"nextTurn":true}`
 		rec := httptest.NewRecorder()
-		sess.HandleTurn(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn", strings.NewReader(body)))
+		sess.delivery.HandleTurn(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/nano-session/turn", strings.NewReader(body)))
 		return rec
 	}
 	if rec := nextTurn("action-1", "hello"); rec.Code != http.StatusConflict {
 		t.Fatalf("changed next-turn choice: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if rec := postTurn(t, sess, context.Background(), "action-2", "hello\x00nextTurn"); rec.Code >= http.StatusBadRequest {
+	if rec := postTurn(t, sess.Delivery(), context.Background(), "action-2", "hello\x00nextTurn"); rec.Code >= http.StatusBadRequest {
 		t.Fatalf("second action: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if rec := nextTurn("action-2", "hello"); rec.Code != http.StatusConflict {
@@ -833,7 +835,7 @@ func TestTurnSendOutlivesCanceledBrowserRequest(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	firstDone := make(chan *httptest.ResponseRecorder, 1)
-	go func() { firstDone <- postTurn(t, sess, ctx, "action-2", "survive reload") }()
+	go func() { firstDone <- postTurn(t, sess.Delivery(), ctx, "action-2", "survive reload") }()
 	<-started
 	cancel()
 	select {
@@ -843,7 +845,7 @@ func TestTurnSendOutlivesCanceledBrowserRequest(t *testing.T) {
 	}
 
 	secondDone := make(chan *httptest.ResponseRecorder, 1)
-	go func() { secondDone <- postTurn(t, sess, context.Background(), "action-2", "survive reload") }()
+	go func() { secondDone <- postTurn(t, sess.Delivery(), context.Background(), "action-2", "survive reload") }()
 	close(release)
 	if rec := <-secondDone; rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -868,19 +870,19 @@ func TestTurnDeliveryReportsBackgroundCompletionAfterBrowserTimeout(t *testing.T
 
 	ctx, cancel := context.WithCancel(context.Background())
 	firstDone := make(chan *httptest.ResponseRecorder, 1)
-	go func() { firstDone <- postTurn(t, sess, ctx, "action-status", "wait for it") }()
+	go func() { firstDone <- postTurn(t, sess.Delivery(), ctx, "action-status", "wait for it") }()
 	<-started
 	cancel()
 	<-firstDone
 
-	if view, code := readPrompt(t, sess, "action-status"); code != http.StatusOK || view.State != string(turns.Delivering) {
+	if view, code := readPrompt(t, sess.Delivery(), "action-status"); code != http.StatusOK || view.State != string(turns.Delivering) {
 		t.Fatalf("pending read = %d %+v; want delivering", code, view)
 	}
 
 	close(release)
 	deadline := time.After(time.Second)
 	for {
-		view, _ := readPrompt(t, sess, "action-status")
+		view, _ := readPrompt(t, sess.Delivery(), "action-status")
 		if view.State == string(turns.Accepted) {
 			break
 		}
@@ -903,7 +905,7 @@ func TestTurnSendAcceptedAttemptSurvivesNanoRestart(t *testing.T) {
 		calls.Add(1)
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	}
-	if rec := postTurn(t, readySendTestSession(t, firstStore, sender), context.Background(), "action-3", "once only"); rec.Code != http.StatusOK {
+	if rec := postTurn(t, readySendTestSession(t, firstStore, sender).Delivery(), context.Background(), "action-3", "once only"); rec.Code != http.StatusOK {
 		t.Fatalf("first status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
@@ -911,7 +913,7 @@ func TestTurnSendAcceptedAttemptSurvivesNanoRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec := postTurn(t, readySendTestSession(t, secondStore, sender), context.Background(), "action-3", "once only"); rec.Code != http.StatusOK {
+	if rec := postTurn(t, readySendTestSession(t, secondStore, sender).Delivery(), context.Background(), "action-3", "once only"); rec.Code != http.StatusOK {
 		t.Fatalf("restart status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if got := calls.Load(); got != 1 {
@@ -941,7 +943,7 @@ func TestTurnSendReportsPriorRunInFlightAsUnknown(t *testing.T) {
 		calls.Add(1)
 		return nil, nil
 	})
-	rec := postTurn(t, sess, context.Background(), "action-4", "uncertain")
+	rec := postTurn(t, sess.Delivery(), context.Background(), "action-4", "uncertain")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -967,16 +969,17 @@ func TestTurnSendAcceptedActionBypassesReadinessGate(t *testing.T) {
 	}
 	var calls atomic.Int32
 	sess := sessionWithOwners(&Session{id: "nano-session",
-		provider:     "codex",
-		threadID:     "native-thread",
-		sendAttempts: store,
-		sendOps:      map[string]*turnSendOperation{},
-		turnSender: func(context.Context, string) (json.RawMessage, error) {
-			calls.Add(1)
-			return nil, nil
-		},
-		lifecycleState: testLifecycleSnapshot("starting", false)})
-	rec := postTurn(t, sess, context.Background(), "accepted-while-starting", "already accepted")
+		provider:       "codex",
+		threadID:       "native-thread",
+		lifecycleState: testLifecycleSnapshot("starting", false),
+		delivery: Delivery{
+			sendAttempts: store,
+			sendOps:      map[string]*turnSendOperation{},
+			turnSender: func(context.Context, string) (json.RawMessage, error) {
+				calls.Add(1)
+				return nil, nil
+			}}})
+	rec := postTurn(t, sess.Delivery(), context.Background(), "accepted-while-starting", "already accepted")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -1003,16 +1006,16 @@ func TestTurnDeliveryUnknownIsExplicitAndThreadListIsAvailable(t *testing.T) {
 	sess := readySendTestSession(t, store, func(context.Context, string) (json.RawMessage, error) {
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	if rec := postTurn(t, sess, context.Background(), "listed-action", "listed"); rec.Code != http.StatusOK {
+	if rec := postTurn(t, sess.Delivery(), context.Background(), "listed-action", "listed"); rec.Code != http.StatusOK {
 		t.Fatalf("send = %d %s", rec.Code, rec.Body.String())
 	}
 	waitTurnSendDone(t, sess, "listed-action")
-	if _, code := readPrompt(t, sess, "missing"); code != http.StatusNotFound {
+	if _, code := readPrompt(t, sess.Delivery(), "missing"); code != http.StatusNotFound {
 		t.Fatalf("unknown read = %d; want 404", code)
 	}
 
 	list := httptest.NewRecorder()
-	sess.HandleTurnDeliveryList(list, httptest.NewRequest(http.MethodGet, "/api/sessions/nano-session/turn-delivery?thread=native-thread", nil))
+	sess.delivery.HandleTurnDeliveryList(list, httptest.NewRequest(http.MethodGet, "/api/sessions/nano-session/turn-delivery?thread=native-thread", nil))
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"clientActionId":"listed-action"`) || !strings.Contains(list.Body.String(), `"state":"accepted"`) ||
 		strings.Contains(list.Body.String(), "legacy-action") {
 		t.Fatalf("thread list = %d, body = %s", list.Code, list.Body.String())
@@ -1032,15 +1035,15 @@ func TestTurnDeliveryUsesHonestRefusalAndTimeoutStatuses(t *testing.T) {
 	refused := readySendTestSession(t, store, func(context.Context, string) (json.RawMessage, error) {
 		return nil, &protocol.RPCError{Code: -32000, Message: "provider is not accepting input"}
 	})
-	refusal := postTurn(t, refused, context.Background(), "action-refused", "not now")
+	refusal := postTurn(t, refused.Delivery(), context.Background(), "action-refused", "not now")
 	if refusal.Code != http.StatusAccepted || !strings.Contains(refusal.Body.String(), `"reason":"queued_delivery_failed"`) {
 		t.Fatalf("refusal = %d %s", refusal.Code, refusal.Body.String())
 	}
-	if record, _, err := refused.PromptStore().Get(context.Background(), "action-refused"); err != nil || record.Outbox.State != turns.Parked || record.ProviderText != "not now" {
+	if record, _, err := refused.delivery.PromptStore().Get(context.Background(), "action-refused"); err != nil || record.Outbox.State != turns.Parked || record.ProviderText != "not now" {
 		t.Fatalf("refused prompt = %s %q, %v; want parked with its text", record.Outbox.State, record.ProviderText, err)
 	}
 
-	if view, code := readPrompt(t, refused, "action-refused"); code != http.StatusOK || view.State != string(turns.Parked) ||
+	if view, code := readPrompt(t, refused.Delivery(), "action-refused"); code != http.StatusOK || view.State != string(turns.Parked) ||
 		view.Label != "Not delivered: rpc error -32000: provider is not accepting input" {
 		t.Fatalf("refused prompt read = %d %+v; want parked, saying why", code, view)
 	}
@@ -1056,11 +1059,11 @@ func TestTurnDeliveryExposesAcceptedPromptAndStillDedupes(t *testing.T) {
 		calls.Add(1)
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	if rec := postTurn(t, sess, context.Background(), "action-journal", "confirm me"); rec.Code != http.StatusOK {
+	if rec := postTurn(t, sess.Delivery(), context.Background(), "action-journal", "confirm me"); rec.Code != http.StatusOK {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
 	list := httptest.NewRecorder()
-	sess.HandleTurnDeliveryList(list, httptest.NewRequest(http.MethodGet, "/api/sessions/nano-session/turn-delivery?thread=native-thread", nil))
+	sess.delivery.HandleTurnDeliveryList(list, httptest.NewRequest(http.MethodGet, "/api/sessions/nano-session/turn-delivery?thread=native-thread", nil))
 	var listed struct {
 		Operations []turns.View `json:"operations"`
 	}
@@ -1070,13 +1073,13 @@ func TestTurnDeliveryExposesAcceptedPromptAndStillDedupes(t *testing.T) {
 	if len(listed.Operations) != 1 || listed.Operations[0].State != string(turns.Accepted) || listed.Operations[0].AllowedActions != nil {
 		t.Fatalf("thread list did not present the accepted prompt: %s", list.Body.String())
 	}
-	if view, code := readPrompt(t, sess, "action-journal"); code != http.StatusOK || view.State != string(turns.Accepted) {
+	if view, code := readPrompt(t, sess.Delivery(), "action-journal"); code != http.StatusOK || view.State != string(turns.Accepted) {
 		t.Fatalf("read = %d %+v", code, view)
 	}
 
 	// Same action id, after confirmation, still answers idempotently without a
 	// second provider turn.
-	if rec := postTurn(t, sess, context.Background(), "action-journal", "confirm me"); rec.Code != http.StatusOK {
+	if rec := postTurn(t, sess.Delivery(), context.Background(), "action-journal", "confirm me"); rec.Code != http.StatusOK {
 		t.Fatalf("dedup submit = %d %s", rec.Code, rec.Body.String())
 	}
 	if got := calls.Load(); got != 1 {
@@ -1143,11 +1146,11 @@ func TestClaudePromptSentWhileATurnWorksIsDeliveredAtOnce(t *testing.T) {
 	t.Cleanup(sess.coreSession().Close)
 	sess.setTurnActive(true, "claude:hosted-thread:1", 0, false)
 
-	if rec := postTurn(t, sess, ctx, "correction", "Use the other file."); rec.Code != http.StatusOK {
+	if rec := postTurn(t, sess.Delivery(), ctx, "correction", "Use the other file."); rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	waitTurnSendDone(t, sess, "correction")
-	record, _, err := sess.PromptStore().Get(ctx, "correction")
+	record, _, err := sess.delivery.PromptStore().Get(ctx, "correction")
 	if err != nil || sent.Load() != 1 || record.Outbox.State != turns.Accepted {
 		t.Fatalf("sent %d times, state %s, err %v; want delivered once while the turn works", sent.Load(), record.Outbox.State, err)
 	}
@@ -1194,7 +1197,7 @@ func TestCodexPromptJoinsTheWorkingTurnBySteer(t *testing.T) {
 			t.Cleanup(sess.coreSession().Close)
 			if test.queued {
 				text := "Use the other file."
-				if _, _, err := sess.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.ThreadID(),
+				if _, _, err := sess.delivery.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.ThreadID(),
 					ActionID: "correction", ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 					t.Fatal(err)
 				}
@@ -1202,13 +1205,13 @@ func TestCodexPromptJoinsTheWorkingTurnBySteer(t *testing.T) {
 			sess.setTurnActive(true, "turn-running", 0, false)
 
 			if !test.queued {
-				rec := postTurn(t, sess, ctx, "correction", "Use the other file.")
+				rec := postTurn(t, sess.Delivery(), ctx, "correction", "Use the other file.")
 				if test.state == turns.Accepted && rec.Code != http.StatusOK {
 					t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 				}
 			}
 			waitTurnSendDone(t, sess, "correction")
-			sess.kickQueuedTurnDrain() // a settled attempt is never sent again
+			sess.delivery.kickQueuedTurnDrain() // a settled attempt is never sent again
 			time.Sleep(50 * time.Millisecond)
 			steers := fake.SteerParams()
 			if len(steers) != 1 {
@@ -1228,7 +1231,7 @@ func TestCodexPromptJoinsTheWorkingTurnBySteer(t *testing.T) {
 				len(params.Input) != 1 || !strings.HasPrefix(params.Input[0].Text, "Use the other file.") {
 				t.Fatalf("turn/steer params = %s", steers[0])
 			}
-			record, attempt, err := sess.PromptStore().Get(ctx, "correction")
+			record, attempt, err := sess.delivery.PromptStore().Get(ctx, "correction")
 			if err != nil || record.Outbox.State != test.state || test.reason != "" && attempt.Reason != test.reason {
 				t.Fatalf("record state=%s reason=%q err=%v; want %s %q", record.Outbox.State, attempt.Reason, err, test.state, test.reason)
 			}
@@ -1269,21 +1272,21 @@ func TestQueuedPromptJoinsTheTurnItsThreadReturnsTo(t *testing.T) {
 			if path == "reconnected" {
 				sess.setStatus("reconnecting")
 			} else {
-				sess.addPendingInteraction(interact.PendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.ThreadID()})
+				sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.ThreadID()})
 			}
 			if err := sess.ensureCoreSession(); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(sess.coreSession().Close)
 			text := "Use the other file."
-			if _, _, err := sess.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.ThreadID(),
+			if _, _, err := sess.delivery.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.ThreadID(),
 				ActionID: "queued", ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 				t.Fatal(err)
 			}
 
 			if path == "reconnected" {
 				sess.observeConnection(lifecycle.EventReadyWorking)
-			} else if _, ok := sess.claimPendingInteraction("approval-1"); !ok {
+			} else if _, ok := sess.delivery.claimPendingInteraction("approval-1"); !ok {
 				t.Fatal("approval not pending")
 			}
 			waitTurnSendDone(t, sess, "queued")
@@ -1294,7 +1297,7 @@ func TestQueuedPromptJoinsTheTurnItsThreadReturnsTo(t *testing.T) {
 			if len(steers) != 1 || json.Unmarshal(steers[0], &params) != nil || params.ExpectedTurnID != "turn-running" {
 				t.Fatalf("turn/steer = %s; want one steer into turn-running", steers)
 			}
-			if record, _, err := sess.PromptStore().Get(ctx, "queued"); err != nil || record.Outbox.State != turns.Accepted {
+			if record, _, err := sess.delivery.PromptStore().Get(ctx, "queued"); err != nil || record.Outbox.State != turns.Accepted {
 				t.Fatalf("queued prompt state=%s err=%v; want accepted", record.Outbox.State, err)
 			}
 		})

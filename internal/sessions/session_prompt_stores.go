@@ -47,30 +47,30 @@ type Journal interface {
 }
 
 // QueuedPrompt reads one queued prompt from the attachment store.
-func (sess *Session) QueuedPrompt(actionID string) (prompts.QueuedTurn, bool) {
+func (sess *Delivery) QueuedPrompt(actionID string) (prompts.QueuedTurn, bool) {
 	if sess.queuedTurns == nil {
 		return prompts.QueuedTurn{}, false
 	}
 	return sess.queuedTurns.Get(actionID)
 }
 
-func (sess *Session) sendAttempt(actionID string) (prompts.SendAttempt, bool) {
+func (sess *Delivery) sendAttempt(actionID string) (prompts.SendAttempt, bool) {
 	if sess.sendAttempts == nil {
 		return prompts.SendAttempt{}, false
 	}
 	return sess.sendAttempts.Get(actionID)
 }
 
-func (sess *Session) queuedPrompts(nativeID string) []prompts.QueuedTurn {
+func (sess *Delivery) queuedPrompts(nativeID string) []prompts.QueuedTurn {
 	if sess.queuedTurns == nil {
 		return nil
 	}
-	return sess.queuedTurns.ListThread(sess.provider, nativeID, sess.hostedThreadID)
+	return sess.queuedTurns.ListThread(sess.session.provider, nativeID, sess.session.hostedThreadID)
 }
 
 // HasDeliveryEvidence reads this attachment's journal and queue, using the
 // application's stores only when that source is absent on the attachment.
-func (sess *Session) HasDeliveryEvidence(actionID string, queue Queue, journal Journal) bool {
+func (sess *Delivery) HasDeliveryEvidence(actionID string, queue Queue, journal Journal) bool {
 	if sess != nil {
 		if sess.queuedTurns != nil {
 			queue = sess.queuedTurns
@@ -93,7 +93,7 @@ func (sess *Session) HasDeliveryEvidence(actionID string, queue Queue, journal J
 }
 
 // QueuePositionOr reads this attachment's queue or the application fallback.
-func (sess *Session) QueuePositionOr(actionID string, fallback Queue) int {
+func (sess *Delivery) QueuePositionOr(actionID string, fallback Queue) int {
 	if sess != nil && sess.queuedTurns != nil {
 		fallback = sess.queuedTurns
 	}
@@ -101,7 +101,7 @@ func (sess *Session) QueuePositionOr(actionID string, fallback Queue) int {
 }
 
 // DeliveryWasAttempted reads acceptance/sending evidence from the attachment's journal.
-func (sess *Session) DeliveryWasAttempted(actionID string, fallback Journal) bool {
+func (sess *Delivery) DeliveryWasAttempted(actionID string, fallback Journal) bool {
 	if sess != nil && sess.sendAttempts != nil {
 		fallback = sess.sendAttempts
 	}

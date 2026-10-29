@@ -646,7 +646,7 @@ func (d *CodexDaemon) closeSession(sess *Session) {
 	// Answer anything parked before letting go of the thread: the app-server
 	// outlives nano, so a request left unanswered here holds a turn open with
 	// nobody able to reach it (interactions.go).
-	sess.closeInteractions()
+	sess.delivery.closeInteractions()
 	threadID := sess.ThreadID()
 	if threadID == "" {
 		return // no id yet: a fresh start's handshake owns the cleanup instead
@@ -1026,7 +1026,7 @@ func (sess *Session) markCodexZeroTurnReady(model string) bool {
 	sess.PublishProjectionRuntime()
 	sess.NotifyRuntime()
 	sess.updateHostedThread("ready", "")
-	sess.kickQueuedTurnDrain()
+	sess.delivery.kickQueuedTurnDrain()
 	return true
 }
 
@@ -1244,9 +1244,9 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		// Restore action-bearing rows before the lossy provider baseline so a
 		// returned user item promotes the same logical row instead of duplicating
 		// it. The outbox is scrubbed only after durable/provider confirmation.
-		sess.restoreSubmissionOutbox()
+		sess.delivery.restoreSubmissionOutbox()
 		seedCodexResume(sess.projection, decoded)
-		sess.observeCodexResume(decoded)
+		sess.delivery.observeCodexResume(decoded)
 		// A resume payload is explicitly lossy and can lag the active rollout.
 		// Settle the open turn from its saved copy; later catalog changes
 		// repeat this repair.

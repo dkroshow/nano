@@ -27,8 +27,8 @@ func (sess *Session) codexZeroTurnEvidence(refusedAction string) bool {
 		return false
 	}
 	var attempts []prompts.SendAttempt
-	if sess.sendAttempts != nil {
-		attempts = sess.sendAttempts.ListThread("codex", sess.ThreadID())
+	if sess.delivery.sendAttempts != nil {
+		attempts = sess.delivery.sendAttempts.ListThread("codex", sess.ThreadID())
 	}
 	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
@@ -67,10 +67,10 @@ func (sess *Session) containCodexNativeMissing(message string) error {
 }
 
 func (sess *Session) failCodexReconnect(message string) error {
-	sess.sendMu.Lock()
+	sess.delivery.sendMu.Lock()
 	changed := false
 	defer func() {
-		sess.sendMu.Unlock()
+		sess.delivery.sendMu.Unlock()
 		if !changed {
 			return
 		}
@@ -89,11 +89,11 @@ func (sess *Session) failCodexReconnect(message string) error {
 	if closed {
 		return nil
 	}
-	for _, queued := range sess.queuedPrompts(sess.ThreadID()) {
+	for _, queued := range sess.delivery.queuedPrompts(sess.ThreadID()) {
 		if queued.State != submissionQueued && queued.State != submissionParked {
 			continue
 		}
-		attempt, ok := sess.sendAttempt(queued.ClientActionID)
+		attempt, ok := sess.delivery.sendAttempt(queued.ClientActionID)
 		if queued.State == submissionParked {
 			if !ok || (attempt.Reason != "reconnect_failed" && attempt.Reason != codexNativeMissing) {
 				continue
@@ -101,20 +101,20 @@ func (sess *Session) failCodexReconnect(message string) error {
 		} else if ok && attempt.Status != sendAttemptQueued && !(attempt.Status == sendAttemptRefused && attempt.Reason == "reconnect_failed") {
 			continue
 		}
-		if sess.turns == nil {
+		if sess.delivery.turns == nil {
 			return fmt.Errorf("transactional turns store is unavailable")
 		}
 		var record prompts.Record
 		var err error
 		if queued.State == submissionParked {
-			record, _, err = sess.turns.Get(context.Background(), queued.ClientActionID)
+			record, _, err = sess.delivery.turns.Get(context.Background(), queued.ClientActionID)
 		} else {
-			record, err = sess.turns.Cancel(context.Background(), queued.ClientActionID)
+			record, err = sess.delivery.turns.Cancel(context.Background(), queued.ClientActionID)
 		}
 		if err != nil {
 			return fmt.Errorf("park terminal submission: %w", err)
 		}
-		sess.publishTransactionalOutbox(record.Outbox)
+		sess.delivery.publishTransactionalOutbox(record.Outbox)
 		if sess.agentExecutions != nil {
 			if operation, found := sess.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
 				if err := sess.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,

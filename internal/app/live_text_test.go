@@ -586,7 +586,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 				if tc.noTimestamp {
 					want["prompt:"+action] = ""
 				}
-				if _, _, err := h.sess.PromptStore().Submit(context.Background(), prompts.Submission{
+				if _, _, err := h.sess.Delivery().PromptStore().Submit(context.Background(), prompts.Submission{
 					HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", NativeThreadID: h.sess.ThreadID(),
 					ActionID: action, ProviderText: "The same prompt.", PresentationText: "The same prompt.",
 					TextHash: sendTextHash("The same prompt."), RequestHash: sendTextHash("The same prompt."), Origin: prompts.HumanOrigin,
@@ -599,7 +599,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			// no cached operations, requiring the scoped committed lookup.
 			liveTextOf(h.sess).unsubscribe(h.pane)
 			store = emptyReader
-			fresh := newFixtureSession(sessions.Config{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
+			fresh := newFixtureSession(sessions.Config{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.Delivery().PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
 			h.srv.startLiveText(fresh)
 			stream := httptest.NewServer(http.HandlerFunc(fresh.HandleLiveStream))
 			defer stream.Close()
@@ -749,11 +749,11 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				if steered {
 					runtime.emitAndWait(t, variant.wire[0])
 				}
-				if response := postTurn(t, sess, ctx, "lost", text); response.Code != http.StatusOK {
+				if response := postTurn(t, sess.Delivery(), ctx, "lost", text); response.Code != http.StatusOK {
 					t.Fatalf("lost prompt acceptance = %d %s", response.Code, response.Body.String())
 				}
 				turn := variant.turn
-				if record, _, err := sess.PromptStore().Get(ctx, "lost"); err != nil || record.ProviderTurnID != turn {
+				if record, _, err := sess.Delivery().PromptStore().Get(ctx, "lost"); err != nil || record.ProviderTurnID != turn {
 					t.Fatalf("lost prompt bound to %+v, %v; want %s", record, err, turn)
 				}
 				h.expect("pending prompt", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:lost") })
@@ -790,7 +790,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				if test.stopped {
 					for range 2 {
 						rec := httptest.NewRecorder()
-						sess.HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
+						sess.Delivery().HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
 						if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"interrupted":true`) {
 							t.Fatalf("Stop = %d %s", rec.Code, rec.Body.String())
 						}
@@ -799,7 +799,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 						t.Fatalf("Stop reached the provider %d times, want 2", got)
 					}
 					// The replacement joins the same turn while its stop is pending.
-					if response := postTurn(t, sess, ctx, "replacement", replacement); response.Code != http.StatusOK {
+					if response := postTurn(t, sess.Delivery(), ctx, "replacement", replacement); response.Code != http.StatusOK {
 						t.Fatalf("replacement acceptance = %d %s", response.Code, response.Body.String())
 					}
 				}
@@ -819,13 +819,13 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				if test.stopped {
 					for action, want := range map[string]string{"lost": text, "replacement": replacement} {
 						waitForCatalogWithin(t, 20*time.Second, func() bool {
-							record, _, err := sess.PromptStore().Get(ctx, action)
+							record, _, err := sess.Delivery().PromptStore().Get(ctx, action)
 							return err == nil && record.Outbox.State == prompts.Uncertain
 						})
-						if record, _, _ := sess.PromptStore().Get(ctx, action); record.ProviderText != want {
+						if record, _, _ := sess.Delivery().PromptStore().Get(ctx, action); record.ProviderText != want {
 							t.Fatalf("held %s text = %q, want it kept", action, record.ProviderText)
 						}
-						if view, code := readPrompt(t, sess, action); code != http.StatusOK || view.State != string(prompts.Uncertain) || !slices.Equal(view.AllowedActions, []string{promptResend, promptDiscard}) {
+						if view, code := readPrompt(t, sess.Delivery(), action); code != http.StatusOK || view.State != string(prompts.Uncertain) || !slices.Equal(view.AllowedActions, []string{promptResend, promptDiscard}) {
 							t.Fatalf("stopped %s read = %d %+v; want held for the person", action, code, view)
 						}
 					}
@@ -874,7 +874,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				}
 
 				var resent prompts.Record
-				records, err := sess.PromptStore().List(ctx, hosted)
+				records, err := sess.Delivery().PromptStore().List(ctx, hosted)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -884,7 +884,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 					}
 				}
 				waitTurnSendDone(t, sess, resent.Outbox.ActionID)
-				if view, code := readPrompt(t, sess, resent.Outbox.ActionID); code != http.StatusOK || view.State != string(prompts.Accepted) {
+				if view, code := readPrompt(t, sess.Delivery(), resent.Outbox.ActionID); code != http.StatusOK || view.State != string(prompts.Accepted) {
 					t.Fatalf("resend read = %d %+v; want accepted", code, view)
 				}
 				h.view.expectSaved["prompt:"+resent.Outbox.ActionID] = text
@@ -909,11 +909,11 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 					}
 					return rows == 1 && len(h.view.live) == 0
 				})
-				if old, _, err := sess.PromptStore().Get(ctx, "lost"); err != nil || old.Outbox.State != prompts.Expired || old.ProviderText != text {
+				if old, _, err := sess.Delivery().PromptStore().Get(ctx, "lost"); err != nil || old.Outbox.State != prompts.Expired || old.ProviderText != text {
 					t.Fatalf("dropped prompt = %s %q, %v; want retired with its text kept", old.Outbox.State, old.ProviderText, err)
 				}
 				waitForCatalogWithin(t, 10*time.Second, func() bool {
-					record, _, err := sess.PromptStore().Get(ctx, resent.Outbox.ActionID)
+					record, _, err := sess.Delivery().PromptStore().Get(ctx, resent.Outbox.ActionID)
 					return err == nil && record.Outbox.State == prompts.Confirmed
 				})
 				select {
@@ -938,20 +938,20 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	sess := h.sess // a Discard ends any operation the prompt carries
 	hosted, native := sess.HostedThreadID(), sess.ThreadID()
 	const text = "no, budget requests go to me"
-	if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "dropped",
+	if _, _, err := sess.Delivery().PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "dropped",
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: prompts.HumanOrigin}); err != nil {
 		t.Fatal(err)
 	}
-	if _, claimed, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "dropped", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := sess.Delivery().PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "dropped", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		t.Fatalf("claim = %v, %v", claimed, err)
 	}
 	turn := codexFixtureTurn2
-	accepted, err := sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: "dropped", ClaimToken: "dropped", AttachmentEpoch: 1, Binding: prompts.Binding{
+	accepted, err := sess.Delivery().PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: "dropped", ClaimToken: "dropped", AttachmentEpoch: 1, Binding: prompts.Binding{
 		EventID: submissionEventID(hosted, "dropped"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	held, ok, err := sess.PromptStore().HoldUntaken(ctx, "dropped", accepted.Revision, prompts.ReasonTurnEnded)
+	held, ok, err := sess.Delivery().PromptStore().HoldUntaken(ctx, "dropped", accepted.Revision, prompts.ReasonTurnEnded)
 	if err != nil || !ok {
 		t.Fatalf("hold = %v, %v", ok, err)
 	}
@@ -959,7 +959,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	h.expect("unsaved prompt shown", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:dropped") })
 
 	discard := httptest.NewRecorder()
-	sess.HandleTurnDeliveryCancel(discard, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/dropped", nil), "dropped")
+	sess.Delivery().HandleTurnDeliveryCancel(discard, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/dropped", nil), "dropped")
 	if discard.Code != http.StatusOK {
 		t.Fatalf("discard status = %d, body = %s", discard.Code, discard.Body.String())
 	}
@@ -967,7 +967,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	if reloaded := h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}); containsEntry(reloaded.view.live, "prompt:dropped") {
 		t.Fatal("a reload brought the discarded prompt back")
 	}
-	if record, _, err := sess.PromptStore().Get(ctx, "dropped"); err != nil || record.Outbox.State != prompts.Expired || record.ProviderText != text {
+	if record, _, err := sess.Delivery().PromptStore().Get(ctx, "dropped"); err != nil || record.Outbox.State != prompts.Expired || record.ProviderText != text {
 		t.Fatalf("discarded prompt = %s %q, %v; want expired with its text kept", record.Outbox.State, record.ProviderText, err)
 	}
 }
@@ -977,7 +977,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 func (h *liveTextHarness) deliveryJournal() map[string]prompts.View {
 	h.t.Helper()
 	rec := httptest.NewRecorder()
-	h.sess.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
+	h.sess.Delivery().HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
 	var body struct {
 		Operations []prompts.View `json:"operations"`
 	}
@@ -1021,14 +1021,14 @@ func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin pr
 	h.t.Helper()
 	ctx := context.Background()
 	hosted, native := h.sess.HostedThreadID(), h.sess.ThreadID()
-	if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
+	if _, _, err := h.sess.Delivery().PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: origin, CreatedAt: createdAt}); err != nil {
 		h.t.Fatal(err)
 	}
-	if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := h.sess.Delivery().PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		h.t.Fatalf("claim %s = %v, %v", action, claimed, err)
 	}
-	accepted, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: action, AttachmentEpoch: 1, Binding: prompts.Binding{
+	accepted, err := h.sess.Delivery().PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: action, AttachmentEpoch: 1, Binding: prompts.Binding{
 		EventID: submissionEventID(hosted, action), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}})
 	if err != nil {
 		h.t.Fatal(err)
@@ -1064,18 +1064,18 @@ func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) 
 	h.expect("both prompts shown", func(liveTextMessage) bool {
 		return containsEntry(h.view.live, "prompt:lost") && containsEntry(h.view.live, "prompt:steered")
 	})
-	if _, err := sess.SettlePrompts(ctx); err != nil {
+	if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 		t.Fatal(err)
 	}
 
-	record, attempt, err := sess.PromptStore().Get(ctx, "lost")
+	record, attempt, err := sess.Delivery().PromptStore().Get(ctx, "lost")
 	if err != nil || record.Outbox.State != prompts.Uncertain || attempt.Reason != prompts.ReasonTurnEnded || record.ProviderText != lost {
 		t.Fatalf("lost prompt = %s %q %q, %v; want held uncertain with its text", record.Outbox.State, attempt.Reason, record.ProviderText, err)
 	}
-	if record, _, err := sess.PromptStore().Get(ctx, "steered"); err != nil || record.Outbox.State != prompts.Accepted {
+	if record, _, err := sess.Delivery().PromptStore().Get(ctx, "steered"); err != nil || record.Outbox.State != prompts.Accepted {
 		t.Fatalf("steered prompt = %s, %v; want accepted while its turn runs", record.Outbox.State, err)
 	}
-	if record, _, err := sess.PromptStore().Get(ctx, "old"); err != nil || record.Outbox.State != prompts.Accepted {
+	if record, _, err := sess.Delivery().PromptStore().Get(ctx, "old"); err != nil || record.Outbox.State != prompts.Accepted {
 		t.Fatalf("prompt from before boot = %s, %v; want accepted, untouched", record.Outbox.State, err)
 	}
 	h.expect("held prompt offers Resend and Discard", func(liveTextMessage) bool {
@@ -1115,17 +1115,17 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 			lines[index] = bytes.ReplaceAll(lines[index], []byte(liveTextFixturePrompt), []byte(promptID))
 		}
 	}
-	if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{
+	if _, _, err := h.sess.Delivery().PromptStore().Submit(ctx, prompts.Submission{
 		HostedThreadID: hosted, Provider: "claude", NativeThreadID: native, ActionID: action,
 		ProviderText: "Continue the reply.", PresentationText: "Continue the reply.",
 		TextHash: sendTextHash("Continue the reply."), RequestHash: sendTextHash("Continue the reply."), Origin: prompts.HumanOrigin,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := h.sess.Delivery().PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		t.Fatalf("claim: %v, %v", claimed, err)
 	}
-	accepted, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1,
+	accepted, err := h.sess.Delivery().PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1,
 		Binding: prompts.Binding{EventID: promptID, Scope: model.Scope{Kind: model.ScopeTurn, Provider: "claude", NativeThreadID: &native, NativeTurnID: &turn}}})
 	if err != nil {
 		t.Fatal(err)
@@ -1168,7 +1168,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	srv, attachments := claudeResumeServer(t, shim.WSURL())
 	srv.catalog = h.service
 	srv.controlMetadata = h.metadata
-	srv.queuedTurns, srv.sendAttempts, srv.turns = h.queue.(*prompts.LegacyQueue), h.journal.(*prompts.LegacyJournal), h.sess.PromptStore()
+	srv.queuedTurns, srv.sendAttempts, srv.turns = h.queue.(*prompts.LegacyQueue), h.journal.(*prompts.LegacyJournal), h.sess.Delivery().PromptStore()
 	srv.agentExecutions, err = newControlAgentExecutionStore(srv.controlMetadata, "restart-test")
 	if err != nil {
 		t.Fatal(err)
@@ -1185,7 +1185,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		t.Fatal("boot did not construct a fresh session and live-text loop")
 	}
 	waitForClaude(t, "running turn reattached", func() bool { return fresh.Summary().TurnActive })
-	restored, attempt, err := fresh.PromptStore().Get(ctx, action)
+	restored, attempt, err := fresh.Delivery().PromptStore().Get(ctx, action)
 	if err != nil || restored.Outbox.Binding == nil || restored.Outbox.Binding.EventID != promptID || attempt.ProviderTurnID != turn {
 		t.Fatalf("restored delivery binding: %+v, %+v, %v", restored, attempt, err)
 	}

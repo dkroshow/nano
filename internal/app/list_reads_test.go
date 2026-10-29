@@ -654,12 +654,12 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 		t.Fatalf("nothing queued = %+v", v)
 	}
 	submit := func(hosted, native, action string) {
-		if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
+		if _, _, err := sess.Delivery().PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
 			ActionID: action, ProviderText: "prompt " + action, TextHash: action, RequestHash: action}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if reason, err := sess.WithIdleDelivery(false, func() error {
+	if reason, err := sess.Delivery().WithIdleDelivery(false, func() error {
 		submit(worker.ID, "native-worker", "mine-1")
 		submit(worker.ID, "native-worker", "mine-2")
 		submit(sender.ID, "native-sender", "theirs-1")

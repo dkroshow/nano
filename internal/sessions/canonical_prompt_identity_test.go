@@ -28,7 +28,7 @@ func TestNonCodexDeliveryPersistsExactProviderTurnBinding(t *testing.T) {
 			})
 			sess.provider = tc.provider
 			sess.projection = newDeliveryTestProjection(tc.provider)
-			if rec := postTurn(t, sess, context.Background(), "action-1", "provider-specific binding"); rec.Code != 200 {
+			if rec := postTurn(t, sess.Delivery(), context.Background(), "action-1", "provider-specific binding"); rec.Code != 200 {
 				t.Fatalf("send = %d %s", rec.Code, rec.Body.String())
 			}
 			waitTurnSendDone(t, sess, "action-1")

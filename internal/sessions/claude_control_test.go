@@ -170,7 +170,7 @@ func TestClaudeInterruptIsGatedOnTurnState(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{"still_queued": []string{}} })
 	sess, claude := startControlSession(t, shim)
 
-	res := postJSON(t, sess.HandleInterrupt, "/api/sessions/x/interrupt", "")
+	res := postJSON(t, sess.delivery.HandleInterrupt, "/api/sessions/x/interrupt", "")
 	var idle struct {
 		Interrupted bool   `json:"interrupted"`
 		Reason      string `json:"reason"`
@@ -189,7 +189,7 @@ func TestClaudeInterruptIsGatedOnTurnState(t *testing.T) {
 		t.Fatalf("SendTurn: %v", err)
 	}
 	sess.wire.recordWireLive(protocol.Recv, []byte(`{"type":"assistant","message":{"role":"assistant"}}`), true)
-	res = postJSON(t, sess.HandleInterrupt, "/api/sessions/x/interrupt", "")
+	res = postJSON(t, sess.delivery.HandleInterrupt, "/api/sessions/x/interrupt", "")
 	if res.Code != http.StatusOK {
 		t.Fatalf("live interrupt = %d %s", res.Code, res.Body.String())
 	}
@@ -214,13 +214,13 @@ func TestClaudeInterruptIsGatedOnTurnState(t *testing.T) {
 func TestClaudeInteractionResponseUsesProviderAdapter(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{} })
 	sess, _ := startControlSession(t, shim)
-	sess.addPendingInteraction(interact.PendingInteraction{
+	sess.delivery.addPendingInteraction(interact.PendingInteraction{
 		ID: "permission-1", Kind: kindToolPermission, ThreadID: sess.ThreadID(),
 		Params: json.RawMessage(`{"input":{"command":"pwd"}}`), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 
 	res := httptest.NewRecorder()
-	sess.HandleInteraction(res, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interactions/permission-1", strings.NewReader(`{"decision":"accept"}`)), "permission-1")
+	sess.delivery.HandleInteraction(res, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interactions/permission-1", strings.NewReader(`{"decision":"accept"}`)), "permission-1")
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"answered":true`) {
 		t.Fatalf("interaction response = %d %s", res.Code, res.Body.String())
 	}
@@ -303,9 +303,9 @@ func TestReattachRecoversOnlyUnansweredControlRequests(t *testing.T) {
 	defer claude.Close()
 
 	waitForClaude(t, "the orphaned request to be recovered", func() bool {
-		return len(sess.PendingInteractionList()) > 0
+		return len(sess.delivery.PendingInteractionList()) > 0
 	})
-	pending := sess.PendingInteractionList()
+	pending := sess.delivery.PendingInteractionList()
 	if len(pending) != 1 || pending[0].ID != "old-orphan" {
 		t.Fatalf("pending = %+v, want only the request nothing ever answered", pending)
 	}
@@ -337,9 +337,9 @@ func TestInitializeRehydratesPendingRequests(t *testing.T) {
 	sess, _ := startControlSession(t, shim)
 
 	waitForClaude(t, "the rehydrated request to park", func() bool {
-		return len(sess.PendingInteractionList()) > 0
+		return len(sess.delivery.PendingInteractionList()) > 0
 	})
-	pending := sess.PendingInteractionList()
+	pending := sess.delivery.PendingInteractionList()
 	if len(pending) != 1 || pending[0].ID != "resumed-1" || pending[0].Kind != kindUserInput {
 		t.Fatalf("pending = %+v, want the rehydrated question", pending)
 	}
@@ -402,9 +402,9 @@ func TestStartedSessionParksInboundRequests(t *testing.T) {
 	sess, _ := startControlSession(t, shim)
 
 	waitForClaude(t, "the child's question to park", func() bool {
-		return len(sess.PendingInteractionList()) > 0
+		return len(sess.delivery.PendingInteractionList()) > 0
 	})
-	if pending := sess.PendingInteractionList(); pending[0].Kind != kindUserInput {
+	if pending := sess.delivery.PendingInteractionList(); pending[0].Kind != kindUserInput {
 		t.Fatalf("pending = %+v, want the question parked", pending)
 	}
 }

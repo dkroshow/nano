@@ -239,7 +239,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 			first := "reply:" + grokFixtureThread + "-1283963"
 			switch mode {
 			case "stuck outbox":
-				if _, _, err := h.sess.PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderGrok, ActionID: "action-1", ProviderText: "Neutral prompt 1.", PresentationText: "Neutral prompt 1.", TextHash: "neutral-1", RequestHash: "neutral-1", Origin: prompts.HumanOrigin}); err != nil {
+				if _, _, err := h.sess.delivery.PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderGrok, ActionID: "action-1", ProviderText: "Neutral prompt 1.", PresentationText: "Neutral prompt 1.", TextHash: "neutral-1", RequestHash: "neutral-1", Origin: prompts.HumanOrigin}); err != nil {
 					t.Fatal(err)
 				}
 				for _, state := range []prompts.DeliveryState{prompts.Queued, prompts.Parked, prompts.Delivering, prompts.Uncertain} {
@@ -257,11 +257,11 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				e.State = prompts.Refused
 				h.sess.PublishLiveOutbox(e)
 				v.expect("refused prompt", func(LiveTextMessage) bool { return len(v.view.live) == 0 })
-				if _, err := h.sess.PromptStore().Cancel(context.Background(), "action-1"); err != nil {
+				if _, err := h.sess.delivery.PromptStore().Cancel(context.Background(), "action-1"); err != nil {
 					t.Fatal(err)
 				}
-				seedUncertainTransactionalTurn(t, h.sess.PromptStore(), h.sess.HostedThreadID(), model.ProviderGrok, h.sess.ThreadID(), "action-2", "Neutral prompt 2.")
-				record, _, err := h.sess.PromptStore().Get(context.Background(), "action-2")
+				seedUncertainTransactionalTurn(t, h.sess.delivery.PromptStore(), h.sess.HostedThreadID(), model.ProviderGrok, h.sess.ThreadID(), "action-2", "Neutral prompt 2.")
+				record, _, err := h.sess.delivery.PromptStore().Get(context.Background(), "action-2")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -271,7 +271,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				// metadata store, so use the journal's ordinary direct read.
 				// The harness routes journal reads to its prompt database.
 				rec := httptest.NewRecorder()
-				h.sess.HandleTurnDeliveryList(rec, httptest.NewRequest("GET", "/turn-delivery?thread="+grokFixtureThread, nil))
+				h.sess.delivery.HandleTurnDeliveryList(rec, httptest.NewRequest("GET", "/turn-delivery?thread="+grokFixtureThread, nil))
 				var delivery struct {
 					Operations []prompts.View `json:"operations"`
 				}

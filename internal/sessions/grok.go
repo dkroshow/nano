@@ -377,7 +377,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 	sess.stateMu.Unlock()
 	if req.Mode == "resume" {
 		sess.setProjectionThreadID(req.ThreadID)
-		sess.restoreSubmissionOutbox()
+		sess.delivery.restoreSubmissionOutbox()
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), grokHandshakeTimeout)
@@ -497,7 +497,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 	if !sess.settleProviderEvidence(grokLifecycleAdapter{epoch: responseEpoch, sequence: responseSequence, response: sessionResult, nativeID: threadID, settled: true}, grokRunningPromptID(sessionResult), 0) {
 		log.Printf("grok session %s: %s response did not settle lifecycle evidence", sess.id, method)
 	}
-	sess.reconcileAgentOperations()
+	sess.delivery.reconcileAgentOperations()
 	return nil
 }
 
@@ -508,10 +508,10 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 // attempt sent, parked or of unknown outcome, proves nothing.
 func (sess *Session) grokNeverPrompted(ctx context.Context) bool {
 	native := sess.ThreadID()
-	if sess.turns == nil || sess.metadata == nil || native == "" {
+	if sess.delivery.turns == nil || sess.metadata == nil || native == "" {
 		return false
 	}
-	attempts, err := sess.turns.ListThreadAttempts(ctx, "grok", native)
+	attempts, err := sess.delivery.turns.ListThreadAttempts(ctx, "grok", native)
 	if err != nil {
 		return false
 	}
@@ -1007,11 +1007,11 @@ func (g *grokSession) observeTimedOutPrompt(prompt *grokPrompt, actionID string)
 	prompt.mu.Unlock()
 	if promptID != "" {
 		result, _ := json.Marshal(map[string]any{"turn": map[string]string{"id": promptID}})
-		g.sess.recordAgentTurnDelivery(actionID, result, nil, false)
+		g.sess.delivery.recordAgentTurnDelivery(actionID, result, nil, false)
 	} else {
 		var rpcErr *protocol.RPCError
 		if errors.As(outcome.err, &rpcErr) {
-			g.sess.recordAgentTurnDelivery(actionID, nil, outcome.err, false)
+			g.sess.delivery.recordAgentTurnDelivery(actionID, nil, outcome.err, false)
 		}
 	}
 	g.observeResolvedPromptOutcome(promptID, outcome)
@@ -1042,14 +1042,14 @@ func (g *grokSession) observeResolvedPromptOutcome(promptID string, outcome grok
 			return
 		}
 		detail, _ := json.Marshal(map[string]string{"error": outcome.err.Error()})
-		g.sess.observeGrokAgentTerminal(g.sess.ThreadID(), promptID, agentTurnFailed, "prompt_error", detail)
+		g.sess.delivery.observeGrokAgentTerminal(g.sess.ThreadID(), promptID, agentTurnFailed, "prompt_error", detail)
 		return
 	}
 	if strings.TrimSpace(outcome.response.StopReason) != "" {
 		status := grokTurnStatus(outcome.response.StopReason)
 		threadID := g.sess.ThreadID()
 		apply := func() {
-			g.sess.observeGrokAgentTerminal(threadID, promptID, status, outcome.response.StopReason, nil)
+			g.sess.delivery.observeGrokAgentTerminal(threadID, promptID, status, outcome.response.StopReason, nil)
 		}
 		core := g.sess.coreSession()
 		if status != agentTurnCompleted || core == nil {
@@ -1158,13 +1158,13 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		Params:    visibleParams,
 	}
-	if method == grokPermissionMethod && g.sess.permissionModeForEvent() == "bypassPermissions" {
+	if method == grokPermissionMethod && g.sess.delivery.permissionModeForEvent() == "bypassPermissions" {
 		// Grok 1.0.3 can still forward a permission request after accepting
 		// _meta.yoloMode. Nano's thread-level bypass selection is literal: record
 		// both audit events before allowing the request. If the audit store is
 		// unavailable, fail closed to the ordinary operator card instead.
-		if err := g.sess.recordPermissionRequest(pending); err == nil {
-			if err := g.sess.recordPermissionResolution(pending, decisionAccept, "nano_bypass", "autoApproved"); err == nil {
+		if err := g.sess.delivery.recordPermissionRequest(pending); err == nil {
+			if err := g.sess.delivery.recordPermissionResolution(pending, decisionAccept, "nano_bypass", "autoApproved"); err == nil {
 				return grokInteractionResult(pending, decisionAccept, nil)
 			} else {
 				log.Printf("session %s: record Grok bypass resolution %s: %v", g.sess.id, requestID, err)
@@ -1173,7 +1173,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 			log.Printf("session %s: record Grok bypass request %s: %v", g.sess.id, requestID, err)
 		}
 	}
-	g.sess.addPendingInteraction(pending)
+	g.sess.delivery.addPendingInteraction(pending)
 	return protocol.Deferred, nil
 }
 

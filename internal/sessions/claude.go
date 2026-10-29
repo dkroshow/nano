@@ -560,14 +560,14 @@ func (sess *Session) adoptResolvedClaudeNative(handle, native string, anchor hos
 // status, a legacy or unmanaged row, an orphan journal row, another owner)
 // counts as possibly delivered, and an unreadable store is an error.
 func (sess *Session) provisionalMayHaveDelivered(ctx context.Context, handle string) (bool, error) {
-	if sess.turns == nil {
+	if sess.delivery.turns == nil {
 		return false, errors.New("prompt store unavailable")
 	}
-	records, err := sess.turns.List(ctx, sess.hostedThreadID)
+	records, err := sess.delivery.turns.List(ctx, sess.hostedThreadID)
 	if err != nil {
 		return false, err
 	}
-	attempts, err := sess.turns.ListThreadAttempts(ctx, transcriptmodel.ProviderClaude, handle)
+	attempts, err := sess.delivery.turns.ListThreadAttempts(ctx, transcriptmodel.ProviderClaude, handle)
 	if err != nil {
 		return false, err
 	}
@@ -828,7 +828,7 @@ func (c *claudeSession) markTransportReady() bool {
 		c.sess.updateHostedThread(status, "")
 	}
 	if drain {
-		c.sess.kickQueuedTurnDrain()
+		c.sess.delivery.kickQueuedTurnDrain()
 	}
 	return true
 }
@@ -1330,12 +1330,12 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 		if err != nil {
 			log.Printf("rebind transactional turns %s to %s: %v", c.supersedes, sessionID, err)
 		} else {
-			outbox, err := c.sess.turns.RebindNativeThread(context.Background(), c.sess.hostedThreadID, transcriptmodel.Provider(c.sess.provider), c.supersedes, sessionID)
+			outbox, err := c.sess.delivery.turns.RebindNativeThread(context.Background(), c.sess.hostedThreadID, transcriptmodel.Provider(c.sess.provider), c.supersedes, sessionID)
 			if err != nil {
 				log.Printf("rebind transactional turns %s to %s: %v", c.supersedes, sessionID, err)
 			} else {
 				for _, entry := range outbox {
-					c.sess.publishTransactionalOutbox(entry)
+					c.sess.delivery.publishTransactionalOutbox(entry)
 				}
 			}
 		}

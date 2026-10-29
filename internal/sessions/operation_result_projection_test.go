@@ -21,9 +21,9 @@ func TestSessionProjectionPreservesOperationFinalIdentity(t *testing.T) {
 			sess := New(Config{ID: "projection-result", Provider: provider, HostedThreadID: "hosted", Projection: projection, AgentExecutions: recorder})
 			sess.ReserveNativeID("native-thread")
 			if provider == "codex" {
-				sess.reconcileAgentOperations()
+				sess.delivery.reconcileAgentOperations()
 			} else {
-				sess.observeClaudeAgentResult(json.RawMessage(`{"type":"result","subtype":"success","is_error":false,"result":"wire result"}`))
+				sess.delivery.observeClaudeAgentResult(json.RawMessage(`{"type":"result","subtype":"success","is_error":false,"result":"wire result"}`))
 			}
 			if len(recorder.calls) != 1 {
 				t.Fatalf("terminal calls=%+v", recorder.calls)

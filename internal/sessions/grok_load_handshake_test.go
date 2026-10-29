@@ -42,7 +42,7 @@ func TestGrokLoadHandshakeSettlesLifecycleAndQueue(t *testing.T) {
 			sess.lifecycleState = testLifecycleSnapshot("starting", false)
 			sess.turnID, sess.turnStartedAtMs = "old-anchor", 123
 			t.Cleanup(sess.Close)
-			if rec := postTurn(t, sess, context.Background(), "after-restart", "queued while starting"); rec.Code != http.StatusAccepted {
+			if rec := postTurn(t, sess.Delivery(), context.Background(), "after-restart", "queued while starting"); rec.Code != http.StatusAccepted {
 				t.Fatalf("queue status %d: %s", rec.Code, rec.Body.String())
 			}
 
@@ -110,7 +110,7 @@ while IFS= read -r request; do :; done
 				if sum := sess.Summary(); !sum.TurnActive || sum.TurnStartedAtMs != 0 || sess.turnID != "surviving-turn" {
 					t.Fatalf("provider work was lost or inherited an old anchor: %+v, turn %q", sum, sess.turnID)
 				}
-				sess.drainQueuedTurn()
+				sess.delivery.drainQueuedTurn()
 				if row, ok := attempts.Get("after-restart"); !ok || row.Status != sendAttemptQueued || sends.Load() != 0 {
 					t.Fatalf("running provider drained queued work: row=%+v, sends=%d", row, sends.Load())
 				}

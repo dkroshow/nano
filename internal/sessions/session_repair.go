@@ -61,8 +61,8 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 	_ = parent
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
-	sess.sendMu.Lock()
-	defer sess.sendMu.Unlock()
+	sess.delivery.sendMu.Lock()
+	defer sess.delivery.sendMu.Unlock()
 
 	sess.stateMu.Lock()
 	threadID := sess.threadID
@@ -72,7 +72,7 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 		return TranscriptRepairResponse{}, errors.New("provider thread is not attached")
 	}
 
-	queue := sess.queuedPrompts(threadID)
+	queue := sess.delivery.queuedPrompts(threadID)
 	discardable := make([]prompts.QueuedTurn, 0, len(queue))
 	actionIDs := make([]string, 0, len(queue))
 	for _, record := range queue {
@@ -83,7 +83,7 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 		actionIDs = append(actionIDs, record.ClientActionID)
 	}
 
-	interrupt, err := sess.interruptTurn(ctx)
+	interrupt, err := sess.delivery.interruptTurn(ctx)
 	if err != nil {
 		return TranscriptRepairResponse{}, fmt.Errorf("stop failed: %w", err)
 	}
@@ -92,15 +92,15 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 	}
 
 	if len(actionIDs) > 0 {
-		if sess.turns == nil {
+		if sess.delivery.turns == nil {
 			return TranscriptRepairResponse{}, errors.New("prompt store is unavailable")
 		}
-		canceled, cancelErr := sess.turns.CancelQueuedBatch(ctx, actionIDs)
+		canceled, cancelErr := sess.delivery.turns.CancelQueuedBatch(ctx, actionIDs)
 		if cancelErr != nil {
 			return TranscriptRepairResponse{}, fmt.Errorf("discard failed: %w", cancelErr)
 		}
 		for _, record := range canceled {
-			sess.publishTransactionalOutbox(record.Outbox)
+			sess.delivery.publishTransactionalOutbox(record.Outbox)
 		}
 	}
 
@@ -128,7 +128,7 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 	caughtUp := sess.catalogSources.AwaitAttachedCurrent(sess.id, true, nil, ctx.Done())
 	var settleErr error
 	if caughtUp {
-		settleErr = sess.settleSavedPrompts(ctx)
+		settleErr = sess.delivery.settleSavedPrompts(ctx)
 	}
 	sess.stateMu.Lock()
 	detail := sess.repairableLocked(threadID, attachmentGeneration)

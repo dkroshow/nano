@@ -15,9 +15,9 @@ func waitTurnSendDone(t *testing.T, sess *sessions.Session, actionID string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		attempt, err := sess.PromptStore().GetAttempt(context.Background(), actionID)
+		attempt, err := sess.Delivery().PromptStore().GetAttempt(context.Background(), actionID)
 		if err == nil && attempt.State != prompts.JournalQueued && attempt.State != prompts.JournalSending {
-			for _, done := range sess.InFlightDeliveries() {
+			for _, done := range sess.Delivery().InFlightDeliveries() {
 				select {
 				case <-done:
 				case <-time.After(time.Until(deadline)):

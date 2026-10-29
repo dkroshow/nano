@@ -56,7 +56,7 @@ func (s *server) awaitInFlightDeliveries(until time.Time) stopReport {
 	sessions := s.SnapshotSessions()
 	var inFlight []chan struct{}
 	for _, sess := range sessions {
-		inFlight = append(inFlight, sess.InFlightDeliveries()...)
+		inFlight = append(inFlight, sess.Delivery().InFlightDeliveries()...)
 	}
 	timer := time.NewTimer(time.Until(until))
 	defer timer.Stop()

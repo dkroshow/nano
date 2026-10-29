@@ -125,7 +125,7 @@ func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.S
 		t.Fatal(err)
 	}
 	t.Cleanup(sess.coreSession().Close)
-	turns, err := coreturns.OpenStore(context.Background(), sess.queuedTurns.Database())
+	turns, err := coreturns.OpenStore(context.Background(), sess.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -73,7 +73,7 @@ func startCausationCodex(t *testing.T, sess *sessions.Session) *fakeAppServer {
 }
 func sendCausationTurn(t *testing.T, sess *sessions.Session) {
 	t.Helper()
-	if response := postTurn(t, sess, context.Background(), "causation-turn", "test prompt"); response.Code != http.StatusOK {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "causation-turn", "test prompt"); response.Code != http.StatusOK {
 		t.Fatalf("causal turn: %d %s", response.Code, response.Body.String())
 	}
 }
@@ -113,7 +113,7 @@ func fieldStrings(t *testing.T, store *hostedstore.MetadataStore, hosted, field 
 
 func finishCausationTurn(t *testing.T, sess *sessions.Session, fake *fakeAppServer, actionID string) {
 	t.Helper()
-	record, _, err := sess.PromptStore().Get(context.Background(), actionID)
+	record, _, err := sess.Delivery().PromptStore().Get(context.Background(), actionID)
 	if err != nil || record.ProviderTurnID == "" {
 		t.Fatalf("accepted turn %q has no provider identity: %+v %v", actionID, record, err)
 	}
@@ -480,13 +480,13 @@ func TestCoreSubmitFailedRPCRemovesCausationBeforeLaterSettings(t *testing.T) {
 	fake := startCausationCodex(t, sess)
 	requested(t, sess, store, postureFieldServiceTier, "priority")
 	fake.SetTurnStartError("rejected by provider")
-	if response := postTurn(t, sess, context.Background(), "failed", "hello"); response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"status":"parked"`) {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "failed", "hello"); response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"status":"parked"`) {
 		t.Fatalf("failed turn/start status = %d, body = %s", response.Code, response.Body.String())
 	}
 	requested(t, sess, store, postureFieldServiceTier, "default")
 	fake.SetTurnStartError("")
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "turn-success"}})
-	if response := postTurn(t, sess, context.Background(), "succeeds", "hello again"); response.Code != http.StatusOK {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "succeeds", "hello again"); response.Code != http.StatusOK {
 		t.Fatalf("successful turn/start status = %d, body = %s", response.Code, response.Body.String())
 	}
 	emitCausation(t, sess, fake, json.RawMessage(`{"threadId":"native","threadSettings":{"model":"","effort":"","serviceTier":"default","cwd":""}}`))
@@ -503,7 +503,7 @@ func TestSettingsDedupeDistinguishesCausalRequestsAndCanonicalizesJSON(t *testin
 	// Two independent operator requests with identical values must each be
 	// eligible for causation; the second is not hidden by the first's retry.
 	first := requested(t, sess, store, postureFieldEffort, "high")
-	if response := postTurn(t, sess, context.Background(), "first", "first prompt"); response.Code != http.StatusOK {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "first", "first prompt"); response.Code != http.StatusOK {
 		t.Fatalf("first turn/start status = %d, body = %s", response.Code, response.Body.String())
 	}
 	payloadA := json.RawMessage(`{"threadId":"native","threadSettings":{"model":"","effort":"high","serviceTier":"","cwd":""}}`)
@@ -522,7 +522,7 @@ func TestSettingsDedupeDistinguishesCausalRequestsAndCanonicalizesJSON(t *testin
 	finishCausationTurn(t, sess, fake, "first")
 	second := requested(t, sess, store, postureFieldEffort, "high")
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "turn-second"}})
-	if response := postTurn(t, sess, context.Background(), "second", "second prompt"); response.Code != http.StatusOK {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "second", "second prompt"); response.Code != http.StatusOK {
 		t.Fatalf("second turn/start status = %d, body = %s", response.Code, response.Body.String())
 	}
 	emitCausation(t, sess, fake, payloadB)

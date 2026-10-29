@@ -16,7 +16,7 @@ func TestClaudeOwedPromptAttachEnablesSavedCommitSettlement(t *testing.T) {
 	sess, store := readyTransactionalSendTestSession(t, nil)
 	sess.provider = "claude"
 	sess.agentExecutions = &unlinkedPromptExecutions{}
-	completed, err := coreturns.OpenStore(ctx, sess.queuedTurns.Database())
+	completed, err := coreturns.OpenStore(ctx, sess.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,8 +35,8 @@ func TestClaudeOwedPromptAttachEnablesSavedCommitSettlement(t *testing.T) {
 	if _, ok, err := store.Settle(ctx, "person-starter"); err != nil || !ok {
 		t.Fatalf("settle: %v %v", ok, err)
 	}
-	sess.RequestMemberStep()
-	if !sess.owedHint.Load() {
+	sess.delivery.RequestMemberStep()
+	if !sess.delivery.owedHint.Load() {
 		t.Fatal("attach read owed prompts but left saved commits gated out")
 	}
 }

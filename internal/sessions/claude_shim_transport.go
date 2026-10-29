@@ -228,7 +228,7 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 	c.persistedAnchor.Store(stored.TurnStartedAtMs)
 	// Recreate action-bearing submitted rows before shim replay so replayed user
 	// evidence promotes those rows in place rather than painting a duplicate.
-	sess.restoreSubmissionOutbox()
+	sess.delivery.restoreSubmissionOutbox()
 	// A failed attach whose last admitted frame never acknowledged is still
 	// running on its session loop; a second generation must not overlap it.
 	if err := claudeDrainSettled(sess); err != nil {
@@ -708,10 +708,10 @@ func (sess *Session) claudeAnsweredTurn(line []byte) (turnID string, named bool)
 	if json.Unmarshal(line, &result) != nil || result.UserMessageUUID == "" {
 		return "", false
 	}
-	if sess.turns == nil || sess.hostedThreadID == "" {
+	if sess.delivery.turns == nil || sess.hostedThreadID == "" {
 		return "", true
 	}
-	records, err := sess.turns.ByEvent(context.Background(), sess.hostedThreadID, result.UserMessageUUID)
+	records, err := sess.delivery.turns.ByEvent(context.Background(), sess.hostedThreadID, result.UserMessageUUID)
 	if err != nil {
 		log.Printf("Claude result on %s: its prompt is unreadable: %v", sess.hostedThreadID, err)
 		return "", true

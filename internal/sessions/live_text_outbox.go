@@ -12,10 +12,10 @@ import (
 // queued or parked prompt shows on reopening. Delivery state is never changed.
 // No pane exists yet; each pane joins through a tick that checks them first.
 func (l *LiveTextLoop) seedOutbox() {
-	if l.sess == nil || l.sess.PromptStore() == nil {
+	if l.sess == nil || l.sess.delivery.PromptStore() == nil {
 		return
 	}
-	records, err := l.sess.PromptStore().List(context.Background(), l.sess.HostedThreadID())
+	records, err := l.sess.delivery.PromptStore().List(context.Background(), l.sess.HostedThreadID())
 	if err != nil {
 		log.Printf("live text outbox snapshot %s: %v", l.sess.HostedThreadID(), err)
 		return
@@ -56,7 +56,7 @@ func (l *LiveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 		}
 		current = &liveTextEntry{ID: id, Kind: "prompt", ActionID: entry.ActionID, key: l.promptKey(entry), rank: rank}
 		if l.sess != nil {
-			turn, found, err := l.sess.PersistedOperation(context.Background(), entry.ActionID)
+			turn, found, err := l.sess.delivery.PersistedOperation(context.Background(), entry.ActionID)
 			if err != nil {
 				log.Printf("live text submission metadata %s: %v", l.hostedID(), err)
 			} else if found && turn.Origin == string(prompts.AgentOrigin) && turn.SenderSubmittedAt != "" {
@@ -120,10 +120,10 @@ func (l *LiveTextLoop) learnKey(current *liveTextEntry, entry prompts.OutboxEntr
 // deliveryRank reads the rank delivery claims a queued prompt by, so queued
 // prompts show in the order they will be delivered.
 func (l *LiveTextLoop) deliveryRank(actionID string) int {
-	if l.sess == nil || l.sess.PromptStore() == nil {
+	if l.sess == nil || l.sess.delivery.PromptStore() == nil {
 		return 0
 	}
-	record, _, err := l.sess.PromptStore().Get(context.Background(), actionID)
+	record, _, err := l.sess.delivery.PromptStore().Get(context.Background(), actionID)
 	if err != nil {
 		log.Printf("live text queue rank %s: %v", actionID, err)
 		return 0

@@ -55,7 +55,7 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 	events = s.Subscribe()
 	defer s.Unsubscribe(events)
 	sess := s.LookupSession("sess-attached")
-	if response := testsupport.PostTurn(t, sess, context.Background(), "sidebar-working", "working"); response.Code != http.StatusOK {
+	if response := testsupport.PostTurn(t, sess.Delivery(), context.Background(), "sidebar-working", "working"); response.Code != http.StatusOK {
 		t.Fatalf("sidebar working setup: %d %s", response.Code, response.Body)
 	}
 	s.applyRuntimeDelta(s.runtimeDeltaSnapshot())

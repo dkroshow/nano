@@ -72,7 +72,7 @@ func TestGrokBypassAutoApprovesEscapedPermissionAndAuditsIt(t *testing.T) {
 	if !strings.Contains(string(body), `"optionId":"allow-once"`) {
 		t.Fatalf("bypass response = %s", body)
 	}
-	if got := sess.PendingInteractionList(); len(got) != 0 {
+	if got := sess.Delivery().PendingInteractionList(); len(got) != 0 {
 		t.Fatalf("bypass parked an operator card: %#v", got)
 	}
 	page, err := fixturePermissionEventsAfter(store, sess.HostedThreadID(), 0, 100)
@@ -86,8 +86,8 @@ func TestGrokDefaultPermissionStillParksAndLogs(t *testing.T) {
 	sess := fixture.session
 	params := json.RawMessage(`{"sessionId":"native-permission-test","toolCall":{"toolCallId":"call-10","rawInput":{"command":"echo safe"},"_meta":{"x.ai/tool":{"name":"run_terminal_command"}}}}`)
 	fixture.grok.Send(map[string]any{"jsonrpc": "2.0", "id": "10", "method": "session/request_permission", "params": params})
-	waitForClaude(t, "parked permission", func() bool { return len(sess.PendingInteractionList()) == 1 })
-	if got := sess.PendingInteractionList(); len(got) != 1 {
+	waitForClaude(t, "parked permission", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
+	if got := sess.Delivery().PendingInteractionList(); len(got) != 1 {
 		t.Fatalf("default pending = %#v", got)
 	}
 	page, err := fixturePermissionEventsAfter(store, sess.HostedThreadID(), 0, 100)

@@ -57,7 +57,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response := postTurn(t, sess, context.Background(), operation.TransportActionID, "retained source text"); response.Code != http.StatusAccepted {
+	if response := postTurn(t, sess.Delivery(), context.Background(), operation.TransportActionID, "retained source text"); response.Code != http.StatusAccepted {
 		t.Fatalf("orientation = %d %s", response.Code, response.Body.String())
 	}
 	waitTurnSendDone(t, sess, operation.TransportActionID)
@@ -81,7 +81,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		if state := fixtureOwners(srv).hostedViews().AvailabilityFor(hosted.ID, time.Now()).State; state == availabilityAvailable {
 			t.Fatal("reconnecting thread was available to feature clients")
 		}
-		if response := postTurn(t, sess, context.Background(), fmt.Sprintf("later-%d", repeat), "do not deliver"); response.Code != http.StatusConflict {
+		if response := postTurn(t, sess.Delivery(), context.Background(), fmt.Sprintf("later-%d", repeat), "do not deliver"); response.Code != http.StatusConflict {
 			t.Fatalf("later admission=%d", response.Code)
 		}
 	}
@@ -145,7 +145,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
-	seedAcceptedTransactionalTurn(t, sess.PromptStore(), hosted.ID, model.ProviderCodex, sess.ThreadID(), "previous-turn", "past-turn", "past")
+	seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), hosted.ID, model.ProviderCodex, sess.ThreadID(), "previous-turn", "past-turn", "past")
 	turnStore, err := coreturns.OpenStore(context.Background(), cfg.QueuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +171,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("reconnect did not reach the provider")
 	}
-	if response := postTurn(t, sess, context.Background(), operation.TransportActionID, "retained"); response.Code != http.StatusAccepted {
+	if response := postTurn(t, sess.Delivery(), context.Background(), operation.TransportActionID, "retained"); response.Code != http.StatusAccepted {
 		t.Fatalf("reconnecting admission = %d %s", response.Code, response.Body.String())
 	}
 	unblock()
@@ -180,7 +180,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	if record.Error == nil || record.Error.Code != "reconnect_failed" {
 		t.Fatalf("terminal error: %+v", record.Error)
 	}
-	if response := postTurn(t, sess, context.Background(), "new", "do not queue"); response.Code != http.StatusConflict {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "new", "do not queue"); response.Code != http.StatusConflict {
 		t.Fatalf("terminal admission: %d", response.Code)
 	}
 	server := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*sessions.Session{sess.ID(): sess})

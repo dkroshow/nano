@@ -1058,7 +1058,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	if threads.TurnTerminal(open.Status) || open.ProviderTurnID != "turn-zero-1" || open.CandidateItemID != "final-zero-1" {
 		t.Fatalf("operation after the wire completed its turn = %+v; want it open with the turn's final answer as candidate", open)
 	}
-	prompt, _, err := sess.PromptStore().Get(ctx, open.TransportActionID)
+	prompt, _, err := sess.Delivery().PromptStore().Get(ctx, open.TransportActionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1072,7 +1072,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	// Saved-proof input: this wire-only fixture has no saved transcript, so it
 	// supplies the fact a saved row of this prompt would prove. It is not
 	// evidence from a saved file or its callback.
-	if _, settled, err := sess.PromptStore().Settle(ctx, open.TransportActionID); err != nil || !settled {
+	if _, settled, err := sess.Delivery().PromptStore().Settle(ctx, open.TransportActionID); err != nil || !settled {
 		t.Fatalf("settle the prompt: settled=%v err=%v", settled, err)
 	}
 	// Repeating the terminal evidence runs the same member completion step

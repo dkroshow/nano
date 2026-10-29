@@ -47,7 +47,7 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	ctx := context.Background()
 	sess, _ := readyTransactionalSendTestSession(t, nil)
 	t.Cleanup(sess.Close)
-	db := sess.queuedTurns.Database()
+	db := sess.delivery.queuedTurns.Database()
 	if _, err := db.Exec(`INSERT INTO hosted_threads (hosted_thread_id,provider,presentation_mode,terminal_notification_policy,revision,created_at,updated_at) VALUES (?,'codex','background','inbox',1,'now','now')`, sess.hostedThreadID); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(priorLog) })
 	completedAt := int64(1787600100)
-	sess.observeCodexResumedTurnFinish(sess.threadID, codexResumeProjectionTurn{ID: "turn-live", Status: "completed", CompletedAt: &completedAt, Items: []any{
+	sess.delivery.observeCodexResumedTurnFinish(sess.threadID, codexResumeProjectionTurn{ID: "turn-live", Status: "completed", CompletedAt: &completedAt, Items: []any{
 		map[string]any{"id": "final-live", "type": "agentMessage", "phase": "final_answer", "text": "done live"},
 	}})
 	feed, err := completed.After(ctx, sess.hostedThreadID, "", 10)

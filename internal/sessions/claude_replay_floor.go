@@ -520,14 +520,14 @@ type claudeSentPrompt struct {
 // the native thread its record names; an anchor two records share is left
 // out.
 func (sess *Session) unfinishedClaudePrompts(ctx context.Context, prefix string, natives ...string) (wanted []int64, sent map[string]claudeSentPrompt, err error) {
-	if sess.turns == nil || sess.completedTurns == nil {
+	if sess.delivery.turns == nil || sess.completedTurns == nil {
 		return nil, nil, fmt.Errorf("%w: prompt and turn stores are unavailable", errClaudeRecoveryUnproven)
 	}
 	turnStore, err := sess.completedTurns(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: turn store: %v", errClaudeRecoveryUnproven, err)
 	}
-	records, err := sess.turns.List(ctx, sess.hostedThreadID)
+	records, err := sess.delivery.turns.List(ctx, sess.hostedThreadID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: prompt store: %v", errClaudeRecoveryUnproven, err)
 	}

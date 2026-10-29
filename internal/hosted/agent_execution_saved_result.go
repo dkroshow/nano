@@ -17,7 +17,7 @@ import (
 func (s *AttachmentCoordinator) SavedOperationResultFinished(hostedID string) {
 	if sess := s.Registry.SessionForHostedThread(hostedID); sess != nil {
 		if sess.Provider() == "claude" {
-			sess.RequestMemberStep()
+			sess.Delivery().RequestMemberStep()
 		}
 		return
 	}

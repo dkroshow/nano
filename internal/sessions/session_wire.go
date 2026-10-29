@@ -300,8 +300,8 @@ func (sess *Wire) adapterTurnEvent(dir wire.Direction, line []byte, live bool, a
 		return coresession.AdapterEvent{}, nil
 	}
 	actionID := ""
-	if sess.session.queuedTurns != nil {
-		if prompt, found := sess.session.queuedTurns.ByProviderTurn(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID, turnID); found {
+	if sess.session.delivery.queuedTurns != nil {
+		if prompt, found := sess.session.delivery.queuedTurns.ByProviderTurn(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID, turnID); found {
 			actionID = prompt.ClientActionID
 		}
 	}
@@ -369,7 +369,7 @@ func (sess *Wire) applyWireSemantic(gate func() error, dir wire.Direction, line 
 	if gate != nil && gate() != nil {
 		return
 	}
-	sess.session.observeAgentExecutionWire(dir, line)
+	sess.session.delivery.observeAgentExecutionWire(dir, line)
 }
 
 func (sess *Wire) publishWireEvent(evt wire.Event, writeSpool bool) {

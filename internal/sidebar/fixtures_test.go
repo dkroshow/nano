@@ -105,14 +105,14 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*Controller, ma
 	svc := newStoredCatalog(t, store)
 	attached := memorySession(t, "sess-attached", "codex", "attached-recent", "ready", "/w/att", "gpt-5.6-sol", now)
 	parentLive := memorySession(t, "sess-parent", "codex", "related-parent", "ready", "/w/related-parent", "gpt-5.6-sol", now, func(cfg *sessions.Config) { cfg.HostedThreadID = parentHosted.ID })
-	if response := testsupport.PostTurn(t, parentLive, context.Background(), "parent-work", "working"); response.Code != http.StatusOK {
+	if response := testsupport.PostTurn(t, parentLive.Delivery(), context.Background(), "parent-work", "working"); response.Code != http.StatusOK {
 		t.Fatalf("parent working setup: %d %s", response.Code, response.Body)
 	}
 	childLive := memorySession(t, "sess-child", "codex", "related-child", "ready", "/w/related-child", "gpt-5.6-sol", now, func(cfg *sessions.Config) {
 		cfg.HostedThreadID = childHosted.ID
 		cfg.InvokerHostedThreadID = parentHosted.ID
 	})
-	if response := testsupport.PostTurn(t, childLive, context.Background(), "child-work", "working"); response.Code != http.StatusOK {
+	if response := testsupport.PostTurn(t, childLive.Delivery(), context.Background(), "child-work", "working"); response.Code != http.StatusOK {
 		t.Fatalf("child working setup: %d %s", response.Code, response.Body)
 	}
 	registry := sessions.NewRegistry()

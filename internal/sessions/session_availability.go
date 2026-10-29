@@ -28,11 +28,11 @@ func (sess *Session) AvailabilityState() Availability {
 }
 
 // QueuedPromptCount counts prompts waiting on this attachment.
-func (sess *Session) QueuedPromptCount() int {
+func (sess *Delivery) QueuedPromptCount() int {
 	if sess.queuedTurns == nil {
 		return 0
 	}
-	return sess.queuedTurns.QueuedCount(sess.provider, sess.ThreadID(), sess.hostedThreadID)
+	return sess.queuedTurns.QueuedCount(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID)
 }
 
 // ActiveTurnSnapshot returns one atomic snapshot of the live turn fields.
@@ -47,12 +47,12 @@ func (sess *Session) ActiveTurnSnapshot() (observability.ActiveTurn, bool) {
 
 // WithIdleDelivery holds the delivery lock from readiness through the caller's
 // durable admission and queue update. Hosted admission remains with the caller.
-func (sess *Session) WithIdleDelivery(rested bool, deliver func() error) (string, error) {
+func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (string, error) {
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
-	sess.stateMu.Lock()
-	status, permission := sess.connectionStatusLocked(), sess.lifecyclePermissionLocked()
-	sess.stateMu.Unlock()
+	sess.session.stateMu.Lock()
+	status, permission := sess.session.connectionStatusLocked(), sess.session.lifecyclePermissionLocked()
+	sess.session.stateMu.Unlock()
 	// A resting thread had no open work at boot and queues behind its attach.
 	restingIdle := rested && status == "starting"
 	switch {
@@ -60,11 +60,11 @@ func (sess *Session) WithIdleDelivery(rested bool, deliver func() error) (string
 		return "detached", nil
 	case sess.nanoIsStopping() || status != "ready" && !restingIdle:
 		return "notReady", nil
-	case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.CorePromptInFlight()):
+	case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.session.CorePromptInFlight()):
 		return "busy", nil
 	}
 	if sess.queuedTurns != nil {
-		if _, queued := sess.queuedTurns.First(sess.provider, sess.ThreadID(), sess.hostedThreadID); queued {
+		if _, queued := sess.queuedTurns.First(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID); queued {
 			return "queuedBacklog", nil
 		}
 	}
@@ -73,10 +73,10 @@ func (sess *Session) WithIdleDelivery(rested bool, deliver func() error) (string
 
 // BusyForMaintenance reports live, restoring or delivering work. Locks do not
 // extend into the caller's maintenance store operations.
-func (sess *Session) BusyForMaintenance() bool {
-	sess.stateMu.Lock()
-	active := sess.workActiveLocked() || sess.turnRestoreInProgress
-	sess.stateMu.Unlock()
+func (sess *Delivery) BusyForMaintenance() bool {
+	sess.session.stateMu.Lock()
+	active := sess.session.workActiveLocked() || sess.session.turnRestoreInProgress
+	sess.session.stateMu.Unlock()
 	if active {
 		return true
 	}

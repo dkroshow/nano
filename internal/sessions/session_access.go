@@ -18,7 +18,7 @@ func (sess *Session) HostedThreadID() string { return sess.hostedThreadID }
 
 // PromptStore returns this attachment's canonical prompt store.
 // It can be unavailable before the runtime is initialized.
-func (sess *Session) PromptStore() *prompts.Store { return sess.turns }
+func (sess *Delivery) PromptStore() *prompts.Store { return sess.turns }
 
 // LiveTurnActive reads the view's active-turn fact without exposing its state.
 func (sess *Session) LiveTurnActive() bool {
@@ -26,11 +26,11 @@ func (sess *Session) LiveTurnActive() bool {
 }
 
 // PersistedOperation reads the hosted operation for one transport action.
-func (sess *Session) PersistedOperation(ctx context.Context, actionID string) (threads.TurnRecord, bool, error) {
-	if sess.agentExecutions == nil {
+func (sess *Delivery) PersistedOperation(ctx context.Context, actionID string) (threads.TurnRecord, bool, error) {
+	if sess.session.agentExecutions == nil {
 		return threads.TurnRecord{}, false, nil
 	}
-	return sess.agentExecutions.PersistedTurnForTransportAction(ctx, sess.hostedThreadID, actionID)
+	return sess.session.agentExecutions.PersistedTurnForTransportAction(ctx, sess.session.hostedThreadID, actionID)
 }
 
 // CWD returns the working directory retained by this attachment.
@@ -42,4 +42,12 @@ func (sess *Session) Wire() *Wire {
 		return nil
 	}
 	return &sess.wire
+}
+
+// Delivery returns the attachment's concrete delivery owner.
+func (sess *Session) Delivery() *Delivery {
+	if sess == nil {
+		return nil
+	}
+	return &sess.delivery
 }

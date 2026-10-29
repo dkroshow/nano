@@ -43,7 +43,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			sess := fixture.session
 			switch tc.work {
 			case lifecycle.Accepted:
-				if response := postTurn(t, sess, context.Background(), "fleet-prompt", "working"); response.Code != http.StatusOK {
+				if response := postTurn(t, sess.Delivery(), context.Background(), "fleet-prompt", "working"); response.Code != http.StatusOK {
 					t.Fatalf("accepted setup: %d %s", response.Code, response.Body)
 				}
 			case lifecycle.Working:
@@ -51,7 +51,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			case lifecycle.WaitingOnYou:
 				fixture.activate(t)
 				fixture.emitAndWait(t, []byte(`{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-hosted","turnId":"fleet-turn","itemId":"fleet-command","command":"echo test"}}`))
-				waitForClaude(t, "fleet waiting state", func() bool { return len(sess.PendingInteractionList()) == 1 })
+				waitForClaude(t, "fleet waiting state", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
 			}
 			sess.PublishProjectionRuntime()
 			fake := &fakeFleetCatalog{
@@ -190,7 +190,7 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 	}
 	base := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	busy := memorySession(t, "busy", "claude", "native-busy", "ready", "/w/busy", "sonnet", base)
-	if response := postTurn(t, busy, context.Background(), "busy-prompt", "working"); response.Code != http.StatusOK {
+	if response := postTurn(t, busy.Delivery(), context.Background(), "busy-prompt", "working"); response.Code != http.StatusOK {
 		t.Fatalf("busy setup: %d %s", response.Code, response.Body)
 	}
 	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{

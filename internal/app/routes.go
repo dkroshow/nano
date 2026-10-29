@@ -85,18 +85,20 @@ func applicationRoutes(s *server) []applicationRoute {
 				s.attachmentCoordinator().HandleSessionName(w, r, sess, namer)
 			}(w, r, value)
 		})},
-		{http.MethodPost, "/api/sessions/{sessionId}/turn", "sessions.turn.submit", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleTurn(w, r) })},
+		{http.MethodPost, "/api/sessions/{sessionId}/turn", "sessions.turn.submit", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
+			value.Delivery().HandleTurn(w, r)
+		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/turn-delivery", "sessions.turnDelivery.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleTurnDeliveryList(w, r)
+			value.Delivery().HandleTurnDeliveryList(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}", "sessions.turnDelivery.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleTurnDeliveryRead(w, r, r.PathValue("clientActionId"))
+			value.Delivery().HandleTurnDeliveryRead(w, r, r.PathValue("clientActionId"))
 		})},
 		{http.MethodDelete, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}", "sessions.turnDelivery.cancel", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleTurnDeliveryCancel(w, r, r.PathValue("clientActionId"))
+			value.Delivery().HandleTurnDeliveryCancel(w, r, r.PathValue("clientActionId"))
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/turn-delivery/{clientActionId}/resend", "sessions.turnDelivery.resend", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleTurnDeliveryResend(w, r, r.PathValue("clientActionId"))
+			value.Delivery().HandleTurnDeliveryResend(w, r, r.PathValue("clientActionId"))
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTurnOptionsRead(w, r)
@@ -105,13 +107,13 @@ func applicationRoutes(s *server) []applicationRoute {
 			value.HandleTurnOptionsUpdate(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/interrupt", "sessions.turn.interrupt", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleInterrupt(w, r)
+			value.Delivery().HandleInterrupt(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/transcript-repair", "sessions.transcript.repair", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleTranscriptRepair(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/interactions/{requestId}", "sessions.interactions.answer", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleInteraction(w, r, r.PathValue("requestId"))
+			value.Delivery().HandleInteraction(w, r, r.PathValue("requestId"))
 		})},
 		{http.MethodGet, "/api/codex/models", "models.codex.list", s.attachmentCoordinator().HandleCodexModels},
 		{http.MethodGet, "/api/grok/models", "models.grok.list", s.attachmentCoordinator().HandleGrokModels},

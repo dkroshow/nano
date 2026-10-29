@@ -102,7 +102,7 @@ func TestTurnDeliveryListDoesNotWaitForTheWriter(t *testing.T) {
 	list := httptest.NewRecorder()
 	listed := make(chan struct{})
 	go func() {
-		sess.HandleTurnDeliveryList(list, httptest.NewRequest(http.MethodGet, "/api/sessions/nano-session/turn-delivery?thread=target", nil))
+		sess.Delivery().HandleTurnDeliveryList(list, httptest.NewRequest(http.MethodGet, "/api/sessions/nano-session/turn-delivery?thread=target", nil))
 		close(listed)
 	}()
 	select {
@@ -377,7 +377,7 @@ func (h *settlementHarness) attach(provider string, sender func(context.Context,
 		h.runtimes = map[*sessions.Session]*providerRuntimeFixture{}
 	}
 	h.runtimes[f.session] = f
-	if _, err := f.session.SettlePrompts(context.Background()); err != nil {
+	if _, err := f.session.Delivery().SettlePrompts(context.Background()); err != nil {
 		h.t.Fatal(err)
 	}
 	return f.session
@@ -526,7 +526,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 `, event("starter"), event("correction"), event("late")))
 			settled := func(names ...string) {
 				waitForCatalogWithin(t, time.Minute, func() bool {
-					if _, err := sess.SettlePrompts(ctx); err != nil {
+					if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 						return false
 					}
 					for _, name := range names {
@@ -561,7 +561,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 				results()
 				// What the finished-turn callback does once a Claude result
 				// persists: ask for the owed member step.
-				sess.RequestMemberStep()
+				sess.Delivery().RequestMemberStep()
 			}
 
 			for name, want := range map[string]string{"starter": "shared", "correction": "shared", "late": "late"} {
@@ -679,7 +679,7 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 `, event("answerer"), event("twin-a"), event("twin-b")))
 	sess := h.attach("claude", nil, func(cfg *sessions.Config) { cfg.AgentExecutions = executions; cfg.CompletedTurns = completed.CoreStore })
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		if _, err := sess.SettlePrompts(ctx); err != nil {
+		if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 			return false
 		}
 		op, _ := executions.Turn(sent["answerer"].op)
@@ -770,7 +770,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 	// Owing is empty before saved proof confirms anything, so the wait needs
 	// positive evidence: both operations finished.
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		if _, err := sess.SettlePrompts(ctx); err != nil {
+		if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 			return false
 		}
 		for _, transport := range transports {
@@ -784,7 +784,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 		t.Fatalf("owed = %v, %v; want none", owing, err)
 	}
 	for range 3 { // later saved commits on the thread
-		if _, err := sess.SettlePrompts(ctx); err != nil {
+		if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -914,7 +914,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 		"absorbedLater: prompt confirmed, operation interrupted; neverTaken: prompt uncertain, operation running; " +
 		"neverTakenUnderHandle: prompt uncertain, operation running; afterRestart: prompt confirmed, operation interrupted"
 	for deadline := time.Now().Add(time.Minute); outcomes() != want; time.Sleep(50 * time.Millisecond) {
-		if _, err := sess.SettlePrompts(ctx); err != nil {
+		if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 			t.Fatal(err)
 		}
 		if time.Now().After(deadline) {
@@ -1342,7 +1342,7 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 	// Owing is empty before saved proof confirms anything, so the wait needs
 	// positive evidence: both prompts confirmed and the absorbed turn finished.
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		if _, err := sess.SettlePrompts(ctx); err != nil {
+		if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 			return false
 		}
 		if h.state(t, sent["answerer"].transport) != promptstypes.Confirmed || h.state(t, sent["absorbed"].transport) != promptstypes.Confirmed {
@@ -1424,7 +1424,7 @@ func TestClaudeOwedPromptSavedCommitFinishesAfterRestart(t *testing.T) {
 	// Restart: a new session with nothing waiting. Its attach pass reads the
 	// owed prompts, and the answer is recorded with no live session to tell.
 	after := attach()
-	after.SettlePrompts(ctx)
+	after.Delivery().SettlePrompts(ctx)
 
 	input, output := int64(10), int64(5)
 	if _, _, err := core.Finished(ctx, coreturns.Finish{HostedThreadID: "hosted", Provider: "claude", NativeThreadID: native, TurnID: turnOf["person-correction"],
@@ -1432,7 +1432,7 @@ func TestClaudeOwedPromptSavedCommitFinishesAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		after.SettleWaitingPrompts(ctx) // what a later saved commit runs
+		after.Delivery().SettleWaitingPrompts(ctx) // what a later saved commit runs
 		record, err := core.Get(ctx, "hosted", turnOf["person-starter"])
 		return err == nil && record.Outcome != ""
 	})
@@ -1522,7 +1522,7 @@ func TestReattachSettlesSavedPromptsAndPublishesOnlyTheRest(t *testing.T) {
 					cfg.CompletedTurns = (hostedmodel.NewCompletedTurnStore(h.queue.Database())).CoreStore
 				})
 				waitForCatalogWithin(t, time.Minute, func() bool {
-					if _, err := sess.SettlePrompts(ctx); err != nil {
+					if _, err := sess.Delivery().SettlePrompts(ctx); err != nil {
 						return false
 					}
 					owing, err := h.prompts.Owing(ctx, "hosted", []string{"unanswered"})
@@ -1643,7 +1643,7 @@ func TestSavedCommitSettlesPromptsWithoutReattach(t *testing.T) {
 			}
 			deliver := func(name string) {
 				t.Helper()
-				if rec := postTurn(t, sess, context.Background(), name, name+" prompt"); rec.Code != http.StatusOK {
+				if rec := postTurn(t, sess.Delivery(), context.Background(), name, name+" prompt"); rec.Code != http.StatusOK {
 					t.Fatalf("%s delivery = %d %s", name, rec.Code, rec.Body.String())
 				}
 			}
@@ -1772,7 +1772,7 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 			}, func(cfg *sessions.Config) { cfg.Projection = projection })
 			runtime := h.runtimes[sess]
 			if test.watched {
-				if response := postTurn(t, sess, ctx, "prompt", text); response.Code != http.StatusOK {
+				if response := postTurn(t, sess.Delivery(), ctx, "prompt", text); response.Code != http.StatusOK {
 					t.Fatalf("initial prompt = %d %s", response.Code, response.Body.String())
 				}
 			}
@@ -1805,7 +1805,7 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 						return sess.Summary().TurnActive && liveStatusForTest(t, runtime.session).Runtime.TurnID == turn
 					})
 					rec := httptest.NewRecorder()
-					sess.HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
+					sess.Delivery().HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
 					if rec.Code != http.StatusOK || h.interrupts.Load() != 1 {
 						t.Fatalf("Stop = %d %s, %d interrupts", rec.Code, rec.Body.String(), h.interrupts.Load())
 					}
@@ -1817,7 +1817,7 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 						hold.Do(func() { close(entered); <-release })
 						return read(ctx, keys)
 					})
-					go func() { sess.SettleWaitingPrompts(ctx); close(passed) }()
+					go func() { sess.Delivery().SettleWaitingPrompts(ctx); close(passed) }()
 					<-entered
 				case read:
 					close(release)
@@ -1836,7 +1836,7 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 			for _, f := range test.frames {
 				play(f)
 			}
-			sess.SettleWaitingPrompts(ctx) // the pass a saved commit runs
+			sess.Delivery().SettleWaitingPrompts(ctx) // the pass a saved commit runs
 
 			select {
 			case got := <-sent:
@@ -1857,14 +1857,14 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 				t.Fatalf("prompt = %s; want %s", state, test.wantState)
 			}
 			if test.wantState == promptstypes.Uncertain {
-				if view, code := readPrompt(t, sess, "prompt"); code != http.StatusOK || view.State != string(promptstypes.Uncertain) || view.Label != "Stopped before Codex took it" {
+				if view, code := readPrompt(t, sess.Delivery(), "prompt"); code != http.StatusOK || view.State != string(promptstypes.Uncertain) || view.Label != "Stopped before Codex took it" {
 					t.Fatalf("held read = %d %+v; want held for the person", code, view)
 				}
 				// Codex saves it after all: the hold ends like any prompt's wait.
 				if _, settled, err := h.prompts.Settle(ctx, "prompt"); err != nil || !settled {
 					t.Fatalf("settle = %v, %v", settled, err)
 				}
-				if view, code := readPrompt(t, sess, "prompt"); code != http.StatusOK || view.State != string(promptstypes.Confirmed) || view.AllowedActions != nil {
+				if view, code := readPrompt(t, sess.Delivery(), "prompt"); code != http.StatusOK || view.State != string(promptstypes.Confirmed) || view.AllowedActions != nil {
 					t.Fatalf("read once saved = %d %+v; want confirmed", code, view)
 				}
 			}
@@ -1961,7 +1961,7 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 	// The regression this case owns: the pass that finishes last must not
 	// restore the waiting mark of the prompt the other settled. Checked before
 	// any later commit, which would otherwise drop a restored mark again.
-	sess.RequestMemberStep() // clear the completed member hint without altering prompt waits
+	sess.Delivery().RequestMemberStep() // clear the completed member hint without altering prompt waits
 	beforeWaitingRead := reads.Load()
 	sessions.ReconcileSavedTranscript(ctx, sess)
 	if got := reads.Load(); got != beforeWaitingRead {
@@ -2076,7 +2076,7 @@ func TestClaudePromptsSettleWithTheirSavedRow(t *testing.T) {
 
 			sess := h.attach("claude", nil)
 			waitForCatalogWithin(t, time.Minute, func() bool {
-				_, err := sess.SettlePrompts(ctx)
+				_, err := sess.Delivery().SettlePrompts(ctx)
 				return err == nil && h.state(t, test.actions[0]) == promptstypes.Confirmed
 			})
 			for _, action := range test.actions {
@@ -2163,7 +2163,7 @@ func TestCodexLateRPCEchoBindsAndSettlesSavedPrompt(t *testing.T) {
 			if test.queuedFirst {
 				runtime.activate(t)
 			}
-			if rec := postTurn(t, sess, ctx, "late", text); rec.Code != http.StatusAccepted {
+			if rec := postTurn(t, sess.Delivery(), ctx, "late", text); rec.Code != http.StatusAccepted {
 				t.Fatalf("send = %d %s; want 202", rec.Code, rec.Body.String())
 			}
 			if test.queuedFirst {
@@ -2171,7 +2171,7 @@ func TestCodexLateRPCEchoBindsAndSettlesSavedPrompt(t *testing.T) {
 			}
 			// The real delivery deadline is 30 seconds; wait for its journal result.
 			waitForCatalogWithin(t, 35*time.Second, func() bool {
-				attempt, err := sess.PromptStore().GetAttempt(ctx, "late")
+				attempt, err := sess.Delivery().PromptStore().GetAttempt(ctx, "late")
 				return err == nil && attempt.State != promptstypes.JournalQueued && attempt.State != promptstypes.JournalSending
 			})
 			waitTurnSendDone(t, sess, "late")
@@ -2188,7 +2188,7 @@ func TestCodexLateRPCEchoBindsAndSettlesSavedPrompt(t *testing.T) {
 					rows, err := h.savedReader(sess)(ctx, history.SavedUserKeys{NativeTurnIDs: []string{turn}})
 					return err == nil && len(rows) > 0 && rows[0].TurnStatus == history.TurnCompleted
 				})
-				sess.SettleWaitingPrompts(ctx) // the commit's pass, while the prompt is still unbound
+				sess.Delivery().SettleWaitingPrompts(ctx) // the commit's pass, while the prompt is still unbound
 			}
 			if test.reconnect {
 				before := runtime.codex.ResumeCount()
@@ -2207,7 +2207,7 @@ func TestCodexLateRPCEchoBindsAndSettlesSavedPrompt(t *testing.T) {
 				waitForCatalogWithin(t, 5*time.Second, func() bool { return h.state(t, "late") == promptstypes.Accepted })
 				saved()
 				waitForCatalogWithin(t, time.Minute, func() bool {
-					sess.SettleWaitingPrompts(ctx) // the pass a saved commit runs
+					sess.Delivery().SettleWaitingPrompts(ctx) // the pass a saved commit runs
 					return h.state(t, "late") == promptstypes.Confirmed
 				})
 			}
@@ -2247,23 +2247,23 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	var sess *sessions.Session
 	waitForClaude(t, "the reattached session", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)
-		return sess != nil && sess.Summary().Status == "ready" && sess.PromptStore() != nil
+		return sess != nil && sess.Summary().Status == "ready" && sess.Delivery().PromptStore() != nil
 	})
 	native, turn := rec.NativeThreadID, "turn-shared"
 	proveSaved := func(op threads.TurnRecord) {
 		action, text := op.TransportActionID, "prompt "+op.ClientActionID
-		if _, _, err := sess.PromptStore().Submit(ctx, promptstypes.Submission{HostedThreadID: rec.HostedThreadID, Provider: model.ProviderCodex, NativeThreadID: native,
+		if _, _, err := sess.Delivery().PromptStore().Submit(ctx, promptstypes.Submission{HostedThreadID: rec.HostedThreadID, Provider: model.ProviderCodex, NativeThreadID: native,
 			ActionID: action, ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 			t.Fatal(err)
 		}
-		if _, claimed, err := sess.PromptStore().Claim(ctx, promptstypes.ClaimRequest{HostedThreadID: rec.HostedThreadID, Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+		if _, claimed, err := sess.Delivery().PromptStore().Claim(ctx, promptstypes.ClaimRequest{HostedThreadID: rec.HostedThreadID, Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 			t.Fatalf("claim %s: %v %v", action, claimed, err)
 		}
 		binding := promptstypes.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}, EventID: submissionEventID(rec.HostedThreadID, action)}
-		if _, err := sess.PromptStore().Accepted(ctx, promptstypes.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1, Binding: binding}); err != nil {
+		if _, err := sess.Delivery().PromptStore().Accepted(ctx, promptstypes.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1, Binding: binding}); err != nil {
 			t.Fatal(err)
 		}
-		if _, settled, err := sess.PromptStore().Settle(ctx, action); err != nil || !settled {
+		if _, settled, err := sess.Delivery().PromptStore().Settle(ctx, action); err != nil || !settled {
 			t.Fatalf("settle %s: %v %v", action, settled, err)
 		}
 	}
@@ -2339,22 +2339,22 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 	var sess *sessions.Session
 	waitForClaude(t, "the reattached turn to be active", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)
-		if sess == nil || sess.PromptStore() == nil {
+		if sess == nil || sess.Delivery().PromptStore() == nil {
 			return false
 		}
 		return sess.Summary().TurnActive
 	})
 	native, turn, action := rec.NativeThreadID, "turn-human", op.TransportActionID
 	text := "prompt correction"
-	if _, _, err := sess.PromptStore().Submit(ctx, promptstypes.Submission{HostedThreadID: rec.HostedThreadID, Provider: model.ProviderCodex, NativeThreadID: native,
+	if _, _, err := sess.Delivery().PromptStore().Submit(ctx, promptstypes.Submission{HostedThreadID: rec.HostedThreadID, Provider: model.ProviderCodex, NativeThreadID: native,
 		ActionID: action, ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, claimed, err := sess.PromptStore().Claim(ctx, promptstypes.ClaimRequest{HostedThreadID: rec.HostedThreadID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := sess.Delivery().PromptStore().Claim(ctx, promptstypes.ClaimRequest{HostedThreadID: rec.HostedThreadID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		t.Fatalf("claim: %v %v", claimed, err)
 	}
 	binding := promptstypes.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}, EventID: submissionEventID(rec.HostedThreadID, action)}
-	if _, err := sess.PromptStore().Accepted(ctx, promptstypes.Acceptance{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Binding: binding}); err != nil {
+	if _, err := sess.Delivery().PromptStore().Accepted(ctx, promptstypes.Acceptance{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Binding: binding}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2374,7 +2374,7 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 
 	// Once its own row is proven saved, it finishes with the turn's recorded
 	// final answer.
-	if _, settled, err := sess.PromptStore().Settle(ctx, action); err != nil || !settled {
+	if _, settled, err := sess.Delivery().PromptStore().Settle(ctx, action); err != nil || !settled {
 		t.Fatalf("settle: %v %v", settled, err)
 	}
 	daemon.EmitThreadNotification(native, map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": native, "turn": map[string]any{"id": turn, "status": "completed", "completedAt": 1787600100}}})

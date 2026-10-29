@@ -29,7 +29,7 @@ func (s *Controller) cancelQueuedAgentTurn(w http.ResponseWriter, operationID st
 	}
 	var err error
 	if sess := s.sessionForHosted(rec.HostedThreadID); sess != nil {
-		_, err = sess.CancelQueuedTurnAction(rec.TransportActionID, sessions.DiscardedByCaller)
+		_, err = sess.Delivery().CancelQueuedTurnAction(rec.TransportActionID, sessions.DiscardedByCaller)
 	} else {
 		_, err = sessions.CancelQueuedTurnStores(s.Queue, s.Executions, rec.TransportActionID, sessions.DiscardedByCaller)
 	}

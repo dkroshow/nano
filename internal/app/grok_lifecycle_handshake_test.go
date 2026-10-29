@@ -105,11 +105,11 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 			sess.ConfigureRegistration(nil, nil, false, attached)
 			sess.ReserveNativeID(sess.ThreadID())
 			if tc.prompted {
-				seedAcceptedTransactionalTurn(t, sess.PromptStore(), sess.HostedThreadID(), model.ProviderGrok, sess.ThreadID(), "earlier", "prompt-earlier", "earlier prompt")
+				seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), sess.HostedThreadID(), model.ProviderGrok, sess.ThreadID(), "earlier", "prompt-earlier", "earlier prompt")
 			}
 			if tc.parked {
 				text := "parked prompt"
-				if _, _, err := sess.PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderGrok, NativeThreadID: sess.ThreadID(),
+				if _, _, err := sess.Delivery().PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderGrok, NativeThreadID: sess.ThreadID(),
 					ActionID: "parked", ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 					t.Fatal(err)
 				}
@@ -117,7 +117,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if rec := postTurn(t, sess, context.Background(), "after-restart", "queued while starting"); rec.Code != http.StatusAccepted {
+			if rec := postTurn(t, sess.Delivery(), context.Background(), "after-restart", "queued while starting"); rec.Code != http.StatusAccepted {
 				t.Fatalf("queue status %d: %s", rec.Code, rec.Body.String())
 			}
 

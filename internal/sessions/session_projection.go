@@ -28,7 +28,7 @@ func (sess *Session) PublishProjectionRuntime() {
 		CompactingSinceMs: sess.compactingSinceMsLocked(),
 		TokenUsage:        append(json.RawMessage(nil), sess.tokenUsage...),
 		LastError:         sess.lastError,
-		DeliveryExpiries:  sess.deliveryExpiries.count(sess.provider),
+		DeliveryExpiries:  sess.delivery.deliveryExpiries.count(sess.provider),
 	}
 	// The transcript's runtime upsert must not interpret hidden disconnected
 	// work as a completed turn. Only provider terminal evidence completes it.
@@ -162,7 +162,7 @@ func (sess *Session) ReconcileDurableTurn(ctx context.Context) {
 	}
 	sess.PublishProjectionRuntime()
 	sess.NotifyRuntime()
-	sess.kickQueuedTurnDrain()
+	sess.delivery.kickQueuedTurnDrain()
 }
 
 // HandleConversation serves the default conversation view for this attachment.
@@ -211,5 +211,5 @@ func ReconcileSavedTranscript(ctx context.Context, sess *Session) {
 		return
 	}
 	sess.ReconcileDurableTurn(ctx)
-	sess.SettleWaitingPrompts(ctx)
+	sess.delivery.SettleWaitingPrompts(ctx)
 }

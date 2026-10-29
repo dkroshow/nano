@@ -193,7 +193,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 	if sum := sess.Summary(); sum.Waiting {
 		t.Fatal("a working session is not waiting")
 	}
-	sess.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
+	sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
 	sum := sess.Summary()
 	if !sum.Waiting {
 		t.Fatal("a parked interaction must read as waiting")
@@ -201,7 +201,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 	if !sum.TurnActive || sum.TurnStartedAtMs == 0 {
 		t.Fatalf("waiting is display state layered on the live turn, got %+v", sum)
 	}
-	if _, ok := sess.claimPendingInteraction("1"); !ok {
+	if _, ok := sess.delivery.claimPendingInteraction("1"); !ok {
 		t.Fatal("the interaction should still be claimable")
 	}
 	if sess.Summary().Waiting {
@@ -215,7 +215,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 // is reset after setup so each case measures only its own transition.
 func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 	park := func(s *Session) {
-		s.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
+		s.delivery.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
 	}
 	cases := []struct {
 		name  string
@@ -223,8 +223,8 @@ func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 		act   func(*Session)
 	}{
 		{"park", func(*Session) {}, park},
-		{"claim", park, func(s *Session) { s.claimPendingInteraction("1") }},
-		{"drain", park, func(s *Session) { s.drainPendingInteractions() }},
+		{"claim", park, func(s *Session) { s.delivery.claimPendingInteraction("1") }},
+		{"drain", park, func(s *Session) { s.delivery.drainPendingInteractions() }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

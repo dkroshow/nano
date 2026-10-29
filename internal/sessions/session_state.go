@@ -34,7 +34,7 @@ func (sess *Session) ConfirmClaudeClose() {
 	sess.closeUnconfirmed = false
 	sess.stateMu.Unlock()
 	if unconfirmed {
-		sess.settleAgentTurnsOnExit(true)
+		sess.delivery.settleAgentTurnsOnExit(true)
 		sess.updateHostedThread(StatusExited, "closed")
 	}
 }
@@ -76,13 +76,13 @@ func (sess *Session) closeProvider(requireReady bool) error {
 		// before the transport goes away. A shim-hosted child outlives nano, so
 		// an unanswered can_use_tool would hold its turn open with no operator
 		// anywhere able to reach it.
-		sess.closeInteractions()
+		sess.delivery.closeInteractions()
 		sess.closeErr = claude.Close()
 	case grok != nil:
 		// Explicit close rejects parked permissions before disconnecting the
 		// proxy. A Nano process restart does not call close, so the leader keeps
 		// both the turn and any parked request alive for session/load.
-		sess.closeInteractions()
+		sess.delivery.closeInteractions()
 		_ = grok.Close()
 	}
 	if sess.wire.spool != nil {
@@ -214,7 +214,7 @@ func (sess *Session) failSpawn(message string) {
 	sess.turnStartedAtMs = 0 // clearing site 3 of 3 (D14)
 	sess.clearTurnRestoreLocked()
 	sess.stateMu.Unlock()
-	sess.settleAgentTurnsOnExit(closed)
+	sess.delivery.settleAgentTurnsOnExit(closed)
 	sess.releaseCatalogSource()
 	sess.PublishProjectionRuntime()
 	sess.NotifyRuntime()
@@ -244,14 +244,14 @@ func (sess *Session) setState(key string, v json.RawMessage) {
 	sess.stateMu.Unlock()
 }
 
-func (sess *Session) settleAgentTurnsOnExit(closed bool) {
-	sess.stateMu.Lock()
-	unconfirmed := sess.closeUnconfirmed
-	sess.stateMu.Unlock()
+func (sess *Delivery) settleAgentTurnsOnExit(closed bool) {
+	sess.session.stateMu.Lock()
+	unconfirmed := sess.session.closeUnconfirmed
+	sess.session.stateMu.Unlock()
 	if unconfirmed {
 		return
 	}
-	if sess.agentExecutions == nil || sess.hostedThreadID == "" {
+	if sess.session.agentExecutions == nil || sess.session.hostedThreadID == "" {
 		return
 	}
 	turnStatus := agentTurnDeliveryUnknown
@@ -265,8 +265,8 @@ func (sess *Session) settleAgentTurnsOnExit(closed bool) {
 			Source: "client", Code: "session_closed", Message: "the caller closed the hosted thread",
 		}
 	}
-	if err := sess.agentExecutions.MarkSessionTurns(sess.hostedThreadID, turnStatus, executionErr); err != nil {
-		log.Printf("settle turns for exited hosted thread %s: %v", sess.hostedThreadID, err)
+	if err := sess.session.agentExecutions.MarkSessionTurns(sess.session.hostedThreadID, turnStatus, executionErr); err != nil {
+		log.Printf("settle turns for exited hosted thread %s: %v", sess.session.hostedThreadID, err)
 	}
 }
 

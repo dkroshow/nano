@@ -49,19 +49,19 @@ func TestCodexReconnectPromptRetriesAndDrainsOnce(t *testing.T) {
 	sess := resumeReconnectFixture(t, daemon, "queued-recovery", false)
 	waitForClaudeStatus(t, sess, "ready")
 	var deliveries atomic.Int32
-	sess.turnSender = func(context.Context, string) (json.RawMessage, error) {
+	sess.delivery.turnSender = func(context.Context, string) (json.RawMessage, error) {
 		sequence := deliveries.Add(1)
 		return json.RawMessage(fmt.Sprintf(`{"turn":{"id":"recovered-turn-%d"}}`, sequence)), nil
 	}
 	sess.setStatus("reconnecting")
 	fake.SetReplyDelay("thread/resume", 100*time.Millisecond)
 	for index := 0; index < 2; index++ {
-		response := postTurn(t, sess, context.Background(), "recovery-action", "preserve this prompt")
+		response := postTurn(t, sess.Delivery(), context.Background(), "recovery-action", "preserve this prompt")
 		if response.Code != http.StatusAccepted {
 			t.Fatalf("queue failed: %d %s", response.Code, response.Body.String())
 		}
 	}
-	if response := postTurn(t, sess, context.Background(), "second-recovery-action", "preserve the second prompt"); response.Code != http.StatusAccepted {
+	if response := postTurn(t, sess.Delivery(), context.Background(), "second-recovery-action", "preserve the second prompt"); response.Code != http.StatusAccepted {
 		t.Fatalf("second queue failed: %d %s", response.Code, response.Body.String())
 	}
 	waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 2 })
@@ -71,14 +71,14 @@ func TestCodexReconnectPromptRetriesAndDrainsOnce(t *testing.T) {
 		t.Fatalf("resume count = %d; expected initial, timeout, retry", got)
 	}
 	for index := 0; index < 5; index++ {
-		sess.kickQueuedTurnDrain()
+		sess.delivery.kickQueuedTurnDrain()
 		daemon.requestSessionRecovery(sess)
 	}
 	time.Sleep(50 * time.Millisecond)
 	if got := deliveries.Load(); got != 1 {
 		t.Fatalf("provider deliveries = %d, want exactly one", got)
 	}
-	if queued, ok := sess.queuedTurns.Get("recovery-action"); !ok || queued.State != submissionAccepted {
+	if queued, ok := sess.delivery.queuedTurns.Get("recovery-action"); !ok || queued.State != submissionAccepted {
 		t.Fatalf("submission lost or not accepted: %+v", queued)
 	}
 	sess.setTurnActive(true, "recovered-turn-1", time.Now().UnixMilli(), true)
@@ -88,7 +88,7 @@ func TestCodexReconnectPromptRetriesAndDrainsOnce(t *testing.T) {
 	if got := deliveries.Load(); got != 2 {
 		t.Fatalf("two queued prompts produced %d deliveries", got)
 	}
-	if queued, ok := sess.queuedTurns.Get("second-recovery-action"); !ok || queued.State != submissionAccepted {
+	if queued, ok := sess.delivery.queuedTurns.Get("second-recovery-action"); !ok || queued.State != submissionAccepted {
 		t.Fatalf("second submission lost or not accepted: %+v", queued)
 	}
 }

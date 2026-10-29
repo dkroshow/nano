@@ -550,18 +550,18 @@ func TestLiveTextTailNamesPromptsWhoseSavedRowsItHolds(t *testing.T) {
 	settle := func(action, event string) {
 		t.Helper()
 		text, turn := "prompt "+action, "claude:"+action
-		if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderClaude, NativeThreadID: native,
+		if _, _, err := h.sess.delivery.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderClaude, NativeThreadID: native,
 			ActionID: action, ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 			t.Fatal(err)
 		}
-		if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.HostedThreadID(), Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+		if _, claimed, err := h.sess.delivery.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.HostedThreadID(), Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 			t.Fatalf("claim %s: %v %v", action, claimed, err)
 		}
-		if _, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
+		if _, err := h.sess.delivery.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
 			Binding: prompts.Binding{EventID: event, Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &turn}}}); err != nil {
 			t.Fatal(err)
 		}
-		if _, settled, err := h.sess.PromptStore().Settle(ctx, action); err != nil || !settled {
+		if _, settled, err := h.sess.delivery.PromptStore().Settle(ctx, action); err != nil || !settled {
 			t.Fatalf("settle %s: %v %v", action, settled, err)
 		}
 	}
@@ -1077,7 +1077,7 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 func TestLiveTextShowsQueueInDeliveryOrder(t *testing.T) {
 	h := newLiveTextHarness(t)
 	for _, origin := range []prompts.Origin{prompts.AgentOrigin, prompts.HumanOrigin} {
-		record, _, err := h.sess.PromptStore().Submit(context.Background(), prompts.Submission{
+		record, _, err := h.sess.delivery.PromptStore().Submit(context.Background(), prompts.Submission{
 			HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", ActionID: string(origin),
 			ProviderText: string(origin), PresentationText: string(origin), TextHash: string(origin),
 			RequestHash: string(origin), Origin: origin,
@@ -1294,14 +1294,14 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 			h := newLiveTextHarnessFor(t, "codex", query)
 			thread, turn := codexFixtureThread, "01a0f63e-0000-7000-8000-00000000a001"
 			accept := func(action, text, event string) prompts.OutboxEntry {
-				if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: thread,
+				if _, _, err := h.sess.delivery.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: h.sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: thread,
 					ActionID: action, ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 					t.Fatal(err)
 				}
-				if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.HostedThreadID(), Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+				if _, claimed, err := h.sess.delivery.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: h.sess.HostedThreadID(), Token: "claim-" + action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 					t.Fatalf("claim %s: %v %v", action, claimed, err)
 				}
-				record, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
+				record, err := h.sess.delivery.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: "claim-" + action, AttachmentEpoch: 1,
 					Binding: prompts.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &thread, NativeTurnID: &turn}, EventID: event}})
 				if err != nil {
 					t.Fatal(err)
@@ -1328,7 +1328,7 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 			if restarted {
 				// Confirmed before this attach, so it is not live and only its
 				// stored binding still claims its row.
-				if _, _, err := h.sess.PromptStore().Settle(ctx, "correction"); err != nil {
+				if _, _, err := h.sess.delivery.PromptStore().Settle(ctx, "correction"); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -1498,7 +1498,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 func (h *liveTextHarness) deliveryJournal() map[string]prompts.View {
 	h.t.Helper()
 	rec := httptest.NewRecorder()
-	h.sess.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
+	h.sess.delivery.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
 	var body struct {
 		Operations []prompts.View `json:"operations"`
 	}
@@ -1542,14 +1542,14 @@ func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin pr
 	h.t.Helper()
 	ctx := context.Background()
 	hosted, native := h.sess.HostedThreadID(), h.sess.ThreadID()
-	if _, _, err := h.sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
+	if _, _, err := h.sess.delivery.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: origin, CreatedAt: createdAt}); err != nil {
 		h.t.Fatal(err)
 	}
-	if _, claimed, err := h.sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := h.sess.delivery.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		h.t.Fatalf("claim %s = %v, %v", action, claimed, err)
 	}
-	accepted, err := h.sess.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: action, AttachmentEpoch: 1, Binding: prompts.Binding{
+	accepted, err := h.sess.delivery.PromptStore().Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: action, AttachmentEpoch: 1, Binding: prompts.Binding{
 		EventID: submissionEventID(hosted, action), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}})
 	if err != nil {
 		h.t.Fatal(err)
@@ -1572,13 +1572,13 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	hosted, native := sess.HostedThreadID(), sess.ThreadID()
 	submit := func(action string, nextTurn bool) {
 		text := "prompt " + action
-		if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
+		if _, _, err := sess.delivery.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
 			ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: hostedstore.TurnRequestHash(text, nextTurn), Origin: prompts.AgentOrigin, NextTurn: nextTurn}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	claim := func(action string) prompts.Record {
-		claimed, ok, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true})
+		claimed, ok, err := sess.delivery.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: action, AttachmentEpoch: 1, Ready: true})
 		if err != nil || !ok || claimed.Outbox.ActionID != action {
 			t.Fatalf("claim %s = %s %v, %v", action, claimed.Outbox.ActionID, ok, err)
 		}
@@ -1586,26 +1586,26 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	}
 	submit("timed-out", false)
 	claim("timed-out")
-	uncertain, err := sess.PromptStore().Uncertain(ctx, prompts.Uncertainty{ActionID: "timed-out", ClaimToken: "timed-out", AttachmentEpoch: 1, Reason: context.DeadlineExceeded.Error()})
+	uncertain, err := sess.delivery.PromptStore().Uncertain(ctx, prompts.Uncertainty{ActionID: "timed-out", ClaimToken: "timed-out", AttachmentEpoch: 1, Reason: context.DeadlineExceeded.Error()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	submit("parked", false)
 	claim("parked")
-	parked, err := sess.PromptStore().Refused(ctx, prompts.Refusal{ActionID: "parked", ClaimToken: "parked", AttachmentEpoch: 1, State: prompts.Parked, Reason: "rpc error -32000: provider is not accepting input"})
+	parked, err := sess.delivery.PromptStore().Refused(ctx, prompts.Refusal{ActionID: "parked", ClaimToken: "parked", AttachmentEpoch: 1, State: prompts.Parked, Reason: "rpc error -32000: provider is not accepting input"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Delivery began shortly before the threshold: the provider has not taken
 	// it yet, and nothing about it changes again.
 	submit("slow", false)
-	slow, ok, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "slow", AttachmentEpoch: 1, Ready: true,
+	slow, ok, err := sess.delivery.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "slow", AttachmentEpoch: 1, Ready: true,
 		At: time.Now().Add(2*time.Second - promptSlowDelivery).UTC().Format(time.RFC3339Nano)})
 	if err != nil || !ok || slow.Outbox.ActionID != "slow" {
 		t.Fatalf("claim slow = %s %v, %v", slow.Outbox.ActionID, ok, err)
 	}
 	submit("addendum", true)
-	queued, _, err := sess.PromptStore().Get(ctx, "addendum")
+	queued, _, err := sess.delivery.PromptStore().Get(ctx, "addendum")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1631,7 +1631,7 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 		"slow":      {prompts.Delivering, nil, slowLabel},
 	}
 	rec := httptest.NewRecorder()
-	sess.HandleTurnDeliveryRead(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery/slow", nil), "slow")
+	sess.delivery.HandleTurnDeliveryRead(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery/slow", nil), "slow")
 	var read prompts.View
 	if err := json.Unmarshal(rec.Body.Bytes(), &read); err != nil || read.State != string(prompts.Delivering) || read.Label != slowLabel || read.AllowedActions != nil {
 		t.Fatalf("single read of slow = %d %s, %v", rec.Code, rec.Body.String(), err)

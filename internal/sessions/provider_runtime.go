@@ -39,13 +39,13 @@ func (sess *Session) ensureDeliveryCoordinator() error {
 // boundaries too. Store views are wired once before provider attachment; this
 // check must never mutate them while restore and queue drains run concurrently.
 func (sess *Session) requireTransactionalTurnsLocked() error {
-	if sess.turns == nil {
+	if sess.delivery.turns == nil {
 		return errors.New("transactional turns store is unavailable")
 	}
-	if sess.queuedTurns != nil && sess.queuedTurns.TransactionStore() != sess.turns {
+	if sess.delivery.queuedTurns != nil && sess.delivery.queuedTurns.TransactionStore() != sess.delivery.turns {
 		return errors.New("transactional turn queue view is unavailable")
 	}
-	if sess.sendAttempts != nil && sess.sendAttempts.TransactionStore() != sess.turns {
+	if sess.delivery.sendAttempts != nil && sess.delivery.sendAttempts.TransactionStore() != sess.delivery.turns {
 		return errors.New("transactional turn journal view is unavailable")
 	}
 	return nil
@@ -78,15 +78,15 @@ func (sess *Session) ensureCoreSession() error {
 			}
 		}
 		var canonicalDB = func() *sql.DB {
-			if sess.queuedTurns != nil && sess.queuedTurns.Database() != nil {
-				return sess.queuedTurns.Database()
+			if sess.delivery.queuedTurns != nil && sess.delivery.queuedTurns.Database() != nil {
+				return sess.delivery.queuedTurns.Database()
 			}
 			if sess.metadata != nil {
 				return sess.metadata.CanonicalDatabase()
 			}
 			return nil
 		}()
-		if sess.turns == nil && canonicalDB != nil {
+		if sess.delivery.turns == nil && canonicalDB != nil {
 			promptStore, err := prompts.OpenStore(context.Background(), canonicalDB)
 			if err != nil {
 				sess.coreErr = err
@@ -96,12 +96,12 @@ func (sess *Session) ensureCoreSession() error {
 				sess.coreErr = err
 				return
 			}
-			sess.turns = promptStore
-			if sess.queuedTurns != nil {
-				sess.queuedTurns.BindTransactionStore(promptStore)
+			sess.delivery.turns = promptStore
+			if sess.delivery.queuedTurns != nil {
+				sess.delivery.queuedTurns.BindTransactionStore(promptStore)
 			}
-			if sess.sendAttempts != nil {
-				sess.sendAttempts.BindTransactionStore(promptStore)
+			if sess.delivery.sendAttempts != nil {
+				sess.delivery.sendAttempts.BindTransactionStore(promptStore)
 			}
 		}
 		sess.stateMu.Lock()
@@ -118,7 +118,7 @@ func (sess *Session) ensureCoreSession() error {
 			}
 			sess.completedTurns = func(context.Context) (*coreturns.Store, error) { return store, nil }
 		}
-		if sess.turns == nil || sess.completedTurns == nil {
+		if sess.delivery.turns == nil || sess.completedTurns == nil {
 			sess.coreErr = errors.New("core prompt or turn store is unavailable")
 			return
 		}
@@ -128,7 +128,7 @@ func (sess *Session) ensureCoreSession() error {
 			return
 		}
 		core, err := coresession.New(coresession.Config{
-			HostedThreadID: sess.hostedThreadID, Wire: sess.providerAdapter, Prompts: sess.turns, Turns: finishedTurnNotifier{Store: turnStore, session: sess},
+			HostedThreadID: sess.hostedThreadID, Wire: sess.providerAdapter, Prompts: sess.delivery.turns, Turns: finishedTurnNotifier{Store: turnStore, session: sess},
 			Outbox: coreOutboxPublisher{session: sess}, Lifecycle: initial, ExternalDrain: true,
 			AsyncError: sess.recordCoreAsyncError,
 		})
@@ -164,9 +164,9 @@ func (n finishedTurnNotifier) Finished(ctx context.Context, finish coreturns.Fin
 	// owed member step runs under settleMu, never waiting for it here inside
 	// the core loop. Raw store writes there notify nothing.
 	if n.session.provider == string(model.ProviderClaude) {
-		n.session.RequestMemberStep()
+		n.session.delivery.RequestMemberStep()
 	} else {
-		n.session.finishJoinedAgentTurns(ctx, finish.TurnID)
+		n.session.delivery.finishJoinedAgentTurns(ctx, finish.TurnID)
 	}
 	return record, created, nil
 }
@@ -197,7 +197,7 @@ type coreOutboxPublisher struct{ session *Session }
 
 // PublishOutbox publishes a prompt state change to its live view.
 func (publisher coreOutboxPublisher) PublishOutbox(entry prompts.OutboxEntry) {
-	publisher.session.publishTransactionalOutbox(entry)
+	publisher.session.delivery.publishTransactionalOutbox(entry)
 }
 
 func providerOperationFactories() map[model.Provider]providerOperationFactory {
@@ -352,14 +352,14 @@ func providerSubmitOperation(sess *Session, send func(context.Context, providers
 	return func(ctx context.Context, request providers.SubmissionRequest) (providers.SubmissionResult, error) {
 		var receipt json.RawMessage
 		var err error
-		if sess.turnSender != nil {
-			receipt, err = sess.turnSender(ctx, request.Text)
+		if sess.delivery.turnSender != nil {
+			receipt, err = sess.delivery.turnSender(ctx, request.Text)
 		} else {
 			receipt, err = send(ctx, request)
 		}
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				sess.deliveryExpiries.record(sess.provider)
+				sess.delivery.deliveryExpiries.record(sess.provider)
 			}
 			state := prompts.Uncertain
 			nativeMissing := sess.codexZeroTurnNativeMissing(request.Outbox.ActionID, err)

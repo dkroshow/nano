@@ -291,7 +291,7 @@ func TestGrokPermissionRequestUsesExistingInteractionShape(t *testing.T) {
 	if rpcErr != nil || result != protocol.Deferred {
 		t.Fatalf("permission result = %#v, %v", result, rpcErr)
 	}
-	pending := sess.PendingInteractionList()
+	pending := sess.delivery.PendingInteractionList()
 	if len(pending) != 1 || pending[0].ItemID != "call-1" {
 		t.Fatalf("pending = %#v", pending)
 	}
@@ -324,7 +324,7 @@ func TestGrokExitPlanRequestParksPlanApproval(t *testing.T) {
 	if rpcErr != nil || result != protocol.Deferred {
 		t.Fatalf("exit plan result = %#v, %v", result, rpcErr)
 	}
-	pending := sess.PendingInteractionList()
+	pending := sess.delivery.PendingInteractionList()
 	if len(pending) != 1 || pending[0].ItemID != "call-9" || pending[0].Method != grokExitPlanMethod {
 		t.Fatalf("pending = %#v", pending)
 	}
@@ -356,7 +356,7 @@ func TestGrokAskQuestionRequestParksAsUserInput(t *testing.T) {
 	if rpcErr != nil || result != protocol.Deferred {
 		t.Fatalf("ask result = %#v, %v", result, rpcErr)
 	}
-	pending := sess.PendingInteractionList()
+	pending := sess.delivery.PendingInteractionList()
 	if len(pending) != 1 || pending[0].Kind != kindUserInput || pending[0].ItemID != "call-3" {
 		t.Fatalf("pending = %#v", pending)
 	}
@@ -450,7 +450,7 @@ func TestGrokUnroutedPermissionFailsClosedWithoutParking(t *testing.T) {
 	if rpcErr != nil || grokSelectedOption(result) != "no" {
 		t.Fatalf("unrouted permission did not fail closed: %#v, %v", result, rpcErr)
 	}
-	if pending := sess.PendingInteractionList(); len(pending) != 0 {
+	if pending := sess.delivery.PendingInteractionList(); len(pending) != 0 {
 		t.Fatalf("unrouted permission parked on parent: %#v", pending)
 	}
 }
