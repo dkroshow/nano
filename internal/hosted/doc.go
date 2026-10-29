@@ -11,5 +11,5 @@
 // AttachmentCoordinator owns boot ordering, provider resume serialization,
 // canonical identity claims, and the shared explicit/boot registration path.
 // Sessions owns the pending/resting boot attachment records and handshakes.
-// App composes shared database migrations; hosted opens its pin database.
+// Edge/stateopen assembles the shared databases; hosted opens its pin database.
 package hosted
