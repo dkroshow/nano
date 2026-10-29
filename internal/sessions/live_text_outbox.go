@@ -15,9 +15,9 @@ func (l *LiveTextLoop) seedOutbox() {
 	if l.sess == nil || l.sess.delivery.PromptStore() == nil {
 		return
 	}
-	records, err := l.sess.delivery.PromptStore().List(context.Background(), l.sess.HostedThreadID())
+	records, err := l.sess.delivery.PromptStore().List(context.Background(), l.sess.identity.hostedThreadID)
 	if err != nil {
-		log.Printf("live text outbox snapshot %s: %v", l.sess.HostedThreadID(), err)
+		log.Printf("live text outbox snapshot %s: %v", l.sess.identity.hostedThreadID, err)
 		return
 	}
 	for _, record := range records {
@@ -87,7 +87,7 @@ func (l *LiveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 func (l *LiveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.OutboxEntry) {
 	provider := ""
 	if l.sess != nil {
-		provider = l.sess.Provider()
+		provider = l.sess.identity.provider
 	}
 	newClaim := entry.UpdatedAt != current.outbox.UpdatedAt || current.outbox.State != prompts.Delivering
 	current.outbox = entry
@@ -106,7 +106,7 @@ func (l *LiveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.Outbo
 // its saved row may already be in the file.
 func (l *LiveTextLoop) learnKey(current *liveTextEntry, entry prompts.OutboxEntry) bool {
 	learned := false
-	if l.sess != nil && (l.sess.Provider() == "grok" || l.sess.Provider() == "codex") && entry.Binding != nil && entry.Binding.Scope.NativeTurnID != nil && current.turn != *entry.Binding.Scope.NativeTurnID {
+	if l.sess != nil && (l.sess.identity.provider == "grok" || l.sess.identity.provider == "codex") && entry.Binding != nil && entry.Binding.Scope.NativeTurnID != nil && current.turn != *entry.Binding.Scope.NativeTurnID {
 		current.turn = *entry.Binding.Scope.NativeTurnID
 		learned = true
 	}
@@ -136,7 +136,7 @@ func (l *LiveTextLoop) deliveryRank(actionID string) int {
 // client message id, or, for a Codex prompt delivered without one, the native
 // turn it started.
 func (l *LiveTextLoop) promptKey(entry prompts.OutboxEntry) string {
-	if l.sess != nil && l.sess.Provider() == "codex" {
+	if l.sess != nil && l.sess.identity.provider == "codex" {
 		switch {
 		case entry.Binding == nil:
 			return ""
@@ -150,8 +150,8 @@ func (l *LiveTextLoop) promptKey(entry prompts.OutboxEntry) string {
 	if entry.Binding != nil && entry.Binding.EventID != "" {
 		return entry.Binding.EventID
 	}
-	if l.sess != nil && (l.sess.Provider() == "claude" || l.sess.Provider() == "grok") {
-		return SubmissionEventID(l.sess.HostedThreadID(), entry.ActionID)
+	if l.sess != nil && (l.sess.identity.provider == "claude" || l.sess.identity.provider == "grok") {
+		return SubmissionEventID(l.sess.identity.hostedThreadID, entry.ActionID)
 	}
 	return ""
 }

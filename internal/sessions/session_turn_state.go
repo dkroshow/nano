@@ -81,7 +81,7 @@ func (sess *State) setTurnActiveState(active bool, turnID string, startedAtMs in
 	// Claude runs one execution at a time: its result ends it whichever
 	// prompt it answered, and a prompt written mid-turn is often the newer
 	// turn here.
-	if !active && turnID != "" && currentID != "" && turnID != currentID && sess.session.provider != "claude" {
+	if !active && turnID != "" && currentID != "" && turnID != currentID && sess.identity.provider != "claude" {
 		sess.stateMu.Unlock()
 		return
 	}
@@ -129,7 +129,7 @@ func (sess *State) setTurnActiveState(active bool, turnID string, startedAtMs in
 		sess.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 		if drain {
-			sess.session.delivery.kickQueuedTurnDrain()
+			sess.delivery.kickQueuedTurnDrain()
 		}
 	}
 }
@@ -164,7 +164,7 @@ func (sess *State) publishRestoredTurnState(drain bool, status string) {
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
-		sess.session.delivery.kickQueuedTurnDrain()
+		sess.delivery.kickQueuedTurnDrain()
 	}
 }
 

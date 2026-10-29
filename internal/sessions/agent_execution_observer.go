@@ -25,10 +25,10 @@ import (
 )
 
 func (sess *Delivery) recordAgentTurnDelivery(transportActionID string, result json.RawMessage, deliveryErr error, definiteFailure bool) {
-	if sess.session.agentExecutions == nil || sess.session.hostedThreadID == "" {
+	if sess.identity.agentExecutions == nil || sess.identity.hostedThreadID == "" {
 		return
 	}
-	rec, ok := sess.session.agentExecutions.TurnForTransportAction(transportActionID)
+	rec, ok := sess.identity.agentExecutions.TurnForTransportAction(transportActionID)
 	if !ok {
 		return
 	}
@@ -47,24 +47,24 @@ func (sess *Delivery) recordAgentTurnDelivery(transportActionID string, result j
 		status = agentTurnDeliveryUnknown
 		deliveryErr = errors.New("provider accepted the turn without returning a turn identity")
 	}
-	if err := sess.session.agentExecutions.MarkTurnDelivery(rec.ID, turnID, status, deliveryExecutionError(deliveryErr)); err != nil {
+	if err := sess.identity.agentExecutions.MarkTurnDelivery(rec.ID, turnID, status, deliveryExecutionError(deliveryErr)); err != nil {
 		log.Printf("record agent turn delivery %s: %v", rec.ID, err)
 	}
 	sess.reconcileAgentOperations()
 	if deliveryErr != nil {
-		sess.session.stateOwner.NotifyRuntime()
+		sess.stateOwner.NotifyRuntime()
 	}
 }
 
 func (sess *Delivery) observeAgentExecutionWire(dir wire.Direction, line []byte) {
-	if sess.session.agentExecutions == nil || sess.session.hostedThreadID == "" || dir != protocol.Recv {
+	if sess.identity.agentExecutions == nil || sess.identity.hostedThreadID == "" || dir != protocol.Recv {
 		return
 	}
-	if sess.session.provider == "claude" {
+	if sess.identity.provider == "claude" {
 		sess.observeClaudeAgentResult(line)
 		return
 	}
-	if sess.session.provider == "grok" {
+	if sess.identity.provider == "grok" {
 		sess.observeGrokAgentWire(line)
 		return
 	}
@@ -89,7 +89,7 @@ func (sess *Delivery) observeAgentExecutionWire(dir wire.Direction, line []byte)
 			if item == nil || item.Type != model.ItemAgentMessage {
 				continue
 			}
-			if err := sess.session.agentExecutions.ObserveCandidate(
+			if err := sess.identity.agentExecutions.ObserveCandidate(
 				"codex", threadID, turnID, item.NativeItemID, item.Phase, item.Text,
 			); err != nil {
 				log.Printf("record agent response candidate %s: %v", turnID, err)
@@ -107,12 +107,12 @@ func (sess *Delivery) observeAgentExecutionWire(dir wire.Direction, line []byte)
 			executionErr = codexExecutionError(turn["error"], status)
 		}
 		if !sess.finishesOnSavedProof("codex", turnID) {
-			if err := sess.session.agentExecutions.MarkTurnTerminal("codex", threadID, turnID, status, executionErr, "", ""); err != nil {
+			if err := sess.identity.agentExecutions.MarkTurnTerminal("codex", threadID, turnID, status, executionErr, "", ""); err != nil {
 				log.Printf("record agent terminal turn %s: %v", turnID, err)
 			}
 		}
 		if status != agentTurnCompleted {
-			sess.session.stateOwner.NotifyRuntime()
+			sess.stateOwner.NotifyRuntime()
 		}
 	}
 }
@@ -152,7 +152,7 @@ func (sess *Delivery) observeGrokAgentWire(line []byte) {
 			}
 		}
 		text, itemID := parsed.Text, threadvalues.FirstNonEmpty(parsed.CallID, candidate+"/agentMessage")
-		if err := sess.session.agentExecutions.ObserveCandidate("grok", sessionID, promptID, itemID, "final_answer", text); err != nil {
+		if err := sess.identity.agentExecutions.ObserveCandidate("grok", sessionID, promptID, itemID, "final_answer", text); err != nil {
 			log.Printf("record Grok response candidate %s: %v", promptID, err)
 		}
 	}
@@ -174,7 +174,7 @@ func (sess *Delivery) observeGrokAgentWire(line []byte) {
 	// already treats both as terminal; the hosted operation must do the same.
 	if !terminalObserved {
 		if promptID, status, _, terminal := grokTerminalFromWire(line); terminal {
-			sess.observeGrokAgentTerminal(sess.session.stateOwner.ThreadID(), promptID, status, status, nil)
+			sess.observeGrokAgentTerminal(sess.stateOwner.ThreadID(), promptID, status, status, nil)
 		}
 	}
 }
@@ -187,18 +187,18 @@ func (sess *Delivery) observeGrokAgentTerminal(sessionID, promptID, status, code
 		}
 	}
 	itemID := ""
-	if status == agentTurnCompleted && sess.session.view.projection != nil {
-		itemID = sess.session.view.projection.finalAgentItemID(promptID)
+	if status == agentTurnCompleted && sess.view.projection != nil {
+		itemID = sess.view.projection.finalAgentItemID(promptID)
 	}
-	if sess.session.agentExecutions != nil {
-		if err := sess.session.agentExecutions.MarkTurnTerminal(
+	if sess.identity.agentExecutions != nil {
+		if err := sess.identity.agentExecutions.MarkTurnTerminal(
 			"grok", sessionID, promptID, status, executionErr, "", itemID, hostedstore.ResultMeta{},
 		); err != nil {
 			log.Printf("record Grok terminal turn %s: %v", promptID, err)
 		}
 	}
 	if status != agentTurnCompleted {
-		sess.session.stateOwner.NotifyRuntime()
+		sess.stateOwner.NotifyRuntime()
 	}
 }
 
@@ -209,7 +209,7 @@ func (sess *Delivery) observeClaudeAgentResult(line []byte) {
 	}
 	// The turn of the prompt the result names (claudeAnsweredTurn), on every
 	// transport; a result naming none completes no operation.
-	turnID := sess.session.view.projection.claudeResultTurn()
+	turnID := sess.view.projection.claudeResultTurn()
 	status, detail := ClaudeProjectionTerminal(line)
 	var executionErr *threadvalues.ExecutionError
 	if status == agentTurnFailed {
@@ -221,21 +221,21 @@ func (sess *Delivery) observeClaudeAgentResult(line []byte) {
 		response = wire.String(message["result"])
 	}
 	itemID := ""
-	if sess.session.view.projection != nil {
-		itemID = sess.session.view.projection.finalAgentItemID(turnID)
+	if sess.view.projection != nil {
+		itemID = sess.view.projection.finalAgentItemID(turnID)
 	}
 	if sess.finishesOnSavedProof("claude", turnID) {
 		// The result names an execution, not the saved consumption of the
 		// prompt: its operation finishes once its own saved row is proven.
 		// Keep the answer for that moment.
-		if err := sess.session.agentExecutions.ObserveCandidate("claude", sess.session.stateOwner.ThreadID(), turnID, itemID, "final_answer", response); err != nil {
+		if err := sess.identity.agentExecutions.ObserveCandidate("claude", sess.stateOwner.ThreadID(), turnID, itemID, "final_answer", response); err != nil {
 			log.Printf("record Claude agent answer for turn %s: %v", turnID, err)
 		}
-	} else if err := sess.session.agentExecutions.MarkTurnTerminal("claude", sess.session.stateOwner.ThreadID(), turnID, status, executionErr, response, itemID, hostedstore.ResultMeta{}); err != nil {
+	} else if err := sess.identity.agentExecutions.MarkTurnTerminal("claude", sess.stateOwner.ThreadID(), turnID, status, executionErr, response, itemID, hostedstore.ResultMeta{}); err != nil {
 		log.Printf("record Claude agent terminal turn %s: %v", turnID, err)
 	}
 	if status != agentTurnCompleted {
-		sess.session.stateOwner.NotifyRuntime()
+		sess.stateOwner.NotifyRuntime()
 	}
 }
 
@@ -266,20 +266,20 @@ const ClaudeMemberBatch = 32
 // missing, unknown or unreadable stays owed for the next trigger, and the
 // thread keeps its owed hint while any is read. The caller holds settleMu.
 func (sess *Delivery) memberStepLocked(ctx context.Context) {
-	if sess.session.provider != string(model.ProviderClaude) || sess.turns == nil || sess.session.runtime.completedTurns == nil || sess.session.agentExecutions == nil {
+	if sess.identity.provider != string(model.ProviderClaude) || sess.turns == nil || sess.runtime.completedTurns == nil || sess.identity.agentExecutions == nil {
 		return
 	}
-	store, err := sess.session.runtime.completedTurns(ctx)
+	store, err := sess.runtime.completedTurns(ctx)
 	if err != nil {
-		log.Printf("Claude members of %s: turn store unavailable: %v", sess.session.hostedThreadID, err)
+		log.Printf("Claude members of %s: turn store unavailable: %v", sess.identity.hostedThreadID, err)
 		return
 	}
 	resolve := sess.claudeResolver(ctx)
 	start, from, wrapped, seen := sess.memberCursor, sess.memberCursor, false, false
 	for {
-		batch, err := sess.turns.Owed(ctx, sess.session.hostedThreadID, from, ClaudeMemberBatch)
+		batch, err := sess.turns.Owed(ctx, sess.identity.hostedThreadID, from, ClaudeMemberBatch)
 		if err != nil {
-			log.Printf("Claude members of %s: owed prompts unreadable: %v", sess.session.hostedThreadID, err)
+			log.Printf("Claude members of %s: owed prompts unreadable: %v", sess.identity.hostedThreadID, err)
 			return
 		}
 		full := len(batch) == ClaudeMemberBatch
@@ -297,7 +297,7 @@ func (sess *Delivery) memberStepLocked(ctx context.Context) {
 			// step, after a restart as before it.
 			seen = true
 			sess.owedHint.Store(true)
-			answers, current := sess.claudeAnswers(), sess.session.stateOwner.ThreadID()
+			answers, current := sess.claudeAnswers(), sess.stateOwner.ThreadID()
 			for _, record := range batch {
 				answers.FinishOwed(ctx, store, record, ClaudeSettlementEntry(record.Outbox, record.NativeThreadID, current, resolve))
 			}
@@ -305,7 +305,7 @@ func (sess *Delivery) memberStepLocked(ctx context.Context) {
 			sess.memberCursor = from
 		}
 		if ctx.Err() != nil {
-			log.Printf("Claude members of %s: step stopped at its deadline; owed prompts wait for the next trigger", sess.session.hostedThreadID)
+			log.Printf("Claude members of %s: step stopped at its deadline; owed prompts wait for the next trigger", sess.identity.hostedThreadID)
 			return
 		}
 		if full {
@@ -328,7 +328,7 @@ func (sess *Delivery) claudeResolver(ctx context.Context) func(string) string {
 	return func(handle string) string {
 		native, ok := resolved[handle]
 		if !ok {
-			native = sess.session.stateOwner.resolveClaudeHandle(ctx, handle)
+			native = sess.stateOwner.resolveClaudeHandle(ctx, handle)
 			resolved[handle] = native
 		}
 		return native
@@ -338,13 +338,13 @@ func (sess *Delivery) claudeResolver(ctx context.Context) func(string) string {
 // ClaudeAnswers is the one rule for this thread, read with the session's own
 // stores and saved readers.
 func (sess *Delivery) claudeAnswers() ClaudeAnswers {
-	return NewClaudeAnswers(sess.session.hostedThreadID, sess.turns, sess.session.agentExecutions, sess.claudeSavedRows, sess.savedTurnFinal)
+	return NewClaudeAnswers(sess.identity.hostedThreadID, sess.turns, sess.identity.agentExecutions, sess.claudeSavedRows, sess.savedTurnFinal)
 }
 
 // claudeSavedRows reads saved user rows in one exact native thread.
 func (sess *Delivery) claudeSavedRows(ctx context.Context, native string, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-	if native == sess.session.stateOwner.ThreadID() || sess.savedPromptsIn == nil {
-		if native != sess.session.stateOwner.ThreadID() || sess.savedPrompts == nil {
+	if native == sess.stateOwner.ThreadID() || sess.savedPromptsIn == nil {
+		if native != sess.stateOwner.ThreadID() || sess.savedPrompts == nil {
 			return nil, history.ErrSavedTranscriptUnavailable
 		}
 		return sess.savedPrompts(ctx, keys)
@@ -401,8 +401,8 @@ func SavedRowsOf(rows []history.SavedUserRow) []transcript.SavedRow {
 func (sess *Delivery) finishesOnSavedProof(provider, turnID string, openOperations ...[]threadvalues.TurnRecord) bool {
 	// The bounded result reader checks each prompt's saved proof itself.
 	// Start its deadline on provider completion even if no file row arrives.
-	if sess.session.agentExecutions != nil {
-		if sess.session.agentExecutions.ReadsSavedResults() {
+	if sess.identity.agentExecutions != nil {
+		if sess.identity.agentExecutions.ReadsSavedResults() {
 			return false
 		}
 	}
@@ -410,7 +410,7 @@ func (sess *Delivery) finishesOnSavedProof(provider, turnID string, openOperatio
 	case sess.turns == nil:
 		return false
 	case provider == string(model.ProviderCodex):
-		if !sess.session.runtime.acceptsRunningTurnInput() {
+		if !sess.runtime.acceptsRunningTurnInput() {
 			return false
 		}
 	case provider != string(model.ProviderClaude):
@@ -418,8 +418,8 @@ func (sess *Delivery) finishesOnSavedProof(provider, turnID string, openOperatio
 	}
 	var open []threadvalues.TurnRecord
 	if len(openOperations) == 0 {
-		if sess.session.agentExecutions != nil {
-			open = sess.session.agentExecutions.OpenTurnsForProviderTurn(sess.session.hostedThreadID, provider, turnID)
+		if sess.identity.agentExecutions != nil {
+			open = sess.identity.agentExecutions.OpenTurnsForProviderTurn(sess.identity.hostedThreadID, provider, turnID)
 		}
 	} else {
 		open = openOperations[0]
@@ -441,25 +441,25 @@ func (sess *Delivery) finishesOnSavedProof(provider, turnID string, openOperatio
 // transcript proving the operation's own prompt joined the turn. Whichever
 // fact arrives second calls this, so an operation missing either stays open.
 func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string) {
-	claude := sess.session.provider == string(model.ProviderClaude)
-	if sess.session.agentExecutions == nil || sess.turns == nil || sess.session.runtime.completedTurns == nil || !claude && !sess.session.runtime.acceptsRunningTurnInput() {
+	claude := sess.identity.provider == string(model.ProviderClaude)
+	if sess.identity.agentExecutions == nil || sess.turns == nil || sess.runtime.completedTurns == nil || !claude && !sess.runtime.acceptsRunningTurnInput() {
 		return
 	}
-	store, err := sess.session.runtime.completedTurns(ctx)
+	store, err := sess.runtime.completedTurns(ctx)
 	if err != nil {
 		return
 	}
-	open := sess.session.agentExecutions.OpenTurnsForProviderTurn(sess.session.hostedThreadID, sess.session.provider, turnID)
+	open := sess.identity.agentExecutions.OpenTurnsForProviderTurn(sess.identity.hostedThreadID, sess.identity.provider, turnID)
 	if len(open) == 0 {
 		return
 	}
-	turn, err := store.Get(ctx, sess.session.hostedThreadID, turnID)
+	turn, err := store.Get(ctx, sess.identity.hostedThreadID, turnID)
 	if err != nil || turn.Outcome == "" {
 		return
 	}
 	var executionErr *threadvalues.ExecutionError
 	if turn.Outcome != agentTurnCompleted {
-		executionErr = &threadvalues.ExecutionError{Source: "provider", Code: turn.Outcome, Message: sess.session.provider + " turn " + turn.Outcome}
+		executionErr = &threadvalues.ExecutionError{Source: "provider", Code: turn.Outcome, Message: sess.identity.provider + " turn " + turn.Outcome}
 	}
 	// Every member gets the turn's one final answer, named by the recorded
 	// final message id: a member of this native thread and turn that
@@ -467,7 +467,7 @@ func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string)
 	// answer.
 	response, itemID, meta := "", "", hostedstore.ResultMeta{}
 	if turn.Outcome == agentTurnCompleted && turn.FinalMessageID != "" {
-		response, meta, _ = sess.session.agentExecutions.SharedTurnResult(sess.session.hostedThreadID, sess.session.provider, sess.session.stateOwner.ThreadID(), turnID, turn.FinalMessageID)
+		response, meta, _ = sess.identity.agentExecutions.SharedTurnResult(sess.identity.hostedThreadID, sess.identity.provider, sess.stateOwner.ThreadID(), turnID, turn.FinalMessageID)
 		itemID = turn.FinalMessageID
 	}
 	// Missing wire text cannot hold the operation open indefinitely: its
@@ -477,7 +477,7 @@ func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string)
 		if err != nil || prompt.Outbox.State != prompts.Confirmed {
 			continue
 		}
-		if err := sess.session.agentExecutions.FinishJoinedTurn(op.ID, turnID, turn.Outcome, executionErr, response, itemID, meta); err != nil {
+		if err := sess.identity.agentExecutions.FinishJoinedTurn(op.ID, turnID, turn.Outcome, executionErr, response, itemID, meta); err != nil {
 			log.Printf("finish joined agent turn %s: %v", op.ID, err)
 		}
 	}
@@ -487,22 +487,22 @@ func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string)
 // race and rebuilds terminal state from a resumed projection after Nano
 // restarts. The saved-result reader supplies the answer.
 func (sess *Delivery) reconcileAgentOperations() {
-	if sess.session.agentExecutions == nil || sess.session.hostedThreadID == "" || sess.session.view.projection == nil {
+	if sess.identity.agentExecutions == nil || sess.identity.hostedThreadID == "" || sess.view.projection == nil {
 		return
 	}
-	for _, turn := range sess.session.view.projection.turnList() {
+	for _, turn := range sess.view.projection.turnList() {
 		if turn.ID == "" || !CodexResumeTurnTerminal(turn.Status) {
 			continue
 		}
 		var executionErr *threadvalues.ExecutionError
 		if turn.Status != agentTurnCompleted {
-			executionErr = &threadvalues.ExecutionError{Source: "provider", Code: turn.Status, Message: sess.session.provider + " turn " + turn.Status, Details: turn.Error}
+			executionErr = &threadvalues.ExecutionError{Source: "provider", Code: turn.Status, Message: sess.identity.provider + " turn " + turn.Status, Details: turn.Error}
 		}
-		if sess.finishesOnSavedProof(sess.session.provider, turn.ID) {
+		if sess.finishesOnSavedProof(sess.identity.provider, turn.ID) {
 			continue
 		}
-		_ = sess.session.agentExecutions.MarkTurnTerminal(
-			sess.session.provider, sess.session.stateOwner.ThreadID(), turn.ID, turn.Status, executionErr,
+		_ = sess.identity.agentExecutions.MarkTurnTerminal(
+			sess.identity.provider, sess.stateOwner.ThreadID(), turn.ID, turn.Status, executionErr,
 			"", turn.FinalItemID, hostedstore.ResultMeta{},
 		)
 	}
@@ -513,7 +513,7 @@ func (sess *Delivery) reconcileAgentOperations() {
 // over. It also lets a turn that completed while Nano was down settle its
 // durable operation on re-attach.
 func (sess *Delivery) observeCodexResume(resp *codexResumeResponse) {
-	if sess.session.agentExecutions == nil || sess.session.hostedThreadID == "" {
+	if sess.identity.agentExecutions == nil || sess.identity.hostedThreadID == "" {
 		return
 	}
 	turns, valid := resp.projectionTurns()
@@ -536,7 +536,7 @@ func (sess *Delivery) observeCodexResume(resp *codexResumeResponse) {
 		positions = append(positions, position)
 		marks = append(marks, mark)
 	}
-	matches := sess.session.agentExecutions.ResumedTurnMatches(sess.session.hostedThreadID, "codex", threadID, marks)
+	matches := sess.identity.agentExecutions.ResumedTurnMatches(sess.identity.hostedThreadID, "codex", threadID, marks)
 	// Only a turn whose operation is still live uses its final answer, so the
 	// reply's items are parsed from the earliest such turn, and not at all
 	// without one: parsing every turn of every resumed thread was the largest
@@ -554,7 +554,7 @@ func (sess *Delivery) observeCodexResume(resp *codexResumeResponse) {
 			marks[i].FinishOnSavedProof = sess.finishesOnSavedProof("codex", marks[i].ProviderTurnID, matches[i].OpenOperations)
 		}
 	}
-	endedWhileDown, _ := sess.session.agentExecutions.MarkResumedTurnsTerminal(sess.session.hostedThreadID, "codex", threadID, marks, matches)
+	endedWhileDown, _ := sess.identity.agentExecutions.MarkResumedTurnsTerminal(sess.identity.hostedThreadID, "codex", threadID, marks, matches)
 	for i, turn := range terminalTurns {
 		if endedWhileDown[i] {
 			sess.observeCodexResumedTurnFinish(threadID, turn)
@@ -588,30 +588,30 @@ func codexResumeFinalItemID(turn codexResumeProjectionTurn) string {
 // derives it, with the provider's own completion time; the turn store accepts
 // the same fact twice and refuses a conflicting one.
 func (sess *Delivery) observeCodexResumedTurnFinish(nativeThreadID string, turn codexResumeProjectionTurn) {
-	core := sess.session.runtime.coreSession()
+	core := sess.runtime.coreSession()
 	if core == nil {
-		log.Printf("codex turn %s of %s ended while Nano was down; no core session records it", turn.ID, sess.session.hostedThreadID)
+		log.Printf("codex turn %s of %s ended while Nano was down; no core session records it", turn.ID, sess.identity.hostedThreadID)
 		return
 	}
 	at := time.Now()
 	if completedAt := codexTimestampMS(turn.CompletedAt); completedAt > 0 {
 		at = time.UnixMilli(completedAt)
 	}
-	finish := coreturns.Finish{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: nativeThreadID,
+	finish := coreturns.Finish{HostedThreadID: sess.identity.hostedThreadID, Provider: sess.identity.provider, NativeThreadID: nativeThreadID,
 		TurnID: turn.ID, Outcome: turn.Status, At: at, Source: "adapter"}
 	if sess.queuedTurns != nil {
-		if prompt, found := sess.queuedTurns.ByProviderTurn(sess.session.provider, nativeThreadID, sess.session.hostedThreadID, turn.ID); found {
+		if prompt, found := sess.queuedTurns.ByProviderTurn(sess.identity.provider, nativeThreadID, sess.identity.hostedThreadID, turn.ID); found {
 			finish.ActionID = prompt.ClientActionID
 		}
 	}
 	// The final message resume decoded wins; the projection may not hold it.
-	if finish.FinalMessageID = codexResumeFinalItemID(turn); finish.FinalMessageID == "" && sess.session.view.projection != nil {
-		finish.FinalMessageID = sess.session.view.projection.finalAgentItemID(turn.ID)
+	if finish.FinalMessageID = codexResumeFinalItemID(turn); finish.FinalMessageID == "" && sess.view.projection != nil {
+		finish.FinalMessageID = sess.view.projection.finalAgentItemID(turn.ID)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	event := coresession.AdapterEvent{ProviderTurnID: turn.ID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}
 	if err := core.Observe(ctx, event); err != nil {
-		log.Printf("record codex turn %s of %s that ended while Nano was down: %v", turn.ID, sess.session.hostedThreadID, err)
+		log.Printf("record codex turn %s of %s that ended while Nano was down: %v", turn.ID, sess.identity.hostedThreadID, err)
 	}
 }

@@ -15,7 +15,7 @@ import (
 const codexNativeMissing = "codex_native_thread_missing"
 
 func (sess *Runtime) codexMayBeZeroTurn() bool {
-	return sess.session.stateOwner.codexZeroTurnEvidence("")
+	return sess.stateOwner.codexZeroTurnEvidence("")
 }
 
 func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
@@ -26,8 +26,8 @@ func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
 		return false
 	}
 	var attempts []prompts.SendAttempt
-	if sess.session.delivery.sendAttempts != nil {
-		attempts = sess.session.delivery.sendAttempts.ListThread("codex", sess.ThreadID())
+	if sess.delivery.sendAttempts != nil {
+		attempts = sess.delivery.sendAttempts.ListThread("codex", sess.ThreadID())
 	}
 	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
@@ -40,21 +40,21 @@ func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
 			return false
 		}
 	}
-	if sess.session.agentExecutions != nil {
-		for _, operation := range sess.session.agentExecutions.TurnsForHosted(sess.session.hostedThreadID) {
+	if sess.identity.agentExecutions != nil {
+		for _, operation := range sess.identity.agentExecutions.TurnsForHosted(sess.identity.hostedThreadID) {
 			if operation.ProviderTurnID != "" {
 				return false
 			}
 		}
 	}
-	return sess.session.view.projection == nil || len(sess.session.view.projection.turnList()) == 0
+	return sess.view.projection == nil || len(sess.view.projection.turnList()) == 0
 }
 
 func (sess *Runtime) codexZeroTurnNativeMissing(actionID string, err error) bool {
 	var rpcErr *protocol.RPCError
-	return ProviderLifecycleCapabilities(sess.session.provider).ResumeWithoutTranscript && errors.As(err, &rpcErr) &&
-		rpcErr.Message == "thread not found: "+sess.session.stateOwner.ThreadID() &&
-		sess.session.stateOwner.codexZeroTurnRecoveryNeeded() && sess.session.stateOwner.codexZeroTurnEvidence(actionID)
+	return ProviderLifecycleCapabilities(sess.identity.provider).ResumeWithoutTranscript && errors.As(err, &rpcErr) &&
+		rpcErr.Message == "thread not found: "+sess.stateOwner.ThreadID() &&
+		sess.stateOwner.codexZeroTurnRecoveryNeeded() && sess.stateOwner.codexZeroTurnEvidence(actionID)
 }
 
 func (sess *State) containCodexNativeMissing(message string) error {
@@ -62,7 +62,7 @@ func (sess *State) containCodexNativeMissing(message string) error {
 	sess.codexZeroTurnEligible = false
 	sess.codexZeroTurnResume = false
 	sess.stateMu.Unlock()
-	return sess.session.delivery.failCodexReconnect(message)
+	return sess.delivery.failCodexReconnect(message)
 }
 
 func (sess *Delivery) failCodexReconnect(message string) error {
@@ -73,16 +73,16 @@ func (sess *Delivery) failCodexReconnect(message string) error {
 		if !changed {
 			return
 		}
-		sess.session.stateOwner.PublishProjectionRuntime()
-		sess.session.stateOwner.NotifyRuntime()
-		sess.session.stateOwner.updateHostedThread("reconnect_failed", message)
+		sess.stateOwner.PublishProjectionRuntime()
+		sess.stateOwner.NotifyRuntime()
+		sess.stateOwner.updateHostedThread("reconnect_failed", message)
 	}()
-	closed, didChange := sess.session.stateOwner.markReconnectFailed(message)
+	closed, didChange := sess.stateOwner.markReconnectFailed(message)
 	changed = didChange
 	if closed {
 		return nil
 	}
-	for _, queued := range sess.queuedPrompts(sess.session.stateOwner.ThreadID()) {
+	for _, queued := range sess.queuedPrompts(sess.stateOwner.ThreadID()) {
 		if queued.State != submissionQueued && queued.State != submissionParked {
 			continue
 		}
@@ -108,9 +108,9 @@ func (sess *Delivery) failCodexReconnect(message string) error {
 			return fmt.Errorf("park terminal submission: %w", err)
 		}
 		sess.publishTransactionalOutbox(record.Outbox)
-		if sess.session.agentExecutions != nil {
-			if operation, found := sess.session.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
-				if err := sess.session.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,
+		if sess.identity.agentExecutions != nil {
+			if operation, found := sess.identity.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
+				if err := sess.identity.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,
 					&threads.ExecutionError{Source: "reconnect", Code: "reconnect_failed", Message: message}); err != nil {
 					return fmt.Errorf("settle terminal operation: %w", err)
 				}

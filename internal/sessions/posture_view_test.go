@@ -18,27 +18,33 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 		postureFieldServiceTier: {Field: postureFieldServiceTier, Value: "priority", Source: postureSourceOperator},
 	}
 
-	codex := sessionWithOwners(&Session{provider: "codex",
+	codex := sessionWithOwners(&Session{
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	codex.stateOwner.seedCodexTurnOverrides(folded, "ignored-legacy")
 	if codex.stateOwner.turnModel != "gpt-5.3-codex" || codex.stateOwner.turnEffort != "high" || codex.stateOwner.turnServiceTier != "priority" {
 		t.Fatalf("codex overrides = %q/%q/%q, want the folded posture seeded",
 			codex.stateOwner.turnModel, codex.stateOwner.turnEffort, codex.stateOwner.turnServiceTier)
 	}
 
-	legacy := sessionWithOwners(&Session{provider: "codex",
+	legacy := sessionWithOwners(&Session{
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	legacy.stateOwner.seedCodexTurnOverrides(nil, "priority")
 	if legacy.stateOwner.turnServiceTier != "priority" {
 		t.Fatalf("legacy tier = %q, want the pre-log record honored on a nil fold", legacy.stateOwner.turnServiceTier)
 	}
 
-	cleared := sessionWithOwners(&Session{provider: "codex",
+	cleared := sessionWithOwners(&Session{
 		stateOwner: State{
 			turnServiceTier: "stale",
-			lifecycleState:  testLifecycleSnapshot("ready", false)}})
+			lifecycleState:  testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	cleared.stateOwner.seedCodexTurnOverrides(map[string]hostedstore.PostureEntry{}, "stale-record")
 	if cleared.stateOwner.turnServiceTier != "stale" {
 		t.Fatalf("cleared-history tier = %q, want the record ignored once any history exists", cleared.stateOwner.turnServiceTier)

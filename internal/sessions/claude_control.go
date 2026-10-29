@@ -392,7 +392,7 @@ func (c *claudeSession) startControlChannel() {
 		// Not fatal: the data stream is unaffected, and the operator loses
 		// only the control affordances. Loud, because a silent loss of the stop
 		// button would read as a nano bug.
-		log.Printf("claude session %s: control initialize failed (%v) — stop/model/dialogs unavailable", c.sess.id, err)
+		log.Printf("claude session %s: control initialize failed (%v) — stop/model/dialogs unavailable", c.sess.identity.id, err)
 	}
 	c.rehydratePending(state)
 }
@@ -412,14 +412,14 @@ func (c *claudeSession) rehydratePending(state *claudeInitState) {
 		for _, entry := range pending {
 			requestID, request, ok := claudeControlRequestParts(entry)
 			if !ok {
-				log.Printf("claude session %s: unrecognized pending control request %s", c.sess.id, truncateForLog(entry))
+				log.Printf("claude session %s: unrecognized pending control request %s", c.sess.identity.id, truncateForLog(entry))
 				continue
 			}
 			c.parkControlRequest(requestID, request)
 		}
 	}
 	for requestID, request := range c.control.takeUnansweredReplayed() {
-		log.Printf("claude session %s: recovering unanswered control request %s from the spool", c.sess.id, requestID)
+		log.Printf("claude session %s: recovering unanswered control request %s from the spool", c.sess.identity.id, requestID)
 		c.parkControlRequest(requestID, request)
 	}
 }
@@ -499,9 +499,9 @@ func (c *claudeSession) parkControlRequest(requestID string, request json.RawMes
 		// contract is to fail closed on an undeclared kind, so cancelling is the
 		// behavior it expects — parking a dialog nano could only mishandle is
 		// what its own doc warns against.
-		log.Printf("claude session %s: declining control request %s (%s)", c.sess.id, requestID, probe.Subtype)
+		log.Printf("claude session %s: declining control request %s (%s)", c.sess.identity.id, requestID, probe.Subtype)
 		if err := c.respondControl(requestID, claudeRefusal(probe.Subtype)); err != nil {
-			log.Printf("claude session %s: declining %s: %v", c.sess.id, probe.Subtype, err)
+			log.Printf("claude session %s: declining %s: %v", c.sess.identity.id, probe.Subtype, err)
 		}
 		return
 	}
@@ -513,7 +513,7 @@ func (c *claudeSession) parkControlRequest(requestID string, request json.RawMes
 	}
 	if c.sess.stateOwner.rejectStatusInteraction(pending) {
 		if err := c.respondControl(requestID, claudeRefusal(probe.Subtype)); err != nil {
-			log.Printf("claude status session %s: declining %s: %v", c.sess.id, probe.Subtype, err)
+			log.Printf("claude status session %s: declining %s: %v", c.sess.identity.id, probe.Subtype, err)
 		}
 		return
 	}

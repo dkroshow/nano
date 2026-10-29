@@ -76,7 +76,7 @@ func (r *warmReader) next(what string) sessions.LiveTextMessage {
 func TestWarmStreamRefusesThreadsItCannotWarm(t *testing.T) {
 	controller, _ := sidebarActiveFixture(t, time.Now())
 	sess := controller.registry.SnapshotSessions()[0]
-	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: controller.catalog}, sess))
+	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: controller.catalog}, sess.State()))
 	for i := range warmBudget {
 		controller.warm.admit(fmt.Sprintf("nht_elsewhere_%d", i))
 	}

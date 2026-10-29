@@ -116,7 +116,7 @@ func (a claudeLifecycleAdapter) Current() (lifecycle.Observation, bool) {
 	return lifecycle.Observation{Event: event, Epoch: a.epoch, Sequence: a.sequence}, true
 }
 
-func observeClaudeWork(sess *Session, dir wire.Direction, line []byte, live bool) {
+func observeClaudeWork(sess *State, dir wire.Direction, line []byte, live bool) {
 	active, turnID, startedAtMs, ok := claudeWorkEvidence(dir, line)
 	if !ok || (!live && dir == protocol.Recv && active) {
 		return
@@ -138,13 +138,13 @@ func observeClaudeWork(sess *Session, dir wire.Direction, line []byte, live bool
 		turnID = sess.view.projection.claudeResultTurn()
 	}
 	if !live {
-		sess.stateOwner.restoreTurnActive(active, turnID, startedAtMs)
+		sess.restoreTurnActive(active, turnID, startedAtMs)
 	} else {
-		sess.stateOwner.setTurnActive(active, turnID, startedAtMs, true)
+		sess.setTurnActive(active, turnID, startedAtMs, true)
 	}
 }
 
-func claudeRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {
+func claudeRuntimeEvidence(sess *State, dir wire.Direction, line []byte, at time.Time) {
 	var message map[string]json.RawMessage
 	if json.Unmarshal(line, &message) != nil {
 		return
@@ -154,14 +154,14 @@ func claudeRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at ti
 		// Claude reports status "compacting" every 30 s while it compacts,
 		// then status null (with compact_result) when it has finished.
 		if status, ok := message["status"]; ok && wire.String(message["subtype"]) == "status" {
-			sess.stateOwner.markCompacting(wire.String(status) == "compacting", at.UnixMilli())
+			sess.markCompacting(wire.String(status) == "compacting", at.UnixMilli())
 		}
 	case "result":
 		if usagePayload := claudeResultUsagePayload(message); usagePayload != nil {
-			sess.stateOwner.setLiveTokenUsageForTurn(sess.view.projection.latestTerminalTurnID(), usagePayload)
+			sess.setLiveTokenUsageForTurn(sess.view.projection.latestTerminalTurnID(), usagePayload)
 		}
 		if wire.Bool(message["is_error"]) && !strings.HasPrefix(wire.String(message["terminal_reason"]), "aborted") {
-			sess.stateOwner.setLiveError(threadvalues.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "turn failed"))
+			sess.setLiveError(threadvalues.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "turn failed"))
 		}
 	}
 }
@@ -185,12 +185,12 @@ func claudeResultUsagePayload(message map[string]json.RawMessage) json.RawMessag
 	return payload
 }
 
-func claudeReleaseAcceptedEvidence(sess *Session) {
-	if child := sess.stateOwner.claudeHandle(); child != nil {
+func claudeReleaseAcceptedEvidence(sess *State) {
+	if child := sess.claudeHandle(); child != nil {
 		child.releaseTurnIngress()
 	}
 }
-func claudeEvidenceIngressBlocked(sess *Session) bool {
-	child := sess.stateOwner.claudeHandle()
+func claudeEvidenceIngressBlocked(sess *State) bool {
+	child := sess.claudeHandle()
 	return child != nil && child.turnIngressActive()
 }

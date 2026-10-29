@@ -32,9 +32,8 @@ func reconnectTestSession(t *testing.T, daemon *CodexDaemon, threadID string) *S
 
 func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID string, queue *prompts.LegacyQueue, attempts *prompts.LegacyJournal) *Session {
 	t.Helper()
-	sess := sessionWithOwners(&Session{id: threadID,
-		provider:       "codex",
-		hostedThreadID: "hosted-" + threadID,
+	sess := sessionWithOwners(&Session{
+
 		stateOwner: State{
 			threadID:       threadID,
 			state:          map[string]json.RawMessage{},
@@ -49,8 +48,10 @@ func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID 
 			queuedTurns:  queue,
 			sendAttempts: attempts},
 		runtime: Runtime{
-			codex: daemon}})
-	if err := daemon.claimThread(threadID, sess); err != nil {
+			codex: daemon},
+		identity: attachmentIdentity{id: threadID, provider: "codex", hostedThreadID: "hosted-" + threadID},
+	})
+	if err := daemon.claimThread(threadID, sess.Runtime()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -198,7 +199,7 @@ func TestReconnectAuditTransportReplacementDuringBackoff(t *testing.T) {
 	sess := reconnectTestSession(t, daemon, "replace")
 	fake.SetResumeError("temporarily busy")
 	sess.setStatus("reconnecting")
-	daemon.requestSessionRecovery(sess)
+	daemon.requestSessionRecovery(sess.Runtime())
 	waitReconnectCondition(t, func() bool { return fake.ResumeCount() == 1 })
 	fake.SetResumeError("")
 	fake.DropConnections()
@@ -276,7 +277,7 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 			sess.delivery.turns = mustBindTransactionalTurnStore(t, sess.delivery.queuedTurns, sess.delivery.sendAttempts)
 			fake.SetReplyDelay("thread/resume", 100*time.Millisecond)
 			sess.setStatus("starting")
-			if err := startCodexSession(sess, daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.stateOwner.ThreadID(), BootReattach: &BootControl{}}); err != nil {
+			if err := startCodexSession(sess.Runtime(), daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.stateOwner.ThreadID(), BootReattach: &BootControl{}}); err != nil {
 				t.Fatal(err)
 			}
 			waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 1 })

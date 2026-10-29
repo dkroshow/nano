@@ -14,21 +14,21 @@ import (
 func TestClaudeOwedPromptAttachEnablesSavedCommitSettlement(t *testing.T) {
 	ctx := context.Background()
 	sess, store := readyTransactionalSendTestSession(t, nil)
-	sess.provider = "claude"
-	sess.agentExecutions = &unlinkedPromptExecutions{}
+	sess.identity.provider = "claude"
+	sess.identity.agentExecutions = &unlinkedPromptExecutions{}
 	completed, err := coreturns.OpenStore(ctx, sess.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
 	sess.runtime.completedTurns = func(context.Context) (*coreturns.Store, error) { return completed, nil }
 	native, turn := "native-thread", "claude:shim:300"
-	if _, _, err := store.Submit(ctx, prompts.Submission{HostedThreadID: sess.hostedThreadID, Provider: model.ProviderClaude, NativeThreadID: native, ActionID: "person-starter", ProviderText: "person prompt", PresentationText: "person prompt", TextHash: "hash", RequestHash: "hash", Origin: prompts.HumanOrigin}); err != nil {
+	if _, _, err := store.Submit(ctx, prompts.Submission{HostedThreadID: sess.identity.hostedThreadID, Provider: model.ProviderClaude, NativeThreadID: native, ActionID: "person-starter", ProviderText: "person prompt", PresentationText: "person prompt", TextHash: "hash", RequestHash: "hash", Origin: prompts.HumanOrigin}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := store.Claim(ctx, prompts.ClaimRequest{HostedThreadID: sess.hostedThreadID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !ok {
+	if _, ok, err := store.Claim(ctx, prompts.ClaimRequest{HostedThreadID: sess.identity.hostedThreadID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !ok {
 		t.Fatalf("claim: %v %v", ok, err)
 	}
-	binding := prompts.Binding{EventID: SubmissionEventID(sess.hostedThreadID, "person-starter"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &turn}}
+	binding := prompts.Binding{EventID: SubmissionEventID(sess.identity.hostedThreadID, "person-starter"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &turn}}
 	if _, err := store.Accepted(ctx, prompts.Acceptance{ActionID: "person-starter", ClaimToken: "claim", AttachmentEpoch: 1, Binding: binding}); err != nil {
 		t.Fatal(err)
 	}

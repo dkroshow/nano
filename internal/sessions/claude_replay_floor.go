@@ -437,7 +437,7 @@ func (sess *Runtime) planClaudeReplay(ctx context.Context, spoolDir, native stri
 		return claudeReplayPlan{}, fmt.Errorf("%w: the claude shim spool directory is not configured", errClaudeRecoveryUnproven)
 	}
 	var key, path string
-	for _, candidate := range []string{sess.session.hostedThreadID, stored.ShimSessionID} {
+	for _, candidate := range []string{sess.identity.hostedThreadID, stored.ShimSessionID} {
 		if candidate == "" || strings.ContainsAny(candidate, `/\`) {
 			continue
 		}
@@ -520,14 +520,14 @@ type claudeSentPrompt struct {
 // the native thread its record names; an anchor two records share is left
 // out.
 func (sess *Runtime) unfinishedClaudePrompts(ctx context.Context, prefix string, natives ...string) (wanted []int64, sent map[string]claudeSentPrompt, err error) {
-	if sess.session.delivery.turns == nil || sess.completedTurns == nil {
+	if sess.delivery.turns == nil || sess.completedTurns == nil {
 		return nil, nil, fmt.Errorf("%w: prompt and turn stores are unavailable", errClaudeRecoveryUnproven)
 	}
 	turnStore, err := sess.completedTurns(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: turn store: %v", errClaudeRecoveryUnproven, err)
 	}
-	records, err := sess.session.delivery.turns.List(ctx, sess.session.hostedThreadID)
+	records, err := sess.delivery.turns.List(ctx, sess.identity.hostedThreadID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: prompt store: %v", errClaudeRecoveryUnproven, err)
 	}
@@ -537,7 +537,7 @@ func (sess *Runtime) unfinishedClaudePrompts(ctx context.Context, prefix string,
 		if record.NativeThreadID == "" || !slices.Contains(natives, record.NativeThreadID) || record.ProviderText == "" || record.Outbox.PresentationText == "" {
 			continue
 		}
-		anchor := SubmissionEventID(sess.session.hostedThreadID, record.Outbox.ActionID)
+		anchor := SubmissionEventID(sess.identity.hostedThreadID, record.Outbox.ActionID)
 		if _, seen := sent[anchor]; seen || anchor == "" {
 			shared[anchor] = true
 		}
@@ -546,7 +546,7 @@ func (sess *Runtime) unfinishedClaudePrompts(ctx context.Context, prefix string,
 	for anchor := range shared {
 		delete(sent, anchor)
 	}
-	ended, err := turnStore.Ended(ctx, sess.session.hostedThreadID)
+	ended, err := turnStore.Ended(ctx, sess.identity.hostedThreadID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: turn lookup: %v", errClaudeRecoveryUnproven, err)
 	}

@@ -159,7 +159,7 @@ func readEventsBefore(memory []wire.Event, spool *wireSpool, beforeSeq int64, li
 func (sess *State) HandleState(w http.ResponseWriter, r *http.Request) {
 	sess.stateMu.Lock()
 	out := map[string]any{
-		"sessionId": sess.session.id, "provider": sess.session.provider, "threadId": sess.threadID,
+		"sessionId": sess.identity.id, "provider": sess.identity.provider, "threadId": sess.threadID,
 		"status": sess.connectionStatusLocked(),
 	}
 	// The immutable anchor, and only the anchor (D4): a pane that opens
@@ -193,13 +193,13 @@ func (sess *State) HandleState(w http.ResponseWriter, r *http.Request) {
 	// The same unified projections the summary serves (decision 4), so /state
 	// and /api/sessions cannot disagree about model/effort/permission/tier.
 	out["posture"] = sess.posture()
-	if sess.session.metadata != nil {
-		if view, err := sess.session.metadata.View(sess.session.hostedThreadID); err == nil {
+	if sess.identity.metadata != nil {
+		if view, err := sess.identity.metadata.View(sess.identity.hostedThreadID); err == nil {
 			view.Attachment = hostedstore.AttachmentView{State: fmt.Sprint(out["status"]), Provenance: "live_session"}
 			if message, _ := out["error"].(string); message != "" {
 				view.Attachment.Error = message
 			}
-			if name, ok := sess.session.view.hostedMetadataName(sess.session.provider, threadID, displayName); ok {
+			if name, ok := sess.view.hostedMetadataName(sess.identity.provider, threadID, displayName); ok {
 				view.Name = name
 			}
 			out["metadata"] = view
@@ -222,7 +222,7 @@ func (sess *State) HandleState(w http.ResponseWriter, r *http.Request) {
 		out["gitBranch"] = branch
 	}
 
-	if sess.session.provider == "claude" {
+	if sess.identity.provider == "claude" {
 		if p := claudeTranscriptPath(cwd, threadID); p != "" {
 			out["transcriptPath"] = p
 		}
@@ -243,7 +243,7 @@ func (sess *State) HandleState(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteJSON(w, out)
 		return
 	}
-	if sess.session.provider == "grok" {
+	if sess.identity.provider == "grok" {
 		out["turnOptions"] = sess.turnOptionsPayload()
 		out["pendingInteractions"] = sess.PendingInteractionList()
 		httpapi.WriteJSON(w, out)
@@ -275,7 +275,7 @@ func (sess *State) HandleState(w http.ResponseWriter, r *http.Request) {
 // hanging (2026-09-21 incident, where a backlogged loop froze this endpoint for
 // minutes).
 func (sess *Delivery) HandleInterrupt(w http.ResponseWriter, r *http.Request) {
-	body, err := sess.session.stateOwner.interruptTurn(r.Context())
+	body, err := sess.stateOwner.interruptTurn(r.Context())
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
@@ -291,10 +291,10 @@ func (sess *State) interruptTurn(ctx context.Context) (map[string]any, error) {
 	if !active {
 		return map[string]any{"interrupted": false, "reason": "no turn in flight"}, nil
 	}
-	if err := sess.session.runtime.ensureProviderCoordinator(); err != nil {
+	if err := sess.runtime.ensureProviderCoordinator(); err != nil {
 		return nil, err
 	}
-	scope := sess.session.runtime.deliveryScope()
+	scope := sess.runtime.deliveryScope()
 	if turnID != "" {
 		scope.NativeTurnID = &turnID
 		// Recorded before the provider hears of it, so the turn's end can
@@ -306,7 +306,7 @@ func (sess *State) interruptTurn(ctx context.Context) (map[string]any, error) {
 		sess.stoppedTurns[turnID] = true
 		sess.stateMu.Unlock()
 	}
-	result, err := sess.session.runtime.core.Interrupt(ctx, providers.InterruptRequest{Scope: scope})
+	result, err := sess.runtime.core.Interrupt(ctx, providers.InterruptRequest{Scope: scope})
 	if errors.Is(err, coresession.ErrInterruptNotAccepted) {
 		// The stop button must fail loudly rather than hang. Core kept the
 		// interrupt at the front of the session queue, so it still reaches the
@@ -343,7 +343,7 @@ func interruptRaceReason(err error) (string, bool) {
 
 // HandleTurnOptionsRead serves the effective provider settings for the next turn.
 func (sess *View) HandleTurnOptionsRead(w http.ResponseWriter, _ *http.Request) {
-	httpapi.WriteJSON(w, sess.session.stateOwner.turnOptionsPayload())
+	httpapi.WriteJSON(w, sess.stateOwner.turnOptionsPayload())
 }
 
 // HandleTurnOptionsUpdate applies requested provider settings for subsequent turns.
@@ -353,11 +353,11 @@ func (sess *View) HandleTurnOptionsRead(w http.ResponseWriter, _ *http.Request) 
 // forget it. A field absent from the body is left alone; an explicitly empty
 // string clears its override back to the thread's own value.
 func (sess *State) HandleTurnOptionsUpdate(w http.ResponseWriter, r *http.Request) {
-	if sess.session.provider == "claude" {
+	if sess.identity.provider == "claude" {
 		sess.handleClaudeModelUpdate(w, r)
 		return
 	}
-	if sess.session.provider == "grok" {
+	if sess.identity.provider == "grok" {
 		httpapi.WriteHTTPError(w, "Grok model and effort are fixed when the native session starts", http.StatusNotImplemented)
 		return
 	}
@@ -399,7 +399,7 @@ func (sess *State) HandleTurnOptionsUpdate(w http.ResponseWriter, r *http.Reques
 					model = sess.model
 				}
 			}
-			if err := sess.session.runtime.codex.ValidateUltrafast(model, tier); err != nil {
+			if err := sess.runtime.codex.ValidateUltrafast(model, tier); err != nil {
 				httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -490,7 +490,7 @@ func (sess *State) turnOptionsPayload() map[string]any {
 		"model":       sess.turnModel,
 		"effort":      sess.turnEffort,
 		"serviceTier": sess.turnServiceTier,
-		"summary":     sess.session.runtime.reasoningSummary,
+		"summary":     sess.runtime.reasoningSummary,
 		"threadModel": sess.model,
 	}
 }
@@ -505,9 +505,9 @@ func (sess *State) noteHumanPrompt(at time.Time) {
 		sess.lastHumanPromptAt = at
 	}
 	sess.stateMu.Unlock()
-	if sess.session.agentExecutions != nil && sess.session.hostedThreadID != "" {
-		if err := sess.session.agentExecutions.NoteHumanPrompt(sess.session.hostedThreadID, at); err != nil {
-			log.Printf("record human prompt time hosted=%s: %v", sess.session.hostedThreadID, err)
+	if sess.identity.agentExecutions != nil && sess.identity.hostedThreadID != "" {
+		if err := sess.identity.agentExecutions.NoteHumanPrompt(sess.identity.hostedThreadID, at); err != nil {
+			log.Printf("record human prompt time hosted=%s: %v", sess.identity.hostedThreadID, err)
 		}
 	}
 }

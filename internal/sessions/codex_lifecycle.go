@@ -80,9 +80,9 @@ func (a codexLifecycleAdapter) Current() (lifecycle.Observation, bool) {
 	return lifecycle.Observation{Event: event, Epoch: a.epoch, Sequence: a.sequence}, true
 }
 
-func observeCodexWork(sess *Session, dir wire.Direction, line []byte, live bool) {
+func observeCodexWork(sess *State, dir wire.Direction, line []byte, live bool) {
 	if live && dir == protocol.Recv {
-		sess.stateOwner.observeCodexTurnInput(line)
+		sess.observeCodexTurnInput(line)
 	}
 	active, turnID, startedAtMs, ok := codexWorkEvidence(dir, line)
 	if !ok || !live {
@@ -96,16 +96,16 @@ func observeCodexWork(sess *Session, dir wire.Direction, line []byte, live bool)
 	if json.Unmarshal(line, &envelope) != nil {
 		return
 	}
-	if threadID := sess.stateOwner.ThreadID(); envelope.Params.ThreadID != "" && threadID != "" && envelope.Params.ThreadID != threadID {
+	if threadID := sess.ThreadID(); envelope.Params.ThreadID != "" && threadID != "" && envelope.Params.ThreadID != threadID {
 		return
 	}
 	if active && startedAtMs == 0 {
 		startedAtMs = time.Now().UnixMilli()
 	}
-	sess.stateOwner.setTurnActive(active, turnID, startedAtMs, true)
+	sess.setTurnActive(active, turnID, startedAtMs, true)
 }
 
-func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {
+func codexRuntimeEvidence(sess *State, dir wire.Direction, line []byte, at time.Time) {
 	if dir != protocol.Recv {
 		return
 	}
@@ -128,16 +128,16 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 			if started == 0 {
 				started = at.UnixMilli()
 			}
-			sess.stateOwner.markCompacting(envelope.Method == "item/started", started)
+			sess.markCompacting(envelope.Method == "item/started", started)
 		}
 	case "thread/tokenUsage/updated":
-		sess.stateOwner.setLiveTokenUsageForTurn(wire.String(envelope.Params["turnId"]), envelope.Params["tokenUsage"])
+		sess.setLiveTokenUsageForTurn(wire.String(envelope.Params["turnId"]), envelope.Params["tokenUsage"])
 	case "error":
 		var payload map[string]json.RawMessage
 		if json.Unmarshal(envelope.Params["error"], &payload) == nil {
-			sess.stateOwner.setLiveError(wire.String(payload["message"]))
+			sess.setLiveError(wire.String(payload["message"]))
 		} else {
-			sess.stateOwner.setLiveError(wire.String(envelope.Params["message"]))
+			sess.setLiveError(wire.String(envelope.Params["message"]))
 		}
 	case "turn/completed":
 		var turn map[string]json.RawMessage
@@ -148,7 +148,7 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 			if status == "interrupted" {
 				// A turn interrupted before it recorded its input saves nothing,
 				// so no saved commit may follow to settle a prompt it dropped.
-				go sess.stateOwner.SettleWaitingPrompts(context.Background())
+				go sess.SettleWaitingPrompts(context.Background())
 			}
 		}
 	}
@@ -156,7 +156,7 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 
 }
 
-func codexAcceptedEvidence(sess *Session) { sess.stateOwner.startCodexZeroTurnRecovery() }
+func codexAcceptedEvidence(sess *State) { sess.startCodexZeroTurnRecovery() }
 
 // codexTurnInput is what one attachment saw of a Codex turn it watched from
 // its start: the client ids of the prompts the turn took, and whether the
@@ -230,7 +230,7 @@ func (sess *State) observeCodexTurnInput(line []byte) {
 				delete(sess.codexEchoWaits, clientID)
 				echoed := *wait
 				go func() { // off the shared wire reader
-					if sess.session.runtime.bindCodexEcho(echoed) {
+					if sess.runtime.bindCodexEcho(echoed) {
 						// Its turn may be saved and ended already, so no
 						// later saved commit would settle it.
 						sess.SettleWaitingPrompts(context.Background())
@@ -262,7 +262,7 @@ func (sess *State) forgetCodexTurnInputs() {
 		sess.stateMu.Unlock()
 		return nil
 	}
-	if core := sess.session.runtime.coreSession(); core != nil {
+	if core := sess.runtime.coreSession(); core != nil {
 		core.ObserveAsync(coresession.AdapterEvent{LegacyApply: forget})
 		return
 	}
@@ -300,13 +300,13 @@ func (sess *State) expectCodexEcho(wait codexEchoWait) {
 			break
 		}
 	}
-	sess.codexEchoWaits[SubmissionEventID(sess.session.hostedThreadID, wait.actionID)] = &wait
+	sess.codexEchoWaits[SubmissionEventID(sess.identity.hostedThreadID, wait.actionID)] = &wait
 }
 
 // deliveredCodexEcho takes a delivery's outcome. Only one left uncertain with
 // no binding keeps waiting, and an echo already seen binds it at once.
 func (sess *State) deliveredCodexEcho(actionID string, unbound bool) {
-	clientID := SubmissionEventID(sess.session.hostedThreadID, actionID)
+	clientID := SubmissionEventID(sess.identity.hostedThreadID, actionID)
 	sess.stateMu.Lock()
 	wait := sess.codexEchoWaits[clientID]
 	if wait == nil {
@@ -320,23 +320,23 @@ func (sess *State) deliveredCodexEcho(actionID string, unbound bool) {
 	}
 	sess.stateMu.Unlock()
 	if unbound && echoed.turnID != "" {
-		sess.session.runtime.bindCodexEcho(echoed)
+		sess.runtime.bindCodexEcho(echoed)
 	}
 }
 
 // bindCodexEcho records an echoed prompt as accepted into the turn that took
 // it, exactly as an on-time reply would have, so its saved row can settle it.
 func (sess *Runtime) bindCodexEcho(wait codexEchoWait) bool {
-	binding, _ := sess.submissionBinding(wait.scope, wait.turnID, SubmissionEventID(sess.session.hostedThreadID, wait.actionID))
-	record, err := sess.session.delivery.turns.Accepted(context.Background(), prompts.Acceptance{
+	binding, _ := sess.submissionBinding(wait.scope, wait.turnID, SubmissionEventID(sess.identity.hostedThreadID, wait.actionID))
+	record, err := sess.delivery.turns.Accepted(context.Background(), prompts.Acceptance{
 		ActionID: wait.actionID, ClaimToken: wait.claimToken, AttachmentEpoch: wait.claimEpoch, Binding: binding,
 	})
 	if err != nil {
-		log.Printf("bind echoed prompt %s: %v", sess.session.hostedThreadID, err)
+		log.Printf("bind echoed prompt %s: %v", sess.identity.hostedThreadID, err)
 		return false
 	}
-	sess.session.delivery.publishTransactionalOutbox(record.Outbox)
-	sess.session.stateOwner.awaitSavedPrompt(wait.actionID)
+	sess.delivery.publishTransactionalOutbox(record.Outbox)
+	sess.stateOwner.awaitSavedPrompt(wait.actionID)
 	return true
 }
 

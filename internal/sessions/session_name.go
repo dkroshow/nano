@@ -4,7 +4,7 @@ package sessions
 func (sess *State) StageNameBeforeBinding(name string) (provider, nativeID string, staged bool) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
-	provider, nativeID = sess.session.provider, sess.threadID
+	provider, nativeID = sess.identity.provider, sess.threadID
 	if nativeID == "" {
 		sess.pendingName, sess.displayName = name, name
 		staged = true
@@ -43,22 +43,22 @@ func (sess *State) applyPendingName(nativeThreadID string) {
 	sess.pendingName = ""
 	sess.stateMu.Unlock()
 	if name != "" {
-		if sess.session.view.nameThread != nil {
-			sess.session.view.nameThread(sess.session.provider, nativeThreadID, name)
+		if sess.view.nameThread != nil {
+			sess.view.nameThread(sess.identity.provider, nativeThreadID, name)
 		}
 		return
 	}
-	if sess.session.view.creationName == nil {
+	if sess.view.creationName == nil {
 		return
 	}
-	name = sess.session.view.creationName()
+	name = sess.view.creationName()
 	if name == "" {
 		return
 	}
-	if sess.session.view.publishCreationName != nil {
-		sess.session.view.publishCreationName(sess.session.provider, nativeThreadID, name)
-	} else if sess.session.view.nameThread != nil {
+	if sess.view.publishCreationName != nil {
+		sess.view.publishCreationName(sess.identity.provider, nativeThreadID, name)
+	} else if sess.view.nameThread != nil {
 		// A narrow fallback for legacy embedders without a derived projection.
-		sess.session.view.nameThread(sess.session.provider, nativeThreadID, name)
+		sess.view.nameThread(sess.identity.provider, nativeThreadID, name)
 	}
 }

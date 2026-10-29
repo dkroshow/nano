@@ -35,12 +35,13 @@ func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
 
 func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testing.T) {
 	hosted := threads.SessionRecord{ID: "nht_lock_boundary"}
-	sess := sessionWithOwners(&Session{id: "nano-lock-boundary",
-		hostedThreadID: hosted.ID,
-		provider:       "codex",
+	sess := sessionWithOwners(&Session{
+
 		stateOwner: State{
 			threadID:       "native-live-only",
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{id: "nano-lock-boundary", hostedThreadID: hosted.ID, provider: "codex"},
+	})
 	s := NewRegistry()
 	s.RegisterSession(sess)
 
@@ -85,25 +86,31 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 // operations use.
 func TestHostedThreadOperationsUseItsLiveSessionNotAnExitedOne(t *testing.T) {
 	sessions := map[string]*Session{
-		"dead": sessionWithOwners(&Session{id: "dead", hostedThreadID: "target",
-			stateOwner: State{lifecycleState: testLifecycleSnapshot(StatusExited, false)}}),
-		"live": sessionWithOwners(&Session{id: "live", hostedThreadID: "target",
-			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)}}),
+		"dead": sessionWithOwners(&Session{
+			stateOwner: State{lifecycleState: testLifecycleSnapshot(StatusExited, false)},
+			identity:   attachmentIdentity{id: "dead", hostedThreadID: "target"},
+		}),
+		"live": sessionWithOwners(&Session{
+			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)},
+			identity:   attachmentIdentity{id: "live", hostedThreadID: "target"},
+		}),
 	}
 	for i := range 20 { // more entries, so map order varies between lookups
 		id := fmt.Sprintf("other-%d", i)
-		sessions[id] = sessionWithOwners(&Session{id: id, hostedThreadID: id,
-			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)}})
+		sessions[id] = sessionWithOwners(&Session{
+			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)},
+			identity:   attachmentIdentity{id: id, hostedThreadID: id},
+		})
 	}
 	s := NewRegistry()
 	for _, sess := range sessions {
 		s.RegisterSession(sess)
 	}
 	for range 200 {
-		if got := s.SessionForHostedThread("target"); got == nil || got.id != "live" {
+		if got := s.SessionForHostedThread("target"); got == nil || got.identity.id != "live" {
 			id := "none"
 			if got != nil {
-				id = got.id
+				id = got.identity.id
 			}
 			t.Fatalf("hosted thread session = %s, want the live Session every time", id)
 		}

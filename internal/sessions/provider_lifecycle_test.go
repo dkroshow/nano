@@ -53,7 +53,7 @@ func TestSessionLifecycleAcceptanceCannotResurrectCompletedTurn(t *testing.T) {
 func TestCodexLifecycleIgnoresOtherNativeThread(t *testing.T) {
 	sess := lifecycleTestSession("ready", false, "")
 	sess.stateOwner.threadID = "own-native"
-	observeCodexWork(sess, protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"other-native","turn":{"id":"current"}}}`), true)
+	observeCodexWork(sess.State(), protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"other-native","turn":{"id":"current"}}}`), true)
 	if sess.view.Summary().TurnActive {
 		t.Fatal("other native thread asserted work")
 	}
@@ -118,7 +118,7 @@ func TestProviderRestartIdleDiscardsOldWorkAnchors(t *testing.T) {
 	for _, provider := range []string{"codex", "claude", "grok"} {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "old-stored-turn")
-			sess.provider = provider
+			sess.identity.provider = provider
 			sess.stateOwner.turnStartedAtMs = 123
 			sess.stateOwner.beginTurnRestore()
 			epoch, sequence := sess.stateOwner.evidenceCoordinates()
@@ -136,7 +136,7 @@ func TestProviderRestartNewerTerminalWinsOverResumeResponse(t *testing.T) {
 	for _, provider := range []string{"codex", "claude", "grok"} {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "")
-			sess.provider = provider
+			sess.identity.provider = provider
 			sess.stateOwner.beginTurnRestore()
 			epoch, sequence := sess.stateOwner.evidenceCoordinates()
 			response := restartEvidenceFixture(provider, true, true, epoch, sequence)
@@ -155,7 +155,7 @@ func TestProviderRestartConnectionLossRejectsEarlierResponse(t *testing.T) {
 	for _, provider := range []string{"codex", "claude", "grok"} {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "")
-			sess.provider = provider
+			sess.identity.provider = provider
 			sess.stateOwner.beginTurnRestore()
 			epoch, sequence := sess.stateOwner.evidenceCoordinates()
 			sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
@@ -173,7 +173,7 @@ func TestProviderRestartWaitingSettlesWithReadiness(t *testing.T) {
 	for _, provider := range []string{"codex", "claude", "grok"} {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "")
-			sess.provider = provider
+			sess.identity.provider = provider
 			sess.stateOwner.beginTurnRestore()
 			epoch, sequence := sess.stateOwner.evidenceCoordinates()
 			sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "request", TurnID: "current"})
@@ -198,7 +198,7 @@ func TestProviderRestartAcceptanceWaitsForSettledEvidence(t *testing.T) {
 	for _, provider := range []string{"codex", "claude", "grok"} {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "stored-turn")
-			sess.provider = provider
+			sess.identity.provider = provider
 			sess.stateOwner.beginTurnRestore()
 			epoch, sequence := sess.stateOwner.evidenceCoordinates()
 			response := restartEvidenceFixture(provider, false, true, epoch, sequence)
@@ -257,7 +257,7 @@ func TestProviderRestartCloseAndResumeUseDurableEpoch(t *testing.T) {
 					t.Fatal(err)
 				}
 				sess := lifecycleTestSession("starting", false, "stale-anchor")
-				sess.provider, sess.stateOwner.lifecycleState, sess.stateOwner.attachmentGeneration = provider, state, generation
+				sess.identity.provider, sess.stateOwner.lifecycleState, sess.stateOwner.attachmentGeneration = provider, state, generation
 				sess.stateOwner.beginTurnRestore()
 				return sess
 			}

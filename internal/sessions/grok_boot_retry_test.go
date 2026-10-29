@@ -53,13 +53,13 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 			stateDir := t.TempDir()
 			bin := writeRetryingGrokACP(t, stateDir, tc.timeouts, tc.neverAnswers)
 			sess, _ := readyTransactionalSendTestSession(t, nil)
-			sess.id, sess.provider = "grok-boot-"+tc.name, "grok"
-			sess.hostedThreadID, sess.stateOwner.threadID = "nht_grok_boot_"+tc.name, "native-"+tc.name
+			sess.identity.id, sess.identity.provider = "grok-boot-"+tc.name, "grok"
+			sess.identity.hostedThreadID, sess.stateOwner.threadID = "nht_grok_boot_"+tc.name, "native-"+tc.name
 			sess.stateOwner.state = map[string]json.RawMessage{}
 			sess.view.projection = newDeliveryTestProjection("grok")
 			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
 			executions := &bootStatusRecorder{}
-			sess.agentExecutions = executions
+			sess.identity.agentExecutions = executions
 			t.Cleanup(sess.lifecycle.Close)
 
 			if err := sess.runtime.BeginProviderSpawn(ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.stateOwner.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {

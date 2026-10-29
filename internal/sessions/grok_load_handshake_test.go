@@ -37,7 +37,7 @@ func TestGrokLoadHandshakeSettlesLifecycleAndQueue(t *testing.T) {
 				sends.Add(1)
 				return json.RawMessage(`{"turn":{"id":"queued-provider-turn"}}`), nil
 			})
-			sess.provider = "grok"
+			sess.identity.provider = "grok"
 			sess.stateOwner.state = map[string]json.RawMessage{}
 			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
 			sess.stateOwner.turnID, sess.stateOwner.turnStartedAtMs = "old-anchor", 123
@@ -93,7 +93,7 @@ while IFS= read -r request; do :; done
 			if tc.mode == "start" {
 				requestedID = ""
 			}
-			err = runGrokHandshake(sess, ProviderRequest{Mode: tc.mode, ThreadID: requestedID, Cwd: t.TempDir(), GrokBin: bin})
+			err = runGrokHandshake(sess.Runtime(), ProviderRequest{Mode: tc.mode, ThreadID: requestedID, Cwd: t.TempDir(), GrokBin: bin})
 			if tc.identity == "wrong" {
 				if err == nil || !strings.Contains(err.Error(), "sessionId") || sends.Load() != 0 || sess.view.Summary().Status == "ready" {
 					t.Fatalf("mismatched native identity accepted: err=%v, sends=%d", err, sends.Load())

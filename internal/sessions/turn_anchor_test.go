@@ -15,14 +15,15 @@ import (
 )
 
 func anchorTestSession(provider string) *Session {
-	return sessionWithOwners(&Session{id: "sess-anchor",
-		provider:  provider,
-		createdAt: time.Now(),
+	return sessionWithOwners(&Session{
+
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
 			state:          map[string]json.RawMessage{},
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{id: "sess-anchor", provider: provider, createdAt: time.Now()},
+	})
 }
 
 func codexTurnStartedLine(turnID string, startedAtSeconds int64) []byte {
@@ -257,10 +258,12 @@ func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 // resume: spawn-time id, then init) must not write twice.
 func TestApplyPendingNameWritesOnceAtTheFirstRealBind(t *testing.T) {
 	var writes []string
-	sess := sessionWithOwners(&Session{provider: "claude",
+	sess := sessionWithOwners(&Session{
 		stateOwner: State{
 			pendingName:    "overnight run",
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "claude"},
+	})
 	sess.view.nameThread = func(provider, nativeID, name string) {
 		writes = append(writes, provider+"/"+nativeID+"="+name)
 	}
@@ -392,7 +395,7 @@ func attachWithStoredAnchor(t *testing.T, shim *claudeshim.Server, stored hosted
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
 	sess.stateOwner.updateTurnAnchor = anchors.set
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, stored)
+	claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, stored)
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -522,7 +525,7 @@ func TestClaudeSendTurnPersistsAndClearsTheAnchor(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
 	sess.stateOwner.updateTurnAnchor = anchors.set
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
+	claude, err := startClaudeSession(sess.Runtime(), claudeShimSpawnRequest(sess, shim.WSURL()))
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -595,7 +598,7 @@ func TestClaudeFirstTurnAnchorIsPersistedOnceTheInitLineLands(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
 	sess.stateOwner.updateTurnAnchor = anchors.set
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
+	claude, err := startClaudeSession(sess.Runtime(), claudeShimSpawnRequest(sess, shim.WSURL()))
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}

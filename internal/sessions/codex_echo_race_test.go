@@ -12,7 +12,7 @@ import (
 // entry points the send and the wire reader call.
 func TestCodexEchoAndDeliveryOutcomeMayArriveTogether(t *testing.T) {
 	sess, _ := readyTransactionalSendTestSession(t, nil)
-	sess.hostedThreadID = "hosted"
+	sess.identity.hostedThreadID = "hosted"
 	for i := range 100 {
 		action := fmt.Sprintf("race-%d", i)
 		sess.stateOwner.expectCodexEcho(codexEchoWait{actionID: action, claimToken: "claim", claimEpoch: 1})

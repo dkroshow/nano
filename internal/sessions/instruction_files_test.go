@@ -127,14 +127,16 @@ func newTestCodexSession(t *testing.T, cwd string, sources []string) *Session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sessionWithOwners(&Session{id: "test",
-		provider: "codex",
+	return sessionWithOwners(&Session{
+
 		stateOwner: State{
 			cwd:            cwd,
 			state:          map[string]json.RawMessage{"thread": raw},
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
-			subs: map[chan wire.Event]struct{}{}}})
+			subs: map[chan wire.Event]struct{}{}},
+		identity: attachmentIdentity{id: "test", provider: "codex"},
+	})
 }
 
 func TestInstructionFileReadRequiresAllowlist(t *testing.T) {
@@ -268,10 +270,12 @@ func TestClaudeInstructionFilesUseDocumentedLoadingRules(t *testing.T) {
 		writeTestFile(t, path, "instructions\n")
 	}
 
-	sess := sessionWithOwners(&Session{provider: "claude",
+	sess := sessionWithOwners(&Session{
 		stateOwner: State{
 			cwd:            cwd,
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "claude"},
+	})
 	sources, _ := sess.stateOwner.instructionFileSources()
 	got := map[string]setup.InstructionFileSource{}
 	for _, src := range sources {

@@ -53,7 +53,7 @@ func TestLiveTextDeltasEnvironmentSwitch(t *testing.T) {
 	s := &server{dropLiveTextDeltas: config.LiveTextDeltasDisabled()}
 	p := s.newSessionProjection("codex", "hosted")
 	runtime := newProviderRuntimeFixture(t, sessions.Config{ID: "delta-switch", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "")
-	runtime.session.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, runtime.session))
+	runtime.session.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, runtime.session.State()))
 	for _, line := range []string{
 		`{"method":"turn/started","params":{"threadId":"native-thread","turn":{"id":"turn-1"}}}`,
 		`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer","type":"agentMessage","text":""}}}`,

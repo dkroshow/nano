@@ -41,12 +41,14 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 		},
 	} {
 		t.Run(test.provider, func(t *testing.T) {
-			sess := sessionWithOwners(&Session{provider: test.provider,
+			sess := sessionWithOwners(&Session{
 				wire: Wire{subs: map[chan wire.Event]struct{}{}},
 				stateOwner: State{
 					lifecycleState: testLifecycleSnapshot("ready", false)},
 				view: View{
-					projection: newDeliveryTestProjection(test.provider)}})
+					projection: newDeliveryTestProjection(test.provider)},
+				identity: attachmentIdentity{provider: test.provider},
+			})
 			sess.stateOwner.threadID = "16952569-d518-579a-914e-2c422f5d5946"
 			apply := func(lines []fixture.TimedLine) {
 				for _, l := range lines {

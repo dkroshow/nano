@@ -26,7 +26,7 @@ func NewBootControl(limit int) *BootControl {
 // holdHandshakeSlot takes one of the provider's boot handshake slots for
 // sess's attach and returns its release. The slot goes back once: when the
 // attach starts waiting for its saved catch-up, or when it ends.
-func (c *BootControl) holdHandshakeSlot(sess *Session) func() {
+func (c *BootControl) holdHandshakeSlot(sess *Runtime) func() {
 	if c == nil || c.handshakeSlots == nil {
 		return func() {}
 	}

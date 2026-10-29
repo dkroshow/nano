@@ -78,12 +78,12 @@ func newResultProjection(provider string, finals map[string]string) *LiveProject
 func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.Store, []resultPrompt, []resultFrame) {
 	t.Helper()
 	sess, store := readyTransactionalSendTestSession(t, nil)
-	sess.provider, sess.hostedThreadID, sess.stateOwner.threadID = "claude", "hosted", "claude-settle"
+	sess.identity.provider, sess.identity.hostedThreadID, sess.stateOwner.threadID = "claude", "hosted", "claude-settle"
 	sess.stateOwner.state = map[string]json.RawMessage{}
 	sess.wire.subs = map[chan wire.Event]struct{}{}
 	sess.stateOwner.interactions = map[string]interact.PendingInteraction{}
 	recorder := &resultRecorder{}
-	sess.agentExecutions = recorder
+	sess.identity.agentExecutions = recorder
 	identities := fixture.ClaudeResultPromptIdentities()
 	sess.view.projection = newResultProjection("claude", map[string]string{identities[0].Turn: fixture.ClaudeResultAnswerA, identities[3].Turn: fixture.ClaudeResultAnswerMerged})
 	var order []resultPrompt
@@ -166,7 +166,7 @@ func TestClaudeResultIngressBindsToAnsweredPrompt(t *testing.T) {
 		}
 		c.AnswerRest()
 	})
-	owner := newClaudeSession(sess, sess.stateOwner.ThreadID())
+	owner := newClaudeSession(sess.Runtime(), sess.stateOwner.ThreadID())
 	tr, err := startClaudeShimSession(owner, shim.WSURL(), claudeSpawnPosture{})
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func (directResultTransport) durableAttachment(string, string) (hostedstore.Atta
 
 func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	sess, recorder, _, order, frames := resultBindingFixture(t)
-	owner := newClaudeSession(sess, sess.stateOwner.ThreadID())
+	owner := newClaudeSession(sess.Runtime(), sess.stateOwner.ThreadID())
 	tr := directResultTransport{}
 	owner.tr = tr
 	var logs resultLogBuffer

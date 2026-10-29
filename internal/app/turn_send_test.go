@@ -1470,7 +1470,7 @@ func TestReattachSettlesSavedPromptsAndPublishesOnlyTheRest(t *testing.T) {
 				// With no catalog source, joining the real pane cannot settle
 				// a stale prompt and conceal an attach bug. Its wire tail still
 				// exposes each seeded prompt's action identity and text.
-				sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, sess))
+				sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, sess.State()))
 				pane := newLiveTextPane(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 				liveTextOf(sess).subscribe(pane)
 				select {
@@ -1937,7 +1937,7 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 		passes++
 		passCtx := context.WithValue(context.Background(), passKey{}, passes)
 		done := make(chan struct{})
-		go func() { sessions.ReconcileSavedTranscript(passCtx, sess); close(done) }()
+		go func() { sessions.ReconcileSavedTranscript(passCtx, sess.State()); close(done) }()
 		return done
 	}
 	done1 := pass()
@@ -1963,18 +1963,18 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 	// any later commit, which would otherwise drop a restored mark again.
 	sess.Delivery().RequestMemberStep() // clear the completed member hint without altering prompt waits
 	beforeWaitingRead := reads.Load()
-	sessions.ReconcileSavedTranscript(ctx, sess)
+	sessions.ReconcileSavedTranscript(ctx, sess.State())
 	if got := reads.Load(); got != beforeWaitingRead {
 		t.Fatalf("the overlapping passes left prompt waits: the next idle commit read saved prompts %d times", got-beforeWaitingRead)
 	}
 	// The pass that finished each owed completion still saw it; one more
 	// commit reads that none is left. After that, nothing waits.
-	sessions.ReconcileSavedTranscript(ctx, sess)
+	sessions.ReconcileSavedTranscript(ctx, sess.State())
 	if owing, err := h.prompts.Owing(ctx, "hosted", []string{"old", "new", "running"}); err != nil || len(owing) != 0 {
 		t.Fatalf("owed after the overlap = %v, %v; want every completion finished", owing, err)
 	}
 	before := reads.Load()
-	sessions.ReconcileSavedTranscript(context.Background(), sess)
+	sessions.ReconcileSavedTranscript(context.Background(), sess.State())
 	if got := reads.Load(); got != before {
 		t.Fatalf("an idle commit after the overlap read saved prompts %d times", got-before)
 	}

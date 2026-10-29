@@ -9,5 +9,5 @@ func (s *server) startLiveText(sess *sessions.Session) {
 	if s.browserDiagnostics != nil {
 		source.Diagnostics = s.browserDiagnostics
 	}
-	sess.AttachLiveText(sessions.NewLiveTextLoop(source, sess))
+	sess.AttachLiveText(sessions.NewLiveTextLoop(source, sess.State()))
 }

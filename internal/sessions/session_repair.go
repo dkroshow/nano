@@ -42,13 +42,13 @@ func (sess *Lifecycle) StopDiscardAndRepair(parent context.Context, actionID str
 }
 
 func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
-	if sess == nil || sess.session.stateOwner.catalogSources == nil {
+	if sess == nil || sess.stateOwner.catalogSources == nil {
 		return TranscriptRepairResponse{}, errors.New("transcript repair is unavailable")
 	}
 	sess.transcriptRepairMu.Lock()
 	defer sess.transcriptRepairMu.Unlock()
 	if cached, ok := sess.transcriptRepairResults[actionID]; ok {
-		stale := sess.session.stateOwner.repairResultStale(cached)
+		stale := sess.stateOwner.repairResultStale(cached)
 		if stale {
 			return TranscriptRepairResponse{}, errors.New("transcript repair result belongs to a prior attachment")
 		}
@@ -61,7 +61,7 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 	_ = parent
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
-	return sess.session.delivery.repairTranscript(ctx, actionID)
+	return sess.delivery.repairTranscript(ctx, actionID)
 }
 
 // repairTranscript keeps the send fence inside the caller's repair transaction.
@@ -69,7 +69,7 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
 
-	threadID, attachmentGeneration := sess.session.stateOwner.repairIdentity()
+	threadID, attachmentGeneration := sess.stateOwner.repairIdentity()
 	if threadID == "" {
 		return TranscriptRepairResponse{}, errors.New("provider thread is not attached")
 	}
@@ -85,11 +85,11 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 		actionIDs = append(actionIDs, record.ClientActionID)
 	}
 
-	interrupt, err := sess.session.stateOwner.interruptTurn(ctx)
+	interrupt, err := sess.stateOwner.interruptTurn(ctx)
 	if err != nil {
 		return TranscriptRepairResponse{}, fmt.Errorf("stop failed: %w", err)
 	}
-	if err := sess.session.stateOwner.waitForTranscriptRepairIdle(ctx); err != nil {
+	if err := sess.stateOwner.waitForTranscriptRepairIdle(ctx); err != nil {
 		return TranscriptRepairResponse{}, err
 	}
 
@@ -127,12 +127,12 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 	// A fresh pass proves the file current after the stop. The wait follows
 	// this session's hold, so the recheck after it, whatever the waits found,
 	// names a replaced attachment as stale.
-	caughtUp := sess.session.stateOwner.catalogSources.AwaitAttachedCurrent(sess.session.id, true, nil, ctx.Done())
+	caughtUp := sess.stateOwner.catalogSources.AwaitAttachedCurrent(sess.identity.id, true, nil, ctx.Done())
 	var settleErr error
 	if caughtUp {
 		settleErr = sess.settleSavedPrompts(ctx)
 	}
-	detail := sess.session.stateOwner.repairability(threadID, attachmentGeneration)
+	detail := sess.stateOwner.repairability(threadID, attachmentGeneration)
 	switch {
 	case detail == transcriptRepairStale:
 		response.Status, response.Detail = "stale_attachment", detail
@@ -146,7 +146,7 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 		response.Repaired, response.Status = true, "repaired"
 	}
 
-	sess.session.lifecycle.rememberRepairResult(actionID, response)
+	sess.lifecycle.rememberRepairResult(actionID, response)
 	return response, nil
 }
 
@@ -200,7 +200,12 @@ func (sess *State) repairableLocked(threadID string, attachmentGeneration int64)
 
 // Lifecycle owns serialized attachment close and transcript repair operations.
 type Lifecycle struct {
-	session *Session
+	identity   *attachmentIdentity
+	wire       *Wire
+	delivery   *Delivery
+	stateOwner *State
+	runtime    *Runtime
+	view       *View
 	// transcriptRepairMu serializes the operator's stop/discard/rebuild action
 	// and retains its last idempotent response until the attachment changes.
 	transcriptRepairMu      sync.Mutex

@@ -65,7 +65,7 @@ func (sess *Delivery) queuedPrompts(nativeID string) []prompts.QueuedTurn {
 	if sess.queuedTurns == nil {
 		return nil
 	}
-	return sess.queuedTurns.ListThread(sess.session.provider, nativeID, sess.session.hostedThreadID)
+	return sess.queuedTurns.ListThread(sess.identity.provider, nativeID, sess.identity.hostedThreadID)
 }
 
 // HasDeliveryEvidence reads this attachment's journal and queue, using the

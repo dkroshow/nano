@@ -17,10 +17,12 @@ import (
 // Claude's registry rides its system.init snapshot on /state; there is no
 // request surface to ask, so the endpoint says so rather than calling codex.
 func TestMCPEndpointRejectsClaudeSessions(t *testing.T) {
-	sess := sessionWithOwners(&Session{id: "claude-1",
-		provider: "claude",
+	sess := sessionWithOwners(&Session{
+
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{id: "claude-1", provider: "claude"},
+	})
 	rec := httptest.NewRecorder()
 	sess.view.HandleMCPServers(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/claude-1/mcp", nil))
 	if rec.Code != http.StatusNotImplemented {
@@ -51,7 +53,7 @@ func resumedSession(t *testing.T, fake *fakeAppServer) *Session {
 	daemon := fake.daemon()
 	sess := reconnectTestSession(t, daemon, "thread-mcp-1")
 	sess.setStatus("starting")
-	if err := startCodexSession(sess, daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "thread-mcp-1"}); err != nil {
+	if err := startCodexSession(sess.Runtime(), daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "thread-mcp-1"}); err != nil {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.view.Summary().Status == "ready" })

@@ -172,9 +172,9 @@ func startClaudeShimSession(owner *claudeSession, shimURL string, posture claude
 	var res struct {
 		ShimSessionID string `json:"shimSessionId"`
 	}
-	turnIDSession := owner.sess.hostedThreadID
+	turnIDSession := owner.sess.identity.hostedThreadID
 	if turnIDSession == "" {
-		turnIDSession = owner.sess.id
+		turnIDSession = owner.sess.identity.id
 	}
 	params := map[string]any{
 		"bin": posture.Bin, "args": posture.Args, "cwd": owner.sess.stateOwner.cwd,
@@ -205,7 +205,7 @@ func startClaudeShimSession(owner *claudeSession, shimURL string, posture claude
 // Returns errShimSessionAttached (another nano holds it) or
 // errShimSessionNotFound (the shim never knew it, or lost it with its own
 // restart) for callers to dispatch on.
-func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan claudeReplayPlan, posture claudeSpawnPosture, stored hostedstore.Attachment) (*claudeSession, error) {
+func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan claudeReplayPlan, posture claudeSpawnPosture, stored hostedstore.Attachment) (*claudeSession, error) {
 	fromSeq := plan.FromSeq
 	sess.stateOwner.beginTurnRestore()
 	restoreSettled := false
@@ -338,7 +338,7 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 		return nil, errSpawnSessionClosed
 	}
 	log.Printf("claude session %s attached to shim session %s (native %s, state %s, lastSeq %d, fromSeq %d)",
-		sess.id, res.ShimSessionID, res.NativeSessionID, res.State, res.LastSeq, fromSeq)
+		sess.identity.id, res.ShimSessionID, res.NativeSessionID, res.State, res.LastSeq, fromSeq)
 	// Hand the session back only once the replay has landed: the caller then
 	// sees identity (thread id, model, ready) already re-derived from the
 	// replayed init line, exactly as a fresh start would leave it.
@@ -352,7 +352,7 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 	// frames are applied asynchronously on the session loop; this ordered
 	// acknowledgement ensures their transcript and wire publication is complete
 	// before attachment settlement, even if the provider has already exited.
-	if core := sess.runtime.coreSession(); core != nil {
+	if core := sess.coreSession(); core != nil {
 		if err := tr.awaitApplied(core); err != nil {
 			return fail(fmt.Errorf("%w: processing acknowledgement failed: %w", errClaudeReplayUnsettled, err))
 		}
@@ -451,9 +451,9 @@ func (t *claudeShimTransport) awaitApplied(core *coresession.Session) error {
 // If not, a frame is still applying: the thread is marked draining until the
 // loop acknowledges, and every attach refuses meanwhile (claudeDrainSettled).
 // Nothing blocks on it and the provider child is untouched.
-func (t *claudeShimTransport) abandonQueued(sess *Session) bool {
+func (t *claudeShimTransport) abandonQueued(sess *Runtime) bool {
 	t.abandon()
-	core := sess.runtime.coreSession()
+	core := sess.coreSession()
 	if core == nil {
 		return true
 	}
@@ -478,16 +478,16 @@ func (t *claudeShimTransport) abandonQueued(sess *Session) bool {
 // acknowledged by their session loop, keyed by hosted thread.
 var claudeDrains sync.Map
 
-func claudeDrainKey(sess *Session) string {
-	if sess.hostedThreadID != "" {
-		return sess.hostedThreadID
+func claudeDrainKey(sess *Runtime) string {
+	if sess.identity.hostedThreadID != "" {
+		return sess.identity.hostedThreadID
 	}
-	return "session:" + sess.id
+	return "session:" + sess.identity.id
 }
 
 // claudeDrainSettled refuses, without waiting, an attach that would overlap an
 // abandoned drain. The refusal is no-fallback: the original child exists.
-func claudeDrainSettled(sess *Session) error {
+func claudeDrainSettled(sess *Runtime) error {
 	if _, draining := claudeDrains.Load(claudeDrainKey(sess)); draining {
 		return fmt.Errorf("%w: a previous attach's abandoned replay is still draining", errClaudeReplayUnsettled)
 	}
@@ -621,7 +621,7 @@ func (sess *Runtime) observeClaudeShimEvent(event wireclaude.Event) {
 // observeTurnEvent is this connection's turn-event sink: its events share the
 // connection's abandonment gate.
 func (t *claudeShimTransport) observeTurnEvent(event wireclaude.Event) {
-	t.owner.sess.runtime.observeClaudeShimEventGated(event, t.queuedWorkAllowed)
+	t.owner.sess.observeClaudeShimEventGated(event, t.queuedWorkAllowed)
 }
 
 func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate func() error) {
@@ -631,8 +631,8 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 	// A spooled frame carries its own identity to the projection when it is
 	// applied (claudeFrameTurn). Only the acknowledgement of a live send, which
 	// has no spool sequence yet, sets it here, before its own send line.
-	if sess.session.view.projection != nil && event.Seq == 0 {
-		sess.session.view.projection.setClaudeProviderTurnID(event.ProviderTurnID)
+	if sess.view.projection != nil && event.Seq == 0 {
+		sess.view.projection.setClaudeProviderTurnID(event.ProviderTurnID)
 	}
 	core := sess.coreSession()
 	if core == nil {
@@ -646,7 +646,7 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 	var finish *coreturns.Finish
 	switch event.Kind {
 	case claudeShimAccepted:
-		started := coreturns.Start{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(), TurnID: event.ProviderTurnID, At: at, Source: "adapter"}
+		started := coreturns.Start{HostedThreadID: sess.identity.hostedThreadID, Provider: sess.identity.provider, NativeThreadID: sess.stateOwner.ThreadID(), TurnID: event.ProviderTurnID, At: at, Source: "adapter"}
 		adapterEvent.TurnEvents = []coresession.TurnEvent{{Started: &started}}
 	case claudeShimResult:
 		// The shim tags a result with the prompt it last wrote, which a result
@@ -655,7 +655,7 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 		// prompt.
 		adapterEvent.ProviderTurnID = ""
 		status, _ := ClaudeProjectionTerminal(event.Line)
-		finish = &coreturns.Finish{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(),
+		finish = &coreturns.Finish{HostedThreadID: sess.identity.hostedThreadID, Provider: sess.identity.provider, NativeThreadID: sess.stateOwner.ThreadID(),
 			Outcome: status, At: at, Source: "adapter"}
 		adapterEvent.TurnEvents = []coresession.TurnEvent{{Finished: finish}}
 	}
@@ -675,12 +675,12 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 		if finish.TurnID = turnID; turnID == "" {
 			return nil // a finish that names no turn finishes nothing
 		}
-		if sess.session.view.projection != nil {
-			finish.FinalMessageID = sess.session.view.projection.finalAgentItemID(turnID)
+		if sess.view.projection != nil {
+			finish.FinalMessageID = sess.view.projection.finalAgentItemID(turnID)
 		}
 		// The result line is this turn's own usage evidence. A narrowed replay
 		// has no projection turn for the prompt to key live usage by.
-		usage := sess.session.stateOwner.completedTokenUsage(turnID)
+		usage := sess.stateOwner.completedTokenUsage(turnID)
 		var message map[string]json.RawMessage
 		if json.Unmarshal(event.Line, &message) == nil {
 			if lineUsage := normalizeTokenUsage(claudeResultUsagePayload(message)); lineUsage != nil {
@@ -708,12 +708,12 @@ func (sess *Runtime) claudeAnsweredTurn(line []byte) (turnID string, named bool)
 	if json.Unmarshal(line, &result) != nil || result.UserMessageUUID == "" {
 		return "", false
 	}
-	if sess.session.delivery.turns == nil || sess.session.hostedThreadID == "" {
+	if sess.delivery.turns == nil || sess.identity.hostedThreadID == "" {
 		return "", true
 	}
-	records, err := sess.session.delivery.turns.ByEvent(context.Background(), sess.session.hostedThreadID, result.UserMessageUUID)
+	records, err := sess.delivery.turns.ByEvent(context.Background(), sess.identity.hostedThreadID, result.UserMessageUUID)
 	if err != nil {
-		log.Printf("Claude result on %s: its prompt is unreadable: %v", sess.session.hostedThreadID, err)
+		log.Printf("Claude result on %s: its prompt is unreadable: %v", sess.identity.hostedThreadID, err)
 		return "", true
 	}
 	if len(records) != 1 {
@@ -880,7 +880,7 @@ func (t *claudeShimTransport) onDisconnect(err error) {
 	if t.closing.Load() {
 		return
 	}
-	log.Printf("claude shim connection lost for session %s (%v)", t.owner.sess.id, err)
+	log.Printf("claude shim connection lost for session %s (%v)", t.owner.sess.identity.id, err)
 	t.owner.exitOnce.Do(func() {
 		close(t.owner.exited)
 		t.owner.sess.stateOwner.observeConnection(lifecycle.EventLinkLost)

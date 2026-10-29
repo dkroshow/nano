@@ -82,13 +82,15 @@ func TestWireSpoolReadBeforeSkipsMalformedLines(t *testing.T) {
 }
 
 func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
-	sess := sessionWithOwners(&Session{id: "s1",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			events: []wire.Event{testWireEvent(1), testWireEvent(2), testWireEvent(3), testWireEvent(4)},
 			seq:    4,
 			subs:   map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{id: "s1"},
+	})
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions/s1/events/page?beforeSeq=4&limit=2", nil)
 	rec := httptest.NewRecorder()
 	sess.wire.HandleEventsPage(rec, req)

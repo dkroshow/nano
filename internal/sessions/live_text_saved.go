@@ -28,7 +28,7 @@ func (l *LiveTextLoop) proofs(matched map[string]string, ended map[string]bool) 
 	saved, gone = make(map[string]bool), make(map[string]bool)
 	var latest int64
 	for _, entry := range l.entries {
-		if entry.key != "" && matched[entry.key] != "" || l.sess.Provider() == "grok" && entry.Kind == "prompt" && entry.turn != "" && matched[entry.turn] != "" {
+		if entry.key != "" && matched[entry.key] != "" || l.sess.identity.provider == "grok" && entry.Kind == "prompt" && entry.turn != "" && matched[entry.turn] != "" {
 			saved[entry.ID], gone[entry.ID] = true, true
 			if entry.Kind == "prompt" {
 				latest = max(latest, entry.order)
@@ -50,7 +50,7 @@ func (l *LiveTextLoop) proofs(matched map[string]string, ended map[string]bool) 
 // needs none. An agent stream never reloads what the operator sees.
 func (l *LiveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPane]bool, responses []threadindex.TranscriptResponse) map[string]bool {
 	ended := map[string]bool{}
-	if l.sess.Provider() != "codex" {
+	if l.sess.identity.provider != "codex" {
 		return ended
 	}
 	reloading := false
@@ -82,13 +82,13 @@ func (l *LiveTextLoop) replyMatch(turns map[string]string) history.TranscriptMat
 	for key := range turns {
 		keys = append(keys, key)
 	}
-	if l.sess.Provider() == "grok" {
+	if l.sess.identity.provider == "grok" {
 		return history.TranscriptMatch{Namespace: "native.eventId", ItemType: "agent_message", Keys: keys}
 	}
-	if l.sess.Provider() == "codex" {
+	if l.sess.identity.provider == "codex" {
 		return history.TranscriptMatch{Namespace: history.MatchTurnNativeItem, ItemType: "agent_message", Keys: keys, Turns: turns}
 	}
-	return history.TranscriptMatch{Namespace: l.sess.Provider() + ".messageBlock", ItemType: "agent_message", Keys: keys}
+	return history.TranscriptMatch{Namespace: l.sess.identity.provider + ".messageBlock", ItemType: "agent_message", Keys: keys}
 }
 
 // claimedTurnEvents names, for each turn a Codex prompt without a client id
@@ -107,7 +107,7 @@ func (l *LiveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, [
 	for _, turn := range turns {
 		ok, read := readable[turn]
 		if !read {
-			events, err := l.sess.delivery.PromptStore().TurnEvents(context.Background(), l.sess.HostedThreadID(), model.ProviderCodex, l.sess.stateOwner.ThreadID(), turn)
+			events, err := l.sess.delivery.PromptStore().TurnEvents(context.Background(), l.sess.identity.hostedThreadID, model.ProviderCodex, l.sess.ThreadID(), turn)
 			if ok = err == nil; !ok {
 				log.Printf("live text turn events %s: %v", turn, err)
 			} else if len(events) > 0 {
@@ -123,10 +123,10 @@ func (l *LiveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, [
 }
 
 func (l *LiveTextLoop) promptMatch(keys []string) history.TranscriptMatch {
-	if l.sess.Provider() == "grok" {
+	if l.sess.identity.provider == "grok" {
 		return history.TranscriptMatch{Namespace: "nano.submissionId", ItemType: "user_message", Keys: keys}
 	}
-	if l.sess.Provider() == "codex" {
+	if l.sess.identity.provider == "codex" {
 		return history.TranscriptMatch{Namespace: history.MatchTurnItem, ItemType: "user_message", Keys: keys}
 	}
 	return history.TranscriptMatch{Namespace: "native.eventId", ItemType: "user_message", Keys: keys}
@@ -150,7 +150,7 @@ func (l *LiveTextLoop) catalogThreadID() (string, error) {
 	if l.sess == nil {
 		return "", errLiveTextNotIndexed
 	}
-	native := l.sess.stateOwner.ThreadID()
+	native := l.sess.ThreadID()
 	resolver, ok := l.sources.Catalog, l.sources.Catalog != nil
 	if native == "" || !ok {
 		return "", errLiveTextNotIndexed
@@ -206,12 +206,12 @@ func (l *LiveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	// found by that id within its turn; one without keeps its turn key.
 	eventTurns := make(map[string]string)
 	for _, entry := range l.entries {
-		if l.sess.Provider() == "grok" && entry.Kind == "prompt" && entry.turn != "" {
+		if l.sess.identity.provider == "grok" && entry.Kind == "prompt" && entry.turn != "" {
 			promptTurns = append(promptTurns, entry.turn)
 		}
 		switch {
 		case entry.key == "":
-		case entry.Kind == "prompt" && l.sess.Provider() == "codex" && entry.turn != "" && entry.key != entry.turn:
+		case entry.Kind == "prompt" && l.sess.identity.provider == "codex" && entry.turn != "" && entry.key != entry.turn:
 			eventTurns[entry.key] = entry.turn
 		case entry.Kind == "prompt":
 			promptKeys = append(promptKeys, entry.key)
@@ -223,7 +223,7 @@ func (l *LiveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	if len(promptTurns) > 0 {
 		match = append(match, history.TranscriptMatch{Namespace: history.MatchTurnItem, ItemType: "user_message", Keys: promptTurns})
 	}
-	if l.sess.Provider() == "codex" && len(promptKeys) > 0 {
+	if l.sess.identity.provider == "codex" && len(promptKeys) > 0 {
 		var claimed map[string][]string
 		claimed, promptKeys = l.claimedTurnEvents(promptKeys)
 		if len(promptKeys) > 0 {
@@ -364,10 +364,10 @@ func (l *LiveTextLoop) promptsSavedIn(rows []threadindex.TranscriptItem) ([]stri
 	var keys []string
 	for _, entry := range candidates {
 		key := l.promptKey(entry)
-		if key == "" || l.sess.Provider() == "codex" && (entry.Binding == nil || entry.Binding.EventID == "") {
+		if key == "" || l.sess.identity.provider == "codex" && (entry.Binding == nil || entry.Binding.EventID == "") {
 			continue
 		}
-		if l.sess.Provider() == "codex" && entry.Binding.Scope.NativeTurnID != nil {
+		if l.sess.identity.provider == "codex" && entry.Binding.Scope.NativeTurnID != nil {
 			eventTurns[key] = *entry.Binding.Scope.NativeTurnID
 		} else if len(actions[key]) == 0 {
 			keys = append(keys, key)

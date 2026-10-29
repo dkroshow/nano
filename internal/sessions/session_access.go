@@ -8,13 +8,13 @@ import (
 )
 
 // ID returns the identity of this runtime attachment.
-func (sess *Session) ID() string { return sess.id }
+func (sess *Session) ID() string { return sess.identity.id }
 
 // Provider returns the attachment's provider.
-func (sess *Session) Provider() string { return sess.provider }
+func (sess *Session) Provider() string { return sess.identity.provider }
 
 // HostedThreadID returns the durable hosted identity carried by this attachment.
-func (sess *Session) HostedThreadID() string { return sess.hostedThreadID }
+func (sess *Session) HostedThreadID() string { return sess.identity.hostedThreadID }
 
 // PromptStore returns this attachment's canonical prompt store.
 // It can be unavailable before the runtime is initialized.
@@ -27,10 +27,10 @@ func (sess *View) LiveTurnActive() bool {
 
 // PersistedOperation reads the hosted operation for one transport action.
 func (sess *Delivery) PersistedOperation(ctx context.Context, actionID string) (threads.TurnRecord, bool, error) {
-	if sess.session.agentExecutions == nil {
+	if sess.identity.agentExecutions == nil {
 		return threads.TurnRecord{}, false, nil
 	}
-	return sess.session.agentExecutions.PersistedTurnForTransportAction(ctx, sess.session.hostedThreadID, actionID)
+	return sess.identity.agentExecutions.PersistedTurnForTransportAction(ctx, sess.identity.hostedThreadID, actionID)
 }
 
 // CWD returns the working directory retained by this attachment.
@@ -52,7 +52,7 @@ func (sess *Session) Delivery() *Delivery {
 	return &sess.delivery
 }
 
-// State returns the attachment's concrete stateOwner owner.
+// State returns the attachment's atomic runtime state owner.
 func (sess *Session) State() *State {
 	if sess == nil {
 		return nil

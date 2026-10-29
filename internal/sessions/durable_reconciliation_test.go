@@ -16,9 +16,11 @@ func retainedTestProjection(turnID string, startedAtMs int64) *LiveProjection {
 }
 func durableTurnTestSession(turnID string, startedAtMs int64) *Session {
 	p := retainedTestProjection(turnID, startedAtMs)
-	return sessionWithOwners(&Session{provider: "codex",
+	return sessionWithOwners(&Session{
 		stateOwner: State{threadID: "native-thread", turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)},
-		view:       View{projection: p}})
+		view:       View{projection: p},
+		identity:   attachmentIdentity{provider: "codex"},
+	})
 }
 func reconcileWithSavedTurn(sess *Session, saved liveview.DurableTurnEvidence) {
 	sess.stateOwner.savedTurn = func(_ context.Context, id string) (liveview.DurableTurnEvidence, bool) {
@@ -94,7 +96,7 @@ func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
 	reconcileWithSavedTurn(sess, liveview.DurableTurnEvidence{
 		Turn: liveview.Turn{ID: "turn-file", Status: "completed", StartedAtMs: started.UnixMilli(), CompletedAtMs: started.Add(time.Minute).UnixMilli()},
 	})
-	rows, err := store.After(context.Background(), sess.hostedThreadID, "", 10)
+	rows, err := store.After(context.Background(), sess.identity.hostedThreadID, "", 10)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,11 +14,11 @@ type providerLifecycleRules struct {
 	capabilities   lifecycle.Capabilities
 	turn           func(wire.Direction, []byte) (bool, string, int64, bool)
 	nudge          func(wire.Direction, []byte) bool
-	observe        func(*Session, wire.Direction, []byte, bool)
-	runtime        func(*Session, wire.Direction, []byte, time.Time)
-	accepted       func(*Session)
-	release        func(*Session)
-	ingressBlocked func(*Session) bool
+	observe        func(*State, wire.Direction, []byte, bool)
+	runtime        func(*State, wire.Direction, []byte, time.Time)
+	accepted       func(*State)
+	release        func(*State)
+	ingressBlocked func(*State) bool
 }
 
 var lifecycleProviders map[string]providerLifecycleRules
@@ -51,8 +51,8 @@ func wireNudgesCatalog(provider string, dir wire.Direction, line []byte) bool {
 }
 
 func (sess *State) observeProviderWork(dir wire.Direction, line []byte, live bool) {
-	if observe := lifecycleProviders[sess.session.provider].observe; observe != nil {
-		observe(sess.session, dir, line, live)
+	if observe := lifecycleProviders[sess.identity.provider].observe; observe != nil {
+		observe(sess, dir, line, live)
 	}
 }
 
@@ -96,12 +96,12 @@ func (sess *State) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted fu
 	if sess.catalogSources == nil {
 		return true
 	}
-	if !sess.catalogSources.AwaitAttachedCurrent(sess.session.id, fresh, neverPrompted, transport) {
+	if !sess.catalogSources.AwaitAttachedCurrent(sess.identity.id, fresh, neverPrompted, transport) {
 		return false
 	}
 	for delay := time.Second; ; delay = min(2*delay, 30*time.Second) {
 		ctx, cancel := context.WithTimeout(context.Background(), savedPromptSettleTimeout)
-		err := sess.session.delivery.settleSavedPrompts(ctx)
+		err := sess.delivery.settleSavedPrompts(ctx)
 		cancel()
 		if err == nil {
 			return true

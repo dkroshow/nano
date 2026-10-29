@@ -11,8 +11,10 @@ import (
 // Boundary: the session's bind on native identity.
 func TestSessionCatalogBindNeverOutlivesClose(t *testing.T) {
 	sources := &testsupport.Sources{}
-	sess := sessionWithOwners(&Session{id: "s1", provider: "claude",
-		stateOwner: State{cwd: "/work", catalogSources: sources}})
+	sess := sessionWithOwners(&Session{
+		stateOwner: State{cwd: "/work", catalogSources: sources},
+		identity:   attachmentIdentity{id: "s1", provider: "claude"},
+	})
 	sess.stateOwner.setProjectionThreadID("native-1")
 	if len(sources.Binds) != 1 || sources.Binds[0] != "claude/native-1@/work|" {
 		t.Fatalf("binds = %q, want the identity once", sources.Binds)

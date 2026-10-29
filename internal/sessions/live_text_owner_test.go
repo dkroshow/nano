@@ -143,7 +143,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
-	sess.AttachLiveText(NewLiveTextLoop(LiveTextSources{Catalog: service, Diagnostics: sink}, sess))
+	sess.AttachLiveText(NewLiveTextLoop(LiveTextSources{Catalog: service, Diagnostics: sink}, sess.State()))
 	sess.ReserveNativeID(nativeThread)
 	h.diagnostics, h.sess, h.service = sink, sess, service
 	h.projection = cfg.Projection

@@ -10,6 +10,23 @@ import (
 
 // Session owns one live provider attachment and its ordered runtime state.
 type Session struct {
+	identity attachmentIdentity
+
+	wire Wire
+
+	delivery Delivery
+
+	stateOwner State
+
+	runtime Runtime
+
+	lifecycle Lifecycle
+
+	view View
+}
+
+// attachmentIdentity holds the immutable identity and shared store references.
+type attachmentIdentity struct {
 	id                    string
 	provider              string
 	hostedThreadID        string
@@ -28,18 +45,6 @@ type Session struct {
 	spawnMode       string
 	agentExecutions Executions
 	metadata        Metadata
-
-	wire Wire
-
-	delivery Delivery
-
-	stateOwner State
-
-	runtime Runtime
-
-	lifecycle Lifecycle
-
-	view View
 }
 
 // Summary is the public snapshot of an attachment identity, lifecycle, and provider settings.

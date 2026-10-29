@@ -82,7 +82,7 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 	sess.stateOwner.pendingName = "overnight run"
 	sess.stateOwner.displayName = "overnight run"
 	req := claudeShimSpawnRequest(sess, shim.WSURL())
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess.Runtime(), req)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestClaudeAttachIsReadyWithoutAReplayedInit(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
+	claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
 
 	sess, attachments := claudeTestSession(t)
 	req := claudeShimSpawnRequest(sess, shim.WSURL())
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess.Runtime(), req)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestClaudeShimSendTurnRecordsSendOnce(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
+	claude, err := startClaudeSession(sess.Runtime(), claudeShimSpawnRequest(sess, shim.WSURL()))
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestClaudeShimSendTurnPreservesSubmissionEventUUID(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
+	claude, err := startClaudeSession(sess.Runtime(), claudeShimSpawnRequest(sess, shim.WSURL()))
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestClaudeShimChildDeathMarksSessionExited(t *testing.T) {
 				tc.end(c)
 			})
 			sess, _ := claudeTestSession(t)
-			claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
+			claude, err := startClaudeSession(sess.Runtime(), claudeShimSpawnRequest(sess, shim.WSURL()))
 			if err != nil {
 				t.Fatalf("startClaudeSession: %v", err)
 			}
@@ -342,7 +342,7 @@ func TestClaudeShimUnreachableFallsBackToDirectChild(t *testing.T) {
 	sess, attachments := claudeTestSession(t)
 	req := claudeShimSpawnRequest(sess, deadURL)
 	req.ClaudeBin = fakeClaudeBinary(t)
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess.Runtime(), req)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestDirectClaudeChildCarriesTheNanoEntrypoint(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	req := claudeShimSpawnRequest(sess, "") // no shim: the direct child path
 	req.ClaudeBin = bin
-	claude, err := startClaudeSession(sess, req)
+	claude, err := startClaudeSession(sess.Runtime(), req)
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -420,7 +420,7 @@ func TestAttachClaudeSessionReplaysThenFollowsLive(t *testing.T) {
 
 	sess, _ := claudeTestSession(t)
 	posture := claudeSpawnPosture{Bin: "/fake/claude", Args: []string{"-p"}}
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, posture, hostedstore.Attachment{})
+	claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, posture, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -495,7 +495,7 @@ func TestClaudeShimTransportCarriesAcceptedItemAndResultTurnID(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	owner := newClaudeSession(sess, "native-1")
+	owner := newClaudeSession(sess.Runtime(), "native-1")
 	tr, err := startClaudeShimSession(owner, shim.WSURL(), claudeSpawnPosture{})
 	if err != nil {
 		t.Fatal(err)
@@ -565,7 +565,7 @@ func TestAttachClaudeSessionExitedStateEndsExited(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
+	claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -623,7 +623,7 @@ func TestClaudeAttachWaitsForReplayProcessing(t *testing.T) {
 			}
 			attached := make(chan result, 1)
 			go func() {
-				c, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
+				c, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 				attached <- result{c, err}
 			}()
 			select {
@@ -686,7 +686,7 @@ func TestClaudeAttachRejectsReplayWhenProcessingLoopClosed(t *testing.T) {
 		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
 		c.AnswerRest()
 	})
-	c, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
+	c, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 	if c != nil {
 		defer c.Close()
 	}
@@ -718,7 +718,7 @@ func TestAttachClaudeSessionTypedErrors(t *testing.T) {
 				c.AnswerRest()
 			})
 			sess, _ := claudeTestSession(t)
-			claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
+			claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("attachClaudeSession err = %v, want %v", err, tc.want)
 			}
@@ -783,7 +783,7 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 		err    error
 	}, 1)
 	go func() {
-		claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
+		claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 		attached <- struct {
 			claude *claudeSession
 			err    error
@@ -826,7 +826,7 @@ func TestClaudeReattachWithTwoHundredSpooledLinesDoesNotBlockCoreMailbox(t *test
 	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
-	owner := newClaudeSession(sess, "native-1")
+	owner := newClaudeSession(sess.Runtime(), "native-1")
 	transport := &claudeShimTransport{owner: owner, replayDone: make(chan struct{})}
 	for seq := int64(1); seq <= 200; seq++ {
 		params, err := json.Marshal(map[string]any{
@@ -869,7 +869,7 @@ func TestClaudeReattachWithTwoHundredSpooledLinesDoesNotBlockCoreMailbox(t *test
 func TestClaudeShimNotificationIngestionDoesNotBlockOnProjection(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	sess.view.projection = newBlockedProjection("claude")
-	owner := newClaudeSession(sess, "native-1")
+	owner := newClaudeSession(sess.Runtime(), "native-1")
 	tr := &claudeShimTransport{owner: owner, replayDone: make(chan struct{})}
 
 	line := func(seq int64, text string) json.RawMessage {
@@ -957,7 +957,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 		err    error
 	}, 1)
 	go func() {
-		claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
+		claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 		attached <- struct {
 			claude *claudeSession
 			err    error

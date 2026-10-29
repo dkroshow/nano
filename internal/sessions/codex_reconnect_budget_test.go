@@ -13,7 +13,7 @@ func TestReconnectAuditDeadlineBudgets(t *testing.T) {
 	sess := reconnectTestSession(t, daemon, "budgets")
 	fake.SetReplyDelay("thread/resume", 200*time.Millisecond)
 	sess.setStatus("reconnecting")
-	daemon.requestSessionRecovery(sess)
+	daemon.requestSessionRecovery(sess.Runtime())
 	for attempt, expected := range []int64{40, 80, 120} {
 		waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= attempt+1 })
 		sess.stateOwner.stateMu.Lock()

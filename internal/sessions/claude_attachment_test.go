@@ -11,7 +11,7 @@ import (
 func TestClaudeAttachmentRecordDoesNotInventLineage(t *testing.T) {
 	successor := hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-2", Cwd: "/fixture", Model: "model", Bin: "/fake/claude", Args: []string{"-p"}, ContinuedFrom: "native-1"}
 	tr := &claudeShimTransport{owner: &claudeSession{sess: sessionWithOwners(&Session{
-		stateOwner: State{cwd: successor.Cwd, lifecycleState: testLifecycleSnapshot("ready", false)}})}, posture: claudeSpawnPosture{Bin: successor.Bin, Args: successor.Args}}
+		stateOwner: State{cwd: successor.Cwd, lifecycleState: testLifecycleSnapshot("ready", false)}}).Runtime()}, posture: claudeSpawnPosture{Bin: successor.Bin, Args: successor.Args}}
 	rewrite, ok := tr.durableAttachment("native-2", successor.Model)
 	if !ok {
 		t.Fatal("the shim transport refused to build a durable record")

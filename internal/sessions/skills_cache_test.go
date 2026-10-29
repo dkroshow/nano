@@ -27,8 +27,7 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 	sessions := make([]*Session, 40)
 	for i := range sessions {
 		sessions[i] = sessionWithOwners(&Session{
-			id:       NewID(),
-			provider: "codex",
+
 			stateOwner: State{
 				cwd:   cwds[i%len(cwds)],
 				state: map[string]json.RawMessage{}},
@@ -36,6 +35,7 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 				codex: daemon},
 			view: View{
 				skills: cache},
+			identity: attachmentIdentity{id: NewID(), provider: "codex"},
 		})
 	}
 

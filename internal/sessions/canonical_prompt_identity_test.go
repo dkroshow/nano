@@ -26,7 +26,7 @@ func TestNonCodexDeliveryPersistsExactProviderTurnBinding(t *testing.T) {
 			sess := readySendTestSession(t, attempts, func(context.Context, string) (json.RawMessage, error) {
 				return json.RawMessage(`{"turn":{"id":"` + tc.turnID + `"}}`), nil
 			})
-			sess.provider = tc.provider
+			sess.identity.provider = tc.provider
 			sess.view.projection = newDeliveryTestProjection(tc.provider)
 			if rec := postTurn(t, sess.Delivery(), context.Background(), "action-1", "provider-specific binding"); rec.Code != 200 {
 				t.Fatalf("send = %d %s", rec.Code, rec.Body.String())

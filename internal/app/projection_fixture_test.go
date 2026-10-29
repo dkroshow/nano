@@ -43,7 +43,7 @@ func (w *firstStatusWriter) Write(data []byte) (int, error) {
 func liveStatusForTest(t *testing.T, sess *sessions.Session) liveview.Status {
 	t.Helper()
 	if sess.View().LiveTextService() == nil {
-		sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, sess))
+		sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, sess.State()))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -138,7 +138,7 @@ func observeProjection(t *testing.T, sess *sessions.Session) *projectionStream {
 		t.Fatal(err)
 	}
 	t.Cleanup(catalog.Close)
-	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: catalog.Service}, sess))
+	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: catalog.Service}, sess.State()))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	w := &projectionStream{header: make(http.Header), ready: make(chan struct{})}

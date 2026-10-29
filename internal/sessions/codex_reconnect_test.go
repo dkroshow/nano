@@ -72,7 +72,7 @@ func TestCodexReconnectPromptRetriesAndDrainsOnce(t *testing.T) {
 	}
 	for index := 0; index < 5; index++ {
 		sess.delivery.kickQueuedTurnDrain()
-		daemon.requestSessionRecovery(sess)
+		daemon.requestSessionRecovery(sess.Runtime())
 	}
 	time.Sleep(50 * time.Millisecond)
 	if got := deliveries.Load(); got != 1 {
@@ -100,7 +100,7 @@ func TestCodexReconnectNoRolloutStopsWithoutLosingIdentity(t *testing.T) {
 	waitForClaudeStatus(t, sess, "ready")
 	fake.SetResumeError("no rollout found for thread id missing-rollout")
 	sess.setStatus("reconnecting")
-	daemon.requestSessionRecovery(sess)
+	daemon.requestSessionRecovery(sess.Runtime())
 	waitReconnectCondition(t, func() bool {
 		daemon.mu.Lock()
 		defer daemon.mu.Unlock()
@@ -141,7 +141,7 @@ func TestCodexReconnectClosedSessionStopsRetrying(t *testing.T) {
 	waitForClaudeStatus(t, sess, "ready")
 	fake.SetResumeError("provider temporarily busy")
 	sess.setStatus("reconnecting")
-	daemon.requestSessionRecovery(sess)
+	daemon.requestSessionRecovery(sess.Runtime())
 	waitReconnectCondition(t, func() bool { return fake.ResumeCount() == 2 })
 	sess.lifecycle.Close()
 	waitReconnectCondition(t, func() bool {

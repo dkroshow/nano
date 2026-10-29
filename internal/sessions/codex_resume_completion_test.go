@@ -48,7 +48,7 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	sess, _ := readyTransactionalSendTestSession(t, nil)
 	t.Cleanup(sess.lifecycle.Close)
 	db := sess.delivery.queuedTurns.Database()
-	if _, err := db.Exec(`INSERT INTO hosted_threads (hosted_thread_id,provider,presentation_mode,terminal_notification_policy,revision,created_at,updated_at) VALUES (?,'codex','background','inbox',1,'now','now')`, sess.hostedThreadID); err != nil {
+	if _, err := db.Exec(`INSERT INTO hosted_threads (hosted_thread_id,provider,presentation_mode,terminal_notification_policy,revision,created_at,updated_at) VALUES (?,'codex','background','inbox',1,'now','now')`, sess.identity.hostedThreadID); err != nil {
 		t.Fatal(err)
 	}
 	completed, err := coreturns.OpenStore(ctx, db)
@@ -57,7 +57,7 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	}
 	client := &resumeCompletionClient{store: completed}
 	dispatcher := subscriptions.NewDispatcher(db, client, nil, nil)
-	target := subscriptions.Target{ChildHostedID: sess.hostedThreadID, InvokerHostedID: "parent"}
+	target := subscriptions.Target{ChildHostedID: sess.identity.hostedThreadID, InvokerHostedID: "parent"}
 	if !dispatcher.SweepTarget(target) {
 		t.Fatal("initialize subscription cursor")
 	}
@@ -69,12 +69,12 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
-	finish := coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: "codex", NativeThreadID: sess.stateOwner.threadID,
+	finish := coreturns.Finish{HostedThreadID: sess.identity.hostedThreadID, Provider: "codex", NativeThreadID: sess.stateOwner.threadID,
 		TurnID: "turn-live", Outcome: "completed", FinalMessageID: "final-live", At: time.Unix(1787600100, 0), Source: "adapter"}
 	if err := sess.runtime.core.Observe(ctx, coresession.AdapterEvent{ProviderTurnID: finish.TurnID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}); err != nil {
 		t.Fatal(err)
 	}
-	live, err := completed.After(ctx, sess.hostedThreadID, "", 10)
+	live, err := completed.After(ctx, sess.identity.hostedThreadID, "", 10)
 	if err != nil || len(live) != 1 || len(client.messages) != 1 {
 		t.Fatalf("live completion: feed=%+v err=%v deliveries=%d", live, err, len(client.messages))
 	}
@@ -87,7 +87,7 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	sess.delivery.observeCodexResumedTurnFinish(sess.stateOwner.threadID, codexResumeProjectionTurn{ID: "turn-live", Status: "completed", CompletedAt: &completedAt, Items: []any{
 		map[string]any{"id": "final-live", "type": "agentMessage", "phase": "final_answer", "text": "done live"},
 	}})
-	feed, err := completed.After(ctx, sess.hostedThreadID, "", 10)
+	feed, err := completed.After(ctx, sess.identity.hostedThreadID, "", 10)
 	if err != nil || len(feed) != 1 || feed[0] != live[0] {
 		t.Fatalf("feed after forced resume = %+v (%v), want the one live record %+v", feed, err, live)
 	}

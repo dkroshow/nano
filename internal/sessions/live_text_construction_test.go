@@ -10,7 +10,7 @@ func TestEveryProviderSessionBuildsLiveTextLoop(t *testing.T) {
 
 		projection := newLiveProjection(provider)
 		sess := newFixtureSession(Config{Provider: provider, Projection: projection}, "")
-		sess.AttachLiveText(NewLiveTextLoop(LiveTextSources{}, sess))
+		sess.AttachLiveText(NewLiveTextLoop(LiveTextSources{}, sess.State()))
 		if sess.view.LiveTextService() == nil || projection.liveText != sess.view.LiveTextService() {
 			t.Fatalf("%s session has no file-only loop", provider)
 		}

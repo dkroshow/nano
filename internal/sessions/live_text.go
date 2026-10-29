@@ -126,7 +126,7 @@ func (in *liveTextInbox) addReply(update liveReplyUpdate) {
 // LiveTextLoop owns ordered live evidence and its handoff to saved transcript rows.
 type LiveTextLoop struct {
 	sources LiveTextSources
-	sess    *Session
+	sess    *State
 
 	mu      sync.Mutex
 	inbox   liveTextInbox
@@ -160,11 +160,11 @@ func (l *LiveTextLoop) observeBatch(batch model.Batch, turn string) {
 	if l == nil {
 		return
 	}
-	if l.sess != nil && l.sess.Provider() == "grok" {
+	if l.sess != nil && l.sess.identity.provider == "grok" {
 		l.observeGrokBatch(batch)
 		return
 	}
-	codex := l.sess != nil && l.sess.Provider() == "codex"
+	codex := l.sess != nil && l.sess.identity.provider == "codex"
 	var updates []liveReplyUpdate
 	var ended []string
 	for _, change := range batch.Changes {
@@ -497,8 +497,8 @@ func (l *LiveTextLoop) reportUnsaved(key string, finishedAt time.Time, deferred 
 	}
 	l.sources.Diagnostics.Add([]diagnostics.Event{{
 		EventID: "file.reply.unsaved:" + l.hostedID() + ":" + key, Kind: "file.reply.unsaved",
-		ClientAt: finishedAt.UTC().Format(time.RFC3339Nano), Provider: l.sess.Provider(),
-		HostedThreadID: l.hostedID(), ThreadID: l.sess.stateOwner.ThreadID(), Code: key,
+		ClientAt: finishedAt.UTC().Format(time.RFC3339Nano), Provider: l.sess.identity.provider,
+		HostedThreadID: l.hostedID(), ThreadID: l.sess.ThreadID(), Code: key,
 		DurationMS: int(elapsed / time.Millisecond),
 		Status:     strings.ReplaceAll(label, " ", "-"),
 	}})
@@ -588,7 +588,7 @@ func (l *LiveTextLoop) hostedID() string {
 	if l.sess == nil {
 		return ""
 	}
-	return l.sess.HostedThreadID()
+	return l.sess.identity.hostedThreadID
 }
 
 // LiveTextSources identifies the existing saved-read and diagnostic owners.
@@ -598,6 +598,6 @@ type LiveTextSources struct {
 }
 
 // NewLiveTextLoop constructs the ordered saved/live view for one attachment.
-func NewLiveTextLoop(sources LiveTextSources, sess *Session) *LiveTextLoop {
+func NewLiveTextLoop(sources LiveTextSources, sess *State) *LiveTextLoop {
 	return &LiveTextLoop{sources: sources, sess: sess, wake: make(chan struct{}, 1)}
 }

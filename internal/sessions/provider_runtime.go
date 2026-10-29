@@ -23,7 +23,7 @@ import (
 )
 
 type providerAdapterFactory func(providers.Operations) (providers.Adapter, error)
-type providerOperationFactory func(*Session) providers.Operations
+type providerOperationFactory func(*Runtime) providers.Operations
 
 var providerAdapterFactories = map[model.Provider]providerAdapterFactory{
 	model.ProviderCodex: func(operations providers.Operations) (providers.Adapter, error) { return providercodex.New(operations) },
@@ -41,13 +41,13 @@ func (sess *Runtime) ensureDeliveryCoordinator() error {
 // boundaries too. Store views are wired once before provider attachment; this
 // check must never mutate them while restore and queue drains run concurrently.
 func (sess *Runtime) requireTransactionalTurnsLocked() error {
-	if sess.session.delivery.turns == nil {
+	if sess.delivery.turns == nil {
 		return errors.New("transactional turns store is unavailable")
 	}
-	if sess.session.delivery.queuedTurns != nil && sess.session.delivery.queuedTurns.TransactionStore() != sess.session.delivery.turns {
+	if sess.delivery.queuedTurns != nil && sess.delivery.queuedTurns.TransactionStore() != sess.delivery.turns {
 		return errors.New("transactional turn queue view is unavailable")
 	}
-	if sess.session.delivery.sendAttempts != nil && sess.session.delivery.sendAttempts.TransactionStore() != sess.session.delivery.turns {
+	if sess.delivery.sendAttempts != nil && sess.delivery.sendAttempts.TransactionStore() != sess.delivery.turns {
 		return errors.New("transactional turn journal view is unavailable")
 	}
 	return nil
@@ -63,32 +63,32 @@ func (sess *Runtime) ensureCoreSession() error {
 	}
 	sess.coreOnce.Do(func() {
 		if sess.providerAdapter == nil {
-			provider := model.Provider(sess.session.provider)
+			provider := model.Provider(sess.identity.provider)
 			adapterFactory, ok := providerAdapterFactories[provider]
 			if !ok {
-				sess.coreErr = fmt.Errorf("provider %q has no adapter", sess.session.provider)
+				sess.coreErr = fmt.Errorf("provider %q has no adapter", sess.identity.provider)
 				return
 			}
 			operationFactory, ok := providerOperationFactories()[provider]
 			if !ok {
-				sess.coreErr = fmt.Errorf("provider %q has no runtime operations", sess.session.provider)
+				sess.coreErr = fmt.Errorf("provider %q has no runtime operations", sess.identity.provider)
 				return
 			}
-			sess.providerAdapter, sess.coreErr = adapterFactory(operationFactory(sess.session))
+			sess.providerAdapter, sess.coreErr = adapterFactory(operationFactory(sess))
 			if sess.coreErr != nil {
 				return
 			}
 		}
 		var canonicalDB = func() *sql.DB {
-			if sess.session.delivery.queuedTurns != nil && sess.session.delivery.queuedTurns.Database() != nil {
-				return sess.session.delivery.queuedTurns.Database()
+			if sess.delivery.queuedTurns != nil && sess.delivery.queuedTurns.Database() != nil {
+				return sess.delivery.queuedTurns.Database()
 			}
-			if sess.session.metadata != nil {
-				return sess.session.metadata.CanonicalDatabase()
+			if sess.identity.metadata != nil {
+				return sess.identity.metadata.CanonicalDatabase()
 			}
 			return nil
 		}()
-		if sess.session.delivery.turns == nil && canonicalDB != nil {
+		if sess.delivery.turns == nil && canonicalDB != nil {
 			promptStore, err := prompts.OpenStore(context.Background(), canonicalDB)
 			if err != nil {
 				sess.coreErr = err
@@ -98,15 +98,15 @@ func (sess *Runtime) ensureCoreSession() error {
 				sess.coreErr = err
 				return
 			}
-			sess.session.delivery.turns = promptStore
-			if sess.session.delivery.queuedTurns != nil {
-				sess.session.delivery.queuedTurns.BindTransactionStore(promptStore)
+			sess.delivery.turns = promptStore
+			if sess.delivery.queuedTurns != nil {
+				sess.delivery.queuedTurns.BindTransactionStore(promptStore)
 			}
-			if sess.session.delivery.sendAttempts != nil {
-				sess.session.delivery.sendAttempts.BindTransactionStore(promptStore)
+			if sess.delivery.sendAttempts != nil {
+				sess.delivery.sendAttempts.BindTransactionStore(promptStore)
 			}
 		}
-		initial := sess.session.stateOwner.lifecycleSnapshot()
+		initial := sess.stateOwner.lifecycleSnapshot()
 		if sess.completedTurns == nil && canonicalDB != nil {
 			// Root compatibility fixtures and older construction sites already
 			// carry the canonical threads handle through a queue or metadata view.
@@ -118,7 +118,7 @@ func (sess *Runtime) ensureCoreSession() error {
 			}
 			sess.completedTurns = func(context.Context) (*coreturns.Store, error) { return store, nil }
 		}
-		if sess.session.delivery.turns == nil || sess.completedTurns == nil {
+		if sess.delivery.turns == nil || sess.completedTurns == nil {
 			sess.coreErr = errors.New("core prompt or turn store is unavailable")
 			return
 		}
@@ -128,8 +128,8 @@ func (sess *Runtime) ensureCoreSession() error {
 			return
 		}
 		core, err := coresession.New(coresession.Config{
-			HostedThreadID: sess.session.hostedThreadID, Wire: sess.providerAdapter, Prompts: sess.session.delivery.turns, Turns: finishedTurnNotifier{Store: turnStore, session: sess.session},
-			Outbox: coreOutboxPublisher{session: sess.session}, Lifecycle: initial, ExternalDrain: true,
+			HostedThreadID: sess.identity.hostedThreadID, Wire: sess.providerAdapter, Prompts: sess.delivery.turns, Turns: finishedTurnNotifier{Store: turnStore, session: sess.delivery},
+			Outbox: coreOutboxPublisher{session: sess.delivery}, Lifecycle: initial, ExternalDrain: true,
 			AsyncError: sess.recordCoreAsyncError,
 		})
 		if err != nil {
@@ -148,7 +148,7 @@ func (sess *Runtime) ensureCoreSession() error {
 // completed-turn feed finds it.
 type finishedTurnNotifier struct {
 	*coreturns.Store
-	session *Session
+	session *Delivery
 }
 
 // Finished persists completion before notifying subscribers and prompt settlement.
@@ -158,30 +158,30 @@ func (n finishedTurnNotifier) Finished(ctx context.Context, finish coreturns.Fin
 		return record, created, err
 	}
 	if n.session.stateOwner.subscriptionSweep != nil {
-		n.session.stateOwner.subscriptionSweep(n.session.hostedThreadID)
+		n.session.stateOwner.subscriptionSweep(n.session.identity.hostedThreadID)
 	}
 	// A Claude result may finish members other prompts' proof decided: the
 	// owed member step runs under settleMu, never waiting for it here inside
 	// the core loop. Raw store writes there notify nothing.
-	if n.session.provider == string(model.ProviderClaude) {
-		n.session.delivery.RequestMemberStep()
+	if n.session.identity.provider == string(model.ProviderClaude) {
+		n.session.RequestMemberStep()
 	} else {
-		n.session.delivery.finishJoinedAgentTurns(ctx, finish.TurnID)
+		n.session.finishJoinedAgentTurns(ctx, finish.TurnID)
 	}
 	return record, created, nil
 }
 
 func (sess *Runtime) recordCoreAsyncError(_ error) {
-	if sess == nil || sess.session.view.projection == nil {
+	if sess == nil || sess.view.projection == nil {
 		return
 	}
-	sess.session.view.projection.RecordDiagnostic(observability.ThreadDiagnostic{
+	sess.view.projection.RecordDiagnostic(observability.ThreadDiagnostic{
 		Code:    "async_session_event_failed",
 		Message: "An asynchronous session event could not be applied.",
 		Source:  "session",
 	}, false)
-	sess.session.view.projection.nudgeMetaRefresh()
-	sess.session.stateOwner.NotifyRuntime()
+	sess.view.projection.nudgeMetaRefresh()
+	sess.stateOwner.NotifyRuntime()
 }
 
 func (sess *Runtime) coreSession() *coresession.Session {
@@ -193,11 +193,11 @@ func (sess *Runtime) coreSession() *coresession.Session {
 	return sess.core
 }
 
-type coreOutboxPublisher struct{ session *Session }
+type coreOutboxPublisher struct{ session *Delivery }
 
 // PublishOutbox publishes a prompt state change to its live view.
 func (publisher coreOutboxPublisher) PublishOutbox(entry prompts.OutboxEntry) {
-	publisher.session.delivery.publishTransactionalOutbox(entry)
+	publisher.session.publishTransactionalOutbox(entry)
 }
 
 func providerOperationFactories() map[model.Provider]providerOperationFactory {
@@ -216,7 +216,7 @@ func unavailableProviderResume(context.Context, providers.ResumeRequest) (provid
 	return providers.Attachment{}, errors.New("provider resume must run through the attachment coordinator")
 }
 
-func codexProviderOperations(sess *Session) providers.Operations {
+func codexProviderOperations(sess *Runtime) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
 		Submit: providerSubmitOperation(sess, func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
@@ -230,7 +230,7 @@ func codexProviderOperations(sess *Session) providers.Operations {
 			turnParams["clientUserMessageId"] = clientID
 			causationID := sess.stateOwner.beginTurnCausation(turnFacts)
 			var result json.RawMessage
-			if err := sess.runtime.codex.callForSession(ctx, sess, "turn/start", turnParams, &result); err != nil {
+			if err := sess.codex.callForSession(ctx, sess, "turn/start", turnParams, &result); err != nil {
 				sess.stateOwner.abandonTurnCausation(causationID)
 				return nil, err
 			}
@@ -241,7 +241,7 @@ func codexProviderOperations(sess *Session) providers.Operations {
 			if threadID == "" || turnID == "" {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
-			if err := sess.runtime.codex.interruptTurn(ctx, sess, threadID, turnID); err != nil {
+			if err := sess.codex.interruptTurn(ctx, sess, threadID, turnID); err != nil {
 				if reason, raced := interruptRaceReason(err); raced {
 					return providers.InterruptionResult{Reason: reason}, nil
 				}
@@ -252,12 +252,12 @@ func codexProviderOperations(sess *Session) providers.Operations {
 		RespondInteraction: providerInteractionOperation(func(p interact.PendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
 			return interactionDecisionResult(p.Method, decision, p.Params, answers)
 		}, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			return sess.runtime.codex.respondToInteraction(p.ID, result, rpcErr)
+			return sess.codex.respondToInteraction(p.ID, result, rpcErr)
 		}),
 	}
 }
 
-func claudeProviderOperations(sess *Session) providers.Operations {
+func claudeProviderOperations(sess *Runtime) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
 		Submit: providerSubmitOperation(sess, func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
@@ -300,7 +300,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 	}
 }
 
-func grokProviderOperations(sess *Session) providers.Operations {
+func grokProviderOperations(sess *Runtime) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
 		Submit: providerSubmitOperation(sess, func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
@@ -348,7 +348,7 @@ func providerInteractionOperation(translate providerInteractionTranslator, respo
 	}
 }
 
-func providerSubmitOperation(sess *Session, send func(context.Context, providers.SubmissionRequest) (json.RawMessage, error)) func(context.Context, providers.SubmissionRequest) (providers.SubmissionResult, error) {
+func providerSubmitOperation(sess *Runtime, send func(context.Context, providers.SubmissionRequest) (json.RawMessage, error)) func(context.Context, providers.SubmissionRequest) (providers.SubmissionResult, error) {
 	return func(ctx context.Context, request providers.SubmissionRequest) (providers.SubmissionResult, error) {
 		var receipt json.RawMessage
 		var err error
@@ -359,10 +359,10 @@ func providerSubmitOperation(sess *Session, send func(context.Context, providers
 		}
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				sess.delivery.deliveryExpiries.record(sess.provider)
+				sess.delivery.deliveryExpiries.record(sess.identity.provider)
 			}
 			state := prompts.Uncertain
-			nativeMissing := sess.runtime.codexZeroTurnNativeMissing(request.Outbox.ActionID, err)
+			nativeMissing := sess.codexZeroTurnNativeMissing(request.Outbox.ActionID, err)
 			var rpcErr *protocol.RPCError
 			// A definite refusal parks the prompt: Nano keeps it with its
 			// text for the person's Resend or Discard, since the sender may
@@ -394,7 +394,7 @@ func providerSubmitOperation(sess *Session, send func(context.Context, providers
 		if turnID == "" {
 			return providers.SubmissionResult{State: prompts.Accepted, Receipt: receipt}, nil
 		}
-		binding, supersedesNativeThreadID := sess.runtime.submissionBinding(request.Scope, turnID, providerEventIDFromStart(receipt))
+		binding, supersedesNativeThreadID := sess.submissionBinding(request.Scope, turnID, providerEventIDFromStart(receipt))
 		return providers.SubmissionResult{
 			State: prompts.Accepted, Binding: &binding,
 			SupersedesNativeThreadID: supersedesNativeThreadID, Receipt: receipt,
@@ -408,7 +408,7 @@ func providerSubmitOperation(sess *Session, send func(context.Context, providers
 // provisional one the caller captured, and reports the one it supersedes.
 func (sess *Runtime) submissionBinding(scope model.Scope, turnID, eventID string) (prompts.Binding, string) {
 	supersedes := ""
-	if nativeThreadID := sess.session.stateOwner.ThreadID(); nativeThreadID != "" {
+	if nativeThreadID := sess.stateOwner.ThreadID(); nativeThreadID != "" {
 		if scope.NativeThreadID != nil && *scope.NativeThreadID != nativeThreadID {
 			supersedes = *scope.NativeThreadID
 		}
@@ -427,7 +427,7 @@ var errRunningTurnEnded = errors.New("running turn ended")
 // codexSteer delivers a prompt into the running turn. expectedTurnId makes
 // Codex refuse rather than join a different turn. The receipt has the same
 // turn and event shape as a started turn's.
-func codexSteer(ctx context.Context, sess *Session, turnID, clientID, text string) (json.RawMessage, error) {
+func codexSteer(ctx context.Context, sess *Runtime, turnID, clientID, text string) (json.RawMessage, error) {
 	params := map[string]any{
 		"threadId": sess.stateOwner.ThreadID(), "expectedTurnId": turnID, "clientUserMessageId": clientID,
 		"input": []map[string]any{{"type": "text", "text": text}},
@@ -435,7 +435,7 @@ func codexSteer(ctx context.Context, sess *Session, turnID, clientID, text strin
 	var result struct {
 		TurnID string `json:"turnId"`
 	}
-	if err := sess.runtime.codex.callForSession(ctx, sess, "turn/steer", params, &result); err != nil {
+	if err := sess.codex.callForSession(ctx, sess, "turn/steer", params, &result); err != nil {
 		var rpcErr *protocol.RPCError
 		if errors.As(err, &rpcErr) && rpcErr.Message == codexNoActiveTurnToSteer {
 			return nil, fmt.Errorf("%w: %w", errRunningTurnEnded, err)
@@ -469,8 +469,8 @@ func claudeSubmissionEventIDForOutbox(entry prompts.OutboxEntry) string {
 }
 
 func (sess *Runtime) deliveryScope() model.Scope {
-	nativeThreadID := sess.session.stateOwner.ThreadID()
-	return model.Scope{Kind: model.ScopeTurn, Provider: model.Provider(sess.session.provider), NativeThreadID: &nativeThreadID}
+	nativeThreadID := sess.stateOwner.ThreadID()
+	return model.Scope{Kind: model.ScopeTurn, Provider: model.Provider(sess.identity.provider), NativeThreadID: &nativeThreadID}
 }
 
 func (sess *Runtime) deliverySettings() providers.Settings {
@@ -479,7 +479,7 @@ func (sess *Runtime) deliverySettings() providers.Settings {
 		return providers.Settings{}
 	}
 	capabilities := core.TurnCapabilities()
-	modelName, effort, serviceTier := sess.session.stateOwner.turnOptions()
+	modelName, effort, serviceTier := sess.stateOwner.turnOptions()
 	var settings providers.Settings
 	if modelName != "" && (capabilities.ModelChange == providers.AtNextTurn || capabilities.ModelChange == providers.InSession) {
 		settings.Model = &modelName
@@ -522,7 +522,12 @@ func scopeNativeTurn(scope model.Scope) string {
 
 // Runtime owns provider handles, handshake serialization and the core event coordinator.
 type Runtime struct {
-	session *Session
+	identity   *attachmentIdentity
+	wire       *Wire
+	delivery   *Delivery
+	stateOwner *State
+	lifecycle  *Lifecycle
+	view       *View
 
 	codex            *CodexDaemon // codex provider: shared daemon client
 	reasoningSummary string       // codex: turn/start summary level

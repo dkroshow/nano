@@ -63,17 +63,7 @@ type Config struct {
 // New constructs an unstarted attachment from its identity and owner services.
 func New(cfg Config) *Session {
 	sess := &Session{
-		id:                    cfg.ID,
-		provider:              cfg.Provider,
-		hostedThreadID:        cfg.HostedThreadID,
-		invokerHostedThreadID: cfg.InvokerHostedThreadID,
-		invokerNativeThreadID: cfg.InvokerNativeThreadID,
-		invokerProvider:       cfg.InvokerProvider,
-		createdAt:             cfg.CreatedAt,
-		spawnMode:             cfg.SpawnMode,
-		agentExecutions:       cfg.AgentExecutions,
-		metadata:              cfg.Metadata,
-		processStarted:        cfg.ProcessStarted,
+
 		stateOwner: State{
 			presentationMode:     cfg.PresentationMode,
 			sidebarPlacement:     cfg.SidebarPlacement,
@@ -111,13 +101,44 @@ func New(cfg Config) *Session {
 			deliveryExpiries: cfg.DeliveryExpiries,
 			sendAttempts:     cfg.SendAttempts,
 			queuedTurns:      cfg.QueuedTurns},
+		identity: attachmentIdentity{id: cfg.ID, provider: cfg.Provider, hostedThreadID: cfg.HostedThreadID, invokerHostedThreadID: cfg.InvokerHostedThreadID, invokerNativeThreadID: cfg.InvokerNativeThreadID, invokerProvider: cfg.InvokerProvider, createdAt: cfg.CreatedAt, spawnMode: cfg.SpawnMode, agentExecutions: cfg.AgentExecutions, metadata: cfg.Metadata, processStarted: cfg.ProcessStarted},
 	}
-	sess.wire.session = sess
-	sess.delivery.session = sess
-	sess.stateOwner.session = sess
-	sess.runtime.session = sess
-	sess.lifecycle.session = sess
-	sess.view.session = sess
+	sess.wire.identity = &sess.identity
+	sess.wire.delivery = &sess.delivery
+	sess.wire.stateOwner = &sess.stateOwner
+	sess.wire.runtime = &sess.runtime
+	sess.wire.lifecycle = &sess.lifecycle
+	sess.wire.view = &sess.view
+	sess.delivery.identity = &sess.identity
+	sess.delivery.wire = &sess.wire
+	sess.delivery.stateOwner = &sess.stateOwner
+	sess.delivery.runtime = &sess.runtime
+	sess.delivery.lifecycle = &sess.lifecycle
+	sess.delivery.view = &sess.view
+	sess.stateOwner.identity = &sess.identity
+	sess.stateOwner.wire = &sess.wire
+	sess.stateOwner.delivery = &sess.delivery
+	sess.stateOwner.runtime = &sess.runtime
+	sess.stateOwner.lifecycle = &sess.lifecycle
+	sess.stateOwner.view = &sess.view
+	sess.runtime.identity = &sess.identity
+	sess.runtime.wire = &sess.wire
+	sess.runtime.delivery = &sess.delivery
+	sess.runtime.stateOwner = &sess.stateOwner
+	sess.runtime.lifecycle = &sess.lifecycle
+	sess.runtime.view = &sess.view
+	sess.lifecycle.identity = &sess.identity
+	sess.lifecycle.wire = &sess.wire
+	sess.lifecycle.delivery = &sess.delivery
+	sess.lifecycle.stateOwner = &sess.stateOwner
+	sess.lifecycle.runtime = &sess.runtime
+	sess.lifecycle.view = &sess.view
+	sess.view.identity = &sess.identity
+	sess.view.wire = &sess.wire
+	sess.view.delivery = &sess.delivery
+	sess.view.stateOwner = &sess.stateOwner
+	sess.view.runtime = &sess.runtime
+	sess.view.lifecycle = &sess.lifecycle
 	return sess
 }
 
@@ -146,7 +167,7 @@ func (sess *Session) ConfigureSavedReaders(turn func(context.Context, string) (l
 
 // OpenWireSpool opens the attachment's ordered wire log.
 func (sess *Wire) OpenWireSpool(dir string) error {
-	spool, err := newWireSpool(dir, sess.session.id)
+	spool, err := newWireSpool(dir, sess.identity.id)
 	if err != nil {
 		return err
 	}
@@ -168,20 +189,20 @@ func (sess *Session) ConfigureRegistration(progress func(observability.RestartSt
 func (sess *Session) DidRegister() {
 	sess.stateOwner.bindCatalogSource(sess.stateOwner.ThreadID())
 	sess.stateOwner.recordRestartStep(restartRegistered)
-	if sess.agentExecutions != nil {
+	if sess.identity.agentExecutions != nil {
 		// Presentation is mutable once this attachment is resolvable.
 		sess.stateOwner.stateMu.Lock()
 		presentationMode, status, threadID := sess.stateOwner.presentationMode, sess.stateOwner.connectionStatusLocked(), sess.stateOwner.threadID
 		sess.stateOwner.stateMu.Unlock()
-		if err := sess.agentExecutions.BindSession(sess.hostedThreadID, sess.id, threadID, status, presentationMode); err != nil {
-			log.Printf("bind hosted thread %s: %v", sess.hostedThreadID, err)
+		if err := sess.identity.agentExecutions.BindSession(sess.identity.hostedThreadID, sess.identity.id, threadID, status, presentationMode); err != nil {
+			log.Printf("bind hosted thread %s: %v", sess.identity.hostedThreadID, err)
 		}
 	}
-	sess.stateOwner.subscriptionSweep(sess.hostedThreadID)
+	sess.stateOwner.subscriptionSweep(sess.identity.hostedThreadID)
 }
 
 // WarmSkills begins the shared cwd read without waiting for a pane request.
-func (sess *State) WarmSkills() { sess.session.view.skills.Current(sess.cwd) }
+func (sess *State) WarmSkills() { sess.view.skills.Current(sess.cwd) }
 
 // RecordCreationPosture records the provider values of the admitted creation.
 func (sess *State) RecordCreationPosture(req ProviderRequest) {
@@ -193,7 +214,7 @@ func (sess *Session) DiscardSpawnResources() {
 	sess.stateOwner.releaseCatalogSource()
 	if sess.wire.spool != nil {
 		if err := sess.wire.spool.close(true); err != nil {
-			log.Printf("close wire spool %s: %v", sess.id, err)
+			log.Printf("close wire spool %s: %v", sess.identity.id, err)
 		}
 	}
 }

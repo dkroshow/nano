@@ -33,7 +33,7 @@ func (s *AttachmentCoordinator) ConfirmDurableThread(ctx context.Context, change
 	s.Executions.SavedTranscriptApplied(provider, nativeThreadID)
 	if sess := s.Registry.SessionForThread(provider, nativeThreadID); sess != nil {
 		sess.View().NotifySavedTranscript()
-		sessions.ReconcileSavedTranscript(ctx, sess)
+		sessions.ReconcileSavedTranscript(ctx, sess.State())
 	}
 	if provider == string(model.ProviderClaude) {
 		s.finishDetachedClaudeOwed(nativeThreadID)

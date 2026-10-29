@@ -60,11 +60,13 @@ func TestTurnActiveTransition(t *testing.T) {
 // flight must have nothing to address, or the stop affordance could interrupt
 // a turn that already ended.
 func TestSessionTracksTurnID(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	sess.stateOwner.threadID = "thread_a"
 
 	if _, turnID := sess.stateOwner.activeTurn(); turnID != "" {
@@ -85,11 +87,13 @@ func TestSessionTracksTurnID(t *testing.T) {
 // stop a session with no turn in flight is a 200 saying nothing was
 // interrupted, not an error the operator has to read.
 func TestHandleInterruptWithoutTurn(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	sess.stateOwner.threadID = "thread_a"
 
 	rec := httptest.NewRecorder()
@@ -128,11 +132,13 @@ func TestInterruptRaceReason(t *testing.T) {
 // TestHandleTurnOptions proves the per-turn overrides round-trip and that an
 // omitted field is left alone while an explicit empty string clears it.
 func TestHandleTurnOptions(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	sess.stateOwner.model = "gpt-5.6-sol"
 	sess.stateOwner.threadID = "native-1"
 
@@ -179,12 +185,14 @@ func TestHandleTurnOptions(t *testing.T) {
 // silent, and exit clears a stale in-flight flag.
 func TestSessionTurnActiveFromWire(t *testing.T) {
 	var nudges int
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
 			runtimeNotify:  func() { nudges++ },
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
 	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
 
@@ -213,11 +221,13 @@ func TestSessionTurnActiveFromWire(t *testing.T) {
 // to the deploy moment on each nano restart (2026-08-06, 14 threads sharing
 // one restart minute). Replay flips the flag; only a live close stamps.
 func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
 	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
 
@@ -239,10 +249,12 @@ func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
 }
 
 func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *testing.T) {
-	sess := sessionWithOwners(&Session{id: "blocked-summary",
+	sess := sessionWithOwners(&Session{
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	s := &Registry{sessions: map[string]*Session{sess.id: sess}}
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{id: "blocked-summary"},
+	})
+	s := &Registry{sessions: map[string]*Session{sess.identity.id: sess}}
 	sess.stateOwner.stateMu.Lock()
 	done := make(chan struct{})
 	go func() {
@@ -275,13 +287,15 @@ func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *test
 // making the sidebar promote and demote the same row for every old turn.
 func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	nudges := 0
-	sess := sessionWithOwners(&Session{provider: "claude",
+	sess := sessionWithOwners(&Session{
 		stateOwner: State{
 			state:          map[string]json.RawMessage{},
 			runtimeNotify:  func() { nudges++ },
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		view: View{
-			projection: newDeliveryTestProjection("claude")}})
+			projection: newDeliveryTestProjection("claude")},
+		identity: attachmentIdentity{provider: "claude"},
+	})
 	sess.stateOwner.beginTurnRestore()
 
 	user := []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"old prompt"}]}}`)
@@ -308,13 +322,15 @@ func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	}
 
 	activeNudges := 0
-	active := sessionWithOwners(&Session{provider: "claude",
+	active := sessionWithOwners(&Session{
 		stateOwner: State{
 			state:          map[string]json.RawMessage{},
 			runtimeNotify:  func() { activeNudges++ },
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		view: View{
-			projection: newDeliveryTestProjection("claude")}})
+			projection: newDeliveryTestProjection("claude")},
+		identity: attachmentIdentity{provider: "claude"},
+	})
 	active.stateOwner.beginTurnRestore()
 	active.wire.recordWireLive(protocol.Send, user, false)
 	if active.view.Summary().TurnActive || activeNudges != 0 {
@@ -328,13 +344,15 @@ func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 
 func TestClaudeRestoreDefersGenuineLiveCompletionUntilSettlement(t *testing.T) {
 	nudges := 0
-	sess := sessionWithOwners(&Session{provider: "claude",
+	sess := sessionWithOwners(&Session{
 		stateOwner: State{
 			state:          map[string]json.RawMessage{},
 			runtimeNotify:  func() { nudges++ },
 			lifecycleState: testLifecycleSnapshot("starting", false)},
 		view: View{
-			projection: newDeliveryTestProjection("claude")}})
+			projection: newDeliveryTestProjection("claude")},
+		identity: attachmentIdentity{provider: "claude"},
+	})
 	sess.stateOwner.beginTurnRestore()
 	sess.stateOwner.setTurnActive(true, "live-during-restore", 100, true)
 	sess.stateOwner.setTurnActive(false, "", 0, true)

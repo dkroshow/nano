@@ -39,12 +39,12 @@ func newReplayOwnerHarness(t *testing.T) *replayOwnerHarness {
 func (h *replayOwnerHarness) resume(t *testing.T) error {
 	t.Helper()
 	if h.current != nil {
-		if err := claudeDrainSettled(h.current); err != nil {
+		if err := claudeDrainSettled(h.current.Runtime()); err != nil {
 			return err
 		}
 	}
 	b := h.base
-	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.metadata, Turns: b.delivery.turns, QueuedTurns: b.delivery.queuedTurns, SendAttempts: b.delivery.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.stateOwner.rememberAttachment, ForgetAttachment: b.stateOwner.forgetAttachment})
+	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.identity.metadata, Turns: b.delivery.turns, QueuedTurns: b.delivery.queuedTurns, SendAttempts: b.delivery.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.stateOwner.rememberAttachment, ForgetAttachment: b.stateOwner.forgetAttachment})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func (h *replayOwnerHarness) resume(t *testing.T) error {
 			sess.runtime.core.Close()
 		}
 	})
-	c, err := resumeClaudeSession(sess, ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: "native-1", Cwd: b.CWD(), ClaudeBin: "/fake/claude", ClaudeShimWS: h.shim.WSURL(), ClaudeShimSpools: h.dir, ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: b.HostedThreadID(), ShimSessionID: "shim-1"}})
+	c, err := resumeClaudeSession(sess.Runtime(), ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: "native-1", Cwd: b.CWD(), ClaudeBin: "/fake/claude", ClaudeShimWS: h.shim.WSURL(), ClaudeShimSpools: h.dir, ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: b.HostedThreadID(), ShimSessionID: "shim-1"}})
 	if c != nil {
 		t.Cleanup(func() { _ = c.Close() })
 	}
@@ -107,7 +107,7 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 		t.Fatalf("stalled resume=%v; want unsettled replay", err)
 	}
 	stalled := h.current
-	drained, ok := claudeDrains.Load(claudeDrainKey(stalled))
+	drained, ok := claudeDrains.Load(claudeDrainKey(stalled.Runtime()))
 	if !ok {
 		t.Fatal("stalled replay has no pending drain acknowledgement")
 	}
@@ -181,7 +181,7 @@ func TestClaudeReplayDrainFencesSessionRetryAndCompletion(t *testing.T) {
 		t.Fatalf("overlapping retry attached (%d->%d) or started replacements", attaches, got)
 	}
 	unblock()
-	waitForClaude(t, "abandoned drain acknowledgement", func() bool { return claudeDrainSettled(stalled) == nil })
+	waitForClaude(t, "abandoned drain acknowledgement", func() bool { return claudeDrainSettled(stalled.Runtime()) == nil })
 	if after := stalled.wire.seq; after != before {
 		t.Fatalf("abandoned generation published %d events", after-before)
 	}

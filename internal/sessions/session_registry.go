@@ -33,7 +33,7 @@ func (s *Registry) SessionForThread(provider, nativeThreadID string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider != provider || sess.stateOwner.ThreadID() != nativeThreadID {
+		if sess.identity.provider != provider || sess.stateOwner.ThreadID() != nativeThreadID {
 			continue
 		}
 		sess.stateOwner.stateMu.Lock()
@@ -91,7 +91,7 @@ func (s *Registry) hostedThreadSessions(id string) []*Session {
 	defer s.mu.Unlock()
 	matches := make([]*Session, 0, 1)
 	for _, sess := range s.sessions {
-		if sess.hostedThreadID == id {
+		if sess.identity.hostedThreadID == id {
 			matches = append(matches, sess)
 		}
 	}
@@ -111,8 +111,8 @@ func liveHostedThreadSession(matches []*Session) *Session {
 		if exited {
 			continue
 		}
-		created := sess.createdAt.Format(time.RFC3339)
-		if oldest == nil || created < oldestCreated || (created == oldestCreated && sess.id < oldest.id) {
+		created := sess.identity.createdAt.Format(time.RFC3339)
+		if oldest == nil || created < oldestCreated || (created == oldestCreated && sess.identity.id < oldest.identity.id) {
 			oldest, oldestCreated = sess, created
 		}
 	}
@@ -124,8 +124,8 @@ func (s *Registry) ResolveLiveHostedThreadRecord(ref string, lookup func(string)
 	s.mu.Lock()
 	hostedThreadID := ""
 	for _, sess := range s.sessions {
-		if sess.id == ref {
-			hostedThreadID = sess.hostedThreadID
+		if sess.identity.id == ref {
+			hostedThreadID = sess.identity.hostedThreadID
 			break
 		}
 	}
@@ -134,11 +134,11 @@ func (s *Registry) ResolveLiveHostedThreadRecord(ref string, lookup func(string)
 			if sess.stateOwner.ThreadID() != ref {
 				continue
 			}
-			if hostedThreadID != "" && hostedThreadID != sess.hostedThreadID {
+			if hostedThreadID != "" && hostedThreadID != sess.identity.hostedThreadID {
 				s.mu.Unlock()
 				return threads.SessionRecord{}, false // provider-native reference is ambiguous
 			}
-			hostedThreadID = sess.hostedThreadID
+			hostedThreadID = sess.identity.hostedThreadID
 		}
 	}
 	s.mu.Unlock()
@@ -169,7 +169,7 @@ func (s *Registry) SnapshotSessions() []*Session {
 // RegisterSession publishes an attachment under its immutable session ID.
 func (s *Registry) RegisterSession(sess *Session) {
 	s.mu.Lock()
-	s.sessions[sess.id] = sess
+	s.sessions[sess.identity.id] = sess
 	s.mu.Unlock()
 }
 
@@ -183,8 +183,8 @@ func (s *Registry) RemoveSession(id string) {
 // RemoveCurrentSession leaves any replacement attachment registered.
 func (s *Registry) RemoveCurrentSession(sess *Session) {
 	s.mu.Lock()
-	if s.sessions[sess.id] == sess {
-		delete(s.sessions, sess.id)
+	if s.sessions[sess.identity.id] == sess {
+		delete(s.sessions, sess.identity.id)
 	}
 	s.mu.Unlock()
 }
@@ -194,7 +194,7 @@ func (s *Registry) VolatileSummaries(needsAttention map[string]bool) []Summary {
 	sessions := s.SnapshotSessions()
 	summaries := make([]Summary, 0, len(sessions))
 	for _, sess := range sessions {
-		summary, live := sess.stateOwner.volatileSummary(needsAttention[sess.hostedThreadID])
+		summary, live := sess.stateOwner.volatileSummary(needsAttention[sess.identity.hostedThreadID])
 		if live {
 			summaries = append(summaries, summary)
 		}
@@ -216,7 +216,7 @@ func (s *Registry) AttachmentSession(provider, nativeID string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider == provider && sess.stateOwner.ThreadID() == nativeID {
+		if sess.identity.provider == provider && sess.stateOwner.ThreadID() == nativeID {
 			return sess
 		}
 	}
@@ -228,7 +228,7 @@ func (s *Registry) ForgetDetachedClaude(nativeID string, forget func() error) er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider == "claude" && sess.stateOwner.ThreadID() == nativeID && sess.view.Summary().Status != StatusExited {
+		if sess.identity.provider == "claude" && sess.stateOwner.ThreadID() == nativeID && sess.view.Summary().Status != StatusExited {
 			return fmt.Errorf("thread is attached; end its session before forgetting")
 		}
 	}
@@ -240,7 +240,7 @@ func (s *Registry) CheckRetiredReferences(retired map[string]bool, checkDetached
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if retired[sess.hostedThreadID] || retired[sess.invokerHostedThreadID] {
+		if retired[sess.identity.hostedThreadID] || retired[sess.identity.invokerHostedThreadID] {
 			return fmt.Errorf("retired identity still has a runtime attachment or invocation edge")
 		}
 	}

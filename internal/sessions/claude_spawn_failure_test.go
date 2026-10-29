@@ -25,7 +25,7 @@ func (rejectingNativeClaim) ClaimNativeIDResolving(string, string, string, bool,
 func TestClaudeSpawnFailureTranslatedDespiteTheSeededThreadID(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	sess.stateOwner.threadID = "native-1" // identity at spawn, no handshake yet
-	c := &claudeSession{sess: sess, exited: make(chan struct{})}
+	c := &claudeSession{sess: sess.Runtime(), exited: make(chan struct{})}
 
 	c.captureState(&claudeChildTransport{owner: c}, []byte(claudeMissingTranscriptResult))
 
@@ -39,7 +39,7 @@ func TestClaudeSpawnFailureTranslatedDespiteTheSeededThreadID(t *testing.T) {
 // a live session must not be marked as a failed spawn by it.
 func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	c := &claudeSession{sess: sess, exited: make(chan struct{})}
+	c := &claudeSession{sess: sess.Runtime(), exited: make(chan struct{})}
 	tr := &claudeChildTransport{owner: c}
 
 	c.markTransportReady()
@@ -54,10 +54,10 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	// recorded: the init still happened, so a later error result is not a
 	// failed spawn, and the session keeps its provisional identity.
 	unrecorded, _ := claudeTestSession(t)
-	unrecorded.hostedThreadID = "nht_unrecorded"
-	unrecorded.metadata = rejectingNativeClaim{unrecorded.metadata} // models the hosted owner refusing the absent identity
+	unrecorded.identity.hostedThreadID = "nht_unrecorded"
+	unrecorded.identity.metadata = rejectingNativeClaim{unrecorded.identity.metadata} // models the hosted owner refusing the absent identity
 	unrecorded.stateOwner.threadID = "cs_handle"
-	child := &claudeSession{sess: unrecorded, exited: make(chan struct{}), supersedes: "cs_handle"}
+	child := &claudeSession{sess: unrecorded.Runtime(), exited: make(chan struct{}), supersedes: "cs_handle"}
 	shim := &claudeShimTransport{owner: child, shimSessionID: "cs_handle"}
 	child.markTransportReady()
 	child.captureState(shim, []byte(claudeInitLine))
@@ -77,7 +77,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 // re-attach to a session that was deliberately let go of.
 func TestClaudeInitAfterCloseDoesNotResurrectTheSession(t *testing.T) {
 	sess, attachments := claudeTestSession(t)
-	c := newClaudeSession(sess, "")
+	c := newClaudeSession(sess.Runtime(), "")
 	sess.lifecycle.Close()
 
 	c.captureState(&claudeChildTransport{owner: c}, []byte(claudeInitLine))

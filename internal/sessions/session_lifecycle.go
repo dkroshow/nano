@@ -47,7 +47,7 @@ func (sess *State) applyLifecycleObservationLocked(observation lifecycle.Observa
 	before := sess.lifecycleState
 	out, err := lifecycle.Transition(before, observation)
 	if err != nil {
-		log.Printf("session %s lifecycle observation %s: %v", sess.session.id, observation.Event, err)
+		log.Printf("session %s lifecycle observation %s: %v", sess.identity.id, observation.Event, err)
 		return false, false
 	}
 	sess.lifecycleState = out.Snapshot
@@ -68,7 +68,7 @@ func (sess *State) applyLifecycleObservationLocked(observation lifecycle.Observa
 			sess.recordRestartFailure("detached")
 		}
 	}
-	if core := sess.session.runtime.coreSession(); core != nil {
+	if core := sess.runtime.coreSession(); core != nil {
 		copy := observation
 		core.ObserveAsync(coresession.AdapterEvent{Lifecycle: &copy})
 		// A thread that starts or returns to working can take a prompt queued
@@ -77,7 +77,7 @@ func (sess *State) applyLifecycleObservationLocked(observation lifecycle.Observa
 		// observation, and the drain reads the current turn only after the
 		// caller releases stateMu.
 		if workingLifecycle(out.Snapshot.State) && !workingLifecycle(before.State) && core.TurnCapabilities().RunningTurnInput {
-			sess.session.delivery.kickQueuedTurnDrain()
+			sess.delivery.kickQueuedTurnDrain()
 		}
 	}
 	return before.State != out.Snapshot.State, out.Drain
@@ -146,7 +146,7 @@ func (sess *State) observeConnection(event lifecycle.Event) {
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
-		sess.session.delivery.kickQueuedTurnDrain()
+		sess.delivery.kickQueuedTurnDrain()
 	}
 }
 

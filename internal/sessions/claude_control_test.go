@@ -137,7 +137,7 @@ func controlResponder(t *testing.T, payload func(subtype string) any) *claudeshi
 func startControlSession(t *testing.T, shim *claudeshim.Server) (*Session, *claudeSession) {
 	t.Helper()
 	sess, _ := claudeTestSession(t)
-	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
+	claude, err := startClaudeSession(sess.Runtime(), claudeShimSpawnRequest(sess, shim.WSURL()))
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestReattachRecoversOnlyUnansweredControlRequests(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{Bin: "claude"}, hostedstore.Attachment{})
+	claude, err := attachClaudeSession(sess.Runtime(), shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{Bin: "claude"}, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}

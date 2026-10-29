@@ -217,7 +217,7 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 			return nil, err
 		}
 	}
-	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: s.Catalog, Diagnostics: s.Diagnostics}, sess))
+	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: s.Catalog, Diagnostics: s.Diagnostics}, sess.State()))
 	// Runtime posture hydration lives at the provider seams —
 	// seedCodexTurnOverrides and the Claude resume overlay — because what
 	// "re-applying posture" means is provider mechanics.

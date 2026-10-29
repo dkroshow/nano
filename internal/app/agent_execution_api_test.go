@@ -1205,7 +1205,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	}
 	seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-action", "claude:9", "leave me alone")
 
-	sessions.ReconcileSavedTranscript(context.Background(), sess)
+	sessions.ReconcileSavedTranscript(context.Background(), sess.State())
 	if accepted, ok := queue.Get(queuedOperation.TransportActionID); !ok || accepted.State != submissionAccepted || accepted.Text == "" {
 		t.Fatalf("completed turn changed accepted prompt = %#v, present=%v", accepted, ok)
 	}
@@ -1316,7 +1316,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	}
 	seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), "unrelated-owner", model.ProviderClaude, "native-fast-start", "unrelated-output-first", "claude:9", "leave me alone")
 
-	sessions.ReconcileSavedTranscript(context.Background(), sess)
+	sessions.ReconcileSavedTranscript(context.Background(), sess.State())
 	if current, _ := executions.Turn(operation.ID); current.Status != agentTurnRunning {
 		t.Fatalf("incomplete durable turn settled operation: %#v", current)
 	}

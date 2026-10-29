@@ -66,14 +66,16 @@ func readySendTestSession(t *testing.T, store *turns.LegacyJournal, sender func(
 	store.BindTransactionStore(turnStore)
 	queue.BindTransactionStore(turnStore)
 	projection := newDeliveryTestProjection("codex")
-	return sessionWithOwners(&Session{id: "nano-session",
-		provider: "codex", hostedThreadID: "hosted-thread",
+	return sessionWithOwners(&Session{
+
 		stateOwner: State{threadID: "native-thread",
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		view: View{
 			projection: projection},
 		delivery: Delivery{turns: turnStore, sendAttempts: store, queuedTurns: queue,
-			sendOps: map[string]*turnSendOperation{}, turnSender: sender}})
+			sendOps: map[string]*turnSendOperation{}, turnSender: sender},
+		identity: attachmentIdentity{id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread"},
+	})
 }
 
 func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context, string) (json.RawMessage, error)) (*Session, *turns.Store) {
@@ -94,13 +96,14 @@ func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context
 	projection := newDeliveryTestProjection("codex")
 
 	sess := sessionWithOwners(&Session{
-		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread",
+
 		stateOwner: State{threadID: "native-thread",
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		view: View{
 			projection: projection},
 		delivery: Delivery{turns: store, sendAttempts: attempts, queuedTurns: queue,
 			sendOps: map[string]*turnSendOperation{}, turnSender: sender},
+		identity: attachmentIdentity{id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread"},
 	})
 	return sess, store
 }
@@ -429,7 +432,7 @@ func TestQueuedTurnCanBeCanceledBeforeDelivery(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
 	sess.stateOwner.lifecycleState = testLifecycleSnapshot(sess.stateOwner.connectionStatusLocked(), true)
-	sess.agentExecutions = &unlinkedPromptExecutions{} // a Discard ends any operation the prompt carries
+	sess.identity.agentExecutions = &unlinkedPromptExecutions{} // a Discard ends any operation the prompt carries
 	if rec := postTurn(t, sess.Delivery(), context.Background(), "cancel-queued", "never send"); rec.Code != http.StatusAccepted {
 		t.Fatalf("queue status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -564,7 +567,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 					t.Fatal(err)
 				}
 				sess := readySendTestSession(t, attempts, nil)
-				sess.agentExecutions = &unlinkedPromptExecutions{} // a Discard ends any operation the prompt carries
+				sess.identity.agentExecutions = &unlinkedPromptExecutions{} // a Discard ends any operation the prompt carries
 				var sent atomic.Int32
 				var sentText atomic.Value
 				sess.delivery.turnSender = func(_ context.Context, delivered string) (json.RawMessage, error) {
@@ -972,8 +975,8 @@ func TestTurnSendAcceptedActionBypassesReadinessGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls atomic.Int32
-	sess := sessionWithOwners(&Session{id: "nano-session",
-		provider: "codex",
+	sess := sessionWithOwners(&Session{
+
 		stateOwner: State{
 			threadID:       "native-thread",
 			lifecycleState: testLifecycleSnapshot("starting", false)},
@@ -983,7 +986,9 @@ func TestTurnSendAcceptedActionBypassesReadinessGate(t *testing.T) {
 			turnSender: func(context.Context, string) (json.RawMessage, error) {
 				calls.Add(1)
 				return nil, nil
-			}}})
+			}},
+		identity: attachmentIdentity{id: "nano-session", provider: "codex"},
+	})
 	rec := postTurn(t, sess.Delivery(), context.Background(), "accepted-while-starting", "already accepted")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -1142,7 +1147,7 @@ func TestClaudePromptSentWhileATurnWorksIsDeliveredAtOnce(t *testing.T) {
 		sent.Add(1)
 		return json.RawMessage(`{"turn":{"id":"claude:hosted-thread:2"}}`), nil
 	})
-	sess.provider = "claude"
+	sess.identity.provider = "claude"
 	sess.view.projection = newDeliveryTestProjection("claude")
 	sess.view.projection.setNativeThreadID("native-thread")
 	if err := sess.runtime.ensureCoreSession(); err != nil {

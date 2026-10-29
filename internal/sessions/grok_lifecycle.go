@@ -90,7 +90,7 @@ func (a grokLifecycleAdapter) Current() (lifecycle.Observation, bool) {
 	return lifecycle.Observation{Event: event, Epoch: a.epoch, Sequence: a.sequence}, true
 }
 
-func observeGrokWork(sess *Session, dir wire.Direction, line []byte, live bool) {
+func observeGrokWork(sess *State, dir wire.Direction, line []byte, live bool) {
 	active, turnID, startedAtMs, ok := grokWorkEvidence(dir, line)
 	if !ok || !live {
 		return
@@ -98,19 +98,19 @@ func observeGrokWork(sess *Session, dir wire.Direction, line []byte, live bool) 
 	if active && startedAtMs == 0 {
 		startedAtMs = time.Now().UnixMilli()
 	}
-	sess.stateOwner.setTurnActive(active, turnID, startedAtMs, true)
+	sess.setTurnActive(active, turnID, startedAtMs, true)
 }
 
-func grokRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {
+func grokRuntimeEvidence(sess *State, dir wire.Direction, line []byte, at time.Time) {
 	if dir != protocol.Recv {
 		return
 	}
 	if promptID, status, usage, terminal := grokTerminalFromWire(line); terminal {
 		if len(usage) > 0 {
-			sess.stateOwner.setLiveTokenUsageForTurn(promptID, usage)
+			sess.setLiveTokenUsageForTurn(promptID, usage)
 		}
 		if status == agentTurnFailed {
-			sess.stateOwner.setLiveError("Grok turn failed")
+			sess.setLiveError("Grok turn failed")
 		}
 		duration := int64(0)
 		var usageBody map[string]json.RawMessage

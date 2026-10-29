@@ -159,11 +159,13 @@ func TestRouteInteractionLegacyPair(t *testing.T) {
 // and claiming is single-shot so a second tab's answer collapses rather than
 // double-responding.
 func TestPendingInteractionsAreServerOwned(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	p := interact.PendingInteraction{ID: "7", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "2026-07-30T10:00:00Z"}
 	sess.stateOwner.addPendingInteraction(p)
 
@@ -198,11 +200,13 @@ func TestPendingInteractionsAreServerOwned(t *testing.T) {
 // TestHandleInteractionAlreadyResolved: answering something already answered is
 // a 409 the card collapses on, not an error the operator has to read.
 func TestHandleInteractionAlreadyResolved(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/x/interactions/7", strings.NewReader(`{"decision":"accept"}`))
 	sess.delivery.HandleInteraction(rec, req, "7")
@@ -214,11 +218,13 @@ func TestHandleInteractionAlreadyResolved(t *testing.T) {
 // TestHandleInteractionKeepsMalformedAnswerPending: a typo must not consume the
 // dialog — losing it would leave the turn parked with no card to answer it.
 func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{
 		ID: "7", Method: methodRequestUserInput, Kind: kindUserInput,
 		Params: json.RawMessage(`{"questions":[{"id":"q1"}]}`), CreatedAt: "2026-07-30T10:00:00Z",
@@ -241,13 +247,15 @@ func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
 // answers. Observed live 2026-07-30.
 func TestServerRequestResolvedCollapses(t *testing.T) {
 	daemon := NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true })
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	sess.stateOwner.threadID = "thread_a"
-	daemon.sessions["thread_a"] = sess
+	daemon.sessions["thread_a"] = sess.Runtime()
 	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{
 		ID: "4", Method: methodRequestUserInput, Kind: kindUserInput, ThreadID: "thread_a",
 		CreatedAt: "2026-07-30T10:00:00Z",
@@ -268,13 +276,15 @@ func TestServerRequestResolvedCollapses(t *testing.T) {
 // so a request left unanswered when a session goes away holds its turn open
 // with nobody able to reach it.
 func TestCloseInteractionsAnswersEverythingParked(t *testing.T) {
-	sess := sessionWithOwners(&Session{provider: "codex",
+	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
 		runtime: Runtime{
 			codex: NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true })},
 		stateOwner: State{
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{provider: "codex"},
+	})
 	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "a"})
 	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "2", Method: methodRequestUserInput, Kind: kindUserInput, CreatedAt: "b"})
 

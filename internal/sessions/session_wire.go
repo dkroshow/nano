@@ -85,13 +85,13 @@ func (batch *queuedCodexDeltaBatch) mergedLine() ([]byte, error) {
 }
 
 func (sess *State) catalogPathForNudge(line []byte) string {
-	if sess.session.provider == "codex" {
+	if sess.identity.provider == "codex" {
 		sess.learnCatalogSourcePath(codexCatalogPath(line))
 	}
 	sess.stateMu.Lock()
 	path, threadID := sess.catalogSourcePath, sess.threadID
 	sess.stateMu.Unlock()
-	if sess.session.provider == "claude" {
+	if sess.identity.provider == "claude" {
 		return claudeTranscriptPath(sess.cwd, threadID)
 	}
 	return path
@@ -120,8 +120,8 @@ func (sess *State) setProjectionThreadID(id string) {
 		sess.durablyTerminalTurnThreadID = ""
 	}
 	sess.stateMu.Unlock()
-	if sess.session.view.projection != nil {
-		sess.session.view.projection.setNativeThreadID(id)
+	if sess.view.projection != nil {
+		sess.view.projection.setNativeThreadID(id)
 	}
 	sess.bindCatalogSource(id)
 }
@@ -140,7 +140,7 @@ func (sess *State) bindCatalogSource(id string) {
 	if closed {
 		return
 	}
-	sess.catalogSources.BindAttachedSource(sess.session.id, sess.session.provider, id, cwd, known, background)
+	sess.catalogSources.BindAttachedSource(sess.identity.id, sess.identity.provider, id, cwd, known, background)
 	sess.stateMu.Lock()
 	closed = sess.closed
 	sess.stateMu.Unlock()
@@ -151,7 +151,7 @@ func (sess *State) bindCatalogSource(id string) {
 
 func (sess *State) releaseCatalogSource() {
 	if sess.catalogSources != nil {
-		sess.catalogSources.ReleaseAttachedSource(sess.session.id)
+		sess.catalogSources.ReleaseAttachedSource(sess.identity.id)
 	}
 }
 
@@ -212,7 +212,7 @@ func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Dir
 		Dir: string(dir),
 		Msg: json.RawMessage(append([]byte(nil), line...)),
 	}
-	if core := sess.session.runtime.coreSession(); core != nil && (dir == wire.Recv || replay) {
+	if core := sess.runtime.coreSession(); core != nil && (dir == wire.Recv || replay) {
 		frame := append([]byte(nil), evt.Msg...)
 		sequence := append([]int64(nil), wireSeq...)
 		adapterEvent, terminal := sess.adapterTurnEvent(dir, frame, live, at)
@@ -226,9 +226,9 @@ func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Dir
 				prepare()
 			}
 			sess.applyWireSemantic(gate, dir, frame, live, replay, at, sequence...)
-			if terminal != nil && sess.session.view.projection != nil {
-				terminal.FinalMessageID = sess.session.view.projection.finalAgentItemID(terminal.TurnID)
-				if usage := sess.session.stateOwner.completedTokenUsage(terminal.TurnID); usage != nil {
+			if terminal != nil && sess.view.projection != nil {
+				terminal.FinalMessageID = sess.view.projection.finalAgentItemID(terminal.TurnID)
+				if usage := sess.stateOwner.completedTokenUsage(terminal.TurnID); usage != nil {
 					terminal.Usage = coreturns.Usage{InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens, OutputTokens: usage.OutputTokens}
 				}
 			}
@@ -242,10 +242,10 @@ func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Dir
 			sess.publishWireEvent(evt, true)
 			return nil
 		}
-		if gate == nil && prepare == nil && live && !replay && sess.session.provider == "codex" &&
-			dir == wire.Recv && sess.session.view.projection != nil {
+		if gate == nil && prepare == nil && live && !replay && sess.identity.provider == "codex" &&
+			dir == wire.Recv && sess.view.projection != nil {
 			if delta, ok := parseQueuedCodexDelta(frame); ok &&
-				(delta.method != "item/agentMessage/delta" || !sess.session.view.projection.dropsLiveTextDeltas()) {
+				(delta.method != "item/agentMessage/delta" || !sess.view.projection.dropsLiveTextDeltas()) {
 				delta.at = at
 				delta.event = evt
 				delta.wireSeq = sequence
@@ -297,24 +297,24 @@ func (sess *Wire) adapterTurnEvent(dir wire.Direction, line []byte, live bool, a
 	if !live || dir != wire.Recv {
 		return coresession.AdapterEvent{}, nil
 	}
-	active, turnID, _, ok := turnActiveTransition(sess.session.provider, dir, line)
+	active, turnID, _, ok := turnActiveTransition(sess.identity.provider, dir, line)
 	if !ok || turnID == "" {
 		return coresession.AdapterEvent{}, nil
 	}
 	actionID := ""
-	if sess.session.delivery.queuedTurns != nil {
-		if prompt, found := sess.session.delivery.queuedTurns.ByProviderTurn(sess.session.provider, sess.session.stateOwner.ThreadID(), sess.session.hostedThreadID, turnID); found {
+	if sess.delivery.queuedTurns != nil {
+		if prompt, found := sess.delivery.queuedTurns.ByProviderTurn(sess.identity.provider, sess.stateOwner.ThreadID(), sess.identity.hostedThreadID, turnID); found {
 			actionID = prompt.ClientActionID
 		}
 	}
 	event := coresession.AdapterEvent{ProviderTurnID: turnID}
 	if active {
-		started := coreturns.Start{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
+		started := coreturns.Start{HostedThreadID: sess.identity.hostedThreadID, Provider: sess.identity.provider, NativeThreadID: sess.stateOwner.ThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
 		event.TurnEvents = []coresession.TurnEvent{{Started: &started}}
 		return event, nil
 	}
 	status := agentTurnCompleted
-	if sess.session.provider == "codex" {
+	if sess.identity.provider == "codex" {
 		var envelope struct {
 			Params struct {
 				Turn struct {
@@ -325,14 +325,14 @@ func (sess *Wire) adapterTurnEvent(dir wire.Direction, line []byte, live bool, a
 		if json.Unmarshal(line, &envelope) == nil && envelope.Params.Turn.Status != "" {
 			status = envelope.Params.Turn.Status
 		}
-	} else if sess.session.provider == "grok" {
+	} else if sess.identity.provider == "grok" {
 		_, parsedStatus, _, terminal := grokTerminalFromWire(line)
 		if !terminal {
 			return coresession.AdapterEvent{}, nil
 		}
 		status = parsedStatus
 	}
-	finished := &coreturns.Finish{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
+	finished := &coreturns.Finish{HostedThreadID: sess.identity.hostedThreadID, Provider: sess.identity.provider, NativeThreadID: sess.stateOwner.ThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
 	event.TurnEvents = []coresession.TurnEvent{{Finished: finished}}
 	return event, finished
 }
@@ -346,32 +346,32 @@ func (sess *Wire) applyWireSemantic(gate func() error, dir wire.Direction, line 
 	// Normalize before publishing the raw line. Every browser therefore sees
 	// the same projection order, and a slow/raw-feed tab cannot affect the
 	// transcript reducer.
-	if sess.session.view.projection != nil {
-		sess.session.view.projection.applyWireLive(dir, line, at, live, replay, wireSeq...)
+	if sess.view.projection != nil {
+		sess.view.projection.applyWireLive(dir, line, at, live, replay, wireSeq...)
 	}
 	// Wire-native catalog freshness: turn edges hint the session's known
 	// native file. Runs outside every session lock, and the callback is the
 	// catalog's nonblocking queue, so recording never stalls.
-	nudgesCatalog := wireNudgesCatalog(sess.session.provider, dir, line)
-	if sess.session.stateOwner.catalogRefresh != nil && nudgesCatalog {
-		if path := sess.session.stateOwner.catalogPathForNudge(line); path != "" {
-			sess.session.stateOwner.catalogRefresh(path)
+	nudgesCatalog := wireNudgesCatalog(sess.identity.provider, dir, line)
+	if sess.stateOwner.catalogRefresh != nil && nudgesCatalog {
+		if path := sess.stateOwner.catalogPathForNudge(line); path != "" {
+			sess.stateOwner.catalogRefresh(path)
 		}
 	}
-	sess.session.stateOwner.observeProviderWork(dir, line, live)
-	sess.session.view.applyLiveRuntimeWire(dir, line, at)
+	sess.stateOwner.observeProviderWork(dir, line, live)
+	sess.view.applyLiveRuntimeWire(dir, line, at)
 	// An MCP server changing startup state means the cached tool registry is
 	// stale; the next panel fetch re-asks app-server (mcp_inventory.go).
-	if inspection.MCPInventoryStale(sess.session.provider, dir, line) {
-		sess.session.view.mcp.Invalidate()
+	if inspection.MCPInventoryStale(sess.identity.provider, dir, line) {
+		sess.view.mcp.Invalidate()
 	}
-	if sess.session.view.projection != nil && wireNudgesProjectionMeta(sess.session.provider, dir, line) {
-		sess.session.view.projection.nudgeMetaRefresh()
+	if sess.view.projection != nil && wireNudgesProjectionMeta(sess.identity.provider, dir, line) {
+		sess.view.projection.nudgeMetaRefresh()
 	}
 	if gate != nil && gate() != nil {
 		return
 	}
-	sess.session.delivery.observeAgentExecutionWire(dir, line)
+	sess.delivery.observeAgentExecutionWire(dir, line)
 }
 
 func (sess *Wire) publishWireEvent(evt wire.Event, writeSpool bool) {
@@ -393,7 +393,7 @@ func (sess *Wire) publishWireEvent(evt wire.Event, writeSpool bool) {
 	if writeSpool && spool != nil {
 		spoolErr = spool.append(evt)
 		if spoolErr != nil {
-			log.Printf("wire spool append %s seq %d: %v", sess.session.id, evt.Seq, spoolErr)
+			log.Printf("wire spool append %s seq %d: %v", sess.identity.id, evt.Seq, spoolErr)
 		}
 	}
 	for _, ch := range subs {
@@ -443,7 +443,12 @@ func (sess *Wire) recordSpoolDropped(seq int64, err error) {
 
 // Wire owns the ordered raw event history, retained spool and event subscribers.
 type Wire struct {
-	session *Session
+	identity   *attachmentIdentity
+	delivery   *Delivery
+	stateOwner *State
+	runtime    *Runtime
+	lifecycle  *Lifecycle
+	view       *View
 
 	mu     sync.Mutex
 	events []wire.Event
