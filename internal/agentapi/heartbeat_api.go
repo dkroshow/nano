@@ -1,4 +1,4 @@
-package app
+package agentapi
 
 import (
 	"bytes"
@@ -15,7 +15,8 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
-func (s *server) handleHeartbeatAttachmentsList(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatAttachmentsList serves the configured heartbeat attachments.
+func (s *Controller) HandleHeartbeatAttachmentsList(w http.ResponseWriter, r *http.Request) {
 	if s.heartbeat == nil {
 		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
 		return
@@ -28,7 +29,8 @@ func (s *server) handleHeartbeatAttachmentsList(w http.ResponseWriter, r *http.R
 	httpapi.WriteJSON(w, map[string]any{"enabled": s.heartbeat.Enabled, "items": rows})
 }
 
-func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatAttachmentCreate validates and creates one heartbeat attachment.
+func (s *Controller) HandleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.Request) {
 	if s.heartbeat == nil {
 		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
 		return
@@ -48,7 +50,7 @@ func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.
 	}
 	s.heartbeat.AttachmentMu.Lock()
 	defer s.heartbeat.AttachmentMu.Unlock()
-	target, ok := s.resolveHostedThreadRecord(body.TargetHostedThreadID)
+	target, ok := s.hosted.ResolveHostedRecord(body.TargetHostedThreadID)
 	if !ok {
 		httpapi.WriteHTTPError(w, "targetHostedThreadId does not resolve to a hosted thread", http.StatusBadRequest)
 		return
@@ -95,14 +97,14 @@ func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.
 	_ = json.NewEncoder(w).Encode(rec)
 }
 
-func (s *server) normalizeHeartbeatActor(actor featureheartbeat.Actor) (featureheartbeat.Actor, error) {
+func (s *Controller) normalizeHeartbeatActor(actor featureheartbeat.Actor) (featureheartbeat.Actor, error) {
 	actor.Kind = strings.TrimSpace(actor.Kind)
 	actor.Name = strings.TrimSpace(actor.Name)
 	if actor.Kind == "" {
 		return featureheartbeat.Actor{}, errors.New("actor.kind is required")
 	}
 	if actor.Kind == "hosted-thread" {
-		record, ok := s.resolveHostedThreadRecord(actor.HostedThreadID)
+		record, ok := s.hosted.ResolveHostedRecord(actor.HostedThreadID)
 		if !ok {
 			return featureheartbeat.Actor{}, errors.New("actor hosted thread is unknown")
 		}
@@ -140,7 +142,7 @@ func heartbeatMutationActor(w http.ResponseWriter, r *http.Request) (featurehear
 	return body.Actor, body.Reason, true
 }
 
-func (s *server) heartbeatAttachmentID(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (s *Controller) heartbeatAttachmentID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if s.heartbeat == nil {
 		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
 		return "", false
@@ -153,7 +155,8 @@ func (s *server) heartbeatAttachmentID(w http.ResponseWriter, r *http.Request) (
 	return id, true
 }
 
-func (s *server) handleHeartbeatAttachmentRead(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatAttachmentRead serves one heartbeat attachment.
+func (s *Controller) HandleHeartbeatAttachmentRead(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.heartbeatAttachmentID(w, r)
 	if !ok {
 		return
@@ -166,7 +169,8 @@ func (s *server) handleHeartbeatAttachmentRead(w http.ResponseWriter, r *http.Re
 	httpapi.WriteJSON(w, rec)
 }
 
-func (s *server) handleHeartbeatAttachmentUpdate(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatAttachmentUpdate validates changes to one heartbeat attachment.
+func (s *Controller) HandleHeartbeatAttachmentUpdate(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.heartbeatAttachmentID(w, r)
 	if !ok {
 		return
@@ -225,7 +229,8 @@ func (s *server) handleHeartbeatAttachmentUpdate(w http.ResponseWriter, r *http.
 	httpapi.WriteJSON(w, rec)
 }
 
-func (s *server) handleHeartbeatAttachmentRemove(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatAttachmentRemove removes the selected heartbeat attachment with its actor evidence.
+func (s *Controller) HandleHeartbeatAttachmentRemove(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.heartbeatAttachmentID(w, r)
 	if !ok {
 		return
@@ -247,15 +252,17 @@ func (s *server) handleHeartbeatAttachmentRemove(w http.ResponseWriter, r *http.
 	httpapi.WriteJSON(w, rec)
 }
 
-func (s *server) handleHeartbeatAttachmentPause(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatAttachmentPause pauses the selected heartbeat attachment.
+func (s *Controller) HandleHeartbeatAttachmentPause(w http.ResponseWriter, r *http.Request) {
 	s.handleHeartbeatAttachmentToggle(w, r, true)
 }
 
-func (s *server) handleHeartbeatAttachmentResume(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatAttachmentResume resumes the selected heartbeat attachment.
+func (s *Controller) HandleHeartbeatAttachmentResume(w http.ResponseWriter, r *http.Request) {
 	s.handleHeartbeatAttachmentToggle(w, r, false)
 }
 
-func (s *server) handleHeartbeatAttachmentToggle(w http.ResponseWriter, r *http.Request, pause bool) {
+func (s *Controller) handleHeartbeatAttachmentToggle(w http.ResponseWriter, r *http.Request, pause bool) {
 	id, ok := s.heartbeatAttachmentID(w, r)
 	if !ok {
 		return
@@ -302,7 +309,8 @@ func decodeHeartbeatPrePingPatch(raw json.RawMessage) (*heartbeatPrePingTemplate
 	return &value, true, nil
 }
 
-func (s *server) handleHeartbeatLog(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatLog serves the bounded heartbeat decision log.
+func (s *Controller) HandleHeartbeatLog(w http.ResponseWriter, r *http.Request) {
 	if s.heartbeat == nil {
 		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
 		return

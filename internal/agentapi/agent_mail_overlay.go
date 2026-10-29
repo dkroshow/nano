@@ -14,7 +14,7 @@
 // The operator on the trusted local listener can also send mail as an
 // "operator" sender and edit an operator message while it is still unread —
 // both wired through agent_messages_api.go, which calls notifyMailChanged here.
-package app
+package agentapi
 
 import (
 	"log"
@@ -24,6 +24,7 @@ import (
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/interact"
 )
 
 const (
@@ -36,7 +37,8 @@ const (
 // global summary and fans them to SSE subscribers. Best-effort by design: a
 // failed read logs and drops the event — the durable store already committed,
 // and the client's next full fetch repairs any missed badge.
-func (s *server) notifyMailChanged(recipients ...string) {
+// NotifyMailChanged refreshes unread notices and publishes committed inbox counts.
+func (s *Controller) NotifyMailChanged(recipients ...string) {
 	if s == nil || s.mail == nil {
 		return
 	}
@@ -52,7 +54,7 @@ func (s *server) notifyMailChanged(recipients ...string) {
 		return
 	}
 	for _, id := range ids {
-		if err := s.refreshMailNotice(id); err != nil {
+		if err := refreshMailNotice(s.mail, s.notices, id); err != nil {
 			log.Printf("mail notice refresh for %s: %v", id, err)
 		}
 	}
@@ -79,24 +81,25 @@ func (s *server) notifyMailChanged(recipients ...string) {
 	s.mailEvents.Notify(delta)
 }
 
-func (s *server) refreshMailNotice(recipient string) error {
-	count, _, err := s.mail.UnreadCount(recipient)
+func refreshMailNotice(mail *featuremail.Store, notices *interact.Notices, recipient string) error {
+	count, _, err := mail.UnreadCount(recipient)
 	if err != nil {
 		return err
 	}
-	return featuremail.SyncUnreadNotice(s.notices, recipient, count)
+	return featuremail.SyncUnreadNotice(notices, recipient, count)
 }
 
-func (s *server) syncMailNotices() error {
-	if s == nil || s.mail == nil || s.notices == nil {
+// SyncMailNotices reconstructs unread notices from the durable inbox before HTTP starts.
+func SyncMailNotices(mail *featuremail.Store, notices *interact.Notices) error {
+	if mail == nil || notices == nil {
 		return nil
 	}
-	counts, err := s.mail.CountsFor(nil)
+	counts, err := mail.CountsFor(nil)
 	if err != nil {
 		return err
 	}
 	for recipient := range counts {
-		if err := s.refreshMailNotice(recipient); err != nil {
+		if err := refreshMailNotice(mail, notices, recipient); err != nil {
 			return err
 		}
 	}
@@ -106,7 +109,8 @@ func (s *server) syncMailNotices() error {
 // handleAgentMessagesGlobal serves the operator's cross-thread mail view:
 // newest first across every recipient, filterable by status and ref, paged by
 // the durable global message order. Read-only — never marks mail seen.
-func (s *server) handleAgentMessagesGlobal(w http.ResponseWriter, r *http.Request) {
+// HandleAgentMessagesGlobal serves the operator cross-thread inbox view without marking mail read.
+func (s *Controller) HandleAgentMessagesGlobal(w http.ResponseWriter, r *http.Request) {
 	if !s.agentInboxAvailable(w) {
 		return
 	}
@@ -146,9 +150,10 @@ func (s *server) handleAgentMessagesGlobal(w http.ResponseWriter, r *http.Reques
 	httpapi.WriteJSON(w, map[string]any{"items": items, "summary": summary, "nextBefore": nextBefore})
 }
 
-func (s *server) promptWithUnreadFooter(hostedThreadID, prompt string) (string, error) {
+// PromptWithUnreadFooter appends the current unread notice to a submitted prompt.
+func PromptWithUnreadFooter(notices *interact.Notices, hostedThreadID, prompt string) (string, error) {
 	if hostedThreadID == "" {
 		return prompt, nil
 	}
-	return s.notices.Append(hostedThreadID, prompt), nil
+	return notices.Append(hostedThreadID, prompt), nil
 }

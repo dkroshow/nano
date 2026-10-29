@@ -191,8 +191,7 @@ func TestStoredLegacyNotificationModesLoseCoalescingAndAcknowledgement(t *testin
 // session, the core turn store and the running dispatcher.
 func TestCompletionSubscriptionReactsToFinishedTurnsWithoutPolling(t *testing.T) {
 	s, daemon, rec, client, dispatcher := subscribedCodexServer(t, `[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`)
-	s.subscriptions = dispatcher
-	dispatcher.Start()
+	s.agentController().StartSubscriptions(dispatcher)
 	s.reattachWaitingHosted(rec.HostedThreadID)
 	waitForClaude(t, "the live turn", func() bool {
 		sess := s.SessionForHostedThread(rec.HostedThreadID)
@@ -255,8 +254,9 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	seedBootAttachments(t, s)
 	s.prepareBootReattach()
 	client := &preparingSubscriptionClient{feedSubscriptionClient{s: s}}
-	s.subscriptions = subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), client, nil, nil)
-	s.subscriptions.Sweep("") // the child's cursor starts where a running Nano would have it
+	dispatcher := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), client, nil, nil)
+	s.agentController().StartSubscriptions(dispatcher)
+	dispatcher.Sweep("") // the child's cursor starts where a running Nano would have it
 
 	s.reattachWaitingHosted(child.ID)
 	waitForClaude(t, "the child's live turn", func() bool {

@@ -1,4 +1,4 @@
-package app
+package agentapi
 
 import (
 	"context"
@@ -12,8 +12,10 @@ import (
 	"time"
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
+	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 var agentMessageRefKindPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)
@@ -31,7 +33,7 @@ type agentMessageSendRequest struct {
 	DispositionFeedback bool              `json:"dispositionFeedback,omitempty"`
 }
 
-func (s *server) agentInboxAvailable(w http.ResponseWriter) bool {
+func (s *Controller) agentInboxAvailable(w http.ResponseWriter) bool {
 	if s.mail != nil && s.mailErr == "" {
 		return true
 	}
@@ -47,7 +49,8 @@ func validAgentMessageRef(ref featuremail.Ref) bool {
 	return len(ref.Kind) <= 64 && len(ref.ID) > 0 && len(ref.ID) <= 200 && agentMessageRefKindPattern.MatchString(ref.Kind)
 }
 
-func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Request, recipient agentSessionRecord) {
+// HandleHostedThreadMessageSend persists a validated message for the selected hosted recipient.
+func (s *Controller) HandleHostedThreadMessageSend(w http.ResponseWriter, r *http.Request, recipient threads.SessionRecord) {
 	if !s.agentInboxAvailable(w) {
 		return
 	}
@@ -59,7 +62,7 @@ func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Re
 		return
 	}
 	req.ClientMessageID = strings.TrimSpace(req.ClientMessageID)
-	if !validAgentClientID(req.ClientMessageID) || strings.HasPrefix(req.ClientMessageID, "nano:") {
+	if !hosted.ValidClientID(req.ClientMessageID) || strings.HasPrefix(req.ClientMessageID, "nano:") {
 		httpapi.WriteError(w, http.StatusBadRequest, "client_message_id_invalid", "clientMessageId must be 1-200 URL-safe characters and must not use the reserved nano: prefix")
 		return
 	}
@@ -98,12 +101,12 @@ func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Re
 			RecipientHostedID: recipient.ID, Subject: req.Subject, Body: req.Body,
 			Refs: refs, DispositionFeedback: req.DispositionFeedback, CreatedAt: time.Now().UTC()}
 	} else {
-		sender, ok := s.resolveHostedThreadRecord(strings.TrimSpace(req.SenderThreadRef))
+		sender, ok := s.hosted.ResolveHostedRecord(strings.TrimSpace(req.SenderThreadRef))
 		if !ok {
 			httpapi.WriteError(w, http.StatusBadRequest, "sender_not_hosted", "senderThreadRef does not resolve to a hosted thread")
 			return
 		}
-		attribution, err := s.turnAttributionFor(sender)
+		attribution, err := s.hosted.TurnAttributionFor(sender)
 		if err != nil {
 			httpapi.WriteError(w, http.StatusBadRequest, "sender_identity_incomplete", err.Error())
 			return
@@ -125,7 +128,7 @@ func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if created {
-		s.notifyMailChanged(recipient.ID)
+		s.NotifyMailChanged(recipient.ID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if created {
@@ -177,12 +180,13 @@ func parseAgentMessageListOptions(r *http.Request) (featuremail.ListOptions, err
 	return opts, nil
 }
 
-func (s *server) handleHostedThreadInbox(w http.ResponseWriter, r *http.Request, recipient agentSessionRecord) {
+// HandleHostedThreadInbox serves the recipient inbox and records non-peek reads.
+func (s *Controller) HandleHostedThreadInbox(w http.ResponseWriter, r *http.Request, recipient threads.SessionRecord) {
 	if !s.agentInboxAvailable(w) {
 		return
 	}
 	actorRef := strings.TrimSpace(r.URL.Query().Get("actorThreadRef"))
-	actor, ok := s.resolveHostedThreadRecord(actorRef)
+	actor, ok := s.hosted.ResolveHostedRecord(actorRef)
 	if actorRef == "" || !ok {
 		httpapi.WriteError(w, http.StatusBadRequest, "actor_not_hosted", "actorThreadRef must resolve to the inbox owner")
 		return
@@ -210,7 +214,7 @@ func (s *server) handleHostedThreadInbox(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if marked > 0 {
-		s.notifyMailChanged(recipient.ID)
+		s.NotifyMailChanged(recipient.ID)
 	}
 	next := opts.Since
 	if len(items) > 0 {
@@ -219,7 +223,8 @@ func (s *server) handleHostedThreadInbox(w http.ResponseWriter, r *http.Request,
 	httpapi.WriteJSON(w, map[string]any{"items": items, "nextSince": next})
 }
 
-func (s *server) handleHostedThreadOutbox(w http.ResponseWriter, r *http.Request, sender agentSessionRecord) {
+// HandleHostedThreadOutbox serves messages sent by the selected hosted thread.
+func (s *Controller) HandleHostedThreadOutbox(w http.ResponseWriter, r *http.Request, sender threads.SessionRecord) {
 	if !s.agentInboxAvailable(w) {
 		return
 	}
@@ -240,7 +245,7 @@ func (s *server) handleHostedThreadOutbox(w http.ResponseWriter, r *http.Request
 	httpapi.WriteJSON(w, map[string]any{"items": items, "nextSince": next})
 }
 
-func (s *server) agentMessageID(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (s *Controller) agentMessageID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if !s.agentInboxAvailable(w) {
 		return "", false
 	}
@@ -252,7 +257,8 @@ func (s *server) agentMessageID(w http.ResponseWriter, r *http.Request) (string,
 	return messageID, true
 }
 
-func (s *server) handleAgentMessageRead(w http.ResponseWriter, r *http.Request) {
+// HandleAgentMessageRead serves one message and its durable event history.
+func (s *Controller) HandleAgentMessageRead(w http.ResponseWriter, r *http.Request) {
 	messageID, ok := s.agentMessageID(w, r)
 	if !ok {
 		return
@@ -269,14 +275,16 @@ func (s *server) handleAgentMessageRead(w http.ResponseWriter, r *http.Request) 
 	httpapi.WriteJSON(w, detail)
 }
 
-func (s *server) handleAgentMessageEditRoute(w http.ResponseWriter, r *http.Request) {
+// HandleAgentMessageEditRoute validates the message reference before an operator edit.
+func (s *Controller) HandleAgentMessageEditRoute(w http.ResponseWriter, r *http.Request) {
 	messageID, ok := s.agentMessageID(w, r)
 	if ok {
 		s.handleAgentMessageEdit(w, r, messageID)
 	}
 }
 
-func (s *server) handleAgentMessageDisposition(w http.ResponseWriter, r *http.Request) {
+// HandleAgentMessageDisposition records a recipient disposition and updates inbox counts.
+func (s *Controller) HandleAgentMessageDisposition(w http.ResponseWriter, r *http.Request) {
 	messageID, ok := s.agentMessageID(w, r)
 	if !ok {
 		return
@@ -301,12 +309,12 @@ func (s *server) handleAgentMessageDisposition(w http.ResponseWriter, r *http.Re
 		httpapi.WriteError(w, http.StatusBadRequest, "status_note_too_long", "note must be at most 500 UTF-8 bytes")
 		return
 	}
-	actor, ok := s.resolveHostedThreadRecord(req.ActorThreadRef)
+	actor, ok := s.hosted.ResolveHostedRecord(req.ActorThreadRef)
 	if req.ActorThreadRef == "" || !ok {
 		httpapi.WriteError(w, http.StatusBadRequest, "actor_not_hosted", "actorThreadRef must resolve to a hosted thread")
 		return
 	}
-	name := strings.TrimSpace(s.displayNameForHosted(context.Background(), actor.Provider, actor.ID, actor.NativeThreadID))
+	name := strings.TrimSpace(s.identity.DisplayNameForHosted(context.Background(), actor.Provider, actor.ID, actor.NativeThreadID))
 	native := strings.TrimSpace(actor.NativeThreadID)
 	if sessions.NativeThreadIDProvisional(actor.Provider, native) {
 		native = ""
@@ -329,14 +337,14 @@ func (s *server) handleAgentMessageDisposition(w http.ResponseWriter, r *http.Re
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "status_persistence_failed", err.Error())
 		return
 	}
-	s.notifyMailChanged(actor.ID, message.Sender.HostedThreadID)
+	s.NotifyMailChanged(actor.ID, message.Sender.HostedThreadID)
 	httpapi.WriteJSON(w, map[string]any{"message": message, "feedback": feedback})
 }
 
 // handleAgentMessageEdit rewrites one operator-authored message while it is
 // still unread. The store enforces both constraints; the previous
 // content survives as an "edited" event on the message.
-func (s *server) handleAgentMessageEdit(w http.ResponseWriter, r *http.Request, messageID string) {
+func (s *Controller) handleAgentMessageEdit(w http.ResponseWriter, r *http.Request, messageID string) {
 	var req struct {
 		Subject string `json:"subject,omitempty"`
 		Body    string `json:"body"`
@@ -369,6 +377,6 @@ func (s *server) handleAgentMessageEdit(w http.ResponseWriter, r *http.Request, 
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "edit_persistence_failed", err.Error())
 		return
 	}
-	s.notifyMailChanged(message.Recipient.HostedThreadID)
+	s.NotifyMailChanged(message.Recipient.HostedThreadID)
 	httpapi.WriteJSON(w, message)
 }

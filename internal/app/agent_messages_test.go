@@ -17,6 +17,19 @@ import (
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 )
 
+// agentMessageSendRequest is the HTTP test client's wire request.
+// It deliberately does not reuse the adapter's decoder type.
+type agentMessageSendRequest struct {
+	ClientMessageID     string            `json:"clientMessageId"`
+	SenderThreadRef     string            `json:"senderThreadRef,omitempty"`
+	Operator            bool              `json:"operator,omitempty"`
+	Subject             string            `json:"subject,omitempty"`
+	Body                string            `json:"body"`
+	Delivery            string            `json:"delivery,omitempty"`
+	Refs                []featuremail.Ref `json:"refs,omitempty"`
+	DispositionFeedback bool              `json:"dispositionFeedback,omitempty"`
+}
+
 func sendAgentMessageForTest(t *testing.T, s *server, recipient agentSessionRecord, senderID, clientID, subject, body string, refs []featuremail.Ref) (*httptest.ResponseRecorder, featuremail.Message) {
 	return sendAgentMessageWithFeedbackForTest(t, s, recipient, senderID, clientID, subject, body, refs, false)
 }
@@ -28,7 +41,7 @@ func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient agen
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	s.handleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
+	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
 	var message featuremail.Message
 	if rec.Code == http.StatusCreated || rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), &message); err != nil {
@@ -75,17 +88,17 @@ func TestAgentInboxPeekSeenLintAndRecipientBoundary(t *testing.T) {
 	_, message := sendAgentMessageForTest(t, s, recipient, sender.ID, "finding-1", "Finding", "Please inspect", []featuremail.Ref{{Kind: "issue.ref", ID: "sample-task"}})
 
 	peek := httptest.NewRecorder()
-	s.handleHostedThreadInbox(peek, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
+	s.agentController().HandleHostedThreadInbox(peek, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
 	if peek.Code != http.StatusOK || !strings.Contains(peek.Body.String(), `"status":"unread"`) {
 		t.Fatalf("peek = %d %s", peek.Code, peek.Body.String())
 	}
 	wrong := httptest.NewRecorder()
-	s.handleHostedThreadInbox(wrong, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+sender.ID, nil), recipient)
+	s.agentController().HandleHostedThreadInbox(wrong, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+sender.ID, nil), recipient)
 	if wrong.Code != http.StatusForbidden || !strings.Contains(wrong.Body.String(), "not_recipient") {
 		t.Fatalf("wrong actor = %d %s", wrong.Code, wrong.Body.String())
 	}
 	read := httptest.NewRecorder()
-	s.handleHostedThreadInbox(read, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
+	s.agentController().HandleHostedThreadInbox(read, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
 	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), `"status":"seen"`) {
 		t.Fatalf("read = %d %s", read.Code, read.Body.String())
 	}

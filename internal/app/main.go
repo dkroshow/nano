@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dkroshow/nano/internal/agentapi"
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/core/prompts"
@@ -119,9 +120,9 @@ type server struct {
 	// agentExecutions is the durable provider-neutral control plane shared by
 	// every hosted thread: stable identities, action-correlated turns and results.
 	agentExecutions *agentExecutionStore
-	// subscriptions is set once, after boot, under subscriptionMu.
-	subscriptionMu sync.Mutex
-	subscriptions  *subscriptions.Dispatcher
+	// agent owns feature HTTP adaptation and completion-hook publication.
+	agent     *agentapi.Controller
+	agentOnce sync.Once
 	// heartbeat owns the default-off wall-clock nudge scheduler and its
 	// sibling SQLite evidence; see docs/decisions/nano-heartbeat.md.
 	heartbeat      *featureheartbeat.Service
@@ -400,7 +401,7 @@ func construct(cfg config.Config) *application {
 		agentExecutions.UseSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
 	}
 	s.restart = newRestartTracker(filepath.Join(cfg.Paths.DataDir, restartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
-	if err := s.syncMailNotices(); err != nil {
+	if err := agentapi.SyncMailNotices(s.mail, s.notices); err != nil {
 		log.Fatalf("initialize mail notices: %v", err)
 	}
 	if catalogService != nil && controlMetadata != nil {
@@ -411,10 +412,6 @@ func construct(cfg config.Config) *application {
 	if usageLimits != nil {
 		s.usageLimitsPoller = newUsageLimitsPoller(usageLimits, codexDaemon, s.defaults, cfg.UsagePollInterval)
 		go s.usageLimitsPoller.run(context.Background())
-	}
-	if catalogService != nil {
-		catalogService.SetTranscriptRepairPriority(s.transcriptRepairPriority)
-		catalogService.SetTranscriptChanged(s.confirmDurableThread)
 	}
 	if catalogStore != nil {
 		if providerHomes, err := configuredProviderHomes(); err != nil {
@@ -469,6 +466,11 @@ func construct(cfg config.Config) *application {
 	s.prepareBootReattach()
 	if err := s.sidebarOwner().StartSidebarMaterializer(context.Background(), time.Now()); err != nil {
 		log.Printf("sidebar materialization unavailable: %v", err)
+	}
+	_ = s.agentController()
+	if catalogService != nil {
+		catalogService.SetTranscriptRepairPriority(s.transcriptRepairPriority)
+		catalogService.SetTranscriptChanged(s.confirmDurableThread)
 	}
 	return &application{
 		config: cfg, server: s, absCwd: absCwd, serverLog: serverLog,
@@ -562,7 +564,10 @@ func (a *application) serve(listener net.Listener, localHandler, remoteHandler h
 		s.reattachOnBoot()
 		// Features that prompt hosted threads by themselves start after every
 		// stored thread is back. HTTP opens first so requests can prioritize them.
-		startSubscriptionDispatcher(s)
+		if s.agentExecutions != nil && s.agentExecutions.Control() != nil {
+			d := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), interact.NewHTTPClient(s.defaults.apiOrigin, nil), s.agentDisplay, log.Printf)
+			s.agentController().StartSubscriptions(d)
+		}
 		if s.heartbeat != nil {
 			s.heartbeat.Start(context.Background())
 		}

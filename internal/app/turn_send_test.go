@@ -966,7 +966,8 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	h.server.turns, h.server.agentExecutions, h.server.completedTurns, h.server.controlMetadata = h.prompts, executions, hosted.NewCompletedTurnSource(completed), executions.Control()
 	executions.UseSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
 	client := &feedSubscriptionClient{s: h.server}
-	h.server.subscriptions = subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
+	dispatcher := subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
+	h.server.agentController().StartSubscriptions(dispatcher)
 	op, _, err := fixtureBeginTurn(executions, child.ID, "exited", "hash-exited")
 	if err != nil {
 		t.Fatal(err)
@@ -990,7 +991,7 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	if _, settled, err := h.prompts.Settle(ctx, op.TransportActionID); err != nil || !settled {
 		t.Fatalf("settle: %v %v", settled, err)
 	}
-	h.server.subscriptions.Sweep("") // the parent's cursor, as a running Nano holds it
+	dispatcher.Sweep("") // the parent's cursor, as a running Nano holds it
 	h.appendSaved(t, fmt.Sprintf(`{"type":"user","uuid":%q,"sessionId":"claude-settle","message":{"role":"user","content":"exited prompt"}}
 {"type":"assistant","uuid":"exited-answer","sessionId":"claude-settle","message":{"id":"exited-final","role":"assistant","content":[{"type":"text","text":"answered after all"}],"stop_reason":"end_turn"}}
 `, submissionEventID(child.ID, op.TransportActionID)))

@@ -292,7 +292,7 @@ func TestHeartbeatAttachmentAPIRequiresReasonAndRejectsClosedTarget(t *testing.T
 		"actor": map[string]any{"kind": "hosted-thread", "hostedThreadId": manager.ID},
 	})
 	recorder = httptest.NewRecorder()
-	s.handleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
+	s.agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("closed target attach = %d %s", recorder.Code, recorder.Body.String())
 	}

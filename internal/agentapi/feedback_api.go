@@ -1,4 +1,4 @@
-package app
+package agentapi
 
 import (
 	"crypto/sha256"
@@ -14,8 +14,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"github.com/dkroshow/nano/internal/features/feedback"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const (
@@ -46,7 +48,7 @@ type feedbackCreateRequest struct {
 	} `json:"pane"`
 }
 
-func (s *server) feedbackAvailable(w http.ResponseWriter) bool {
+func (s *Controller) feedbackAvailable(w http.ResponseWriter) bool {
 	w.Header().Set("Cache-Control", "private, no-store")
 	if s.feedback == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "feedback_unavailable", "Feedback store unavailable")
@@ -58,7 +60,8 @@ func (s *server) feedbackAvailable(w http.ResponseWriter) bool {
 // handleFeedbackCreate saves the operator's note with the evidence of the
 // moment. The browser uploads its diagnostic ring first, so the snapshot taken
 // here from the diagnostics store holds that tab's retained events.
-func (s *server) handleFeedbackCreate(w http.ResponseWriter, r *http.Request) {
+// HandleFeedbackCreate saves an operator note with its acknowledged diagnostic evidence.
+func (s *Controller) HandleFeedbackCreate(w http.ResponseWriter, r *http.Request) {
 	if !s.feedbackAvailable(w) {
 		return
 	}
@@ -74,11 +77,11 @@ func (s *server) handleFeedbackCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.Note = strings.TrimSpace(request.Note)
-	clientActionID := diagnosticToken(request.ClientActionID, 160)
+	clientActionID := diagnostics.Token(request.ClientActionID, 160)
 	thread := feedback.Thread{
-		HostedThreadID: diagnosticToken(request.HostedThreadID, 160),
-		NativeThreadID: diagnosticToken(request.ThreadID, 160),
-		Provider:       diagnosticToken(request.Provider, 32),
+		HostedThreadID: diagnostics.Token(request.HostedThreadID, 160),
+		NativeThreadID: diagnostics.Token(request.ThreadID, 160),
+		Provider:       diagnostics.Token(request.Provider, 32),
 	}
 	switch {
 	case request.Note == "":
@@ -102,14 +105,14 @@ func (s *server) handleFeedbackCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	note := feedback.Note{
 		Text: request.Note, Thread: thread,
-		Build: feedback.Build{Stamp: buildStamp, Bundle: embeddedBundleName(), TabBundle: diagnosticToken(request.Build, 100)},
+		Build: feedback.Build{Stamp: s.buildStamp, Bundle: s.bundleName, TabBundle: diagnostics.Token(request.Build, 100)},
 		Pane: feedback.Pane{
 			Working: request.Pane.Working, PendingPrompts: max(request.Pane.PendingPrompts, 0),
-			LastSavedRowID: diagnosticToken(request.Pane.LastSavedRowID, 160),
+			LastSavedRowID: diagnostics.Token(request.Pane.LastSavedRowID, 160),
 		},
 		Browser: feedback.Browser{
-			TabID: diagnosticToken(request.TabID, 100), PageID: diagnosticToken(request.PageID, 100),
-			PaneID: diagnosticToken(request.PaneID, 100),
+			TabID: diagnostics.Token(request.TabID, 100), PageID: diagnostics.Token(request.PageID, 100),
+			PaneID: diagnostics.Token(request.PaneID, 100),
 		},
 	}
 	switch request.View {
@@ -123,13 +126,13 @@ func (s *server) handleFeedbackCreate(w http.ResponseWriter, r *http.Request) {
 	if ref == "" {
 		ref = thread.NativeThreadID
 	}
-	if identity, err := s.resolveIdentity(r.Context(), ref); err == nil && identity.MatchCount == 1 {
+	if identity, err := s.identity.ResolveIdentity(r.Context(), ref); err == nil && identity.MatchCount == 1 {
 		note.Thread = feedback.Thread{HostedThreadID: identity.HostedThreadID, NativeThreadID: identity.NativeThreadID,
 			DisplayName: identity.DisplayName, Provider: identity.Provider}
 	}
 	if note.Browser.TabID != "" {
-		events := []browserDiagnosticEvent{}
-		for _, event := range s.browserDiagnostics.recent(maxFeedbackEvidenceEvents, "", note.Browser.TabID, "") {
+		events := []diagnostics.Event{}
+		for _, event := range s.browserDiagnostics.Recent(maxFeedbackEvidenceEvents, "", note.Browser.TabID, "") {
 			ownThread := (event.ThreadID == "" || event.ThreadID == note.Thread.NativeThreadID || event.ThreadID == thread.NativeThreadID) &&
 				(event.HostedThreadID == "" || event.HostedThreadID == note.Thread.HostedThreadID)
 			if ownThread {
@@ -161,10 +164,11 @@ func (s *server) handleFeedbackCreate(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 	stored.Events = nil
-	writeCatalogJSON(w, status, stored)
+	threadindex.WriteCatalogJSON(w, status, stored)
 }
 
-func (s *server) handleFeedbackList(w http.ResponseWriter, r *http.Request) {
+// HandleFeedbackList serves saved feedback note summaries.
+func (s *Controller) HandleFeedbackList(w http.ResponseWriter, r *http.Request) {
 	if !s.feedbackAvailable(w) {
 		return
 	}
@@ -174,10 +178,11 @@ func (s *server) handleFeedbackList(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, "feedback_error", "Feedback read failed")
 		return
 	}
-	writeCatalogJSON(w, http.StatusOK, map[string]any{"items": notes})
+	threadindex.WriteCatalogJSON(w, http.StatusOK, map[string]any{"items": notes})
 }
 
-func (s *server) handleFeedbackRead(w http.ResponseWriter, r *http.Request) {
+// HandleFeedbackRead serves one saved note and its diagnostic evidence.
+func (s *Controller) HandleFeedbackRead(w http.ResponseWriter, r *http.Request) {
 	if !s.feedbackAvailable(w) {
 		return
 	}
@@ -190,5 +195,5 @@ func (s *server) handleFeedbackRead(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, "feedback_error", "Feedback read failed")
 		return
 	}
-	writeCatalogJSON(w, http.StatusOK, note)
+	threadindex.WriteCatalogJSON(w, http.StatusOK, note)
 }

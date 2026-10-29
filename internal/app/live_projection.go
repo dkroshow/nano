@@ -118,7 +118,7 @@ func (s *server) confirmDurableThread(ctx context.Context, change threadindex.Tr
 			log.Printf("owners of %s unreadable: %v", nativeThreadID, err)
 		}
 		for _, owner := range owners {
-			s.sweepSubscriptions(owner)
+			s.agentController().SweepSubscriptions(owner)
 		}
 	}
 }

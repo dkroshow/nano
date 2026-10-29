@@ -219,7 +219,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	// "re-applying posture" means is provider mechanics.
 	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
 		return s.savedTurnEvidence(ctx, sess, turnID)
-	}, s.savedPromptsFor(sess), s.savedPromptRows, s.savedTurnFinal, s.sweepSubscriptions)
+	}, s.savedPromptsFor(sess), s.savedPromptRows, s.savedTurnFinal, s.agentController().SweepSubscriptions)
 	if err := sess.OpenWireSpool(s.spoolDir); err != nil {
 		return nil, fmt.Errorf("create wire spool: %w", err)
 	}

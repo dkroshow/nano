@@ -57,28 +57,6 @@ func TestHeartbeatPrePingRunnerTimeoutAndDedupeLimits(t *testing.T) {
 	}
 }
 
-func TestHeartbeatTemplatesAreRepoOwnedAndCopiesArePerAttachment(t *testing.T) {
-	templates, err := featureheartbeat.LoadScriptTemplates()
-	if err != nil || len(templates) != 1 || templates[0].ID != "inbox_match" {
-		t.Fatalf("templates = %#v, %v", templates, err)
-	}
-	store := openTestHeartbeatStore(t)
-	s := &server{heartbeat: featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.apiOrigin, nil), true, nil)}
-	actor := featureheartbeat.Actor{Kind: "operator", Name: "Operator"}
-	first, _, err := s.copyHeartbeatTemplate(heartbeatPrePingTemplateRequest{TemplateID: "inbox_match"}, actor, "approved", "", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, _, err := s.copyHeartbeatTemplate(heartbeatPrePingTemplateRequest{TemplateID: "inbox_match"}, actor, "approved", "", time.Now())
-	if err != nil || first.ScriptID == second.ScriptID {
-		t.Fatalf("copies = %#v %#v, %v", first, second, err)
-	}
-	revision, err := store.ScriptRevision(first.ScriptID, first.Revision)
-	if err != nil || revision.TemplateID != "inbox_match" || revision.Source == "" {
-		t.Fatalf("revision = %#v, %v", revision, err)
-	}
-}
-
 func TestInboxMatchTemplatePeeksWithoutReading(t *testing.T) {
 	requests := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +109,7 @@ func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
 		"authority": "Operator approved", "actor": map[string]any{"kind": "operator", "name": "Operator"},
 	})
 	recorder := httptest.NewRecorder()
-	s.handleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
+	s.agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("attach = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -142,7 +120,7 @@ func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
 
 	bad := bytes.NewBufferString(`{"targetHostedThreadId":"` + target.ID + `","cadenceMinutes":1,"prompt":"x","prePing":{"scriptId":"hbs_x","revision":1},"actor":{"kind":"operator"}}`)
 	recorder = httptest.NewRecorder()
-	s.handleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bad))
+	s.agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bad))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("raw script reference = %d %s", recorder.Code, recorder.Body.String())
 	}

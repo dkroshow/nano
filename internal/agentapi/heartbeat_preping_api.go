@@ -1,4 +1,4 @@
-package app
+package agentapi
 
 import (
 	"encoding/json"
@@ -11,7 +11,8 @@ import (
 	"github.com/dkroshow/nano/internal/httpapi"
 )
 
-func (s *server) handleHeartbeatScriptTemplates(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatScriptTemplates serves the repository-owned pre-ping templates.
+func (s *Controller) HandleHeartbeatScriptTemplates(w http.ResponseWriter, r *http.Request) {
 	items, err := featureheartbeat.LoadScriptTemplates()
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
@@ -25,7 +26,7 @@ type heartbeatPrePingTemplateRequest struct {
 	Settings   json.RawMessage `json:"settings,omitempty"`
 }
 
-func (s *server) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, actor featureheartbeat.Actor, authority, prompt string, now time.Time) (*featureheartbeat.PrePingReference, string, error) {
+func (s *Controller) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, actor featureheartbeat.Actor, authority, prompt string, now time.Time) (*featureheartbeat.PrePingReference, string, error) {
 	template, err := featureheartbeat.ScriptTemplateByID(strings.TrimSpace(body.TemplateID))
 	if err != nil {
 		return nil, prompt, err
@@ -53,7 +54,8 @@ func (s *server) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, act
 	return &featureheartbeat.PrePingReference{ScriptID: revision.ScriptID, Revision: revision.Revision, Settings: settings}, prompt, nil
 }
 
-func (s *server) handleHeartbeatScripts(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatScripts serves the immutable stored script copies.
+func (s *Controller) HandleHeartbeatScripts(w http.ResponseWriter, r *http.Request) {
 	if s.heartbeat == nil {
 		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
 		return
@@ -66,7 +68,8 @@ func (s *server) handleHeartbeatScripts(w http.ResponseWriter, r *http.Request) 
 	httpapi.WriteJSON(w, map[string]any{"items": items})
 }
 
-func (s *server) handleHeartbeatScriptRead(w http.ResponseWriter, r *http.Request) {
+// HandleHeartbeatScriptRead serves one stored script revision.
+func (s *Controller) HandleHeartbeatScriptRead(w http.ResponseWriter, r *http.Request) {
 	if s.heartbeat == nil {
 		httpapi.WriteHTTPError(w, "heartbeat store unavailable", http.StatusServiceUnavailable)
 		return
@@ -97,6 +100,7 @@ func (s *server) handleHeartbeatScriptRead(w http.ResponseWriter, r *http.Reques
 	httpapi.WriteJSON(w, map[string]any{"script": script, "revision": value})
 }
 
-func (s *server) handleHeartbeatScriptUnsupported(w http.ResponseWriter, _ *http.Request) {
+// HandleHeartbeatScriptUnsupported rejects unsupported script mutation routes.
+func (s *Controller) HandleHeartbeatScriptUnsupported(w http.ResponseWriter, _ *http.Request) {
 	httpapi.WriteHTTPError(w, "GET only; heartbeat scripts are immutable attachment copies", http.StatusMethodNotAllowed)
 }

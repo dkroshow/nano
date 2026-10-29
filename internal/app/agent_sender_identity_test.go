@@ -193,7 +193,7 @@ func TestAgentSenderCannotOverrideResolvedName(t *testing.T) {
 			} else {
 				body["clientMessageId"], body["body"] = "caller-name", "Review"
 				encoded, _ := json.Marshal(body)
-				s.handleHostedThreadMessageSend(response, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
+				s.agentController().HandleHostedThreadMessageSend(response, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
 			}
 			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_message_request") {
 				t.Fatalf("caller name admission=%d %s", response.Code, response.Body)

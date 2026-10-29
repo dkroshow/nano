@@ -21,7 +21,7 @@ func operatorSendForTest(t *testing.T, s *server, recipient agentSessionRecord, 
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	s.handleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
+	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
 	var message featuremail.Message
 	if rec.Code == http.StatusCreated || rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), &message); err != nil {
@@ -38,23 +38,23 @@ func TestOperatorSendIdentityAndExclusivity(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("operator send = %d %s", rec.Code, rec.Body.String())
 	}
-	if message.Sender.Kind != operatorSenderKind || message.Sender.Name != operatorSenderName || message.Sender.HostedThreadID != "" {
+	if message.Sender.Kind != "operator" || message.Sender.Name != "Operator" || message.Sender.HostedThreadID != "" {
 		t.Fatalf("operator sender = %+v", message.Sender)
 	}
-	if message.Origin != operatorSenderKind || message.Status != featuremail.Unread {
+	if message.Origin != "operator" || message.Status != featuremail.Unread {
 		t.Fatalf("operator message = %+v", message)
 	}
 
 	// Exactly one identity per send: both and neither are rejected.
 	both, _ := json.Marshal(agentMessageSendRequest{ClientMessageID: "op-2", Operator: true, SenderThreadRef: sender.ID, Body: "x"})
 	rec = httptest.NewRecorder()
-	s.handleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(both)), recipient)
+	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(both)), recipient)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "sender_required") {
 		t.Fatalf("both identities = %d %s", rec.Code, rec.Body.String())
 	}
 	neither, _ := json.Marshal(agentMessageSendRequest{ClientMessageID: "op-3", Body: "x"})
 	rec = httptest.NewRecorder()
-	s.handleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(neither)), recipient)
+	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(neither)), recipient)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "sender_required") {
 		t.Fatalf("no identity = %d %s", rec.Code, rec.Body.String())
 	}
@@ -163,7 +163,7 @@ func TestGlobalMailListingOrderFiltersAndPaging(t *testing.T) {
 
 	list := func(query string) map[string]json.RawMessage {
 		rec := httptest.NewRecorder()
-		s.handleAgentMessagesGlobal(rec, httptest.NewRequest(http.MethodGet, "/api/v1/agent-messages"+query, nil))
+		s.agentController().HandleAgentMessagesGlobal(rec, httptest.NewRequest(http.MethodGet, "/api/v1/agent-messages"+query, nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("global list %q = %d %s", query, rec.Code, rec.Body.String())
 		}
@@ -249,7 +249,7 @@ func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	s.handleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
+	s.agentController().HandleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("inbox read = %d", rec.Code)
 	}
@@ -260,7 +260,7 @@ func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 
 	// A peek must not notify.
 	rec = httptest.NewRecorder()
-	s.handleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
+	s.agentController().HandleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
 	select {
 	case delta := <-ch:
 		t.Fatalf("peek produced a mail event: %+v", delta)

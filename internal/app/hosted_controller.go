@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dkroshow/nano/internal/agentapi"
 	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/hosted"
@@ -23,7 +24,7 @@ func newHostedController(s *server) *hosted.Controller {
 		Attachments: s.attachments, Queue: s.queuedTurns, Sessions: &s.Registry, SendAttempts: s.sendAttempts, ClaudeShimWS: s.defaults.claudeShimWS,
 		Boot: &s.bootAttachments, Reattach: s.reattachWaitingHosted, Stars: s.threadStars,
 		Views: s.hostedViews, ResolveIdentity: s.resolveIdentity, PrepareCreation: s.prepareHostedCreation,
-		PromptWithUnreadFooter: s.promptWithUnreadFooter, UnreadFooterUnavailable: featuremail.ErrUnreadNoticeUnavailable,
+		PromptWithUnreadFooter: func(id, prompt string) (string, error) { return agentapi.PromptWithUnreadFooter(s.notices, id, prompt) }, UnreadFooterUnavailable: featuremail.ErrUnreadNoticeUnavailable,
 		FeatureFooter: func(action string) (string, bool) {
 			if strings.HasPrefix(action, featureheartbeat.ActionPrefix) {
 				return featureheartbeat.Footer, true
