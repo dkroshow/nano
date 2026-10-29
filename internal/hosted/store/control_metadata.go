@@ -586,9 +586,12 @@ func (s *MetadataStore) ClaimNativeID(hostedID, provider, nativeID string, provi
 	return s.ClaimNativeIDResolving(hostedID, provider, nativeID, provisional, nil)
 }
 
-// ClaimNativeIDResolving claims nativeID for the hosted thread. Whatever the
-// caller, a claim that would retire the current provisional handle must carry
-// that handle's exact resolution to nativeID, which it records once in the
+// ClaimNativeIDResolving claims nativeID for the hosted thread while retaining
+// every predecessor for audit. The partial unique index rejects two active
+// hosted records claiming the same provider/native identity.
+//
+// Whatever the caller, a claim that would retire the current provisional
+// handle must carry its exact resolution to nativeID, which it records once in the
 // same transaction; a resolution never changes. A claim of the native already
 // current with a resolution succeeds only when that resolution is already
 // recorded, so a retry after a commit whose report failed is idempotent.

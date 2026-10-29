@@ -9,6 +9,9 @@ import (
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
+// MCPInventory is the projected registry: server names plus their tool names.
+// Deliberately not the raw response — codex_apps alone ships 244 KB of tool
+// schemas that nothing reads.
 type MCPInventory struct {
 	Servers []MCPServer `json:"servers"`
 }
