@@ -4,8 +4,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/httpapi"
 )
-import "github.com/dkroshow/nano/internal/httpapi"
 
 // HandleLegacyCreate serializes legacy creation with hosted relationship mutations.
 func (s *Controller) HandleLegacyCreate(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +46,8 @@ func (s *Controller) HandleAttachmentScoped(w http.ResponseWriter, r *http.Reque
 	}
 	if s.Attachments != nil {
 		provider := strings.TrimSpace(r.URL.Query().Get("provider"))
-		var matches []attachmentRecord
-		for _, record := range s.Attachments.records() {
+		var matches []hostedstore.Attachment
+		for _, record := range s.Attachments.Records() {
 			if record.NativeThreadID == nativeID && (provider == "" || record.Provider == provider) {
 				matches = append(matches, record)
 			}

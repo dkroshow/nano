@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
@@ -38,7 +39,7 @@ func (a hostedRuntime) Waiting(id string) string {
 	return state
 }
 func (a hostedRuntime) Reattach(id string) { a.server.reattachWaitingHosted(id) }
-func (a hostedRuntime) StopDetached(record hosted.Attachment) error {
+func (a hostedRuntime) StopDetached(record hostedstore.Attachment) error {
 	if record.Provider == "claude" {
 		return sessions.CloseDetachedClaude(a.server.defaults.claudeShimWS, record.ShimSessionID)
 	}
@@ -114,7 +115,7 @@ type hostedCloseStars struct{ store *threadStarsStore }
 func (a hostedCloseStars) IsStarred(provider, native string) bool {
 	return a.store.isStarred(provider, native)
 }
-func (a hostedCloseStars) UnstarMany(keys []hosted.AttachmentKey) error {
+func (a hostedCloseStars) UnstarMany(keys []hostedstore.AttachmentKey) error {
 	return a.store.unstarMany(keys)
 }
 

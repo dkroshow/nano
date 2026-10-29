@@ -5,19 +5,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 func TestExecutionFamilyViewUsesDurableInvocationLineage(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "family")
-	root, _, err := store.beginSession("root", "root-hash", "codex", presentationShared)
+	root, _, err := fixtureBeginSession(store, "root", "root-hash", "codex", ownedthreads.PresentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, _, err := store.beginSessionWithInvoker("child", "child-hash", "codex", presentationBackground, root)
+	child, _, err := fixtureBeginSessionWithInvoker(store, "child", "child-hash", "codex", ownedthreads.PresentationBackground, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	op, _, err := store.beginTurn(child.ID, "child-turn", "prompt")
+	op, _, err := fixtureBeginTurn(store, child.ID, "child-turn", "prompt")
 	if err != nil {
 		t.Fatal(err)
 	}

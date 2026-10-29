@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"strings"
 
+	hostedprompts "github.com/dkroshow/nano/internal/core/prompts"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // HostedOperation resolves the route reference before invoking a hosted handler.
-func (s *Controller) HostedOperation(handler func(http.ResponseWriter, *http.Request, agentSessionRecord)) http.HandlerFunc {
+func (s *Controller) HostedOperation(handler func(http.ResponseWriter, *http.Request, ownedthreads.SessionRecord)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.Executions == nil {
 			message := "execution control unavailable; durable hosted mutations are disabled"
@@ -36,12 +39,12 @@ func (s *Controller) HostedOperation(handler func(http.ResponseWriter, *http.Req
 }
 
 // HandleRead serves the current hosted thread view.
-func (s *Controller) HandleRead(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
+func (s *Controller) HandleRead(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
 	httpapi.WriteJSON(w, s.Views().SessionView(record.ID))
 }
 
 // HandleDelete removes a closed hosted thread and its durable execution records.
-func (s *Controller) HandleDelete(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
+func (s *Controller) HandleDelete(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
 	// Never call code that can re-enter this server while relationshipMu is held.
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
@@ -56,12 +59,12 @@ func (s *Controller) HandleDelete(w http.ResponseWriter, _ *http.Request, record
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.Executions.removeSession(record.ID); err != nil {
+	if err := s.Executions.RemoveSession(record.ID); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if s.Metadata != nil {
-		if err := s.Metadata.destroy(record.ID); err != nil {
+		if err := s.Metadata.Destroy(record.ID); err != nil {
 			log.Printf("destroy canonical metadata %s: %v", record.ID, err)
 		}
 	}
@@ -69,7 +72,7 @@ func (s *Controller) HandleDelete(w http.ResponseWriter, _ *http.Request, record
 }
 
 // HandleClose closes the provider attachment and settles hosted operations.
-func (s *Controller) HandleClose(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
+func (s *Controller) HandleClose(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
 	// Never call code that can re-enter this server while relationshipMu is held.
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
@@ -81,7 +84,7 @@ func (s *Controller) HandleClose(w http.ResponseWriter, _ *http.Request, record 
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.Executions.UpdateSession(record.ID, "", "", StatusExited, "closed"); err != nil {
+	if err := s.Executions.UpdateSession(record.ID, "", "", hostedstore.StatusExited, "closed"); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -128,17 +131,17 @@ func (s *Controller) HandleTurnSubmit(w http.ResponseWriter, r *http.Request, ho
 	}
 	origin := strings.TrimSpace(req.Origin)
 	if origin == "" {
-		origin = turnOriginAgent
+		origin = string(hostedprompts.AgentOrigin)
 	}
-	if origin != turnOriginAgent && origin != turnOriginSystem {
+	if origin != string(hostedprompts.AgentOrigin) && origin != string(hostedprompts.SystemOrigin) {
 		httpapi.WriteHTTPError(w, "origin must be agent or system", http.StatusBadRequest)
 		return
 	}
-	if origin == turnOriginAgent && strings.HasPrefix(req.ClientActionID, "nano:") {
+	if origin == string(hostedprompts.AgentOrigin) && strings.HasPrefix(req.ClientActionID, "nano:") {
 		httpapi.WriteHTTPError(w, "clientActionId prefix nano: is reserved for Nano", http.StatusBadRequest)
 		return
 	}
-	if origin == turnOriginSystem && !strings.HasPrefix(req.ClientActionID, "nano:") {
+	if origin == string(hostedprompts.SystemOrigin) && !strings.HasPrefix(req.ClientActionID, "nano:") {
 		httpapi.WriteHTTPError(w, "system-origin clientActionId must use the reserved nano: prefix", http.StatusBadRequest)
 		return
 	}
@@ -148,12 +151,12 @@ func (s *Controller) HandleTurnSubmit(w http.ResponseWriter, r *http.Request, ho
 	}
 	submission := hostedTurnSubmission{Prompt: req.Prompt, RequireIdle: req.RequireIdle, NextTurn: req.NextTurn, Origin: origin}
 	ref := strings.TrimSpace(req.SenderThreadRef)
-	if origin == turnOriginSystem {
+	if origin == string(hostedprompts.SystemOrigin) {
 		if ref != "" {
 			writeSenderAdmissionError(w, "sender_forbidden", "senderThreadRef is not used for system-origin turn submissions")
 			return
 		}
-		submission.Attribution = TurnAttribution{Origin: turnOriginSystem}
+		submission.Attribution = hostedstore.TurnAttribution{Origin: string(hostedprompts.SystemOrigin)}
 		footer := senderFooter(submission.Attribution)
 		if feature, ok := s.FeatureFooter(req.ClientActionID); ok {
 			footer = feature

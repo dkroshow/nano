@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 func TestThreadReferenceRejectsTruncatedNativeUUID(t *testing.T) {
@@ -82,7 +84,7 @@ func TestThreadReferenceActiveOwnerBeatsRetiredNativeHistory(t *testing.T) {
 	s, store := newReferenceService(t, nil)
 	s.Executions, _ = newControlAgentExecutionStore(store.Control(), "empty-reader")
 	first := createReferenceHostedRecord(t, store, threadReferenceUUID)
-	if err := store.BindSession(first.ID, "nano-"+first.ID, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "ready", presentationShared); err != nil {
+	if err := store.BindSession(first.ID, "nano-"+first.ID, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
 	}
 	current := createReferenceHostedRecord(t, store, threadReferenceUUID)
@@ -97,11 +99,11 @@ func TestThreadReferenceCrossProviderNativeCollisionDoesNotGuess(t *testing.T) {
 	s, store := newReferenceService(t, nil)
 	s.Executions, _ = newControlAgentExecutionStore(store.Control(), "empty-reader")
 	_ = createReferenceHostedRecord(t, store, threadReferenceUUID)
-	other, _, err := store.beginSession("", "reference-claude", "claude", presentationShared)
+	other, _, err := fixtureBeginSession(store, "", "reference-claude", "claude", ownedthreads.PresentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.BindSession(other.ID, "nano-"+other.ID, threadReferenceUUID, "ready", presentationShared); err != nil {
+	if err := store.BindSession(other.ID, "nano-"+other.ID, threadReferenceUUID, "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
 	}
 

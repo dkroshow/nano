@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"reflect"
@@ -11,6 +9,7 @@ import (
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hosted "github.com/dkroshow/nano/internal/hosted"
 	fixture "github.com/dkroshow/nano/internal/testsupport"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -43,7 +42,7 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)

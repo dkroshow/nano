@@ -12,7 +12,7 @@ import (
 	"time"
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/providers"
@@ -202,7 +202,7 @@ func (sess *Session) HandleState(w http.ResponseWriter, r *http.Request) {
 				view.Name = name
 			}
 			out["metadata"] = view
-			if canonicalCwd, ok := hostedvalues.MetadataString(view.Fields["cwd"]); ok {
+			if canonicalCwd, ok := hostedstore.MetadataString(view.Fields["cwd"]); ok {
 				out["cwd"] = canonicalCwd
 			}
 		} else {

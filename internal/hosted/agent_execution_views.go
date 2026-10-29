@@ -4,8 +4,10 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/observability"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -41,9 +43,9 @@ type SessionView struct {
 	CreatedAt                 string                           `json:"createdAt"`
 	UpdatedAt                 string                           `json:"updatedAt"`
 	Revision                  int64                            `json:"revision"`
-	Attachment                hostedAttachmentView             `json:"attachment"`
-	Metadata                  *hostedMetadataView              `json:"metadata,omitempty"`
-	Assignment                *AssignmentView                  `json:"assignment,omitempty"`
+	Attachment                hostedstore.AttachmentView       `json:"attachment"`
+	Metadata                  *hostedstore.MetadataView        `json:"metadata,omitempty"`
+	Assignment                *hostedstore.AssignmentView      `json:"assignment,omitempty"`
 	AssignmentUnavailable     bool                             `json:"assignmentUnavailable,omitempty"`
 	MetadataUnavailable       bool                             `json:"metadataUnavailable,omitempty"`
 	MetadataDegraded          bool                             `json:"metadataDegraded,omitempty"`
@@ -60,7 +62,7 @@ type TurnView struct {
 	ProviderTurnID         string                             `json:"providerTurnId,omitempty"`
 	Status                 string                             `json:"status"`
 	Terminal               bool                               `json:"terminal"`
-	Error                  *agentExecutionError               `json:"error,omitempty"`
+	Error                  *ownedthreads.ExecutionError       `json:"error,omitempty"`
 	FinalItemID            string                             `json:"finalItemId,omitempty"`
 	FinalResponse          string                             `json:"finalResponse,omitempty"`
 	FinalResponseTruncated bool                               `json:"finalResponseTruncated"`
@@ -73,7 +75,7 @@ type TurnView struct {
 	SenderName             string                             `json:"senderName,omitempty"`
 	SenderSubmittedAt      string                             `json:"senderSubmittedAt,omitempty"`
 	Interactions           []interactmodel.PendingInteraction `json:"interactions"`
-	Assignment             *AssignmentView                    `json:"assignment,omitempty"`
+	Assignment             *hostedstore.AssignmentView        `json:"assignment,omitempty"`
 	AssignmentUnavailable  bool                               `json:"assignmentUnavailable,omitempty"`
 	CreatedAt              string                             `json:"createdAt"`
 	UpdatedAt              string                             `json:"updatedAt"`
@@ -98,7 +100,7 @@ func (s *ViewService) SessionView(id string) SessionView {
 		NanoSessionID: rec.NanoSessionID, NativeThreadID: rec.NativeThreadID,
 		InvokerHostedThreadID: rec.InvokerHostedThreadID,
 		InvokerNativeThreadID: rec.InvokerNativeThreadID, InvokerProvider: rec.InvokerProvider,
-		Subscriptions: storedSubscriptions(rec),
+		Subscriptions: hostedstore.StoredSubscriptions(rec),
 		Status:        rec.Status, Error: rec.Error, CreatedAt: rec.CreatedAt,
 		UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
 	}
@@ -112,7 +114,7 @@ func (s *ViewService) SessionView(id string) SessionView {
 	} else if waiting := s.Waiting(id); waiting != "" {
 		view.Status = waiting
 	}
-	view.NativeThreadIDProvisional = NativeThreadIDProvisional(view.Provider, view.NativeThreadID)
+	view.NativeThreadIDProvisional = hostedstore.NativeThreadIDProvisional(view.Provider, view.NativeThreadID)
 	view.Attachment = s.AttachmentState(id)
 	if s.Metadata != nil && s.MetadataError == "" {
 		if metadata, err := s.Metadata.View(id); err == nil {
@@ -140,14 +142,14 @@ func (s *ViewService) SessionView(id string) SessionView {
 // DecorateMetadata adds read-time joins that are deliberately outside
 // immutable metadata events: attachment liveness and durable user-assigned
 // name provenance.  Neither changes the hosted revision.
-func (s *ViewService) DecorateMetadata(metadata hostedMetadataView, attachment hostedAttachmentView) *hostedMetadataView {
+func (s *ViewService) DecorateMetadata(metadata hostedstore.MetadataView, attachment hostedstore.AttachmentView) *hostedstore.MetadataView {
 	metadata.Attachment = attachment
 	if name, ok := s.Names.DurableNameRef(metadata.Provider, metadata.NativeThreadID); ok {
 		metadata.Name = name
 	} else if name, ok := s.Names.DurableName(metadata.Provider, metadata.NativeThreadID); ok {
 		// Compatibility for a catalog implementation that exposes the older
 		// value-only seam. The production catalog implements ThreadNameRefFor.
-		metadata.Name = hostedMetadataName{Value: name, Provenance: "manual"}
+		metadata.Name = hostedstore.MetadataName{Value: name, Provenance: "manual"}
 	}
 	return &metadata
 }
@@ -155,7 +157,7 @@ func (s *ViewService) DecorateMetadata(metadata hostedMetadataView, attachment h
 // AttachmentState is a read-time join of process liveness and the
 // normalized execution record. It deliberately does not write hosted_threads:
 // attachment liveness is volatile and must not manufacture a metadata revision.
-func (s *ViewService) AttachmentState(id string) hostedAttachmentView {
+func (s *ViewService) AttachmentState(id string) hostedstore.AttachmentView {
 	if attachment, attached := s.Sessions.Attachment(id); attached {
 		if attachment.State == "" {
 			attachment.State = "attached"
@@ -163,24 +165,24 @@ func (s *ViewService) AttachmentState(id string) hostedAttachmentView {
 		return attachment
 	}
 	if waiting := s.Waiting(id); waiting != "" {
-		return hostedAttachmentView{State: waiting, Provenance: "boot_reattach"}
+		return hostedstore.AttachmentView{State: waiting, Provenance: "boot_reattach"}
 	}
 	if s.Executions == nil {
-		return hostedAttachmentView{State: "unavailable", Provenance: "execution_control", Error: "execution control unavailable"}
+		return hostedstore.AttachmentView{State: "unavailable", Provenance: "execution_control", Error: "execution control unavailable"}
 	}
 	rec, ok := s.Executions.Session(id)
 	if !ok {
-		return hostedAttachmentView{State: "unavailable", Provenance: "execution_record", Error: "hosted execution record unavailable"}
+		return hostedstore.AttachmentView{State: "unavailable", Provenance: "execution_record", Error: "hosted execution record unavailable"}
 	}
 	state := rec.Status
 	if state == "" {
 		state = "detached"
 	}
-	return hostedAttachmentView{State: state, Provenance: "execution_record", Error: rec.Error}
+	return hostedstore.AttachmentView{State: state, Provenance: "execution_record", Error: rec.Error}
 }
 
 // TurnView reads one operation with its live interactions and assignment snapshot.
-func (s *ViewService) TurnView(rec agentTurnRecord) TurnView {
+func (s *ViewService) TurnView(rec ownedthreads.TurnRecord) TurnView {
 	view := TurnView{
 		ID: rec.ID, HostedThreadID: rec.HostedThreadID, ClientActionID: rec.ClientActionID,
 		Provider: rec.Provider, NanoSessionID: rec.NanoSessionID, NativeThreadID: rec.NativeThreadID,
@@ -206,11 +208,11 @@ func (s *ViewService) TurnView(rec agentTurnRecord) TurnView {
 			}
 		}
 	}
-	if rec.Status == agentTurnQueued {
+	if rec.Status == ownedthreads.AgentTurnQueued {
 		view.QueuePosition = s.Sessions.QueuePosition(rec.HostedThreadID, rec.TransportActionID)
 	}
 	if s.Metadata != nil && s.MetadataError == "" {
-		assignment, err := s.Metadata.operationOrchestrationAssignment(rec.AssignmentEventID)
+		assignment, err := s.Metadata.OperationOrchestrationAssignment(rec.AssignmentEventID)
 		if err != nil {
 			view.AssignmentUnavailable = true
 		} else {

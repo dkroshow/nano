@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 // operationID validates that operation reads have an available store and a path ID.
 func (s *ViewService) operationID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if s.Executions == nil {
-		httpapi.WriteHTTPError(w, errAgentExecutionUnavailable.Error(), http.StatusServiceUnavailable)
+		httpapi.WriteHTTPError(w, hostedstore.ErrAgentExecutionUnavailable.Error(), http.StatusServiceUnavailable)
 		return "", false
 	}
 	id := strings.TrimSpace(r.PathValue("operationId"))
@@ -38,7 +39,7 @@ func (s *ViewService) HandleOperationRead(w http.ResponseWriter, r *http.Request
 	if waitMS > 30000 {
 		waitMS = 30000
 	}
-	rec, ok := s.Executions.waitTurn(r.Context(), id, after, time.Duration(waitMS)*time.Millisecond)
+	rec, ok := s.Executions.WaitTurn(r.Context(), id, after, time.Duration(waitMS)*time.Millisecond)
 	if !ok {
 		httpapi.WriteHTTPError(w, "unknown turn operation", http.StatusNotFound)
 		return
@@ -58,16 +59,16 @@ func (s *ViewService) HandleOperationChanges(w http.ResponseWriter, r *http.Requ
 	if waitMS > 30000 {
 		waitMS = 30000
 	}
-	var keep func(AgentOperationTransition) bool
+	var keep func(hostedstore.AgentOperationTransition) bool
 	if invokerRef := strings.TrimSpace(r.URL.Query().Get("invoker")); invokerRef != "" {
 		invoker, ok := s.ResolveRecord(invokerRef)
 		if !ok {
 			httpapi.WriteHTTPError(w, "invoker does not resolve to a hosted thread", http.StatusBadRequest)
 			return
 		}
-		keep = func(t AgentOperationTransition) bool { return t.InvokerHostedThreadID == invoker.ID }
+		keep = func(t hostedstore.AgentOperationTransition) bool { return t.InvokerHostedThreadID == invoker.ID }
 	}
-	response := s.Executions.waitChanges(
+	response := s.Executions.WaitChanges(
 		r.Context(), r.URL.Query().Get("since"), time.Duration(waitMS)*time.Millisecond, keep,
 	)
 	httpapi.WriteJSON(w, response)
@@ -79,7 +80,7 @@ func (s *ViewService) HandleOperationChanges(w http.ResponseWriter, r *http.Requ
 // that no longer exist, and one stale id must not fail the batch.
 func (s *ViewService) HandleOperationsCollection(w http.ResponseWriter, r *http.Request) {
 	if s.Executions == nil {
-		httpapi.WriteHTTPError(w, errAgentExecutionUnavailable.Error(), http.StatusServiceUnavailable)
+		httpapi.WriteHTTPError(w, hostedstore.ErrAgentExecutionUnavailable.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	const maxBulkOperationIDs = 64

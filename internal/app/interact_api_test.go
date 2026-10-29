@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"net/http"
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hosted "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/sessions"
 )
@@ -67,7 +66,7 @@ func TestInteractTurnSubmitRejectsInvalidOriginBoundaries(t *testing.T) {
 func TestInteractCompletedTurnFeedAdvancesDurableCursor(t *testing.T) {
 	s, target := interactTestServer(t, false)
 	completed := mustCompletedStore(t)
-	s.completedTurns = hostedstore.NewCompletedTurnSource(completed)
+	s.completedTurns = hosted.NewCompletedTurnSource(completed)
 	if _, _, err := recordTestCompletedTurn(completed, coreturns.Finish{HostedThreadID: target, Provider: "codex", TurnID: "turn-1", FinalMessageID: "final-1", Outcome: "completed", At: time.Now(), Source: "adapter"}); err != nil {
 		t.Fatal(err)
 	}
@@ -92,8 +91,8 @@ func TestInteractCompletedTurnFeedAdvancesDurableCursor(t *testing.T) {
 // person's prompt, names none. Boundary: the public completed-turn feed.
 func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *testing.T) {
 	s, target := interactTestServer(t, false)
-	completed := hostedstore.NewCompletedTurnStore(s.queuedTurns.Database())
-	s.completedTurns = hostedstore.NewCompletedTurnSource(completed)
+	completed := hosted.NewCompletedTurnStore(s.queuedTurns.Database())
+	s.completedTurns = hosted.NewCompletedTurnSource(completed)
 	op, _, err := fixtureBeginTurn(s.agentExecutions, target, "action-failed", "hash-failed")
 	if err != nil {
 		t.Fatal(err)

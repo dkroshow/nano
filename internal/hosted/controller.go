@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // AdmissionSession is the bounded delivery action surface used during hosted admission.
@@ -40,10 +42,10 @@ type ControlRuntime interface {
 	SetPresentation(string, string)
 	SetSidebarPlacement(string, string)
 	AttachmentSession(string, string) CloseSession
-	ResolveLiveRecord(string, func(string) (agentSessionRecord, bool)) (agentSessionRecord, bool)
+	ResolveLiveRecord(string, func(string) (ownedthreads.SessionRecord, bool)) (ownedthreads.SessionRecord, bool)
 	Waiting(string) string
 	Reattach(string)
-	StopDetached(Attachment) error
+	StopDetached(hostedstore.Attachment) error
 	ForgetDetached(string, func() error) error
 	HasDeliveryEvidence(string, string) bool
 	DeliveryWasAttempted(string, string) bool
@@ -55,16 +57,16 @@ type ControlRuntime interface {
 // CloseStars supplies only the star reads and removal used by a tree close.
 type CloseStars interface {
 	IsStarred(string, string) bool
-	UnstarMany([]AttachmentKey) error
+	UnstarMany([]hostedstore.AttachmentKey) error
 }
 
 // Controller owns hosted admission and relationship mutation ordering.
 // Dependencies are fixed when wired; the stores retain the sole durable facts.
 type Controller struct {
-	Executions                    *ExecutionStore
-	Metadata                      *MetadataStore
+	Executions                    *hostedstore.ExecutionStore
+	Metadata                      *hostedstore.MetadataStore
 	MetadataError, ExecutionError string
-	Attachments                   *AttachmentStore
+	Attachments                   *hostedstore.AttachmentStore
 	Queue                         *prompts.LegacyQueue
 	Runtime                       ControlRuntime
 	Stars                         CloseStars
@@ -82,7 +84,7 @@ type Controller struct {
 	relationshipMu                sync.Mutex
 }
 
-func (s *Controller) controlStore() *MetadataStore {
+func (s *Controller) controlStore() *hostedstore.MetadataStore {
 	if s.Metadata != nil && s.MetadataError == "" {
 		return s.Metadata
 	}

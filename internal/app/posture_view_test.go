@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"encoding/json"
@@ -12,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 

@@ -3,7 +3,7 @@ package testsupport
 import (
 	"sync"
 
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // AttachmentRecorder captures what a session would have persisted, standing in
@@ -11,10 +11,10 @@ import (
 // reports the records that would survive on disk.
 type AttachmentRecorder struct {
 	mu      sync.Mutex
-	records []hosted.Attachment
+	records []hostedstore.Attachment
 }
 
-func (r *AttachmentRecorder) Remember(rec hosted.Attachment) {
+func (r *AttachmentRecorder) Remember(rec hostedstore.Attachment) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, existing := range r.records {
@@ -29,7 +29,7 @@ func (r *AttachmentRecorder) Remember(rec hosted.Attachment) {
 func (r *AttachmentRecorder) Forget(provider, nativeThreadID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := hosted.AttachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
+	key := hostedstore.AttachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
 	kept := r.records[:0]
 	for _, rec := range r.records {
 		if rec.Key() != key {
@@ -39,8 +39,8 @@ func (r *AttachmentRecorder) Forget(provider, nativeThreadID string) {
 	r.records = kept
 }
 
-func (r *AttachmentRecorder) All() []hosted.Attachment {
+func (r *AttachmentRecorder) All() []hostedstore.Attachment {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]hosted.Attachment(nil), r.records...)
+	return append([]hostedstore.Attachment(nil), r.records...)
 }

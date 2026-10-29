@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	hostedprompts "github.com/dkroshow/nano/internal/core/prompts"
 	prompts "github.com/dkroshow/nano/internal/core/prompts"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // hostedTurnSubmission carries one agent-API prompt through admission.
@@ -22,8 +25,8 @@ type hostedTurnSubmission struct {
 	// NextTurn holds the prompt until the target's running turn ends.
 	NextTurn    bool
 	Origin      string
-	Attribution TurnAttribution
-	CreateGuard agentTurnCreationGuard
+	Attribution hostedstore.TurnAttribution
+	CreateGuard hostedstore.AgentTurnCreationGuard
 }
 
 // TurnAttributionFor snapshots a complete sender identity at admission time.
@@ -31,28 +34,28 @@ type hostedTurnSubmission struct {
 // is immutable, so deferring a missing provider-native id would make a
 // permanently untraceable message. A name is presentation, not identity; an
 // unnamed but otherwise complete sender gets a deterministic label.
-func (s *Controller) TurnAttributionFor(sender agentSessionRecord) (TurnAttribution, error) {
+func (s *Controller) TurnAttributionFor(sender ownedthreads.SessionRecord) (hostedstore.TurnAttribution, error) {
 	provider := strings.TrimSpace(sender.Provider)
 	native := strings.TrimSpace(sender.NativeThreadID)
-	if sender.ID == "" || provider == "" || native == "" || NativeThreadIDProvisional(provider, native) {
-		return TurnAttribution{}, errors.New("senderThreadRef resolves to a hosted thread without a confirmed provider-native thread identity")
+	if sender.ID == "" || provider == "" || native == "" || hostedstore.NativeThreadIDProvisional(provider, native) {
+		return hostedstore.TurnAttribution{}, errors.New("senderThreadRef resolves to a hosted thread without a confirmed provider-native thread identity")
 	}
 	identity, err := s.ResolveIdentity(context.Background(), sender.ID)
 	if err != nil {
-		return TurnAttribution{}, fmt.Errorf("resolve sender identity: %w", err)
+		return hostedstore.TurnAttribution{}, fmt.Errorf("resolve sender identity: %w", err)
 	}
 	// Names and native identities must come from the same answer as the public
 	// resolver. Refuse a changed binding rather than signing it with stale facts.
 	if identity.MatchCount != 1 || identity.HostedThreadID != sender.ID || identity.Provider != provider || identity.NativeThreadID != native || identity.NativeThreadIDProvisional {
-		return TurnAttribution{}, errors.New("senderThreadRef does not resolve to the same confirmed hosted provider-native identity")
+		return hostedstore.TurnAttribution{}, errors.New("senderThreadRef does not resolve to the same confirmed hosted provider-native identity")
 	}
-	return TurnAttribution{
-		Origin: turnOriginAgent, SenderHostedThreadID: sender.ID, SenderNativeThreadID: native,
+	return hostedstore.TurnAttribution{
+		Origin: string(hostedprompts.AgentOrigin), SenderHostedThreadID: sender.ID, SenderNativeThreadID: native,
 		SenderProvider: provider, SenderName: strings.TrimSpace(identity.DisplayName), SenderSubmittedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}, nil
 }
 
-func senderPresentationName(a TurnAttribution) string {
+func senderPresentationName(a hostedstore.TurnAttribution) string {
 	if name := strings.TrimSpace(a.SenderName); name != "" {
 		return name
 	}
@@ -72,8 +75,8 @@ func senderPresentationName(a TurnAttribution) string {
 // sender and Nano's original UTC admission time, before any queue delay.
 // Agent submissions reach this function only after complete attribution
 // admission. System prompts retain their distinct Nano footer.
-func senderFooter(a TurnAttribution) string {
-	if a.Origin == turnOriginSystem {
+func senderFooter(a hostedstore.TurnAttribution) string {
+	if a.Origin == string(hostedprompts.SystemOrigin) {
 		return "[from nano]"
 	}
 	name := senderPresentationName(a)
@@ -90,11 +93,11 @@ func senderFooter(a TurnAttribution) string {
 // historical footer form rather than fabricating a new time during recovery.
 // New public admissions always use senderFooter above and therefore always
 // carry a submission timestamp.
-func persistedSenderFooter(a TurnAttribution) string {
+func persistedSenderFooter(a hostedstore.TurnAttribution) string {
 	if footer := senderFooter(a); footer != "" {
 		return footer
 	}
-	if a.Origin != turnOriginAgent || strings.TrimSpace(a.SenderSubmittedAt) != "" {
+	if a.Origin != string(hostedprompts.AgentOrigin) || strings.TrimSpace(a.SenderSubmittedAt) != "" {
 		return ""
 	}
 	name, native := strings.TrimSpace(a.SenderName), strings.TrimSpace(a.SenderNativeThreadID)
@@ -110,12 +113,12 @@ func (e *hostedTurnAdmissionError) Error() string { return "target is not idle: 
 
 func hostedTurnPromptHash(prompt string, requireIdle bool) string {
 	if !requireIdle {
-		return AgentHash([]byte(prompt))
+		return hostedstore.AgentHash([]byte(prompt))
 	}
-	return AgentHash([]byte(prompt + "\x00requireIdle"))
+	return hostedstore.AgentHash([]byte(prompt + "\x00requireIdle"))
 }
 
-func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub hostedTurnSubmission) (agentTurnRecord, bool, error) {
+func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub hostedTurnSubmission) (ownedthreads.TurnRecord, bool, error) {
 	prompt, requireIdle := sub.Prompt, sub.RequireIdle
 	if sub.Delivered == "" {
 		sub.Delivered = prompt
@@ -123,22 +126,22 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	var err error
 	sub.Delivered, err = s.PromptWithUnreadFooter(hostedThreadID, sub.Delivered)
 	if err != nil {
-		return agentTurnRecord{}, false, fmt.Errorf("%w: %v", s.UnreadFooterUnavailable, err)
+		return ownedthreads.TurnRecord{}, false, fmt.Errorf("%w: %v", s.UnreadFooterUnavailable, err)
 	}
 	sub.Origin = string(prompts.NormalizeOrigin(prompts.Origin(sub.Origin)))
 	sub.Attribution.Origin = sub.Origin
 	hash := hostedTurnPromptHash(prompt, requireIdle)
 	if sub.NextTurn {
-		hash = TurnRequestHash(prompt, true)
+		hash = hostedstore.TurnRequestHash(prompt, true)
 	}
 	waited := s.Runtime.Waiting(hostedThreadID)
 	s.Runtime.Reattach(hostedThreadID)
-	_, found := s.Executions.turnForAction(hostedThreadID, actionID)
+	_, found := s.Executions.TurnForAction(hostedThreadID, actionID)
 	if !found && s.Runtime.Admission(hostedThreadID) == nil {
 		if requireIdle {
-			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
+			return ownedthreads.TurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
 		}
-		return agentTurnRecord{}, false, errHostedThreadNotAttached
+		return ownedthreads.TurnRecord{}, false, errHostedThreadNotAttached
 	}
 	if found {
 		return s.submitExistingHostedTurn(hostedThreadID, actionID, sub, hash)
@@ -146,15 +149,15 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	sess := s.Runtime.Admission(hostedThreadID)
 	if sess == nil {
 		if requireIdle {
-			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
+			return ownedthreads.TurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
 		}
-		return agentTurnRecord{}, false, errHostedThreadNotAttached
+		return ownedthreads.TurnRecord{}, false, errHostedThreadNotAttached
 	}
 	if requireIdle {
-		var result agentTurnRecord
+		var result ownedthreads.TurnRecord
 		var replay bool
 		reason, err := sess.WithIdleDelivery(waited == "resting", func() error {
-			record, created, err := s.Executions.beginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
+			record, created, err := s.Executions.BeginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
 			if err != nil {
 				return err
 			}
@@ -163,20 +166,20 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 			return err
 		})
 		if reason != "" {
-			return agentTurnRecord{}, false, &hostedTurnAdmissionError{Reason: reason}
+			return ownedthreads.TurnRecord{}, false, &hostedTurnAdmissionError{Reason: reason}
 		}
 		return result, replay, err
 	}
 
-	record, created, err := s.Executions.beginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
+	record, created, err := s.Executions.BeginTurnAttributedGuarded(hostedThreadID, actionID, hash, sub.Attribution, sub.CreateGuard)
 	if err != nil {
-		if errors.Is(err, errAgentTurnIdempotencyConflict) {
-			return agentTurnRecord{}, false, errAgentTurnIdempotencyConflict
+		if errors.Is(err, hostedstore.ErrAgentTurnIdempotencyConflict) {
+			return ownedthreads.TurnRecord{}, false, hostedstore.ErrAgentTurnIdempotencyConflict
 		}
-		return agentTurnRecord{}, false, err
+		return ownedthreads.TurnRecord{}, false, err
 	}
 	if !created && s.turnSubmissionDeliveryUnknown(record) {
-		_ = s.Executions.MarkTurnDelivery(record.ID, "", agentTurnDeliveryUnknown, &agentExecutionError{
+		_ = s.Executions.MarkTurnDelivery(record.ID, "", ownedthreads.AgentTurnDeliveryUnknown, &ownedthreads.ExecutionError{
 			Source: "delivery", Code: "nano_restarted", Message: "Nano restarted after provider delivery began",
 		})
 		latest, _ := s.Executions.Turn(record.ID)
@@ -193,14 +196,14 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	return s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
 }
 
-func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, sub hostedTurnSubmission, hash string) (agentTurnRecord, bool, error) {
-	record, created, err := s.Executions.beginTurnAttributed(hostedThreadID, actionID, hash, sub.Attribution)
+func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, sub hostedTurnSubmission, hash string) (ownedthreads.TurnRecord, bool, error) {
+	record, created, err := s.Executions.BeginTurnAttributed(hostedThreadID, actionID, hash, sub.Attribution)
 	if err == nil {
 		// A retry of the same clientActionId must replay the text Nano already
 		// persisted: the footer is never rewritten, and a thread rename between
 		// retries must not trip the queue's text-hash guard.
-		if record.Origin == turnOriginAgent {
-			footer := persistedSenderFooter(TurnAttribution{
+		if record.Origin == string(hostedprompts.AgentOrigin) {
+			footer := persistedSenderFooter(hostedstore.TurnAttribution{
 				Origin: record.Origin, SenderHostedThreadID: record.SenderHostedThreadID,
 				SenderNativeThreadID: record.SenderNativeThreadID, SenderProvider: record.SenderProvider,
 				SenderName: record.SenderName, SenderSubmittedAt: record.SenderSubmittedAt,
@@ -210,7 +213,7 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 				var footerErr error
 				sub.Delivered, footerErr = s.PromptWithUnreadFooter(hostedThreadID, sub.Delivered)
 				if footerErr != nil {
-					return agentTurnRecord{}, false, fmt.Errorf("%w: %v", s.UnreadFooterUnavailable, footerErr)
+					return ownedthreads.TurnRecord{}, false, fmt.Errorf("%w: %v", s.UnreadFooterUnavailable, footerErr)
 				}
 			}
 		}
@@ -221,10 +224,10 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 		}
 	}
 	if err != nil {
-		return agentTurnRecord{}, false, err
+		return ownedthreads.TurnRecord{}, false, err
 	}
 	if !created && s.turnSubmissionDeliveryUnknown(record) {
-		_ = s.Executions.MarkTurnDelivery(record.ID, "", agentTurnDeliveryUnknown, &agentExecutionError{Source: "delivery", Code: "nano_restarted", Message: "Nano restarted after provider delivery began"})
+		_ = s.Executions.MarkTurnDelivery(record.ID, "", ownedthreads.AgentTurnDeliveryUnknown, &ownedthreads.ExecutionError{Source: "delivery", Code: "nano_restarted", Message: "Nano restarted after provider delivery began"})
 		latest, _ := s.Executions.Turn(record.ID)
 		return latest, true, nil
 	}
@@ -239,25 +242,25 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 	return s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
 }
 
-func (s *Controller) finishHostedTurnSubmission(sess AdmissionSession, record agentTurnRecord, created bool, started bool, responseStatus int, reason string, err error) (agentTurnRecord, bool, error) {
+func (s *Controller) finishHostedTurnSubmission(sess AdmissionSession, record ownedthreads.TurnRecord, created bool, started bool, responseStatus int, reason string, err error) (ownedthreads.TurnRecord, bool, error) {
 	if err != nil {
-		_ = s.Executions.MarkTurnDelivery(record.ID, "", agentTurnFailed, &agentExecutionError{Source: "delivery", Message: err.Error()})
+		_ = s.Executions.MarkTurnDelivery(record.ID, "", ownedthreads.AgentTurnFailed, &ownedthreads.ExecutionError{Source: "delivery", Message: err.Error()})
 		sess.NotifyRuntime()
 		return record, false, err
 	}
 	if responseStatus == http.StatusAccepted && reason == "queued_for_next_turn" {
-		_ = s.Executions.MarkTurnDelivery(record.ID, "", agentTurnQueued, nil)
+		_ = s.Executions.MarkTurnDelivery(record.ID, "", ownedthreads.AgentTurnQueued, nil)
 	} else if responseStatus != 0 || !started {
-		state := agentTurnDeliveryUnknown
+		state := ownedthreads.AgentTurnDeliveryUnknown
 		if responseStatus >= http.StatusBadRequest {
-			state = agentTurnFailed
+			state = ownedthreads.AgentTurnFailed
 		}
 		code := "existing_delivery_state"
 		if reason == "reconnect_failed" {
 			code = reason
 		}
-		_ = s.Executions.MarkTurnDelivery(record.ID, "", state, &agentExecutionError{Source: "delivery", Code: code, Message: reason})
-		if state == agentTurnFailed {
+		_ = s.Executions.MarkTurnDelivery(record.ID, "", state, &ownedthreads.ExecutionError{Source: "delivery", Code: code, Message: reason})
+		if state == ownedthreads.AgentTurnFailed {
 			sess.NotifyRuntime()
 		}
 	}
@@ -267,15 +270,15 @@ func (s *Controller) finishHostedTurnSubmission(sess AdmissionSession, record ag
 
 var errHostedThreadNotAttached = errors.New("hosted thread is not attached")
 
-func (s *Controller) needsTurnSubmissionReconciliation(record agentTurnRecord) bool {
-	if record.Status != agentTurnDeliveryPending {
+func (s *Controller) needsTurnSubmissionReconciliation(record ownedthreads.TurnRecord) bool {
+	if record.Status != ownedthreads.AgentTurnDeliveryPending {
 		return false
 	}
 	return !s.Runtime.HasDeliveryEvidence(record.HostedThreadID, record.TransportActionID)
 }
 
-func (s *Controller) turnSubmissionDeliveryUnknown(record agentTurnRecord) bool {
-	if record.Status != agentTurnDeliveryPending || record.RunID == s.Executions.runID {
+func (s *Controller) turnSubmissionDeliveryUnknown(record ownedthreads.TurnRecord) bool {
+	if record.Status != ownedthreads.AgentTurnDeliveryPending || record.RunID == s.Executions.RunID() {
 		return false
 	}
 	return s.Runtime.DeliveryWasAttempted(record.HostedThreadID, record.TransportActionID)

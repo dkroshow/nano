@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // HandleCreate admits a hosted thread before starting its provider attachment.
@@ -67,7 +69,7 @@ func (s *Controller) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteHTTPError(w, "invokerThreadRef does not resolve to a hosted thread", http.StatusBadRequest)
 		return
 	}
-	if invoker.Status == StatusExited {
+	if invoker.Status == hostedstore.StatusExited {
 		httpapi.WriteHTTPError(w, "invokerThreadRef resolves to a closed hosted thread", http.StatusConflict)
 		return
 	}
@@ -89,12 +91,12 @@ func (s *Controller) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	// a retry may use the parent's native id first and hosted id later.
 	hashRequest.InvokerThreadRef = invoker.ID
 	hashBody, _ := json.Marshal(hashRequest)
-	record, created, err := s.Executions.beginNamedSessionWithSubscriptionsAndPlacement(
-		resolved.ClientSessionID, AgentHash(hashBody), resolved.Provider, resolved.PresentationMode, resolved.SidebarPlacement, resolved.Name, invoker, choices, assignment,
+	record, created, err := s.Executions.BeginNamedSessionWithSubscriptionsAndPlacement(
+		resolved.ClientSessionID, hostedstore.AgentHash(hashBody), resolved.Provider, resolved.PresentationMode, resolved.SidebarPlacement, resolved.Name, invoker, choices, assignment,
 	)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, errClientSessionIdempotencyConflict) {
+		if errors.Is(err, hostedstore.ErrClientSessionIdempotencyConflict) {
 			status = http.StatusConflict
 		}
 		httpapi.WriteHTTPError(w, err.Error(), status)
@@ -109,14 +111,14 @@ func (s *Controller) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !created {
-		if record.Status == StatusExited {
+		if record.Status == hostedstore.StatusExited {
 			httpapi.WriteJSON(w, s.Views().SessionView(record.ID))
 			return
 		}
 		if record.NativeThreadID == "" {
 			w.Header().Set("Content-Type", "application/json")
 			status := http.StatusOK
-			if record.Status == agentSessionCreating {
+			if record.Status == ownedthreads.AgentSessionCreating {
 				status = http.StatusAccepted
 			}
 			w.WriteHeader(status)
@@ -126,7 +128,7 @@ func (s *Controller) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	attachedID, err := resolved.Attach(record, !created)
 	if err != nil {
-		_ = s.Executions.UpdateSession(record.ID, "", record.NativeThreadID, StatusExited, err.Error())
+		_ = s.Executions.UpdateSession(record.ID, "", record.NativeThreadID, hostedstore.StatusExited, err.Error())
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}

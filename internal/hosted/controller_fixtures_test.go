@@ -7,13 +7,16 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	hostedprompts "github.com/dkroshow/nano/internal/core/prompts"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 type controllerRuntime struct{ ControlRuntime }
 
 func (controllerRuntime) Admission(string) AdmissionSession { return nil }
-func (controllerRuntime) ResolveLiveRecord(string, func(string) (agentSessionRecord, bool)) (agentSessionRecord, bool) {
-	return agentSessionRecord{}, false
+func (controllerRuntime) ResolveLiveRecord(string, func(string) (ownedthreads.SessionRecord, bool)) (ownedthreads.SessionRecord, bool) {
+	return ownedthreads.SessionRecord{}, false
 }
 func (controllerRuntime) Waiting(string) string                    { return "" }
 func (controllerRuntime) Reattach(string)                          {}
@@ -22,9 +25,11 @@ func (controllerRuntime) DeliveryWasAttempted(string, string) bool { return fals
 
 type emptyViewSessions struct{ ViewSessions }
 
-func (emptyViewSessions) Session(string) (SessionSnapshot, bool)   { return SessionSnapshot{}, false }
-func (emptyViewSessions) Turn(string, bool) (TurnSnapshot, bool)   { return TurnSnapshot{}, false }
-func (emptyViewSessions) Attachment(string) (AttachmentView, bool) { return AttachmentView{}, false }
+func (emptyViewSessions) Session(string) (SessionSnapshot, bool) { return SessionSnapshot{}, false }
+func (emptyViewSessions) Turn(string, bool) (TurnSnapshot, bool) { return TurnSnapshot{}, false }
+func (emptyViewSessions) Attachment(string) (hostedstore.AttachmentView, bool) {
+	return hostedstore.AttachmentView{}, false
+}
 func (emptyViewSessions) Availability(string) (AvailabilitySnapshot, bool) {
 	return AvailabilitySnapshot{}, false
 }
@@ -34,11 +39,11 @@ func (emptyViewSessions) QueuePosition(string, string) int { return 0 }
 type emptyViewNames struct{}
 
 func (emptyViewNames) DurableName(string, string) (string, bool) { return "", false }
-func (emptyViewNames) DurableNameRef(string, string) (MetadataName, bool) {
-	return MetadataName{}, false
+func (emptyViewNames) DurableNameRef(string, string) (hostedstore.MetadataName, bool) {
+	return hostedstore.MetadataName{}, false
 }
 
-func testController(t *testing.T, store *ExecutionStore) *Controller {
+func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller {
 	t.Helper()
 	control := store.Control()
 	migrateTestControl(t, control)
@@ -72,7 +77,7 @@ func (a guardRuntime) HasDeliveryEvidence(string, string) bool  { return a.sessi
 func (a guardRuntime) DeliveryWasAttempted(string, string) bool { return a.session.sent > 0 }
 
 type guardAdmission struct {
-	store   *ExecutionStore
+	store   *hostedstore.ExecutionStore
 	prompts chan string
 	sent    int
 }
@@ -84,7 +89,7 @@ func (a *guardAdmission) StartPrepared(action, text, presentation, hash, origin 
 	a.sent++
 	a.prompts <- text
 	record, _ := a.store.TurnForTransportAction(action)
-	err := a.store.MarkTurnDelivery(record.ID, "provider-turn", agentTurnRunning, nil)
+	err := a.store.MarkTurnDelivery(record.ID, "provider-turn", ownedthreads.AgentTurnRunning, nil)
 	return true, 0, "", err
 }
 func (a *guardAdmission) StartLockedPrepared(action, text, presentation, hash, origin string, next bool) (bool, int, string, error) {
@@ -96,25 +101,25 @@ func (a *guardAdmission) NotifyRuntime()                   {}
 // submitHostedTurn is the single ordinary-turn path used by the public route
 // and Nano's notification dispatcher. A persisted pre-delivery operation with
 // no outbox or send-journal evidence is safe to enqueue again after a crash.
-func (s *Controller) submitHostedTurn(hostedThreadID, actionID, prompt string) (agentTurnRecord, bool, error) {
+func (s *Controller) submitHostedTurn(hostedThreadID, actionID, prompt string) (ownedthreads.TurnRecord, bool, error) {
 	return s.submitHostedTurnWithOptions(hostedThreadID, actionID, prompt, false)
 }
 
 // submitHostedTurnWithOptions is for Nano-internal system actions only. Public
 // agent submissions must enter through HandleTurnSubmit, which admits a
 // complete sender before any operation can exist.
-func (s *Controller) submitHostedTurnWithOptions(hostedThreadID, actionID, prompt string, requireIdle bool) (agentTurnRecord, bool, error) {
+func (s *Controller) submitHostedTurnWithOptions(hostedThreadID, actionID, prompt string, requireIdle bool) (ownedthreads.TurnRecord, bool, error) {
 	return s.submitHostedTurnGuardedWithOptions(hostedThreadID, actionID, prompt, requireIdle, nil)
 }
 
 // submitHostedTurnGuardedWithOptions lets a Nano-internal caller validate the
 // current hosted-operation set atomically with creation of its operation. The
 // guard is never exposed by the public turn API.
-func (s *Controller) submitHostedTurnGuardedWithOptions(hostedThreadID, actionID, prompt string, requireIdle bool, guard agentTurnCreationGuard) (agentTurnRecord, bool, error) {
+func (s *Controller) submitHostedTurnGuardedWithOptions(hostedThreadID, actionID, prompt string, requireIdle bool, guard hostedstore.AgentTurnCreationGuard) (ownedthreads.TurnRecord, bool, error) {
 	if !strings.HasPrefix(actionID, "nano:") {
-		return agentTurnRecord{}, false, errors.New("agent-origin submissions require senderThreadRef through the public hosted-turn endpoint")
+		return ownedthreads.TurnRecord{}, false, errors.New("agent-origin submissions require senderThreadRef through the public hosted-turn endpoint")
 	}
 	return s.submitHostedTurnFull(hostedThreadID, actionID, hostedTurnSubmission{
-		Prompt: prompt, Delivered: prompt + "\n\n" + senderFooter(TurnAttribution{Origin: turnOriginSystem}), RequireIdle: requireIdle, Origin: turnOriginSystem, Attribution: TurnAttribution{Origin: turnOriginSystem}, CreateGuard: guard,
+		Prompt: prompt, Delivered: prompt + "\n\n" + senderFooter(hostedstore.TurnAttribution{Origin: string(hostedprompts.SystemOrigin)}), RequireIdle: requireIdle, Origin: string(hostedprompts.SystemOrigin), Attribution: hostedstore.TurnAttribution{Origin: string(hostedprompts.SystemOrigin)}, CreateGuard: guard,
 	})
 }

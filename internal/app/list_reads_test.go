@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"database/sql"
@@ -20,10 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // List reads must cost work in proportion to the page, not the fleet.

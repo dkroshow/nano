@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"bytes"
 	"context"
@@ -21,6 +19,7 @@ import (
 	"time"
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )

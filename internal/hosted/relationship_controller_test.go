@@ -7,23 +7,25 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 func TestChildCreationQueuedBehindTreeMutationCannotUseClosedInvoker(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "bulk-close-test")
-	root, _, err := store.beginSessionWithInvoker("root", "root-hash", "codex", presentationShared, agentSessionRecord{})
+	root, _, err := fixtureBeginSessionWithInvoker(store, "root", "root-hash", "codex", ownedthreads.PresentationShared, ownedthreads.SessionRecord{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.BindSession(root.ID, "nano-root", "native-root", "ready", presentationShared); err != nil {
+	if err := store.BindSession(root.ID, "nano-root", "native-root", "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
 	}
 	root, _ = store.Session(root.ID)
 	s := testController(t, store)
 	cwd := t.TempDir()
 	s.PrepareCreation = func(req CreationRequest) (CreationPlan, error) {
-		return CreationPlan{ClientSessionID: req.ClientSessionID, Provider: req.Provider, Mode: "start", PresentationMode: presentationShared, SidebarPlacement: sidebarPlacementInvoker,
-			Attach: func(record agentSessionRecord, _ bool) (string, error) { return record.ID, nil },
+		return CreationPlan{ClientSessionID: req.ClientSessionID, Provider: req.Provider, Mode: "start", PresentationMode: ownedthreads.PresentationShared, SidebarPlacement: ownedthreads.SidebarPlacementInvoker,
+			Attach: func(record ownedthreads.SessionRecord, _ bool) (string, error) { return record.ID, nil },
 		}, nil
 	}
 

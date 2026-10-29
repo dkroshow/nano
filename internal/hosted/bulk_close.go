@@ -7,7 +7,9 @@ import (
 	"sort"
 	"strings"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -58,7 +60,7 @@ type bulkClosePreview struct {
 }
 
 type relationshipTreeMember struct {
-	record agentSessionRecord
+	record ownedthreads.SessionRecord
 	depth  int
 }
 
@@ -72,9 +74,9 @@ func (s *Controller) currentRelationshipTree(rootID string) ([]relationshipTreeM
 	if s.Executions == nil || s.Metadata == nil || s.MetadataError != "" {
 		return nil, fmt.Errorf("current relationship metadata unavailable")
 	}
-	allRecords := s.Executions.listSessions()
-	canonicalByID := make(map[string]agentSessionRecord, len(allRecords))
-	records := make([]agentSessionRecord, 0, len(allRecords))
+	allRecords := s.Executions.ListSessions()
+	canonicalByID := make(map[string]ownedthreads.SessionRecord, len(allRecords))
+	records := make([]ownedthreads.SessionRecord, 0, len(allRecords))
 	// The catalog has one visible row per provider conversation. A resume can
 	// replace that row's hosted owner while old lineage still names the retired
 	// hosted id. Collapse each retired alias to the active native-id owner, just
@@ -97,7 +99,7 @@ func (s *Controller) currentRelationshipTree(rootID string) ([]relationshipTreeM
 		return nil, fmt.Errorf("hosted tree root does not exist")
 	}
 
-	children := make(map[string][]agentSessionRecord)
+	children := make(map[string][]ownedthreads.SessionRecord)
 	for _, record := range records {
 		if record.ID == root.ID {
 			continue
@@ -113,7 +115,7 @@ func (s *Controller) currentRelationshipTree(rootID string) ([]relationshipTreeM
 			}
 		}
 		if parentID == "" {
-			if record.SidebarPlacement == sidebarPlacementStandalone {
+			if record.SidebarPlacement == ownedthreads.SidebarPlacementStandalone {
 				continue
 			}
 			parentID = record.InvokerHostedThreadID
@@ -140,8 +142,8 @@ func (s *Controller) currentRelationshipTree(rootID string) ([]relationshipTreeM
 
 	tree := make([]relationshipTreeMember, 0)
 	seen := map[string]bool{}
-	var appendTree func(agentSessionRecord, int)
-	appendTree = func(record agentSessionRecord, depth int) {
+	var appendTree func(ownedthreads.SessionRecord, int)
+	appendTree = func(record ownedthreads.SessionRecord, depth int) {
 		if seen[record.ID] {
 			return
 		}
@@ -155,13 +157,13 @@ func (s *Controller) currentRelationshipTree(rootID string) ([]relationshipTreeM
 	return tree, nil
 }
 
-func (s *Controller) bulkCloseMemberWorking(record agentSessionRecord) bool {
+func (s *Controller) bulkCloseMemberWorking(record ownedthreads.SessionRecord) bool {
 	summary, live := s.Views().Sessions.Session(record.ID)
 	return live && summary.TurnActive && !summary.Waiting
 }
 
 // HandleBulkClosePreview serves the bounded hosted relationship-tree close preview.
-func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root agentSessionRecord) {
+func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root ownedthreads.SessionRecord) {
 	if s.Stars == nil {
 		httpapi.WriteHTTPError(w, "thread stars unavailable; bulk close cannot preview star policy", http.StatusServiceUnavailable)
 		return
@@ -197,7 +199,7 @@ func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root agentSes
 }
 
 // HandleBulkClose closes a selected hosted relationship tree under one lock.
-func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, root agentSessionRecord) {
+func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, root ownedthreads.SessionRecord) {
 	var request struct {
 		StarredPolicy string `json:"starredPolicy"`
 	}
@@ -226,12 +228,12 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, roo
 	}
 
 	starred := make(map[string]bool, len(tree))
-	toUnstar := make([]attachmentKey, 0)
+	toUnstar := make([]hostedstore.AttachmentKey, 0)
 	for _, treeMember := range tree {
 		member := treeMember.record
 		if s.Stars.IsStarred(member.Provider, member.NativeThreadID) {
 			starred[member.ID] = true
-			toUnstar = append(toUnstar, attachmentKey{Provider: member.Provider, NativeThreadID: member.NativeThreadID})
+			toUnstar = append(toUnstar, hostedstore.AttachmentKey{Provider: member.Provider, NativeThreadID: member.NativeThreadID})
 		}
 	}
 	if request.StarredPolicy == bulkCloseRemoveStars && len(toUnstar) > 0 {
@@ -261,7 +263,7 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, roo
 			StarAction:        "none",
 			CloseAction:       "closed",
 		}
-		if member.Status == StatusExited {
+		if member.Status == hostedstore.StatusExited {
 			result.CloseAction = "already_exited"
 		}
 		if result.PreviouslyStarred {
@@ -281,15 +283,15 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, roo
 			failures = append(failures, err.Error())
 		} else if err := s.dropQueuedTurns(member); err != nil {
 			failures = append(failures, "drop queued prompts: "+err.Error())
-		} else if err := s.Executions.UpdateSession(member.ID, "", "", StatusExited, "closed by bulk close"); err != nil {
+		} else if err := s.Executions.UpdateSession(member.ID, "", "", hostedstore.StatusExited, "closed by bulk close"); err != nil {
 			failures = append(failures, "record close: "+err.Error())
 		}
-		if current, found, readErr := s.Executions.sessionFromCanonical(member.ID); readErr != nil {
+		if current, found, readErr := s.Executions.SessionFromCanonical(member.ID); readErr != nil {
 			failures = append(failures, "read final status: "+readErr.Error())
 		} else if found {
 			result.FinalStatus = current.Status
 		}
-		if len(failures) > 0 || result.FinalStatus != StatusExited {
+		if len(failures) > 0 || result.FinalStatus != hostedstore.StatusExited {
 			response.Complete = false
 			result.CloseAction = "failed"
 			result.Error = strings.Join(failures, "; ")

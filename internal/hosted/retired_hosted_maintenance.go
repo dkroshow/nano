@@ -71,7 +71,7 @@ func (s *Controller) retireHostedRecords(ctx context.Context, request state.Reti
 		// cleanup must not detach a provider or rewrite an attachment file.
 		return s.Runtime.CheckRetiredReferences(retired, func() error {
 			if s.Attachments != nil {
-				return s.Attachments.checkRetiredReferences(retired)
+				return s.Attachments.CheckRetiredReferences(retired)
 			}
 			return nil
 		})
@@ -95,7 +95,7 @@ func (s *Controller) retireHostedRecords(ctx context.Context, request state.Reti
 		result.Resolutions = resolutions
 		return nil
 	}
-	receipt, err := s.Executions.retireHostedRecords(ctx, request, s.Queue.Path(), check, verify)
+	receipt, err := s.Executions.RetireHostedRecords(ctx, request, s.Queue.Path(), check, verify)
 	result.RetirementReceipt = receipt
 	if err != nil {
 		result.Resolutions = []IdentityResolution{}

@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
 const (
-	permissionEventRequested = hosted.PermissionEventRequested
-	permissionEventResolved  = hosted.PermissionEventResolved
+	permissionEventRequested = hostedstore.PermissionEventRequested
+	permissionEventResolved  = hostedstore.PermissionEventResolved
 )
 
-type permissionEvent = hosted.PermissionEvent
+type permissionEvent = hostedstore.PermissionEvent
 
 func isPermissionInteraction(p pendingInteraction) bool {
 	if p.Method == grokPermissionMethod {

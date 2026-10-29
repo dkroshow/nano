@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // posture_view.go — the one posture struct every surface serves (coordination
@@ -16,7 +16,7 @@ import (
 // event log and current-state projection; live transport and retired JSON are
 // never a fallback for a hosted identity.
 
-type sessionPosture = hosted.Posture
+type sessionPosture = hostedstore.Posture
 
 // overlayFold writes the folded decision for one field over dst, leaving dst
 // alone when the log holds no decision for it.

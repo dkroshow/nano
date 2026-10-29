@@ -1,6 +1,11 @@
 package hosted
 
-import "context"
+import (
+	"context"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
+)
 
 // CatalogIdentity contains only the saved identity facts used by hosted resolution.
 type CatalogIdentity struct{ ID, Provider, NativeID, HostedThreadID, Name, UpdatedAt string }
@@ -33,15 +38,15 @@ type IdentityLive interface {
 // IdentityService resolves hosted identities using canonical stores and bounded read inputs.
 // The caller supplies a snapshot of these dependencies for each request.
 type IdentityService struct {
-	Executions    *ExecutionStore
-	Metadata      *MetadataStore
+	Executions    *hostedstore.ExecutionStore
+	Metadata      *hostedstore.MetadataStore
 	MetadataError string
 	Catalog       IdentityCatalog
 	Live          IdentityLive
 	CatalogErrors CatalogErrors
 }
 
-func (s *IdentityService) controlStore() *MetadataStore {
+func (s *IdentityService) controlStore() *hostedstore.MetadataStore {
 	if s == nil {
 		return nil
 	}
@@ -83,9 +88,9 @@ func (s *IdentityService) durableThreadName(provider, native string) (string, bo
 	}
 	return s.Catalog.DurableName(provider, native)
 }
-func (s *IdentityService) catalogHostedThreadRecord(row CatalogIdentity) (agentSessionRecord, bool) {
+func (s *IdentityService) catalogHostedThreadRecord(row CatalogIdentity) (ownedthreads.SessionRecord, bool) {
 	if s.Executions == nil {
-		return agentSessionRecord{}, false
+		return ownedthreads.SessionRecord{}, false
 	}
 	if row.HostedThreadID != "" {
 		if record, ok := s.Executions.Session(row.HostedThreadID); ok {
@@ -94,16 +99,16 @@ func (s *IdentityService) catalogHostedThreadRecord(row CatalogIdentity) (agentS
 	}
 	return s.Executions.SessionForNative(row.Provider, row.NativeID)
 }
-func (s *IdentityService) nativeCurrentRecords(nativeID string) ([]agentSessionRecord, error) {
+func (s *IdentityService) nativeCurrentRecords(nativeID string) ([]ownedthreads.SessionRecord, error) {
 	if s == nil || s.Executions == nil || nativeID == "" {
 		return nil, nil
 	}
-	providers, err := s.Executions.nativeHistoryProviders(nativeID)
+	providers, err := s.Executions.NativeHistoryProviders(nativeID)
 	if err != nil {
 		return nil, err
 	}
 	if len(providers) > 1 {
-		var all []agentSessionRecord
+		var all []ownedthreads.SessionRecord
 		for _, provider := range providers {
 			matches, err := s.Executions.SessionsForNativeHistory(provider, nativeID)
 			if err != nil {
@@ -123,14 +128,14 @@ func (s *IdentityService) nativeCurrentRecords(nativeID string) ([]agentSessionR
 			return nil, err
 		}
 		if owner != "" {
-			record, ok, err := s.Executions.sessionFromCanonical(owner)
+			record, ok, err := s.Executions.SessionFromCanonical(owner)
 			if err != nil {
 				return nil, err
 			}
 			if ok {
-				return []agentSessionRecord{record}, nil
+				return []ownedthreads.SessionRecord{record}, nil
 			}
-			return []agentSessionRecord{{ID: owner, Provider: provider, NativeThreadID: nativeID}}, nil
+			return []ownedthreads.SessionRecord{{ID: owner, Provider: provider, NativeThreadID: nativeID}}, nil
 		}
 	}
 	return s.Executions.SessionsForNativeHistory(provider, nativeID)

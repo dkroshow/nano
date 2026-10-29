@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"bytes"
 	"context"
@@ -22,13 +20,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -454,7 +453,7 @@ func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.completedTurns = hostedstore.NewCompletedTurnSource(hostedstore.NewCompletedTurnStore(s.queuedTurns.Database()))
+	s.completedTurns = hosted.NewCompletedTurnSource(hosted.NewCompletedTurnStore(s.queuedTurns.Database()))
 	now := time.Now().UTC()
 	natives := []string{"starred-idle", "root-idle", "child-idle", "child-wake", "child-quiet", "operation-open", "prompt-queued", "provider-turn-open"}
 	for i, native := range natives {
@@ -1774,7 +1773,7 @@ func subscribedCodexServer(t *testing.T, resumeTurns string) (*server, *fakeAppS
 	daemon := newFakeAppServer(t)
 	daemon.SetResumeTurns(json.RawMessage(resumeTurns))
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.completedTurns = hostedstore.NewCompletedTurnSource(hostedstore.NewCompletedTurnStore(s.queuedTurns.Database()))
+	s.completedTurns = hosted.NewCompletedTurnSource(hosted.NewCompletedTurnStore(s.queuedTurns.Database()))
 	parent, _, err := fixtureBeginSession(s.agentExecutions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 type threadPinContextMessage struct {
@@ -51,7 +52,7 @@ type threadPinContextResponse struct {
 }
 
 // HandleContext serves bounded saved context for one pin.
-func (s *PinService) HandleContext(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *PinService) HandleContext(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	catalog, ok := s.pinPreconditions(w)
 	if !ok {
 		return

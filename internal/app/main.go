@@ -31,7 +31,8 @@ import (
 	feedback "github.com/dkroshow/nano/internal/features/feedback"
 	nanofiles "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
-	hostedstore "github.com/dkroshow/nano/internal/hosted"
+	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
@@ -180,7 +181,7 @@ type server struct {
 	usageLimitsPoller *usageLimitsPoller
 	hostMonitor       *hostMonitor
 	requests          observability.RequestTimes
-	hostedControl     *hostedstore.Controller
+	hostedControl     *hosted.Controller
 	hostedControlOnce sync.Once
 	// The resume locks, one per provider, cover resume routing through the
 	// provider's pre-claim. They make first registration and ordinary
@@ -460,7 +461,7 @@ func construct(cfg config.Config) *application {
 		s.feedback = store
 	}
 	if completedTurns != nil {
-		s.completedTurns = hostedstore.NewCompletedTurnSource(completedTurns)
+		s.completedTurns = hosted.NewCompletedTurnSource(completedTurns)
 	}
 	if cfg.HeartbeatMaxWakesPerHour < 1 {
 		log.Fatal("heartbeat-max-wakes-per-hour must be positive")

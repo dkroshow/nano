@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 func fixtureTurnForAction(store *agentExecutionStore, id, action string) (agentTurnRecord, bool) {
@@ -42,7 +43,7 @@ func fixtureListSessions(store *agentExecutionStore) []string {
 	return ids
 }
 
-func fixtureAttachmentRecords(store *hosted.AttachmentStore) []attachmentRecord {
+func fixtureAttachmentRecords(store *hostedstore.AttachmentStore) []attachmentRecord {
 	records := store.DetachedExcept(nil)
 	sort.Slice(records, func(i, j int) bool { return records[i].HostedThreadID < records[j].HostedThreadID })
 	return records
@@ -76,14 +77,14 @@ func fixtureWaitChanges(store *agentExecutionStore, ctx context.Context, bookmar
 	return result
 }
 
-func fixturePermissionEventsAfter(store *controlMetadataStore, id string, after int64, limit int) (hosted.PermissionEventPage, error) {
+func fixturePermissionEventsAfter(store *controlMetadataStore, id string, after int64, limit int) (hostedstore.PermissionEventPage, error) {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/hosted-threads/%s/permission-events?after=%d&limit=%d", id, after, limit), nil)
 	(&hosted.ViewService{Metadata: store}).HandlePermissionEvents(response, request, agentSessionRecord{ID: id})
 	if response.Code != http.StatusOK {
-		return hosted.PermissionEventPage{}, fmt.Errorf("permission events: %s", response.Body.String())
+		return hostedstore.PermissionEventPage{}, fmt.Errorf("permission events: %s", response.Body.String())
 	}
-	var page hosted.PermissionEventPage
+	var page hostedstore.PermissionEventPage
 	err := json.Unmarshal(response.Body.Bytes(), &page)
 	return page, err
 }

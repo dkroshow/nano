@@ -10,6 +10,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -26,8 +27,8 @@ type CreationNameRefReader interface {
 
 // CreationNames owns publication and guarded repair of canonical creation names.
 type CreationNames struct {
-	Metadata   *MetadataStore
-	Executions *ExecutionStore
+	Metadata   *hostedstore.MetadataStore
+	Executions *hostedstore.ExecutionStore
 	Queue      *prompts.LegacyQueue
 	Reader     CreationNameReader
 	Refs       CreationNameRefReader
@@ -35,7 +36,7 @@ type CreationNames struct {
 	Refresh    func()
 }
 
-func (s *CreationNames) controlStore() *MetadataStore {
+func (s *CreationNames) controlStore() *hostedstore.MetadataStore {
 	if s.Metadata != nil {
 		return s.Metadata
 	}
@@ -133,7 +134,7 @@ func (s *CreationNames) repairCreationNames(r *http.Request, request threads.Cre
 		s.Refresh()
 		return nil
 	}
-	receipt, err := s.Executions.repairCreationNames(r.Context(), request, s.Queue.Path(), publish)
+	receipt, err := s.Executions.RepairCreationNames(r.Context(), request, s.Queue.Path(), publish)
 	result.CreationNameRepairReceipt = receipt
 	if err != nil {
 		result.Error = err.Error()

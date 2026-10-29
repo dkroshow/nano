@@ -1,19 +1,19 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/hosted"
 	"path/filepath"
 	"testing"
-)
 
-import fixture "github.com/dkroshow/nano/internal/testsupport"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	fixture "github.com/dkroshow/nano/internal/testsupport"
+)
 
 type attachmentRecorder = fixture.AttachmentRecorder
 
 // newTestStore supplies a real attachment store to app integration tests.
-func newTestStore(t *testing.T) *hosted.AttachmentStore {
+func newTestStore(t *testing.T) *hostedstore.AttachmentStore {
 	t.Helper()
-	store, err := hosted.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	store, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

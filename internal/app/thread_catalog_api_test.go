@@ -1,7 +1,5 @@
 package app
 
-import "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"bytes"
 	"context"
@@ -18,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type fakeThreadCatalog struct {
@@ -845,7 +843,7 @@ func rescueServer(t *testing.T) *server {
 			"native-sub":  {Thread: threadindex.Thread{ID: "nth_3", Provider: "codex", NativeID: "native-sub", Kind: "subagent", Interaction: "interactive", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		},
 	}
-	store, err := hosted.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
+	store, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,9 +3,11 @@ package hosted
 import (
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/observability"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // SessionSnapshot carries only the live facts used by hosted session views.
@@ -37,7 +39,7 @@ type ViewSessions interface {
 	// Turn reads attachment identity and, when requested, pending interactions.
 	Turn(string, bool) (TurnSnapshot, bool)
 	// Attachment reads the live attachment status for metadata decoration.
-	Attachment(string) (AttachmentView, bool)
+	Attachment(string) (hostedstore.AttachmentView, bool)
 	// Availability reads the runtime facts used by availability policy.
 	Availability(string) (AvailabilitySnapshot, bool)
 	// HostedIDs lists the hosted identities of current attachments.
@@ -51,17 +53,17 @@ type ViewNames interface {
 	// DurableName reads the value-only name contract.
 	DurableName(string, string) (string, bool)
 	// DurableNameRef reads the name and its provenance.
-	DurableNameRef(string, string) (MetadataName, bool)
+	DurableNameRef(string, string) (hostedstore.MetadataName, bool)
 }
 
 // ViewService assembles hosted read views from canonical facts and bounded runtime reads.
 // The app supplies current dependency references for each read.
 type ViewService struct {
-	Executions                    *ExecutionStore
-	Metadata                      *MetadataStore
+	Executions                    *hostedstore.ExecutionStore
+	Metadata                      *hostedstore.MetadataStore
 	ExecutionError, MetadataError string
 	Sessions                      ViewSessions
 	Names                         ViewNames
 	Waiting                       func(string) string
-	ResolveRecord                 func(string) (agentSessionRecord, bool)
+	ResolveRecord                 func(string) (ownedthreads.SessionRecord, bool)
 }

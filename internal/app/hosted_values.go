@@ -3,28 +3,29 @@ package app
 import (
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
 // Catalog and session composition share the hosted attachment values.
-type attachmentRecord = hosted.Attachment
-type attachmentKey = hosted.AttachmentKey
+type attachmentRecord = hostedstore.Attachment
+type attachmentKey = hostedstore.AttachmentKey
 
-type agentExecutionStore = hosted.ExecutionStore
-type controlMetadataStore = hosted.MetadataStore
+type agentExecutionStore = hostedstore.ExecutionStore
+type controlMetadataStore = hostedstore.MetadataStore
 type completedTurnStore = hosted.CompletedTurnStore
 type completedTurnSource = hosted.CompletedTurnSource
 type agentSessionRecord = threads.SessionRecord
 type agentTurnRecord = threads.TurnRecord
-type orchestrationAssignment = hosted.Assignment
-type orchestrationAssignmentView = hosted.AssignmentView
-type externalResumeFacts = hosted.ExternalResumeFacts
-type recordReference = hosted.RecordReference
-type turnAttribution = hosted.TurnAttribution
-type metadataCurrentView = hosted.MetadataCurrent
-type hostedMetadataView = hosted.MetadataView
-type hostedAttachmentView = hosted.AttachmentView
-type hostedMetadataName = hosted.MetadataName
+type orchestrationAssignment = hostedstore.Assignment
+type orchestrationAssignmentView = hostedstore.AssignmentView
+type externalResumeFacts = hostedstore.ExternalResumeFacts
+type recordReference = hostedstore.RecordReference
+type turnAttribution = hostedstore.TurnAttribution
+type metadataCurrentView = hostedstore.MetadataCurrent
+type hostedMetadataView = hostedstore.MetadataView
+type hostedAttachmentView = hostedstore.AttachmentView
+type hostedMetadataName = hostedstore.MetadataName
 
 const (
 	sidebarPlacementStandalone = threads.SidebarPlacementStandalone

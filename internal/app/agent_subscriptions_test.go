@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"encoding/json"
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	hosted "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/interact"
 )
 
@@ -238,7 +237,7 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	daemon := newFakeAppServer(t)
 	daemon.SetResumeTurns(json.RawMessage(`[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`))
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.completedTurns = hostedstore.NewCompletedTurnSource(hostedstore.NewCompletedTurnStore(s.queuedTurns.Database()))
+	s.completedTurns = hosted.NewCompletedTurnSource(hosted.NewCompletedTurnStore(s.queuedTurns.Database()))
 	parent, _, err := fixtureBeginSession(s.agentExecutions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)

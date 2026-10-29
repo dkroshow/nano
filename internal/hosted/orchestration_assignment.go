@@ -3,11 +3,13 @@ package hosted
 import (
 	"fmt"
 	"strings"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // normalizeOrchestrationAssignment makes aliases a transport concern rather
 // than part of stored evidence or creation idempotency.
-func (s *Controller) normalizeOrchestrationAssignment(input *Assignment) (*Assignment, error) {
+func (s *Controller) normalizeOrchestrationAssignment(input *hostedstore.Assignment) (*hostedstore.Assignment, error) {
 	if input == nil {
 		return nil, nil
 	}
@@ -34,7 +36,7 @@ func (s *Controller) normalizeOrchestrationAssignment(input *Assignment) (*Assig
 		}
 		value.RelatedHostedThreadID = record.ID
 	}
-	value.AuditTargets = append([]AuditTarget(nil), value.AuditTargets...)
+	value.AuditTargets = append([]hostedstore.AuditTarget(nil), value.AuditTargets...)
 	seen := map[string]bool{}
 	for i := range value.AuditTargets {
 		target := &value.AuditTargets[i]
@@ -65,7 +67,7 @@ func (s *Controller) normalizeOrchestrationAssignment(input *Assignment) (*Assig
 		seen[key] = true
 	}
 	if value.AuditTargets == nil {
-		value.AuditTargets = []AuditTarget{}
+		value.AuditTargets = []hostedstore.AuditTarget{}
 	}
 	return &value, nil
 }
@@ -74,7 +76,7 @@ func (s *Controller) normalizeOrchestrationAssignment(input *Assignment) (*Assig
 // the immutable invocation edge untouched. The mutable edge wins when it is
 // present; clearing an assignment exposes the original invocation lineage
 // again.
-func (s *Controller) validateAssignmentRelationship(hostedID string, assignment *Assignment) error {
+func (s *Controller) validateAssignmentRelationship(hostedID string, assignment *hostedstore.Assignment) error {
 	if assignment == nil || assignment.RelatedHostedThreadID == "" {
 		return nil
 	}

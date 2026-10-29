@@ -1,15 +1,12 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"errors"
 	"testing"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threadindex"
-
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
 )
 
 func TestNativeRecoveryRetiredAliasCannotResume(t *testing.T) {
@@ -52,7 +49,7 @@ func seedHostedNative(t *testing.T, store *agentExecutionStore, provider, native
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := hostedvalues.SkipOwnedNativeClaim(store.Control().ClaimNativeID(record.ID, provider, nativeID, false)); err != nil {
+	if err := hostedstore.SkipOwnedNativeClaim(store.Control().ClaimNativeID(record.ID, provider, nativeID, false)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateSession(record.ID, "nano-"+record.ID, nativeID, status, ""); err != nil {
@@ -133,7 +130,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 	other := seedHostedNative(t, store, "claude", "cs_other", "ready")
 	sess := configuredFixtureSession(t, sessionConfig{HostedThreadID: other.ID, Provider: "claude", Metadata: control, AgentExecutions: store}, revivedNativeID, "ready", "", false)
 	sess.Close()
-	if err := hostedvalues.SkipOwnedNativeClaim(store.BindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
+	if err := hostedstore.SkipOwnedNativeClaim(store.BindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
 		t.Fatal(err)
 	}
 	if got := activeOwner(t, control, "claude", revivedNativeID); got != owner.ID {
@@ -216,7 +213,7 @@ func TestInheritMissingCwdFromPredecessor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotCwd, ok := hostedvalues.ResumeString(view.Fields["cwd"])
+	gotCwd, ok := hostedstore.ResumeString(view.Fields["cwd"])
 	if !ok || gotCwd != cwd {
 		t.Fatalf("inherited cwd = %q ok=%v", gotCwd, ok)
 	}

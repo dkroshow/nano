@@ -1,12 +1,12 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // Exercise the callers too: an attach-level error alone does not prove that

@@ -2,16 +2,18 @@ package hosted
 
 import (
 	"fmt"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // Explicit operator escape: forget bookkeeping only, never claim termination
 // or settle queued work. Refuse an attachment that has changed or resumed.
-func (s *Controller) forgetUnconfirmedClaude(attachment attachmentRecord, shimID, attachedAt string) error {
+func (s *Controller) forgetUnconfirmedClaude(attachment hostedstore.Attachment, shimID, attachedAt string) error {
 	if attachment.ShimSessionID != shimID || attachment.AttachedAt != attachedAt {
 		return fmt.Errorf("attachment changed; refresh before forgetting")
 	}
 	return s.Runtime.ForgetDetached(attachment.NativeThreadID, func() error {
-		return s.Attachments.forgetClosed(attachment)
+		return s.Attachments.ForgetClosed(attachment)
 	})
 }
 
@@ -32,7 +34,7 @@ func (s *Controller) closeExplicitSession(sess CloseSession) error {
 	return s.closeAgentSession(sess)
 }
 
-func (s *Controller) closeExplicitAttachment(attachment attachmentRecord) error {
+func (s *Controller) closeExplicitAttachment(attachment hostedstore.Attachment) error {
 	if s.Executions != nil && attachment.HostedThreadID != "" {
 		if record, ok := s.ResolveHostedRecord(attachment.HostedThreadID); ok {
 			if record.Provider != attachment.Provider || record.NativeThreadID != attachment.NativeThreadID {
@@ -52,9 +54,9 @@ func (s *Controller) closeExplicitAttachment(attachment attachmentRecord) error 
 	return s.closeDetachedAttachment(attachment)
 }
 
-func (s *Controller) closeDetachedAttachment(attachment attachmentRecord) error {
+func (s *Controller) closeDetachedAttachment(attachment hostedstore.Attachment) error {
 	if err := s.Runtime.StopDetached(attachment); err != nil {
 		return fmt.Errorf("Claude stop unconfirmed; attachment retained (heartbeat may be paused): %w", err)
 	}
-	return s.Attachments.forgetClosed(attachment)
+	return s.Attachments.ForgetClosed(attachment)
 }

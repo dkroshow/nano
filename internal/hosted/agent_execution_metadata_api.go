@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // HandlePresentation updates the hosted presentation mode.
-func (s *Controller) HandlePresentation(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *Controller) HandlePresentation(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	// The mode must be explicit: normalizePresentationMode("") means shared,
 	// and a body that omits the field must not silently un-background a
 	// thread.
@@ -39,7 +41,7 @@ func (s *Controller) HandlePresentation(w http.ResponseWriter, r *http.Request, 
 }
 
 // HandleSubscriptions updates the hosted notification choices.
-func (s *Controller) HandleSubscriptions(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *Controller) HandleSubscriptions(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	var req subscriptions.Choices
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Inbox) == "" || strings.TrimSpace(req.Prompt) == "" {
 		httpapi.WriteHTTPError(w, `body must explicitly include inbox and prompt, each "send" or "none"`, http.StatusBadRequest)
@@ -50,7 +52,7 @@ func (s *Controller) HandleSubscriptions(w http.ResponseWriter, r *http.Request,
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _, _, err = s.Executions.setSubscriptions(record.ID, choices)
+	_, _, _, err = s.Executions.SetSubscriptions(record.ID, choices)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -59,7 +61,7 @@ func (s *Controller) HandleSubscriptions(w http.ResponseWriter, r *http.Request,
 }
 
 // HandleSidebarPlacement updates the hosted sidebar placement fact.
-func (s *Controller) HandleSidebarPlacement(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *Controller) HandleSidebarPlacement(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	var req struct {
 		SidebarPlacement string `json:"sidebarPlacement"`
 	}
@@ -83,7 +85,7 @@ func (s *Controller) HandleSidebarPlacement(w http.ResponseWriter, r *http.Reque
 }
 
 // HandleAssignment changes an orchestration assignment under the relationship lock.
-func (s *Controller) HandleAssignment(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *Controller) HandleAssignment(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if s.Metadata == nil || s.MetadataError != "" {
 		httpapi.WriteHTTPError(w, "canonical metadata unavailable", http.StatusServiceUnavailable)
 		return
@@ -104,7 +106,7 @@ func (s *Controller) HandleAssignment(w http.ResponseWriter, r *http.Request, re
 		httpapi.WriteHTTPError(w, "clientActionId is required and must be URL-safe", http.StatusBadRequest)
 		return
 	}
-	var requested *Assignment
+	var requested *hostedstore.Assignment
 	if strings.TrimSpace(string(assignmentRaw)) != "null" {
 		if err := json.Unmarshal(assignmentRaw, &requested); err != nil {
 			httpapi.WriteHTTPError(w, "assignment must be an object or null", http.StatusBadRequest)
@@ -118,10 +120,10 @@ func (s *Controller) HandleAssignment(w http.ResponseWriter, r *http.Request, re
 	}
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
-	retry, err := s.Metadata.orchestrationAssignmentActionExists(record.ID, clientActionID, assignment)
+	retry, err := s.Metadata.OrchestrationAssignmentActionExists(record.ID, clientActionID, assignment)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, errAssignmentIdempotencyConflict) {
+		if errors.Is(err, hostedstore.ErrAssignmentIdempotencyConflict) {
 			status = http.StatusConflict
 		}
 		httpapi.WriteHTTPError(w, err.Error(), status)
@@ -133,10 +135,10 @@ func (s *Controller) HandleAssignment(w http.ResponseWriter, r *http.Request, re
 			return
 		}
 	}
-	event, err := s.Metadata.appendOrchestrationAssignment(record.ID, clientActionID, assignment)
+	event, err := s.Metadata.AppendOrchestrationAssignment(record.ID, clientActionID, assignment)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, errAssignmentIdempotencyConflict) {
+		if errors.Is(err, hostedstore.ErrAssignmentIdempotencyConflict) {
 			status = http.StatusConflict
 		}
 		httpapi.WriteHTTPError(w, err.Error(), status)
@@ -147,7 +149,7 @@ func (s *Controller) HandleAssignment(w http.ResponseWriter, r *http.Request, re
 }
 
 // HandleDetach detaches the live provider connection without closing the thread.
-func (s *Controller) HandleDetach(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
+func (s *Controller) HandleDetach(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
 	// Detach never invents turn evidence: with an operation still open the
@@ -176,7 +178,7 @@ func (s *Controller) HandleDetach(w http.ResponseWriter, _ *http.Request, record
 	}
 	// The attachment record survives — that is the difference from close:
 	// boot reattach and click-resume both restore a detached thread.
-	_ = s.Executions.UpdateSession(record.ID, "", "", agentSessionDetached, "")
+	_ = s.Executions.UpdateSession(record.ID, "", "", ownedthreads.AgentSessionDetached, "")
 	httpapi.WriteJSON(w, s.Views().SessionView(record.ID))
 }
 

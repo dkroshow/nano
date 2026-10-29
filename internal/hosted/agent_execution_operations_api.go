@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // HandleOperationCancel cancels a queued or active hosted operation.
@@ -20,7 +22,7 @@ func (s *Controller) cancelQueuedAgentTurn(w http.ResponseWriter, operationID st
 		httpapi.WriteHTTPError(w, "unknown turn operation", http.StatusNotFound)
 		return
 	}
-	if rec.Status != agentTurnQueued {
+	if rec.Status != ownedthreads.AgentTurnQueued {
 		httpapi.WriteHTTPError(w, "turn operation is not queued", http.StatusConflict)
 		return
 	}

@@ -1,9 +1,9 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // The claude anchor's whole point is surviving a nano restart, which means

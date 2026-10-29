@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/setup"
 	transcriptmodel "github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -331,7 +331,7 @@ func applyClaudeResumeOverlay(args []string, source Metadata, hostedThreadID str
 	if err != nil {
 		return args
 	}
-	value, _ := hostedvalues.ResumeString(view.Fields[postureFieldModel])
+	value, _ := hostedstore.ResumeString(view.Fields[postureFieldModel])
 	if value == "" {
 		return args
 	}

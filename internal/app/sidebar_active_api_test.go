@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"bufio"
 	"context"
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 

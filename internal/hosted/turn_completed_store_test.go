@@ -23,7 +23,7 @@ func mustCompletedStore(t *testing.T) *CompletedTurnStore {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	migrateTestControl(t, control)
-	return NewCompletedTurnStore(control.db)
+	return NewCompletedTurnStore(control.CanonicalDatabase())
 }
 
 func TestCompletedTurnStoreOpenerConfiguresSQLite(t *testing.T) {

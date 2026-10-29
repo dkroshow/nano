@@ -17,7 +17,8 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/hosted"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	liveview "github.com/dkroshow/nano/internal/liveview"
@@ -60,7 +61,7 @@ type sendAttemptRecord = prompts.SendAttempt
 
 // SendTextHash returns the stable content hash used for prompt idempotency.
 func SendTextHash(text string) string {
-	return hosted.AgentHash([]byte(text))
+	return hostedstore.AgentHash([]byte(text))
 }
 
 // TurnRequestHash is the idempotency hash of one submission. Holding a prompt
@@ -68,7 +69,7 @@ func SendTextHash(text string) string {
 // conflicts; an ordinary prompt keeps its plain text hash. The prefix keeps
 // the two namespaces apart: no text hashes to a next-turn hash.
 func TurnRequestHash(text string, nextTurn bool) string {
-	return hosted.TurnRequestHash(text, nextTurn)
+	return hostedstore.TurnRequestHash(text, nextTurn)
 }
 
 type turnSendOperation struct {
@@ -1469,7 +1470,7 @@ func CancelQueuedTurnStores(queue Queue, ops Executions, actionID, by string) (q
 // prompt no operation sent, such as a person's, has none.
 func endDiscardedOperation(queue Queue, ops Executions, prior prompts.Record, by string, end func(*sql.Tx) error) error {
 	if ops == nil {
-		return hosted.ErrOperationReadUnavailable
+		return hostedstore.ErrOperationReadUnavailable
 	}
 	op, found, err := ops.PersistedTurnForTransportAction(context.Background(), prior.Outbox.HostedThreadID, prior.Outbox.ActionID)
 	if err != nil {

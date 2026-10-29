@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"fmt"
@@ -12,6 +10,7 @@ import (
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
+	hosted "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -42,7 +41,7 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 	if err != nil {
 		return nil, err
 	}
-	result := &threadRuntimeStores{control: control, completed: hostedstore.NewCompletedTurnStore(control.CanonicalDatabase())}
+	result := &threadRuntimeStores{control: control, completed: hosted.NewCompletedTurnStore(control.CanonicalDatabase())}
 	failed := true
 	defer func() {
 		if failed {

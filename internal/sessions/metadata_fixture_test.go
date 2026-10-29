@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // recordingMetadata echoes adapter evidence at the metadata boundary. It does
@@ -14,12 +14,12 @@ type recordingMetadata struct {
 	Metadata
 	mu          sync.Mutex
 	db          *sql.DB
-	view        hosted.MetadataView
+	view        hostedstore.MetadataView
 	permissions []permissionEvent
 }
 
 func newRecordingMetadata(db *sql.DB, hostedID string) *recordingMetadata {
-	return &recordingMetadata{db: db, view: hosted.MetadataView{HostedThreadID: hostedID, Provider: "claude", AttachmentGeneration: 1, Fields: map[string]hosted.MetadataCurrent{}}}
+	return &recordingMetadata{db: db, view: hostedstore.MetadataView{HostedThreadID: hostedID, Provider: "claude", AttachmentGeneration: 1, Fields: map[string]hostedstore.MetadataCurrent{}}}
 }
 func (m *recordingMetadata) AppendEvent(event metadataEvent) (metadataEvent, error) {
 	value, err := json.Marshal(event.Value)
@@ -31,14 +31,14 @@ func (m *recordingMetadata) AppendEvent(event metadataEvent) (metadataEvent, err
 	m.view.Revision++
 	event.ID = m.view.Revision
 	event.Committed = true
-	m.view.Fields[event.Field] = hosted.MetadataCurrent{DisplayValue: value, DisplayDisposition: event.Disposition, DisplaySource: event.Source, DisplayFreshness: event.Freshness}
+	m.view.Fields[event.Field] = hostedstore.MetadataCurrent{DisplayValue: value, DisplayDisposition: event.Disposition, DisplaySource: event.Source, DisplayFreshness: event.Freshness}
 	return event, nil
 }
 func (m *recordingMetadata) View(string) (hostedMetadataView, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	view := m.view
-	view.Fields = make(map[string]hosted.MetadataCurrent, len(m.view.Fields))
+	view.Fields = make(map[string]hostedstore.MetadataCurrent, len(m.view.Fields))
 	for key, value := range m.view.Fields {
 		view.Fields[key] = value
 	}
@@ -46,7 +46,7 @@ func (m *recordingMetadata) View(string) (hostedMetadataView, error) {
 }
 func (m *recordingMetadata) Posture(id string) sessionPosture {
 	view, _ := m.View(id)
-	return hosted.PostureFromFields(view.Fields)
+	return hostedstore.PostureFromFields(view.Fields)
 }
 func (m *recordingMetadata) ClaimNativeID(_ string, _ string, native string, _ bool) error {
 	m.mu.Lock()

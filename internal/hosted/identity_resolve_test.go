@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 func TestIdentityResolveRejectsMissingRef(t *testing.T) {
@@ -74,7 +76,7 @@ func TestIdentityResolveSurvivesResumeRebind(t *testing.T) {
 	}
 	s, store := newIdentityService(t, []CatalogIdentity{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
-	if err := store.BindSession(record.ID, "nano-resume", identityNativeOld, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-resume", identityNativeOld, "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,7 +95,7 @@ func TestIdentityResolveFollowsClaudeRespawn(t *testing.T) {
 	}
 	s, store := newIdentityService(t, []CatalogIdentity{row})
 	record := createIdentityHosted(t, store, "claude", identityNativeOld)
-	if err := store.BindSession(record.ID, "nano-respawn", identityNativeNew, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-respawn", identityNativeNew, "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,7 +122,7 @@ func TestIdentityResolveLabelsClaudeProvisionalUntilProviderUUIDArrives(t *testi
 	}
 
 	resolveTestProvisional(t, store.Control(), record.ID, "claude", "cs_provisional", identityNativeNew)
-	if err := store.BindSession(record.ID, "nano-real", identityNativeNew, "ready", presentationShared); err != nil {
+	if err := store.BindSession(record.ID, "nano-real", identityNativeNew, "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
 	}
 	status, body, raw = resolveIdentity(t, s, record.ID)

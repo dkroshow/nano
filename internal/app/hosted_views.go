@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 type agentSessionView = hosted.SessionView
@@ -86,13 +87,13 @@ func (a hostedViewSessions) Turn(id string, interactions bool) (hosted.TurnSnaps
 	}
 	return snapshot, true
 }
-func (a hostedViewSessions) Attachment(id string) (hosted.AttachmentView, bool) {
+func (a hostedViewSessions) Attachment(id string) (hostedstore.AttachmentView, bool) {
 	sess := a.server.SessionForHostedThread(id)
 	if sess == nil {
-		return hosted.AttachmentView{}, false
+		return hostedstore.AttachmentView{}, false
 	}
 	sum := sess.Summary()
-	return hosted.AttachmentView{State: sum.Status, Provenance: "live_session", Error: sum.Error}, true
+	return hostedstore.AttachmentView{State: sum.Status, Provenance: "live_session", Error: sum.Error}, true
 }
 func (a hostedViewSessions) Availability(id string) (hosted.AvailabilitySnapshot, bool) {
 	sess := a.server.SessionForHostedThread(id)
@@ -123,6 +124,6 @@ type hostedViewNames struct{ server *server }
 func (a hostedViewNames) DurableName(provider, native string) (string, bool) {
 	return a.server.durableThreadName(provider, native)
 }
-func (a hostedViewNames) DurableNameRef(provider, native string) (hosted.MetadataName, bool) {
+func (a hostedViewNames) DurableNameRef(provider, native string) (hostedstore.MetadataName, bool) {
 	return a.server.durableThreadNameRef(provider, native)
 }

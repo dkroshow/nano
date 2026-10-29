@@ -10,12 +10,12 @@ import (
 
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-func openControlMetadataStore(path string) (*hosted.MetadataStore, error) {
+func openControlMetadataStore(path string) (*hostedstore.MetadataStore, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve control metadata path: %w", err)
@@ -72,7 +72,7 @@ func openControlMetadataStore(path string) (*hosted.MetadataStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("open canonical metadata read pool: %w", err)
 	}
-	store, err := hosted.NewMetadataStore(db, readDB)
+	store, err := hostedstore.NewMetadataStore(db, readDB)
 	if err != nil {
 		readDB.Close()
 		db.Close()

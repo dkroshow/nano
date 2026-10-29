@@ -15,7 +15,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -498,7 +498,7 @@ func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID stri
 		return
 	}
 	canonical := func(field string) threadindex.Value {
-		value, ok := hostedvalues.MetadataString(view.Fields[field])
+		value, ok := hostedstore.MetadataString(view.Fields[field])
 		if !ok {
 			return unknownCatalogValue()
 		}
@@ -506,10 +506,10 @@ func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID stri
 		return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 	}
 	thread.Metadata.CWD = canonical("cwd")
-	thread.Metadata.Model = canonical(hostedvalues.PostureFieldModel)
-	thread.Metadata.Effort = canonical(hostedvalues.PostureFieldEffort)
-	thread.Metadata.Priority = canonical(hostedvalues.PostureFieldServiceTier)
-	thread.Metadata.Permission = canonical(hostedvalues.PostureFieldPermissionMode)
+	thread.Metadata.Model = canonical(hostedstore.PostureFieldModel)
+	thread.Metadata.Effort = canonical(hostedstore.PostureFieldEffort)
+	thread.Metadata.Priority = canonical(hostedstore.PostureFieldServiceTier)
+	thread.Metadata.Permission = canonical(hostedstore.PostureFieldPermissionMode)
 }
 
 func (s *server) applyHostedCatalogAssignment(thread *catalogThread, hostedID string) {

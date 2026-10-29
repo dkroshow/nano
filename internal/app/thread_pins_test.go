@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 const (
@@ -295,7 +295,7 @@ func TestThreadPinsSurviveNativeReplacementAndReopen(t *testing.T) {
 	old := f.pin(t, map[string]any{"text": "before replacement", "itemId": "nit_" + pinNativeA + "_t3-2"})
 
 	seedPinTranscript(t, f.store, f.root, pinNativeB, 3, nil)
-	if err := hostedvalues.SkipOwnedNativeClaim(f.executions.Control().ClaimNativeID(f.hosted.ID, "claude", pinNativeB, false)); err != nil {
+	if err := hostedstore.SkipOwnedNativeClaim(f.executions.Control().ClaimNativeID(f.hosted.ID, "claude", pinNativeB, false)); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.executions.UpdateSession(f.hosted.ID, "nano-"+f.hosted.ID, pinNativeB, "ready", ""); err != nil {

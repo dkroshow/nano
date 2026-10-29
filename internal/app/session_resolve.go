@@ -1,14 +1,12 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
@@ -167,13 +165,13 @@ func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
 		name string
 		set  func(string)
 	}{
-		{hostedvalues.PostureFieldModel, func(value string) { req.Model = value }},
-		{hostedvalues.PostureFieldEffort, func(value string) { req.Effort = value }},
-		{hostedvalues.PostureFieldPermissionMode, func(value string) { req.PermissionMode = value }},
-		{hostedvalues.PostureFieldServiceTier, func(value string) { req.ServiceTier = value }},
+		{hostedstore.PostureFieldModel, func(value string) { req.Model = value }},
+		{hostedstore.PostureFieldEffort, func(value string) { req.Effort = value }},
+		{hostedstore.PostureFieldPermissionMode, func(value string) { req.PermissionMode = value }},
+		{hostedstore.PostureFieldServiceTier, func(value string) { req.ServiceTier = value }},
 		{"cwd", func(value string) { req.Cwd = value }},
 	} {
-		if value, ok := hostedvalues.ResumeString(view.Fields[field.name]); ok {
+		if value, ok := hostedstore.ResumeString(view.Fields[field.name]); ok {
 			field.set(value)
 		}
 	}

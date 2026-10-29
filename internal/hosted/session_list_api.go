@@ -3,6 +3,7 @@ package hosted
 import (
 	"net/http"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 )
 
@@ -24,14 +25,14 @@ func (s *ViewService) HandleSessionsList(w http.ResponseWriter, _ *http.Request)
 	for _, id := range s.Sessions.HostedIDs() {
 		attached[id] = true
 	}
-	records := s.Executions.listSessions()
+	records := s.Executions.ListSessions()
 	items := make([]SessionView, 0, len(records))
 	for _, record := range records {
-		if waiting := s.Waiting(record.ID); record.Status == StatusExited && !attached[record.ID] && waiting == "" {
+		if waiting := s.Waiting(record.ID); record.Status == hostedstore.StatusExited && !attached[record.ID] && waiting == "" {
 			continue
 		}
 		view := s.SessionView(record.ID)
-		if view.Status != StatusExited {
+		if view.Status != hostedstore.StatusExited {
 			items = append(items, view)
 		}
 	}

@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -50,7 +53,7 @@ func (c *identityFixtureCatalog) IsIndexing(context.Context) bool {
 func (c *identityFixtureCatalog) DurableName(provider, native string) (string, bool) {
 	return "", false
 }
-func newIdentityService(t *testing.T, rows []CatalogIdentity) (*IdentityService, *ExecutionStore) {
+func newIdentityService(t *testing.T, rows []CatalogIdentity) (*IdentityService, *hostedstore.ExecutionStore) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	migrateTestControl(t, control)
@@ -60,17 +63,17 @@ func newIdentityService(t *testing.T, rows []CatalogIdentity) (*IdentityService,
 	}
 	return &IdentityService{Executions: store, Catalog: &identityFixtureCatalog{items: rows}, CatalogErrors: CatalogErrors{NotFound: errors.New("catalog thread not found")}}, store
 }
-func newReferenceService(t *testing.T, rows []CatalogIdentity) (*IdentityService, *ExecutionStore) {
+func newReferenceService(t *testing.T, rows []CatalogIdentity) (*IdentityService, *hostedstore.ExecutionStore) {
 	return newIdentityService(t, rows)
 }
-func createIdentityHosted(t *testing.T, store *ExecutionStore, provider, native string) agentSessionRecord {
+func createIdentityHosted(t *testing.T, store *hostedstore.ExecutionStore, provider, native string) ownedthreads.SessionRecord {
 	t.Helper()
-	record, _, err := store.beginSession("", "identity-"+native, provider, presentationShared)
+	record, _, err := fixtureBeginSession(store, "", "identity-"+native, provider, ownedthreads.PresentationShared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if native != "" {
-		if err := store.BindSession(record.ID, "nano-"+record.ID, native, "ready", presentationShared); err != nil {
+		if err := store.BindSession(record.ID, "nano-"+record.ID, native, "ready", ownedthreads.PresentationShared); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -80,7 +83,7 @@ func createIdentityHosted(t *testing.T, store *ExecutionStore, provider, native 
 	}
 	return updated
 }
-func createReferenceHostedRecord(t *testing.T, store *ExecutionStore, native string) agentSessionRecord {
+func createReferenceHostedRecord(t *testing.T, store *hostedstore.ExecutionStore, native string) ownedthreads.SessionRecord {
 	return createIdentityHosted(t, store, "codex", native)
 }
 func namedCatalog(value string) string  { return value }

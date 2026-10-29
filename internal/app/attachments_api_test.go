@@ -1,7 +1,5 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"encoding/json"
 	"net/http"
@@ -9,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 func serverWithAttachments(t *testing.T) (*server, *hostedstore.AttachmentStore) {

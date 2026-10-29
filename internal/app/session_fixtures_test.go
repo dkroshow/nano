@@ -1,16 +1,17 @@
 package app
 
-// These test-local names refer to the real session boundary. They carry no
-// independent implementation or runtime state.
 import (
 	timemodel "time"
 
 	promptsmodel "github.com/dkroshow/nano/internal/core/prompts"
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	protocolmodel "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
 )
+
+// These test-local names refer to the real session boundary. They carry no
+// independent implementation or runtime state.
 
 var addSavedUserKey = sessions.AddSavedUserKey
 
@@ -115,23 +116,23 @@ type threadAttachedError = sessions.ThreadAttachedError
 var turnRequestHash = sessions.TurnRequestHash
 
 type pendingInteraction = interactmodel.PendingInteraction
-type permissionEvent = hostedmodel.PermissionEvent
-type permissionEventPage = hostedmodel.PermissionEventPage
+type permissionEvent = hostedstore.PermissionEvent
+type permissionEventPage = hostedstore.PermissionEventPage
 
-const postureFieldEffort = hostedmodel.PostureFieldEffort
-const postureFieldModel = hostedmodel.PostureFieldModel
-const postureFieldPermissionMode = hostedmodel.PostureFieldPermissionMode
-const postureFieldServiceTier = hostedmodel.PostureFieldServiceTier
+const postureFieldEffort = hostedstore.PostureFieldEffort
+const postureFieldModel = hostedstore.PostureFieldModel
+const postureFieldPermissionMode = hostedstore.PostureFieldPermissionMode
+const postureFieldServiceTier = hostedstore.PostureFieldServiceTier
 
-type postureFieldValue = hostedmodel.FieldValue
+type postureFieldValue = hostedstore.FieldValue
 
-const postureSourceCreation = hostedmodel.PostureSourceCreation
-const postureSourceOperator = hostedmodel.PostureSourceOperator
-const postureSourceProvider = hostedmodel.PostureSourceProvider
+const postureSourceCreation = hostedstore.PostureSourceCreation
+const postureSourceOperator = hostedstore.PostureSourceOperator
+const postureSourceProvider = hostedstore.PostureSourceProvider
 const savedPromptSettleTimeout = 10 * timemodel.Second
 
 type sendAttemptRecord = promptsmodel.SendAttempt
-type sessionPosture = hostedmodel.Posture
+type sessionPosture = hostedstore.Posture
 
 type fixturePromptView = promptsmodel.View
 
@@ -142,13 +143,13 @@ const claudeIdentityFlag = "--append-system-prompt"
 
 type transcriptRepairResponse = sessions.TranscriptRepairResponse
 
-type postureEntry = hostedmodel.PostureEntry
+type postureEntry = hostedstore.PostureEntry
 
-const postureEvidenceSpawnRequest = hostedmodel.PostureEvidenceSpawnRequest
-const postureEvidenceSetModel = hostedmodel.PostureEvidenceSetModel
+const postureEvidenceSpawnRequest = hostedstore.PostureEvidenceSpawnRequest
+const postureEvidenceSetModel = hostedstore.PostureEvidenceSetModel
 
-const permissionEventRequested = hostedmodel.PermissionEventRequested
-const permissionEventResolved = hostedmodel.PermissionEventResolved
+const permissionEventRequested = hostedstore.PermissionEventRequested
+const permissionEventResolved = hostedstore.PermissionEventResolved
 
 // These are the expected action names and deadline in the public prompt contract.
 const promptResend = "resend"

@@ -1,18 +1,17 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"strings"
 	"testing"
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hosted "github.com/dkroshow/nano/internal/hosted"
 )
 
 func TestCompletedTurnSourceDoesNotRequireHeartbeat(t *testing.T) {
 	store := mustCompletedStore(t)
-	s := &server{completedTurns: hostedstore.NewCompletedTurnSource(store)}
+	s := &server{completedTurns: hosted.NewCompletedTurnSource(store)}
 	if s.heartbeat != nil {
 		t.Fatal("test requires no heartbeat")
 	}

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -405,7 +405,7 @@ func catalogMetadataByHostedIDs(store *controlMetadataStore, ids []string) map[s
 	out := map[string]threadindex.Metadata{}
 	views := store.CurrentMetadataByHostedIDs(ids)
 	canonical := func(fields map[string]metadataCurrentView, field string) threadindex.Value {
-		value, ok := hostedvalues.MetadataString(fields[field])
+		value, ok := hostedstore.MetadataString(fields[field])
 		if !ok {
 			return unknownCatalogValue()
 		}
@@ -414,9 +414,9 @@ func catalogMetadataByHostedIDs(store *controlMetadataStore, ids []string) map[s
 	}
 	for hostedID, fields := range views {
 		out[hostedID] = threadindex.Metadata{
-			CWD: canonical(fields, "cwd"), Model: canonical(fields, hostedvalues.PostureFieldModel),
-			Effort: canonical(fields, hostedvalues.PostureFieldEffort), Priority: canonical(fields, hostedvalues.PostureFieldServiceTier),
-			Permission: canonical(fields, hostedvalues.PostureFieldPermissionMode),
+			CWD: canonical(fields, "cwd"), Model: canonical(fields, hostedstore.PostureFieldModel),
+			Effort: canonical(fields, hostedstore.PostureFieldEffort), Priority: canonical(fields, hostedstore.PostureFieldServiceTier),
+			Permission: canonical(fields, hostedstore.PostureFieldPermissionMode),
 		}
 	}
 	return out

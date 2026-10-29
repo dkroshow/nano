@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
 )
@@ -53,7 +54,7 @@ func (s *ViewService) AvailabilityFor(hostedThreadID string, now time.Time) Avai
 	}
 	view.Facts.LastHumanMessageAt = record.LastHumanPromptAt
 	state, attached := s.Sessions.Availability(hostedThreadID)
-	if !attached && record.Status == StatusExited {
+	if !attached && record.Status == hostedstore.StatusExited {
 		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityUnreachable, "exited", record.Status
 		view.Reasons = append(view.Reasons, "exited")
 		return view

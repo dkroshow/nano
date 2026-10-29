@@ -16,7 +16,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // PinCandidate is one indexed message offered as an explicit pin anchor.
@@ -28,11 +30,11 @@ type PinCandidate struct {
 // PinService owns pin admission, scoped reads and observation policy.
 type PinService struct {
 	Store                                    *PinStore
-	Executions                               *ExecutionStore
+	Executions                               *hostedstore.ExecutionStore
 	Catalog                                  PinCatalog
 	CatalogErrors                            CatalogErrors
 	CurrentNative                            func(string) (string, bool)
-	ResolveHosted                            func(string) (agentSessionRecord, bool)
+	ResolveHosted                            func(string) (ownedthreads.SessionRecord, bool)
 	ResolveIdentity                          func(context.Context, string) (IdentityResolution, error)
 	ResolveThread                            func(context.Context, string) (string, error)
 	IsAmbiguous                              func(error) bool
@@ -158,13 +160,13 @@ func (s *PinService) pinPreconditions(w http.ResponseWriter) (PinCatalog, bool) 
 	return catalog, true
 }
 
-func (s *PinService) threadPinScopeFor(record agentSessionRecord) threadPinScope {
+func (s *PinService) threadPinScopeFor(record ownedthreads.SessionRecord) threadPinScope {
 	// The current native id always comes first: "pin this" anchors there.
 	scope := threadPinScope{HostedThreadID: record.ID, Provider: record.Provider}
 	if current, ok := s.CurrentNative(record.ID); ok && current != "" {
 		scope.NativeIDs = append(scope.NativeIDs, current)
 	}
-	if ids, err := s.Executions.nativeIDsForHosted(record.ID); err == nil {
+	if ids, err := s.Executions.NativeIDsForHosted(record.ID); err == nil {
 		for _, id := range ids {
 			if len(scope.NativeIDs) == 0 || id != scope.NativeIDs[0] {
 				scope.NativeIDs = append(scope.NativeIDs, id)
@@ -184,7 +186,7 @@ type threadPinCreateRequest struct {
 }
 
 // HandleCreate appends an idempotent pin to a hosted transcript.
-func (s *PinService) HandleCreate(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *PinService) HandleCreate(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	catalog, ok := s.pinPreconditions(w)
 	if !ok {
 		return
@@ -291,7 +293,7 @@ var errPinThreadNotIndexed = errors.New("hosted thread has no indexed native tra
 // native transcript, then in any earlier native transcript it has claimed, so
 // "pin your earlier analysis" still works after a provider replacement. An
 // empty itemID means the current conversational point: the latest message.
-func (s *PinService) locateThreadPinAnchor(ctx context.Context, catalog PinCatalog, record agentSessionRecord, itemID string) (string, history.PinMessage, error) {
+func (s *PinService) locateThreadPinAnchor(ctx context.Context, catalog PinCatalog, record ownedthreads.SessionRecord, itemID string) (string, history.PinMessage, error) {
 	scope := s.threadPinScopeFor(record)
 	if len(scope.NativeIDs) == 0 {
 		return "", history.PinMessage{}, errPinThreadNotIndexed
@@ -357,7 +359,7 @@ type threadPinListResponse struct {
 }
 
 // HandleList lists hosted pins newest first.
-func (s *PinService) HandleList(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *PinService) HandleList(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if _, ok := s.pinPreconditions(w); !ok {
 		return
 	}
@@ -405,7 +407,7 @@ func (s *PinService) HandleList(w http.ResponseWriter, r *http.Request, record a
 }
 
 // HandleRead serves one pin in a hosted identity scope.
-func (s *PinService) HandleRead(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *PinService) HandleRead(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if _, ok := s.pinPreconditions(w); !ok {
 		return
 	}
@@ -426,7 +428,7 @@ func writeThreadPinLookupError(w http.ResponseWriter, err error) {
 }
 
 // HandleCandidates lists recent messages so a caller can pick an exact anchor.
-func (s *PinService) HandleCandidates(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *PinService) HandleCandidates(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if _, ok := s.pinPreconditions(w); !ok {
 		return
 	}

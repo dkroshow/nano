@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -92,10 +92,10 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	metadata := map[string]string{}
 	for field, value := range map[string]threadindex.Value{
 		"cwd":                                  detail.Metadata.CWD,
-		hostedmodel.PostureFieldModel:          detail.Metadata.Model,
-		hostedmodel.PostureFieldEffort:         detail.Metadata.Effort,
-		hostedmodel.PostureFieldServiceTier:    detail.Metadata.Priority,
-		hostedmodel.PostureFieldPermissionMode: detail.Metadata.Permission,
+		hostedstore.PostureFieldModel:          detail.Metadata.Model,
+		hostedstore.PostureFieldEffort:         detail.Metadata.Effort,
+		hostedstore.PostureFieldServiceTier:    detail.Metadata.Priority,
+		hostedstore.PostureFieldPermissionMode: detail.Metadata.Permission,
 	} {
 		if known := knownCatalogValue(value); known != "" {
 			metadata[field] = known
@@ -132,9 +132,9 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	req.externalResumeCatalog = detail.ID
 	req.externalResumeMetadata = metadata
 	req.Cwd = metadata["cwd"]
-	req.Model = metadata[hostedmodel.PostureFieldModel]
-	req.Effort = metadata[hostedmodel.PostureFieldEffort]
-	req.ServiceTier = metadata[hostedmodel.PostureFieldServiceTier]
-	req.PermissionMode = metadata[hostedmodel.PostureFieldPermissionMode]
+	req.Model = metadata[hostedstore.PostureFieldModel]
+	req.Effort = metadata[hostedstore.PostureFieldEffort]
+	req.ServiceTier = metadata[hostedstore.PostureFieldServiceTier]
+	req.PermissionMode = metadata[hostedstore.PostureFieldPermissionMode]
 	return nil
 }

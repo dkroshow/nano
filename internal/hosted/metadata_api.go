@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 func (s *ViewService) canonicalMetadataAvailable(w http.ResponseWriter) bool {
@@ -22,7 +24,7 @@ func (s *ViewService) canonicalMetadataAvailable(w http.ResponseWriter) bool {
 }
 
 // HandleMetadataRead serves canonical metadata with the current attachment overlay.
-func (s *ViewService) HandleMetadataRead(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *ViewService) HandleMetadataRead(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if !s.canonicalMetadataAvailable(w) {
 		return
 	}
@@ -39,7 +41,7 @@ func (s *ViewService) HandleMetadataRead(w http.ResponseWriter, r *http.Request,
 }
 
 // HandleMetadataChanges serves revision hints and identifies a required full refetch.
-func (s *ViewService) HandleMetadataChanges(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *ViewService) HandleMetadataChanges(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if !s.canonicalMetadataAvailable(w) {
 		return
 	}
@@ -62,7 +64,7 @@ func (s *ViewService) HandleMetadataChanges(w http.ResponseWriter, r *http.Reque
 		httpapi.WriteHTTPError(w, "canonical metadata unavailable: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	changes := s.Metadata.changesAfter(record.ID, after)
+	changes := s.Metadata.ChangesAfter(record.ID, after)
 	oldest := view.Revision
 	if len(changes) > 0 {
 		oldest = changes[0].Revision
@@ -73,7 +75,7 @@ func (s *ViewService) HandleMetadataChanges(w http.ResponseWriter, r *http.Reque
 }
 
 // HandleMetadataEvents serves bounded canonical evidence after an event cursor.
-func (s *ViewService) HandleMetadataEvents(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *ViewService) HandleMetadataEvents(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if !s.canonicalMetadataAvailable(w) {
 		return
 	}
@@ -87,7 +89,7 @@ func (s *ViewService) HandleMetadataEvents(w http.ResponseWriter, r *http.Reques
 		limit = 100
 		limitErr = nil
 	}
-	filter := metadataEventFilter{
+	filter := hostedstore.MetadataEventFilter{
 		Field:       strings.TrimSpace(r.URL.Query().Get("field")),
 		Source:      strings.TrimSpace(r.URL.Query().Get("source")),
 		Disposition: strings.TrimSpace(r.URL.Query().Get("disposition")),
@@ -114,7 +116,7 @@ func (s *ViewService) HandleMetadataEvents(w http.ResponseWriter, r *http.Reques
 }
 
 // HandlePermissionEvents serves bounded provider permission evidence.
-func (s *ViewService) HandlePermissionEvents(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+func (s *ViewService) HandlePermissionEvents(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	if s.Metadata == nil || s.MetadataError != "" {
 		httpapi.WriteHTTPError(w, "canonical metadata unavailable", http.StatusServiceUnavailable)
 		return
@@ -133,7 +135,7 @@ func (s *ViewService) HandlePermissionEvents(w http.ResponseWriter, r *http.Requ
 		httpapi.WriteHTTPError(w, "after and limit must be valid non-negative pagination values", http.StatusBadRequest)
 		return
 	}
-	page, err := s.Metadata.permissionEventsAfter(record.ID, after, limit)
+	page, err := s.Metadata.PermissionEventsAfter(record.ID, after, limit)
 	if err != nil {
 		httpapi.WriteHTTPError(w, "permission events unavailable: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -142,12 +144,12 @@ func (s *ViewService) HandlePermissionEvents(w http.ResponseWriter, r *http.Requ
 }
 
 // HandleFamily serves durable invocation lineage and its retained operations.
-func (s *ViewService) HandleFamily(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
-	ancestors, descendants := s.Executions.lineageForHosted(record.ID)
+func (s *ViewService) HandleFamily(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
+	ancestors, descendants := s.Executions.LineageForHosted(record.ID)
 	memberIDs := append([]string{record.ID}, descendants...)
 	members := make([]executionFamilyMemberView, 0, len(memberIDs))
 	for _, memberID := range memberIDs {
-		member, found, err := s.Executions.sessionFromCanonical(memberID)
+		member, found, err := s.Executions.SessionFromCanonical(memberID)
 		if err != nil {
 			httpapi.WriteHTTPError(w, "durable family lineage unavailable: "+err.Error(), http.StatusServiceUnavailable)
 			return
@@ -158,20 +160,20 @@ func (s *ViewService) HandleFamily(w http.ResponseWriter, _ *http.Request, recor
 		}
 		members = append(members, executionFamilyMemberView{HostedThreadID: member.ID, Provider: member.Provider,
 			NativeThreadID: member.NativeThreadID, InvokerHostedThreadID: member.InvokerHostedThreadID,
-			Status: member.Status, OperationIDs: s.Executions.operationIDsForHosted(member.ID)})
+			Status: member.Status, OperationIDs: s.Executions.OperationIDsForHosted(member.ID)})
 	}
 	httpapi.WriteJSON(w, map[string]any{"rootHostedThreadId": record.ID, "ancestorHostedThreadIds": ancestors, "members": members})
 }
 
-func validMetadataEventFilter(filter metadataEventFilter) bool {
-	if filter.Field != "" && filter.Field != PostureFieldModel && filter.Field != PostureFieldEffort && filter.Field != PostureFieldPermissionMode && filter.Field != PostureFieldServiceTier && filter.Field != "cwd" && filter.Field != "subscriptions" && filter.Field != assignmentField {
+func validMetadataEventFilter(filter hostedstore.MetadataEventFilter) bool {
+	if filter.Field != "" && filter.Field != hostedstore.PostureFieldModel && filter.Field != hostedstore.PostureFieldEffort && filter.Field != hostedstore.PostureFieldPermissionMode && filter.Field != hostedstore.PostureFieldServiceTier && filter.Field != "cwd" && filter.Field != "subscriptions" && filter.Field != hostedstore.AssignmentField {
 		return false
 	}
-	if filter.Source != "" && filter.Source != PostureSourceCreation && filter.Source != PostureSourceOperator && filter.Source != PostureSourceProvider && filter.Source != metadataSourceMigration {
+	if filter.Source != "" && filter.Source != hostedstore.PostureSourceCreation && filter.Source != hostedstore.PostureSourceOperator && filter.Source != hostedstore.PostureSourceProvider && filter.Source != hostedstore.SourceMigration {
 		return false
 	}
-	if filter.Disposition != "" && filter.Disposition != metadataDispositionRequested && filter.Disposition != metadataDispositionConfirmed && filter.Disposition != metadataDispositionRejected && filter.Disposition != metadataDispositionCleared && filter.Disposition != metadataDispositionObserved {
+	if filter.Disposition != "" && filter.Disposition != hostedstore.DispositionRequested && filter.Disposition != hostedstore.DispositionConfirmed && filter.Disposition != hostedstore.DispositionRejected && filter.Disposition != hostedstore.DispositionCleared && filter.Disposition != hostedstore.DispositionObserved {
 		return false
 	}
-	return filter.Freshness == "" || filter.Freshness == metadataFreshnessLive || filter.Freshness == metadataFreshnessHistorical || filter.Freshness == metadataFreshnessReplayed
+	return filter.Freshness == "" || filter.Freshness == hostedstore.FreshnessLive || filter.Freshness == hostedstore.FreshnessHistorical || filter.Freshness == hostedstore.FreshnessReplayed
 }

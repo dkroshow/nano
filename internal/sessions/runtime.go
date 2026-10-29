@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -29,7 +29,7 @@ const (
 // StatusExited is the terminal session status. An exited session lingers
 // in s.sessions until someone closes it — its child is gone, so nothing that
 // asks "is this thread alive?" may count it as live.
-const StatusExited = hosted.StatusExited
+const StatusExited = hostedstore.StatusExited
 
 type codexTurn struct {
 	ID        string `json:"id"`
@@ -79,7 +79,7 @@ func (t codexTurn) startedAtMs() int64 {
 // completes its first prompt, and a field named nativeThreadId must not pass
 // one off as real (slice-1 design, ID-disambiguation directive).
 func NativeThreadIDProvisional(provider, nativeID string) bool {
-	return hosted.NativeThreadIDProvisional(provider, nativeID)
+	return hostedstore.NativeThreadIDProvisional(provider, nativeID)
 }
 
 func providerTurnIDFromStart(result json.RawMessage) string {

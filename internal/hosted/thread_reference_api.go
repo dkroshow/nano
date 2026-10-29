@@ -109,7 +109,7 @@ func (s *IdentityService) resolveHostedThreadReference(ctx context.Context, host
 	if s.Executions == nil {
 		return response, nil
 	}
-	record, ok, err := s.Executions.sessionFromCanonical(hostedID)
+	record, ok, err := s.Executions.SessionFromCanonical(hostedID)
 	if err != nil {
 		return response, err
 	}
@@ -135,7 +135,7 @@ func (s *IdentityService) resolveNativeThreadReference(ctx context.Context, nati
 	// then consult hosted history within that scope. A collision across providers
 	// is ambiguous, and retired rows deliberately remain candidates.
 	if s.Executions != nil {
-		providers, err := s.Executions.nativeHistoryProviders(nativeID)
+		providers, err := s.Executions.NativeHistoryProviders(nativeID)
 		if err != nil {
 			return response, err
 		}
@@ -153,7 +153,7 @@ func (s *IdentityService) resolveNativeThreadReference(ctx context.Context, nati
 			record := matches[0]
 			retiredRecoveryAlias := false
 			if control := s.controlStore(); control != nil {
-				retiredRecoveryAlias, err = control.retiredNativeRecoveryAlias(ctx, record.ID, nativeID)
+				retiredRecoveryAlias, err = control.RetiredNativeRecoveryAlias(ctx, record.ID, nativeID)
 				if err != nil {
 					return response, err
 				}

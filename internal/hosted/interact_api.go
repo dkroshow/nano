@@ -9,16 +9,18 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/interact"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
 // CompletedFeed joins durable completed turns with the saved-answer read boundary.
 type CompletedFeed struct {
 	Source        *CompletedTurnSource
-	Executions    *ExecutionStore
-	Metadata      *MetadataStore
+	Executions    *hostedstore.ExecutionStore
+	Metadata      *hostedstore.MetadataStore
 	Prompts       *prompts.Store
 	ResolveAnswer func(context.Context, string, prompts.Record, func(string) string) (finalID, outcome, nativeID, turnID string, err error)
 }
@@ -82,7 +84,7 @@ func (s *CompletedFeed) publicCompletedTurn(ctx context.Context, hosted string, 
 	item := interact.CompletedTurn{Provider: row.Provider, TurnID: row.TurnID,
 		FinalMessageID: row.FinalMessageID, Outcome: row.Outcome, Usage: usage, CompletedAt: row.CompletedAt}
 	if item.Outcome == "" {
-		item.Outcome = agentTurnCompleted
+		item.Outcome = ownedthreads.AgentTurnCompleted
 	}
 	// The row keeps the action its prompt was delivered under, so the
 	// operation is the one delivered under it, if any: a person's prompt has
@@ -126,7 +128,7 @@ func (s *CompletedFeed) publicCompletedTurn(ctx context.Context, hosted string, 
 	case err == nil:
 		item.FinalMessageID, item.Outcome, item.NativeThreadID, item.SavedTurnID = finalID, outcome, nativeID, turnID
 		return item, true
-	case !errors.Is(err, history.ErrSavedTranscriptUnavailable) || item.Outcome == agentTurnCompleted:
+	case !errors.Is(err, history.ErrSavedTranscriptUnavailable) || item.Outcome == ownedthreads.AgentTurnCompleted:
 		return item, false
 	default:
 		item.FinalMessageID = ""

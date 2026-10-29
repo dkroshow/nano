@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/observability"
 )
@@ -169,10 +169,10 @@ func (sess *Session) SummaryWith(view hostedMetadataView, viewErr error, needsAt
 	}
 	view.Attachment = hostedAttachmentView{State: summary.Status, Provenance: "live_session", Error: summary.Error}
 	view.Name = displayMetadataName(summary.Name)
-	summary.Posture = hostedvalues.PostureFromFields(view.Fields)
+	summary.Posture = hostedstore.PostureFromFields(view.Fields)
 	summary.Metadata = &view
 	summary.Model = summary.Posture.Model
-	if cwd, ok := hostedvalues.MetadataString(view.Fields["cwd"]); ok {
+	if cwd, ok := hostedstore.MetadataString(view.Fields["cwd"]); ok {
 		summary.Cwd = cwd
 	}
 	return summary
@@ -280,7 +280,7 @@ func (sess *Session) updateHostedThread(status, message string) {
 		return
 	}
 	if sess.metadata != nil {
-		if err := hostedvalues.SkipOwnedNativeClaim(sess.metadata.ClaimNativeID(sess.hostedThreadID, sess.provider, sess.ThreadID(), NativeThreadIDProvisional(sess.provider, sess.ThreadID()))); err != nil {
+		if err := hostedstore.SkipOwnedNativeClaim(sess.metadata.ClaimNativeID(sess.hostedThreadID, sess.provider, sess.ThreadID(), NativeThreadIDProvisional(sess.provider, sess.ThreadID()))); err != nil {
 			log.Printf("claim canonical native id for %s: %v", sess.hostedThreadID, err)
 		}
 	}

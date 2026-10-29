@@ -3,19 +3,19 @@ package app
 import (
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
 type completedTurn = coreturns.Record
 type agentExecutionError = threads.ExecutionError
-type agentTerminalTurn = hosted.TerminalTurn
-type agentResultMeta = hosted.ResultMeta
-type orchestrationAuditTarget = hosted.AuditTarget
-type metadataEvent = hosted.MetadataEvent
-type metadataEventPage = hosted.MetadataEventPage
-type metadataEventFilter = hosted.MetadataEventFilter
-type nativeResolution = hosted.NativeResolution
+type agentTerminalTurn = hostedstore.TerminalTurn
+type agentResultMeta = hostedstore.ResultMeta
+type orchestrationAuditTarget = hostedstore.AuditTarget
+type metadataEvent = hostedstore.MetadataEvent
+type metadataEventPage = hostedstore.MetadataEventPage
+type metadataEventFilter = hostedstore.MetadataEventFilter
+type nativeResolution = hostedstore.NativeResolution
 
 const presentationShared = threads.PresentationShared
 const presentationBackground = threads.PresentationBackground
@@ -29,15 +29,15 @@ const agentTurnWaiting = threads.AgentTurnWaiting
 const agentTurnAwaitingSaved = threads.AgentTurnAwaitingSaved
 const agentTurnFailed = threads.AgentTurnFailed
 const agentTurnInterrupted = threads.AgentTurnInterrupted
-const metadataDispositionRequested = hosted.DispositionRequested
-const metadataDispositionConfirmed = hosted.DispositionConfirmed
-const metadataDispositionRejected = hosted.DispositionRejected
-const metadataDispositionCleared = hosted.DispositionCleared
-const metadataDispositionObserved = hosted.DispositionObserved
-const metadataFreshnessLive = hosted.FreshnessLive
-const metadataFreshnessHistorical = hosted.FreshnessHistorical
-const metadataFreshnessReplayed = hosted.FreshnessReplayed
-const metadataSourceMigration = hosted.SourceMigration
+const metadataDispositionRequested = hostedstore.DispositionRequested
+const metadataDispositionConfirmed = hostedstore.DispositionConfirmed
+const metadataDispositionRejected = hostedstore.DispositionRejected
+const metadataDispositionCleared = hostedstore.DispositionCleared
+const metadataDispositionObserved = hostedstore.DispositionObserved
+const metadataFreshnessLive = hostedstore.FreshnessLive
+const metadataFreshnessHistorical = hostedstore.FreshnessHistorical
+const metadataFreshnessReplayed = hostedstore.FreshnessReplayed
+const metadataSourceMigration = hostedstore.SourceMigration
 const submissionQueued = string(turns.Queued)
 const submissionDelivering = string(turns.Delivering)
 const submissionAccepted = string(turns.Accepted)

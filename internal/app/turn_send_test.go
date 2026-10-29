@@ -1,13 +1,10 @@
 package app
 
-import hostedstore "github.com/dkroshow/nano/internal/hosted"
-
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/sessions"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -26,8 +23,10 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/history"
+	hosted "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/interact"
 	liveview "github.com/dkroshow/nano/internal/liveview"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
@@ -430,7 +429,7 @@ func TestClaudePromptsAnsweredTogetherFinishWithTheSharedResult(t *testing.T) {
 			if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+			completed := hosted.NewCompletedTurnStore(h.queue.Database())
 			core, err := completed.CoreStore(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -626,7 +625,7 @@ func TestClaudeMembersClaimingOneDurableTurnLeaveItUnfinished(t *testing.T) {
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -715,7 +714,7 @@ func TestClaudePromptsWithTheirOwnLiveResultsInOneSavedTurnBothFinish(t *testing
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -822,7 +821,7 @@ func TestClaudePromptsAProcessDeathCutOffSettleAndTheOneNeverTakenWaitsForThePer
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -963,8 +962,8 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	if err := executions.Control().ClaimNativeID(child.ID, "claude", native, false); err != nil {
 		t.Fatal(err)
 	}
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
-	h.server.turns, h.server.agentExecutions, h.server.completedTurns, h.server.controlMetadata = h.prompts, executions, hostedstore.NewCompletedTurnSource(completed), executions.Control()
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
+	h.server.turns, h.server.agentExecutions, h.server.completedTurns, h.server.controlMetadata = h.prompts, executions, hosted.NewCompletedTurnSource(completed), executions.Control()
 	executions.UseSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
 	client := &feedSubscriptionClient{s: h.server}
 	h.server.subscriptions = subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
@@ -1029,12 +1028,12 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 	ctx := context.Background()
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.server.turns, h.server.completedTurns, h.server.controlMetadata = h.prompts, hostedstore.NewCompletedTurnSource(completed), h.control
+	h.server.turns, h.server.completedTurns, h.server.controlMetadata = h.prompts, hosted.NewCompletedTurnSource(completed), h.control
 	h.server.agentExecutions = newTestAgentExecutionStore(t, "run")
 	turnOf := map[string]string{"answered": "claude:shim:701", "twin-a": "claude:shim:703", "twin-b": "claude:shim:703", "unsaved": "claude:shim:702"}
 	for _, action := range []string{"answered", "twin-a", "twin-b", "unsaved"} {
@@ -1267,7 +1266,7 @@ func TestClaudeAgentMemberWithoutItsRetainedOperationStaysOwed(t *testing.T) {
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -1358,7 +1357,7 @@ func TestClaudeOwedPersonPromptFinishesAfterARestartOnALaterSavedCommit(t *testi
 	ctx := context.Background()
 	h := newSettlementHarness(t, "claude")
 	native := h.fixture.native
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -1503,7 +1502,7 @@ func TestReattachSettlesSavedPromptsAndPublishesOnlyTheRest(t *testing.T) {
 				// the person's prompt owes nothing more.
 				sess := h.attach(provider, nil, func(cfg *sessionConfig) {
 					cfg.AgentExecutions = newTestAgentExecutionStore(t, "run-1")
-					cfg.CompletedTurns = (hostedstore.NewCompletedTurnStore(h.queue.Database())).CoreStore
+					cfg.CompletedTurns = (hosted.NewCompletedTurnStore(h.queue.Database())).CoreStore
 				})
 				waitForCatalogWithin(t, time.Minute, func() bool {
 					if _, err := sess.SettlePrompts(ctx); err != nil {
@@ -1871,7 +1870,7 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 	if _, expired, err := h.prompts.Expire(ctx, "unanswered", time.Now()); err != nil || !expired {
 		t.Fatalf("expire unanswered = %v, %v", expired, err)
 	}
-	completed := hostedstore.NewCompletedTurnStore(h.queue.Database())
+	completed := hosted.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)

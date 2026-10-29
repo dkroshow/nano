@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	hostedvalues "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
 var (
-	errNativeClaimOwned = hostedvalues.ErrNativeClaimOwned
+	errNativeClaimOwned = hostedstore.ErrNativeClaimOwned
 	errNativeClaimLive  = errors.New("native identity is live-attached on another hosted record")
 )
 

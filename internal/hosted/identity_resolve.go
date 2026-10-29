@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	ownedthreads "github.com/dkroshow/nano/internal/threads"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -214,7 +216,7 @@ func (s *IdentityService) identityFromName(ctx context.Context, name string) ([]
 					continue
 				}
 			}
-			providers, err := s.Executions.nativeHistoryProviders(row.NativeID)
+			providers, err := s.Executions.NativeHistoryProviders(row.NativeID)
 			if err != nil {
 				return nil, err
 			}
@@ -277,11 +279,11 @@ func (s *IdentityService) currentHostedIdentity(ctx context.Context, hostedID st
 	}, true
 }
 
-func (s *IdentityService) hostedCanonical(hostedID string) (agentSessionRecord, bool, error) {
+func (s *IdentityService) hostedCanonical(hostedID string) (ownedthreads.SessionRecord, bool, error) {
 	if s.Executions == nil {
-		return agentSessionRecord{}, false, nil
+		return ownedthreads.SessionRecord{}, false, nil
 	}
-	return s.Executions.sessionFromCanonical(hostedID)
+	return s.Executions.SessionFromCanonical(hostedID)
 }
 
 // DisplayNameForHosted reads the current or historical durable name, then the creation name.
@@ -295,7 +297,7 @@ func (s *IdentityService) DisplayNameForHosted(ctx context.Context, provider, ho
 	if s.Executions == nil || hostedID == "" {
 		return ""
 	}
-	ids, err := s.Executions.nativeIDsForHosted(hostedID)
+	ids, err := s.Executions.NativeIDsForHosted(hostedID)
 	if err != nil {
 		return ""
 	}
@@ -386,7 +388,7 @@ func pickIdentity(candidates []identityCandidate) IdentityResolution {
 	return IdentityResolution{
 		DisplayName:               best.displayName,
 		NativeThreadID:            best.nativeThreadID,
-		NativeThreadIDProvisional: NativeThreadIDProvisional(best.provider, best.nativeThreadID),
+		NativeThreadIDProvisional: hostedstore.NativeThreadIDProvisional(best.provider, best.nativeThreadID),
 		HostedThreadID:            best.hostedThreadID,
 		Provider:                  best.provider,
 		MatchCount:                len(byKey),
