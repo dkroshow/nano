@@ -110,6 +110,7 @@ func persistedSenderFooter(a hostedstore.TurnAttribution) string {
 
 type hostedTurnAdmissionError struct{ Reason string }
 
+// Error returns the admission failure message.
 func (e *hostedTurnAdmissionError) Error() string { return "target is not idle: " + e.Reason }
 
 func hostedTurnPromptHash(prompt string, requireIdle bool) string {

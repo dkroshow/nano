@@ -18,11 +18,7 @@ func newCodexLiveAdapter() *codexLiveAdapter {
 	return &codexLiveAdapter{}
 }
 
-func (a *codexLiveAdapter) Present(item model.Item, at time.Time) *liveProjectionItem {
-	return parsedLiveItem(item, at)
-}
-
-func (a *codexLiveAdapter) Apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *codexLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
 	next, batch, err := codex.ParseWire(a.reader, liveParseInput(dir, line, at))
 	if err != nil {
 		return model.Batch{}

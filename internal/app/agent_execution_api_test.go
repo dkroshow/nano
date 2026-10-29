@@ -16,10 +16,10 @@ import (
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/sidebar"
-	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -458,9 +458,17 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	}
 	projection := newLiveProjection("codex", hosted.ID)
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, Projection: projection}, "native-1", "ready", "", true)
-	saved := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: threadindex.TranscriptResponse{
-		Items: []threadindex.TranscriptItem{{ID: "saved-message-1", Type: "agent_message", Text: "working on it"}},
-	}}}
+	savedStore, err := history.Open(filepath.Join(t.TempDir(), "conversation.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { savedStore.Close() })
+	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	if _, err := savedStore.EnsureRoot(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	seedSidebarThread(t, savedStore, root, "native-1", "", history.ThreadMain, time.Now(), []historyCourt{{final: true, text: "working on it"}, {tool: true, text: "secret command output"}})
+	saved := newStoredCatalog(t, savedStore)
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store, catalog: saved}, map[string]*session{"nano-1": sess})
 	s.startLiveText(sess)
 
@@ -484,16 +492,15 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	if len(messages.Items) != 1 || messages.Items[0].Type != "agentMessage" || !messages.Runtime.TurnActive {
 		t.Fatalf("messages view = %#v", messages)
 	}
-	if saved.query.View != threadindex.DefaultThreadTranscriptView {
-		t.Fatalf("messages query = %#v", saved.query)
+	if messages.Items[0].Text != "working on it" {
+		t.Fatalf("messages view exposed a non-message row: %#v", messages.Items)
 	}
-	saved.response.Items = append(saved.response.Items, threadindex.TranscriptItem{ID: "saved-tool-1", Type: "commandExecution", Text: "secret command output"})
 	full, code := read("/api/v1/hosted-threads/" + hosted.ID + "/conversation?view=full")
 	if code != http.StatusOK || len(full.Items) != 2 {
 		t.Fatalf("full view status = %d, snapshot = %#v", code, full)
 	}
-	if saved.query.View != threadindex.DevThreadTranscriptView || !saved.query.HiddenSpecified {
-		t.Fatalf("full query = %#v", saved.query)
+	if full.Items[1].Text != "secret command output" {
+		t.Fatalf("full view omitted the command row: %#v", full.Items)
 	}
 	_, code = read("/api/v1/hosted-threads/" + hosted.ID + "/conversation?view=unknown")
 	if code != http.StatusBadRequest {

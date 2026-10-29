@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	nanofiles "github.com/dkroshow/nano/internal/files"
+	"github.com/dkroshow/nano/internal/configpaths"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	_ "modernc.org/sqlite"
@@ -28,7 +28,7 @@ type Stars struct {
 // OpenStars opens the operator-owned stars database.
 func OpenStars(path string) (*Stars, error) {
 	path = strings.TrimSpace(path)
-	absolute, err := nanofiles.CanonicalProspective(path)
+	absolute, err := configpaths.CanonicalProspective(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve thread stars database: %w", err)
 	}

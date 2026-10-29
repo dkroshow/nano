@@ -26,12 +26,12 @@ import (
 	"github.com/dkroshow/nano/internal/agentapi"
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/configpaths"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	feedback "github.com/dkroshow/nano/internal/features/feedback"
 	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
-	nanofiles "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
 	hosted "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -805,7 +805,7 @@ func validateThreadCatalogDBLocation(database string, providerHomes []string) er
 // canonicalProspectivePath resolves symlinks in the existing portion of a
 // path without creating the database or any parent directory.
 func canonicalProspectivePath(path string) (string, error) {
-	return nanofiles.CanonicalProspective(path)
+	return configpaths.CanonicalProspective(path)
 }
 
 func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {

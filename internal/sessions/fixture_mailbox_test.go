@@ -22,11 +22,11 @@ type gatedLiveAdapter struct {
 	once             sync.Once
 }
 
-func (a *gatedLiveAdapter) Apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *gatedLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
 	if a.match == nil || a.match(line) {
 		a.once.Do(func() { close(a.entered); <-a.release })
 	}
-	return a.next.Apply(dir, line, at)
+	return a.next.apply(dir, line, at)
 }
 func parsedAdapter(p *LiveProjection) liveAdapter {
 	if gated, ok := p.adapter.(*gatedLiveAdapter); ok {

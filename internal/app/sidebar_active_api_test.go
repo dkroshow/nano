@@ -194,6 +194,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 }
 
 type historyCourt struct {
+	tool  bool
 	user  bool
 	final bool
 	text  string
@@ -226,6 +227,9 @@ func seedSidebarThread(t *testing.T, store *history.Store, root history.SourceRo
 		}
 		if !item.user {
 			projected.Type = history.ItemAgentMessage
+		}
+		if item.tool {
+			projected.Type = history.ItemCommand
 		}
 		if item.final {
 			turn.FinalItemID = projected.ID

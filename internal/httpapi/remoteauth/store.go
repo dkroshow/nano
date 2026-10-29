@@ -13,15 +13,15 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/argon2"
 	"net/mail"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/dkroshow/nano/internal/files"
+	"github.com/dkroshow/nano/internal/configpaths"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	"golang.org/x/crypto/argon2"
 	_ "modernc.org/sqlite"
 )
 
@@ -56,7 +56,7 @@ type Session struct {
 
 func OpenStore(path string) (*Store, error) {
 	path = strings.TrimSpace(path)
-	absolute, err := files.CanonicalProspective(path)
+	absolute, err := configpaths.CanonicalProspective(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve remote auth database: %w", err)
 	}

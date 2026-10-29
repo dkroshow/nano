@@ -18,11 +18,7 @@ func newClaudeLiveAdapter() *claudeLiveAdapter {
 	return &claudeLiveAdapter{}
 }
 
-func (a *claudeLiveAdapter) Present(item model.Item, at time.Time) *liveProjectionItem {
-	return parsedClaudeLiveItem(item, at)
-}
-
-func (a *claudeLiveAdapter) Apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *claudeLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
 	next, batch, err := claude.ParseWire(a.reader, liveParseInput(dir, line, at))
 	if err != nil {
 		return model.Batch{}

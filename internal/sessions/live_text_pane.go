@@ -204,6 +204,7 @@ func (q *liveTextQueue) closeLocked() {
 	}
 }
 
+// LiveTextMessage is one saved-row or live-text update delivered to a pane.
 type LiveTextMessage struct {
 	Type string `json:"type"`
 	// Ref names the thread of a warm stream's message; Refs, on a warm

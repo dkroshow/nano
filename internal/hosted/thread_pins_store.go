@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	nanofiles "github.com/dkroshow/nano/internal/files"
+	"github.com/dkroshow/nano/internal/configpaths"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
@@ -24,7 +24,7 @@ type PinStore struct {
 // OpenPinStore opens the canonical pin file and its observation tables.
 func OpenPinStore(path string) (*PinStore, error) {
 	path = strings.TrimSpace(path)
-	absolute, err := nanofiles.CanonicalProspective(path)
+	absolute, err := configpaths.CanonicalProspective(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve thread pins database: %w", err)
 	}

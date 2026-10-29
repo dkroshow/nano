@@ -19,7 +19,7 @@ func TestLiveAdaptersReturnTheParserBatch(t *testing.T) {
 			case "grok":
 				adapter = newGrokLiveAdapter()
 			}
-			result := adapter.Apply(protocol.Recv, []byte(`{"not":"a semantic provider frame"}`), time.Unix(200, 0).UTC())
+			result := adapter.apply(protocol.Recv, []byte(`{"not":"a semantic provider frame"}`), time.Unix(200, 0).UTC())
 			if result.Versions.Schema == "" {
 				t.Fatal("adapter discarded the normalized parser batch")
 			}

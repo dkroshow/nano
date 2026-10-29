@@ -42,7 +42,7 @@ type liveTurnWork struct {
 }
 
 type liveAdapter interface {
-	Apply(protocol.Direction, []byte, time.Time) model.Batch
+	apply(protocol.Direction, []byte, time.Time) model.Batch
 }
 
 // LiveProjection owns the ordered live turn, runtime and interaction view.
@@ -269,7 +269,7 @@ func (p *LiveProjection) applyWireLive(dir protocol.Direction, line []byte, at t
 		p.mu.Unlock()
 	}
 	p.adapterMu.Lock()
-	batch := p.adapter.Apply(dir, line, at)
+	batch := p.adapter.apply(dir, line, at)
 	if p.liveText != nil {
 		p.liveText.observeBatch(batch, providerTurnID)
 		if claudeTurnClosed {

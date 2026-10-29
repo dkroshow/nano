@@ -21,7 +21,8 @@ const (
 	// WarmJoining is how many threads join one stream at once: the next
 	// joins when one of them has sent its first message, or has waited
 	// WarmJoinWait without one (a projection still indexing sends nothing).
-	WarmJoining  = 4
+	WarmJoining = 4
+	// WarmJoinWait bounds how long an indexing thread can hold a joining slot.
 	WarmJoinWait = 2 * time.Second
 	// warmStreamBacklog is a warm stream's queue limit. The threads joining
 	// at once, each at the largest page the catalog keeps inline (40 rows of

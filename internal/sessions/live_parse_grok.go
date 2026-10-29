@@ -17,11 +17,7 @@ func newGrokLiveAdapter() *grokLiveAdapter {
 	return &grokLiveAdapter{}
 }
 
-func (a *grokLiveAdapter) Present(item model.Item, at time.Time) *liveProjectionItem {
-	return parsedGrokLiveItem(item, at)
-}
-
-func (a *grokLiveAdapter) Apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *grokLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
 	next, batch, err := grok.ParseWire(a.reader, liveParseInput(dir, line, at))
 	if err != nil {
 		return model.Batch{}
