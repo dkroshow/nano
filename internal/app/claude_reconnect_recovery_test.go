@@ -36,7 +36,7 @@ func reconnectServer(t *testing.T, shimURL string, stale bool) (*server, string)
 	}
 	store.Remember(record)
 	seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-	stored, _ := s.attachmentFor("claude", claudeResumeThreadID)
+	stored, _ := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID)
 	return s, stored.HostedThreadID
 }
 
@@ -93,7 +93,7 @@ func TestClaudeReconnectIdleStaleAnchorReplaysNothing(t *testing.T) {
 	b.Result(turn)
 	b.Background(3000)
 	shim.Frames = b.Frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames...)
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "done-action", turn, "prompt")
 	if _, _, err := openCompletedTurns(t, s).Finished(context.Background(), coreturns.Finish{HostedThreadID: hosted, Provider: "claude", NativeThreadID: claudeResumeThreadID, TurnID: turn, Outcome: agentTurnCompleted, Source: "adapter"}); err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestClaudeReconnectRecordsOfflineCompletionBehindBackgroundBacklog(t *testi
 	b.Result(turn)
 	b.Background(claudeBacklogFrames(t))
 	shim.Frames = b.Frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames...)
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "offline-action", turn, "prompt")
 
 	started := time.Now()
@@ -195,7 +195,7 @@ func TestClaudeReconnectMidMessageKeepsNativeBlockIdentity(t *testing.T) {
 			b.Message(turn, "earlier", "earlier text")
 			start := b.OpenMessage(turn, "open", "first block", "second block so far")
 			shim.Frames, shim.TurnActive = b.Frames, true
-			writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
+			writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames...)
 
 			response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 			if response.Code != http.StatusOK {
@@ -225,7 +225,7 @@ func TestClaudeReconnectInterruptedMessageDoesNotPinFloor(t *testing.T) {
 	b.Result("")
 	b.Background(20)
 	shim.Frames = b.Frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames...)
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
 	}
@@ -250,7 +250,7 @@ func TestClaudeReconnectRecoversPendingPermissionOnce(t *testing.T) {
 	start := b.OpenMessage(turn, "ask", "about to run")
 	b.Add("recv", turn, `{"type":"control_request","request_id":"perm-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"pwd"}}}`)
 	shim.Frames, shim.TurnActive = b.Frames, true
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames...)
 
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
@@ -292,7 +292,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 		{name: "missing spool with an unfinished accepted prompt", accepted: true, LastSeq: 3},
 		{name: "missing spool and a shim holding lines", LastSeq: 5},
 		{name: "malformed spool", accepted: true, LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *SpoolBuilder) {
-			path := writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames[:1]...)
+			path := writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames[:1]...)
 			file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -303,7 +303,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 		{name: "spool of another conversation", LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *SpoolBuilder) {
 			Frames := append([]claudeTestFrame(nil), b.Frames...)
 			Frames[0].Line = claudeSuccessorInitLine
-			writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, Frames...)
+			writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, Frames...)
 		}},
 		{name: "never used child", LastSeq: 0, ok: true},
 	}
@@ -311,7 +311,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			shim := NewSpoolShim(t, nil)
 			s, hosted := reconnectServer(t, shim.WSURL(), false)
-			if err := os.Remove(filepath.Join(s.defaults.claudeShimSpools, hosted+".jsonl")); err != nil {
+			if err := os.Remove(filepath.Join(s.defaults.ClaudeShimSpools, hosted+".jsonl")); err != nil {
 				t.Fatal(err)
 			}
 			b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
@@ -342,7 +342,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			if starts, closes := len(shim.CallsOf(shimMethodStart)), len(shim.CallsOf(shimMethodClose)); starts != 0 || closes != 0 {
 				t.Fatalf("unprovable recovery made %d starts and %d closes", starts, closes)
 			}
-			if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
+			if _, ok := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
 				t.Fatal("unprovable recovery removed the retryable record")
 			}
 		})
@@ -363,7 +363,7 @@ func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
 	b.Message("", "late", "appended after the scan")
 	b.Result("")
 	raw = append(raw, []byte(`{"seq":`+fmt.Sprint(scanned+1)+`,"dir":"recv","line":"{\"type\":\"stream_`)...)
-	if err := os.WriteFile(filepath.Join(s.defaults.claudeShimSpools, hosted+".jsonl"), raw, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(s.defaults.ClaudeShimSpools, hosted+".jsonl"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -401,7 +401,7 @@ func TestClaudeReconnectDoesNotResurrectRequestRetiredByItsResult(t *testing.T) 
 	b.Add("recv", "", `{"type":"control_request","request_id":"stale","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}`)
 	b.Result("")
 	shim.Frames = b.Frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames...)
 
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
@@ -431,7 +431,7 @@ func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
 	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("ingestion timeout started %d replacement children", starts)
 	}
-	if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
+	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
 		t.Fatal("ingestion timeout removed the retryable record")
 	}
 }
@@ -445,7 +445,7 @@ func TestClaudeReconnectRejectsReplayGap(t *testing.T) {
 	b.Add("recv", "", claudeInitLine)
 	b.Message("", "a", "text")
 	b.Result("")
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames[:2]...)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames[:2]...)
 	shim.Frames = append(append([]claudeTestFrame(nil), b.Frames[:2]...), b.Frames[3:]...)
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude recovery evidence is missing or unprovable") {
@@ -473,7 +473,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	b.Result(turn)
 	b.Background(40)
 	shim.Frames = b.Frames
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hosted, b.Frames...)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames...)
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "admitted-action", turn, "prompt")
 
 	op, _, err := fixtureBeginTurn(s.agentExecutions, hosted, "admitted-op", "prompt-hash")

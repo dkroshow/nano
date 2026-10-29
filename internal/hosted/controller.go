@@ -23,22 +23,20 @@ type Controller struct {
 	SendAttempts                  *prompts.LegacyJournal
 	ClaudeShimWS                  string
 	Boot                          *sessions.BootAttachments
-	// Reattach is a construction-time action until the lifecycle landing moves
-	// boot orchestration down. It does not expose the app server.
-	Reattach                  func(string)
-	Stars                     *sidebar.Stars
-	Views                     func() *ViewService
-	ResolveIdentity           func(context.Context, string) (IdentityResolution, error)
-	PrepareCreation           func(CreationRequest) (CreationPlan, error)
-	PromptWithUnreadFooter    func(string, string) (string, error)
-	UnreadFooterUnavailable   error
-	FeatureFooter             func(string) (string, bool)
-	CloseLifecycle            func(string, func() error) error
-	NotifyRuntime             func()
-	RefreshRuntime            func()
-	PublishRelationshipChange func()
-	LegacyCreate              http.HandlerFunc
-	relationshipMu            sync.Mutex
+	AttachmentsControl            *AttachmentCoordinator
+	Stars                         *sidebar.Stars
+	Views                         func() *ViewService
+	ResolveIdentity               func(context.Context, string) (IdentityResolution, error)
+	PrepareCreation               func(CreationRequest) (CreationPlan, error)
+	PromptWithUnreadFooter        func(string, string) (string, error)
+	UnreadFooterUnavailable       error
+	FeatureFooter                 func(string) (string, bool)
+	CloseLifecycle                func(string, func() error) error
+	NotifyRuntime                 func()
+	RefreshRuntime                func()
+	PublishRelationshipChange     func()
+	LegacyCreate                  http.HandlerFunc
+	relationshipMu                sync.Mutex
 }
 
 func (s *Controller) controlStore() *hostedstore.MetadataStore {

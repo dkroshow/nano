@@ -1,4 +1,4 @@
-package app
+package hosted
 
 import (
 	"context"
@@ -10,12 +10,12 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
-// resolveSpawn fills flag defaults and absolutizes cwd — the single place
-// spawn parameters get resolved, shared by spawnSession and the preview
+// ResolveSpawn fills flag defaults and absolutizes cwd — the single place
+// spawn parameters get resolved, shared by Spawn and the preview
 // endpoint so the previewed JSON matches what a real spawn would send. Resume
 // intentionally avoids applying start defaults for either provider; otherwise
 // nano would silently override the posture the resumed session already has.
-func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
+func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, error) {
 	req.Provider = strings.TrimSpace(req.Provider)
 	if req.Mode == "" {
 		req.Mode = "start"
@@ -40,14 +40,14 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 		// canonical hosted state alone. The immutable identity block is part of
 		// that transport command, so the resume resolver needs the same server
 		// origin a fresh start receives below.
-		req.APIOrigin = s.defaults.apiOrigin
+		req.APIOrigin = s.Defaults.APIOrigin
 		req.ThreadID = strings.TrimSpace(req.ThreadID)
 		if req.ThreadID == "" {
 			return req, fmt.Errorf("threadId is required to resume a thread")
 		}
 		// Resume routes only through the canonical current native owner. Neither
 		// attachment records nor historical activity may mint or reclaim one.
-		if err := s.resolveResumeHostedIdentity(&req); err != nil {
+		if err := s.ResolveResumeHostedIdentity(&req); err != nil {
 			return req, err
 		}
 		// A hosted attachment is only a transport locator.  Its old cwd/model/
@@ -55,20 +55,20 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 		// hosted identity exists, the canonical control row supplies every
 		// provider setting that can be replayed.
 		if req.HostedThreadID != "" {
-			if err := s.inheritResumePosture(req.HostedThreadID, req.Provider, req.ThreadID); err != nil {
+			if err := s.InheritResumePosture(req.HostedThreadID, req.Provider, req.ThreadID); err != nil {
 				return req, err
 			}
-			if err := s.applyCanonicalResumeMetadata(&req); err != nil {
+			if err := s.ApplyCanonicalResumeMetadata(&req); err != nil {
 				return req, err
 			}
 		}
 		switch req.Provider {
 		case "codex":
-			return s.resolveCodexResume(req)
+			return s.ResolveCodexResume(req)
 		case "claude":
-			return s.resolveClaudeResume(req)
+			return s.ResolveClaudeResume(req)
 		case "grok":
-			return s.resolveGrokResume(req)
+			return s.ResolveGrokResume(req)
 		}
 		return req, fmt.Errorf("resume is not supported for provider %q", req.Provider)
 	}
@@ -83,9 +83,9 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 		return req, fmt.Errorf("sessionStartSource must be %q or %q, got %q", "startup", "clear", req.SessionStartSource)
 	}
 
-	req.APIOrigin = s.defaults.apiOrigin
+	req.APIOrigin = s.Defaults.APIOrigin
 	if req.Cwd == "" {
-		req.Cwd = s.defaults.cwd
+		req.Cwd = s.Defaults.CWD
 	}
 	absCwd, err := filepath.Abs(req.Cwd)
 	if err != nil {
@@ -93,21 +93,21 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 	}
 	req.Cwd = absCwd
 	if req.Model == "" && req.Provider != "grok" {
-		req.Model = s.defaults.model
+		req.Model = s.Defaults.Model
 	}
 	switch req.Provider {
 	case "claude":
-		req.ClaudeBin = s.defaults.claudeBin
-		req.ClaudeShimWS = s.defaults.claudeShimWS
+		req.ClaudeBin = s.Defaults.ClaudeBin
+		req.ClaudeShimWS = s.Defaults.ClaudeShimWS
 		if req.AllowedTools == "" && req.PermissionMode != "bypassPermissions" {
-			req.AllowedTools = s.defaults.allowedTools
+			req.AllowedTools = s.Defaults.AllowedTools
 		}
 	case "codex":
 		if req.Sandbox == "" {
-			req.Sandbox = s.defaults.sandbox
+			req.Sandbox = s.Defaults.Sandbox
 		}
 		if req.Approval == "" {
-			req.Approval = s.defaults.approval
+			req.Approval = s.Defaults.Approval
 		}
 		// Standard is Nano's deliberate default. A raw app-server omission can
 		// inherit an operator config that is already Priority, which makes an
@@ -116,12 +116,12 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 		if req.ServiceTier == "" {
 			req.ServiceTier = "default"
 		}
-		if err := s.codex.ValidateUltrafast(req.Model, req.ServiceTier); err != nil {
+		if err := s.Codex.ValidateUltrafast(req.Model, req.ServiceTier); err != nil {
 			return req, err
 		}
 	case "grok":
-		req.GrokBin = s.defaults.grokBin
-		req.GrokLeaderSocket = s.defaults.grokLeaderSocket
+		req.GrokBin = s.Defaults.GrokBin
+		req.GrokLeaderSocket = s.Defaults.GrokLeaderSocket
 		switch req.PermissionMode {
 		case "", "auto", "bypassPermissions":
 		default:
@@ -133,23 +133,23 @@ func (s *server) resolveSpawn(req spawnRequest) (spawnRequest, error) {
 	return req, nil
 }
 
-// applyCanonicalResumeMetadata overlays the recoverable provider settings for
+// ApplyCanonicalResumeMetadata overlays the recoverable provider settings for
 // an already-hosted thread.  The JSON attachment remains useful for transport
 // handles (Claude argv, shim ids and replay anchors), but it must never be
 // consulted for model, effort, permission, service tier or cwd once a hosted
 // identity has been established.
-func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
+func (s *AttachmentCoordinator) ApplyCanonicalResumeMetadata(req *SpawnRequest) error {
 	if req == nil || req.HostedThreadID == "" {
 		return nil
 	}
-	if s.controlMetadata == nil || s.controlMetadataErr != "" {
-		return errHostedControlUnavailable
+	if s.Metadata == nil || s.MetadataError != "" {
+		return ErrHostedControlUnavailable
 	}
-	view, err := s.controlMetadata.View(req.HostedThreadID)
+	view, err := s.Metadata.View(req.HostedThreadID)
 	if err != nil {
 		return fmt.Errorf("read canonical metadata for hosted thread %s: %w", req.HostedThreadID, err)
 	}
-	externalPosture, err := s.controlMetadata.WasExternalResumeRegistration(req.HostedThreadID)
+	externalPosture, err := s.Metadata.WasExternalResumeRegistration(req.HostedThreadID)
 	if err != nil {
 		return fmt.Errorf("read external Resume origin for hosted thread %s: %w", req.HostedThreadID, err)
 	}
@@ -178,10 +178,10 @@ func (s *server) applyCanonicalResumeMetadata(req *spawnRequest) error {
 	return nil
 }
 
-// resolveGrokResume restores only the attachment's identity and cwd. The
+// ResolveGrokResume restores only the attachment's identity and cwd. The
 // native leader owns model and permission posture; session/load is the source
 // of truth and Nano does not layer current start defaults over it.
-func (s *server) resolveGrokResume(req spawnRequest) (spawnRequest, error) {
+func (s *AttachmentCoordinator) ResolveGrokResume(req SpawnRequest) (SpawnRequest, error) {
 	cwd := strings.TrimSpace(req.Cwd)
 	if cwd == "" {
 		return req, fmt.Errorf("no attachment record for Grok session %s and no cwd supplied", req.ThreadID)
@@ -199,26 +199,26 @@ func (s *server) resolveGrokResume(req spawnRequest) (spawnRequest, error) {
 	// the canonical value on the local attachment so Nano can still enforce
 	// and audit a thread-scoped bypass request after reconnecting.
 	req.PermissionMode = resumePermissionMode
-	req.GrokBin = s.defaults.grokBin
-	req.GrokLeaderSocket = s.defaults.grokLeaderSocket
+	req.GrokBin = s.Defaults.GrokBin
+	req.GrokLeaderSocket = s.Defaults.GrokLeaderSocket
 	// For a hosted thread this is the canonical desired/effective model loaded
-	// by applyCanonicalResumeMetadata.  A non-hosted historical attachment may
+	// by ApplyCanonicalResumeMetadata.  A non-hosted historical attachment may
 	// still supply an explicit request value, but it cannot become authority for
 	// a hosted session.
 	req.GrokResumeModel = resumeModel
 	return req, nil
 }
 
-// resolveCodexResume keeps a codex resume free of start defaults: the
+// ResolveCodexResume keeps a codex resume free of start defaults: the
 // app-server already holds the thread's posture, so every start-only field is
 // blanked rather than re-sent. The service tier is the exception: Codex resumes
 // at its own config's tier, so every resume handshake sends the thread's.
-func (s *server) resolveCodexResume(req spawnRequest) (spawnRequest, error) {
+func (s *AttachmentCoordinator) ResolveCodexResume(req SpawnRequest) (SpawnRequest, error) {
 	if req.Cwd == "" {
 		if req.HostedThreadID != "" {
 			return req, fmt.Errorf("canonical cwd is unknown for hosted Codex thread %s", req.HostedThreadID)
 		}
-		req.Cwd = s.defaults.cwd
+		req.Cwd = s.Defaults.CWD
 	}
 	absCwd, err := filepath.Abs(req.Cwd)
 	if err != nil {
@@ -243,7 +243,7 @@ func (s *server) resolveCodexResume(req spawnRequest) (spawnRequest, error) {
 	return req, nil
 }
 
-// resolveClaudeResume resolves a claude resume from evidence, not defaults. The
+// ResolveClaudeResume resolves a claude resume from evidence, not defaults. The
 // attachment record left behind by the session being resumed carries recovery
 // handles (binary + argv). Cwd and provider settings for hosted threads come
 // only from canonical control.sqlite metadata.
@@ -251,23 +251,23 @@ func (s *server) resolveCodexResume(req spawnRequest) (spawnRequest, error) {
 // Without an attachment, the canonical hosted owner still supplies the cwd
 // and posture before this provider builder runs. A missing transport record
 // never authorizes public resume to mint a new owner or guess its settings.
-func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
-	req.ClaudeShimWS = s.defaults.claudeShimWS
-	req.ClaudeShimSpools = s.defaults.claudeShimSpools
+func (s *AttachmentCoordinator) ResolveClaudeResume(req SpawnRequest) (SpawnRequest, error) {
+	req.ClaudeShimWS = s.Defaults.ClaudeShimWS
+	req.ClaudeShimSpools = s.Defaults.ClaudeShimSpools
 	if sessions.NativeThreadIDProvisional("claude", req.ThreadID) && req.HostedThreadID != "" {
 		// An interrupted re-key can leave the handle's record beside the one it
 		// wrote for the resolved native. The native's record is the current
-		// one, with the anchor of any later turn: resume it. spawnSession
+		// one, with the anchor of any later turn: resume it. Spawn
 		// retires the handle's record the re-key did not get to forget.
-		native, err := s.controlStore().ResolvedNative(context.Background(), req.HostedThreadID, "claude", req.ThreadID)
+		native, err := s.ControlStore().ResolvedNative(context.Background(), req.HostedThreadID, "claude", req.ThreadID)
 		if err != nil {
 			return req, err
 		}
-		if current, ok := s.attachmentFor("claude", native); native != "" && ok && current.HostedThreadID == req.HostedThreadID {
+		if current, ok := s.AttachmentFor("claude", native); native != "" && ok && current.HostedThreadID == req.HostedThreadID {
 			req.retiredClaudeHandle, req.ThreadID = req.ThreadID, native
 		}
 	}
-	rec, _ := s.attachmentFor("claude", req.ThreadID)
+	rec, _ := s.AttachmentFor("claude", req.ThreadID)
 	cwd := strings.TrimSpace(req.Cwd)
 	if cwd == "" {
 		if req.HostedThreadID != "" {
@@ -288,7 +288,7 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 	req.ClaudeArgs = rec.Args
 	req.ClaudeAnchor = rec
 	if req.ClaudeBin == "" {
-		req.ClaudeBin = sessions.ResolveClaudeBin(s.defaults.claudeBin)
+		req.ClaudeBin = sessions.ResolveClaudeBin(s.Defaults.ClaudeBin)
 	}
 	if len(req.ClaudeArgs) == 0 {
 		// No stored transport command exists, so rebuild one from the request's
@@ -296,7 +296,7 @@ func (s *server) resolveClaudeResume(req spawnRequest) (spawnRequest, error) {
 		// fallback. A first registration must keep an unknown provider allowlist
 		// unknown instead of applying a new-session default.
 		if !req.ExternalResumePosture && req.AllowedTools == "" && req.PermissionMode != "bypassPermissions" {
-			req.AllowedTools = s.defaults.allowedTools
+			req.AllowedTools = s.Defaults.AllowedTools
 		}
 		req.ClaudeArgs = sessions.ClaudeArgs(req.ProviderRequest)
 	}

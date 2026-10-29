@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/dkroshow/nano/internal/config"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -196,8 +197,8 @@ func TestFetchGrokUsageUsesOnlyInitializeAndBilling(t *testing.T) {
 		t.Fatal(err)
 	}
 	configuredCwd := t.TempDir()
-	got := fetchGrokUsage(context.Background(), sessionDefaults{
-		cwd: configuredCwd, grokBin: "/opt/grok", grokLeaderSocket: socket,
+	got := fetchGrokUsage(context.Background(), config.SessionDefaults{
+		CWD: configuredCwd, GrokBin: "/opt/grok", GrokLeaderSocket: socket,
 	})
 	if got.Error != "" || !fake.closed || !reflect.DeepEqual(fake.calls, []string{"initialize", grokBillingMethod}) {
 		t.Fatalf("snapshot=%+v calls=%v closed=%v", got, fake.calls, fake.closed)
@@ -228,7 +229,7 @@ func TestFetchGrokUsageFallsBackFromMissingConfiguredCwd(t *testing.T) {
 	}
 
 	missing := filepath.Join(t.TempDir(), "removed-release-checkout")
-	got := fetchGrokUsage(context.Background(), sessionDefaults{cwd: missing, grokBin: "/opt/grok"})
+	got := fetchGrokUsage(context.Background(), config.SessionDefaults{CWD: missing, GrokBin: "/opt/grok"})
 	if got.Error != "" || !fake.closed {
 		t.Fatalf("snapshot=%+v closed=%v", got, fake.closed)
 	}
@@ -254,7 +255,7 @@ func TestFetchGrokUsageClassifiesUnsupportedAndTimeoutAndCloses(t *testing.T) {
 		return nil
 	}}
 	newGrokUsageClient = func([]string, string) grokUsageClient { return unsupported }
-	got := fetchGrokUsage(context.Background(), sessionDefaults{grokBin: "/opt/grok"})
+	got := fetchGrokUsage(context.Background(), config.SessionDefaults{GrokBin: "/opt/grok"})
 	if got.Error != "This Grok version does not support account usage" || !unsupported.closed {
 		t.Fatalf("unsupported = %+v closed=%v", got, unsupported.closed)
 	}
@@ -271,7 +272,7 @@ func TestFetchGrokUsageClassifiesUnsupportedAndTimeoutAndCloses(t *testing.T) {
 		return nil
 	}}
 	newGrokUsageClient = func([]string, string) grokUsageClient { return timedOut }
-	got = fetchGrokUsage(context.Background(), sessionDefaults{grokBin: "/opt/grok"})
+	got = fetchGrokUsage(context.Background(), config.SessionDefaults{GrokBin: "/opt/grok"})
 	if got.Error != "Grok usage request timed out" || !timedOut.closed {
 		t.Fatalf("timeout = %+v closed=%v", got, timedOut.closed)
 	}
@@ -286,7 +287,7 @@ func TestFetchGrokUsageMissingLeaderSocketFailsFastAndReapsChild(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	started := time.Now()
-	got := fetchGrokUsage(ctx, sessionDefaults{cwd: t.TempDir(), grokBin: bin, grokLeaderSocket: socket})
+	got := fetchGrokUsage(ctx, config.SessionDefaults{CWD: t.TempDir(), GrokBin: bin, GrokLeaderSocket: socket})
 	if got.Error != "Grok leader is unavailable" {
 		t.Fatalf("missing leader = %+v", got)
 	}
@@ -303,8 +304,8 @@ func TestFetchGrokUsageMissingLeaderSocketFailsFastAndReapsChild(t *testing.T) {
 
 func TestFetchGrokUsageMissingAbsoluteExecutable(t *testing.T) {
 	missingBin := filepath.Join(t.TempDir(), "missing-grok")
-	got := fetchGrokUsage(context.Background(), sessionDefaults{
-		cwd: t.TempDir(), grokBin: missingBin,
+	got := fetchGrokUsage(context.Background(), config.SessionDefaults{
+		CWD: t.TempDir(), GrokBin: missingBin,
 	})
 	if got.Error != "Grok executable is not available" {
 		t.Fatalf("missing executable = %+v", got)

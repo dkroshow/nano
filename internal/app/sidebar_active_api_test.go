@@ -452,6 +452,10 @@ func materializeBootSidebar(t *testing.T, s *server, threads []sidebar.Thread, n
 	}
 	s.catalog = newStoredCatalog(t, store)
 	s.sidebar = nil
+	if s.attachmentsControl != nil {
+		s.attachmentsControl.Catalog = s.hostedCatalog()
+		s.attachmentsControl.Runtime = s.sidebarOwner()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {

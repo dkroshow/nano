@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -43,4 +44,20 @@ func newStoredCatalog(t *testing.T, store *history.Store) *threadCatalogService 
 	}
 	t.Cleanup(service.Close)
 	return service
+}
+
+func newAttachmentNameCatalog(t *testing.T, metadata *controlMetadataStore) *threadCatalogService {
+	t.Helper()
+	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	catalog, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{Roots: []history.SourceRoot{{Provider: history.ProviderClaude, Kind: history.RootClaudeProjects, Path: t.TempDir()}}, NamesPath: filepath.Join(t.TempDir(), "thread-names.json"), DisableWatcher: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog.SetCreationNameSource(metadata.CreationThreadNames)
+	t.Cleanup(catalog.Close)
+	return catalog
 }

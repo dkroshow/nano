@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/dkroshow/nano/internal/hosted"
 	"testing"
 
 	"github.com/dkroshow/nano/internal/config"
@@ -16,8 +17,8 @@ func TestCodexStartWithoutSandboxGetsPermissiveDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir(), sandbox: cfg.Sandbox, approval: cfg.Approval}}
-	req, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start"}})
+	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir(), Sandbox: cfg.Sandbox, Approval: cfg.Approval}}
+	req, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start"}})
 	if err != nil {
 		t.Fatal(err)
 	}

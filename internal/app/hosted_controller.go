@@ -21,8 +21,8 @@ func (s *server) hostedController() *hosted.Controller {
 func newHostedController(s *server) *hosted.Controller {
 	return &hosted.Controller{
 		Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, ExecutionError: s.executionControlErr,
-		Attachments: s.attachments, Queue: s.queuedTurns, Sessions: &s.Registry, SendAttempts: s.sendAttempts, ClaudeShimWS: s.defaults.claudeShimWS,
-		Boot: &s.bootAttachments, Reattach: s.reattachWaitingHosted, Stars: s.threadStars,
+		Attachments: s.attachments, Queue: s.queuedTurns, Sessions: &s.Registry, SendAttempts: s.sendAttempts, ClaudeShimWS: s.defaults.ClaudeShimWS,
+		Boot: &s.bootAttachments, AttachmentsControl: s.attachmentCoordinator(), Stars: s.threadStars,
 		Views: s.hostedViews, ResolveIdentity: s.resolveIdentity, PrepareCreation: s.prepareHostedCreation,
 		PromptWithUnreadFooter: func(id, prompt string) (string, error) { return agentapi.PromptWithUnreadFooter(s.notices, id, prompt) }, UnreadFooterUnavailable: featuremail.ErrUnreadNoticeUnavailable,
 		FeatureFooter: func(action string) (string, bool) {
@@ -39,7 +39,7 @@ func newHostedController(s *server) *hosted.Controller {
 			defer s.heartbeat.AttachmentMu.Unlock()
 			return errors.Join(s.heartbeat.PauseAttachmentForClosedTarget(id, time.Now()), close())
 		},
-		NotifyRuntime: s.notifyRuntime, RefreshRuntime: s.notifyRuntimeRefresh,
+		NotifyRuntime: s.attachmentCoordinator().NotifyRuntime, RefreshRuntime: s.attachmentCoordinator().NotifyRuntimeRefresh,
 		PublishRelationshipChange: func() {
 			if s.runtimeEvents != nil {
 				s.runtimeEvents.Notify(sidebar.RuntimeDelta{Refresh: true})

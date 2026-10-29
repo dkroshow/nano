@@ -171,7 +171,7 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 				}
 				h.seedSteeredPrompt(t, "steered", test.turn, "steered-event-0")
 				waitForCatalogWithin(t, 5*time.Second, func() bool {
-					rows, err := h.server.savedPromptRows(context.Background(), h.fixture.native, history.SavedUserKeys{NativeTurnIDs: []string{test.turn}})
+					rows, err := h.server.hostedCatalog().SavedPromptRows(context.Background(), h.fixture.native, history.SavedUserKeys{NativeTurnIDs: []string{test.turn}})
 					return err == nil && len(rows) == prompts && rows[0].TurnStatus == history.TurnCompleted
 				})
 			}

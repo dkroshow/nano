@@ -137,7 +137,7 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 		hash = hostedstore.TurnRequestHash(prompt, true)
 	}
 	_, waited := s.Boot.WaitingHosted(hostedThreadID)
-	s.Reattach(hostedThreadID)
+	s.AttachmentsControl.ReattachWaitingHosted(hostedThreadID)
 	_, found := s.Executions.TurnForAction(hostedThreadID, actionID)
 	if !found && s.sessionForHosted(hostedThreadID) == nil {
 		if requireIdle {

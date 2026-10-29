@@ -46,44 +46,6 @@ func (s *server) newSessionProjection(provider, hostedThreadID string) *sessions
 // native turn id.
 type durableTurnEvidence = liveview.DurableTurnEvidence
 
-// savedTurnEvidence reads the saved status of a Codex or Grok turn by exact
-// native turn id. Claude saved turns carry no id the live turn shares, so a
-// Claude turn settles only from live evidence.
-func (s *server) savedTurnEvidence(ctx context.Context, sess *sessions.Session, turnID string) (durableTurnEvidence, bool) {
-	if s.catalog == nil || sess == nil || (sess.Provider() != "codex" && sess.Provider() != "grok") ||
-		turnID == "" || sess.ThreadID() == "" {
-		return durableTurnEvidence{}, false
-	}
-	resolver, ok := s.catalog.(threadindex.ReferenceResolver)
-	if !ok {
-		return durableTurnEvidence{}, false
-	}
-	catalog, ok := s.catalog.(threadindex.SavedTurnStatusCatalog)
-	if !ok {
-		return durableTurnEvidence{}, false
-	}
-	nanoID, err := resolver.ResolveThreadReference(ctx, sess.ThreadID())
-	if err != nil || nanoID == "" {
-		return durableTurnEvidence{}, false
-	}
-	thread, err := s.catalog.LoadThread(ctx, nanoID)
-	if err != nil || thread.Source.Conflict {
-		return durableTurnEvidence{}, false
-	}
-	saved, found, err := catalog.ReadSavedTurnStatus(ctx, nanoID, turnID)
-	if err != nil || !found {
-		return durableTurnEvidence{}, false
-	}
-	turn := liveProjectionTurn{ID: turnID, Status: string(saved.Turn.Status), DurationMS: saved.Turn.DurationMS}
-	if saved.Turn.StartedAt != nil {
-		turn.StartedAtMs = saved.Turn.StartedAt.UnixMilli()
-	}
-	if saved.Turn.CompletedAt != nil {
-		turn.CompletedAtMs = saved.Turn.CompletedAt.UnixMilli()
-	}
-	return durableTurnEvidence{Turn: turn, Newer: saved.Newer}, true
-}
-
 // confirmDurableThread joins one changed durable transcript to its attached
 // live projection. The scanner carries the provider/native identity it already
 // resolved; the fallback loads only this catalog thread. It never resolves

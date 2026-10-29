@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -21,45 +20,6 @@ import (
 type liveFixtureLine struct {
 	Dir string          `json:"dir"`
 	Msg json.RawMessage `json:"msg"`
-}
-
-// savedTurnTestCatalog answers the saved-turn read with one fixed turn and
-// records each read.
-type savedTurnTestCatalog struct {
-	fakeThreadCatalog
-	saved history.SavedTurnStatus
-	reads []string
-}
-
-func (c *savedTurnTestCatalog) ResolveThreadReference(_ context.Context, reference string) (string, error) {
-	return "nth_" + reference, nil
-}
-
-func (c *savedTurnTestCatalog) ReadSavedTurnStatus(_ context.Context, _, turnID string) (history.SavedTurnStatus, bool, error) {
-	c.reads = append(c.reads, turnID)
-	return c.saved, true, nil
-}
-
-// A lost terminal event settles only from an exact saved turn id. Claude saved
-// turns share no id with the live turn, and a conflicted catalog identity
-// proves nothing, so neither is read. Boundary: savedTurnEvidence.
-func TestSavedTurnEvidenceReadsOnlyExactCodexAndGrokTurns(t *testing.T) {
-	completed := time.Now().UTC()
-	for _, tc := range []struct {
-		provider       string
-		conflict, want bool
-	}{{"codex", false, true}, {"grok", false, true}, {"claude", false, false}, {"codex", true, false}} {
-		catalog := &savedTurnTestCatalog{saved: history.SavedTurnStatus{
-			Turn: history.TranscriptTurn{NativeTurnID: "turn-1", Status: history.TurnCompleted, CompletedAt: &completed},
-		}}
-		catalog.thread.Source.Conflict = tc.conflict
-		sess := newFixtureSession(sessionConfig{Provider: tc.provider}, "native")
-		got, ok := (&server{catalog: catalog}).savedTurnEvidence(context.Background(), sess, "turn-1")
-		if ok != tc.want || (ok && (got.Turn.ID != "turn-1" || got.Turn.Status != agentTurnCompleted || got.Turn.CompletedAtMs != completed.UnixMilli())) ||
-			(!tc.want && len(catalog.reads) != 0) {
-			t.Fatalf("%s conflict=%v: evidence = %+v, %v; reads %v", tc.provider, tc.conflict, got, ok, catalog.reads)
-		}
-	}
 }
 
 func TestCompletedProviderUserMessageDoesNotSettleThePrompt(t *testing.T) {
@@ -304,10 +264,6 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 
 type savedHistoryCatalog struct {
 	*fakeTranscriptCatalog
-}
-
-func (c *savedHistoryCatalog) ResolveThreadReference(_ context.Context, reference string) (string, error) {
-	return "nth-owner", nil
 }
 
 func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {

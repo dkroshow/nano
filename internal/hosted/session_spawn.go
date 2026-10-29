@@ -1,19 +1,22 @@
-package app
+package hosted
 
 import (
 	"context"
 	"fmt"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"os"
 	"strings"
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
-// spawnSession registers a session shell and hands it back as soon as the
+// Spawn registers a session shell and hands it back as soon as the
 // request itself is known to be good — the provider handshake runs behind it.
 //
 // Validation stays synchronous, so a bad cwd or an already-attached thread is
@@ -23,15 +26,15 @@ import (
 // kinds now follow the contract resume has had since Slice R3 — status
 // "starting", the card visible immediately, failure surfaced through failSpawn
 // on the session rather than as an HTTP error nobody is still looking at.
-func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
-	if s.agentExecutions == nil || s.controlMetadata == nil || s.executionControlErr != "" || s.controlMetadataErr != "" {
-		return nil, errHostedControlUnavailable
+func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, error) {
+	if s.Executions == nil || s.Metadata == nil || s.ExecutionError != "" || s.MetadataError != "" {
+		return nil, ErrHostedControlUnavailable
 	}
 	if req.Mode == "resume" {
 		// Whichever path registers a still-starting thread (the boot loop, a
 		// request, a manual resume) is tracked from here, lock wait included.
-		if key := (attachmentKey{Provider: req.Provider, NativeThreadID: req.ThreadID}); req.restart == nil && s.bootAttachments.Waiting(key) {
-			req.restart = s.restart.Thread(key)
+		if key := (hostedstore.AttachmentKey{Provider: req.Provider, NativeThreadID: req.ThreadID}); req.restart == nil && s.Boot.Waiting(key) {
+			req.restart = s.Restart.Thread(key)
 			req.restart.At(observability.RestartPicked)
 		}
 		lock := s.resumeSpawnLock(req.Provider)
@@ -39,12 +42,12 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		defer lock.Unlock()
 		req.restart.At(observability.RestartLock)
 	}
-	req, err := s.resolveSpawn(req)
+	req, err := s.ResolveSpawn(req)
 	if err != nil {
 		return nil, err
 	}
 	if req.externalResume {
-		record, err := s.agentExecutions.EnsureExternalResumeSession(externalResumeFacts{
+		record, err := s.Executions.EnsureExternalResumeSession(hostedstore.ExternalResumeFacts{
 			Verified: req.externalResume, Provider: req.Provider, NativeThreadID: req.ThreadID,
 			PresentationMode: req.PresentationMode, CatalogID: req.externalResumeCatalog, Metadata: req.externalResumeMetadata,
 			NativeRecovery: sessions.ProviderLifecycleCapabilities(req.Provider).NativeRecovery,
@@ -53,7 +56,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 			return nil, err
 		}
 		failRegistration := func(cause error) error {
-			if updateErr := s.agentExecutions.UpdateSession(record.ID, "", "", sessions.StatusExited, cause.Error()); updateErr != nil {
+			if updateErr := s.Executions.UpdateSession(record.ID, "", "", sessions.StatusExited, cause.Error()); updateErr != nil {
 				return fmt.Errorf("%w (also failed to mark hosted thread %s retryable: %v)", cause, record.ID, updateErr)
 			}
 			return cause
@@ -63,16 +66,16 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		// same path. Re-apply the now-canonical metadata and rebuild the provider
 		// resume shape so Claude's identity block, in particular, carries the new
 		// hosted id rather than an empty pre-registration placeholder.
-		if err := s.applyCanonicalResumeMetadata(&req); err != nil {
+		if err := s.ApplyCanonicalResumeMetadata(&req); err != nil {
 			return nil, failRegistration(err)
 		}
 		switch req.Provider {
 		case "codex":
-			req, err = s.resolveCodexResume(req)
+			req, err = s.ResolveCodexResume(req)
 		case "claude":
-			req, err = s.resolveClaudeResume(req)
+			req, err = s.ResolveClaudeResume(req)
 		case "grok":
-			req, err = s.resolveGrokResume(req)
+			req, err = s.ResolveGrokResume(req)
 		}
 		if err != nil {
 			return nil, failRegistration(err)
@@ -94,9 +97,9 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	// client to.
 	if req.Mode == "resume" {
 		if req.retiredClaudeHandle != "" {
-			s.forgetAttachment("claude", req.retiredClaudeHandle)
+			s.ForgetAttachment("claude", req.retiredClaudeHandle)
 		}
-		if existing := s.LiveSessionForResume(req.Provider, req.ThreadID, req.HostedThreadID); existing != nil {
+		if existing := s.Registry.LiveSessionForResume(req.Provider, req.ThreadID, req.HostedThreadID); existing != nil {
 			return nil, &sessions.ThreadAttachedError{ExistingSessionID: existing.ID()}
 		}
 	}
@@ -107,7 +110,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		// Resume inputs, including boot's staged rename, are never that request.
 		creationRequestName = strings.TrimSpace(req.Name)
 	}
-	record, err := s.agentExecutions.EnsureNamedSessionWithIdentity(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider, creationRequestName)
+	record, err := s.Executions.EnsureNamedSessionWithIdentity(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider, creationRequestName)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +125,8 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	// from the request; without this write-back the UI path hands them an empty
 	// id and only agent-API spawns would carry identity.
 	req.HostedThreadID = hostedThreadID
-	if req.Mode == "resume" && s.controlMetadata != nil {
-		if err := s.controlMetadata.PersistMissingResumeCwd(hostedThreadID, req.Cwd); err != nil {
+	if req.Mode == "resume" && s.Metadata != nil {
+		if err := s.Metadata.PersistMissingResumeCwd(hostedThreadID, req.Cwd); err != nil {
 			return nil, fmt.Errorf("persist resume cwd: %w", err)
 		}
 	}
@@ -140,16 +143,16 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	}
 	nanoSessionID := sessions.NewID()
 	var journal sessions.Journal
-	if s.sendAttempts != nil {
-		journal = s.sendAttempts
+	if s.SendAttempts != nil {
+		journal = s.SendAttempts
 	}
 	var queue sessions.Queue
-	if s.queuedTurns != nil {
-		queue = s.queuedTurns
+	if s.Queue != nil {
+		queue = s.Queue
 	}
 	var completed func(context.Context) (*coreturns.Store, error)
-	if s.completedTurns != nil && s.completedTurns.Store() != nil {
-		completed = s.completedTurns.Store().CoreStore
+	if s.CompletedTurns != nil && s.CompletedTurns.Store() != nil {
+		completed = s.CompletedTurns.Store().CoreStore
 	}
 	sess := sessions.New(sessions.Config{
 		ID:                    nanoSessionID,
@@ -164,31 +167,31 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		PermissionMode:        threadvalues.FirstNonEmpty(req.PermissionMode, req.Approval),
 		CreatedAt:             time.Now(),
 		SpawnMode:             req.Mode,
-		ReasoningSummary:      s.defaults.reasoningSummary,
-		Projection:            s.newSessionProjection(req.Provider, hostedThreadID),
+		ReasoningSummary:      s.Defaults.ReasoningSummary,
+		Projection:            sessions.NewLiveProjection(req.Provider, hostedThreadID, s.DropLiveTextDeltas),
 		TurnEffort:            req.Effort,
 		PendingName:           pendingName,
 		DisplayName:           displayName,
 		NameThread:            s.assignSpawnName,
-		PublishCreationName:   s.publishCreationName,
+		PublishCreationName:   s.CreationNames.Publish,
 		CreationName: func() string {
 			return s.creationNameForHosted(hostedThreadID)
 		},
 		MetadataName:       s.durableThreadNameRef,
-		Skills:             s.skills,
-		CatalogRefresh:     s.catalogRefresh,
-		RuntimeNotify:      s.notifyRuntime,
-		RememberAttachment: s.rememberAttachment,
-		ForgetAttachment:   s.forgetAttachment,
-		UpdateTurnAnchor:   s.setAttachmentTurnAnchor,
-		UpdateShimSession:  s.setAttachmentShimSession,
-		Turns:              s.turns,
-		AgentExecutions:    s.agentExecutions,
-		Metadata:           s.controlMetadata,
-		AppendUnread:       s.notices.Append,
-		NanoStopping:       &s.stopping,
-		DeliveryExpiries:   s.deliveryExpiries,
-		ProcessStarted:     processStarted,
+		Skills:             s.Skills,
+		CatalogRefresh:     s.CatalogRefresh,
+		RuntimeNotify:      s.NotifyRuntime,
+		RememberAttachment: s.RememberAttachment,
+		ForgetAttachment:   s.ForgetAttachment,
+		UpdateTurnAnchor:   s.SetAttachmentTurnAnchor,
+		UpdateShimSession:  s.SetAttachmentShimSession,
+		Turns:              s.Turns,
+		AgentExecutions:    s.Executions,
+		Metadata:           s.Metadata,
+		AppendUnread:       s.Notices.Append,
+		NanoStopping:       s.Stopping,
+		DeliveryExpiries:   s.DeliveryExpiries,
+		ProcessStarted:     s.ProcessStarted,
 		SendAttempts:       journal,
 		QueuedTurns:        queue,
 		CompletedTurns:     completed,
@@ -202,11 +205,11 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	if req.Mode == "resume" && (req.Provider == "claude" || req.Provider == "grok") {
 		sess.ReserveNativeID(req.ThreadID)
 	}
-	if s.controlMetadata != nil {
-		if err := s.controlMetadata.EnsureHostedThread(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider); err != nil {
+	if s.Metadata != nil {
+		if err := s.Metadata.EnsureHostedThread(hostedThreadID, req.Provider, req.PresentationMode, req.InvokerHostedThreadID, req.InvokerNativeThreadID, req.InvokerProvider); err != nil {
 			return nil, fmt.Errorf("canonical hosted metadata: %w", err)
 		}
-		generation, err := s.controlMetadata.BeginTransportBinding(hostedThreadID)
+		generation, err := s.Metadata.BeginTransportBinding(hostedThreadID)
 		if err != nil {
 			return nil, fmt.Errorf("begin hosted transport binding: %w", err)
 		}
@@ -214,14 +217,16 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 			return nil, err
 		}
 	}
-	s.startLiveText(sess)
+	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: s.Catalog, Diagnostics: s.Diagnostics}, sess))
 	// Runtime posture hydration lives at the provider seams —
 	// seedCodexTurnOverrides and the Claude resume overlay — because what
 	// "re-applying posture" means is provider mechanics.
-	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
-		return s.savedTurnEvidence(ctx, sess, turnID)
-	}, s.savedPromptsFor(sess), s.savedPromptRows, s.savedTurnFinal, s.agentController().SweepSubscriptions)
-	if err := sess.OpenWireSpool(s.spoolDir); err != nil {
+	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
+		return s.Catalog.SavedTurnEvidence(ctx, sess.Provider(), sess.ThreadID(), turnID)
+	}, func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
+		return s.Catalog.SavedPromptRows(ctx, sess.ThreadID(), keys)
+	}, s.Catalog.SavedPromptRows, s.Catalog.SavedTurnFinal, s.SweepSubscriptions)
+	if err := sess.OpenWireSpool(s.SpoolDir); err != nil {
 		return nil, fmt.Errorf("create wire spool: %w", err)
 	}
 
@@ -229,14 +234,14 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	// is still in flight has to be able to reach this session, and the card has
 	// to appear at once rather than when the provider answers. Bind: the session
 	// is now visible to the catalog's runtime overlay.
-	sess.ConfigureRegistration(req.restart.At, req.restart.Fail, req.catalogBackground, s.catalogSources)
-	s.RegisterSession(sess)
+	sess.ConfigureRegistration(req.restart.At, req.restart.Fail, req.catalogBackground, s.CatalogSources)
+	s.Registry.RegisterSession(sess)
 	sess.DidRegister()
 
 	if req.immediateRuntimePublish {
-		s.publishRuntime(false)
+		s.PublishRuntime(false)
 	} else {
-		s.notifyRuntime()
+		s.NotifyRuntime()
 	}
 	if req.Provider == "codex" {
 		// Boot can register dozens of panes at once. Start the shared cwd refresh
@@ -247,7 +252,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	if req.Mode != "resume" {
 		sess.RecordCreationPosture(req.ProviderRequest)
 	}
-	if err := sess.BeginProviderSpawn(req.ProviderRequest, s.codex, func() { s.discardSpawn(sess) }); err != nil {
+	if err := sess.BeginProviderSpawn(req.ProviderRequest, s.Codex, func() { s.discardSpawn(sess) }); err != nil {
 		s.discardSpawn(sess)
 		return nil, err
 	}
@@ -258,8 +263,8 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 // was registered before the attempt (so a concurrent close could reach it), so
 // registration has to be undone with it, and the spool file removed — nothing
 // will ever read it.
-func (s *server) discardSpawn(sess *sessions.Session) {
-	s.RemoveSession(sess.ID())
+func (s *AttachmentCoordinator) discardSpawn(sess *sessions.Session) {
+	s.Registry.RemoveSession(sess.ID())
 	sess.DiscardSpawnResources()
-	s.notifyRuntime()
+	s.NotifyRuntime()
 }

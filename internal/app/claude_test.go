@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,11 +11,11 @@ import (
 
 func TestClaudePreviewUsesResolvedBinary(t *testing.T) {
 	cwd := t.TempDir()
-	s := &server{defaults: sessionDefaults{
-		cwd:          cwd,
-		model:        "sonnet",
-		allowedTools: "Read,Grep",
-		claudeBin:    "/test/bin/claude",
+	s := &server{defaults: config.SessionDefaults{
+		CWD:          cwd,
+		Model:        "sonnet",
+		AllowedTools: "Read,Grep",
+		ClaudeBin:    "/test/bin/claude",
 	}}
 	body, _ := json.Marshal(map[string]string{
 		"provider": "claude",
@@ -42,9 +43,9 @@ func TestClaudePreviewUsesResolvedBinary(t *testing.T) {
 }
 
 func TestClaudePreviewPassesExactPinnedModels(t *testing.T) {
-	s := &server{defaults: sessionDefaults{
-		cwd:       t.TempDir(),
-		claudeBin: "/test/bin/claude",
+	s := &server{defaults: config.SessionDefaults{
+		CWD:       t.TempDir(),
+		ClaudeBin: "/test/bin/claude",
 	}}
 	for _, model := range []string{
 		"claude-fable-5-1",
@@ -74,10 +75,10 @@ func TestClaudePreviewPassesExactPinnedModels(t *testing.T) {
 
 func TestClaudeBypassPermissionsDoesNotApplyAllowedToolsDefault(t *testing.T) {
 	cwd := t.TempDir()
-	s := &server{defaults: sessionDefaults{
-		cwd:          cwd,
-		allowedTools: "Read,Grep",
-		claudeBin:    "/test/bin/claude",
+	s := &server{defaults: config.SessionDefaults{
+		CWD:          cwd,
+		AllowedTools: "Read,Grep",
+		ClaudeBin:    "/test/bin/claude",
 	}}
 	body, _ := json.Marshal(map[string]string{
 		"provider":       "claude",

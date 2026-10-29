@@ -338,8 +338,8 @@ func TestRuntimeEventReadsNoControlStoreRows(t *testing.T) {
 	// Prime the initial snapshot before measuring the two publisher calls.
 	f.server.notifyRuntime()
 	statements := f.countControlStatements(t, func() {
-		f.server.notifyRuntime()
-		f.server.notifyRuntimeRefresh()
+		f.server.attachmentCoordinator().NotifyRuntime()
+		f.server.attachmentCoordinator().NotifyRuntimeRefresh()
 	})
 	if statements != 0 {
 		t.Fatalf("two runtime events read %d control-store statements for %d live sessions; want 0", statements, len(f.server.SnapshotSessions()))
@@ -574,7 +574,6 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 		rebooting := attachmentRecord{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
-		f.server.boot = &bootReattach{}
 		f.server.bootAttachments = sessions.NewBootAttachments([]attachmentRecord{rebooting})
 		var body map[string]any
 		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.handleAgentSessionsList, "/api/v1/hosted-threads") })

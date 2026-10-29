@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +26,7 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 	t.Helper()
 	metadata, executions := newTestHostedControl(t)
 	s := &server{
-		defaults:        sessionDefaults{cwd: t.TempDir()},
+		defaults:        config.SessionDefaults{CWD: t.TempDir()},
 		codex:           newCodexDaemon(wsURL, supervisedDaemonLabel),
 		spoolDir:        t.TempDir(),
 		runtimeEvents:   sidebar.NewRuntimeHub(),
@@ -49,7 +50,7 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 
 func postResume(t *testing.T, s *server, threadID string) *httptest.ResponseRecorder {
 	t.Helper()
-	seedCanonicalResumeOwner(t, s, "codex", threadID, s.defaults.cwd)
+	seedCanonicalResumeOwner(t, s, "codex", threadID, s.defaults.CWD)
 	body := `{"provider":"codex","mode":"resume","threadId":"` + threadID + `"}`
 	rec := httptest.NewRecorder()
 	s.handleSessionCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
@@ -166,7 +167,7 @@ func TestCodexResumeSendsTheThreadsServiceTier(t *testing.T) {
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
 	const threadID = "0199a213-abcd-7000-8000-00000000071e"
-	hostedID := seedCanonicalResumeOwner(t, s, "codex", threadID, s.defaults.cwd)
+	hostedID := seedCanonicalResumeOwner(t, s, "codex", threadID, s.defaults.CWD)
 	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldServiceTier, Value: "default",
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "tier:" + hostedID}); err != nil {
 		t.Fatal(err)

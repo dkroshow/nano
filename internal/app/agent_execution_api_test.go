@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -221,7 +222,7 @@ func TestAgentExecutionObserverUsesCodexTurnTerminalEvidence(t *testing.T) {
 func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	s := &server{
-		defaults: sessionDefaults{cwd: t.TempDir()},
+		defaults: config.SessionDefaults{CWD: t.TempDir()},
 		Registry: newSessionRegistry(), agentExecutions: store,
 	}
 	rec := httptest.NewRecorder()
@@ -240,7 +241,7 @@ func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testi
 func TestAgentCreatedHostedThreadRequiresKnownInvoker(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	s := &server{
-		defaults: sessionDefaults{cwd: t.TempDir()},
+		defaults: config.SessionDefaults{CWD: t.TempDir()},
 		Registry: newSessionRegistry(), agentExecutions: store,
 	}
 	for name, body := range map[string]string{
@@ -274,7 +275,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	s := &server{
-		defaults: sessionDefaults{cwd: t.TempDir()}, codex: provider.daemon(),
+		defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: provider.daemon(),
 		spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
 	}
@@ -386,7 +387,7 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
 	s := &server{
-		defaults: sessionDefaults{cwd: t.TempDir()}, codex: provider.daemon(),
+		defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: provider.daemon(),
 		spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore,
 	}
@@ -527,14 +528,14 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments, controlMetadata: control}
-	s.defaults.claudeShimWS = shim.WSURL()
+	s.defaults.ClaudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agent-sessions/caller-session", nil)
 	applicationHandler(s).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := s.attachmentFor("claude", "native-1"); ok {
+	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
 		t.Fatal("detached attachment survived delete")
 	}
 	if _, ok := store.Session(hosted.ID); ok {
@@ -569,14 +570,14 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
-	s.defaults.claudeShimWS = shim.WSURL()
+	s.defaults.ClaudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil)
 	applicationHandler(s).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := s.attachmentFor("claude", "native-1"); ok {
+	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
 		t.Fatal("attachment survived close")
 	}
 	session, ok := store.Session(hosted.ID)
@@ -644,7 +645,7 @@ func TestAgentSessionDetach(t *testing.T) {
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
 	})
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
-	s.defaults.claudeShimWS = shim.WSURL()
+	s.defaults.ClaudeShimWS = shim.WSURL()
 
 	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	rec := httptest.NewRecorder()
@@ -659,7 +660,7 @@ func TestAgentSessionDetach(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("detach status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := s.attachmentFor("claude", "native-1"); ok {
+	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
 		t.Fatal("Claude detach retained a dead shim attachment")
 	}
 	session, ok := store.Session(hosted.ID)

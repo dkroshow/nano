@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -105,8 +107,8 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 		Provider: "claude", NativeThreadID: "native-resume", HostedThreadID: "nht_resume_canonical",
 		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", claudeModelFlag, "legacy-model", "--permission-mode", "bypassPermissions"},
 	})
-	s := &server{defaults: sessionDefaults{cwd: legacyCwd, claudeBin: "/claude"}, attachments: attachments, controlMetadata: metadata}
-	resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
+	s := &server{defaults: config.SessionDefaults{CWD: legacyCwd, ClaudeBin: "/claude"}, attachments: attachments, controlMetadata: metadata}
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +155,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		Provider: "claude", NativeThreadID: "native-historical", HostedThreadID: hostedID,
 		Bin: "/claude", Args: []string{"-p", claudeModelFlag, "stale-model", "--effort", "low", "--permission-mode", "bypassPermissions"},
 	})
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir(), claudeBin: "/default/claude"}, attachments: attachments, controlMetadata: metadata, agentExecutions: executions, Registry: newSessionRegistry()}
+	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir(), ClaudeBin: "/default/claude"}, attachments: attachments, controlMetadata: metadata, agentExecutions: executions, Registry: newSessionRegistry()}
 
 	// The public API is presentation state and must expose the observed fold.
 	api := httptest.NewRecorder()
@@ -169,7 +171,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		t.Fatalf("API display model = %s, want observed fold", got)
 	}
 
-	resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,17 +275,17 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := &server{controlMetadata: metadata}
-			req := spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
-			if err := owner.applyCanonicalResumeMetadata(&req); err != nil {
+			req := hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
+			if err := owner.attachmentCoordinator().ApplyCanonicalResumeMetadata(&req); err != nil {
 				t.Fatal(err)
 			}
-			resolved, err := owner.resolveClaudeResume(req)
+			resolved, err := owner.attachmentCoordinator().ResolveClaudeResume(req)
 			if err != nil {
 				t.Fatal(err)
 			}
 			args := resolved.ClaudeArgs
 			if test.want == "" {
-				args = claudeCanonicalResumeArgs(args, (spawnRequest{}).ProviderRequest)
+				args = claudeCanonicalResumeArgs(args, (hosted.SpawnRequest{}).ProviderRequest)
 				if strings.Contains(strings.Join(args, " "), "stale") {
 					t.Fatalf("cleared Claude resume retained stale argv %#v", args)
 				}

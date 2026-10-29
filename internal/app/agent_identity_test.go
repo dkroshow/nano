@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/dkroshow/nano/internal/hosted"
 	"strings"
 	"testing"
 )
@@ -17,9 +18,9 @@ func TestClaudeStartSpawnCarriesIdentity(t *testing.T) {
 	shim := startingShim(t, hold, speak)
 	s, _ := claudeResumeServer(t, shim.WSURL())
 	migrateTestControl(t, s.controlMetadata)
-	s.defaults.apiOrigin = "http://127.0.0.1:7999"
+	s.defaults.APIOrigin = "http://127.0.0.1:7999"
 
-	sess, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Cwd: t.TempDir()}})
+	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Cwd: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("start spawn: %v", err)
 	}

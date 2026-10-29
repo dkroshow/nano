@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"net/http"
 
@@ -12,14 +13,14 @@ import (
 
 func (s *server) handleSessionCreateAction(w http.ResponseWriter, r *http.Request) {
 	// Share admission serialization with hosted and legacy explicit close.
-	var req spawnRequest
+	var req hosted.SpawnRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Provider == "" {
 		httpapi.WriteHTTPError(w, "body must be {\"provider\": \"codex\"|\"claude\"|\"grok\", ...spawn options}", http.StatusBadRequest)
 		return
 	}
-	sess, err := s.spawnSession(req)
+	sess, err := s.attachmentCoordinator().Spawn(req)
 	if err != nil {
-		if errors.Is(err, errHostedControlUnavailable) {
+		if errors.Is(err, hosted.ErrHostedControlUnavailable) {
 			message := err.Error()
 			if s.executionControlErr != "" {
 				message += ": " + s.executionControlErr

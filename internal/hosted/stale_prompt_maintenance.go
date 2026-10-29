@@ -1,4 +1,4 @@
-package app
+package hosted
 
 import (
 	"context"
@@ -48,9 +48,9 @@ type stalePromptReceipt struct {
 	Unchanged      int                          `json:"unchanged"`
 }
 
-// handleStalePrompts previews or applies the expiry of old delivered prompts
+// HandleStalePrompts previews or applies the expiry of old delivered prompts
 // that exact identity never settled. Nothing invokes it automatically.
-func (s *server) handleStalePrompts(w http.ResponseWriter, r *http.Request) {
+func (s *AttachmentCoordinator) HandleStalePrompts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	var wire struct {
 		Apply               *bool  `json:"apply"`
@@ -71,7 +71,7 @@ func (s *server) handleStalePrompts(w http.ResponseWriter, r *http.Request) {
 	cutoff := time.Now().UTC().Add(-stalePromptAge)
 	if *wire.Apply {
 		parsed, err := time.Parse(time.RFC3339Nano, wire.Cutoff)
-		if err != nil || wire.ExpectedFingerprint == "" || !validAgentClientID(wire.ClientActionID) {
+		if err != nil || wire.ExpectedFingerprint == "" || !ValidClientID(wire.ClientActionID) {
 			httpapi.WriteError(w, http.StatusBadRequest, "invalid_request", "apply requires the preview's cutoff and fingerprint, and a clientActionId")
 			return
 		}
@@ -89,13 +89,13 @@ func (s *server) handleStalePrompts(w http.ResponseWriter, r *http.Request) {
 	writeCatalogJSON(w, status, receipt)
 }
 
-func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time.Time, expectedFingerprint, clientActionID string) stalePromptReceipt {
+func (s *AttachmentCoordinator) expireStalePrompts(ctx context.Context, apply bool, cutoff time.Time, expectedFingerprint, clientActionID string) stalePromptReceipt {
 	receipt := stalePromptReceipt{Cutoff: cutoff.Format(time.RFC3339Nano), ByProvider: map[string]stalePromptCounts{}}
-	if s.turns == nil || s.queuedTurns == nil {
+	if s.Turns == nil || s.Queue == nil {
 		receipt.Error = "prompt store is unavailable"
 		return receipt
 	}
-	stale, err := s.turns.Stale(ctx, cutoff)
+	stale, err := s.Turns.Stale(ctx, cutoff)
 	if err != nil {
 		receipt.Error = err.Error()
 		return receipt
@@ -142,7 +142,7 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 		return receipt
 	}
 	receipt.ClientActionID = clientActionID
-	parent := filepath.Join(filepath.Dir(s.queuedTurns.Path()), "threads-maintenance-backups")
+	parent := filepath.Join(filepath.Dir(s.Queue.Path()), "threads-maintenance-backups")
 	if err := os.MkdirAll(parent, 0700); err != nil {
 		receipt.Error = err.Error()
 		return receipt
@@ -153,7 +153,7 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 		return receipt
 	}
 	receipt.BackupPath = filepath.Join(dir, "nano_threads.sqlite")
-	if err := threads.Backup(ctx, s.queuedTurns.Database(), receipt.BackupPath); err != nil {
+	if err := threads.Backup(ctx, s.Queue.Database(), receipt.BackupPath); err != nil {
 		receipt.Error = "backup failed; nothing changed: " + err.Error()
 		return receipt
 	}
@@ -179,7 +179,7 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 			continue
 		}
 		for _, record := range records {
-			current, expired, err := s.turns.Expire(ctx, record.Outbox.ActionID, cutoff)
+			current, expired, err := s.Turns.Expire(ctx, record.Outbox.ActionID, cutoff)
 			switch {
 			case err != nil:
 				receipt.Error = err.Error()
@@ -187,7 +187,7 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 			case expired:
 				receipt.Expired++
 				// An open pane drops an expired prompt only when told.
-				if sess := s.SessionForHostedThread(hosted); sess != nil {
+				if sess := s.Registry.SessionForHostedThread(hosted); sess != nil {
 					sess.PublishLiveOutbox(current.Outbox)
 				}
 			case current.Outbox.State == prompts.Confirmed:
@@ -207,13 +207,13 @@ func (s *server) expireStalePrompts(ctx context.Context, apply bool, cutoff time
 // session when attached, otherwise against the thread's saved transcript. A
 // thread the catalog does not hold has nothing to prove its prompts by; any
 // other error leaves the thread for a later run.
-func (s *server) settleStaleThread(ctx context.Context, hosted string, records []prompts.Record) error {
+func (s *AttachmentCoordinator) settleStaleThread(ctx context.Context, hosted string, records []prompts.Record) error {
 	var err error
-	if sess := s.SessionForHostedThread(hosted); sess != nil {
+	if sess := s.Registry.SessionForHostedThread(hosted); sess != nil {
 		_, err = sess.SettlePrompts(ctx)
 	} else {
 		var all []prompts.Record
-		if all, err = s.turns.List(ctx, hosted); err != nil {
+		if all, err = s.Turns.List(ctx, hosted); err != nil {
 			return err
 		}
 		// A provisional Claude binding stands for the thread's newest real
@@ -225,9 +225,9 @@ func (s *server) settleStaleThread(ctx context.Context, hosted string, records [
 			}
 		}
 		saved := func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-			return s.savedPromptRows(ctx, current, keys)
+			return s.Catalog.SavedPromptRows(ctx, current, keys)
 		}
-		_, err = sessions.SettleThreadPrompts(ctx, s.turns, saved, hosted, string(records[0].Provider), current)
+		_, err = sessions.SettleThreadPrompts(ctx, s.Turns, saved, hosted, string(records[0].Provider), current)
 	}
 	if errors.Is(err, history.ErrSavedTranscriptUnavailable) {
 		return nil
@@ -241,8 +241,8 @@ func (s *server) settleStaleThread(ctx context.Context, hosted string, records [
 // prompt's expiry; that prompt is over a day old, so it is never the one being
 // delivered, and expiry neither touches rows already shown nor hides a saved
 // row, so no prompt the transcript holds is lost from view.
-func (s *server) threadBusy(hosted string) bool {
-	sess := s.SessionForHostedThread(hosted)
+func (s *AttachmentCoordinator) threadBusy(hosted string) bool {
+	sess := s.Registry.SessionForHostedThread(hosted)
 	if sess == nil {
 		return false
 	}

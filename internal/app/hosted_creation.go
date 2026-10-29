@@ -5,8 +5,8 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
-func runtimeCreationRequest(req hosted.CreationRequest) spawnRequest {
-	return spawnRequest{ProviderRequest: sessions.ProviderRequest{
+func runtimeCreationRequest(req hosted.CreationRequest) hosted.SpawnRequest {
+	return hosted.SpawnRequest{ProviderRequest: sessions.ProviderRequest{
 		Provider:              req.Provider,
 		Mode:                  req.Mode,
 		ThreadID:              req.ThreadID,
@@ -40,7 +40,7 @@ func runtimeCreationRequest(req hosted.CreationRequest) spawnRequest {
 }
 
 func (s *server) prepareHostedCreation(req hosted.CreationRequest) (hosted.CreationPlan, error) {
-	resolved, err := s.resolveSpawn(runtimeCreationRequest(req))
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(runtimeCreationRequest(req))
 	if err != nil {
 		return hosted.CreationPlan{}, err
 	}
@@ -57,7 +57,7 @@ func (s *server) prepareHostedCreation(req hosted.CreationRequest) (hosted.Creat
 			resolved.InvokerNativeThreadID = record.InvokerNativeThreadID
 			resolved.InvokerProvider = record.InvokerProvider
 			resolved.HostedThreadID = record.ID
-			sess, err := s.spawnSession(resolved)
+			sess, err := s.attachmentCoordinator().Spawn(resolved)
 			if err != nil {
 				return "", err
 			}

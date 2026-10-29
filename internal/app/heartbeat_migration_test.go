@@ -345,7 +345,7 @@ func TestHeartbeatMigrationReplacesLegacyScriptsWithSuspendedPrivateTemplates(t 
 		t.Fatalf("migration audit detail = %q, %v", detail, err)
 	}
 	client := &heartbeatTestClient{lifecycle: interact.LifecycleState{Availability: "available", AttachmentState: "live"}}
-	h := featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.apiOrigin, nil), true, nil)
+	h := featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.APIOrigin, nil), true, nil)
 	h.Client = client
 	h.EvaluateDue(context.Background(), first, 500, time.Now())
 	if client.lifecycleReads != 0 || len(client.prompts) != 0 {

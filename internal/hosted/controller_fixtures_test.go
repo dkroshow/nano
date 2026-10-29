@@ -25,7 +25,7 @@ func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{Executions: store, Metadata: control, Queue: queue, Sessions: func() *sessions.Registry { r := sessions.NewRegistry(); return &r }(), Reattach: func(string) {},
+	c := &Controller{Executions: store, Metadata: control, Queue: queue, Sessions: func() *sessions.Registry { r := sessions.NewRegistry(); return &r }(), AttachmentsControl: &AttachmentCoordinator{},
 		PromptWithUnreadFooter: func(_ string, text string) (string, error) { return text, nil },
 		NotifyRuntime:          func() {}, RefreshRuntime: func() {}, PublishRelationshipChange: func() {},
 		FeatureFooter:  func(string) (string, bool) { return "", false },

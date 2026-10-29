@@ -1,0 +1,28 @@
+package app
+
+import "github.com/dkroshow/nano/internal/hosted"
+
+func (s *server) attachmentCoordinator() *hosted.AttachmentCoordinator {
+	s.attachmentOnce.Do(func() {
+		sources := hosted.AttachmentSources{
+			Defaults: s.defaults, Codex: s.codex, SpoolDir: s.spoolDir, Catalog: s.hostedCatalog(), CatalogRefresh: s.catalogRefresh, CatalogSources: s.catalogSources,
+			Runtime: s.sidebarOwner(), Registry: &s.Registry, Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, ExecutionError: s.executionControlErr,
+			Attachments: s.attachments, Queue: s.queuedTurns, Turns: s.turns, SendAttempts: s.sendAttempts, CompletedTurns: s.completedTurns, Skills: s.skills, Notices: s.notices, Stopping: &s.stopping,
+			DeliveryExpiries: s.deliveryExpiries, Restart: s.restart, Boot: &s.bootAttachments, CreationNames: nil, ProcessStarted: processStarted, DropLiveTextDeltas: s.dropLiveTextDeltas,
+			SweepSubscriptions: func(id string) { s.agentController().SweepSubscriptions(id) },
+		}
+		if s.browserDiagnostics != nil {
+			sources.Diagnostics = s.browserDiagnostics.Store
+		}
+		metadata := s.controlMetadata
+		if (metadata == nil || s.controlMetadataErr != "") && s.agentExecutions != nil {
+			metadata = s.agentExecutions.Control()
+		}
+		reader, _ := s.catalog.(hosted.CreationNameReader)
+		refs, _ := s.catalog.(hosted.CreationNameRefReader)
+		projector, _ := s.catalog.(hosted.CreationNameProjector)
+		sources.CreationNames = &hosted.CreationNames{Metadata: metadata, Executions: s.agentExecutions, Queue: s.queuedTurns, Reader: reader, Refs: refs, Projector: projector, Refresh: func() { s.attachmentCoordinator().NotifyRuntimeRefresh() }}
+		s.attachmentsControl = hosted.NewAttachmentCoordinator(sources)
+	})
+	return s.attachmentsControl
+}

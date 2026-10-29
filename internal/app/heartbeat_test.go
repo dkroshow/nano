@@ -44,7 +44,7 @@ func (c *heartbeatTestClient) SubscribeCompletedTurns(context.Context, interact.
 func heartbeatTestService(t *testing.T, client *heartbeatTestClient) (*featureheartbeat.Service, featureheartbeat.Attachment) {
 	t.Helper()
 	store := openTestHeartbeatStore(t)
-	h := featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.apiOrigin, nil), true, nil)
+	h := featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.APIOrigin, nil), true, nil)
 	h.Client = client
 	rec, err := store.CreateAttachment(testHeartbeatInput("nht_target"), time.Now().UTC())
 	if err != nil {
@@ -248,7 +248,7 @@ func TestHeartbeatPublicSubmissionAddsOnlyHeartbeatFooter(t *testing.T) {
 func TestAnyHostedAgentCanPauseAndResumeWithAuditedReasons(t *testing.T) {
 	s, _, _, manager, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.APIOrigin, nil), true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -273,7 +273,7 @@ func TestAnyHostedAgentCanPauseAndResumeWithAuditedReasons(t *testing.T) {
 func TestHeartbeatAttachmentAPIRequiresReasonAndRejectsClosedTarget(t *testing.T) {
 	s, _, _, manager, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.APIOrigin, nil), true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())
 	if err != nil {
 		t.Fatal(err)

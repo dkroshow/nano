@@ -3,12 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/dkroshow/nano/internal/history"
 )
 
 const transcriptChangeWorkerCount = 2
@@ -64,4 +64,10 @@ func appendCallbackFixture(t *testing.T, service *threadCatalogService, path str
 	}
 	file.Close()
 	service.FileChanged(path)
+}
+
+func (s *server) savedPromptsFor(sess *sessions.Session) sessions.SavedPromptReader {
+	return func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
+		return s.hostedCatalog().SavedPromptRows(ctx, sess.ThreadID(), keys)
+	}
 }

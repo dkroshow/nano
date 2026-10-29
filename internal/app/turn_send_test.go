@@ -368,7 +368,7 @@ func (h *settlementHarness) attach(provider string, sender func(context.Context,
 	f := newProviderRuntimeFixture(h.t, cfg, h.fixture.native, "", func(f *providerRuntimeFixture) {
 		f.send = sender
 		f.onInterrupt = func() { h.interrupts.Add(1) }
-		f.session.ConfigureSavedReaders(nil, h.server.savedPromptsFor(f.session), h.server.savedPromptRows, h.server.savedTurnFinal, nil)
+		f.session.ConfigureSavedReaders(nil, h.server.savedPromptsFor(f.session), h.server.hostedCatalog().SavedPromptRows, h.server.hostedCatalog().SavedTurnFinal, nil)
 	})
 	if h.runtimes == nil {
 		h.runtimes = map[*session]*providerRuntimeFixture{}
@@ -996,7 +996,7 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 {"type":"assistant","uuid":"exited-answer","sessionId":"claude-settle","message":{"id":"exited-final","role":"assistant","content":[{"type":"text","text":"answered after all"}],"stop_reason":"end_turn"}}
 `, submissionEventID(child.ID, op.TransportActionID)))
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		rows, err := h.server.savedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID(child.ID, op.TransportActionID)}})
+		rows, err := h.server.hostedCatalog().SavedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID(child.ID, op.TransportActionID)}})
 		return err == nil && len(rows) == 1
 	})
 	threadID, err := h.service.ResolveThreadReference(ctx, native)
@@ -1078,7 +1078,7 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 		page = feed("")
 		return len(page.Items) == 2
 	})
-	rows, err := h.server.savedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", "answered")}})
+	rows, err := h.server.hostedCatalog().SavedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", "answered")}})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("saved rows = %+v, %v", rows, err)
 	}
@@ -1163,7 +1163,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		t.Fatal(err)
 	}
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		rows, err := h.server.savedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", op.TransportActionID)}})
+		rows, err := h.server.hostedCatalog().SavedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", op.TransportActionID)}})
 		return err == nil && len(rows) == 1
 	})
 	db, err := sql.Open("sqlite", h.historyPath)
@@ -1368,7 +1368,7 @@ func TestClaudeOwedPersonPromptFinishesAfterARestartOnALaterSavedCommit(t *testi
 		if err := sess.InitializeBinding(1); err != nil {
 			t.Fatal(err)
 		}
-		sess.ConfigureSavedReaders(nil, h.server.savedPromptsFor(sess), h.server.savedPromptRows, h.server.savedTurnFinal, nil)
+		sess.ConfigureSavedReaders(nil, h.server.savedPromptsFor(sess), h.server.hostedCatalog().SavedPromptRows, h.server.hostedCatalog().SavedTurnFinal, nil)
 		return sess
 	}
 	turnOf := map[string]string{"person-starter": "claude:shim:300", "person-correction": "claude:shim:301"}
@@ -1401,7 +1401,7 @@ func TestClaudeOwedPersonPromptFinishesAfterARestartOnALaterSavedCommit(t *testi
 		}
 	}
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		rows, err := h.server.savedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", "person-correction")}})
+		rows, err := h.server.hostedCatalog().SavedPromptRows(ctx, native, history.SavedUserKeys{NativeEventIDs: []string{submissionEventID("hosted", "person-correction")}})
 		return err == nil && len(rows) == 1
 	})
 
@@ -2227,7 +2227,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 		}
 		ops = append(ops, op)
 	}
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	waitForClaude(t, "the reattached session", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)
@@ -2319,7 +2319,7 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 	if err := s.agentExecutions.MarkTurnDelivery(op.ID, "turn-human", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	waitForClaude(t, "the reattached turn to be active", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)
@@ -2389,5 +2389,5 @@ func (h *settlementHarness) setSavedReader(sess *session, reader savedPromptRead
 		h.readers = map[*session]savedPromptReader{}
 	}
 	h.readers[sess] = reader
-	sess.ConfigureSavedReaders(nil, reader, h.server.savedPromptRows, h.server.savedTurnFinal, nil)
+	sess.ConfigureSavedReaders(nil, reader, h.server.hostedCatalog().SavedPromptRows, h.server.hostedCatalog().SavedTurnFinal, nil)
 }

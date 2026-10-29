@@ -1046,7 +1046,7 @@ func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) 
 	h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
 	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
-		return h.srv.savedTurnEvidence(ctx, sess, turnID)
+		return h.srv.hostedCatalog().SavedTurnEvidence(ctx, sess.Provider(), sess.ThreadID(), turnID)
 	}, h.srv.savedPromptsFor(sess), nil, nil, nil)
 	const running = "01a0f650-0000-7000-8000-0000000000aa"
 	saved := fixtureLines(t, "codex-turns.saved.jsonl")
@@ -1172,10 +1172,10 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
 		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
 	seedBootAttachments(t, srv)
-	writeClaudeTestSpool(t, srv.defaults.claudeShimSpools, hosted, spool...)
+	writeClaudeTestSpool(t, srv.defaults.ClaudeShimSpools, hosted, spool...)
 	h.service.SetTranscriptChanged(srv.confirmDurableThread)
-	srv.prepareBootReattach()
-	srv.reattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
+	srv.attachmentCoordinator().PrepareBoot()
+	srv.attachmentCoordinator().ReattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
 	fresh := srv.SessionForThread("claude", native)
 	if fresh == nil || fresh == h.sess || fresh.LiveTextService() == h.sess.LiveTextService() {
 		t.Fatal("boot did not construct a fresh session and live-text loop")

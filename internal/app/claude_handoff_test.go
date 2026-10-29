@@ -55,7 +55,7 @@ func newClaudeHandoff(t *testing.T) *claudeHandoff {
 	server := h.catalog.server
 	seedTestSessionRegistry(&server.Registry, map[string]*session{h.session.ID(): h.session})
 	h.session.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
-		return server.savedTurnEvidence(ctx, h.session, turnID)
+		return server.hostedCatalog().SavedTurnEvidence(ctx, h.session.Provider(), h.session.ThreadID(), turnID)
 	}, nil, nil, nil, nil)
 	return h
 }

@@ -13,7 +13,7 @@ import (
 func TestExplicitCloseSelfPausesHeartbeat(t *testing.T) {
 	s, _, _, _, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.APIOrigin, nil), true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())
 	if err != nil {
 		t.Fatal(err)

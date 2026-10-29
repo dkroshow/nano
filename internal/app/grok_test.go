@@ -2,6 +2,8 @@ package app
 
 import (
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/hosted"
 	"strings"
 	"testing"
 
@@ -10,14 +12,14 @@ import (
 
 func TestResolveGrokSpawnAcceptsSupportedSessionPermissionPosture(t *testing.T) {
 	cwd := t.TempDir()
-	s := &server{defaults: sessionDefaults{cwd: cwd}}
+	s := &server{defaults: config.SessionDefaults{CWD: cwd}}
 	for _, mode := range []string{"", "auto", "bypassPermissions"} {
-		resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: mode}})
+		resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: mode}})
 		if err != nil || resolved.PermissionMode != mode {
 			t.Fatalf("resolveSpawn(%q) = mode %q, error %v", mode, resolved.PermissionMode, err)
 		}
 	}
-	_, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: "acceptEdits"}})
+	_, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: "acceptEdits"}})
 	if err == nil || !strings.Contains(err.Error(), "Grok permissionMode") {
 		t.Fatalf("unsupported resolveSpawn error = %v", err)
 	}

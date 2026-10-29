@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -92,8 +93,8 @@ func waitForClaudeThreadID(t *testing.T, sess *session, want string) {
 	waitForClaude(t, "native thread id "+want, func() bool { return sess.Summary().ThreadID == want })
 }
 
-func claudeShimSpawnRequest(sess *session, shimURL string) spawnRequest {
-	return spawnRequest{ProviderRequest: providerRequest{Provider: "claude",
+func claudeShimSpawnRequest(sess *session, shimURL string) hosted.SpawnRequest {
+	return hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude",
 		Cwd:          sess.CWD(),
 		Model:        "sonnet",
 		ClaudeBin:    "/fake/claude",

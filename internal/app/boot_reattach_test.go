@@ -82,7 +82,7 @@ func seedBootAttachments(t *testing.T, s *server) {
 		if fixtureCwd == "" {
 			// The JSON record is transport-only after the cutover. Test setup
 			// supplies a canonical cwd explicitly rather than restoring a read.
-			fixtureCwd = s.defaults.cwd
+			fixtureCwd = s.defaults.CWD
 		}
 		fixtureModel := record.Model
 		if fixtureModel == "" {
@@ -139,7 +139,7 @@ func TestBootReattachResumesClaudeThroughLiveShim(t *testing.T) {
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	sessions := make([]*session, 0, len(s.SnapshotSessions()))
 	for _, sess := range s.SnapshotSessions() {
 		sessions = append(sessions, sess)
@@ -189,7 +189,7 @@ func TestBootReattachKeepsRunningButIdleClaudeSessionIdle(t *testing.T) {
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
@@ -219,13 +219,13 @@ func TestBootReattachUsesRetainedClaudeHistorySeam(t *testing.T) {
 	store.Remember(record)
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	stored, _ := s.attachmentFor("claude", claudeResumeThreadID)
-	writeClaudeTestSpool(t, s.defaults.claudeShimSpools, stored.HostedThreadID,
+	stored, _ := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID)
+	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, stored.HostedThreadID,
 		recvFrame(1, claudeInitLine), sendFrame(2, testUserPrompt), recvFrame(3, messageStart("a")),
 		recvFrame(4, textDelta(0, "done")), recvFrame(5, testMessageStop), recvFrame(6, `{"type":"assistant","message":{"id":"msg_a","content":[]}}`),
 		recvFrame(7, `{"type":"system","subtype":"status"}`), recvFrame(8, claudeReplayResultLine))
 
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	waitForClaude(t, "retained-history Claude attach", func() bool {
 		for _, candidate := range s.SnapshotSessions() {
@@ -262,11 +262,15 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 		Cwd: t.TempDir(), Bin: "/stored/claude", PendingName: "nano api fable",
 	})
 
-	catalog := &fakeThreadCatalog{names: map[string]string{}}
+	catalog := newAttachmentNameCatalog(t, s.controlMetadata)
 	s.catalog = catalog
+	if s.attachmentsControl != nil {
+		s.attachmentsControl.Catalog = catalog.Service
+		s.attachmentsControl.CreationNames = s.creationNames()
+	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
@@ -284,8 +288,8 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 	}
 	conn := <-connected
 	emitClaudeInit(t, sess, conn, 1, "native-real", "")
-	if len(catalog.assigned) != 1 || catalog.assigned[0].nativeID != "native-real" || catalog.assigned[0].name != "nano api fable" {
-		t.Fatalf("real bind assignments = %+v; want native-real named nano api fable", catalog.assigned)
+	if got, ok := catalog.ThreadNameFor(context.Background(), "claude", "native-real"); !ok || got != "nano api fable" {
+		t.Fatalf("real bind name = %q, %v; want native-real named nano api fable", got, ok)
 	}
 }
 
@@ -314,8 +318,12 @@ func TestBootReattachReloadsCanonicalCreationNameWhenAttachmentDroppedIt(t *test
 		t.Fatal(err)
 	}
 	s.catalog = catalog
+	if s.attachmentsControl != nil {
+		s.attachmentsControl.Catalog = catalog.Service
+		s.attachmentsControl.CreationNames = s.creationNames()
+	}
 
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
@@ -363,10 +371,14 @@ func TestBootReattachPendingRenameDoesNotBecomeCreationName(t *testing.T) {
 	if err := fixtureRecordCreationName(s.controlMetadata, rec.HostedThreadID, "creation name"); err != nil {
 		t.Fatal(err)
 	}
-	catalog := &fakeThreadCatalog{names: map[string]string{}}
+	catalog := newAttachmentNameCatalog(t, s.controlMetadata)
 	s.catalog = catalog
+	if s.attachmentsControl != nil {
+		s.attachmentsControl.Catalog = catalog.Service
+		s.attachmentsControl.CreationNames = s.creationNames()
+	}
 
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
@@ -375,8 +387,7 @@ func TestBootReattachPendingRenameDoesNotBecomeCreationName(t *testing.T) {
 		t.Fatal("boot left renamed thread detached")
 	}
 	waitForSessionStatus(t, s, sess.ID(), "ready")
-	key := "claude\x00" + claudeResumeThreadID
-	if got := catalog.names[key]; got != "operator rename" {
+	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", claudeResumeThreadID); got != "operator rename" {
 		t.Fatalf("boot bind name = %q, want pending operator rename", got)
 	}
 	if got, ok := s.controlMetadata.CreationName(rec.HostedThreadID); !ok || got != "creation name" {
@@ -393,50 +404,12 @@ func TestBootReattachResumesCodexThread(t *testing.T) {
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	count := len(s.SnapshotSessions())
 	if count != 1 {
 		t.Fatalf("sessions after boot = %d, want 1", count)
 	}
 	waitForClaude(t, "thread/resume call", func() bool { return daemon.ResumeCount() == 1 })
-}
-
-// A hidden thread's boot re-attach holds its saved file in the catalog's
-// background queue, so the visible threads catch up first; a visible thread,
-// and a hidden one the operator opened, hold theirs in front. Boundary:
-// reattachStored through the session's catalog bind.
-func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
-	daemon := newFakeAppServer(t)
-	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.restart = hosted.NewRestartTracker(filepath.Join(t.TempDir(), hosted.RestartsFileName), "test-stamp", "boot-test", time.Now())
-	sources := &recordingSources{}
-	s.catalogSources = sources
-	records := map[string]attachmentRecord{}
-	for _, native := range []string{"visible", "hidden", "opened"} {
-		rec := bootCodexRecord(t)
-		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		store.Remember(rec)
-		records[native] = rec
-	}
-	seedBootAttachments(t, s)
-	s.prepareBootReattach()
-	s.restart.Rank(map[attachmentKey]sidebar.BootRank{records["visible"].Key(): {Tier: 0, Visible: true}}, s.boot.order)
-
-	s.reattachStored(records["visible"], false)
-	s.reattachStored(records["hidden"], false)
-	s.reattachStored(records["opened"], true)
-
-	background := map[string]bool{}
-	for _, bind := range sources.Binds {
-		for native := range records {
-			if strings.HasPrefix(bind, "codex/"+native+"@") {
-				background[native] = strings.HasSuffix(bind, "|background")
-			}
-		}
-	}
-	if len(background) != 3 || background["visible"] || !background["hidden"] || background["opened"] {
-		t.Fatalf("background binds = %v from %q; want only the hidden boot thread", background, sources.Binds)
-	}
 }
 
 // The app-server can refuse a boot resume while its own listener for the
@@ -490,7 +463,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	if _, _, err := completed.Started(ctx, coreturns.Start{HostedThreadID: "nht_provider-turn-open", Provider: "codex", NativeThreadID: "provider-turn-open", TurnID: "turn-running", At: now, Source: "test"}); err != nil {
 		t.Fatal(err)
 	}
-	s.prepareBootReattach()
+	s.attachmentCoordinator().PrepareBoot()
 	Updated := func(ago time.Duration) *string {
 		value := now.Add(-ago).Format(time.RFC3339Nano)
 		return &value
@@ -508,7 +481,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(priorLog) })
 
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 
 	var got []string
 	for _, line := range strings.Split(logs.String(), "\n") {
@@ -567,7 +540,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.prepareBootReattach()
+	s.attachmentCoordinator().PrepareBoot()
 	updates := s.runtimeEvents.Subscribe()
 	defer s.runtimeEvents.Unsubscribe(updates)
 
@@ -575,7 +548,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 	defer resumePublication()
 	done := make(chan struct{})
 	go func() {
-		s.reattachOnBoot()
+		s.attachmentCoordinator().ReattachOnBoot()
 		close(done)
 	}()
 	registered := 0
@@ -633,7 +606,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.prepareBootReattach()
+	s.attachmentCoordinator().PrepareBoot()
 	updates := s.runtimeEvents.Subscribe()
 	defer s.runtimeEvents.Unsubscribe(updates)
 
@@ -641,7 +614,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 	defer resumePublication()
 	done := make(chan struct{})
 	go func() {
-		s.reattachOnBoot()
+		s.attachmentCoordinator().ReattachOnBoot()
 		close(done)
 	}()
 	ready := 0
@@ -708,185 +681,6 @@ published:
 	}
 }
 
-// Ordinary boot notices coalesce without losing refresh, while an opened
-// thread must appear before its deliberately delayed provider handshake.
-func TestBootReattachRuntimeGateKeepsRefreshAndPrioritizedRegistration(t *testing.T) {
-	s, daemon, rec := startingCodexServer(t)
-	daemon.SetReplyDelay("thread/resume", 10*time.Second)
-	updates := s.runtimeEvents.Subscribe()
-	defer s.runtimeEvents.Unsubscribe(updates)
-	s.publishRuntime(false)
-	<-updates
-	// The prepared starting thread is opened while the boot publisher is active.
-	s.boot.mu.Lock()
-	s.boot.runtimeActive = true
-	s.boot.mu.Unlock()
-	s.notifyRuntimeRefresh()
-	s.notifyRuntime()
-	select {
-	case delta := <-updates:
-		t.Fatalf("ordinary boot notice published immediately: %+v", delta)
-	default:
-	}
-
-	s.reattachWaitingHosted(rec.HostedThreadID)
-	select {
-	case delta := <-updates:
-		attached := false
-		for _, row := range delta.Rows {
-			if row.Provider == rec.Provider && row.NativeID == rec.NativeThreadID && row.Runtime != nil && row.Runtime.Attached && row.Runtime.Status == "starting" {
-				attached = true
-			}
-		}
-		if !attached {
-			t.Fatalf("prioritized thread missing before its resume reply: %+v", delta)
-		}
-	default:
-		t.Fatal("prioritized registration did not publish immediately during boot")
-	}
-	s.publishBootRuntime(false)
-	select {
-	case delta := <-updates:
-		if !delta.Refresh {
-			t.Fatal("coalesced publish lost the refresh requested before priority registration")
-		}
-	default:
-		t.Fatal("boot publisher lost its queued notice")
-	}
-	s.publishBootRuntime(false)
-	select {
-	case delta := <-updates:
-		t.Fatalf("clean boot publisher emitted another snapshot: %+v", delta)
-	default:
-	}
-	s.publishBootRuntime(true)
-}
-
-// One provider's held pre-claim used to hold every provider's boot: a Codex
-// daemon that accepts connections but never answers keeps its mutex during
-// the dial, so the next Codex thread's pre-claim waited while holding the one
-// resume lock, and every Claude and Grok thread queued behind it waited too
-// (about 60 s in the runner's degraded check). Each provider now has its own
-// boot queue and resume lock. Boundary: the real boot loop while the Codex
-// resume lock is held, with Codex first in the stored order.
-func TestBootReattachStuckProviderDoesNotHoldAnother(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.Reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 0})
-		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 0})
-	}))
-	daemon := newFakeAppServer(t)
-	s, store := bootReattachServer(t, shim.WSURL(), daemon.WSURL())
-	codex := bootCodexRecord(t)
-	codex.AttachedAt = "2026-07-28T10:00:00Z"
-	store.Remember(codex)
-	claude := rememberedClaudeSession(t, "/stored/claude")
-	claude.AttachedAt = "2026-07-28T10:09:00Z" // stored order: the Codex thread first
-	store.Remember(claude)
-	seedBootAttachments(t, s)
-	openTurnsForBoot(t, s)
-	var logs syncBuffer
-	priorLog := log.Writer()
-	log.SetOutput(&logs)
-	t.Cleanup(func() { log.SetOutput(priorLog) })
-
-	codexLock := s.resumeSpawnLock("codex")
-	codexLock.Lock() // a Codex pre-claim that cannot finish
-	done := make(chan struct{})
-	go func() {
-		s.reattachOnBoot()
-		close(done)
-	}()
-	waitForClaude(t, "the Claude thread's registration while Codex is held", func() bool {
-		return strings.Contains(logs.String(), "boot re-attach claude/"+claudeResumeThreadID+" registered")
-	})
-	if strings.Contains(logs.String(), "boot re-attach codex/") {
-		t.Fatal("the Codex thread registered while its resume lock was held")
-	}
-	codexLock.Unlock()
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		t.Fatal("boot did not finish once the Codex lock was released")
-	}
-}
-
-// Failure caught: two top-level threads with the same updated time kept their
-// stored order, so a visible one could follow a hidden one and wait with the
-// hidden threads for every queue's visible registrations. Boundary: bootOrder.
-func TestBootOrderPutsVisibleThreadsBeforeTiedHiddenOnes(t *testing.T) {
-	hidden := attachmentRecord{Provider: "codex", NativeThreadID: "hidden"}
-	Visible := attachmentRecord{Provider: "codex", NativeThreadID: "visible"}
-	ranks := map[attachmentKey]sidebar.BootRank{
-		hidden.Key():  {Tier: 1},
-		Visible.Key(): {Tier: 1, Visible: true},
-	}
-	if got := bootOrder([]attachmentRecord{hidden, Visible}, ranks); got[0].NativeThreadID != "visible" {
-		t.Fatalf("boot order = %s, %s; want the visible thread first", got[0].NativeThreadID, got[1].NativeThreadID)
-	}
-}
-
-// Failure caught: one provider's queue reached its hidden threads while
-// another provider still registered its visible ones. At boot Grok's single
-// visible thread registered at once and its 31 hidden replays then competed
-// with the visible Claude and Codex registrations. The boot loop queues only
-// threads with open work, so every thread here has a turn open. Boundary: the
-// boot loop, across provider queues.
-func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
-		c.Reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 0})
-		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 0})
-	}))
-	daemon := newFakeAppServer(t)
-	s, store := bootReattachServer(t, shim.WSURL(), daemon.WSURL())
-	for _, native := range []string{"codex-visible", "codex-hidden"} {
-		rec := bootCodexRecord(t)
-		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		store.Remember(rec)
-	}
-	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
-	seedBootAttachments(t, s)
-	openTurnsForBoot(t, s)
-	s.prepareBootReattach()
-	now := time.Now().UTC()
-	Updated := now.Format(time.RFC3339Nano)
-	threads := []sidebar.Thread{
-		{Thread: threadindex.Thread{ID: "nth_codex_visible", Provider: "codex", NativeID: "codex-visible", UpdatedAt: &Updated}, Starred: true},
-		{Thread: threadindex.Thread{ID: "nth_claude_visible", Provider: "claude", NativeID: claudeResumeThreadID, UpdatedAt: &Updated}, Starred: true},
-	}
-	materializeBootSidebar(t, s, threads, now)
-	var logs syncBuffer
-	priorLog := log.Writer()
-	log.SetOutput(&logs)
-	t.Cleanup(func() { log.SetOutput(priorLog) })
-	registered := func(key string) bool { return strings.Contains(logs.String(), "boot re-attach "+key+" registered") }
-
-	claudeLock := s.resumeSpawnLock("claude")
-	claudeLock.Lock() // the visible Claude thread cannot register yet
-	done := make(chan struct{})
-	go func() {
-		s.reattachOnBoot()
-		close(done)
-	}()
-	waitForClaude(t, "the visible Codex thread's registration", func() bool { return registered("codex/codex-visible") })
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if registered("codex/codex-hidden") {
-			claudeLock.Unlock()
-			t.Fatal("the hidden Codex thread registered while the visible Claude thread waited")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	claudeLock.Unlock()
-	waitForClaude(t, "the hidden Codex thread's registration once Claude's visible one registered", func() bool {
-		return registered("claude/"+claudeResumeThreadID) && registered("codex/codex-hidden")
-	})
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		t.Fatal("boot did not finish")
-	}
-}
-
 // Session shells are the boot-time UI contract: /api/sessions must expose all
 // remembered attachments immediately, even if one provider handshake stalls.
 // The oldest attachment runs first, so a synchronous Claude shim attach used
@@ -919,7 +713,7 @@ func TestBootReattachRegistersAllShellsBeforeSlowClaudeHandshake(t *testing.T) {
 	go func() {
 		seedBootAttachments(t, s)
 		openTurnsForBoot(t, s)
-		s.reattachOnBoot()
+		s.attachmentCoordinator().ReattachOnBoot()
 		close(done)
 	}()
 
@@ -970,7 +764,7 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 	stateDir := t.TempDir()
 	bin := writeBlockingGrokACP(t, stateDir)
 	s, store := bootReattachServer(t, "", "")
-	s.defaults.grokBin = bin
+	s.defaults.GrokBin = bin
 	for i := 0; i < sessionCount; i++ {
 		store.Remember(attachmentRecord{
 			Provider:       "grok",
@@ -981,7 +775,7 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s) // queued at boot though the sidebar does not show them
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	t.Cleanup(func() { _ = os.WriteFile(filepath.Join(stateDir, "release"), []byte("release"), 0600) })
 
 	deadline := time.Now().Add(3 * time.Second)
@@ -1076,7 +870,7 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 
 	for i := 0; i < providerLifecycleCapabilities("claude").BootHandshakeLimit; i++ {
 		select {
@@ -1173,7 +967,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
@@ -1333,7 +1127,7 @@ func TestBootReattachFailureLeavesRecordDetachedAndContinues(t *testing.T) {
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 
 	var sessions []*session
 	deadline := time.Now().Add(time.Second)
@@ -1395,7 +1189,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	// This is the production order: the catalog's catch-up queues changes,
 	// boot reattachment reconstructs the shim spool, and only then can a worker
 	// invoke the callback main registered.
-	server.reattachOnBoot()
+	server.attachmentCoordinator().ReattachOnBoot()
 
 	var restarted *session
 	for _, candidate := range server.SnapshotSessions() {
@@ -1434,7 +1228,7 @@ func startingCodexServer(t *testing.T) (*server, *fakeAppServer, attachmentRecor
 	store.Remember(bootCodexRecord(t))
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s) // the boot loop's own thread, not left resting
-	s.prepareBootReattach()
+	s.attachmentCoordinator().PrepareBoot()
 	return s, daemon, fixtureAttachmentRecords(store)[0]
 }
 
@@ -1462,13 +1256,7 @@ func TestServeAnswersWhileStoredThreadsStillReattach(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	s.resumeSpawnLock("codex").Lock() // the boot loop's first registration waits here
-	held := true
-	t.Cleanup(func() {
-		if held {
-			s.resumeSpawnLock("codex").Unlock()
-		}
-	})
+	releaseRegistration := blockBootRegistration(t, s)
 	go func() { _ = app.serve(listener, local, remote) }()
 	get := func(path string, into any) int {
 		t.Helper()
@@ -1511,8 +1299,7 @@ func TestServeAnswersWhileStoredThreadsStillReattach(t *testing.T) {
 		t.Fatalf("runtime overlay while reattaching = %+v", runtime)
 	}
 
-	held = false
-	s.resumeSpawnLock("codex").Unlock()
+	releaseRegistration()
 	waitForClaude(t, "boot re-attach to finish", func() bool {
 		return strings.Contains(logs.String(), "boot re-attach finished")
 	})
@@ -1542,7 +1329,7 @@ func TestPromptToAStartingThreadRegistersItOnceAndQueues(t *testing.T) {
 		defer daemon.Mu.Unlock()
 		return daemon.TurnStarts == 1
 	})
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	daemon.Mu.Lock()
 	turnStarts := daemon.TurnStarts
 	daemon.Mu.Unlock()
@@ -1600,7 +1387,7 @@ waitingForPublish:
 	if got := prioritize(); got != `{"starting":false}` {
 		t.Fatalf("prioritize a registered thread = %s", got)
 	}
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	count := len(s.SnapshotSessions())
 	if resumes := daemon.ResumeCount(); resumes != 1 || count != 1 {
 		t.Fatalf("provider resumes = %d, sessions = %d; want one of each", resumes, count)
@@ -1613,7 +1400,7 @@ waitingForPublish:
 // hosted record, after the boot loop registered the thread.
 func TestResumeOfALiveCodexThreadKeepsItsBinding(t *testing.T) {
 	s, daemon, rec := startingCodexServer(t)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	live := s.SessionForHostedThread(rec.HostedThreadID)
 	if live == nil {
 		t.Fatal("boot loop did not register the thread")
@@ -1649,8 +1436,8 @@ func TestResumeOfALiveCodexThreadKeepsItsBinding(t *testing.T) {
 // Boundary: the attachment store and the boot loop.
 func TestBootLoopSkipsAThreadForgottenWhileStarting(t *testing.T) {
 	s, daemon, rec := startingCodexServer(t)
-	s.forgetAttachment(rec.Provider, rec.NativeThreadID)
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ForgetAttachment(rec.Provider, rec.NativeThreadID)
+	s.attachmentCoordinator().ReattachOnBoot()
 	count := len(s.SnapshotSessions())
 	if count != 0 || daemon.ResumeCount() != 0 {
 		t.Fatalf("sessions = %d, provider resumes = %d; want the forgotten thread left alone", count, daemon.ResumeCount())
@@ -1678,7 +1465,7 @@ func TestCodexTurnFinishedWhileNanoWasDownReachesTheCompletedTurnFeed(t *testing
 	// from the earliest turn whose operation is still live.
 	daemon.SetResumeTurns(json.RawMessage(`[{"id":"turn-older","status":"completed","items":[{"id":"answer-older","type":"agentMessage","phase":"final_answer","text":"older"}]},{"id":"turn-down","status":"completed","completedAt":1787600200,"items":[{"id":"answer-down","type":"agentMessage","phase":"final_answer","text":"done while down"}]}]`))
 
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	sess := s.SessionForHostedThread(rec.HostedThreadID)
 	if sess == nil {
 		t.Fatal("boot loop did not register the thread")
@@ -1772,7 +1559,7 @@ func subscribedCodexServer(t *testing.T, resumeTurns string) (*server, *fakeAppS
 	rec.HostedThreadID = child.ID
 	store.Remember(rec)
 	seedBootAttachments(t, s)
-	s.prepareBootReattach()
+	s.attachmentCoordinator().PrepareBoot()
 	client := &feedSubscriptionClient{s: s}
 	return s, daemon, rec, client, subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), client, nil, nil)
 }
@@ -1797,8 +1584,8 @@ func TestResumeAnswerWithOlderTerminalTurnsNotifiesNobody(t *testing.T) {
 	}
 	dispatcher.Sweep("") // start the child's cursor where a running Nano would have it
 
-	s.reattachOnBoot()
-	s.reattachWaitingHosted(rec.HostedThreadID) // no work open, so it rests until needed
+	s.attachmentCoordinator().ReattachOnBoot()
+	s.attachmentCoordinator().ReattachWaitingHosted(rec.HostedThreadID) // no work open, so it rests until needed
 	waitForClaude(t, "the reattached session", func() bool {
 		sess := s.SessionForHostedThread(rec.HostedThreadID)
 		return sess != nil && sess.Summary().Status == "ready"
@@ -1824,7 +1611,7 @@ func TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce(t *testing.T)
 		t.Fatal(err)
 	}
 	dispatcher.Sweep("")
-	s.reattachOnBoot()
+	s.attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	waitForClaude(t, "the reattached turn to be active", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)

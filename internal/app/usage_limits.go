@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -54,7 +55,7 @@ type usageLimitsPoller struct {
 	interval time.Duration
 }
 
-func newUsageLimitsPoller(store *usageLimitsStore, codex *sessions.CodexDaemon, grok sessionDefaults, interval time.Duration) *usageLimitsPoller {
+func newUsageLimitsPoller(store *usageLimitsStore, codex *sessions.CodexDaemon, grok config.SessionDefaults, interval time.Duration) *usageLimitsPoller {
 	if interval <= 0 {
 		interval = defaultUsageLimitPollInterval
 	}

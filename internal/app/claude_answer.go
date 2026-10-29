@@ -15,7 +15,7 @@ import (
 // stores and saved readers: an operation's answer, attached or not, and a
 // thread with no session.
 func (s *server) claudeAnswers(hosted string) sessions.ClaudeAnswers {
-	return sessions.NewClaudeAnswers(hosted, s.turns, s.agentExecutions, s.savedPromptRows, s.savedTurnFinal)
+	return sessions.NewClaudeAnswers(hosted, s.turns, s.agentExecutions, s.hostedCatalog().SavedPromptRows, s.hostedCatalog().SavedTurnFinal)
 }
 
 // claudeOwedRun keeps one detached owed pass per hosted thread: a request

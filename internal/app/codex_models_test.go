@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,11 +13,11 @@ import (
 // preview before spawning. Keep GPT-6.1 Sol, GPT-6 Astra, Sol, Luna and the current GPT-5.6 family covered here so a
 // future change cannot silently drop or rewrite one of the selected slugs.
 func TestPinnedCodexModelsPreviewAsSelected(t *testing.T) {
-	s := &server{defaults: sessionDefaults{
-		cwd:              t.TempDir(),
-		sandbox:          "read-only",
-		approval:         "never",
-		reasoningSummary: "detailed",
+	s := &server{defaults: config.SessionDefaults{
+		CWD:              t.TempDir(),
+		Sandbox:          "read-only",
+		Approval:         "never",
+		ReasoningSummary: "detailed",
 	}}
 
 	for _, model := range []string{"gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {

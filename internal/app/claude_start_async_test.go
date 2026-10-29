@@ -110,7 +110,7 @@ func TestClaudeStartTransportFailureLandsOnTheSession(t *testing.T) {
 		c.AnswerRest() // stay connected: a dropped connection is its own exit path
 	})
 	s, _ := claudeResumeServer(t, shim.WSURL())
-	s.defaults.claudeBin = filepath.Join(t.TempDir(), "no-such-claude")
+	s.defaults.ClaudeBin = filepath.Join(t.TempDir(), "no-such-claude")
 
 	sum := spawnedSummary(t, postClaudeStart(t, s))
 	if sum.Status != "starting" {

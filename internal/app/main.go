@@ -47,35 +47,15 @@ import (
 	"github.com/dkroshow/nano/web"
 )
 
-// sessionDefaults come from flags and apply to every spawned session unless
-// the spawn request overrides them (provider/cwd/model are per-spawn).
 // deliveryExpiryWindow keeps a provider marked slow for five minutes after a delivery expires.
 const deliveryExpiryWindow = 5 * time.Minute
 
 // processStarted is the earliest moment this process can name.
 var processStarted = time.Now()
 
-type sessionDefaults struct {
-	cwd              string
-	model            string
-	sandbox          string
-	approval         string
-	reasoningSummary string
-	allowedTools     string
-	claudeBin        string
-	claudeShimWS     string
-	// claudeShimSpools is the shim daemon's spool directory, read-only here.
-	claudeShimSpools string
-	grokBin          string
-	grokLeaderSocket string
-	// apiOrigin is the address hosted agents are told to reach this server on;
-	// it rides the injected identity block (agent_identity.go).
-	apiOrigin string
-}
-
 type server struct {
 	dropLiveTextDeltas bool
-	defaults           sessionDefaults
+	defaults           config.SessionDefaults
 	codex              *sessionruntime.CodexDaemon
 	spoolDir           string
 	catalog            threadCatalog
@@ -170,25 +150,14 @@ type server struct {
 	usageLimits *usageLimitsStore
 	// usageLimitsPoller is retained so the Codex push notification can nudge an
 	// out-of-band refresh. Nil whenever usageLimits is.
-	usageLimitsPoller *usageLimitsPoller
-	hostMonitor       *hostMonitor
-	requests          observability.RequestTimes
-	hostedControl     *hosted.Controller
-	hostedControlOnce sync.Once
-	// The resume locks, one per provider, cover resume routing through the
-	// provider's pre-claim. They make first registration and ordinary
-	// concurrent resume of a thread share one winner without holding the
-	// general session registry lock across provider work. A thread has one
-	// provider, so one provider's slow pre-claim never holds another's. An
-	// unknown provider shares resumeSpawnMu; spawnSession refuses it later.
-	resumeSpawnMu, resumeSpawnClaude, resumeSpawnCodex, resumeSpawnGrok sync.Mutex
-	// interrupted repair reads the configured catalog and writes only beneath
-	// the configured maintenance root; neither path is inferred from another store.
-
-	// boot holds registration order, handshake controls and publication state.
-	// bootAttachments owns the waiting records. Both are set before HTTP serves.
-	boot            *bootReattach
-	bootAttachments sessionruntime.BootAttachments
+	usageLimitsPoller  *usageLimitsPoller
+	hostMonitor        *hostMonitor
+	requests           observability.RequestTimes
+	hostedControl      *hosted.Controller
+	hostedControlOnce  sync.Once
+	attachmentOnce     sync.Once
+	attachmentsControl *hosted.AttachmentCoordinator
+	bootAttachments    sessionruntime.BootAttachments
 	// restart records this process start for GET /api/v1/restarts
 	// (restart_tracking.go).
 	restart *hosted.RestartTracker
@@ -360,19 +329,19 @@ func construct(cfg config.Config) *application {
 	s := &server{
 		requests:           observability.NewRequestTimes(time.Now),
 		dropLiveTextDeltas: liveTextDeltasDisabled(),
-		defaults: sessionDefaults{
-			cwd:              absCwd,
-			model:            cfg.Model,
-			sandbox:          cfg.Sandbox,
-			approval:         cfg.Approval,
-			reasoningSummary: cfg.ReasoningSummary,
-			allowedTools:     cfg.AllowedTools,
-			claudeBin:        sessionruntime.ResolveClaudeBin(cfg.ClaudeBin),
-			claudeShimWS:     strings.TrimSpace(cfg.ClaudeShimWS),
-			claudeShimSpools: cfg.ClaudeShimSpoolDir,
-			grokBin:          sessionruntime.ResolveGrokBin(cfg.GrokBin),
-			grokLeaderSocket: strings.TrimSpace(cfg.GrokLeaderSocket),
-			apiOrigin:        fmt.Sprintf("http://127.0.0.1:%d", cfg.Port),
+		defaults: config.SessionDefaults{
+			CWD:              absCwd,
+			Model:            cfg.Model,
+			Sandbox:          cfg.Sandbox,
+			Approval:         cfg.Approval,
+			ReasoningSummary: cfg.ReasoningSummary,
+			AllowedTools:     cfg.AllowedTools,
+			ClaudeBin:        sessionruntime.ResolveClaudeBin(cfg.ClaudeBin),
+			ClaudeShimWS:     strings.TrimSpace(cfg.ClaudeShimWS),
+			ClaudeShimSpools: cfg.ClaudeShimSpoolDir,
+			GrokBin:          sessionruntime.ResolveGrokBin(cfg.GrokBin),
+			GrokLeaderSocket: strings.TrimSpace(cfg.GrokLeaderSocket),
+			APIOrigin:        fmt.Sprintf("http://127.0.0.1:%d", cfg.Port),
 		},
 		codex:                 codexDaemon,
 		skills:                skills,
@@ -422,7 +391,7 @@ func construct(cfg config.Config) *application {
 		} else if len(providerHomes) > 0 {
 			s.historicalCodex = newHistoricalConfigResolver(codexDaemon, catalogStore, providerHomes[0])
 		}
-		s.historicalClaude = newHistoricalClaudeResolver(catalogStore, s.defaults.claudeBin)
+		s.historicalClaude = newHistoricalClaudeResolver(catalogStore, s.defaults.ClaudeBin)
 	}
 	if store, err := sidebar.OpenStars(cfg.Paths.ThreadStarsDB); err != nil {
 		log.Printf("thread stars store unavailable: %v", err)
@@ -453,7 +422,7 @@ func construct(cfg config.Config) *application {
 		} else if deleted > 0 {
 			log.Printf("heartbeat decision retention removed %d old skip rows", deleted)
 		}
-		s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), cfg.HeartbeatEnabled, log.Printf)
+		s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.APIOrigin, nil), cfg.HeartbeatEnabled, log.Printf)
 		s.heartbeat.MaxWakesHour = cfg.HeartbeatMaxWakesPerHour
 		log.Printf("heartbeat store ready (scheduler enabled=%v; max wakes/hour=%d)", cfg.HeartbeatEnabled, cfg.HeartbeatMaxWakesPerHour)
 	}
@@ -466,7 +435,7 @@ func construct(cfg config.Config) *application {
 	// Every stored attachment comes back as a live session so a deploy restart
 	// never leaves threads detached (boot_reattach.go). HTTP opens first; until
 	// its registration each thread reports "starting".
-	s.prepareBootReattach()
+	s.attachmentCoordinator().PrepareBoot()
 	if err := s.sidebarOwner().StartSidebarMaterializer(context.Background(), time.Now()); err != nil {
 		log.Printf("sidebar materialization unavailable: %v", err)
 	}
@@ -521,7 +490,7 @@ func (a *application) run(localHandler, remoteHandler http.Handler) {
 	}()
 	listenAddress := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
 	log.Printf("nano listening on http://%s (default cwd %s, codex daemon %s, claude shim %s, grok %s)",
-		listenAddress, a.absCwd, cfg.CodexWS, s.defaults.claudeShimWS, s.defaults.grokBin)
+		listenAddress, a.absCwd, cfg.CodexWS, s.defaults.ClaudeShimWS, s.defaults.GrokBin)
 	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		log.Fatal(err)
@@ -564,11 +533,11 @@ func (a *application) serve(listener net.Listener, localHandler, remoteHandler h
 	go func() { serveErrors <- http.Serve(listener, localHandler) }()
 	s.restart.MarkHTTPOpen()
 	go func() {
-		s.reattachOnBoot()
+		s.attachmentCoordinator().ReattachOnBoot()
 		// Features that prompt hosted threads by themselves start after every
 		// stored thread is back. HTTP opens first so requests can prioritize them.
 		if s.agentExecutions != nil && s.agentExecutions.Control() != nil {
-			d := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), interact.NewHTTPClient(s.defaults.apiOrigin, nil), s.agentDisplay, log.Printf)
+			d := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), interact.NewHTTPClient(s.defaults.APIOrigin, nil), s.agentDisplay, log.Printf)
 			s.agentController().StartSubscriptions(d)
 		}
 		if s.heartbeat != nil {
@@ -833,10 +802,10 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 		"detached":      s.sidebarOwner().DetachedSessionViews(live),
 		"runtimeStream": position,
 		"defaults": map[string]string{
-			"cwd": s.defaults.cwd, "model": s.defaults.model,
-			"sandbox": s.defaults.sandbox, "approval": s.defaults.approval,
-			"allowedTools": s.defaults.allowedTools, "claudeBin": s.defaults.claudeBin,
-			"grokBin": s.defaults.grokBin, "grokLeaderSocket": s.defaults.grokLeaderSocket,
+			"cwd": s.defaults.CWD, "model": s.defaults.Model,
+			"sandbox": s.defaults.Sandbox, "approval": s.defaults.Approval,
+			"allowedTools": s.defaults.AllowedTools, "claudeBin": s.defaults.ClaudeBin,
+			"grokBin": s.defaults.GrokBin, "grokLeaderSocket": s.defaults.GrokLeaderSocket,
 		},
 	})
 }
@@ -858,12 +827,12 @@ func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Requ
 // code that spawnSession uses, so the New Window dialog's JSON pane shows
 // the wire truth, not a frontend reconstruction.
 func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
-	var req spawnRequest
+	var req hosted.SpawnRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Provider == "" {
 		httpapi.WriteHTTPError(w, "body must be a spawn request", http.StatusBadRequest)
 		return
 	}
-	resolved, err := s.resolveSpawn(req)
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(req)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -880,7 +849,7 @@ func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
 		if resolved.Mode != "resume" {
 			// The model rides thread/start at spawn time, so it is not a turn
 			// override yet — the pane's per-turn control introduces one later.
-			out["turnOverrides"] = sessionruntime.CodexTurnOverrides("", resolved.Effort, "", s.defaults.reasoningSummary)
+			out["turnOverrides"] = sessionruntime.CodexTurnOverrides("", resolved.Effort, "", s.defaults.ReasoningSummary)
 		}
 		httpapi.WriteJSON(w, out)
 	case "claude":
@@ -917,7 +886,7 @@ func (s *server) handleCodexModels(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleGrokModels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	models, err := sessionruntime.FetchGrokModels(ctx, sessionruntime.ProviderRequest{Mode: "start", Cwd: s.defaults.cwd, GrokBin: s.defaults.grokBin, GrokLeaderSocket: s.defaults.grokLeaderSocket})
+	models, err := sessionruntime.FetchGrokModels(ctx, sessionruntime.ProviderRequest{Mode: "start", Cwd: s.defaults.CWD, GrokBin: s.defaults.GrokBin, GrokLeaderSocket: s.defaults.GrokLeaderSocket})
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return

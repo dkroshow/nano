@@ -166,7 +166,7 @@ func newClaudeResultSession(t *testing.T, f claudeResultFixture) *session {
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID(h.fixture.native)
-	sess.ConfigureSavedReaders(nil, h.server.savedPromptsFor(sess), h.server.savedPromptRows, h.server.savedTurnFinal, nil)
+	sess.ConfigureSavedReaders(nil, h.server.savedPromptsFor(sess), h.server.hostedCatalog().SavedPromptRows, h.server.hostedCatalog().SavedTurnFinal, nil)
 	if h.runtimes == nil {
 		h.runtimes = map[*session]*providerRuntimeFixture{}
 	}

@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -74,13 +76,13 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.Att
 	queue.BindTransactionStore(turnStore)
 	attempts.BindTransactionStore(turnStore)
 	s := &server{
-		defaults: sessionDefaults{
-			cwd:          t.TempDir(), // the New Window default a resume must never adopt
-			claudeBin:    "/default/claude",
-			claudeShimWS: shimURL,
-			allowedTools: "Read,Grep",
+		defaults: config.SessionDefaults{
+			CWD:          t.TempDir(), // the New Window default a resume must never adopt
+			ClaudeBin:    "/default/claude",
+			ClaudeShimWS: shimURL,
+			AllowedTools: "Read,Grep",
 			// The shim's spool directory; fixtures seed a spool per hosted id.
-			claudeShimSpools: t.TempDir(),
+			ClaudeShimSpools: t.TempDir(),
 		},
 		spoolDir:        t.TempDir(),
 		runtimeEvents:   sidebar.NewRuntimeHub(),
@@ -143,10 +145,10 @@ func ensureClaudeTestSpool(t *testing.T, s *server, provider, hostedID string) {
 	if provider != "claude" || hostedID == "" {
 		return
 	}
-	if s.defaults.claudeShimSpools == "" {
-		s.defaults.claudeShimSpools = t.TempDir()
+	if s.defaults.ClaudeShimSpools == "" {
+		s.defaults.ClaudeShimSpools = t.TempDir()
 	}
-	path := filepath.Join(s.defaults.claudeShimSpools, hostedID+".jsonl")
+	path := filepath.Join(s.defaults.ClaudeShimSpools, hostedID+".jsonl")
 	if _, err := os.Stat(path); err == nil {
 		return
 	}
@@ -157,7 +159,7 @@ func ensureClaudeTestSpool(t *testing.T, s *server, provider, hostedID string) {
 
 func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID string) {
 	t.Helper()
-	record, ok := s.attachmentFor(provider, nativeID)
+	record, ok := s.attachmentCoordinator().AttachmentFor(provider, nativeID)
 	if ok && record.HostedThreadID != "" {
 		ensureClaudeTestSpool(t, s, provider, record.HostedThreadID)
 	}
@@ -182,7 +184,7 @@ func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID str
 	if fixtureCwd == "" {
 		// Attachment JSON no longer owns cwd. This is explicit fixture setup,
 		// not a production fallback to the New Window default.
-		fixtureCwd = s.defaults.cwd
+		fixtureCwd = s.defaults.CWD
 	}
 	fixtureModel := record.Model
 	if fixtureModel == "" {
@@ -283,7 +285,7 @@ func seedHistoricalHostedClaudeWithoutAttachment(t *testing.T, s *server) string
 			t.Fatal(err)
 		}
 	}
-	s.defaults.apiOrigin = "http://127.0.0.1:7999"
+	s.defaults.APIOrigin = "http://127.0.0.1:7999"
 	return hostedID
 }
 
@@ -472,8 +474,8 @@ func TestClaudeResumeAttachesLiveShimSession(t *testing.T) {
 	if sum.Provider != "claude" || sum.ThreadID != claudeResumeThreadID || sum.Status != "ready" {
 		t.Fatalf("summary = %#v, want the attached thread already ready", sum)
 	}
-	if sum.Cwd != s.defaults.cwd {
-		t.Fatalf("cwd = %q, want explicitly seeded canonical cwd %q", sum.Cwd, s.defaults.cwd)
+	if sum.Cwd != s.defaults.CWD {
+		t.Fatalf("cwd = %q, want explicitly seeded canonical cwd %q", sum.Cwd, s.defaults.CWD)
 	}
 	if starts := shim.CallsOf(shimMethodStart); len(starts) != 0 {
 		t.Fatalf("attach path spawned a child: %+v", starts)
@@ -534,7 +536,7 @@ func TestClaudeResumeFallsBackToResumeFlagOnSessionNotFound(t *testing.T) {
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("fallback args = %#v, want %#v", args, want)
 	}
-	if bin != "/stored/claude" || cwd != s.defaults.cwd {
+	if bin != "/stored/claude" || cwd != s.defaults.CWD {
 		t.Fatalf("fallback bin = %q cwd = %q, want canonical fixture posture", bin, cwd)
 	}
 	// The successor's init retires the superseded record and remembers itself
@@ -770,7 +772,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				t.Fatal(err)
 			}
 			sentLine = `{"type":"user","uuid":"` + anchor + `","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}`
-			writeClaudeTestSpool(t, s.defaults.claudeShimSpools, hostedID,
+			writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hostedID,
 				sendFrame(1, sentLine).WithTurn(turn),
 				recvFrame(2, `{"type":"system","subtype":"init","session_id":"native-real"}`).WithTurn(turn))
 			if tc.conflict {
@@ -1045,7 +1047,7 @@ func TestClaudeFailedResumeDoesNotBlockTheRetry(t *testing.T) {
 		}
 	})
 	s, _ := claudeResumeServer(t, shim.WSURL())
-	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, s.defaults.cwd)
+	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, s.defaults.CWD)
 
 	body := `{"provider":"claude","mode":"resume","threadId":"` + claudeResumeThreadID + `","cwd":"` + t.TempDir() + `"}`
 
@@ -1151,12 +1153,12 @@ func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
 // Public resume separately requires a canonical owner before reaching this seam.
 func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	_, err := s.resolveClaudeResume(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
+	_, err := s.attachmentCoordinator().ResolveClaudeResume(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
 	if err == nil || !strings.Contains(err.Error(), "no attachment record") {
 		t.Fatalf("err = %v, want a refusal to guess the cwd", err)
 	}
 	cwd := t.TempDir()
-	req, err := s.resolveClaudeResume(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
+	req, err := s.attachmentCoordinator().ResolveClaudeResume(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1173,7 +1175,7 @@ func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
 // Canonical posture passes into the provider builder after ownership resolves.
 func TestClaudeResumeTransportWithoutAttachmentCarriesPosture(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	req, err := s.resolveClaudeResume(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
+	req, err := s.attachmentCoordinator().ResolveClaudeResume(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
 		Model: "claude-opus-4-1", PermissionMode: "bypassPermissions", Effort: "high"},
 	})
 	if err != nil {
@@ -1204,7 +1206,7 @@ func TestClaudeResumeRefusesMissingWorkingDirectory(t *testing.T) {
 	gone := filepath.Join(t.TempDir(), "deleted-project")
 	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, gone)
 
-	_, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
+	_, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
 	if err == nil {
 		t.Fatal("resume into a missing directory succeeded")
 	}
@@ -1247,7 +1249,7 @@ func TestClaudeResumeMissingTranscriptIsAReadableError(t *testing.T) {
 	})
 	s, _ := claudeResumeServer(t, shim.WSURL())
 
-	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, s.defaults.cwd)
+	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, s.defaults.CWD)
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, `{"provider":"claude","mode":"resume","threadId":"`+claudeResumeThreadID+`","cwd":"`+t.TempDir()+`"}`))
 	failed := waitForSessionStatus(t, s, sum.ID, "exited")

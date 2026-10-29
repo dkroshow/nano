@@ -145,7 +145,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/identity/resolve", "identity.resolve", s.handleIdentityResolve},
 		{http.MethodPost, "/api/v1/maintenance/retired-hosted-records", "maintenance.retiredHostedRecords", s.handleRetiredHostedRecords},
 		{http.MethodPost, "/api/v1/maintenance/creation-names", "maintenance.creationNames", s.handleCreationNameRepair},
-		{http.MethodPost, "/api/v1/maintenance/stale-prompts", "maintenance.stalePrompts", s.handleStalePrompts},
+		{http.MethodPost, "/api/v1/maintenance/stale-prompts", "maintenance.stalePrompts", s.attachmentCoordinator().HandleStalePrompts},
 		{http.MethodGet, "/api/v1/files/read", "files.read", s.handleGeneralFileRead},
 		{http.MethodGet, "/api/v1/files/mtime", "files.mtime", s.handleGeneralFileMtime},
 		{http.MethodPut, "/api/v1/files/write", "files.write", s.handleGeneralFileWrite},
@@ -218,7 +218,7 @@ func hostedThreadRoutes(s *server, prefix string) []applicationRoute {
 		{http.MethodPut, prefix + "/{threadRef}/sidebar-placement", "hostedThreads.sidebarPlacement", h(s.handleHostedThreadSidebarPlacement)},
 		{http.MethodPut, prefix + "/{threadRef}/assignment", "hostedThreads.assignment", h(s.handleHostedThreadAssignment)},
 		{http.MethodPost, prefix + "/{threadRef}/detach", "hostedThreads.detach", h(s.handleHostedThreadDetach)},
-		{http.MethodPost, prefix + "/{threadRef}/prioritize", "hostedThreads.prioritize", h(s.handleHostedThreadPrioritize)},
+		{http.MethodPost, prefix + "/{threadRef}/prioritize", "hostedThreads.prioritize", h(s.attachmentCoordinator().HandlePrioritize)},
 		{http.MethodPost, prefix + "/{threadRef}/turns", "hostedThreads.turns.submit", h(func(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
 			s.handleAgentTurnSubmit(w, r, record.ID)
 		})},

@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -148,8 +150,8 @@ func TestSpawnSessionCommitsPriorityBeforeImmediateThreadStartAndSettles(t *test
 		}
 		received <- struct{}{}
 	})
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"}})
+	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
+	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,8 +173,8 @@ func TestRunCodexHandshakeAcceptsGranularApprovalPolicy(t *testing.T) {
 	control, executions := newTestHostedControl(t)
 	fake := newFakeAppServer(t)
 	fake.SetStartResult(map[string]any{"model": "gpt-test", "approvalPolicy": map[string]any{"granular": map[string]any{"filesystem": "on-request"}}, "thread": map[string]any{"id": "thread-granular", "cwd": t.TempDir()}})
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd}})
+	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
+	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,8 +192,8 @@ func TestCodexTypedStartRejectionSettlesCreationWithoutEffectiveValue(t *testing
 	control, executions := newTestHostedControl(t)
 	fake := newFakeAppServer(t)
 	fake.SetStartError("policy rejected start")
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"}})
+	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
+	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,8 +210,8 @@ func TestCodexTransportFailureLeavesCreationPending(t *testing.T) {
 	control, executions := newTestHostedControl(t)
 	fake := newFakeAppServer(t)
 	fake.SetDropStart(true)
-	s := &server{defaults: sessionDefaults{cwd: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.cwd, ServiceTier: "priority"}})
+	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
+	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}

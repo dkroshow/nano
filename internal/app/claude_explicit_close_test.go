@@ -70,7 +70,7 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 			}
 			store.Remember(attachment)
 			s := &server{Registry: newSessionRegistry(), attachments: store}
-			s.defaults.claudeShimWS = shim.WSURL()
+			s.defaults.ClaudeShimWS = shim.WSURL()
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?provider=claude", nil)
 			applicationHandler(s).ServeHTTP(w, r)
@@ -117,7 +117,7 @@ func TestClaudeExplicitClosePreservesReplacement(t *testing.T) {
 		c.Reply(call, map[string]any{})
 	})
 	s := &server{attachments: store}
-	s.defaults.claudeShimWS = shim.WSURL()
+	s.defaults.ClaudeShimWS = shim.WSURL()
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1", nil)
 	request.SetPathValue("nativeThreadId", "native-1")
@@ -175,7 +175,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 					c.Reply(call, map[string]any{})
 				}
 			})
-			s.defaults.claudeShimWS = shim.WSURL()
+			s.defaults.ClaudeShimWS = shim.WSURL()
 			request := func() *httptest.ResponseRecorder {
 				w := httptest.NewRecorder()
 				method, path, body := http.MethodPost, "/api/v1/hosted-threads/"+hosted.ID+"/close", ""
@@ -235,7 +235,7 @@ func TestClaudeExplicitConcurrentClosesSendOneStop(t *testing.T) {
 		c.Reply(call, map[string]any{})
 	})
 	s := &server{Registry: newSessionRegistry(), attachments: newTestStore(t)}
-	s.defaults.claudeShimWS = shim.WSURL()
+	s.defaults.ClaudeShimWS = shim.WSURL()
 	s.attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "cs_provisional", ShimSessionID: "cs_provisional"})
 	results := make(chan int, 2)
 	request := func() {

@@ -82,7 +82,7 @@ func TestInboxMatchTemplatePeeksWithoutReading(t *testing.T) {
 func TestHeartbeatScriptAPIIsReadOnly(t *testing.T) {
 	store := openTestHeartbeatStore(t)
 	s := &server{}
-	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.APIOrigin, nil), true, nil)
 	script, _, err := store.CreateScript(featureheartbeat.ScriptRevisionInput{Name: "copy", Source: "process.exit(0)", Actor: featureheartbeat.Actor{Kind: "operator"}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestHeartbeatScriptAPIIsReadOnly(t *testing.T) {
 func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
 	s, _, _, _, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.APIOrigin, nil), true, nil)
 	body, _ := json.Marshal(map[string]any{
 		"targetHostedThreadId": target.ID, "cadenceMinutes": 1,
 		"prePing":   map[string]any{"templateId": "inbox_match"},

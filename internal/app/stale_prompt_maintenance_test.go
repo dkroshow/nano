@@ -154,7 +154,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				t.Helper()
 				encoded, _ := json.Marshal(body)
 				rec := httptest.NewRecorder()
-				h.server.handleStalePrompts(rec, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/stale-prompts", bytes.NewReader(encoded)))
+				h.server.attachmentCoordinator().HandleStalePrompts(rec, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/stale-prompts", bytes.NewReader(encoded)))
 				var receipt stalePromptReceipt
 				if err := json.Unmarshal(rec.Body.Bytes(), &receipt); err != nil {
 					t.Fatalf("body %s: %v", rec.Body.String(), err)
@@ -214,4 +214,27 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Wire receipt decoded by the maintenance HTTP client fixture.
+type stalePromptCounts struct {
+	Accepted  int `json:"accepted"`
+	Uncertain int `json:"uncertain"`
+}
+
+type stalePromptReceipt struct {
+	OK             bool                         `json:"ok"`
+	Error          string                       `json:"error,omitempty"`
+	Applied        bool                         `json:"applied"`
+	Cutoff         string                       `json:"cutoff"`
+	Fingerprint    string                       `json:"fingerprint"`
+	Candidates     int                          `json:"candidates"`
+	Threads        int                          `json:"threads"`
+	ByProvider     map[string]stalePromptCounts `json:"byProvider"`
+	RunningThreads int                          `json:"runningThreads"`
+	ClientActionID string                       `json:"clientActionId,omitempty"`
+	BackupPath     string                       `json:"backupPath,omitempty"`
+	Settled        int                          `json:"settled"`
+	Expired        int                          `json:"expired"`
+	Unchanged      int                          `json:"unchanged"`
 }

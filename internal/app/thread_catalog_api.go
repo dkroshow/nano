@@ -65,7 +65,7 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// exactly this value when the provider announces its identity.
 	provider, nativeID, staged := sess.StageNameBeforeBinding(name)
 	if staged {
-		s.notifyRuntimeRefresh()
+		s.attachmentCoordinator().NotifyRuntimeRefresh()
 		httpapi.WriteJSON(w, sess.Summary())
 		return
 	}
@@ -79,12 +79,12 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// Nano restart in this window keeps the rename. captureInit updates threadID
 	// under stateMu before it consumes pendingName, so an unchanged threadID
 	// proves the staged value will still be picked up.
-	if rec, ok := s.attachmentFor(provider, nativeID); ok && rec.Provisional() {
+	if rec, ok := s.attachmentCoordinator().AttachmentFor(provider, nativeID); ok && rec.Provisional() {
 		var staged bool
 		nativeID, staged = sess.StageProvisionalName(nativeID, name)
 		if staged {
-			s.setAttachmentPendingName(provider, nativeID, name)
-			s.notifyRuntimeRefresh()
+			s.attachmentCoordinator().SetAttachmentPendingName(provider, nativeID, name)
+			s.attachmentCoordinator().NotifyRuntimeRefresh()
 			httpapi.WriteJSON(w, sess.Summary())
 			return
 		}
@@ -96,7 +96,7 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 		return
 	}
 	sess.SetDisplayName(name)
-	s.notifyRuntimeRefresh()
+	s.attachmentCoordinator().NotifyRuntimeRefresh()
 	httpapi.WriteJSON(w, sess.Summary())
 }
 

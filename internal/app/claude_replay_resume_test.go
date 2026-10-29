@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"strings"
 	"sync"
@@ -50,7 +51,7 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 				}
 			} else {
 				seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-				sess, err := s.spawnSession(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, BootReattach: &bootProviderControl{}}})
+				sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, BootReattach: &bootProviderControl{}}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -61,7 +62,7 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 			if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 				t.Fatalf("replay failure started %d replacements", starts)
 			}
-			if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
+			if _, ok := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
 				t.Fatal("replay failure removed the retryable identity")
 			}
 			// The failed attachment must not poison the durable identity: the
@@ -110,7 +111,7 @@ func TestClaudeResumeReplayProcessingTimeoutNeverStartsReplacement(t *testing.T)
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") || len(shim.CallsOf(shimMethodStart)) != 0 {
 		t.Fatalf("timeout must refuse without replacement: HTTP %d, starts %d, %s", response.Code, len(shim.CallsOf(shimMethodStart)), response.Body.String())
 	}
-	if _, ok := s.attachmentFor("claude", claudeResumeThreadID); !ok {
+	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
 		t.Fatal("timeout removed the retryable identity")
 	}
 }

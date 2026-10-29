@@ -3,7 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
+
+	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,41 +16,113 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/sidebar"
+
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-type externalResumeVerifyingCatalog struct {
-	*fakeThreadCatalog
-	err error
+type externalResumeFixture struct {
+	index                                   *threadCatalogService
+	store                                   *history.Store
+	root                                    history.SourceRoot
+	path, provider, native, cwd, permission string
 }
 
-func (c *externalResumeVerifyingCatalog) VerifyExternalResumeSource(context.Context, string, string, string) (history.ThreadProjection, error) {
-	return history.ThreadProjection{}, c.err
-}
-
-func externalResumeCatalog(t *testing.T, provider, nativeID, cwd string) *fakeThreadCatalog {
+func externalResumeCatalog(t *testing.T, provider, nativeID, cwd string) *externalResumeFixture {
 	t.Helper()
-	source := filepath.Join(t.TempDir(), "native.jsonl")
-	if err := os.WriteFile(source, []byte("{}\n"), 0o600); err != nil {
+	f := &externalResumeFixture{provider: provider, native: nativeID, cwd: cwd, permission: "never"}
+	kind := history.RootCodexSessions
+	root := t.TempDir()
+	f.path = filepath.Join(root, "rollout-"+nativeID+".jsonl")
+	if provider == "claude" {
+		kind = history.RootClaudeProjects
+		f.path = filepath.Join(root, "-workspace", nativeID+".jsonl")
+	}
+	if provider == "grok" {
+		kind = history.RootGrokSessions
+		f.path = filepath.Join(root, nativeID, "summary.json")
+	}
+	f.root = history.SourceRoot{Provider: history.Provider(provider), Kind: kind, Path: root}
+	f.write(t, nativeID)
+	var err error
+	f.store, err = history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	known := func(value string) threadindex.Value {
-		evidence := string(history.EvidenceNativeDurable)
-		return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
+	t.Cleanup(func() { _ = f.store.Close() })
+	f.index, err = newThreadCatalogService(context.Background(), f.store, threadCatalogServiceOptions{Roots: []history.SourceRoot{f.root}, DisableWatcher: true})
+	if err != nil {
+		t.Fatal(err)
 	}
-	row := sidebar.Thread{Thread: threadindex.Thread{ID: "nth_external", Provider: provider, NativeID: nativeID, Kind: "main", Metadata: threadindex.Metadata{
-		CWD: known(cwd), Model: known("gpt-external"), Effort: known("high"),
-		Priority: known("priority"), Permission: known("never"),
-	}, Source: threadindex.SourceSummary{Status: string(history.SourcePresent)}}}
-	detail := row
-	detail.Sources = &[]threadindex.SourceDetail{{
-		RootKind: "codex_sessions", Path: source, Status: string(history.SourcePresent),
-		IdentityEvidence: string(history.EvidenceNativeDurable),
-	}}
-	return &fakeThreadCatalog{
-		thread:  detail,
-		rescued: map[string]sidebar.Thread{nativeID: row},
+	t.Cleanup(f.index.Close)
+	f.refresh(t)
+	return f
+}
+func (f *externalResumeFixture) write(t *testing.T, native string) {
+	t.Helper()
+	var rows []map[string]any
+	switch f.provider {
+	case "codex":
+		rows = []map[string]any{
+			{"type": "session_meta", "payload": map[string]any{"id": native, "cwd": f.cwd}},
+			{"type": "turn_context", "payload": map[string]any{"cwd": f.cwd, "model": "gpt-external", "effort": "high", "service_tier": "priority", "approval_policy": f.permission}},
+		}
+	case "claude":
+		rows = []map[string]any{
+			{"type": "user", "sessionId": native, "cwd": f.cwd, "effort": "high", "permissionMode": f.permission, "timestamp": "2026-10-01T00:00:00Z", "message": map[string]any{"role": "user", "content": "Resume fixture"}},
+			{"type": "assistant", "sessionId": native, "timestamp": "2026-10-01T00:00:01Z", "message": map[string]any{"role": "assistant", "model": "gpt-external", "content": []any{map[string]any{"type": "text", "text": "Saved answer"}}}},
+		}
+	case "grok":
+		rows = []map[string]any{{"info": map[string]any{"id": native, "cwd": f.cwd}, "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:01Z", "current_model_id": "gpt-external", "reasoning_effort": "high", "sandbox_profile": f.permission}}
+	}
+	var out []byte
+	for _, row := range rows {
+		data, err := json.Marshal(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(append(out, data...), '\n')
+	}
+	if err := os.MkdirAll(filepath.Dir(f.path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f.path, out, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+func (f *externalResumeFixture) refresh(t *testing.T) {
+	t.Helper()
+	f.index.RequestRefresh()
+	waitForCatalog(t, func() bool {
+		page, err := f.index.ListThreads(context.Background(), threadindex.ListQuery{IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true, Archived: "include", Limit: 50})
+		return err == nil && len(page.Items) == 1
+	})
+}
+func (f *externalResumeFixture) setPermission(t *testing.T, value string) {
+	t.Helper()
+	f.permission = value
+	f.write(t, f.native)
+	f.index.FileChanged(f.path)
+	waitForCatalog(t, func() bool {
+		page, err := f.index.ListThreads(context.Background(), threadindex.ListQuery{IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true, Archived: "include", Limit: 50})
+		return err == nil && len(page.Items) == 1 && knownCatalogValue(page.Items[0].Metadata.Permission) == value
+	})
+}
+func (f *externalResumeFixture) filenameIdentity(t *testing.T) {
+	t.Helper()
+	roots, err := f.store.ListRoots(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := f.store.LoadSourcesByRoot(context.Background(), roots[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := sources[f.path]
+	projection := *source.Projection
+	projection.IdentityEvidence = history.EvidenceFilenameFallback
+	_, err = f.store.ApplySource(context.Background(), history.SourceProjection{Source: source.Source, Status: source.Status, ParserVersion: source.ParserVersion, IndexedAt: time.Now(), Result: &history.ProjectionResult{Projection: projection, CompleteOffset: source.CompleteOffset, CompleteLines: source.CompleteLines}})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -73,7 +146,7 @@ func TestExternalCodexResumeRegistersOnceAndPreservesHistoryIdentity(t *testing.
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external001"
-	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.CWD).index
 
 	rec := postExternalResume(s, "codex", nativeID)
 	if rec.Code != http.StatusOK {
@@ -97,7 +170,7 @@ func TestExternalCodexResumeRegistersOnceAndPreservesHistoryIdentity(t *testing.
 		t.Fatalf("ready = %#v resumes=%d", ready, fake.ResumeCount())
 	}
 	for field, want := range map[string]string{
-		"cwd": s.defaults.cwd, postureFieldModel: "gpt-external", postureFieldEffort: "high",
+		"cwd": s.defaults.CWD, postureFieldModel: "gpt-external", postureFieldEffort: "high",
 		postureFieldServiceTier: "priority", postureFieldPermissionMode: "never",
 	} {
 		var encoded string
@@ -115,7 +188,7 @@ func TestExternalResumePreviewIsReadOnly(t *testing.T) {
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external002"
-	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.CWD).index
 
 	rec := httptest.NewRecorder()
 	body := `{"provider":"codex","mode":"resume","threadId":"` + nativeID + `"}`
@@ -135,7 +208,7 @@ func TestConcurrentExternalResumeCreatesOneRegistrationAndOneAttachment(t *testi
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external003"
-	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.CWD).index
 
 	recs := make([]*httptest.ResponseRecorder, 2)
 	var wg sync.WaitGroup
@@ -174,21 +247,24 @@ func TestConcurrentExternalResumeCreatesOneRegistrationAndOneAttachment(t *testi
 func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testing.T) {
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
-	s.defaults.allowedTools = "Read,Write"
+	s.defaults.AllowedTools = "Read,Write"
 
 	for _, provider := range []string{"claude", "grok"} {
 		t.Run(provider, func(t *testing.T) {
 			nativeID := "external-" + provider
-			catalog := externalResumeCatalog(t, provider, nativeID, s.defaults.cwd)
+			catalog := externalResumeCatalog(t, provider, nativeID, s.defaults.CWD)
 			// Unknown permission must remain unknown; Nano must not substitute
 			// its new-session allowlist or a broader permission mode.
-			catalog.thread.Metadata.Permission = threadindex.Value{State: "unknown"}
-			s.catalog = catalog
-			resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
+			catalog.setPermission(t, "")
+			s.catalog = catalog.index
+			if s.attachmentsControl != nil {
+				s.attachmentsControl.Catalog = catalog.index.Service
+			}
+			resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !resolved.externalResume || resolved.Cwd != s.defaults.cwd || resolved.PermissionMode != "" {
+			if !resolved.ExternalResumePosture || resolved.Cwd != s.defaults.CWD || resolved.PermissionMode != "" {
 				t.Fatalf("resolved = %#v", resolved)
 			}
 			switch provider {
@@ -214,7 +290,7 @@ func TestExternalResumeProviderFailureKeepsOneRetryableIdentity(t *testing.T) {
 	fake.SetResumeErrorSequence("temporary resume failure", "")
 	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external006"
-	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.CWD).index
 
 	first := postExternalResume(s, "codex", nativeID)
 	if first.Code != http.StatusOK {
@@ -248,13 +324,16 @@ func TestExternalResumeProviderFailureKeepsOneRetryableIdentity(t *testing.T) {
 
 func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	s.defaults.claudeBin = filepath.Join(t.TempDir(), "missing-claude")
+	s.defaults.ClaudeBin = filepath.Join(t.TempDir(), "missing-claude")
 	const nativeID = "external-claude-retry"
-	catalog := externalResumeCatalog(t, "claude", nativeID, s.defaults.cwd)
-	catalog.thread.Metadata.Permission = threadindex.Value{State: "unknown"}
-	s.catalog = catalog
+	catalog := externalResumeCatalog(t, "claude", nativeID, s.defaults.CWD)
+	catalog.setPermission(t, "")
+	s.catalog = catalog.index
+	if s.attachmentsControl != nil {
+		s.attachmentsControl.Catalog = catalog.index.Service
+	}
 
-	firstResolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	firstResolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +343,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	waitForSessionStatus(t, s, first.ID, sessionStatusExited)
 
-	retry, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	retry, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +378,7 @@ func TestConcurrentExternalClaudeResumePreclaimsBeforeReturn(t *testing.T) {
 	})
 	s, _ := claudeResumeServer(t, shim.WSURL())
 	const nativeID = "external-claude-concurrent"
-	s.catalog = externalResumeCatalog(t, "claude", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "claude", nativeID, s.defaults.CWD).index
 
 	recorders := make([]*httptest.ResponseRecorder, 2)
 	var requests sync.WaitGroup
@@ -354,9 +433,9 @@ while :; do sleep 1; done
 `), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	s.defaults.grokBin = bin
+	s.defaults.GrokBin = bin
 	const nativeID = "external-grok-concurrent"
-	s.catalog = externalResumeCatalog(t, "grok", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "grok", nativeID, s.defaults.CWD).index
 
 	first := spawnedSummary(t, postExternalResume(s, "grok", nativeID))
 	if first.ThreadID != nativeID {
@@ -392,7 +471,7 @@ func TestExternalClaudeResumeFailsWithoutExclusiveShimAttachment(t *testing.T) {
 	})
 	s, _ := claudeResumeServer(t, shim.WSURL())
 	const nativeID = "external-claude-exclusive"
-	s.catalog = externalResumeCatalog(t, "claude", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "claude", nativeID, s.defaults.CWD).index
 
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	failed := waitForSessionStatus(t, s, first.ID, sessionStatusExited)
@@ -418,7 +497,7 @@ func TestExternalClaudeResumeUsesExclusiveShimAttachment(t *testing.T) {
 		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-external", "lastSeq": 0})
 	}))
 	s, _ := claudeResumeServer(t, shim.WSURL())
-	s.catalog = externalResumeCatalog(t, "claude", "native-1", s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "claude", "native-1", s.defaults.CWD).index
 
 	first := spawnedSummary(t, postExternalResume(s, "claude", "native-1"))
 	ready := waitForSessionStatus(t, s, first.ID, "ready")
@@ -432,23 +511,27 @@ func TestExternalClaudeResumeUsesExclusiveShimAttachment(t *testing.T) {
 
 func TestExternalResumeRejectsUnsafeCatalogEvidenceWithoutRegistration(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		mutate func(*fakeThreadCatalog)
-		want   string
+		name, provider, want string
+		mutate               func(*testing.T, *externalResumeFixture)
 	}{
-		{"missing source", func(c *fakeThreadCatalog) { (*c.thread.Sources)[0].Status = string(history.SourceMissing) }, "source"},
-		{"filename identity", func(c *fakeThreadCatalog) {
-			(*c.thread.Sources)[0].IdentityEvidence = string(history.EvidenceFilenameFallback)
-		}, "identity"},
-		{"provider mismatch", func(c *fakeThreadCatalog) { c.thread.Provider = "claude"; c.rescued[c.thread.NativeID] = c.thread }, "provider"},
+		{"missing source", "codex", "source", func(t *testing.T, f *externalResumeFixture) {
+			if err := os.Remove(f.path); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"filename identity", "codex", "identity", func(t *testing.T, f *externalResumeFixture) { f.filenameIdentity(t) }},
+		{"provider mismatch", "claude", "provider", func(*testing.T, *externalResumeFixture) {}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := newFakeAppServer(t)
 			s := newResumeTestServer(t, fake.WSURL())
 			const nativeID = "0199a213-abcd-7000-8000-external004"
-			catalog := externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
-			tc.mutate(catalog)
-			s.catalog = catalog
+			catalog := externalResumeCatalog(t, tc.provider, nativeID, s.defaults.CWD)
+			tc.mutate(t, catalog)
+			s.catalog = catalog.index
+			if s.attachmentsControl != nil {
+				s.attachmentsControl.Catalog = catalog.index.Service
+			}
 			rec := postExternalResume(s, "codex", nativeID)
 			if rec.Code == http.StatusOK || !strings.Contains(strings.ToLower(rec.Body.String()), tc.want) {
 				t.Fatalf("status=%d body=%s, want failure containing %q", rec.Code, rec.Body.String(), tc.want)
@@ -464,12 +547,15 @@ func TestExternalResumeRejectsStaleCatalogWhenCurrentSourceChanged(t *testing.T)
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external007"
-	s.catalog = &externalResumeVerifyingCatalog{
-		fakeThreadCatalog: externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd),
-		err:               errors.New("current source identity changed"),
+	catalog := externalResumeCatalog(t, "codex", nativeID, s.defaults.CWD)
+	s.catalog = catalog.index
+	if s.attachmentsControl != nil {
+		s.attachmentsControl.Catalog = catalog.index.Service
 	}
+	// Replace the provider file without refreshing its saved catalog identity.
+	catalog.write(t, "a-different-native-thread")
 	rec := postExternalResume(s, "codex", nativeID)
-	if rec.Code == http.StatusOK || !strings.Contains(strings.ToLower(rec.Body.String()), "current source") {
+	if rec.Code == http.StatusOK || !strings.Contains(strings.ToLower(rec.Body.String()), "current provider source") {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	if got := countHostedRecords(t, s); got != 0 {
@@ -480,7 +566,12 @@ func TestExternalResumeRejectsStaleCatalogWhenCurrentSourceChanged(t *testing.T)
 func TestExternalResumeRejectsUnknownNativeIDWithoutRegistration(t *testing.T) {
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
-	s.catalog = &fakeThreadCatalog{rescued: map[string]sidebar.Thread{}}
+	empty, err := history.Open(filepath.Join(t.TempDir(), "empty.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = empty.Close() })
+	s.catalog = newStoredCatalog(t, empty)
 	rec := postExternalResume(s, "codex", "0199a213-abcd-7000-8000-unknown")
 	if rec.Code == http.StatusOK || !strings.Contains(strings.ToLower(rec.Body.String()), "not found") {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
@@ -494,7 +585,7 @@ func TestExternalResumeRejectsRecoveryHeldNativeIDWithoutRegistration(t *testing
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-recovery"
-	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.CWD).index
 	hosted := seedHostedNative(t, s.agentExecutions, "codex", "recovery-old", sessionStatusExited)
 	if _, err := s.controlMetadata.CanonicalDatabase().Exec(`INSERT INTO hosted_native_recoveries(hosted_thread_id,client_recovery_id,old_native_id,new_native_id,state,record_json) VALUES(?,?,?,?,?,?)`, hosted.ID, "external-resume-test", "recovery-old", nativeID, "created", `{}`); err != nil {
 		t.Fatal(err)
@@ -512,7 +603,7 @@ func TestExternalResumeRejectsRetiredHostedHistory(t *testing.T) {
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
 	const nativeID = "0199a213-abcd-7000-8000-external005"
-	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.cwd)
+	s.catalog = externalResumeCatalog(t, "codex", nativeID, s.defaults.CWD).index
 	old := seedHostedNative(t, s.agentExecutions, "codex", nativeID, sessionStatusExited)
 	if _, err := s.controlMetadata.CanonicalDatabase().Exec(`UPDATE hosted_thread_native_ids SET retired_at='retired' WHERE hosted_thread_id=? AND native_thread_id=?`, old.ID, nativeID); err != nil {
 		t.Fatal(err)

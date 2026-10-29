@@ -1,4 +1,4 @@
-package app
+package hosted
 
 import (
 	"context"
@@ -12,34 +12,30 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-type externalResumeSourceVerifier interface {
-	VerifyExternalResumeSource(context.Context, string, string, string) (history.ThreadProjection, error)
-}
-
-// prepareExternalResume proves that a provider-native conversation exists and
+// PrepareExternalResume proves that a provider-native conversation exists and
 // has never been registered in Nano. It is deliberately read-only so preview,
 // link resolution, and opening a historical pane cannot create hosted state.
-func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) error {
+func (s *AttachmentCoordinator) PrepareExternalResume(ctx context.Context, req *SpawnRequest) error {
 	if s == nil || req == nil || req.Provider == "" || req.ThreadID == "" {
 		return errors.New("provider and native conversation id are required")
 	}
-	if s.agentExecutions == nil || s.controlStore() == nil {
-		return errHostedControlUnavailable
+	if s.Executions == nil || s.ControlStore() == nil {
+		return ErrHostedControlUnavailable
 	}
-	historyRecords, err := s.agentExecutions.SessionsForNativeHistory(req.Provider, req.ThreadID)
+	historyRecords, err := s.Executions.SessionsForNativeHistory(req.Provider, req.ThreadID)
 	if err != nil {
 		return err
 	}
 	if len(historyRecords) != 0 {
 		return fmt.Errorf("native conversation %s was previously hosted by Nano but has no current claim; refusing first registration", req.ThreadID)
 	}
-	if rec, ok := s.attachmentFor(req.Provider, req.ThreadID); ok && rec.HostedThreadID != "" {
+	if rec, ok := s.AttachmentFor(req.Provider, req.ThreadID); ok && rec.HostedThreadID != "" {
 		return fmt.Errorf("native conversation %s has a historical Nano attachment %s but no current claim", req.ThreadID, rec.HostedThreadID)
 	}
-	if s.catalog == nil {
+	if s.Catalog == nil {
 		return fmt.Errorf("cannot verify native conversation %s: thread catalog unavailable", req.ThreadID)
 	}
-	page, err := s.catalog.ListThreads(ctx, threadindex.ListQuery{
+	page, err := s.Catalog.ListThreads(ctx, threadindex.ListQuery{
 		IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true,
 		Archived: string(history.ArchivedInclude), ThreadID: req.ThreadID, Limit: 1,
 	})
@@ -53,7 +49,7 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	if row.NativeID != req.ThreadID || row.Provider != req.Provider {
 		return fmt.Errorf("native conversation %s belongs to provider %s, not %s", req.ThreadID, row.Provider, req.Provider)
 	}
-	detail, err := s.catalog.LoadThread(ctx, row.ID)
+	detail, err := s.Catalog.LoadThread(ctx, row.ID)
 	if err != nil {
 		return fmt.Errorf("load native conversation evidence for %s: %w", req.ThreadID, err)
 	}
@@ -81,8 +77,8 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	if !verifiedSource {
 		return fmt.Errorf("native conversation %s lacks a present provider source with durable identity evidence", req.ThreadID)
 	}
-	if verifier, ok := s.catalog.(externalResumeSourceVerifier); ok {
-		projection, err := verifier.VerifyExternalResumeSource(ctx, detail.ID, req.Provider, req.ThreadID)
+	if s.Catalog != nil {
+		projection, err := s.Catalog.VerifyExternalResumeSource(ctx, detail.ID, req.Provider, req.ThreadID)
 		if err != nil {
 			return fmt.Errorf("native conversation %s current provider source failed verification: %w", req.ThreadID, err)
 		}
@@ -97,7 +93,7 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 		hostedstore.PostureFieldServiceTier:    detail.Metadata.Priority,
 		hostedstore.PostureFieldPermissionMode: detail.Metadata.Permission,
 	} {
-		if known := knownCatalogValue(value); known != "" {
+		if known := knownAttachmentValue(value); known != "" {
 			metadata[field] = known
 		}
 	}
@@ -109,7 +105,7 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 	// identity for every provider; thread/read additionally proves this daemon
 	// can resolve the exact rollout before Nano commits registration.
 	if req.Provider == "codex" {
-		if s.codex == nil {
+		if s.Codex == nil {
 			return errors.New("cannot verify Codex resume availability: app-server unavailable")
 		}
 		readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -119,7 +115,7 @@ func (s *server) prepareExternalResume(ctx context.Context, req *spawnRequest) e
 				ID string `json:"id"`
 			} `json:"thread"`
 		}
-		if err := s.codex.Call(readCtx, "thread/read", map[string]any{"threadId": req.ThreadID, "includeTurns": false}, &result); err != nil {
+		if err := s.Codex.Call(readCtx, "thread/read", map[string]any{"threadId": req.ThreadID, "includeTurns": false}, &result); err != nil {
 			return fmt.Errorf("Codex conversation %s is not available to resume: %w", req.ThreadID, err)
 		}
 		if result.Thread.ID != req.ThreadID {

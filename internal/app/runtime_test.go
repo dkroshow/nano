@@ -146,7 +146,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 // hide the detached record behind it.
 func TestRuntimeForThreeStates(t *testing.T) {
 	// A nil runtime hub leaves the application publisher inert.
-	(&server{}).notifyRuntime()
+	(&server{}).attachmentCoordinator().NotifyRuntime()
 	attachments := newTestStore(t)
 	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "codex-detached", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})

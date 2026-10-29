@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/hosted"
 	"os"
 	"os/exec"
 	"strings"
@@ -51,10 +53,10 @@ var newGrokUsageClient = func(command []string, cwd string) grokUsageClient {
 // fetchGrokUsage reads the subscription window through the real Grok leader.
 // One deadline covers process start, ACP initialization, and billing. Closing
 // the client also kills and reaps the short-lived stdio child.
-func fetchGrokUsage(ctx context.Context, defaults sessionDefaults) *usageProviderSnapshot {
+func fetchGrokUsage(ctx context.Context, defaults config.SessionDefaults) *usageProviderSnapshot {
 	out := &usageProviderSnapshot{Provider: "grok", Buckets: []usageBucket{}}
-	request := spawnRequest{ProviderRequest: sessions.ProviderRequest{Mode: "start", Cwd: defaults.cwd, GrokBin: sessions.ResolveGrokBin(defaults.grokBin),
-		GrokLeaderSocket: defaults.grokLeaderSocket},
+	request := hosted.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Mode: "start", Cwd: defaults.CWD, GrokBin: sessions.ResolveGrokBin(defaults.GrokBin),
+		GrokLeaderSocket: defaults.GrokLeaderSocket},
 	}
 	command := sessions.GrokCommand(request.ProviderRequest)
 	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
@@ -71,7 +73,7 @@ func fetchGrokUsage(ctx context.Context, defaults sessionDefaults) *usageProvide
 
 	callCtx, cancel := context.WithTimeout(ctx, grokUsageTimeout)
 	defer cancel()
-	client := newGrokUsageClient(command, sessions.GrokProbeCwd(defaults.cwd))
+	client := newGrokUsageClient(command, sessions.GrokProbeCwd(defaults.CWD))
 	defer client.Close()
 	if err := client.StartContext(callCtx); err != nil {
 		return out.Fail(grokUsageFailure("start", err), grokUsageErrorDetail("start", err))

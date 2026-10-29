@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -155,12 +157,12 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s := &server{defaults: sessionDefaults{cwd: cwd, claudeBin: "/fake/claude"}, attachments: store, controlMetadata: metadata, agentExecutions: executions}
+	s := &server{defaults: config.SessionDefaults{CWD: cwd, ClaudeBin: "/fake/claude"}, attachments: store, controlMetadata: metadata, agentExecutions: executions}
 
 	for provider, want := range map[string]string{
 		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
 	} {
-		resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
+		resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
 		if err != nil {
 			t.Fatalf("resolve %s resume: %v", provider, err)
 		}
@@ -178,7 +180,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
 	if err != nil {
 		t.Fatalf("resolve explicit resume: %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 // hostedSessionForRequest is sessionForHostedThread for a request that needs
 // the thread live: a thread still starting after a restart is registered first.
 func (s *server) hostedSessionForRequest(id string) *sessions.Session {
-	s.reattachWaitingHosted(id)
+	s.attachmentCoordinator().ReattachWaitingHosted(id)
 	return s.SessionForHostedThread(id)
 }
 func (s *server) handleHostedThreadConversation(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {

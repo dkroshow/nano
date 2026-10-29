@@ -1,6 +1,8 @@
 package app
 
-import "testing"
+import (
+	"testing"
+)
 
 // The session sibling checks that the queued outcome and timer invoke the
 // terminal consumer once. This owner retains the first durable terminal when

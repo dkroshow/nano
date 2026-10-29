@@ -73,7 +73,7 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 	}
 	var keys history.SavedUserKeys
 	sessions.AddSavedUserKey(&keys, binding, rec.Provider)
-	rows, err := s.savedPromptRows(ctx, rec.NativeThreadID, keys)
+	rows, err := s.hostedCatalog().SavedPromptRows(ctx, rec.NativeThreadID, keys)
 	if err != nil {
 		return "", "", err
 	}
@@ -90,7 +90,7 @@ func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) 
 			return "", "", history.ErrSavedTranscriptUnavailable // an interrupted turn has no answer
 		}
 	}
-	text, itemID, err := s.savedTurnFinal(ctx, rec.NativeThreadID, generation, turn)
+	text, itemID, err := s.hostedCatalog().SavedTurnFinal(ctx, rec.NativeThreadID, generation, turn)
 	if err != nil {
 		return "", "", err
 	}
