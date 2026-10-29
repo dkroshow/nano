@@ -1,12 +1,12 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
 
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
@@ -51,7 +51,7 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 				}
 			} else {
 				seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-				sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, BootReattach: &bootProviderControl{}}})
+				sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, BootReattach: &bootProviderControl{}}})
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -18,7 +18,7 @@ func TestAttachmentRecordRoundTripsTurnAnchor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "native-1", Cwd: dir})
+	store.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", Cwd: dir})
 	store.SetTurnAnchor("claude", "native-1", 1785510514000, 42)
 
 	reloaded, err := hostedstore.NewAttachmentStore(path)

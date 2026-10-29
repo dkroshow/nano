@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -33,7 +33,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 		setup     func(t *testing.T, h *settlementHarness)
 		after     func(t *testing.T)
 		candidate int
-		want      map[string]turns.DeliveryState
+		want      map[string]prompts.DeliveryState
 	}{
 		{
 			// Attached idle thread with an open pane: what expires leaves the
@@ -57,7 +57,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 					t.Fatalf("live text after expiry = %+v, want none", live)
 				}
 			},
-			want: map[string]turns.DeliveryState{"running": turns.Expired, "unproven": turns.Expired, "unanswered": turns.Expired},
+			want: map[string]prompts.DeliveryState{"running": prompts.Expired, "unproven": prompts.Expired, "unanswered": prompts.Expired},
 		},
 		{
 			// Detached thread: the saved transcript proves old and new; the
@@ -69,14 +69,14 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				seedAcceptedTransactionalTurn(t, h.prompts, "hosted", model.ProviderCodex, h.fixture.native, "recent", "turn-recent", "recent prompt")
 				seedTestSessionRegistry(&h.server.Registry, map[string]*session{"busy-session": configuredFixtureSession(t, sessionConfig{ID: "busy-session", Provider: "codex", HostedThreadID: "busy"}, "busy-native", "ready", "", true)})
 			},
-			want: map[string]turns.DeliveryState{"old": turns.Confirmed, "new": turns.Confirmed, "running": turns.Expired,
-				"unproven": turns.Expired, "unanswered": turns.Expired, "busy": turns.Accepted, "recent": turns.Accepted},
+			want: map[string]prompts.DeliveryState{"old": prompts.Confirmed, "new": prompts.Confirmed, "running": prompts.Expired,
+				"unproven": prompts.Expired, "unanswered": prompts.Expired, "busy": prompts.Accepted, "recent": prompts.Accepted},
 		},
 		{
 			// Detached Claude thread whose only stale prompt was bound to the
 			// shim handle: the newer prompts name the real session it proves in.
 			name: "detached provisional", provider: "claude", stale: []string{"old"}, candidate: 1,
-			want: map[string]turns.DeliveryState{"old": turns.Confirmed},
+			want: map[string]prompts.DeliveryState{"old": prompts.Confirmed},
 		},
 		{
 			// Attached thread whose saved transcript cannot be read: nothing
@@ -89,7 +89,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				})
 				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
 			},
-			want: map[string]turns.DeliveryState{"running": turns.Accepted, "unproven": turns.Accepted, "unanswered": turns.Uncertain},
+			want: map[string]prompts.DeliveryState{"running": prompts.Accepted, "unproven": prompts.Accepted, "unanswered": prompts.Uncertain},
 		},
 		{
 			// Attached thread whose turn starts while its saved rows are read:
@@ -104,7 +104,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				})
 				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
 			},
-			want: map[string]turns.DeliveryState{"running": turns.Accepted, "unproven": turns.Accepted, "unanswered": turns.Uncertain},
+			want: map[string]prompts.DeliveryState{"running": prompts.Accepted, "unproven": prompts.Accepted, "unanswered": prompts.Uncertain},
 		},
 		{
 			// Attached thread that starts a delivery while its saved rows are
@@ -136,7 +136,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				})
 				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
 			},
-			want: map[string]turns.DeliveryState{"running": turns.Accepted, "unproven": turns.Accepted, "unanswered": turns.Uncertain},
+			want: map[string]prompts.DeliveryState{"running": prompts.Accepted, "unproven": prompts.Accepted, "unanswered": prompts.Uncertain},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -161,7 +161,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				}
 				return rec.Code, receipt
 			}
-			state := func(action string) turns.Record {
+			state := func(action string) prompts.Record {
 				t.Helper()
 				record, _, err := h.prompts.Get(context.Background(), action)
 				if err != nil {
@@ -191,7 +191,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				if record := state(action); record.Outbox.State != want || record.ProviderText != action+" prompt" {
 					t.Fatalf("%s = %q (text kept %v), want %q; receipt %+v", action, record.Outbox.State, record.ProviderText != "", want, applied)
 				}
-				if want == turns.Expired {
+				if want == prompts.Expired {
 					expired = append(expired, action)
 				}
 			}

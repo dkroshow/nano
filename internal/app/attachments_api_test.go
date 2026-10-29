@@ -43,8 +43,8 @@ func TestSessionsGETSurfacesDetached(t *testing.T) {
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
-		Sessions []sessionSummary   `json:"sessions"`
-		Detached []attachmentRecord `json:"detached"`
+		Sessions []sessionSummary         `json:"sessions"`
+		Detached []hostedstore.Attachment `json:"detached"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
@@ -70,8 +70,8 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
-		Sessions []sessionSummary   `json:"sessions"`
-		Detached []attachmentRecord `json:"detached"`
+		Sessions []sessionSummary         `json:"sessions"`
+		Detached []hostedstore.Attachment `json:"detached"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestSessionDeleteForgetsAttachment(t *testing.T) {
 func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 	s, store := serverWithAttachments(t)
 	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(attachmentRecord{
+	store.Remember(hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		Cwd:            "/b",
@@ -119,7 +119,7 @@ func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
-		Detached []attachmentRecord `json:"detached"`
+		Detached []hostedstore.Attachment `json:"detached"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 	s, store := serverWithAttachments(t)
 	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(attachmentRecord{
+	store.Remember(hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",
@@ -156,7 +156,7 @@ func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 func TestAttachmentDismissProviderParam(t *testing.T) {
 	s, store := serverWithAttachments(t)
 	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	claudeRec := attachmentRecord{
+	claudeRec := hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",
@@ -222,7 +222,7 @@ func TestSessionsGETNoStore(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {
-		Detached []attachmentRecord `json:"detached"`
+		Detached []hostedstore.Attachment `json:"detached"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)

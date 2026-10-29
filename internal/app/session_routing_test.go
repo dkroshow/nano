@@ -1,20 +1,22 @@
 package app
 
-// These tests protect session routing from metadata-read contention and from
-// losing the stored hosted identity during resume.
-
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/config"
-	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/config"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
+
+// These tests protect session routing from metadata-read contention and from
+// losing the stored hosted identity during resume.
 
 // /fast enters through the ordinary turn-options endpoint. An open browser
 // concurrently reads canonical metadata for the session registry, so that
@@ -143,7 +145,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 	for provider, hosted := range map[string]string{
 		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
 	} {
-		store.Remember(attachmentRecord{
+		store.Remember(hostedstore.Attachment{
 			Provider: provider, NativeThreadID: "native-" + provider,
 			HostedThreadID: hosted, Cwd: cwd, AttachedAt: "2026-08-06T10:00:00Z",
 		})
@@ -162,7 +164,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 	for provider, want := range map[string]string{
 		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
 	} {
-		resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
+		resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
 		if err != nil {
 			t.Fatalf("resolve %s resume: %v", provider, err)
 		}
@@ -180,7 +182,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
 	if err != nil {
 		t.Fatalf("resolve explicit resume: %v", err)
 	}

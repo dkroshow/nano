@@ -12,6 +12,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -54,7 +55,7 @@ func newClaudeHandoff(t *testing.T) *claudeHandoff {
 	h.session = h.runtime.session
 	server := h.catalog.server
 	seedTestSessionRegistry(&server.Registry, map[string]*session{h.session.ID(): h.session})
-	h.session.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
+	h.session.ConfigureSavedReaders(func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return server.hostedCatalog().SavedTurnEvidence(ctx, h.session.Provider(), h.session.ThreadID(), turnID)
 	}, nil, nil, nil, nil)
 	return h

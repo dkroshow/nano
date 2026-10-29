@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,12 +14,16 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/history"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -36,7 +39,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			turnStore, err := turns.OpenStore(context.Background(), queue.Database())
+			turnStore, err := prompts.OpenStore(context.Background(), queue.Database())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +66,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			if rec.Code != http.StatusAccepted {
 				t.Fatalf("submit status = %d, body %s", rec.Code, rec.Body.String())
 			}
-			var submitted agentTurnView
+			var submitted hostedmodel.TurnView
 			if err := json.Unmarshal(rec.Body.Bytes(), &submitted); err != nil {
 				t.Fatal(err)
 			}
@@ -80,7 +83,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("duplicate status = %d, body %s", rec.Code, rec.Body.String())
 			}
-			var duplicate agentTurnView
+			var duplicate hostedmodel.TurnView
 			_ = json.Unmarshal(rec.Body.Bytes(), &duplicate)
 			if duplicate.ID != submitted.ID {
 				t.Fatalf("duplicate operation %q != %q", duplicate.ID, submitted.ID)
@@ -92,7 +95,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("operation status = %d, body %s", rec.Code, rec.Body.String())
 			}
-			var view agentTurnView
+			var view hostedmodel.TurnView
 			_ = json.Unmarshal(rec.Body.Bytes(), &view)
 			if view.Provider != provider || view.Status != agentTurnRunning || view.Terminal {
 				t.Fatalf("operation view = %#v", view)
@@ -120,7 +123,7 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	turnStore, err := turns.OpenStore(context.Background(), queue.Database())
+	turnStore, err := prompts.OpenStore(context.Background(), queue.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +152,7 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	if rec.Code != http.StatusAccepted && rec.Code != http.StatusOK {
 		t.Fatalf("submit status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	var submitted agentTurnView
+	var submitted hostedmodel.TurnView
 	if err := json.Unmarshal(rec.Body.Bytes(), &submitted); err != nil {
 		t.Fatal(err)
 	}
@@ -229,11 +232,11 @@ func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testi
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent-sessions", bytes.NewReader([]byte(`{
     "clientSessionId":"caller-session","provider":"codex","presentationMode":"invisible"
   }`)))
-	s.handleAgentSessionCreate(rec, req)
+	s.hostedController().HandleCreate(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid presentation status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := (&server{agentExecutions: store, Registry: newSessionRegistry()}).resolveHostedThreadRecord("caller-session"); ok {
+	if _, ok := (&server{agentExecutions: store, Registry: newSessionRegistry()}).hostedController().ResolveHostedRecord("caller-session"); ok {
 		t.Fatal("invalid request was persisted")
 	}
 }
@@ -250,7 +253,7 @@ func TestAgentCreatedHostedThreadRequiresKnownInvoker(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			s.handleAgentSessionCreate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(body))))
+			s.hostedController().HandleCreate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(body))))
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 			}
@@ -313,7 +316,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatalf("human session assignment = %#v, err=%v", assignment, err)
 	}
 	listed := httptest.NewRecorder()
-	s.handleAgentSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
+	s.hostedViews().HandleSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
 	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte(summary.HostedThreadID)) {
 		t.Fatalf("hosted-thread list status = %d, body %s", listed.Code, listed.Body.String())
 	}
@@ -336,7 +339,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if err := control.CanonicalDatabase().QueryRow(`SELECT desired_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, summary.HostedThreadID, postureFieldServiceTier).Scan(&desired); err != nil || desired != metadataDispositionRequested {
 		t.Fatalf("priority desired metadata = %q, err=%v", desired, err)
 	}
-	if resolved, ok := s.resolveHostedThreadRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
+	if resolved, ok := s.hostedController().ResolveHostedRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
 		t.Fatalf("resolve human-created native id = %#v, present=%v", resolved, ok)
 	}
 	provider.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-human"}})
@@ -356,7 +359,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if submitted.Code != http.StatusAccepted {
 		t.Fatalf("universal turn status = %d, body %s", submitted.Code, submitted.Body.String())
 	}
-	var operation agentTurnView
+	var operation hostedmodel.TurnView
 	if err := json.Unmarshal(submitted.Body.Bytes(), &operation); err != nil {
 		t.Fatal(err)
 	}
@@ -393,14 +396,14 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	}
 
 	created := httptest.NewRecorder()
-	s.handleAgentSessionCreate(created, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(`{
+	s.hostedController().HandleCreate(created, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(`{
       "clientSessionId":"api-created","provider":"codex","mode":"start","presentationMode":"shared",
       "invokerThreadRef":"parent-native"
     }`))))
 	if created.Code != http.StatusCreated {
 		t.Fatalf("hosted API create status = %d, body %s", created.Code, created.Body.String())
 	}
-	var hosted agentSessionView
+	var hosted hostedmodel.SessionView
 	if err := json.Unmarshal(created.Body.Bytes(), &hosted); err != nil {
 		t.Fatal(err)
 	}
@@ -415,11 +418,11 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
       "clientSessionId":"api-created","provider":"codex","mode":"start","presentationMode":"shared",
       "invokerThreadRef":"` + parent.ID + `"
     }`)
-	s.handleAgentSessionCreate(duplicate, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader(duplicateBody)))
+	s.hostedController().HandleCreate(duplicate, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader(duplicateBody)))
 	if duplicate.Code != http.StatusOK {
 		t.Fatalf("normalized invoker retry status = %d, body %s", duplicate.Code, duplicate.Body.String())
 	}
-	var retried agentSessionView
+	var retried hostedmodel.SessionView
 	if err := json.Unmarshal(duplicate.Body.Bytes(), &retried); err != nil || retried.ID != hosted.ID {
 		t.Fatalf("normalized invoker retry = %#v, err=%v", retried, err)
 	}
@@ -473,11 +476,11 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store, catalog: saved}, map[string]*session{"nano-1": sess})
 	s.startLiveText(sess)
 
-	read := func(path string) (liveProjectionSnapshot, int) {
+	read := func(path string) (liveview.Snapshot, int) {
 		t.Helper()
 		rec := httptest.NewRecorder()
 		applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		var snapshot liveProjectionSnapshot
+		var snapshot liveview.Snapshot
 		if rec.Code == http.StatusOK {
 			if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
 				t.Fatal(err)
@@ -522,7 +525,7 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	attachments := newTestStore(t)
-	attachments.Remember(attachmentRecord{
+	attachments.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-delete-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
@@ -564,7 +567,7 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	attachments := newTestStore(t)
-	attachments.Remember(attachmentRecord{
+	attachments.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-close-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
@@ -624,7 +627,7 @@ func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 		w, _ := store.Turn(waiting.ID)
 		t.Fatalf("exited record still owns open operations: queued=%q waiting=%q — the split-brain seam", q.Status, w.Status)
 	}
-	for _, op := range []agentTurnRecord{queued, waiting} {
+	for _, op := range []threads.TurnRecord{queued, waiting} {
 		if settled, _ := store.Turn(op.ID); settled.Status != agentTurnInterrupted {
 			t.Fatalf("operation %s status = %q, want interrupted", op.ID, settled.Status)
 		}
@@ -639,7 +642,7 @@ func TestAgentSessionDetach(t *testing.T) {
 	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	attachments := newTestStore(t)
-	attachments.Remember(attachmentRecord{
+	attachments.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-detach-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
@@ -675,12 +678,12 @@ func TestAgentSessionDetach(t *testing.T) {
 
 func TestAgentClientSessionIDIsPathSafe(t *testing.T) {
 	for _, value := range []string{"worker-1", "team.alpha:task_2@local"} {
-		if !validAgentClientID(value) {
+		if !hostedmodel.ValidClientID(value) {
 			t.Fatalf("safe id %q rejected", value)
 		}
 	}
 	for _, value := range []string{"", "worker/1", "worker 1", "café"} {
-		if validAgentClientID(value) {
+		if hostedmodel.ValidClientID(value) {
 			t.Fatalf("unsafe id %q accepted", value)
 		}
 	}
@@ -703,8 +706,8 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
 	oldRecord, _ := store.Turn(old.ID)
 	currentRecord, _ := store.Turn(current.ID)
-	oldView := s.agentTurnView(oldRecord)
-	currentView := s.agentTurnView(currentRecord)
+	oldView := s.hostedViews().TurnView(oldRecord)
+	currentView := s.hostedViews().TurnView(currentRecord)
 	if len(oldView.Interactions) != 0 || len(currentView.Interactions) != 1 || currentView.Interactions[0].ID != "1" {
 		t.Fatalf("interaction scopes = old:%#v current:%#v", oldView.Interactions, currentView.Interactions)
 	}
@@ -719,7 +722,7 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -745,7 +748,7 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 	if submitted.Code != http.StatusAccepted {
 		t.Fatalf("queue status = %d, body %s", submitted.Code, submitted.Body.String())
 	}
-	var queued agentTurnView
+	var queued hostedmodel.TurnView
 	if err := json.Unmarshal(submitted.Body.Bytes(), &queued); err != nil {
 		t.Fatal(err)
 	}
@@ -807,7 +810,7 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -830,7 +833,7 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	if submitted.Code != http.StatusAccepted {
 		t.Fatalf("follow-up admission = %d, body %s", submitted.Code, submitted.Body.String())
 	}
-	var operation agentTurnView
+	var operation hostedmodel.TurnView
 	if err := json.Unmarshal(submitted.Body.Bytes(), &operation); err != nil {
 		t.Fatal(err)
 	}
@@ -853,7 +856,7 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -884,7 +887,7 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 	if submitted.Code != http.StatusAccepted {
 		t.Fatalf("follow-up admission = %d, body %s", submitted.Code, submitted.Body.String())
 	}
-	var queued agentTurnView
+	var queued hostedmodel.TurnView
 	if err := json.Unmarshal(submitted.Body.Bytes(), &queued); err != nil {
 		t.Fatal(err)
 	}
@@ -909,7 +912,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -939,7 +942,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if first.Code != http.StatusAccepted {
 		t.Fatalf("first admission = %d, body %s", first.Code, first.Body.String())
 	}
-	var firstView agentTurnView
+	var firstView hostedmodel.TurnView
 	if err := json.Unmarshal(first.Body.Bytes(), &firstView); err != nil {
 		t.Fatal(err)
 	}
@@ -964,7 +967,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if second.Code != http.StatusAccepted {
 		t.Fatalf("second admission = %d, body %s", second.Code, second.Body.String())
 	}
-	var secondView agentTurnView
+	var secondView hostedmodel.TurnView
 	if err := json.Unmarshal(second.Body.Bytes(), &secondView); err != nil {
 		t.Fatal(err)
 	}
@@ -993,7 +996,7 @@ func TestHostedClaudeAcceptedPromptDoesNotHoldFollowupClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1041,7 +1044,7 @@ func TestHostedClaudeAcceptedPromptDoesNotHoldFollowupClaim(t *testing.T) {
 	if providerCalls.Load() != 1 {
 		t.Fatalf("accepted prompt blocked follow-up: calls=%d", providerCalls.Load())
 	}
-	if accepted, _, err := turnStore.Get(context.Background(), operation.TransportActionID); err != nil || accepted.Outbox.State != turns.Accepted || accepted.ClaimToken != "" {
+	if accepted, _, err := turnStore.Get(context.Background(), operation.TransportActionID); err != nil || accepted.Outbox.State != prompts.Accepted || accepted.ClaimToken != "" {
 		t.Fatalf("accepted prompt retained claim: record=%#v err=%v", accepted, err)
 	}
 }
@@ -1056,7 +1059,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1103,7 +1106,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	if submitted.Code != http.StatusAccepted {
 		t.Fatalf("startup queue status = %d, body %s", submitted.Code, submitted.Body.String())
 	}
-	var queued agentTurnView
+	var queued hostedmodel.TurnView
 	if err := json.Unmarshal(submitted.Body.Bytes(), &queued); err != nil {
 		t.Fatal(err)
 	}
@@ -1141,7 +1144,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1166,7 +1169,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if submitted.Code != http.StatusAccepted {
 		t.Fatalf("startup queue status = %d, body %s", submitted.Code, submitted.Body.String())
 	}
-	var operation agentTurnView
+	var operation hostedmodel.TurnView
 	if err := json.Unmarshal(submitted.Body.Bytes(), &operation); err != nil {
 		t.Fatal(err)
 	}
@@ -1218,7 +1221,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if followup.Code != http.StatusAccepted {
 		t.Fatalf("follow-up admission = %d, body %s", followup.Code, followup.Body.String())
 	}
-	var followupView agentTurnView
+	var followupView hostedmodel.TurnView
 	if err := json.Unmarshal(followup.Body.Bytes(), &followupView); err != nil {
 		t.Fatal(err)
 	}
@@ -1238,7 +1241,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1266,7 +1269,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if submitted.Code != http.StatusAccepted {
 		t.Fatalf("startup queue status = %d, body %s", submitted.Code, submitted.Body.String())
 	}
-	var operation agentTurnView
+	var operation hostedmodel.TurnView
 	if err := json.Unmarshal(submitted.Body.Bytes(), &operation); err != nil {
 		t.Fatal(err)
 	}
@@ -1295,7 +1298,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	// lets the synthetic asynchronous callback queue drain; production has no timer.
 	time.Sleep(50 * time.Millisecond)
 	startedDeadline := time.Now().Add(time.Second)
-	var snapshot liveProjectionSnapshot
+	var snapshot liveview.Snapshot
 	for time.Now().Before(startedDeadline) {
 		snapshot = observer.Snapshot()
 		if len(snapshot.Turns) == 1 && snapshot.Turns[0].StartedAtMs != 0 {
@@ -1435,7 +1438,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 
 	firstResponse := submitHostedTurn(t, s, hosted.ID, "queue-first", "first")
 	secondResponse := submitHostedTurn(t, s, hosted.ID, "queue-second", "second")
-	var first, second agentTurnView
+	var first, second hostedmodel.TurnView
 	_ = json.Unmarshal(firstResponse.Body.Bytes(), &first)
 	_ = json.Unmarshal(secondResponse.Body.Bytes(), &second)
 	if first.QueuePosition != 1 || second.QueuePosition != 2 {
@@ -1450,13 +1453,13 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	if canceled.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, body %s", canceled.Code, canceled.Body.String())
 	}
-	var canceledView agentTurnView
+	var canceledView hostedmodel.TurnView
 	_ = json.Unmarshal(canceled.Body.Bytes(), &canceledView)
 	if canceledView.Status != agentTurnInterrupted || !canceledView.Terminal || canceledView.QueuePosition != 0 {
 		t.Fatalf("canceled operation = %#v", canceledView)
 	}
 	firstRecord, _ := executions.Turn(first.ID)
-	if got := s.agentTurnView(firstRecord).QueuePosition; got != 1 {
+	if got := s.hostedViews().TurnView(firstRecord).QueuePosition; got != 1 {
 		t.Fatalf("first queue position after cancel = %d", got)
 	}
 }
@@ -1493,7 +1496,7 @@ func confirmedTestSender(t *testing.T, s *server, provider string) string {
 	return sender.ID
 }
 
-func waitForAgentTurnStatus(t *testing.T, store *agentExecutionStore, operationID, want string) agentTurnRecord {
+func waitForAgentTurnStatus(t *testing.T, store *hostedstore.ExecutionStore, operationID, want string) threads.TurnRecord {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -1610,7 +1613,7 @@ func TestHostedThreadSidebarPlacementEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("standalone = %d body %s", rec.Code, rec.Body.String())
 	}
-	var view agentSessionView
+	var view hostedmodel.SessionView
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || view.SidebarPlacement != sidebarPlacementStandalone {
 		t.Fatalf("view = %+v err=%v", view, err)
 	}
@@ -1768,11 +1771,11 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 		uncertain    bool
 		byCaller     bool
 		source, code string
-		ended        turns.DeliveryState
+		ended        prompts.DeliveryState
 	}{
-		{name: "a person discards a queued prompt", source: "operator", code: "queued_turn_canceled", ended: turns.Refused},
-		{name: "a person discards a prompt whose delivery is unknown", uncertain: true, source: "operator", code: "prompt_discarded", ended: turns.Expired},
-		{name: "the caller cancels its queued prompt", byCaller: true, source: "client", code: "queued_turn_canceled", ended: turns.Refused},
+		{name: "a person discards a queued prompt", source: "operator", code: "queued_turn_canceled", ended: prompts.Refused},
+		{name: "a person discards a prompt whose delivery is unknown", uncertain: true, source: "operator", code: "prompt_discarded", ended: prompts.Expired},
+		{name: "the caller cancels its queued prompt", byCaller: true, source: "client", code: "queued_turn_canceled", ended: prompts.Refused},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, target := interactTestServer(t, true)
@@ -1782,8 +1785,8 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			action := op.TransportActionID
-			if _, _, err := sess.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: target, Provider: model.ProviderCodex, NativeThreadID: "native-target", ActionID: action,
-				ProviderText: "ask", PresentationText: "ask", TextHash: sendTextHash("ask"), RequestHash: sendTextHash("ask"), Origin: turns.AgentOrigin}); err != nil {
+			if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: target, Provider: model.ProviderCodex, NativeThreadID: "native-target", ActionID: action,
+				ProviderText: "ask", PresentationText: "ask", TextHash: sendTextHash("ask"), RequestHash: sendTextHash("ask"), Origin: prompts.AgentOrigin}); err != nil {
 				t.Fatal(err)
 			}
 			// Queued behind the thread's running turn, as the submit route
@@ -1792,10 +1795,10 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			if test.uncertain {
-				if _, claimed, err := sess.PromptStore().Claim(ctx, turns.ClaimRequest{HostedThreadID: target, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+				if _, claimed, err := sess.PromptStore().Claim(ctx, prompts.ClaimRequest{HostedThreadID: target, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 					t.Fatalf("claim = %v, %v", claimed, err)
 				}
-				if _, err := sess.PromptStore().Uncertain(ctx, turns.Uncertainty{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
+				if _, err := sess.PromptStore().Uncertain(ctx, prompts.Uncertainty{ActionID: action, ClaimToken: "claim", AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
 					t.Fatal(err)
 				}
 				if err := s.agentExecutions.MarkTurnDelivery(op.ID, "", agentTurnDeliveryUnknown, nil); err != nil {
@@ -1807,7 +1810,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				if test.byCaller {
 					request := httptest.NewRequest(http.MethodDelete, "/api/v1/turn-operations/"+op.ID, nil)
 					request.SetPathValue("operationId", op.ID)
-					s.handleTurnOperationCancel(rec, request)
+					s.hostedController().HandleOperationCancel(rec, request)
 				} else {
 					sess.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/"+action, nil), action)
 				}

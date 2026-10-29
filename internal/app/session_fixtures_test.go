@@ -3,7 +3,7 @@ package app
 import (
 	timemodel "time"
 
-	promptsmodel "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	protocolmodel "github.com/dkroshow/nano/internal/protocol"
@@ -130,10 +130,10 @@ const postureSourceOperator = hostedstore.PostureSourceOperator
 const postureSourceProvider = hostedstore.PostureSourceProvider
 const savedPromptSettleTimeout = 10 * timemodel.Second
 
-type sendAttemptRecord = promptsmodel.SendAttempt
+type sendAttemptRecord = prompts.SendAttempt
 type sessionPosture = hostedstore.Posture
 
-type fixturePromptView = promptsmodel.View
+type fixturePromptView = prompts.View
 
 type wireEvent = protocolmodel.Event
 

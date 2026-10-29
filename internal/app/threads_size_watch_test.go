@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
-	state "github.com/dkroshow/nano/internal/app/statestore"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/core/prompts"
 )
 
 func TestThreadsSizeWatchReportsGrowthAndStops(t *testing.T) {
@@ -36,7 +37,7 @@ func TestThreadsSizeWatchReportsGrowthAndStops(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("initial size report missing")
 	}
-	if err := turns.SaveQueuedTurns(context.Background(), db, []turns.QueuedTurn{{ClientActionID: "growth", Text: strings.Repeat("x", 64*1024)}}); err != nil {
+	if err := prompts.SaveQueuedTurns(context.Background(), db, []prompts.QueuedTurn{{ClientActionID: "growth", Text: strings.Repeat("x", 64*1024)}}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.After(time.Second)

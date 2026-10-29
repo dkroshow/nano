@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // A fresh claude start hands the session back before its transport is up, the
@@ -133,8 +135,8 @@ func (stubClaudeTransport) sendLine([]byte) error { return nil }
 func (stubClaudeTransport) isReplaying() bool     { return false }
 func (stubClaudeTransport) lastSeq() int64        { return 0 }
 func (stubClaudeTransport) close() error          { return nil }
-func (stubClaudeTransport) durableAttachment(nativeThreadID, model string) (attachmentRecord, bool) {
-	return attachmentRecord{Provider: "claude", NativeThreadID: nativeThreadID, Model: model}, true
+func (stubClaudeTransport) durableAttachment(nativeThreadID, model string) (hostedstore.Attachment, bool) {
+	return hostedstore.Attachment{Provider: "claude", NativeThreadID: nativeThreadID, Model: model}, true
 }
 
 // A close before the transport exists must fail safely. Once start settles,

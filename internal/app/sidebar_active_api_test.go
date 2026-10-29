@@ -137,7 +137,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
+	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
 	metadata, executions := newTestHostedControl(t)
 	parentHosted, err := fixtureEnsureSessionWithIdentity(executions, "nht_related_parent", "codex", presentationShared, "", "", "")
 	if err != nil {
@@ -153,7 +153,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 	if err := executions.BindSession(childHosted.ID, "sess-child", "related-child", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixtureAppendOrchestrationAssignment(executions, childHosted.ID, "rel-1", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(executions, childHosted.ID, "rel-1", &hostedstore.Assignment{
 		AssignmentRole: "auditor", Focus: "Audit parent", RelatedHostedThreadID: parentHosted.ID,
 		AuditTargets: []orchestrationAuditTarget{
 			{HostedThreadID: parentHosted.ID},

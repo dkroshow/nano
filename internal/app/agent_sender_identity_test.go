@@ -11,13 +11,15 @@ import (
 	"time"
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 	for _, route := range []string{"attribution", "turn", "inbox"} {
 		for _, scenario := range []string{"source name only", "source name overrides catalog", "catalog fallback", "no hosted record", "missing native", "provisional native", "missing provider", "no name", "provider mismatch", "native mismatch"} {
 			t.Run(route+"/"+scenario, func(t *testing.T) {
-				s, store, workerSession, sender, worker, prompts, _ := stage0Server(t, func(store *agentExecutionStore, sender agentSessionRecord) {
+				s, store, workerSession, sender, worker, prompts, _ := stage0Server(t, func(store *hostedstore.ExecutionStore, sender threads.SessionRecord) {
 					native, provider := sender.NativeThreadID, sender.Provider
 					switch scenario {
 					case "missing native":
@@ -86,7 +88,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					if err := s.controlMetadata.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_current WHERE hosted_thread_id=? AND field='name'`, sender.ID).Scan(&names); err != nil || names != 0 {
 						t.Fatalf("fixture metadata names=%d, err=%v", names, err)
 					}
-					if name := s.displayNameForHosted(context.Background(), sender.Provider, sender.ID, sender.NativeThreadID); name != "" {
+					if name := s.hostedIdentity().DisplayNameForHosted(context.Background(), sender.Provider, sender.ID, sender.NativeThreadID); name != "" {
 						t.Fatalf("fixture unexpectedly has a catalog name: %q", name)
 					}
 				}
@@ -101,7 +103,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					persistedName = ""
 				}
 				if route == "attribution" {
-					got, err := s.turnAttributionFor(sender)
+					got, err := s.hostedController().TurnAttributionFor(sender)
 					if wantCode != "" {
 						if err == nil {
 							t.Fatalf("incomplete identity accepted: %+v", got)
@@ -120,7 +122,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 				if route == "turn" {
 					body, _ := json.Marshal(map[string]string{"clientActionId": "identity-check", "prompt": "Review", "senderThreadRef": sender.ID})
 					response = httptest.NewRecorder()
-					s.handleAgentTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(body)), worker.ID)
+					s.hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(body)), worker.ID)
 				} else {
 					var message featuremail.Message
 					response, message = sendAgentMessageForTest(t, s, worker, sender.ID, "identity-check", "Review", "Review", nil)
@@ -181,7 +183,7 @@ func TestAgentSenderCannotOverrideResolvedName(t *testing.T) {
 			if route == "turn" {
 				body["clientActionId"], body["prompt"] = "caller-name", "Review"
 				encoded, _ := json.Marshal(body)
-				s.handleAgentTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(encoded)), recipient.ID)
+				s.hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(encoded)), recipient.ID)
 				if response.Code != http.StatusAccepted {
 					t.Fatalf("caller name admission=%d %s", response.Code, response.Body)
 				}

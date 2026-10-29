@@ -1,4 +1,5 @@
 // nano: local inspector for coding-agent sessions. One binary, three
+
 // providers: Codex uses its app-server daemon, Claude uses its shim daemon,
 // and Grok uses its native durable leader through ACP stdio proxies.
 package app
@@ -9,9 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/dkroshow/nano/internal/diagnostics"
-	"github.com/dkroshow/nano/internal/historical"
-	"github.com/dkroshow/nano/internal/usage"
 	"io"
 	"io/fs"
 	"log"
@@ -31,12 +29,14 @@ import (
 	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/configpaths"
 	"github.com/dkroshow/nano/internal/core/prompts"
-	feedback "github.com/dkroshow/nano/internal/features/feedback"
+	"github.com/dkroshow/nano/internal/diagnostics"
+	"github.com/dkroshow/nano/internal/features/feedback"
 	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/historical"
 	"github.com/dkroshow/nano/internal/history"
-	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
@@ -45,7 +45,9 @@ import (
 	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/usage"
 	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 	"github.com/dkroshow/nano/web"
 )
@@ -91,28 +93,28 @@ type server struct {
 	// turns the feature off cleanly: no detached entries, hooks are no-ops.
 	attachments *hostedstore.AttachmentStore
 	// controlMetadata is the SQLite-backed hosted metadata authority.
-	controlMetadata     *controlMetadataStore
+	controlMetadata     *hostedstore.MetadataStore
 	controlMetadataErr  string
 	executionControlErr string
 	// sendAttempts is a bounded, hash-only idempotency journal for submitted
 	// prompts. It lives beside attachments/history and never stores prompt text.
-	sendAttempts *sendAttemptStore
+	sendAttempts *prompts.LegacyJournal
 	// queuedTurns is the compatibility view of the text-bearing prompt outbox.
 	// The core prompt store owns it through provider acceptance.
-	queuedTurns *queuedTurnStore
+	queuedTurns *prompts.LegacyQueue
 	// turns is the core prompt store. It stops writing after acceptance; adapter
 	// events write independent turn facts through the core session.
 	turns *prompts.Store
 	// agentExecutions is the durable provider-neutral control plane shared by
 	// every hosted thread: stable identities, action-correlated turns and results.
-	agentExecutions *agentExecutionStore
+	agentExecutions *hostedstore.ExecutionStore
 	// agent owns feature HTTP adaptation and completion-hook publication.
 	agent     *agentapi.Controller
 	agentOnce sync.Once
 	// heartbeat owns the default-off wall-clock nudge scheduler and its
 	// sibling SQLite evidence; see docs/decisions/nano-heartbeat.md.
 	heartbeat      *featureheartbeat.Service
-	completedTurns *completedTurnSource
+	completedTurns *hostedmodel.CompletedTurnSource
 	// claudeOwedRuns holds one detached Claude owed pass per hosted thread
 	// (claude_answer.go).
 	claudeOwedRuns sync.Map
@@ -142,7 +144,7 @@ type server struct {
 	// when the sibling SQLite file failed to open; listings then report every
 	// row unstarred and PUT /starred returns 503.
 	threadStars *sidebar.Stars
-	threadPins  *threadPinsStore
+	threadPins  *hostedmodel.PinStore
 	// feedback keeps the operator's Feedback notes with their evidence
 	// (feedback_api.go). Nil when its SQLite file failed to open; the feedback
 	// routes then return 503.
@@ -156,14 +158,14 @@ type server struct {
 	usageLimitsPoller  *usage.Poller
 	hostMonitor        *observability.HostMonitor
 	requests           observability.RequestTimes
-	hostedControl      *hosted.Controller
+	hostedControl      *hostedmodel.Controller
 	hostedControlOnce  sync.Once
 	attachmentOnce     sync.Once
-	attachmentsControl *hosted.AttachmentCoordinator
+	attachmentsControl *hostedmodel.AttachmentCoordinator
 	bootAttachments    sessionruntime.BootAttachments
 	// restart records this process start for GET /api/v1/restarts
 	// (restart_tracking.go).
-	restart *hosted.RestartTracker
+	restart *hostedmodel.RestartTracker
 	// stopping is set once Nano begins to exit (stop). Every session shares
 	// it, so no provider delivery starts that the exit could cut off.
 	stopping atomic.Bool
@@ -249,15 +251,15 @@ func construct(cfg config.Config) *application {
 	// disable hosted control. A rollback-source conflict must instead stop boot
 	// before HTTP can expose a catalog built from stale canonical identity.
 	legacyCompletedPath := cfg.Paths.CompletedTurnsDB
-	var completedTurns *completedTurnStore
+	var completedTurns *hostedmodel.CompletedTurnStore
 	var attachments *hostedstore.AttachmentStore
-	var controlMetadata *controlMetadataStore
+	var controlMetadata *hostedstore.MetadataStore
 	var controlMetadataErr string
 	var executionControlErr string
-	var sendAttempts *sendAttemptStore
-	var queuedTurns *queuedTurnStore
+	var sendAttempts *prompts.LegacyJournal
+	var queuedTurns *prompts.LegacyQueue
 	var turnStore *prompts.Store
-	var agentExecutions *agentExecutionStore
+	var agentExecutions *hostedstore.ExecutionStore
 	var mail *featuremail.Store
 	var usageLimits *usage.Store
 	if catalogPath != "" {
@@ -375,7 +377,7 @@ func construct(cfg config.Config) *application {
 	if agentExecutions != nil {
 		agentExecutions.UseSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
 	}
-	s.restart = hosted.NewRestartTracker(filepath.Join(cfg.Paths.DataDir, hosted.RestartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
+	s.restart = hostedmodel.NewRestartTracker(filepath.Join(cfg.Paths.DataDir, hostedmodel.RestartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
 	if err := agentapi.SyncMailNotices(s.mail, s.notices); err != nil {
 		log.Fatalf("initialize mail notices: %v", err)
 	}
@@ -412,7 +414,7 @@ func construct(cfg config.Config) *application {
 		s.feedback = store
 	}
 	if completedTurns != nil {
-		s.completedTurns = hosted.NewCompletedTurnSource(completedTurns)
+		s.completedTurns = hostedmodel.NewCompletedTurnSource(completedTurns)
 	}
 	if cfg.HeartbeatMaxWakesPerHour < 1 {
 		log.Fatal("heartbeat-max-wakes-per-hour must be positive")
@@ -540,7 +542,7 @@ func (a *application) serve(listener net.Listener, localHandler, remoteHandler h
 		// Features that prompt hosted threads by themselves start after every
 		// stored thread is back. HTTP opens first so requests can prioritize them.
 		if s.agentExecutions != nil && s.agentExecutions.Control() != nil {
-			d := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), interact.NewHTTPClient(s.defaults.APIOrigin, nil), s.agentDisplay, log.Printf)
+			d := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), interact.NewHTTPClient(s.defaults.APIOrigin, nil), s.hostedIdentity().DisplayAgent, log.Printf)
 			s.agentController().StartSubscriptions(d)
 		}
 		if s.heartbeat != nil {
@@ -703,7 +705,7 @@ func openThreadCatalog(path, namesPath string, noWatch bool) (*history.Store, *t
 	if err != nil {
 		return nil, nil, absolute, err
 	}
-	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
+	service, err := newThreadCatalogService(context.Background(), store, threadindex.Options{
 		Roots:                               roots,
 		NamesPath:                           namesPath,
 		DisableWatcher:                      noWatch,
@@ -794,10 +796,10 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 	sessions := s.SnapshotSessions()
 
 	listed := s.sidebarOwner().ListedSessions(sessions)
-	live := make(map[attachmentKey]bool, len(listed))
+	live := make(map[hostedstore.AttachmentKey]bool, len(listed))
 	for _, sum := range listed {
 		if sum.ThreadID != "" && sum.Status != sessionruntime.StatusExited {
-			live[attachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}] = true
+			live[hostedstore.AttachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}] = true
 		}
 	}
 	httpapi.WriteJSON(w, map[string]any{
@@ -830,7 +832,7 @@ func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Requ
 // code that spawnSession uses, so the New Window dialog's JSON pane shows
 // the wire truth, not a frontend reconstruction.
 func (s *server) handleSpawnPreview(w http.ResponseWriter, r *http.Request) {
-	var req hosted.SpawnRequest
+	var req hostedmodel.SpawnRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Provider == "" {
 		httpapi.WriteHTTPError(w, "body must be a spawn request", http.StatusBadRequest)
 		return

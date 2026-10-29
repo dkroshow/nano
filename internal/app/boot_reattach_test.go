@@ -20,16 +20,16 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
-	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
-	threadvalues "github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -107,9 +107,9 @@ func seedBootAttachments(t *testing.T, s *server) {
 	}
 }
 
-func bootCodexRecord(t *testing.T) attachmentRecord {
+func bootCodexRecord(t *testing.T) hostedstore.Attachment {
 	t.Helper()
-	return attachmentRecord{
+	return hostedstore.Attachment{
 		Provider:       "codex",
 		NativeThreadID: "codex-thread-1",
 		Cwd:            t.TempDir(),
@@ -257,7 +257,7 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 	}))
 	s, store := bootReattachServer(t, shim.WSURL(), "")
 	migrateTestControl(t, s.controlMetadata)
-	store.Remember(attachmentRecord{
+	store.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "cs_shim_pending", ShimSessionID: "cs_shim_pending",
 		Cwd: t.TempDir(), Bin: "/stored/claude", PendingName: "nano api fable",
 	})
@@ -432,7 +432,7 @@ func TestBootReattachResumesCodexThread(t *testing.T) {
 func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.completedTurns = hosted.NewCompletedTurnSource(hosted.NewCompletedTurnStore(s.queuedTurns.Database()))
+	s.completedTurns = hostedmodel.NewCompletedTurnSource(hostedmodel.NewCompletedTurnStore(s.queuedTurns.Database()))
 	now := time.Now().UTC()
 	natives := []string{"starred-idle", "root-idle", "child-idle", "child-wake", "child-quiet", "operation-open", "prompt-queued", "provider-turn-open"}
 	for i, native := range natives {
@@ -449,9 +449,9 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	if _, _, err := fixtureBeginTurn(s.agentExecutions, "nht_operation-open", "nano:test:open-turn", "hash"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.turns.Submit(ctx, turns.Submission{
+	if _, _, err := s.turns.Submit(ctx, prompts.Submission{
 		HostedThreadID: "nht_prompt-queued", Provider: model.ProviderCodex, NativeThreadID: "prompt-queued", ActionID: "browser-queued",
-		ProviderText: "queued in the browser", PresentationText: "queued in the browser", Origin: turns.HumanOrigin,
+		ProviderText: "queued in the browser", PresentationText: "queued in the browser", Origin: prompts.HumanOrigin,
 		TextHash: sendTextHash("queued in the browser"), RequestHash: sendTextHash("queued in the browser"),
 	}); err != nil {
 		t.Fatal(err)
@@ -494,7 +494,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		t.Fatalf("boot registered %v, want %v", got, want)
 	}
 	for _, native := range []string{"child-idle", "child-wake", "child-quiet"} {
-		if state := s.bootAttachments.State(attachmentKey{Provider: "codex", NativeThreadID: native}); state != "resting" {
+		if state := s.bootAttachments.State(hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: native}); state != "resting" {
 			t.Fatalf("%s after boot = %q, want resting", native, state)
 		}
 	}
@@ -502,7 +502,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 
 	body := `{"prompt":"sent while resting","clientActionId":"nano:test:resting","origin":"system"}`
 	recorder := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/nht_child-idle/turns", strings.NewReader(body)), "nht_child-idle")
+	s.hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/nht_child-idle/turns", strings.NewReader(body)), "nht_child-idle")
 	if recorder.Code != http.StatusAccepted && recorder.Code != http.StatusOK {
 		t.Fatalf("prompt to a resting thread = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -521,7 +521,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	if _, _, err := s.submitHostedTurnWithOptions("nht_child-wake", "nano:test:idle-wake", "scheduled wake", true); err != nil {
 		t.Fatalf("idle-only wake to a resting thread = %v", err)
 	}
-	if state := s.bootAttachments.State(attachmentKey{Provider: "codex", NativeThreadID: "child-quiet"}); state != "resting" {
+	if state := s.bootAttachments.State(hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: "child-quiet"}); state != "resting" {
 		t.Fatalf("an unrelated resting thread after the prompts = %q, want resting", state)
 	}
 }
@@ -766,7 +766,7 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 	s, store := bootReattachServer(t, "", "")
 	s.defaults.GrokBin = bin
 	for i := 0; i < sessionCount; i++ {
-		store.Remember(attachmentRecord{
+		store.Remember(hostedstore.Attachment{
 			Provider:       "grok",
 			NativeThreadID: fmt.Sprintf("grok-boot-%d", i),
 			Cwd:            stateDir,
@@ -862,7 +862,7 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 	s, store := bootReattachServer(t, shim.WSURL(), "")
 	for i := 0; i < sessionCount; i++ {
 		id := fmt.Sprintf("claude-boot-%d", i)
-		store.Remember(attachmentRecord{
+		store.Remember(hostedstore.Attachment{
 			Provider: "claude", NativeThreadID: id, ShimSessionID: "shim-" + id,
 			Bin: "/stored/claude", Args: storedPosture,
 			AttachedAt: fmt.Sprintf("2026-09-11T03:%02d:00Z", i),
@@ -1004,13 +1004,13 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	s.catalog = fixtureNamedCatalog(t, "codex", "sender-native", "Boot sender")
 
 	turn := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(turn, httptest.NewRequest(http.MethodPost,
+	s.hostedController().HandleTurnSubmit(turn, httptest.NewRequest(http.MethodPost,
 		"/api/v1/hosted-threads/"+sess.HostedThreadID()+"/turns",
 		bytes.NewBufferString(`{"clientActionId":"zero-turn-action","prompt":"tag this thread","senderThreadRef":"`+sender.ID+`"}`)), sess.HostedThreadID())
 	if turn.Code != http.StatusAccepted {
 		t.Fatalf("first turn status = %d, body = %s", turn.Code, turn.Body.String())
 	}
-	var operation agentTurnView
+	var operation hostedmodel.TurnView
 	if err := json.Unmarshal(turn.Body.Bytes(), &operation); err != nil {
 		t.Fatalf("decode first-turn operation: %v", err)
 	}
@@ -1055,7 +1055,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 		return err == nil && record.Outcome == agentTurnCompleted
 	})
 	open, _ := s.agentExecutions.Turn(operation.ID)
-	if threadvalues.TurnTerminal(open.Status) || open.ProviderTurnID != "turn-zero-1" || open.CandidateItemID != "final-zero-1" {
+	if threads.TurnTerminal(open.Status) || open.ProviderTurnID != "turn-zero-1" || open.CandidateItemID != "final-zero-1" {
 		t.Fatalf("operation after the wire completed its turn = %+v; want it open with the turn's final answer as candidate", open)
 	}
 	prompt, _, err := sess.PromptStore().Get(ctx, open.TransportActionID)
@@ -1063,7 +1063,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding := prompt.Outbox.Binding
-	if prompt.Outbox.State != turns.Accepted || prompt.Outbox.HostedThreadID != sess.HostedThreadID() || binding == nil || binding.Scope.Provider != model.ProviderCodex ||
+	if prompt.Outbox.State != prompts.Accepted || prompt.Outbox.HostedThreadID != sess.HostedThreadID() || binding == nil || binding.Scope.Provider != model.ProviderCodex ||
 		binding.Scope.NativeThreadID == nil || *binding.Scope.NativeThreadID == "" || *binding.Scope.NativeThreadID != rec.NativeThreadID ||
 		binding.Scope.NativeTurnID == nil || *binding.Scope.NativeTurnID != "turn-zero-1" ||
 		binding.EventID != submissionEventID(sess.HostedThreadID(), open.TransportActionID) {
@@ -1087,13 +1087,13 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	// clearing the recovery state observable without reading its private flag.
 	daemon.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "turn-zero-2"}})
 	followup := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(followup, httptest.NewRequest(http.MethodPost,
+	s.hostedController().HandleTurnSubmit(followup, httptest.NewRequest(http.MethodPost,
 		"/api/v1/hosted-threads/"+sess.HostedThreadID()+"/turns",
 		bytes.NewBufferString(`{"clientActionId":"after-zero-turn-recovery","prompt":"continue after recovery","senderThreadRef":"`+sender.ID+`"}`)), sess.HostedThreadID())
 	if followup.Code != http.StatusAccepted {
 		t.Fatalf("follow-up status = %d, body = %s", followup.Code, followup.Body.String())
 	}
-	var next agentTurnView
+	var next hostedmodel.TurnView
 	if err := json.Unmarshal(followup.Body.Bytes(), &next); err != nil {
 		t.Fatal(err)
 	}
@@ -1165,7 +1165,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	if err != nil {
 		t.Fatal(err)
 	}
-	turnStore, err := turns.OpenStore(context.Background(), server.queuedTurns.Database())
+	turnStore, err := prompts.OpenStore(context.Background(), server.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1221,7 +1221,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 
 // startingCodexServer is a restarted server with one stored Codex thread that
 // the boot has recorded as starting but not registered yet.
-func startingCodexServer(t *testing.T) (*server, *fakeAppServer, attachmentRecord) {
+func startingCodexServer(t *testing.T) (*server, *fakeAppServer, hostedstore.Attachment) {
 	t.Helper()
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.WSURL())
@@ -1276,11 +1276,11 @@ func TestServeAnswersWhileStoredThreadsStillReattach(t *testing.T) {
 		t.Fatalf("build while reattaching = %d", status)
 	}
 	var hosted struct {
-		Status          string               `json:"status"`
-		Attached        bool                 `json:"attached"`
-		Availability    string               `json:"availability"`
-		AttachmentState string               `json:"attachmentState"`
-		Attachment      hostedAttachmentView `json:"attachment"`
+		Status          string                     `json:"status"`
+		Attached        bool                       `json:"attached"`
+		Availability    string                     `json:"availability"`
+		AttachmentState string                     `json:"attachmentState"`
+		Attachment      hostedstore.AttachmentView `json:"attachment"`
 	}
 	if status := get("/api/v1/hosted-threads/"+rec.HostedThreadID, &hosted); status != http.StatusOK ||
 		hosted.Status != "starting" || hosted.Attached || hosted.AttachmentState != "starting" || hosted.Attachment.State != "starting" || hosted.Availability != availabilityBusy {
@@ -1320,7 +1320,7 @@ func TestPromptToAStartingThreadRegistersItOnceAndQueues(t *testing.T) {
 	s, daemon, rec := startingCodexServer(t)
 	body := `{"prompt":"sent while starting","clientActionId":"nano:test:starting","origin":"system"}`
 	recorder := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+rec.HostedThreadID+"/turns", strings.NewReader(body)), rec.HostedThreadID)
+	s.hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+rec.HostedThreadID+"/turns", strings.NewReader(body)), rec.HostedThreadID)
 	if recorder.Code != http.StatusAccepted && recorder.Code != http.StatusOK {
 		t.Fatalf("prompt to a starting thread = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -1541,12 +1541,12 @@ func (c *feedSubscriptionClient) SubmitPrompt(_ context.Context, request interac
 
 // subscribedCodexServer is startingCodexServer whose stored Codex thread is a
 // child that tells its parent's inbox when a turn completes.
-func subscribedCodexServer(t *testing.T, resumeTurns string) (*server, *fakeAppServer, attachmentRecord, *feedSubscriptionClient, *subscriptions.Dispatcher) {
+func subscribedCodexServer(t *testing.T, resumeTurns string) (*server, *fakeAppServer, hostedstore.Attachment, *feedSubscriptionClient, *subscriptions.Dispatcher) {
 	t.Helper()
 	daemon := newFakeAppServer(t)
 	daemon.SetResumeTurns(json.RawMessage(resumeTurns))
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.completedTurns = hosted.NewCompletedTurnSource(hosted.NewCompletedTurnStore(s.queuedTurns.Database()))
+	s.completedTurns = hostedmodel.NewCompletedTurnSource(hostedmodel.NewCompletedTurnStore(s.queuedTurns.Database()))
 	parent, _, err := fixtureBeginSession(s.agentExecutions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)

@@ -12,9 +12,10 @@ import (
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
-func operatorSendForTest(t *testing.T, s *server, recipient agentSessionRecord, clientID, subject, body string) (*httptest.ResponseRecorder, featuremail.Message) {
+func operatorSendForTest(t *testing.T, s *server, recipient threads.SessionRecord, clientID, subject, body string) (*httptest.ResponseRecorder, featuremail.Message) {
 	t.Helper()
 	encoded, err := json.Marshal(agentMessageSendRequest{ClientMessageID: clientID, Operator: true, Subject: subject, Body: body})
 	if err != nil {

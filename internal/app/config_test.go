@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/hosted"
 	"testing"
 
 	"github.com/dkroshow/nano/internal/config"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 )
 
 // Catches: a Codex child started without a sandbox field getting a read-only
@@ -18,7 +18,7 @@ func TestCodexStartWithoutSandboxGetsPermissiveDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir(), Sandbox: cfg.Sandbox, Approval: cfg.Approval}}
-	req, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start"}})
+	req, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start"}})
 	if err != nil {
 		t.Fatal(err)
 	}

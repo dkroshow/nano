@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
-func permissionTestSession(t *testing.T, provider, mode string) (*providerRuntimeFixture, *controlMetadataStore) {
+func permissionTestSession(t *testing.T, provider, mode string) (*providerRuntimeFixture, *hostedstore.MetadataStore) {
 	t.Helper()
 	store := newTestControlMetadata(t)
 	hostedID := "nht_permission_test"

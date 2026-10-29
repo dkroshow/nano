@@ -6,8 +6,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/dkroshow/nano/internal/config"
-	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +18,9 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/core/prompts"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
@@ -66,7 +66,7 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.Att
 	if err != nil {
 		t.Fatal(err)
 	}
-	turnStore, err := turns.OpenStore(context.Background(), queue.Database())
+	turnStore, err := prompts.OpenStore(context.Background(), queue.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,9 +108,9 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.Att
 
 // rememberedClaudeSession is the attachment a detached claude session leaves
 // behind: its native id, the cwd it ran in, and its exact spawn posture.
-func rememberedClaudeSession(t *testing.T, bin string) attachmentRecord {
+func rememberedClaudeSession(t *testing.T, bin string) hostedstore.Attachment {
 	t.Helper()
-	return attachmentRecord{
+	return hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: claudeResumeThreadID,
 		Cwd:            t.TempDir(),
@@ -639,7 +639,7 @@ func TestClaudeResumeProvisionalGoneKeepsARecordWhosePromptMayHaveBeenDelivered(
 		deliver func(t *testing.T, s *server, hostedID string)
 	}{
 		{"claimed for delivery", func(t *testing.T, s *server, hostedID string) {
-			if _, claimed, err := s.turns.Claim(context.Background(), turns.ClaimRequest{HostedThreadID: hostedID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+			if _, claimed, err := s.turns.Claim(context.Background(), prompts.ClaimRequest{HostedThreadID: hostedID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 				t.Fatalf("claim = %v, %v", claimed, err)
 			}
 		}},
@@ -660,8 +660,8 @@ func TestClaudeResumeProvisionalGoneKeepsARecordWhosePromptMayHaveBeenDelivered(
 			store.Remember(rec)
 			// The hosted id seedHostedAttachmentFixture gives this record.
 			hostedID := "nht_fixture_" + hostedstore.AgentHash([]byte("claude\x00shim-7"))[:16]
-			if _, _, err := s.turns.Submit(context.Background(), turns.Submission{HostedThreadID: hostedID, Provider: "claude", NativeThreadID: "shim-7", ActionID: "provisional-1",
-				ProviderText: "hi", PresentationText: "hi", TextHash: "text", RequestHash: "request", Origin: turns.HumanOrigin, CreatedAt: "2026-10-07T00:00:00Z"}); err != nil {
+			if _, _, err := s.turns.Submit(context.Background(), prompts.Submission{HostedThreadID: hostedID, Provider: "claude", NativeThreadID: "shim-7", ActionID: "provisional-1",
+				ProviderText: "hi", PresentationText: "hi", TextHash: "text", RequestHash: "request", Origin: prompts.HumanOrigin, CreatedAt: "2026-10-07T00:00:00Z"}); err != nil {
 				t.Fatal(err)
 			}
 			tc.deliver(t, s, hostedID)
@@ -711,14 +711,14 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 			ctx := context.Background()
 			// What the shim is asked to attach, and what the claim owner had
 			// recorded at that moment.
-			var control *controlMetadataStore
+			var control *hostedstore.MetadataStore
 			var hostedID string
 			type attachSeen struct{ handle, native, current, resolved string }
 			var attaches []attachSeen
 			var attachMu sync.Mutex
 			// The native record as the shim was asked to attach.
 			var attachStore *hostedstore.AttachmentStore
-			var nativeAtAttach attachmentRecord
+			var nativeAtAttach hostedstore.Attachment
 			var sentLine string // the spool's first frame, which a live child replays
 			shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
 				var params struct {
@@ -760,15 +760,15 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 			seedHostedAttachmentFixture(t, s, "claude", "cs_handle7")
 			hostedID = "nht_fixture_" + hostedstore.AgentHash([]byte("claude\x00cs_handle7"))[:16]
 			anchor, turn, handle := submissionEventID(hostedID, "first-prompt"), "claude:"+hostedID+":1", "cs_handle7"
-			if _, _, err := s.turns.Submit(ctx, turns.Submission{HostedThreadID: hostedID, Provider: "claude", NativeThreadID: handle, ActionID: "first-prompt",
-				ProviderText: "hi", PresentationText: "hi", TextHash: "text", RequestHash: "request", Origin: turns.HumanOrigin, CreatedAt: "2026-10-07T00:00:00Z"}); err != nil {
+			if _, _, err := s.turns.Submit(ctx, prompts.Submission{HostedThreadID: hostedID, Provider: "claude", NativeThreadID: handle, ActionID: "first-prompt",
+				ProviderText: "hi", PresentationText: "hi", TextHash: "text", RequestHash: "request", Origin: prompts.HumanOrigin, CreatedAt: "2026-10-07T00:00:00Z"}); err != nil {
 				t.Fatal(err)
 			}
-			if _, claimed, err := s.turns.Claim(ctx, turns.ClaimRequest{HostedThreadID: hostedID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+			if _, claimed, err := s.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hostedID, Token: "claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 				t.Fatalf("claim = %v, %v", claimed, err)
 			}
-			binding := turns.Binding{EventID: anchor, Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &handle, NativeTurnID: &turn}}
-			if _, err := s.turns.Accepted(ctx, turns.Acceptance{ActionID: "first-prompt", ClaimToken: "claim", AttachmentEpoch: 1, Binding: binding}); err != nil {
+			binding := prompts.Binding{EventID: anchor, Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &handle, NativeTurnID: &turn}}
+			if _, err := s.turns.Accepted(ctx, prompts.Acceptance{ActionID: "first-prompt", ClaimToken: "claim", AttachmentEpoch: 1, Binding: binding}); err != nil {
 				t.Fatal(err)
 			}
 			sentLine = `{"type":"user","uuid":"` + anchor + `","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}`
@@ -1153,12 +1153,12 @@ func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
 // Public resume separately requires a canonical owner before reaching this seam.
 func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	_, err := s.attachmentCoordinator().ResolveClaudeResume(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
+	_, err := s.attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
 	if err == nil || !strings.Contains(err.Error(), "no attachment record") {
 		t.Fatalf("err = %v, want a refusal to guess the cwd", err)
 	}
 	cwd := t.TempDir()
-	req, err := s.attachmentCoordinator().ResolveClaudeResume(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
+	req, err := s.attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1175,7 +1175,7 @@ func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
 // Canonical posture passes into the provider builder after ownership resolves.
 func TestClaudeResumeTransportWithoutAttachmentCarriesPosture(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	req, err := s.attachmentCoordinator().ResolveClaudeResume(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
+	req, err := s.attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
 		Model: "claude-opus-4-1", PermissionMode: "bypassPermissions", Effort: "high"},
 	})
 	if err != nil {
@@ -1206,7 +1206,7 @@ func TestClaudeResumeRefusesMissingWorkingDirectory(t *testing.T) {
 	gone := filepath.Join(t.TempDir(), "deleted-project")
 	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, gone)
 
-	_, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
+	_, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
 	if err == nil {
 		t.Fatal("resume into a missing directory succeeded")
 	}

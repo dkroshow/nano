@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
@@ -50,10 +50,10 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 		UpdatedAt:      queued.CreatedAt,
 		RunID:          "pre-crash",
 	}
-	if err := turns.SaveQueuedTurns(context.Background(), db, []turns.QueuedTurn{queued}); err != nil {
+	if err := prompts.SaveQueuedTurns(context.Background(), db, []prompts.QueuedTurn{queued}); err != nil {
 		t.Fatal(err)
 	}
-	if err := turns.SaveSendAttempts(context.Background(), db, []turns.SendAttempt{attempt}); err != nil {
+	if err := prompts.SaveSendAttempts(context.Background(), db, []prompts.SendAttempt{attempt}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

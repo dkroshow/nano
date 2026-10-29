@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -69,7 +70,7 @@ type projectionStream struct {
 	mu       sync.Mutex
 	header   http.Header
 	pending  []byte
-	snapshot liveProjectionSnapshot
+	snapshot liveview.Snapshot
 	ready    chan struct{}
 	once     sync.Once
 }
@@ -91,7 +92,7 @@ func (w *projectionStream) Write(data []byte) (int, error) {
 		if !ok {
 			continue
 		}
-		var u liveProjectionUpdate
+		var u liveview.Update
 		if json.Unmarshal(raw, &u) != nil {
 			continue
 		}
@@ -118,11 +119,11 @@ func (w *projectionStream) Write(data []byte) (int, error) {
 	}
 	return len(data), nil
 }
-func (w *projectionStream) Snapshot() liveProjectionSnapshot {
+func (w *projectionStream) Snapshot() liveview.Snapshot {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	s := w.snapshot
-	s.Turns = append([]liveProjectionTurn(nil), s.Turns...)
+	s.Turns = append([]liveview.Turn(nil), s.Turns...)
 	return s
 }
 func observeProjection(t *testing.T, sess *session) *projectionStream {

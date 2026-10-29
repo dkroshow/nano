@@ -1,14 +1,14 @@
 package app
 
 import (
-	"encoding/json"
-
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
-
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // A saved resume includes turns older than the retained operations. Looking up
@@ -33,7 +33,7 @@ func TestAgentExecutionCodexResumeScansTheStoreOnce(t *testing.T) {
 		hostedID := fmt.Sprintf("hosted-%d", thread)
 		for turn := range 100 {
 			id := fmt.Sprintf("op-%d-%d", thread, turn)
-			rec := agentTurnRecord{
+			rec := threads.TurnRecord{
 				ID: id, HostedThreadID: hostedID, ClientActionID: id, TransportActionID: id, PromptHash: id,
 				Provider: "codex", NativeThreadID: fmt.Sprintf("native-%d", thread), ProviderTurnID: fmt.Sprintf("turn-%d-%d", thread, turn),
 				Status: agentTurnCompleted, FinalResponse: "already reported", FinalItemID: "saved-answer", RunID: "resume-run",
@@ -60,8 +60,8 @@ func TestAgentExecutionCodexResumeScansTheStoreOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot := func() map[string]agentTurnRecord {
-		result := map[string]agentTurnRecord{}
+	snapshot := func() map[string]threads.TurnRecord {
+		result := map[string]threads.TurnRecord{}
 		for thread := range threadCount {
 			for _, rec := range store.TurnsForHosted(fmt.Sprintf("hosted-%d", thread)) {
 				result[rec.ID] = rec

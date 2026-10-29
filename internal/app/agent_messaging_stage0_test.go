@@ -10,11 +10,14 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	promptstore "github.com/dkroshow/nano/internal/core/prompts"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
-func stage0Server(t *testing.T, seed ...func(*agentExecutionStore, agentSessionRecord)) (*server, *agentExecutionStore, *session, agentSessionRecord, agentSessionRecord, chan string, *fakeAppServer) {
+func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, threads.SessionRecord)) (*server, *hostedstore.ExecutionStore, *session, threads.SessionRecord, threads.SessionRecord, chan string, *fakeAppServer) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	mail := newTestAgentMessageStore(t)
@@ -41,7 +44,7 @@ func stage0Server(t *testing.T, seed ...func(*agentExecutionStore, agentSessionR
 	}
 	prompts := make(chan string, 8)
 	queue := mustQueuedTurnStore(t)
-	turnStore, err := turns.OpenStore(context.Background(), queue.Database())
+	turnStore, err := promptstore.OpenStore(context.Background(), queue.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +92,7 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	s, store, _, sender, worker, prompts, _ := stage0Server(t)
 	body := `{"clientActionId":"ask-1","prompt":"Please review the parser.","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
@@ -103,13 +106,13 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	if _, err := time.Parse(time.RFC3339Nano, op.SenderSubmittedAt); err != nil {
 		t.Fatalf("senderSubmittedAt = %q, want RFC3339Nano UTC admission time: %v", op.SenderSubmittedAt, err)
 	}
-	var view agentTurnView
+	var view hostedmodel.TurnView
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || view.SenderSubmittedAt != op.SenderSubmittedAt {
 		t.Fatalf("response senderSubmittedAt = %q, operation = %q, decode error = %v", view.SenderSubmittedAt, op.SenderSubmittedAt, err)
 	}
 	select {
 	case got := <-prompts:
-		want := "Please review the parser.\n\n" + senderFooter(turnAttribution{Origin: turnOriginAgent, SenderName: "Claude sender", SenderNativeThreadID: sender.NativeThreadID, SenderSubmittedAt: op.SenderSubmittedAt})
+		want := "Please review the parser.\n\n" + senderFooter(hostedstore.TurnAttribution{Origin: turnOriginAgent, SenderName: "Claude sender", SenderNativeThreadID: sender.NativeThreadID, SenderSubmittedAt: op.SenderSubmittedAt})
 		if got != want {
 			t.Fatalf("delivered = %q, want %q", got, want)
 		}
@@ -133,7 +136,7 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	}
 	// Replay with the same id is idempotent (200, same operation).
 	rec = httptest.NewRecorder()
-	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("replay = %d %s", rec.Code, rec.Body.String())
 	}
@@ -153,11 +156,11 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 		name    string
 		body    string
 		code    string
-		prepare func(*server, agentSessionRecord)
+		prepare func(*server, threads.SessionRecord)
 	}{
 		{name: "missing", body: `{"clientActionId":"missing","prompt":"hi"}`, code: "sender_required"},
 		{name: "unresolved", body: `{"clientActionId":"unresolved","prompt":"hi","senderThreadRef":"nht_nope"}`, code: "sender_not_hosted"},
-		{name: "provisional native id", body: `{"clientActionId":"provisional","prompt":"hi","senderThreadRef":"sender"}`, code: "sender_identity_incomplete", prepare: func(s *server, sender agentSessionRecord) {
+		{name: "provisional native id", body: `{"clientActionId":"provisional","prompt":"hi","senderThreadRef":"sender"}`, code: "sender_identity_incomplete", prepare: func(s *server, sender threads.SessionRecord) {
 			if err := s.agentExecutions.BindSession(sender.ID, "nano-sender", "cs_provisional", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
@@ -170,7 +173,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 				test.prepare(s, sender)
 			}
 			rec := httptest.NewRecorder()
-			s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(test.body)), worker.ID)
+			s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(test.body)), worker.ID)
 			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), test.code) {
 				t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 			}
@@ -211,15 +214,15 @@ func TestInternalTurnHelperRejectsUnattributedAgentOriginBeforeArtifacts(t *test
 func TestQueueDeliversHumanBeforeAgentBeforeSystem(t *testing.T) {
 	q := mustQueuedTurnStore(t)
 	ctx := context.Background()
-	put := func(id string, origin turns.Origin) {
-		if _, _, err := q.TransactionStore().Submit(ctx, turns.Submission{HostedThreadID: "h", Provider: "codex", NativeThreadID: "n", ActionID: id, ProviderText: id, TextHash: id, RequestHash: id, Origin: origin}); err != nil {
+	put := func(id string, origin promptstore.Origin) {
+		if _, _, err := q.TransactionStore().Submit(ctx, promptstore.Submission{HostedThreadID: "h", Provider: "codex", NativeThreadID: "n", ActionID: id, ProviderText: id, TextHash: id, RequestHash: id, Origin: origin}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	put("sys-1", turns.SystemOrigin)
-	put("agent-1", turns.AgentOrigin)
-	put("agent-2", turns.AgentOrigin)
-	put("human-1", turns.HumanOrigin)
+	put("sys-1", promptstore.SystemOrigin)
+	put("agent-1", promptstore.AgentOrigin)
+	put("agent-2", promptstore.AgentOrigin)
+	put("human-1", promptstore.HumanOrigin)
 	put("legacy-1", "") // legacy records count as human
 	if got := q.Position("human-1"); got != 1 {
 		t.Fatalf("human position = %d", got)
@@ -252,11 +255,11 @@ func TestQueueDeliversHumanBeforeAgentBeforeSystem(t *testing.T) {
 func TestAvailabilityFromHardFacts(t *testing.T) {
 	s, store, sess, _, worker, prompts, fake := stage0Server(t)
 	now := time.Now().UTC()
-	if v := s.availabilityFor(worker.ID, now); v.State != availabilityAvailable {
+	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable {
 		t.Fatalf("idle = %+v", v)
 	}
 	(&providerRuntimeFixture{session: sess, codex: fake}).activate(t)
-	if v := s.availabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" {
+	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" {
 		t.Fatalf("active = %+v", v)
 	}
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"status":"completed"}}}`))
@@ -265,7 +268,7 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	}
 	<-prompts
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"id":"provider-turn","status":"completed"}}}`))
-	if v := s.availabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.LastHumanMessageAt == "" {
+	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.LastHumanMessageAt == "" {
 		t.Fatalf("recent human remains diagnostic only = %+v", v)
 	}
 	// Durable copy survives a reload.
@@ -280,7 +283,7 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	// Pending interaction holds the thread.
 	fake.EmitNotification(map[string]any{"id": "req-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": sess.ThreadID()}})
 	waitForClaude(t, "pending permissions", func() bool { return len(sess.PendingInteractionList()) == 1 })
-	if v := s.availabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
+	if v := s.hostedViews().AvailabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
 		t.Fatalf("pending interaction = %+v", v)
 	}
 	response := httptest.NewRecorder()
@@ -290,10 +293,10 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	}
 	// Detached and unknown threads are unreachable.
 	s.RemoveSession(sess.ID())
-	if v := s.availabilityFor(worker.ID, now); v.State != availabilityUnreachable || v.Facts.Attachment != "detached" {
+	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityUnreachable || v.Facts.Attachment != "detached" {
 		t.Fatalf("detached = %+v", v)
 	}
-	if v := s.availabilityFor("nht_missing", now); v.State != availabilityUnreachable || v.Facts.Attachment != "deleted" {
+	if v := s.hostedViews().AvailabilityFor("nht_missing", now); v.State != availabilityUnreachable || v.Facts.Attachment != "deleted" {
 		t.Fatalf("missing = %+v", v)
 	}
 	_ = store
@@ -304,7 +307,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	(&providerRuntimeFixture{session: sess, codex: fake}).activate(t) // force queueing so the text persists without delivery
 	body := `{"clientActionId":"ask-2","prompt":"Q","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
@@ -320,14 +323,14 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	// Simulate a rename: the footer Nano would compose now differs.
 	s.catalog = fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Renamed Sender")
 	rec = httptest.NewRecorder()
-	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("retry after rename = %d %s", rec.Code, rec.Body.String())
 	}
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"status":"completed"}}}`))
 	select {
 	case got := <-prompts:
-		wantFooter := senderFooter(turnAttribution{Origin: turnOriginAgent, SenderName: "Claude sender", SenderNativeThreadID: sender.NativeThreadID, SenderSubmittedAt: op.SenderSubmittedAt})
+		wantFooter := senderFooter(hostedstore.TurnAttribution{Origin: turnOriginAgent, SenderName: "Claude sender", SenderNativeThreadID: sender.NativeThreadID, SenderSubmittedAt: op.SenderSubmittedAt})
 		if !strings.HasSuffix(got, wantFooter) {
 			t.Fatalf("delivered text was recomposed after rename: %q", got)
 		}

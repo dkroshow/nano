@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 func TestHealthRequiresHostedControl(t *testing.T) {
@@ -23,8 +24,8 @@ func TestHealthRequiresHostedControl(t *testing.T) {
 
 func TestHealthAcceptsUsableHostedControl(t *testing.T) {
 	s := &server{
-		agentExecutions: &agentExecutionStore{},
-		controlMetadata: &controlMetadataStore{},
+		agentExecutions: &hostedstore.ExecutionStore{},
+		controlMetadata: &hostedstore.MetadataStore{},
 		mail:            &featuremail.Store{},
 	}
 	rec := httptest.NewRecorder()

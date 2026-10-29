@@ -231,7 +231,7 @@ func TestHeartbeatPublicSubmissionAddsOnlyHeartbeatFooter(t *testing.T) {
 		"prompt": "continue", "clientActionId": "nano:heartbeat:hba_test:500", "origin": "system", "requireIdle": true,
 	})
 	recorder := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", bytes.NewReader(body)), target.ID)
+	s.hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", bytes.NewReader(body)), target.ID)
 	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", recorder.Code, recorder.Body.String())
 	}

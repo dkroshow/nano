@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // lineageFixture is a real catalog and control store for the lineage pass:
@@ -62,8 +64,8 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 	}
 
 	metadata, executions := newTestHostedControl(t)
-	hosted := func(name, native string, invoker *agentSessionRecord) agentSessionRecord {
-		var record agentSessionRecord
+	hosted := func(name, native string, invoker *threads.SessionRecord) threads.SessionRecord {
+		var record threads.SessionRecord
 		var err error
 		if invoker == nil {
 			record, _, err = fixtureBeginSession(executions, name, name, "codex", presentationShared)
@@ -84,7 +86,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 	standaloneInvoker := hosted("p-standalone-invoker", "p-standalone-invoker", nil)
 	unrelatedInvoker := hosted("p-unrelated", "p-unrelated", nil)
 	related := hosted("w-related", "w-related", &unrelatedInvoker)
-	if _, err := fixtureAppendOrchestrationAssignment(executions, related.ID, "lineage-rel", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(executions, related.ID, "lineage-rel", &hostedstore.Assignment{
 		AssignmentRole: "auditor", Focus: "Audit", RelatedHostedThreadID: relatedParent.ID,
 	}); err != nil {
 		t.Fatal(err)

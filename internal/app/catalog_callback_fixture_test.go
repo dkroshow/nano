@@ -3,12 +3,14 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/sessions"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const transcriptChangeWorkerCount = 2
@@ -40,7 +42,7 @@ func queuedCatalogFixture(t *testing.T, provider string, nativeIDs []string) (*t
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{Roots: []history.SourceRoot{{Provider: history.Provider(provider), Kind: kind, Path: root}}, DisableWatcher: true})
+	service, err := newThreadCatalogService(context.Background(), store, threadindex.Options{Roots: []history.SourceRoot{{Provider: history.Provider(provider), Kind: kind, Path: root}}, DisableWatcher: true})
 	if err != nil {
 		t.Fatal(err)
 	}

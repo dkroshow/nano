@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -24,8 +24,8 @@ import (
 func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	path := filepath.Join(t.TempDir(), hosted.RestartsFileName)
-	s.restart = hosted.NewRestartTracker(path, "test-stamp", "boot-test", time.Now())
+	path := filepath.Join(t.TempDir(), hostedmodel.RestartsFileName)
+	s.restart = hostedmodel.NewRestartTracker(path, "test-stamp", "boot-test", time.Now())
 	for _, native := range []string{"starred", "plain", "forgotten"} {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
@@ -48,7 +48,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 
 	s.attachmentCoordinator().ReattachOnBoot()
 
-	var record hosted.RestartRecord
+	var record hostedmodel.RestartRecord
 	waitForClaude(t, "the written restart record", func() bool {
 		data, err := os.ReadFile(path)
 		return err == nil && json.Unmarshal(data, &record) == nil
@@ -63,7 +63,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	if record.AllLiveMs != nil {
 		t.Fatalf("all_live_ms = %d with a failed thread", *record.AllLiveMs)
 	}
-	byNative := map[string]hosted.RestartThreadRecord{}
+	byNative := map[string]hostedmodel.RestartThreadRecord{}
 	for _, th := range record.Threads {
 		byNative[th.NativeThreadID] = th
 	}
@@ -95,7 +95,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	for query, wantThreads := range map[string]int{"": 0, "?threads=1": 3} {
 		rec := httptest.NewRecorder()
 		s.restart.HandleRestarts(rec, httptest.NewRequest(http.MethodGet, "/api/v1/restarts"+query, nil))
-		var body struct{ Restarts []hosted.RestartRecord }
+		var body struct{ Restarts []hostedmodel.RestartRecord }
 		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil || len(body.Restarts) != 1 {
 			t.Fatalf("GET restarts%s = %d %s", query, rec.Code, rec.Body.String())
 		}

@@ -8,6 +8,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -25,7 +26,7 @@ func (s *server) savedOperationResultFinished(hostedID string) {
 // savedOperationResult is an operation's answer and final item id from the
 // saved transcript: the final row of the completed saved turn that holds the
 // operation's own prompt, all at one catalog generation.
-func (s *server) savedOperationResult(ctx context.Context, rec agentTurnRecord) (string, string, error) {
+func (s *server) savedOperationResult(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
 	// The prompt's binding, not its delivery state, proves membership below:
 	// settlement can lag the file, or expire a prompt whose answer it holds.
 	prompt, _, err := s.turns.Get(ctx, rec.TransportActionID)

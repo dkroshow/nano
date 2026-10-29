@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -58,8 +60,8 @@ func TestCompletedProviderUserMessageDoesNotSettleThePrompt(t *testing.T) {
 func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) {
 	started := time.Now().Add(-time.Minute).UnixMilli()
 	sess, _ := durableTurnTestSession(t, "turn-1", started)
-	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
-		return durableTurnEvidence{Turn: liveProjectionTurn{ID: turnID, Status: "completed", CompletedAtMs: started + 1}}, turnID == "turn-1"
+	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
+		return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: turnID, Status: "completed", CompletedAtMs: started + 1}}, turnID == "turn-1"
 	}, nil, nil, nil, nil)
 	s := testServerWithSessions(&server{catalog: &fakeMessagesCatalog{}, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 
@@ -135,19 +137,19 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 				}
 			}
 		})
-		reader := func(context.Context, string) (durableTurnEvidence, bool) {
+		reader := func(context.Context, string) (liveview.DurableTurnEvidence, bool) {
 			durableCalls.Add(1)
-			return durableTurnEvidence{}, false
+			return liveview.DurableTurnEvidence{}, false
 		}
 		if index < transcriptChangeWorkerCount {
-			reader = func(ctx context.Context, _ string) (durableTurnEvidence, bool) {
+			reader = func(ctx context.Context, _ string) (liveview.DurableTurnEvidence, bool) {
 				started <- struct{}{}
 				select {
 				case <-blocked:
 				case <-ctx.Done():
 				}
 				durableCalls.Add(1)
-				return durableTurnEvidence{}, false
+				return liveview.DurableTurnEvidence{}, false
 			}
 		}
 		f.session.ConfigureSavedReaders(reader, nil, nil, nil, nil)
@@ -214,7 +216,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	if first.Code != http.StatusAccepted || second.Code != http.StatusOK {
 		t.Fatalf("requireIdle statuses = %d/%d: %s / %s", first.Code, second.Code, first.Body.String(), second.Body.String())
 	}
-	var firstView, secondView agentTurnView
+	var firstView, secondView hostedmodel.TurnView
 	if err := json.Unmarshal(first.Body.Bytes(), &firstView); err != nil {
 		t.Fatal(err)
 	}
@@ -300,10 +302,10 @@ func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	}
 }
 
-func durableHousekeepingWindow(count int) []liveProjectionItem {
-	rows := make([]liveProjectionItem, 0, count)
+func durableHousekeepingWindow(count int) []liveview.Item {
+	rows := make([]liveview.Item, 0, count)
 	for i := 0; i < count; i++ {
-		rows = append(rows, liveProjectionItem{
+		rows = append(rows, liveview.Item{
 			ID:            fmt.Sprintf("durable:noise-%d", i),
 			DurableItemID: fmt.Sprintf("row-noise-%d", i),
 			ProjectedSeq:  int64(i + 1),
@@ -316,8 +318,8 @@ func durableHousekeepingWindow(count int) []liveProjectionItem {
 
 // reconcileWithSavedTurn runs turn repair against one saved turn, which the
 // read returns only for its own exact id.
-func reconcileWithSavedTurn(sess *session, saved durableTurnEvidence) {
-	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
+func reconcileWithSavedTurn(sess *session, saved liveview.DurableTurnEvidence) {
+	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return saved, turnID == saved.Turn.ID
 	}, nil, nil, nil, nil)
 	sess.ReconcileDurableTurn(context.Background())

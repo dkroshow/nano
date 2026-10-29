@@ -1,12 +1,13 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
-func runtimeCreationRequest(req hosted.CreationRequest) hosted.SpawnRequest {
-	return hosted.SpawnRequest{ProviderRequest: sessions.ProviderRequest{
+func runtimeCreationRequest(req hostedmodel.CreationRequest) hostedmodel.SpawnRequest {
+	return hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{
 		Provider:              req.Provider,
 		Mode:                  req.Mode,
 		ThreadID:              req.ThreadID,
@@ -39,13 +40,13 @@ func runtimeCreationRequest(req hosted.CreationRequest) hosted.SpawnRequest {
 	}
 }
 
-func (s *server) prepareHostedCreation(req hosted.CreationRequest) (hosted.CreationPlan, error) {
+func (s *server) prepareHostedCreation(req hostedmodel.CreationRequest) (hostedmodel.CreationPlan, error) {
 	resolved, err := s.attachmentCoordinator().ResolveSpawn(runtimeCreationRequest(req))
 	if err != nil {
-		return hosted.CreationPlan{}, err
+		return hostedmodel.CreationPlan{}, err
 	}
-	return hosted.CreationPlan{ClientSessionID: resolved.ClientSessionID, Provider: resolved.Provider, Mode: resolved.Mode, PresentationMode: resolved.PresentationMode, SidebarPlacement: resolved.SidebarPlacement, Name: resolved.Name,
-		Attach: func(record agentSessionRecord, resume bool) (string, error) {
+	return hostedmodel.CreationPlan{ClientSessionID: resolved.ClientSessionID, Provider: resolved.Provider, Mode: resolved.Mode, PresentationMode: resolved.PresentationMode, SidebarPlacement: resolved.SidebarPlacement, Name: resolved.Name,
+		Attach: func(record threads.SessionRecord, resume bool) (string, error) {
 			if resume {
 				resolved.Provider = record.Provider
 				resolved.Mode = "resume"

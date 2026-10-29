@@ -3,18 +3,20 @@ package app
 import (
 	"testing"
 	"time"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // quietRuntimeExecutions keeps attachment setup out of tests of stored turn evidence.
 // All turn-observer operations still use the real execution store.
-type quietRuntimeExecutions struct{ *agentExecutionStore }
+type quietRuntimeExecutions struct{ *hostedstore.ExecutionStore }
 
 func (*quietRuntimeExecutions) BindSession(string, string, string, string, string) error { return nil }
 func (*quietRuntimeExecutions) UpdateSession(string, string, string, string, string) error {
 	return nil
 }
 
-func newCodexObserverFixture(t *testing.T, store *agentExecutionStore, hostedID, nativeID string) (*session, *fakeAppServer) {
+func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, hostedID, nativeID string) (*session, *fakeAppServer) {
 	t.Helper()
 	migrateTestControl(t, store.Control())
 	prompts := testPromptStore(t, store.Control().CanonicalDatabase())

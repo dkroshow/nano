@@ -3,9 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/inspection"
-
-	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,7 +14,8 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -50,7 +48,7 @@ func externalResumeCatalog(t *testing.T, provider, nativeID, cwd string) *extern
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.store.Close() })
-	f.index, err = newThreadCatalogService(context.Background(), f.store, threadCatalogServiceOptions{Roots: []history.SourceRoot{f.root}, DisableWatcher: true})
+	f.index, err = newThreadCatalogService(context.Background(), f.store, threadindex.Options{Roots: []history.SourceRoot{f.root}, DisableWatcher: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +259,7 @@ func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testin
 			if s.attachmentsControl != nil {
 				s.attachmentsControl.Catalog = catalog.index.Service
 			}
-			resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
+			resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -334,7 +332,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 		s.attachmentsControl.Catalog = catalog.index.Service
 	}
 
-	firstResolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	firstResolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +342,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	waitForSessionStatus(t, s, first.ID, sessionStatusExited)
 
-	retry, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	retry, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}

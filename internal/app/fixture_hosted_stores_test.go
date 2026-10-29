@@ -3,18 +3,21 @@ package app
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
+	"testing"
+
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
-	threadvalues "github.com/dkroshow/nano/internal/threads"
-	"path/filepath"
-	"testing"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 const controlSchemaVersion = state.LegacySchemaVersion
 
-func newTestAgentExecutionStore(t *testing.T, runID string) *agentExecutionStore {
+func newTestAgentExecutionStore(t *testing.T, runID string) *hostedstore.ExecutionStore {
 	t.Helper()
 	store, err := newAgentExecutionStore(filepath.Join(t.TempDir(), "control.sqlite"), runID)
 	if err != nil {
@@ -23,7 +26,7 @@ func newTestAgentExecutionStore(t *testing.T, runID string) *agentExecutionStore
 	return store
 }
 
-func newAgentExecutionStore(path, runID string) (*agentExecutionStore, error) {
+func newAgentExecutionStore(path, runID string) (*hostedstore.ExecutionStore, error) {
 	control, err := openControlMetadataStore(path)
 	if err != nil {
 		return nil, err
@@ -31,7 +34,7 @@ func newAgentExecutionStore(path, runID string) (*agentExecutionStore, error) {
 	return newControlAgentExecutionStore(control, runID)
 }
 
-func newTestControlMetadata(t *testing.T) *controlMetadataStore {
+func newTestControlMetadata(t *testing.T) *hostedstore.MetadataStore {
 	t.Helper()
 	store, err := openControlMetadataStore(filepath.Join(t.TempDir(), "control.sqlite"))
 	if err != nil {
@@ -42,7 +45,7 @@ func newTestControlMetadata(t *testing.T) *controlMetadataStore {
 }
 
 // migrateTestControl brings a fresh control store to the current schema.
-func migrateTestControl(t *testing.T, metadata *controlMetadataStore) {
+func migrateTestControl(t *testing.T, metadata *hostedstore.MetadataStore) {
 	t.Helper()
 	ctx := context.Background()
 	if _, err := prompts.MigrateTurnRecords(ctx, metadata.CanonicalDatabase(), prompts.LegacyTurnPaths{}, filepath.Join(t.TempDir(), "schema-20")); err != nil {
@@ -64,7 +67,7 @@ func migrateTestControl(t *testing.T, metadata *controlMetadataStore) {
 
 // resolveTestProvisional records, as a child's init does, that the hosted
 // thread's provisional handle is native, which makes native current.
-func resolveTestProvisional(t *testing.T, control *controlMetadataStore, hostedID, provider, handle, native string) {
+func resolveTestProvisional(t *testing.T, control *hostedstore.MetadataStore, hostedID, provider, handle, native string) {
 	t.Helper()
 	if err := control.ClaimNativeIDResolving(hostedID, provider, native, false, &nativeResolution{Handle: handle, Native: native}); err != nil {
 		t.Fatal(err)
@@ -72,7 +75,7 @@ func resolveTestProvisional(t *testing.T, control *controlMetadataStore, hostedI
 }
 
 // newTestHostedControl opens the real hosted and prompt store boundaries on a temporary file.
-func newTestHostedControl(t *testing.T) (*controlMetadataStore, *agentExecutionStore) {
+func newTestHostedControl(t *testing.T) (*hostedstore.MetadataStore, *hostedstore.ExecutionStore) {
 	t.Helper()
 	metadata := newTestControlMetadata(t)
 	migrateTestControl(t, metadata)
@@ -83,36 +86,36 @@ func newTestHostedControl(t *testing.T) (*controlMetadataStore, *agentExecutionS
 	return metadata, executions
 }
 
-func fixtureBeginSession(store *agentExecutionStore, clientID, hash, provider, mode string) (agentSessionRecord, bool, error) {
-	return fixtureBeginSessionWithSubscriptions(store, clientID, hash, provider, mode, agentSessionRecord{}, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.None})
+func fixtureBeginSession(store *hostedstore.ExecutionStore, clientID, hash, provider, mode string) (threads.SessionRecord, bool, error) {
+	return fixtureBeginSessionWithSubscriptions(store, clientID, hash, provider, mode, threads.SessionRecord{}, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.None})
 }
-func fixtureBeginSessionWithInvoker(store *agentExecutionStore, clientID, hash, provider, mode string, invoker agentSessionRecord, assignment ...*orchestrationAssignment) (agentSessionRecord, bool, error) {
+func fixtureBeginSessionWithInvoker(store *hostedstore.ExecutionStore, clientID, hash, provider, mode string, invoker threads.SessionRecord, assignment ...*hostedstore.Assignment) (threads.SessionRecord, bool, error) {
 	return fixtureBeginSessionWithSubscriptions(store, clientID, hash, provider, mode, invoker, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.None}, assignment...)
 }
-func fixtureBeginSessionWithSubscriptions(store *agentExecutionStore, clientID, hash, provider, mode string, invoker agentSessionRecord, choices subscriptions.Choices, assignment ...*orchestrationAssignment) (agentSessionRecord, bool, error) {
+func fixtureBeginSessionWithSubscriptions(store *hostedstore.ExecutionStore, clientID, hash, provider, mode string, invoker threads.SessionRecord, choices subscriptions.Choices, assignment ...*hostedstore.Assignment) (threads.SessionRecord, bool, error) {
 	return fixtureBeginSessionWithSubscriptionsAndPlacement(store, clientID, hash, provider, mode, sidebarPlacementInvoker, invoker, choices, assignment...)
 }
-func fixtureBeginSessionWithSubscriptionsAndPlacement(store *agentExecutionStore, clientID, hash, provider, mode, placement string, invoker agentSessionRecord, choices subscriptions.Choices, assignment ...*orchestrationAssignment) (agentSessionRecord, bool, error) {
+func fixtureBeginSessionWithSubscriptionsAndPlacement(store *hostedstore.ExecutionStore, clientID, hash, provider, mode, placement string, invoker threads.SessionRecord, choices subscriptions.Choices, assignment ...*hostedstore.Assignment) (threads.SessionRecord, bool, error) {
 	return fixtureCreateHosted(store, clientID, hash, provider, mode, placement, invoker, choices, assignment...)
 }
-func fixtureEnsureSession(store *agentExecutionStore, id, provider, mode string) (agentSessionRecord, error) {
+func fixtureEnsureSession(store *hostedstore.ExecutionStore, id, provider, mode string) (threads.SessionRecord, error) {
 	return fixtureEnsureSessionWithIdentity(store, id, provider, mode, "", "", "")
 }
-func fixtureEnsureSessionWithIdentity(store *agentExecutionStore, id, provider, mode, invoker, native, invokerProvider string) (agentSessionRecord, error) {
+func fixtureEnsureSessionWithIdentity(store *hostedstore.ExecutionStore, id, provider, mode, invoker, native, invokerProvider string) (threads.SessionRecord, error) {
 	return store.EnsureNamedSessionWithIdentity(id, provider, mode, invoker, native, invokerProvider, "")
 }
-func fixtureBeginTurn(store *agentExecutionStore, hostedID, actionID, hash string) (agentTurnRecord, bool, error) {
+func fixtureBeginTurn(store *hostedstore.ExecutionStore, hostedID, actionID, hash string) (threads.TurnRecord, bool, error) {
 	return fixtureAdmitTurn(store, hostedID, actionID, hash)
 }
 
-func recordTestCompletedTurn(store *completedTurnStore, finish coreturns.Finish) (completedTurn, bool, error) {
+func recordTestCompletedTurn(store *hostedmodel.CompletedTurnStore, finish coreturns.Finish) (completedTurn, bool, error) {
 	core, err := store.CoreStore(context.Background())
 	if err != nil {
 		return completedTurn{}, false, err
 	}
 	return core.Finished(context.Background(), finish)
 }
-func mustCompletedStore(t *testing.T) *completedTurnStore {
+func mustCompletedStore(t *testing.T) *hostedmodel.CompletedTurnStore {
 	t.Helper()
 	directory := t.TempDir()
 	stores, err := openThreadRuntimeStores(context.Background(), directory, filepath.Join(directory, "legacy-completed.sqlite"), "completed-test")
@@ -122,7 +125,7 @@ func mustCompletedStore(t *testing.T) *completedTurnStore {
 	t.Cleanup(func() { _ = stores.control.Close() })
 	return stores.completed
 }
-func fixtureLatestCompleted(store *completedTurnStore, target string) (completedTurn, error) {
+func fixtureLatestCompleted(store *hostedmodel.CompletedTurnStore, target string) (completedTurn, error) {
 	core, err := store.CoreStore(context.Background())
 	if err != nil {
 		return completedTurn{}, err
@@ -131,7 +134,7 @@ func fixtureLatestCompleted(store *completedTurnStore, target string) (completed
 }
 
 // fixtureWriteTurn seeds the committed state a stopped process left for the next opener.
-func fixtureWriteTurn(store *agentExecutionStore, rec agentTurnRecord) error {
+func fixtureWriteTurn(store *hostedstore.ExecutionStore, rec threads.TurnRecord) error {
 	var source, code, message string
 	if rec.Error != nil {
 		source, code, message = rec.Error.Source, rec.Error.Code, rec.Error.Message
@@ -140,14 +143,14 @@ func fixtureWriteTurn(store *agentExecutionStore, rec agentTurnRecord) error {
 	return err
 }
 
-func fixtureRecordCreationName(store *controlMetadataStore, hostedID, name string) error {
-	_, _, err := threadvalues.RecordCreationName(context.Background(), store.CanonicalDatabase(), hostedID, name, "creation_request")
+func fixtureRecordCreationName(store *hostedstore.MetadataStore, hostedID, name string) error {
+	_, _, err := threads.RecordCreationName(context.Background(), store.CanonicalDatabase(), hostedID, name, "creation_request")
 	return err
 }
 
 // The delivery transaction callback holds the real execution mutation lock.
 // A missing operation changes no row while concurrency tests pause the transaction.
-func fixtureExecutionLocked(t *testing.T, store *agentExecutionStore, whileLocked func()) {
+func fixtureExecutionLocked(t *testing.T, store *hostedstore.ExecutionStore, whileLocked func()) {
 	t.Helper()
 	err := store.MarkTurnDeliveryWith("", "", "", nil, func(*sql.Tx) error { whileLocked(); return nil })
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	state "github.com/dkroshow/nano/internal/app/statestore"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
@@ -130,10 +130,10 @@ func TestTurnDatabaseFixturesAreIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := turns.SaveQueuedTurns(context.Background(), first, []turns.QueuedTurn{{ClientActionID: "first", Provider: "codex", NativeThreadID: "native", Text: "retained"}}); err != nil {
+	if err := prompts.SaveQueuedTurns(context.Background(), first, []prompts.QueuedTurn{{ClientActionID: "first", Provider: "codex", NativeThreadID: "native", Text: "retained"}}); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := turns.LoadQueuedTurns(context.Background(), second)
+	rows, err := prompts.LoadQueuedTurns(context.Background(), second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestTurnDatabaseFixturesAreIsolated(t *testing.T) {
 }
 
 func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
-	for _, name := range []string{"control.sqlite", "queued-turns.json", "send-attempts.json", "turn-completed.sqlite"} {
+	for _, name := range []string{"control.sqlite", "queued-prompts.json", "send-attempts.json", "turn-completed.sqlite"} {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			dir := t.TempDir()
@@ -153,7 +153,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer control.Close()
-			for _, file := range []string{"queued-turns.json", "send-attempts.json"} {
+			for _, file := range []string{"queued-prompts.json", "send-attempts.json"} {
 				if err := os.WriteFile(filepath.Join(dir, file), []byte("[]"), 0600); err != nil {
 					t.Fatal(err)
 				}
@@ -174,7 +174,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 			switch name {
 			case "control.sqlite":
 				err = control.EnsureHostedThread("rollback-owner", "codex", presentationShared, "", "", "")
-			case "queued-turns.json":
+			case "queued-prompts.json":
 				err = os.WriteFile(filepath.Join(dir, name), []byte(`[{"clientActionId":"rollback","provider":"codex","hostedThreadId":"rollback-owner","text":"retained prompt"}]`), 0600)
 			case "send-attempts.json":
 				err = os.WriteFile(filepath.Join(dir, name), []byte(`[{"clientActionId":"rollback","provider":"codex","status":"uncertain"}]`), 0600)
@@ -194,7 +194,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 				if _, err := resumed.control.View("rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
 					t.Fatalf("later schema reimported changed control facts: %v", err)
 				}
-			case "queued-turns.json":
+			case "queued-prompts.json":
 				if rows := QueueSnapshot(resumed.queue); len(rows) != 0 {
 					t.Fatalf("later schema reimported changed queue: %+v", rows)
 				}
@@ -228,7 +228,7 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	}
 	queued := queuedTurnRecord{ClientActionID: "action", Provider: "claude", HostedThreadID: "owner", NativeThreadID: "native", Text: "unconfirmed prompt", TextHash: "hash", RequestHash: "hash", State: submissionAccepted, ProviderTurnID: "provider-turn", CreatedAt: "2026-09-09T00:00:00Z"}
 	attempt := sendAttemptRecord{ClientActionID: "action", Provider: "claude", NativeThreadID: "native", TextHash: "hash", Status: sendAttemptAccepted, ProviderTurnID: "provider-turn", CreatedAt: queued.CreatedAt, UpdatedAt: queued.CreatedAt, RunID: "old"}
-	for name, value := range map[string]any{"queued-turns.json": []queuedTurnRecord{queued}, "send-attempts.json": []sendAttemptRecord{attempt}} {
+	for name, value := range map[string]any{"queued-prompts.json": []queuedTurnRecord{queued}, "send-attempts.json": []sendAttemptRecord{attempt}} {
 		body, _ := json.Marshal(value)
 		if err := os.WriteFile(filepath.Join(dir, name), body, 0600); err != nil {
 			t.Fatal(err)
@@ -285,7 +285,7 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resumed.control.Close()
-	if retained, ok := resumed.queue.Get("action"); !ok || retained.State != string(turns.Accepted) || retained.Text != "unconfirmed prompt" || retained.ProviderTurnID != "provider-turn" {
+	if retained, ok := resumed.queue.Get("action"); !ok || retained.State != string(prompts.Accepted) || retained.Text != "unconfirmed prompt" || retained.ProviderTurnID != "provider-turn" {
 		t.Fatalf("restart changed accepted prompt evidence: %+v", retained)
 	}
 	if got, ok := resumed.attempts.Get("action"); !ok || got.Confirmed {
@@ -322,7 +322,7 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	for i := 0; i < testsupport.MaxQueuedTurns; i++ {
 		queueRows = append(queueRows, queuedTurnRecord{ClientActionID: fmt.Sprint(i), Provider: "codex", NativeThreadID: "native", Text: "retained text", State: submissionAccepted})
 	}
-	if err := turns.SaveQueuedTurns(context.Background(), db, queueRows); err != nil {
+	if err := prompts.SaveQueuedTurns(context.Background(), db, queueRows); err != nil {
 		t.Fatal(err)
 	}
 	queue, err := newQueuedTurnStore(db, path, testPromptStore(t, db))
@@ -341,7 +341,7 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	for _, status := range []string{sendAttemptQueued, sendAttemptSending, sendAttemptTimeout, "unknown", "parked"} {
 		attempts = append(attempts, sendAttemptRecord{ClientActionID: status, Provider: "codex", NativeThreadID: "native", Status: status})
 	}
-	if err := turns.SaveSendAttempts(context.Background(), db, attempts); err != nil {
+	if err := prompts.SaveSendAttempts(context.Background(), db, attempts); err != nil {
 		t.Fatal(err)
 	}
 	journal, err := newSendAttemptStore(db, path, "run", testPromptStore(t, db))
@@ -354,7 +354,7 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	if err := JournalPut(journal, sendAttemptRecord{ClientActionID: "new-queued", Provider: "codex", NativeThreadID: "native", Status: sendAttemptQueued}); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := turns.LoadSendAttempts(context.Background(), db)
+	rows, err := prompts.LoadSendAttempts(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +369,7 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	if _, ok := journal.Get("native-000"); ok {
 		t.Fatal("old terminal history was not bounded")
 	}
-	retained, err := turns.LoadQueuedTurns(context.Background(), db)
+	retained, err := prompts.LoadQueuedTurns(context.Background(), db)
 	if err != nil || len(retained) != testsupport.MaxQueuedTurns {
 		t.Fatal("journal retention changed queued text")
 	}

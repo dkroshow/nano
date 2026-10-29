@@ -16,7 +16,7 @@ func TestBulkTurnOperationStatusToleratesMissingIDs(t *testing.T) {
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store}
 
 	rec := httptest.NewRecorder()
-	s.handleTurnOperationsCollection(rec, httptest.NewRequest(http.MethodGet,
+	s.hostedViews().HandleOperationsCollection(rec, httptest.NewRequest(http.MethodGet,
 		"/api/v1/turn-operations?ids="+op.ID+",op-gone", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("bulk status = %d, body %s", rec.Code, rec.Body.String())
@@ -46,7 +46,7 @@ func TestBulkTurnOperationStatusToleratesMissingIDs(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	s.handleTurnOperationsCollection(rec, httptest.NewRequest(http.MethodGet, "/api/v1/turn-operations", nil))
+	s.hostedViews().HandleOperationsCollection(rec, httptest.NewRequest(http.MethodGet, "/api/v1/turn-operations", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("no ids = %d, want 400", rec.Code)
 	}

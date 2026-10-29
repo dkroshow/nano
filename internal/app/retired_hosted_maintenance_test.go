@@ -12,14 +12,16 @@ import (
 	"testing"
 
 	state "github.com/dkroshow/nano/internal/app/statestore"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 type retirementServerFixture struct {
 	server             *server
-	old, owner, child  agentSessionRecord
-	oldTurn, childTurn agentTurnRecord
+	old, owner, child  threads.SessionRecord
+	oldTurn, childTurn threads.TurnRecord
 }
 
 func newRetirementServer(t *testing.T) retirementServerFixture {
@@ -31,19 +33,19 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { control.Close() })
-	if _, err := turns.MigrateTurnRecords(ctx, control.CanonicalDatabase(), turns.LegacyTurnPaths{}, filepath.Join(t.TempDir(), "migration")); err != nil {
+	if _, err := prompts.MigrateTurnRecords(ctx, control.CanonicalDatabase(), prompts.LegacyTurnPaths{}, filepath.Join(t.TempDir(), "migration")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateTurnTransactions(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema20.sqlite")); err != nil {
+	if _, err := prompts.MigrateTurnTransactions(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema20.sqlite")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := coreturns.MigrateCompletedTurnUsage(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema21.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateMemberRecovery(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema22.sqlite")); err != nil {
+	if _, err := prompts.MigrateMemberRecovery(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema22.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := turns.MigrateParkedDiscard(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
+	if _, err := prompts.MigrateParkedDiscard(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
 		t.Fatal(err)
 	}
 	executions, err := newControlAgentExecutionStore(control, "test")
@@ -71,7 +73,7 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	childTurn, _, err := fixtureHistoricalTurn(executions, child.ID, "child-action", "child-hash", turnAttribution{SenderHostedThreadID: old.ID, SenderNativeThreadID: identityNativeOld, SenderProvider: "codex"})
+	childTurn, _, err := fixtureHistoricalTurn(executions, child.ID, "child-action", "child-hash", hostedstore.TurnAttribution{SenderHostedThreadID: old.ID, SenderNativeThreadID: identityNativeOld, SenderProvider: "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,10 +89,10 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	// Seeded after adoption, as the schema-20 rows retirement handles: an
 	// adopted journal row would carry the retiring hosted id, which the
 	// retirement check refuses.
-	if err := turns.SaveQueuedTurns(ctx, control.CanonicalDatabase(), []queuedTurnRecord{{ClientActionID: "unconfirmed", Provider: "codex", HostedThreadID: old.ID, NativeThreadID: identityNativeOld, Text: "keep this evidence", State: submissionAccepted}}); err != nil {
+	if err := prompts.SaveQueuedTurns(ctx, control.CanonicalDatabase(), []queuedTurnRecord{{ClientActionID: "unconfirmed", Provider: "codex", HostedThreadID: old.ID, NativeThreadID: identityNativeOld, Text: "keep this evidence", State: submissionAccepted}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := turns.SaveSendAttempts(ctx, control.CanonicalDatabase(), []sendAttemptRecord{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
+	if err := prompts.SaveSendAttempts(ctx, control.CanonicalDatabase(), []sendAttemptRecord{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
 		t.Fatal(err)
 	}
 	return retirementServerFixture{server: &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, Registry: newSessionRegistry()}, old: old, owner: owner, child: child, oldTurn: oldTurn, childTurn: childTurn}
@@ -98,7 +100,7 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 func retirementHTTP(t *testing.T, s *server, body string) (retiredHostedReceipt, int) {
 	t.Helper()
 	w := httptest.NewRecorder()
-	s.handleRetiredHostedRecords(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
+	s.hostedController().HandleRetirement(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
 	var result retiredHostedReceipt
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -226,10 +228,10 @@ func TestRetiredHostedRefusesRuntimeAndAttachmentReferences(t *testing.T) {
 				s.RegisterSession(newFixtureSession(sessionConfig{HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}, ""))
 			case "attachment-owner":
 				s.attachments = newTestStore(t)
-				s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.old.ID})
+				s.attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.old.ID})
 			case "attachment-invoker":
 				s.attachments = newTestStore(t)
-				s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID})
+				s.attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID})
 			}
 			result := s.retireHostedRecords(context.Background(), state.RetirementRequest{OutboxDisposition: "repoint"})
 			if result.OK || result.Applied || !strings.Contains(result.Error, "reference") && !strings.Contains(result.Error, "edge") {
@@ -243,7 +245,7 @@ func TestRetiredHostedHTTPRequiresExplicitBoundedRequest(t *testing.T) {
 	f := newRetirementServer(t)
 	for _, body := range []string{`{}`, `{"apply":true}`, `{"apply":true,"outboxDisposition":"repoint"}`, `{"apply":false,"outboxDisposition":"guess"}`, `{"apply":false,"outboxDisposition":"repoint","hostedIds":["anything"]}`, `{"apply":false,"outboxDisposition":"repoint"} {}`} {
 		w := httptest.NewRecorder()
-		f.server.handleRetiredHostedRecords(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
+		f.server.hostedController().HandleRetirement(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("accepted %s: %d %s", body, w.Code, w.Body.String())
 		}

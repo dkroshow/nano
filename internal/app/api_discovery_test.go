@@ -413,21 +413,21 @@ func TestOpenAPIExposesThreadDiagnostics(t *testing.T) {
 	if threadDiagnostics.Type != "array" || threadDiagnostics.MaxItems != threadDiagnosticLimit || threadDiagnostics.Items.Ref != "#/components/schemas/ThreadDiagnostic" {
 		t.Fatalf("threadDiagnostics schema = %#v", threadDiagnostics)
 	}
-	var threadDiagnostic struct {
+	var threadDiagnosticSchema struct {
 		Required             []string                   `json:"required"`
 		Properties           map[string]json.RawMessage `json:"properties"`
 		AdditionalProperties bool                       `json:"additionalProperties"`
 	}
-	if err := json.Unmarshal(document.Components.Schemas["ThreadDiagnostic"], &threadDiagnostic); err != nil {
+	if err := json.Unmarshal(document.Components.Schemas["ThreadDiagnostic"], &threadDiagnosticSchema); err != nil {
 		t.Fatal(err)
 	}
 	for _, field := range []string{"code", "message", "source", "occurrences"} {
-		if !slices.Contains(threadDiagnostic.Required, field) || threadDiagnostic.Properties[field] == nil {
-			t.Errorf("thread diagnostic missing %s: %#v", field, threadDiagnostic)
+		if !slices.Contains(threadDiagnosticSchema.Required, field) || threadDiagnosticSchema.Properties[field] == nil {
+			t.Errorf("thread diagnostic missing %s: %#v", field, threadDiagnosticSchema)
 		}
 	}
-	if threadDiagnostic.Properties["actionId"] == nil || threadDiagnostic.AdditionalProperties {
-		t.Fatalf("thread diagnostic schema = %#v", threadDiagnostic)
+	if threadDiagnosticSchema.Properties["actionId"] == nil || threadDiagnosticSchema.AdditionalProperties {
+		t.Fatalf("thread diagnostic schema = %#v", threadDiagnosticSchema)
 	}
 }
 

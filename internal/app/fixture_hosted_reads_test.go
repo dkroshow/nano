@@ -10,20 +10,21 @@ import (
 	"sort"
 	"time"
 
-	"github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
-func fixtureTurnForAction(store *agentExecutionStore, id, action string) (agentTurnRecord, bool) {
+func fixtureTurnForAction(store *hostedstore.ExecutionStore, id, action string) (threads.TurnRecord, bool) {
 	for _, record := range store.TurnsForHosted(id) {
 		if record.ClientActionID == action {
 			return record, true
 		}
 	}
-	return agentTurnRecord{}, false
+	return threads.TurnRecord{}, false
 }
 
-func fixtureListSessions(store *agentExecutionStore) []string {
+func fixtureListSessions(store *hostedstore.ExecutionStore) []string {
 	rows, err := store.Control().CanonicalDatabase().Query(`SELECT hosted_thread_id FROM hosted_execution_sessions`)
 	if err != nil {
 		panic(err)
@@ -43,19 +44,19 @@ func fixtureListSessions(store *agentExecutionStore) []string {
 	return ids
 }
 
-func fixtureAttachmentRecords(store *hostedstore.AttachmentStore) []attachmentRecord {
+func fixtureAttachmentRecords(store *hostedstore.AttachmentStore) []hostedstore.Attachment {
 	records := store.DetachedExcept(nil)
 	sort.Slice(records, func(i, j int) bool { return records[i].HostedThreadID < records[j].HostedThreadID })
 	return records
 }
 
-func fixtureWaitTurn(store *agentExecutionStore, ctx context.Context, id string, revision int64, wait time.Duration) (agentTurnRecord, bool) {
+func fixtureWaitTurn(store *hostedstore.ExecutionStore, ctx context.Context, id string, revision int64, wait time.Duration) (threads.TurnRecord, bool) {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/operations/%s?afterRevision=%d&waitMs=%d", id, revision, wait.Milliseconds()), nil).WithContext(ctx)
 	request.SetPathValue("operationId", id)
 	(&server{agentExecutions: store, Registry: newSessionRegistry()}).hostedViews().HandleOperationRead(response, request)
 	if response.Code == http.StatusNotFound {
-		return agentTurnRecord{}, false
+		return threads.TurnRecord{}, false
 	}
 	if response.Code != http.StatusOK {
 		panic(response.Body.String())
@@ -63,10 +64,10 @@ func fixtureWaitTurn(store *agentExecutionStore, ctx context.Context, id string,
 	return store.Turn(id)
 }
 
-func fixtureWaitChanges(store *agentExecutionStore, ctx context.Context, bookmark string, wait time.Duration) struct{ Bookmark string } {
+func fixtureWaitChanges(store *hostedstore.ExecutionStore, ctx context.Context, bookmark string, wait time.Duration) struct{ Bookmark string } {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/operations/changes?since=%s&waitMs=%d", url.QueryEscape(bookmark), wait.Milliseconds()), nil).WithContext(ctx)
-	(&hosted.ViewService{Executions: store}).HandleOperationChanges(response, request)
+	(&hostedmodel.ViewService{Executions: store}).HandleOperationChanges(response, request)
 	var result struct{ Bookmark string }
 	if response.Code != http.StatusOK {
 		panic(response.Body.String())
@@ -77,10 +78,10 @@ func fixtureWaitChanges(store *agentExecutionStore, ctx context.Context, bookmar
 	return result
 }
 
-func fixturePermissionEventsAfter(store *controlMetadataStore, id string, after int64, limit int) (hostedstore.PermissionEventPage, error) {
+func fixturePermissionEventsAfter(store *hostedstore.MetadataStore, id string, after int64, limit int) (hostedstore.PermissionEventPage, error) {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/hosted-threads/%s/permission-events?after=%d&limit=%d", id, after, limit), nil)
-	(&hosted.ViewService{Metadata: store}).HandlePermissionEvents(response, request, agentSessionRecord{ID: id})
+	(&hostedmodel.ViewService{Metadata: store}).HandlePermissionEvents(response, request, threads.SessionRecord{ID: id})
 	if response.Code != http.StatusOK {
 		return hostedstore.PermissionEventPage{}, fmt.Errorf("permission events: %s", response.Body.String())
 	}
@@ -91,7 +92,7 @@ func fixturePermissionEventsAfter(store *controlMetadataStore, id string, after 
 
 // Fixture assignments may include stale targets to exercise projection repair.
 // Seed their canonical evidence through the production metadata writer.
-func fixtureAppendOrchestrationAssignment(store *agentExecutionStore, id, action string, assignment *orchestrationAssignment) (int64, error) {
+func fixtureAppendOrchestrationAssignment(store *hostedstore.ExecutionStore, id, action string, assignment *hostedstore.Assignment) (int64, error) {
 	disposition := metadataDispositionConfirmed
 	var value any
 	if assignment == nil {

@@ -3,24 +3,24 @@ package app
 import (
 	"encoding/json"
 	"errors"
-	"github.com/dkroshow/nano/internal/hosted"
 	"log"
 	"net/http"
 
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 func (s *server) handleSessionCreateAction(w http.ResponseWriter, r *http.Request) {
 	// Share admission serialization with hosted and legacy explicit close.
-	var req hosted.SpawnRequest
+	var req hostedmodel.SpawnRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Provider == "" {
 		httpapi.WriteHTTPError(w, "body must be {\"provider\": \"codex\"|\"claude\"|\"grok\", ...spawn options}", http.StatusBadRequest)
 		return
 	}
 	sess, err := s.attachmentCoordinator().Spawn(req)
 	if err != nil {
-		if errors.Is(err, hosted.ErrHostedControlUnavailable) {
+		if errors.Is(err, hostedmodel.ErrHostedControlUnavailable) {
 			message := err.Error()
 			if s.executionControlErr != "" {
 				message += ": " + s.executionControlErr

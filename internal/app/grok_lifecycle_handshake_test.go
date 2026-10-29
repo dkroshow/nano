@@ -11,12 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	testfixture "github.com/dkroshow/nano/internal/testsupport"
 	grokfixture "github.com/dkroshow/nano/internal/testsupport/grokserver"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -77,7 +76,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { store.Close() })
-			catalog, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
+			catalog, err := newThreadCatalogService(context.Background(), store, threadindex.Options{
 				Roots: []history.SourceRoot{{Provider: history.ProviderGrok, Kind: history.RootGrokSessions, Path: root}},
 			})
 			if err != nil {
@@ -108,7 +107,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 			}
 			if tc.parked {
 				text := "parked prompt"
-				if _, _, err := sess.PromptStore().Submit(context.Background(), turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderGrok, NativeThreadID: sess.ThreadID(),
+				if _, _, err := sess.PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderGrok, NativeThreadID: sess.ThreadID(),
 					ActionID: "parked", ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 					t.Fatal(err)
 				}

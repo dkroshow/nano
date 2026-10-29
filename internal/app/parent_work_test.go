@@ -22,7 +22,7 @@ func TestChildLaunchDoesNotBecomeParentWork(t *testing.T) {
 	waitReconnectCondition(t, func() bool { return !sess.Summary().TurnActive })
 	app := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"parent": sess})
 	summary := sess.Summary()
-	if summary.TurnActive || app.agentSessionView("hosted-parent").Working {
+	if summary.TurnActive || app.hostedViews().SessionView("hosted-parent").Working {
 		t.Fatal("child launch became parent's own work")
 	}
 }

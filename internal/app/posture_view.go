@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // posture_view.go — the one posture struct every surface serves (coordination
@@ -35,14 +36,14 @@ func (s *server) durableThreadName(provider, nativeThreadID string) (string, boo
 	return reader.ThreadNameFor(context.Background(), provider, nativeThreadID)
 }
 
-func (s *server) durableThreadNameRef(provider, nativeThreadID string) (hostedMetadataName, bool) {
+func (s *server) durableThreadNameRef(provider, nativeThreadID string) (hostedstore.MetadataName, bool) {
 	reader, ok := s.catalog.(threadNameRefReader)
 	if !ok || nativeThreadID == "" {
-		return hostedMetadataName{}, false
+		return hostedstore.MetadataName{}, false
 	}
 	ref, ok := reader.ThreadNameRefFor(context.Background(), provider, nativeThreadID)
 	if !ok || ref == nil || ref.Value == "" {
-		return hostedMetadataName{}, false
+		return hostedstore.MetadataName{}, false
 	}
-	return hostedMetadataName{Value: ref.Value, Provenance: string(ref.Provenance)}, true
+	return hostedstore.MetadataName{Value: ref.Value, Provenance: string(ref.Provenance)}, true
 }

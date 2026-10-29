@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -259,7 +260,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker", "worker", "claude", presentationShared, invoker, &orchestrationAssignment{
+	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker", "worker", "claude", presentationShared, invoker, &hostedstore.Assignment{
 		AssignmentRole: "worker", Focus: "Implement the catalog overlay",
 	})
 	if err != nil {
@@ -292,7 +293,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	}
 
 	assigned := readCatalog()
-	hosted := s.agentSessionView(worker.ID)
+	hosted := s.hostedViews().SessionView(worker.ID)
 	if !reflect.DeepEqual(assigned.Assignment, hosted.Assignment) || assigned.Assignment == nil || assigned.Assignment.AssignmentRole != "worker" {
 		t.Fatalf("catalog assignment = %#v, hosted assignment = %#v", assigned.Assignment, hosted.Assignment)
 	}
@@ -559,7 +560,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	catalog := &fakeThreadCatalog{}
 	store := newTestStore(t)
-	store.Remember(attachmentRecord{
+	store.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "cs_shim", ShimSessionID: "cs_shim",
 		Cwd: "/w", AttachedAt: "2026-08-06T10:00:00Z",
 	})
@@ -830,7 +831,7 @@ func rescueServer(t *testing.T) *server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
+	store.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	s := testServerWithSessions(&server{catalog: fake, attachments: store, Registry: newSessionRegistry()}, map[string]*session{
 		"aaa": memorySession(t, "aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
@@ -1039,7 +1040,7 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 	if err := store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixtureAppendOrchestrationAssignment(store, child.ID, "move", &orchestrationAssignment{
+	if _, err := fixtureAppendOrchestrationAssignment(store, child.ID, "move", &hostedstore.Assignment{
 		AssignmentRole: "worker", Focus: "Move visually", RelatedHostedThreadID: newParent.ID,
 	}); err != nil {
 		t.Fatal(err)

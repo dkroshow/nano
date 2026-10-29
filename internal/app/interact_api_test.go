@@ -10,8 +10,9 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
@@ -55,7 +56,7 @@ func TestInteractTurnSubmitRejectsInvalidOriginBoundaries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target+"/turns", strings.NewReader(test.body))
 			response := httptest.NewRecorder()
-			s.handleAgentTurnSubmit(response, request, target)
+			s.hostedController().HandleTurnSubmit(response, request, target)
 			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), test.want) {
 				t.Fatalf("response = %d %q, want 400 containing %q", response.Code, response.Body.String(), test.want)
 			}
@@ -66,7 +67,7 @@ func TestInteractTurnSubmitRejectsInvalidOriginBoundaries(t *testing.T) {
 func TestInteractCompletedTurnFeedAdvancesDurableCursor(t *testing.T) {
 	s, target := interactTestServer(t, false)
 	completed := mustCompletedStore(t)
-	s.completedTurns = hosted.NewCompletedTurnSource(completed)
+	s.completedTurns = hostedmodel.NewCompletedTurnSource(completed)
 	if _, _, err := recordTestCompletedTurn(completed, coreturns.Finish{HostedThreadID: target, Provider: "codex", TurnID: "turn-1", FinalMessageID: "final-1", Outcome: "completed", At: time.Now(), Source: "adapter"}); err != nil {
 		t.Fatal(err)
 	}
@@ -91,8 +92,8 @@ func TestInteractCompletedTurnFeedAdvancesDurableCursor(t *testing.T) {
 // person's prompt, names none. Boundary: the public completed-turn feed.
 func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *testing.T) {
 	s, target := interactTestServer(t, false)
-	completed := hosted.NewCompletedTurnStore(s.queuedTurns.Database())
-	s.completedTurns = hosted.NewCompletedTurnSource(completed)
+	completed := hostedmodel.NewCompletedTurnStore(s.queuedTurns.Database())
+	s.completedTurns = hostedmodel.NewCompletedTurnSource(completed)
 	op, _, err := fixtureBeginTurn(s.agentExecutions, target, "action-failed", "hash-failed")
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +122,7 @@ func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *tes
 func TestInteractLifecycleReportsCoordinatorFacts(t *testing.T) {
 	var projection *sessions.LiveProjection
 	s, target := interactTestServer(t, true, func(cfg *sessionConfig) { projection = cfg.Projection })
-	projection.RecordDiagnostic(threadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
+	projection.RecordDiagnostic(observability.ThreadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
 	state, err := interactTestClient(t, s).ReadLifecycle(context.Background(), target)
 	if err != nil || !state.Attached || !state.Ready || !state.Working || !state.TurnActive || state.Availability != availabilityBusy || state.AttachmentState != "live" {
 		t.Fatalf("lifecycle state = %#v, %v", state, err)

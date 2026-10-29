@@ -1,7 +1,7 @@
 package app
 
 import (
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threads"
@@ -38,13 +38,13 @@ const metadataFreshnessLive = hostedstore.FreshnessLive
 const metadataFreshnessHistorical = hostedstore.FreshnessHistorical
 const metadataFreshnessReplayed = hostedstore.FreshnessReplayed
 const metadataSourceMigration = hostedstore.SourceMigration
-const submissionQueued = string(turns.Queued)
-const submissionDelivering = string(turns.Delivering)
-const submissionAccepted = string(turns.Accepted)
-const submissionUncertain = string(turns.Uncertain)
-const submissionParked = string(turns.Parked)
+const submissionQueued = string(prompts.Queued)
+const submissionDelivering = string(prompts.Delivering)
+const submissionAccepted = string(prompts.Accepted)
+const submissionUncertain = string(prompts.Uncertain)
+const submissionParked = string(prompts.Parked)
 
-type queuedTurnRecord = turns.QueuedTurn
+type queuedTurnRecord = prompts.QueuedTurn
 
-const turnOriginHuman = string(turns.HumanOrigin)
-const turnOriginSystem = string(turns.SystemOrigin)
+const turnOriginHuman = string(prompts.HumanOrigin)
+const turnOriginSystem = string(prompts.SystemOrigin)

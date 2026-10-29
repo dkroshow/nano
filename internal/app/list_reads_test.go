@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -112,7 +112,7 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
+	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
 	metadata, _ := newTestHostedControl(t)
 	f := &budgetFixture{now: now, hostedBy: map[string]string{}}
 	// Instrument the adapter's supplied database from construction, so sessions
@@ -163,9 +163,9 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 			cfg.HostedThreadID = hostedID
 			cfg.Metadata = readFixtureMetadata{metadata}
 			cfg.AgentExecutions = &quietRuntimeExecutions{executions}
-			cfg.MetadataName = func(provider, native string) (hostedMetadataName, bool) {
+			cfg.MetadataName = func(provider, native string) (hostedstore.MetadataName, bool) {
 				if nameOwner == nil {
-					return hostedMetadataName{}, false
+					return hostedstore.MetadataName{}, false
 				}
 				return nameOwner.durableThreadNameRef(provider, native)
 			}
@@ -191,7 +191,7 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 	for i, native := range []string{"detached-hosted", "detached-unnamed"} {
 		sess := live(native, "/canon/"+native, "canon-model-z", true, created)
 		delete(sessions, sess.ID())
-		attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: native, HostedThreadID: sess.HostedThreadID(),
+		attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: native, HostedThreadID: sess.HostedThreadID(),
 			AttachedAt: now.Add(-time.Duration(i+1) * time.Minute).Format(time.RFC3339)})
 	}
 
@@ -433,15 +433,15 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 	catalog := &countingCatalog{threadCatalogService: newStoredCatalog(t, store)}
 	s := &server{catalog: catalog}
 
-	keys := make([]attachmentKey, 1200)
+	keys := make([]hostedstore.AttachmentKey, 1200)
 	for i := range keys {
-		keys[i] = attachmentKey{Provider: "codex", NativeThreadID: fmt.Sprintf("absent-%04d", i)}
+		keys[i] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: fmt.Sprintf("absent-%04d", i)}
 	}
-	keys[0] = attachmentKey{Provider: "codex", NativeThreadID: "shared-native"}
-	keys[600] = attachmentKey{Provider: "claude", NativeThreadID: "shared-native"}
-	keys[1199] = attachmentKey{Provider: "codex", NativeThreadID: "codex-only"}
-	keys[1198] = attachmentKey{Provider: "grok", NativeThreadID: "codex-only"}
-	keys[900] = attachmentKey{Provider: "codex", NativeThreadID: "guardian-native"}
+	keys[0] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: "shared-native"}
+	keys[600] = hostedstore.AttachmentKey{Provider: "claude", NativeThreadID: "shared-native"}
+	keys[1199] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: "codex-only"}
+	keys[1198] = hostedstore.AttachmentKey{Provider: "grok", NativeThreadID: "codex-only"}
+	keys[900] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: "guardian-native"}
 	found, err := s.threadsByIdentity(ctx, keys)
 	if err != nil {
 		t.Fatal(err)
@@ -453,7 +453,7 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 		t.Fatalf("found %d threads, want 4: %#v", len(found), found)
 	}
 	// A live guardian is found too, as the former point read found it.
-	for _, key := range []attachmentKey{keys[0], keys[600], keys[900], keys[1199]} {
+	for _, key := range []hostedstore.AttachmentKey{keys[0], keys[600], keys[900], keys[1199]} {
 		if row, ok := found[key]; !ok || row.Provider != key.Provider || row.NativeID != key.NativeThreadID {
 			t.Errorf("%s/%s = %#v, %v", key.Provider, key.NativeThreadID, row, ok)
 		}
@@ -573,10 +573,10 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 		if err := executions.UpdateSession("nht_rebooting", "", "rebooting", sessionStatusExited, ""); err != nil {
 			t.Fatal(err)
 		}
-		rebooting := attachmentRecord{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
-		f.server.bootAttachments = sessions.NewBootAttachments([]attachmentRecord{rebooting})
+		rebooting := hostedstore.Attachment{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
+		f.server.bootAttachments = sessions.NewBootAttachments([]hostedstore.Attachment{rebooting})
 		var body map[string]any
-		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.handleAgentSessionsList, "/api/v1/hosted-threads") })
+		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.hostedViews().HandleSessionsList, "/api/v1/hosted-threads") })
 		listed := map[string]string{}
 		items, _ := body["items"].([]any)
 		for _, item := range items {
@@ -615,13 +615,13 @@ func TestAvailabilityReadsOnlyItsThreadsPrompts(t *testing.T) {
 		var statements, rows atomic.Int64
 		db := sql.OpenDB(countingConnector{driver: s.queuedTurns.Database().Driver(), dsn: s.queuedTurns.Path(), count: &statements, rows: &rows})
 		t.Cleanup(func() { db.Close() })
-		store, err := turns.OpenStore(ctx, db)
+		store, err := prompts.OpenStore(ctx, db)
 		if err != nil {
 			t.Fatal(err)
 		}
 		s.queuedTurns.BindTransactionStore(store)
 		submit := func(hosted, native, action string) {
-			if _, _, err := store.Submit(ctx, turns.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
+			if _, _, err := store.Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
 				ActionID: action, ProviderText: "prompt " + action, TextHash: action, RequestHash: action}); err != nil {
 				t.Fatal(err)
 			}
@@ -632,7 +632,7 @@ func TestAvailabilityReadsOnlyItsThreadsPrompts(t *testing.T) {
 			submit(fmt.Sprintf("nht_other_%03d", i), fmt.Sprintf("native-other-%03d", i), fmt.Sprintf("other-%03d", i))
 		}
 		rows.Store(0)
-		queued = s.availabilityFor(worker.ID, time.Now().UTC()).Facts.QueuedPrompts
+		queued = s.hostedViews().AvailabilityFor(worker.ID, time.Now().UTC()).Facts.QueuedPrompts
 		return rows.Load(), queued
 	}
 	smallRows, smallQueued := measure(5)
@@ -743,11 +743,11 @@ func TestThreadListPagesKeepLimitAndLoseNoThread(t *testing.T) {
 func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T) {
 	s, _, sess, sender, worker, _, provider := stage0Server(t)
 	ctx, now := context.Background(), time.Now().UTC()
-	if v := s.availabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.QueuedPrompts != 0 {
+	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.QueuedPrompts != 0 {
 		t.Fatalf("nothing queued = %+v", v)
 	}
 	submit := func(hosted, native, action string) {
-		if _, _, err := sess.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
+		if _, _, err := sess.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: "codex", NativeThreadID: native,
 			ActionID: action, ProviderText: "prompt " + action, TextHash: action, RequestHash: action}); err != nil {
 			t.Fatal(err)
 		}
@@ -756,7 +756,7 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 		submit(worker.ID, "native-worker", "mine-1")
 		submit(worker.ID, "native-worker", "mine-2")
 		submit(sender.ID, "native-sender", "theirs-1")
-		if v := s.availabilityFor(worker.ID, now); v.State != availabilityBusy || v.Facts.QueuedPrompts != 2 ||
+		if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Facts.QueuedPrompts != 2 ||
 			len(v.Reasons) != 1 || v.Reasons[0] != "queued_backlog" {
 			t.Fatalf("own backlog = %+v", v)
 		}
@@ -766,7 +766,7 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 	}); err != nil || reason != "" {
 		t.Fatalf("fixture delivery lock: %s %v", reason, err)
 	}
-	if v := s.availabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" || v.Facts.QueuedPrompts != 2 {
+	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" || v.Facts.QueuedPrompts != 2 {
 		t.Fatalf("active with backlog = %+v", v)
 	}
 }
@@ -777,15 +777,15 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 // session admission calls it); the legacy writer only imports old queues.
 func TestQueuedPromptsAlwaysCarryAHostedThread(t *testing.T) {
 	ctx := context.Background()
-	db, _, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "queued-turns.json"))
+	db, _, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "queued-prompts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := turns.OpenStore(ctx, db)
+	store, err := prompts.OpenStore(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.Submit(ctx, turns.Submission{Provider: "codex", NativeThreadID: "native-only",
+	if _, _, err := store.Submit(ctx, prompts.Submission{Provider: "codex", NativeThreadID: "native-only",
 		ActionID: "no-owner", ProviderText: "prompt", TextHash: "h", RequestHash: "h"}); err == nil {
 		t.Fatal("a prompt without a hosted id was accepted")
 	}
@@ -796,6 +796,6 @@ func TestQueuedPromptsAlwaysCarryAHostedThread(t *testing.T) {
 
 // Read-budget fixtures seed their canonical facts before attachment. Provider
 // setup must not overwrite those deliberately contrasting transport values.
-type readFixtureMetadata struct{ *controlMetadataStore }
+type readFixtureMetadata struct{ *hostedstore.MetadataStore }
 
 func (readFixtureMetadata) AppendEvent(event metadataEvent) (metadataEvent, error) { return event, nil }

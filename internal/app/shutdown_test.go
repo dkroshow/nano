@@ -11,19 +11,19 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 )
 
 // stoppingServer holds one ready session whose provider answers only when
 // the test releases it.
-func stoppingServer(t *testing.T) (*server, *session, *turns.Store, chan struct{}, *atomic.Int32) {
+func stoppingServer(t *testing.T) (*server, *session, *prompts.Store, chan struct{}, *atomic.Int32) {
 	t.Helper()
 	release := make(chan struct{})
 	var sends atomic.Int32
 	s := &server{}
 	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "nano-session", Provider: "codex", HostedThreadID: "hosted-thread", NanoStopping: &s.stopping})
-	s.turns, s.queuedTurns, s.sendAttempts = cfg.Turns, cfg.QueuedTurns.(*queuedTurnStore), cfg.SendAttempts.(*sendAttemptStore)
+	s.turns, s.queuedTurns, s.sendAttempts = cfg.Turns, cfg.QueuedTurns.(*prompts.LegacyQueue), cfg.SendAttempts.(*prompts.LegacyJournal)
 	fixture := newProviderRuntimeFixture(t, cfg, "native-thread", "", func(f *providerRuntimeFixture) {
 		f.send = func(context.Context, string) (json.RawMessage, error) {
 			sends.Add(1)
@@ -69,7 +69,7 @@ func TestStopWaitsBoundedlyForInFlightDeliveries(t *testing.T) {
 			t.Fatalf("stop = %+v, want one finished delivery", report)
 		}
 		record, _, err := store.Get(context.Background(), "finishing")
-		if err != nil || record.Outbox.State != turns.Accepted {
+		if err != nil || record.Outbox.State != prompts.Accepted {
 			t.Fatalf("the accepted outcome was not recorded before exit: %+v, %v", record.Outbox, err)
 		}
 	})
@@ -117,7 +117,7 @@ func TestStoppingNanoQueuesInternalSendsForTheNextProcess(t *testing.T) {
 		t.Fatalf("send during stop = %v, %d, %q, %v; want queued", op, status, reason, err)
 	}
 	record, _, err := store.Get(context.Background(), "during-stop")
-	if err != nil || record.Outbox.State != turns.Queued || sends.Load() != 0 {
+	if err != nil || record.Outbox.State != prompts.Queued || sends.Load() != 0 {
 		t.Fatalf("stored %+v (%v), provider calls %d; want queued and undelivered", record.Outbox, err, sends.Load())
 	}
 
@@ -202,7 +202,7 @@ func TestStoppingNanoRefusesRequireIdleSubmissions(t *testing.T) {
 		"prompt": "continue", "clientActionId": "nano:heartbeat:stop:1", "origin": "system", "requireIdle": true,
 	})
 	recorder := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", strings.NewReader(string(body))), target.ID)
+	s.hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", strings.NewReader(string(body))), target.ID)
 	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), "notReady") {
 		t.Fatalf("requireIdle during stop = %d %s, want 409 notReady", recorder.Code, recorder.Body.String())
 	}

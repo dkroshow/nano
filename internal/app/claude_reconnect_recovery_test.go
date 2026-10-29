@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	replayfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
-
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	replayfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -483,7 +483,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	if err := s.agentExecutions.MarkTurnDelivery(op.ID, turn, agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	operation := func() agentTurnRecord {
+	operation := func() threads.TurnRecord {
 		rec, ok := s.agentExecutions.Turn(op.ID)
 		if !ok {
 			t.Fatal("bound operation disappeared")

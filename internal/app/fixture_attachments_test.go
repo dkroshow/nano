@@ -19,6 +19,6 @@ func newTestStore(t *testing.T) *hostedstore.AttachmentStore {
 	}
 	return store
 }
-func attach(id, cwd, at string) attachmentRecord {
-	return attachmentRecord{Provider: "codex", NativeThreadID: id, Cwd: cwd, Model: "gpt-5", AttachedAt: at}
+func attach(id, cwd, at string) hostedstore.Attachment {
+	return hostedstore.Attachment{Provider: "codex", NativeThreadID: id, Cwd: cwd, Model: "gpt-5", AttachedAt: at}
 }

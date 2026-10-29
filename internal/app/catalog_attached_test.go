@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // Failure caught: an attachment whose file cannot be resolved vanished from
@@ -18,7 +19,7 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
+	service, err := newThreadCatalogService(context.Background(), store, threadindex.Options{
 		Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: root}}, DisableWatcher: true,
 	})
 	if err != nil {

@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threadindex"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 func TestNativeRecoveryIdentityAliasSurvives(t *testing.T) {
@@ -34,7 +37,7 @@ const (
 	identityNativeNew = "22222222-aaaa-4bbb-8ccc-dddddddddddd"
 )
 
-func newIdentityServer(t *testing.T, rows []sidebar.Thread) (*server, *agentExecutionStore) {
+func newIdentityServer(t *testing.T, rows []sidebar.Thread) (*server, *hostedstore.ExecutionStore) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	migrateTestControl(t, control)
@@ -49,7 +52,7 @@ func newIdentityServer(t *testing.T, rows []sidebar.Thread) (*server, *agentExec
 	}, store
 }
 
-func createIdentityHosted(t *testing.T, store *agentExecutionStore, provider, nativeID string) agentSessionRecord {
+func createIdentityHosted(t *testing.T, store *hostedstore.ExecutionStore, provider, nativeID string) threads.SessionRecord {
 	t.Helper()
 	record, _, err := fixtureBeginSession(store, "", "identity-"+nativeID, provider, presentationShared)
 	if err != nil {
@@ -73,12 +76,12 @@ func namedCatalog(value string) *threadindex.ThreadName {
 
 func identityStamp(value string) *string { return &value }
 
-func resolveIdentity(t *testing.T, s *server, ref string) (int, identityResolveResponse, string) {
+func resolveIdentity(t *testing.T, s *server, ref string) (int, hostedmodel.IdentityResolution, string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/identity/resolve?ref="+ref, nil)
-	s.handleIdentityResolve(rec, req)
-	var body identityResolveResponse
+	s.hostedIdentity().HandleIdentityResolve(rec, req)
+	var body hostedmodel.IdentityResolution
 	if rec.Code == http.StatusOK && json.Unmarshal(rec.Body.Bytes(), &body) != nil {
 		t.Fatalf("invalid response %q", rec.Body.String())
 	}
@@ -142,7 +145,7 @@ func fixtureIdentityCatalogStore(t *testing.T, rows []sidebar.Thread) (*threadCa
 	}
 	t.Cleanup(func() { _ = saved.Close() })
 	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: directory}
-	service, err := newThreadCatalogService(context.Background(), saved, threadCatalogServiceOptions{Roots: []history.SourceRoot{root}, NamesPath: filepath.Join(directory, "names.json"), DisableWatcher: true})
+	service, err := newThreadCatalogService(context.Background(), saved, threadindex.Options{Roots: []history.SourceRoot{root}, NamesPath: filepath.Join(directory, "names.json"), DisableWatcher: true})
 	if err != nil {
 		t.Fatal(err)
 	}

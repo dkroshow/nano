@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
-	threadvalues "github.com/dkroshow/nano/internal/threads"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -61,12 +63,12 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := store.Turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
+			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := store.Turn(op.ID); return threads.TurnTerminal(rec.Status) })
 			request := httptest.NewRequest("GET", "/api/v1/turn-operations/"+op.ID, nil)
 			request.SetPathValue("operationId", op.ID)
 			response := httptest.NewRecorder()
-			h.server.handleTurnOperationRead(response, request)
-			var result agentTurnView
+			h.server.hostedViews().HandleOperationRead(response, request)
+			var result hostedmodel.TurnView
 			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 				t.Fatal(err)
 			}
@@ -89,7 +91,7 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 	seedAcceptedTransactionalTurn(t, h.prompts, "hosted", model.ProviderCodex, h.fixture.native, "late", "turn-late", "late prompt")
 	read := make(chan error, 1)
 	var first atomic.Bool
-	op, store := h.savedResultOperation(t, "late", func(ctx context.Context, rec agentTurnRecord) (string, string, error) {
+	op, store := h.savedResultOperation(t, "late", func(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
 		text, id, err := h.server.savedOperationResult(ctx, rec)
 		if first.CompareAndSwap(false, true) {
 			read <- err
@@ -111,7 +113,7 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 		t.Fatal("saved read did not start")
 	}
 	pending, _ := store.Turn(op.ID)
-	if pending.Status != agentTurnAwaitingSaved || pending.FinalResponse != "" || threadvalues.TurnTerminal(pending.Status) {
+	if pending.Status != agentTurnAwaitingSaved || pending.FinalResponse != "" || threads.TurnTerminal(pending.Status) {
 		t.Fatalf("premature result: %+v", pending)
 	}
 	h.appendSaved(t, `{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-late"}}
@@ -119,7 +121,7 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 {"type":"response_item","payload":{"type":"message","id":"late-answer","role":"assistant","content":[{"type":"output_text","text":"complete saved answer"}]}}
 {"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-late"}}
 `)
-	waitForCatalogWithin(t, 5*time.Second, func() bool { rec, _ := store.Turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
+	waitForCatalogWithin(t, 5*time.Second, func() bool { rec, _ := store.Turn(op.ID); return threads.TurnTerminal(rec.Status) })
 	result, _ := store.Turn(op.ID)
 	if result.Status != agentTurnCompleted || result.FinalResponse != "complete saved answer" || result.FinalItemID != "late-answer" {
 		t.Fatalf("late saved result: %+v", result)
@@ -198,7 +200,7 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 			restarted.UseSavedResults(h.server.savedOperationResult, nil)
-			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := restarted.Turn(op.ID); return threadvalues.TurnTerminal(rec.Status) })
+			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := restarted.Turn(op.ID); return threads.TurnTerminal(rec.Status) })
 			result, _ := restarted.Turn(op.ID)
 			if result.Status != test.status || result.FinalResponse != test.response || result.FinalItemID != test.item ||
 				test.status == agentTurnFailed && (result.Error == nil || result.Error.Code != "result_not_saved") {
@@ -210,7 +212,7 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 
 // savedResultOperation starts an operation in the harness thread whose prompt
 // is the seeded action, with operation results read through read.
-func (h *settlementHarness) savedResultOperation(t *testing.T, action string, read func(context.Context, agentTurnRecord) (string, string, error)) (agentTurnRecord, *agentExecutionStore) {
+func (h *settlementHarness) savedResultOperation(t *testing.T, action string, read func(context.Context, threads.TurnRecord) (string, string, error)) (threads.TurnRecord, *hostedstore.ExecutionStore) {
 	t.Helper()
 	h.server.turns = h.prompts
 	store := newTestAgentExecutionStore(t, "result-run")
@@ -245,19 +247,19 @@ func (h *settlementHarness) savedResultOperation(t *testing.T, action string, re
 func (h *settlementHarness) seedSteeredPrompt(t *testing.T, action, turn, event string) {
 	t.Helper()
 	ctx := context.Background()
-	if _, _, err := h.prompts.Submit(ctx, turns.Submission{
+	if _, _, err := h.prompts.Submit(ctx, prompts.Submission{
 		HostedThreadID: "hosted", Provider: model.ProviderCodex, NativeThreadID: h.fixture.native, ActionID: action,
-		ProviderText: action, PresentationText: action, TextHash: sendTextHash(action), RequestHash: sendTextHash(action), Origin: turns.HumanOrigin,
+		ProviderText: action, PresentationText: action, TextHash: sendTextHash(action), RequestHash: sendTextHash(action), Origin: prompts.HumanOrigin,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	token := "fixture-claim-" + action
-	if _, claimed, err := h.prompts.Claim(ctx, turns.ClaimRequest{HostedThreadID: "hosted", Token: token, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+	if _, claimed, err := h.prompts.Claim(ctx, prompts.ClaimRequest{HostedThreadID: "hosted", Token: token, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		t.Fatalf("claim %s: claimed=%v err=%v", action, claimed, err)
 	}
 	native := h.fixture.native
-	binding := turns.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}, EventID: event}
-	if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: action, ClaimToken: token, AttachmentEpoch: 1, Binding: binding}); err != nil {
+	binding := prompts.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}, EventID: event}
+	if _, err := h.prompts.Accepted(ctx, prompts.Acceptance{ActionID: action, ClaimToken: token, AttachmentEpoch: 1, Binding: binding}); err != nil {
 		t.Fatal(err)
 	}
 }

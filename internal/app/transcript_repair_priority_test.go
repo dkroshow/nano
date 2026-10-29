@@ -1,12 +1,13 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/observability"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 func TestTranscriptRepairPriorityUsesFreshVisibleValidation(t *testing.T) {

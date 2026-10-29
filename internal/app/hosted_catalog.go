@@ -1,6 +1,8 @@
 package app
 
-import "github.com/dkroshow/nano/internal/threadindex"
+import (
+	"github.com/dkroshow/nano/internal/threadindex"
+)
 
 func (s *server) hostedCatalog() *threadindex.Service {
 	catalog, ok := s.catalog.(*threadCatalogService)

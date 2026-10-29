@@ -1,15 +1,16 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/observability"
-	"github.com/dkroshow/nano/internal/usage"
 	"net/http"
 	"sort"
 	"strings"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
+	"github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/usage"
 )
 
 type applicationRoute struct {
@@ -122,10 +123,10 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPost, "/api/v1/messages/{messageId}/status", "messages.disposition.update", s.agentController().HandleAgentMessageDisposition},
 		{http.MethodPost, "/api/v1/messages/{messageId}/edit", "messages.edit", s.agentController().HandleAgentMessageEditRoute},
 		{http.MethodGet, "/api/v1/agent-messages", "messages.global.list", s.agentController().HandleAgentMessagesGlobal},
-		{http.MethodGet, "/api/v1/turn-operations", "turnOperations.list", s.handleTurnOperationsCollection},
-		{http.MethodGet, "/api/v1/turn-operations/changes", "turnOperations.changes", s.handleTurnOperationChanges},
-		{http.MethodGet, "/api/v1/turn-operations/{operationId}", "turnOperations.read", s.handleTurnOperationRead},
-		{http.MethodDelete, "/api/v1/turn-operations/{operationId}", "turnOperations.cancel", s.handleTurnOperationCancel},
+		{http.MethodGet, "/api/v1/turn-operations", "turnOperations.list", s.hostedViews().HandleOperationsCollection},
+		{http.MethodGet, "/api/v1/turn-operations/changes", "turnOperations.changes", s.hostedViews().HandleOperationChanges},
+		{http.MethodGet, "/api/v1/turn-operations/{operationId}", "turnOperations.read", s.hostedViews().HandleOperationRead},
+		{http.MethodDelete, "/api/v1/turn-operations/{operationId}", "turnOperations.cancel", s.hostedController().HandleOperationCancel},
 		{http.MethodGet, "/api/v1/usage-limits", "usageLimits.read", accountUsage.HandleSummary},
 		{http.MethodGet, "/api/v1/usage-limits/detail", "usageLimits.detail", accountUsage.HandleDetail},
 		{http.MethodGet, "/api/v1/browser-diagnostics", "browserDiagnostics.list", browser.HandleBrowserDiagnosticsList},
@@ -147,10 +148,10 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPost, "/api/v1/transcript-audits/{auditId}/result", "transcriptAudits.result", func(w http.ResponseWriter, r *http.Request) {
 			audits.HandleTranscriptAuditResult(w, r, r.PathValue("auditId"))
 		}},
-		{http.MethodGet, "/api/v1/thread-references/{reference}", "threadReferences.resolve", s.handleThreadReference},
-		{http.MethodGet, "/api/v1/identity/resolve", "identity.resolve", s.handleIdentityResolve},
-		{http.MethodPost, "/api/v1/maintenance/retired-hosted-records", "maintenance.retiredHostedRecords", s.handleRetiredHostedRecords},
-		{http.MethodPost, "/api/v1/maintenance/creation-names", "maintenance.creationNames", s.handleCreationNameRepair},
+		{http.MethodGet, "/api/v1/thread-references/{reference}", "threadReferences.resolve", s.hostedIdentity().HandleThreadReference},
+		{http.MethodGet, "/api/v1/identity/resolve", "identity.resolve", s.hostedIdentity().HandleIdentityResolve},
+		{http.MethodPost, "/api/v1/maintenance/retired-hosted-records", "maintenance.retiredHostedRecords", s.hostedController().HandleRetirement},
+		{http.MethodPost, "/api/v1/maintenance/creation-names", "maintenance.creationNames", s.creationNames().HandleRepair},
 		{http.MethodPost, "/api/v1/maintenance/stale-prompts", "maintenance.stalePrompts", s.attachmentCoordinator().HandleStalePrompts},
 		{http.MethodGet, "/api/v1/files/read", "files.read", s.handleGeneralFileRead},
 		{http.MethodGet, "/api/v1/files/mtime", "files.mtime", s.handleGeneralFileMtime},
@@ -182,7 +183,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/fleet/changes", "fleet.changes", s.sidebarOwner().HandleFleetChanges},
 		{http.MethodGet, "/api/v1/sidebar/threads", "sidebar.threads", s.sidebarOwner().HandleSidebarThreads},
 		{http.MethodGet, "/api/v1/sidebar/threads/{threadId}/history", "sidebar.threadHistory", s.sidebarOwner().HandleSidebarThreadHistory},
-		{http.MethodGet, "/api/v1/pins/monitor", "pins.monitor", s.handleThreadPinMonitor},
+		{http.MethodGet, "/api/v1/pins/monitor", "pins.monitor", s.hostedPins().HandleMonitor},
 	}
 	routes = append(routes, apiDiscoveryRoutes()...)
 	routes = append(routes, hostedThreadRoutes(s, "/api/v1/hosted-threads")...)
@@ -197,38 +198,38 @@ func applicationRoutes(s *server) []applicationRoute {
 }
 
 func hostedThreadRoutes(s *server, prefix string) []applicationRoute {
-	h := s.hostedThreadOperation
+	h := s.hostedController().HostedOperation
 	routes := []applicationRoute{
-		{http.MethodGet, prefix, "hostedThreads.list", s.handleAgentSessionsList},
-		{http.MethodPost, prefix, "hostedThreads.create", s.handleAgentSessionCreate},
-		{http.MethodGet, prefix + "/{threadRef}", "hostedThreads.read", h(s.handleHostedThreadRead)},
-		{http.MethodDelete, prefix + "/{threadRef}", "hostedThreads.delete", h(s.handleHostedThreadDelete)},
-		{http.MethodPost, prefix + "/{threadRef}/close", "hostedThreads.close", h(s.handleHostedThreadClose)},
-		{http.MethodGet, prefix + "/{threadRef}/metadata", "hostedThreads.metadata.read", h(s.handleHostedThreadMetadataRead)},
-		{http.MethodGet, prefix + "/{threadRef}/metadata/changes", "hostedThreads.metadata.changes", h(s.handleHostedThreadMetadataChanges)},
-		{http.MethodGet, prefix + "/{threadRef}/metadata/events", "hostedThreads.metadata.events", h(s.handleHostedThreadMetadataEvents)},
-		{http.MethodGet, prefix + "/{threadRef}/permission-events", "hostedThreads.permissionEvents", h(s.handleHostedThreadPermissionEvents)},
-		{http.MethodGet, prefix + "/{threadRef}/availability", "hostedThreads.availability", h(func(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
-			s.handleHostedThreadAvailability(w, r, record.ID)
+		{http.MethodGet, prefix, "hostedThreads.list", s.hostedViews().HandleSessionsList},
+		{http.MethodPost, prefix, "hostedThreads.create", s.hostedController().HandleCreate},
+		{http.MethodGet, prefix + "/{threadRef}", "hostedThreads.read", h(s.hostedController().HandleRead)},
+		{http.MethodDelete, prefix + "/{threadRef}", "hostedThreads.delete", h(s.hostedController().HandleDelete)},
+		{http.MethodPost, prefix + "/{threadRef}/close", "hostedThreads.close", h(s.hostedController().HandleClose)},
+		{http.MethodGet, prefix + "/{threadRef}/metadata", "hostedThreads.metadata.read", h(s.hostedViews().HandleMetadataRead)},
+		{http.MethodGet, prefix + "/{threadRef}/metadata/changes", "hostedThreads.metadata.changes", h(s.hostedViews().HandleMetadataChanges)},
+		{http.MethodGet, prefix + "/{threadRef}/metadata/events", "hostedThreads.metadata.events", h(s.hostedViews().HandleMetadataEvents)},
+		{http.MethodGet, prefix + "/{threadRef}/permission-events", "hostedThreads.permissionEvents", h(s.hostedViews().HandlePermissionEvents)},
+		{http.MethodGet, prefix + "/{threadRef}/availability", "hostedThreads.availability", h(func(w http.ResponseWriter, r *http.Request, record threads.SessionRecord) {
+			s.hostedViews().HandleAvailability(w, r, record.ID)
 		})},
 		{http.MethodPost, prefix + "/{threadRef}/messages", "hostedThreads.messages.send", h(s.agentController().HandleHostedThreadMessageSend)},
 		{http.MethodGet, prefix + "/{threadRef}/inbox", "hostedThreads.inbox", h(s.agentController().HandleHostedThreadInbox)},
 		{http.MethodGet, prefix + "/{threadRef}/outbox", "hostedThreads.outbox", h(s.agentController().HandleHostedThreadOutbox)},
-		{http.MethodGet, prefix + "/{threadRef}/family", "hostedThreads.family", h(s.handleHostedThreadFamily)},
-		{http.MethodGet, prefix + "/{threadRef}/family/close", "hostedThreads.familyClose.preview", h(func(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
-			s.handleBulkCloseTreePreview(w, record)
+		{http.MethodGet, prefix + "/{threadRef}/family", "hostedThreads.family", h(s.hostedViews().HandleFamily)},
+		{http.MethodGet, prefix + "/{threadRef}/family/close", "hostedThreads.familyClose.preview", h(func(w http.ResponseWriter, _ *http.Request, record threads.SessionRecord) {
+			s.hostedController().HandleBulkClosePreview(w, record)
 		})},
-		{http.MethodPost, prefix + "/{threadRef}/family/close", "hostedThreads.familyClose.apply", h(s.handleBulkCloseTree)},
-		{http.MethodPut, prefix + "/{threadRef}/presentation", "hostedThreads.presentation", h(s.handleHostedThreadPresentation)},
-		{http.MethodPut, prefix + "/{threadRef}/subscriptions", "hostedThreads.subscriptions", h(s.handleHostedThreadSubscriptions)},
-		{http.MethodPut, prefix + "/{threadRef}/sidebar-placement", "hostedThreads.sidebarPlacement", h(s.handleHostedThreadSidebarPlacement)},
-		{http.MethodPut, prefix + "/{threadRef}/assignment", "hostedThreads.assignment", h(s.handleHostedThreadAssignment)},
-		{http.MethodPost, prefix + "/{threadRef}/detach", "hostedThreads.detach", h(s.handleHostedThreadDetach)},
+		{http.MethodPost, prefix + "/{threadRef}/family/close", "hostedThreads.familyClose.apply", h(s.hostedController().HandleBulkClose)},
+		{http.MethodPut, prefix + "/{threadRef}/presentation", "hostedThreads.presentation", h(s.hostedController().HandlePresentation)},
+		{http.MethodPut, prefix + "/{threadRef}/subscriptions", "hostedThreads.subscriptions", h(s.hostedController().HandleSubscriptions)},
+		{http.MethodPut, prefix + "/{threadRef}/sidebar-placement", "hostedThreads.sidebarPlacement", h(s.hostedController().HandleSidebarPlacement)},
+		{http.MethodPut, prefix + "/{threadRef}/assignment", "hostedThreads.assignment", h(s.hostedController().HandleAssignment)},
+		{http.MethodPost, prefix + "/{threadRef}/detach", "hostedThreads.detach", h(s.hostedController().HandleDetach)},
 		{http.MethodPost, prefix + "/{threadRef}/prioritize", "hostedThreads.prioritize", h(s.attachmentCoordinator().HandlePrioritize)},
-		{http.MethodPost, prefix + "/{threadRef}/turns", "hostedThreads.turns.submit", h(func(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
-			s.handleAgentTurnSubmit(w, r, record.ID)
+		{http.MethodPost, prefix + "/{threadRef}/turns", "hostedThreads.turns.submit", h(func(w http.ResponseWriter, r *http.Request, record threads.SessionRecord) {
+			s.hostedController().HandleTurnSubmit(w, r, record.ID)
 		})},
-		{http.MethodGet, prefix + "/{threadRef}/completed-turns", "hostedThreads.completedTurns", h(func(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+		{http.MethodGet, prefix + "/{threadRef}/completed-turns", "hostedThreads.completedTurns", h(func(w http.ResponseWriter, r *http.Request, record threads.SessionRecord) {
 			s.handleCompletedTurns(w, r, record.ID)
 		})},
 		{http.MethodGet, prefix + "/{threadRef}/conversation", "hostedThreads.conversation", h(s.handleHostedThreadConversation)},
@@ -236,11 +237,11 @@ func hostedThreadRoutes(s *server, prefix string) []applicationRoute {
 		{http.MethodGet, prefix + "/{threadRef}/live", "hostedThreads.live", h(s.handleHostedThreadLive)},
 		{http.MethodPost, prefix + "/{threadRef}/interactions/{requestId}", "hostedThreads.interactions.answer", h(s.handleHostedThreadInteraction)},
 		{http.MethodPost, prefix + "/{threadRef}/interrupt", "hostedThreads.interrupt", h(s.handleHostedThreadInterrupt)},
-		{http.MethodGet, prefix + "/{threadRef}/pins", "hostedThreads.pins.list", h(s.handleThreadPinList)},
-		{http.MethodPost, prefix + "/{threadRef}/pins", "hostedThreads.pins.create", h(s.handleThreadPinCreate)},
-		{http.MethodGet, prefix + "/{threadRef}/pins/candidates", "hostedThreads.pins.candidates", h(s.handleThreadPinCandidates)},
-		{http.MethodGet, prefix + "/{threadRef}/pins/{pinId}", "hostedThreads.pins.read", h(s.handleThreadPinRead)},
-		{http.MethodGet, prefix + "/{threadRef}/pins/{pinId}/context", "hostedThreads.pins.context", h(s.handleThreadPinContext)},
+		{http.MethodGet, prefix + "/{threadRef}/pins", "hostedThreads.pins.list", h(s.hostedPins().HandleList)},
+		{http.MethodPost, prefix + "/{threadRef}/pins", "hostedThreads.pins.create", h(s.hostedPins().HandleCreate)},
+		{http.MethodGet, prefix + "/{threadRef}/pins/candidates", "hostedThreads.pins.candidates", h(s.hostedPins().HandleCandidates)},
+		{http.MethodGet, prefix + "/{threadRef}/pins/{pinId}", "hostedThreads.pins.read", h(s.hostedPins().HandleRead)},
+		{http.MethodGet, prefix + "/{threadRef}/pins/{pinId}/context", "hostedThreads.pins.context", h(s.hostedPins().HandleContext)},
 	}
 	return routes
 }

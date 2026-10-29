@@ -11,12 +11,13 @@ import (
 	"testing"
 
 	state "github.com/dkroshow/nano/internal/app/statestore"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
-func turnMigrationFixture(t *testing.T) (*controlMetadataStore, turns.LegacyTurnPaths, []turns.QueuedTurn, []turns.SendAttempt) {
+func turnMigrationFixture(t *testing.T) (*hostedstore.MetadataStore, prompts.LegacyTurnPaths, []prompts.QueuedTurn, []prompts.SendAttempt) {
 	t.Helper()
 	dir := t.TempDir()
 	control, err := openControlMetadataStore(filepath.Join(dir, "control-copy.sqlite"))
@@ -41,12 +42,12 @@ func turnMigrationFixture(t *testing.T) (*controlMetadataStore, turns.LegacyTurn
 	if err := control.ClaimNativeID("provisional", "claude", "cs_provisional", true); err != nil {
 		t.Fatal(err)
 	}
-	paths := turns.LegacyTurnPaths{Queue: filepath.Join(dir, "queued-turns.json"), Attempts: filepath.Join(dir, "send-attempts.json"), Completed: filepath.Join(dir, "turn-completed.sqlite")}
-	queue := []turns.QueuedTurn{
+	paths := prompts.LegacyTurnPaths{Queue: filepath.Join(dir, "queued-prompts.json"), Attempts: filepath.Join(dir, "send-attempts.json"), Completed: filepath.Join(dir, "turn-completed.sqlite")}
+	queue := []prompts.QueuedTurn{
 		{ClientActionID: "q2", Provider: "claude", HostedThreadID: "current", NativeThreadID: "native", Text: "same text", PresentationText: "shown text", TextHash: "hash", RequestHash: "request", State: "uncertain", Origin: "agent", CreatedAt: "later", ProviderTurnID: "turn-2", ProviderTerminalStatus: "interrupted", ProviderTerminalAt: "terminal"},
 		{ClientActionID: "q1", Provider: "claude", HostedThreadID: "provisional", NativeThreadID: "cs_provisional", Text: "same text", TextHash: "hash", State: "parked", CreatedAt: "earlier"},
 	}
-	attempts := []turns.SendAttempt{
+	attempts := []prompts.SendAttempt{
 		{ClientActionID: "q2", Provider: "claude", NativeThreadID: "native", TextHash: "hash", Status: "timeout", RunID: "old", Reason: "uncertain", CreatedAt: "created", UpdatedAt: "updated", ProviderTurnID: "turn-2", ProviderTerminalStatus: "interrupted", ProviderTerminalAt: "terminal", IdentityConflict: "action_bound_to_multiple_provider_turns"},
 		{ClientActionID: "confirmed", Provider: "codex", NativeThreadID: "codex-native", TextHash: "hash", Status: "accepted", RunID: "old", UpdatedAt: "updated", Confirmed: true, ConfirmedAt: "confirmed", CanonicalMessageID: "canonical", ProviderTurnID: "turn-1"},
 	}
@@ -86,18 +87,18 @@ func TestThreadsTurnMigrationPreservesExactFactsAndRerunsWithoutImport(t *testin
 	queueBytes, _ := os.ReadFile(paths.Queue)
 	attemptBytes, _ := os.ReadFile(paths.Attempts)
 	backup := filepath.Join(filepath.Dir(paths.Queue), "backup")
-	report, err := turns.MigrateTurnRecords(context.Background(), control.CanonicalDatabase(), paths, backup)
+	report, err := prompts.MigrateTurnRecords(context.Background(), control.CanonicalDatabase(), paths, backup)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Queued != 2 || report.Attempts != 2 || report.Completed != 2 || report.CompletedSequence != 99 || report.BackupDir != backup {
 		t.Fatalf("wrong reconciliation: %+v", report)
 	}
-	gotQueue, err := turns.LoadQueuedTurns(context.Background(), control.CanonicalDatabase())
+	gotQueue, err := prompts.LoadQueuedTurns(context.Background(), control.CanonicalDatabase())
 	if err != nil || !reflect.DeepEqual(gotQueue, queue) {
 		t.Fatalf("queue order/fields changed: %+v, %v", gotQueue, err)
 	}
-	gotAttempts, err := turns.LoadSendAttempts(context.Background(), control.CanonicalDatabase())
+	gotAttempts, err := prompts.LoadSendAttempts(context.Background(), control.CanonicalDatabase())
 	if err != nil || !reflect.DeepEqual(gotAttempts, attempts) {
 		t.Fatalf("attempt fields changed: %+v, %v", gotAttempts, err)
 	}
@@ -137,7 +138,7 @@ func TestThreadsTurnMigrationPreservesExactFactsAndRerunsWithoutImport(t *testin
 		t.Fatal("backup is not the pre-migration database")
 	}
 	backupDB.Close()
-	for _, name := range []string{"control.sqlite", "queued-turns.json", "send-attempts.json", "turn-completed.sqlite", "manifest.json"} {
+	for _, name := range []string{"control.sqlite", "queued-prompts.json", "send-attempts.json", "turn-completed.sqlite", "manifest.json"} {
 		info, err := os.Stat(filepath.Join(backup, name))
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatalf("non-private/missing backup %s: %v", name, err)
@@ -147,7 +148,7 @@ func TestThreadsTurnMigrationPreservesExactFactsAndRerunsWithoutImport(t *testin
 	if err := os.WriteFile(paths.Queue, []byte("corrupt after successful cutover"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	second, err := turns.MigrateTurnRecords(context.Background(), control.CanonicalDatabase(), paths, filepath.Join(backup, "must-not-be-created"))
+	second, err := prompts.MigrateTurnRecords(context.Background(), control.CanonicalDatabase(), paths, filepath.Join(backup, "must-not-be-created"))
 	if err != nil || second != report {
 		t.Fatalf("rerun: %+v %v", second, err)
 	}
@@ -207,7 +208,7 @@ func TestThreadsTurnMigrationFailsWithoutPartialMutation(t *testing.T) {
 				os.WriteFile(paths.Completed, []byte("corrupt"), 0600)
 			}
 			before := threadsDatabaseSnapshot(t, control.CanonicalDatabase())
-			if _, err := turns.MigrateTurnRecords(ctx, control.CanonicalDatabase(), paths, backup); err == nil {
+			if _, err := prompts.MigrateTurnRecords(ctx, control.CanonicalDatabase(), paths, backup); err == nil {
 				t.Fatal("unsafe migration succeeded")
 			}
 			if !reflect.DeepEqual(threadsDatabaseSnapshot(t, control.CanonicalDatabase()), before) {
@@ -251,20 +252,20 @@ func TestThreadsStorePublicationKeepsOriginalUntilAllRecordsReconcile(t *testing
 		t.Fatal(err)
 	}
 	defer canonical.Close()
-	if got, err := turns.LoadQueuedTurns(ctx, canonical); err != nil || !reflect.DeepEqual(got, queue) {
+	if got, err := prompts.LoadQueuedTurns(ctx, canonical); err != nil || !reflect.DeepEqual(got, queue) {
 		t.Fatalf("published queue: %+v %v", got, err)
 	}
-	if got, err := turns.LoadSendAttempts(ctx, canonical); err != nil || !reflect.DeepEqual(got, attempts) {
+	if got, err := prompts.LoadSendAttempts(ctx, canonical); err != nil || !reflect.DeepEqual(got, attempts) {
 		t.Fatalf("published journal: %+v %v", got, err)
 	}
 	// Consumption after cutover cannot be undone by a later startup.
-	if err := turns.SaveQueuedTurns(ctx, canonical, queue[:1]); err != nil {
+	if err := prompts.SaveQueuedTurns(ctx, canonical, queue[:1]); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := state.PrepareStore(ctx, paths, statewiring.Migrations()); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := turns.LoadQueuedTurns(ctx, canonical); err != nil || !reflect.DeepEqual(got, queue[:1]) {
+	if got, err := prompts.LoadQueuedTurns(ctx, canonical); err != nil || !reflect.DeepEqual(got, queue[:1]) {
 		t.Fatalf("old text resurrected: %+v %v", got, err)
 	}
 	info, err := os.Stat(paths.Destination)

@@ -14,8 +14,6 @@ import (
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
-type conversationView = liveview.View
-
 const (
 	conversationViewFull     = liveview.Full
 	conversationViewMessages = liveview.Messages
@@ -24,17 +22,6 @@ const (
 // liveProjectionItem is intentionally provider-neutral at the wire boundary.
 // Item contains only the normalized fields the conversation renderer needs;
 // provider protocol envelopes never cross this API.
-type liveProjectionItem = liveview.Item
-
-type liveProjectionTurn = liveview.Turn
-
-type liveProjectionRuntime = liveview.Runtime
-
-type liveProjectionSnapshot = liveview.Snapshot
-
-type liveProjectionPage = liveview.Page
-
-type liveProjectionUpdate = liveview.Update
 
 // newSessionProjection applies the server's live-transcript settings to a
 // session's projection.
@@ -44,7 +31,6 @@ func (s *server) newSessionProjection(provider, hostedThreadID string) *sessions
 
 // durableTurnEvidence is the saved status of one live turn, read by its exact
 // native turn id.
-type durableTurnEvidence = liveview.DurableTurnEvidence
 
 // confirmDurableThread joins one changed durable transcript to its attached
 // live projection. The scanner carries the provider/native identity it already

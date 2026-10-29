@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/catalog"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -148,9 +149,9 @@ func TestRuntimeForThreeStates(t *testing.T) {
 	// A nil runtime hub leaves the application publisher inert.
 	(&server{}).attachmentCoordinator().NotifyRuntime()
 	attachments := newTestStore(t)
-	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "codex-detached", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
-	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
-	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-exited", Cwd: "/c", AttachedAt: "2026-07-27T12:00:00Z"})
+	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "codex-detached", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
+	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
+	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "claude-exited", Cwd: "/c", AttachedAt: "2026-07-27T12:00:00Z"})
 
 	active := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "codex-live", "model")
 	active.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"codex-live","turn":{"id":"turn-1","status":"inProgress","startedAt":1787600000}}}`))
@@ -200,7 +201,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 // session fields.
 func TestDetachedOverlayJSON(t *testing.T) {
 	attachments := newTestStore(t)
-	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
+	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	s := &server{
 		catalog:     &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}}},
 		attachments: attachments,
@@ -223,7 +224,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 // bind and unbind fire.
 func TestAttachmentDismissNudgesRuntime(t *testing.T) {
 	s := &server{attachments: newTestStore(t), runtimeEvents: sidebar.NewRuntimeHub(), Registry: newSessionRegistry()}
-	s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "t-1", AttachedAt: "2026-07-27T10:00:00Z"})
+	s.attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "t-1", AttachedAt: "2026-07-27T10:00:00Z"})
 	nudges := s.runtimeEvents.Subscribe()
 
 	rec := httptest.NewRecorder()
@@ -375,7 +376,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	now := time.Now()
 	s := &server{attachments: newTestStore(t), Registry: newSessionRegistry()}
 	for i := range 40 {
-		s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: fmt.Sprintf("parked-%02d", i), AttachedAt: "2026-07-27T10:00:00Z"})
+		s.attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: fmt.Sprintf("parked-%02d", i), AttachedAt: "2026-07-27T10:00:00Z"})
 	}
 	runtimeSnapshotForTest(t, s) // the first snapshot only records the baseline
 	s.RegisterSession(memorySession(t, "s-0", "codex", "parked-00", "ready", "/w", "gpt-5.6-sol", now))

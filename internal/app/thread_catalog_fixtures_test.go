@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func waitForCatalog(t *testing.T, ready func() bool) {
@@ -38,7 +40,7 @@ func claudeCatalogUserRow(nativeID, timestamp, prompt string) string {
 
 func newStoredCatalog(t *testing.T, store *history.Store) *threadCatalogService {
 	t.Helper()
-	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}}, DisableWatcher: true})
+	service, err := newThreadCatalogService(context.Background(), store, threadindex.Options{Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}}, DisableWatcher: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,14 +48,14 @@ func newStoredCatalog(t *testing.T, store *history.Store) *threadCatalogService 
 	return service
 }
 
-func newAttachmentNameCatalog(t *testing.T, metadata *controlMetadataStore) *threadCatalogService {
+func newAttachmentNameCatalog(t *testing.T, metadata *hostedstore.MetadataStore) *threadCatalogService {
 	t.Helper()
 	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	catalog, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{Roots: []history.SourceRoot{{Provider: history.ProviderClaude, Kind: history.RootClaudeProjects, Path: t.TempDir()}}, NamesPath: filepath.Join(t.TempDir(), "thread-names.json"), DisableWatcher: true})
+	catalog, err := newThreadCatalogService(context.Background(), store, threadindex.Options{Roots: []history.SourceRoot{{Provider: history.ProviderClaude, Kind: history.RootClaudeProjects, Path: t.TempDir()}}, NamesPath: filepath.Join(t.TempDir(), "thread-names.json"), DisableWatcher: true})
 	if err != nil {
 		t.Fatal(err)
 	}

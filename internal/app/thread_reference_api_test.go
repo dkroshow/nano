@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // The integration fixture decodes the public wire contract independently of
@@ -54,7 +56,7 @@ func TestNativeRecoveryRetiredAliasKeepsHistoricalRouteWhileReplacementLive(t *t
 	}
 }
 
-func newThreadReferenceServer(t *testing.T, rows []sidebar.Thread) (*server, *agentExecutionStore) {
+func newThreadReferenceServer(t *testing.T, rows []sidebar.Thread) (*server, *hostedstore.ExecutionStore) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	store, err := newControlAgentExecutionStore(control, "reference-test")
@@ -68,7 +70,7 @@ func newThreadReferenceServer(t *testing.T, rows []sidebar.Thread) (*server, *ag
 	}, store
 }
 
-func createReferenceHostedRecord(t *testing.T, store *agentExecutionStore, nativeID string) agentSessionRecord {
+func createReferenceHostedRecord(t *testing.T, store *hostedstore.ExecutionStore, nativeID string) threads.SessionRecord {
 	t.Helper()
 	record, _, err := fixtureBeginSession(store, "", "reference", "codex", presentationShared)
 	if err != nil {

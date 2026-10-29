@@ -5,20 +5,20 @@ import (
 	"net/http"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-type threadCatalogServiceOptions = threadindex.Options
-
 // threadCatalogService composes saved catalog rows with the app's response types.
 type threadCatalogService struct {
 	*threadindex.Service
 }
 
-func newThreadCatalogService(ctx context.Context, store *history.Store, options threadCatalogServiceOptions) (*threadCatalogService, error) {
+func newThreadCatalogService(ctx context.Context, store *history.Store, options threadindex.Options) (*threadCatalogService, error) {
 	options.NativeIDProvisional = sessions.NativeThreadIDProvisional
 	options.ClaudeProjectSlug = setup.ClaudeProjectSlug
 	service, err := threadindex.New(ctx, store, options)
@@ -62,7 +62,7 @@ func writeCatalogJSON(w http.ResponseWriter, status int, value any) {
 	threadindex.WriteCatalogJSON(w, status, value)
 }
 
-func catalogIdentities(keys []attachmentKey) []history.ThreadIdentity {
+func catalogIdentities(keys []hostedstore.AttachmentKey) []history.ThreadIdentity {
 	result := make([]history.ThreadIdentity, len(keys))
 	for i, key := range keys {
 		result[i] = history.ThreadIdentity{Provider: history.Provider(key.Provider), NativeThreadID: key.NativeThreadID}

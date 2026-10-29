@@ -138,7 +138,7 @@ func newGateCatalog(t *testing.T, codexFixtures, claudeFixtures []string, extraC
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
+	service, err := newThreadCatalogService(context.Background(), store, threadindex.Options{
 		Roots: []history.SourceRoot{
 			{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: codexRoot},
 			{Provider: history.ProviderClaude, Kind: history.RootClaudeProjects, Path: claudeRoot},

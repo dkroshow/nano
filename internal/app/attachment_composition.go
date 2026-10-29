@@ -1,10 +1,12 @@
 package app
 
-import "github.com/dkroshow/nano/internal/hosted"
+import (
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+)
 
-func (s *server) attachmentCoordinator() *hosted.AttachmentCoordinator {
+func (s *server) attachmentCoordinator() *hostedmodel.AttachmentCoordinator {
 	s.attachmentOnce.Do(func() {
-		sources := hosted.AttachmentSources{
+		sources := hostedmodel.AttachmentSources{
 			Defaults: s.defaults, Codex: s.codex, SpoolDir: s.spoolDir, Catalog: s.hostedCatalog(), CatalogRefresh: s.catalogRefresh, CatalogSources: s.catalogSources,
 			Runtime: s.sidebarOwner(), Registry: &s.Registry, Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, ExecutionError: s.executionControlErr,
 			Attachments: s.attachments, Queue: s.queuedTurns, Turns: s.turns, SendAttempts: s.sendAttempts, CompletedTurns: s.completedTurns, Skills: s.skills, Notices: s.notices, Stopping: &s.stopping,
@@ -18,11 +20,11 @@ func (s *server) attachmentCoordinator() *hosted.AttachmentCoordinator {
 		if (metadata == nil || s.controlMetadataErr != "") && s.agentExecutions != nil {
 			metadata = s.agentExecutions.Control()
 		}
-		reader, _ := s.catalog.(hosted.CreationNameReader)
-		refs, _ := s.catalog.(hosted.CreationNameRefReader)
-		projector, _ := s.catalog.(hosted.CreationNameProjector)
-		sources.CreationNames = &hosted.CreationNames{Metadata: metadata, Executions: s.agentExecutions, Queue: s.queuedTurns, Reader: reader, Refs: refs, Projector: projector, Refresh: func() { s.attachmentCoordinator().NotifyRuntimeRefresh() }}
-		s.attachmentsControl = hosted.NewAttachmentCoordinator(sources)
+		reader, _ := s.catalog.(hostedmodel.CreationNameReader)
+		refs, _ := s.catalog.(hostedmodel.CreationNameRefReader)
+		projector, _ := s.catalog.(hostedmodel.CreationNameProjector)
+		sources.CreationNames = &hostedmodel.CreationNames{Metadata: metadata, Executions: s.agentExecutions, Queue: s.queuedTurns, Reader: reader, Refs: refs, Projector: projector, Refresh: func() { s.attachmentCoordinator().NotifyRuntimeRefresh() }}
+		s.attachmentsControl = hostedmodel.NewAttachmentCoordinator(sources)
 	})
 	return s.attachmentsControl
 }

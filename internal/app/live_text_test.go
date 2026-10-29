@@ -19,6 +19,8 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -43,7 +45,7 @@ type liveTextHarness struct {
 	turn       string
 	queue      sessionQueue
 	journal    sessionJournal
-	metadata   *controlMetadataStore
+	metadata   *hostedstore.MetadataStore
 	service    *threadCatalogService
 	store      *history.Store
 	file       string
@@ -119,7 +121,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	t.Cleanup(func() { store.Close() })
 	h.store = store
 	installLiveReadCounter(t, databasePath, probe)
-	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
+	service, err := newThreadCatalogService(context.Background(), store, threadindex.Options{
 		Roots: []history.SourceRoot{{Provider: history.Provider(provider), Kind: rootKind, Path: root}}, DisableWatcher: true,
 	})
 	if err != nil {
@@ -132,7 +134,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 		apply(&cfg)
 	}
 	cfg.Projection = srv.newSessionProjection(provider, cfg.HostedThreadID)
-	h.metadata, _ = cfg.Metadata.(*controlMetadataStore)
+	h.metadata, _ = cfg.Metadata.(*hostedstore.MetadataStore)
 	cfg.Metadata = journalReadMetadata{sessionMetadata: cfg.Metadata, db: cfg.QueuedTurns.Database()}
 	sess := newSession(cfg)
 	if err := sess.InitializeBinding(generation); err != nil {
@@ -442,7 +444,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	h.barrier()
 	reads := func() map[string]string {
 		out := map[string]string{}
-		for _, view := range []conversationView{conversationViewMessages, conversationViewFull} {
+		for _, view := range []liveview.View{conversationViewMessages, conversationViewFull} {
 			rec := httptest.NewRecorder()
 			h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view="+string(view), nil), view)
 			out["conversation "+string(view)] = rec.Body.String()
@@ -485,7 +487,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	cursor := liveStatusForTest(t, h.sess)
 	rec := httptest.NewRecorder()
 	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
-	var snapshot liveProjectionSnapshot
+	var snapshot liveview.Snapshot
 	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil || snapshot.Epoch != cursor.Epoch || snapshot.Revision != cursor.Revision {
 		t.Fatalf("snapshot cursor = %s/%d (%v), want the status cursor %s/%d", snapshot.Epoch, snapshot.Revision, err, cursor.Epoch, cursor.Revision)
 	}
@@ -508,12 +510,12 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 		t.Fatal("the event stream ended")
 		return nil
 	}
-	var first liveProjectionUpdate
+	var first liveview.Update
 	json.Unmarshal(nextData(), &first)
 	h.runtime.activate(t)
-	var next liveProjectionUpdate
+	var next liveview.Update
 	for next.Op == "" || next.Op == "rows.changed" {
-		next = liveProjectionUpdate{}
+		next = liveview.Update{}
 		json.Unmarshal(nextData(), &next)
 	}
 	if first.Epoch != next.Epoch || next.Revision <= first.Snapshot.Revision || next.Op != projectionTurnUpsert {
@@ -570,7 +572,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			for index, stamp := range tc.times {
 				action := fmt.Sprintf("prompt-%d", index)
 				if !tc.missing {
-					op, _, err := fixtureHistoricalTurn(store, h.sess.HostedThreadID(), action, "hash", turnAttribution{
+					op, _, err := fixtureHistoricalTurn(store, h.sess.HostedThreadID(), action, "hash", hostedstore.TurnAttribution{
 						Origin: tc.origin, SenderSubmittedAt: stamp,
 					})
 					if err != nil {
@@ -1045,7 +1047,7 @@ func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) 
 	ctx := context.Background()
 	h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
-	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
+	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return h.srv.hostedCatalog().SavedTurnEvidence(ctx, sess.Provider(), sess.ThreadID(), turnID)
 	}, h.srv.savedPromptsFor(sess), nil, nil, nil)
 	const running = "01a0f650-0000-7000-8000-0000000000aa"
@@ -1164,12 +1166,12 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	srv, attachments := claudeResumeServer(t, shim.WSURL())
 	srv.catalog = h.service
 	srv.controlMetadata = h.metadata
-	srv.queuedTurns, srv.sendAttempts, srv.turns = h.queue.(*queuedTurnStore), h.journal.(*sendAttemptStore), h.sess.PromptStore()
+	srv.queuedTurns, srv.sendAttempts, srv.turns = h.queue.(*prompts.LegacyQueue), h.journal.(*prompts.LegacyJournal), h.sess.PromptStore()
 	srv.agentExecutions, err = newControlAgentExecutionStore(srv.controlMetadata, "restart-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
+	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
 		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
 	seedBootAttachments(t, srv)
 	writeClaudeTestSpool(t, srv.defaults.ClaudeShimSpools, hosted, spool...)

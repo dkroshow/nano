@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	fixture "github.com/dkroshow/nano/internal/testsupport"
-	threadvalues "github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -23,8 +24,8 @@ type claudeResultPrompt struct{ name, op, transport, event, turn string }
 // fill puts their submission ids into the captured frames and saved rows.
 type claudeResultFixture struct {
 	h          *settlementHarness
-	executions *agentExecutionStore
-	completed  *completedTurnStore
+	executions *hostedstore.ExecutionStore
+	completed  *hostedmodel.CompletedTurnStore
 	core       *coreturns.Store
 	order      []*claudeResultPrompt
 	fill       *strings.Replacer
@@ -42,7 +43,7 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 	if err := executions.BindSession("hosted", "nano-session", native, "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	completed := hosted.NewCompletedTurnStore(h.queue.Database())
+	completed := hostedmodel.NewCompletedTurnStore(h.queue.Database())
 	core, err := completed.CoreStore(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -60,16 +61,16 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 		p.op, p.transport = op.ID, op.TransportActionID
 		p.event = submissionEventID("hosted", p.transport)
 		text := "prompt " + p.name
-		if _, _, err := h.prompts.Submit(ctx, turns.Submission{HostedThreadID: "hosted", Provider: model.ProviderClaude, NativeThreadID: native, ActionID: p.transport,
-			ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: turns.HumanOrigin}); err != nil {
+		if _, _, err := h.prompts.Submit(ctx, prompts.Submission{HostedThreadID: "hosted", Provider: model.ProviderClaude, NativeThreadID: native, ActionID: p.transport,
+			ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: prompts.HumanOrigin}); err != nil {
 			t.Fatal(err)
 		}
 		token := "claim-" + p.name
-		if _, claimed, err := h.prompts.Claim(ctx, turns.ClaimRequest{HostedThreadID: "hosted", Token: token, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+		if _, claimed, err := h.prompts.Claim(ctx, prompts.ClaimRequest{HostedThreadID: "hosted", Token: token, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 			t.Fatalf("claim %s: %v %v", p.name, claimed, err)
 		}
-		binding := turns.Binding{EventID: p.event, Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &p.turn}}
-		if _, err := h.prompts.Accepted(ctx, turns.Acceptance{ActionID: p.transport, ClaimToken: token, AttachmentEpoch: 1, Binding: binding}); err != nil {
+		binding := prompts.Binding{EventID: p.event, Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &p.turn}}
+		if _, err := h.prompts.Accepted(ctx, prompts.Acceptance{ActionID: p.transport, ClaimToken: token, AttachmentEpoch: 1, Binding: binding}); err != nil {
 			t.Fatal(err)
 		}
 		if err := executions.MarkTurnDelivery(op.ID, p.turn, agentTurnRunning, nil); err != nil {
@@ -119,7 +120,7 @@ func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
 		if _, err := sess.SettlePrompts(ctx); err == nil {
 			done := true
 			for _, p := range order {
-				if op, _ := executions.Turn(p.op); !threadvalues.TurnTerminal(op.Status) {
+				if op, _ := executions.Turn(p.op); !threads.TurnTerminal(op.Status) {
 					done = false
 				}
 			}

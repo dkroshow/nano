@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
-	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
 )
 
@@ -23,7 +24,7 @@ type recordingSubscriptionClient struct {
 	promptErr error
 }
 
-func subscriptionDispatcherForTest(executions *agentExecutionStore, client subscriptions.Client) *subscriptions.Dispatcher {
+func subscriptionDispatcherForTest(executions *hostedstore.ExecutionStore, client subscriptions.Client) *subscriptions.Dispatcher {
 	return subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
 }
 
@@ -236,7 +237,7 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	daemon := newFakeAppServer(t)
 	daemon.SetResumeTurns(json.RawMessage(`[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`))
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.completedTurns = hosted.NewCompletedTurnSource(hosted.NewCompletedTurnStore(s.queuedTurns.Database()))
+	s.completedTurns = hostedmodel.NewCompletedTurnSource(hostedmodel.NewCompletedTurnStore(s.queuedTurns.Database()))
 	parent, _, err := fixtureBeginSession(s.agentExecutions, "parent", "parent-hash", "codex", presentationShared)
 	if err != nil {
 		t.Fatal(err)

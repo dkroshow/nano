@@ -14,6 +14,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -73,8 +74,8 @@ type pinFixture struct {
 	mux        *http.ServeMux
 	store      *history.Store
 	root       history.SourceRoot
-	executions *agentExecutionStore
-	hosted     agentSessionRecord
+	executions *hostedstore.ExecutionStore
+	hosted     threads.SessionRecord
 	pinsPath   string
 }
 
@@ -318,6 +319,10 @@ func TestThreadPinsSurviveNativeReplacementAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.server.threadPins = reopened
+	t.Cleanup(func() { _ = reopened.Close() })
+	// Remount the handlers with the reopened store, as a new process does.
+	f.mux = http.NewServeMux()
+	mountRoutes(f.mux, applicationRoutes(f.server))
 	code, raw := f.do(t, http.MethodGet, "/api/v1/hosted-threads/"+pinNativeB+"/pins", nil)
 	list := decodePinJSON[threadPinListResponse](t, raw)
 	if code != http.StatusOK || list.Count != 3 || list.Pins[0].PinID != earlier.PinID || list.Pins[2].PinID != old.PinID {

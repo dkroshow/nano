@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sidebar"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -284,8 +285,8 @@ func TestCodexResumeDurableTerminalTurnEndsIdleAfterHandshake(t *testing.T) {
 	if sess == nil {
 		t.Fatal("resumed session missing")
 	}
-	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
-		return durableTurnEvidence{Turn: liveProjectionTurn{ID: turnID, Status: "completed", CompletedAtMs: 1785510514001}}, turnID == "turn-durable-terminal"
+	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
+		return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: turnID, Status: "completed", CompletedAtMs: 1785510514001}}, turnID == "turn-durable-terminal"
 	}, nil, nil, nil, nil)
 
 	summary := waitForSessionStatus(t, s, spawned.ID, "ready")

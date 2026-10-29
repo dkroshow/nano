@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 )
 
 func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testing.T) {

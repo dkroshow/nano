@@ -16,6 +16,7 @@ import (
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 func newTestAgentMessageStore(t *testing.T) *featuremail.Store {
@@ -210,7 +211,7 @@ func TestIngestionFailureKeepsLastCommittedCanonicalStateVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata := &failingMetadataAppend{controlMetadataStore: store}
+	metadata := &failingMetadataAppend{MetadataStore: store}
 	sess := newSession(sessionConfig{HostedThreadID: "nht_degraded_readable", Provider: "codex", ID: "nano-1", Metadata: metadata})
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
@@ -351,7 +352,7 @@ func TestHostedMetadataNameUsesThreadNameProvenance(t *testing.T) {
 				t.Fatal(err)
 			}
 			server := &server{catalog: catalog}
-			view := server.decorateHostedMetadata(hostedMetadataView{Provider: "codex", NativeThreadID: "native-name"}, hostedAttachmentView{State: "ready", Provenance: "live_session"})
+			view := server.hostedViews().DecorateMetadata(hostedstore.MetadataView{Provider: "codex", NativeThreadID: "native-name"}, hostedstore.AttachmentView{State: "ready", Provenance: "live_session"})
 			if view.Name.Value != "durable name" || view.Name.Provenance != string(provenance) {
 				t.Fatalf("hosted name provenance = %+v", view.Name)
 			}
@@ -427,26 +428,26 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, live, "ready")
-	if got := s.hostedAttachmentState("nht_attachment_api"); got.State != "ready" || got.Provenance != "live_session" {
+	if got := s.hostedViews().AttachmentState("nht_attachment_api"); got.State != "ready" || got.Provenance != "live_session" {
 		t.Fatalf("ready attachment = %+v", got)
 	}
 	s.RemoveSession(live.ID())
 	if err := exec.UpdateSession("nht_attachment_api", "", "", sessionStatusExited, "provider failed"); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.hostedAttachmentState("nht_attachment_api"); got.State != sessionStatusExited || got.Error != "provider failed" {
+	if got := s.hostedViews().AttachmentState("nht_attachment_api"); got.State != sessionStatusExited || got.Error != "provider failed" {
 		t.Fatalf("exited attachment = %+v", got)
 	}
 	after, _ := store.View("nht_attachment_api")
 	if before.Revision != after.Revision {
 		t.Fatalf("attachment read advanced metadata revision %d→%d", before.Revision, after.Revision)
 	}
-	if got := s.hostedAttachmentState("missing"); got.State != "unavailable" {
+	if got := s.hostedViews().AttachmentState("missing"); got.State != "unavailable" {
 		t.Fatalf("unavailable attachment = %+v", got)
 	}
 }
 
-func assertCurrentValue(t *testing.T, store *controlMetadataStore, hostedID, field, wantValue, wantDisposition string) {
+func assertCurrentValue(t *testing.T, store *hostedstore.MetadataStore, hostedID, field, wantValue, wantDisposition string) {
 	t.Helper()
 	var value, disposition string
 	if err := store.CanonicalDatabase().QueryRow(`SELECT effective_value_json,effective_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, hostedID, field).Scan(&value, &disposition); err != nil {
@@ -457,7 +458,7 @@ func assertCurrentValue(t *testing.T, store *controlMetadataStore, hostedID, fie
 	}
 }
 
-func assertNoEffective(t *testing.T, store *controlMetadataStore, hostedID, field string) {
+func assertNoEffective(t *testing.T, store *hostedstore.MetadataStore, hostedID, field string) {
 	t.Helper()
 	var value sql.NullString
 	if err := store.CanonicalDatabase().QueryRow(`SELECT effective_value_json FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, hostedID, field).Scan(&value); err != nil {
@@ -479,7 +480,7 @@ func containsAll(value string, needles ...string) bool {
 
 // failingMetadataAppend injects a write failure without changing canonical reads.
 type failingMetadataAppend struct {
-	*controlMetadataStore
+	*hostedstore.MetadataStore
 	fail bool
 }
 
@@ -487,5 +488,5 @@ func (m *failingMetadataAppend) AppendEvent(event metadataEvent) (metadataEvent,
 	if m.fail {
 		return metadataEvent{}, errors.New("injected append failure")
 	}
-	return m.controlMetadataStore.AppendEvent(event)
+	return m.MetadataStore.AppendEvent(event)
 }

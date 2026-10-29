@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/config"
-	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/config"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -103,12 +103,12 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.Remember(attachmentRecord{
+	attachments.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-resume", HostedThreadID: "nht_resume_canonical",
 		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", claudeModelFlag, "legacy-model", "--permission-mode", "bypassPermissions"},
 	})
 	s := &server{defaults: config.SessionDefaults{CWD: legacyCwd, ClaudeBin: "/claude"}, attachments: attachments, controlMetadata: metadata}
-	resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.Remember(attachmentRecord{
+	attachments.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-historical", HostedThreadID: hostedID,
 		Bin: "/claude", Args: []string{"-p", claudeModelFlag, "stale-model", "--effort", "low", "--permission-mode", "bypassPermissions"},
 	})
@@ -163,7 +163,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 	if api.Code != http.StatusOK {
 		t.Fatalf("metadata status = %d: %s", api.Code, api.Body.String())
 	}
-	var body hostedMetadataView
+	var body hostedstore.MetadataView
 	if err := json.Unmarshal(api.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		t.Fatalf("API display model = %s, want observed fold", got)
 	}
 
-	resolved, err := s.attachmentCoordinator().ResolveSpawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
+	resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := &server{controlMetadata: metadata}
-			req := hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
+			req := hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
 			if err := owner.attachmentCoordinator().ApplyCanonicalResumeMetadata(&req); err != nil {
 				t.Fatal(err)
 			}
@@ -285,7 +285,7 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 			}
 			args := resolved.ClaudeArgs
 			if test.want == "" {
-				args = claudeCanonicalResumeArgs(args, (hosted.SpawnRequest{}).ProviderRequest)
+				args = claudeCanonicalResumeArgs(args, (hostedmodel.SpawnRequest{}).ProviderRequest)
 				if strings.Contains(strings.Join(args, " "), "stale") {
 					t.Fatalf("cleared Claude resume retained stale argv %#v", args)
 				}
@@ -383,7 +383,7 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 // The real store still owns persistence and event validation.
 type fixedMetadataView struct {
 	sessionMetadata
-	view hostedMetadataView
+	view hostedstore.MetadataView
 }
 
-func (m fixedMetadataView) View(string) (hostedMetadataView, error) { return m.view, nil }
+func (m fixedMetadataView) View(string) (hostedstore.MetadataView, error) { return m.view, nil }

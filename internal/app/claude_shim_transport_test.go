@@ -3,13 +3,13 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 )
 
 // claudeTestSession makes a session wired like a spawned one minus the spool:
@@ -37,7 +37,7 @@ func providerSessionConfig(t *testing.T, provider string) (sessionConfig, int64,
 	if err != nil {
 		t.Fatal(err)
 	}
-	turnStore, err := turns.OpenStore(context.Background(), queue.Database())
+	turnStore, err := prompts.OpenStore(context.Background(), queue.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,8 +93,8 @@ func waitForClaudeThreadID(t *testing.T, sess *session, want string) {
 	waitForClaude(t, "native thread id "+want, func() bool { return sess.Summary().ThreadID == want })
 }
 
-func claudeShimSpawnRequest(sess *session, shimURL string) hosted.SpawnRequest {
-	return hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude",
+func claudeShimSpawnRequest(sess *session, shimURL string) hostedmodel.SpawnRequest {
+	return hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude",
 		Cwd:          sess.CWD(),
 		Model:        "sonnet",
 		ClaudeBin:    "/fake/claude",

@@ -10,6 +10,9 @@ import (
 	"time"
 
 	state "github.com/dkroshow/nano/internal/app/statestore"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 const (
@@ -55,7 +58,7 @@ type bulkClosePreview struct {
 	Members            []bulkClosePreviewMember `json:"members"`
 }
 
-func senderPresentationName(a turnAttribution) string {
+func senderPresentationName(a hostedstore.TurnAttribution) string {
 	if name := strings.TrimSpace(a.SenderName); name != "" {
 		return name
 	}
@@ -75,7 +78,7 @@ func senderPresentationName(a turnAttribution) string {
 // sender and Nano's original UTC admission time, before any queue delay.
 // Agent submissions reach this function only after complete attribution
 // admission. System prompts retain their distinct Nano footer.
-func senderFooter(a turnAttribution) string {
+func senderFooter(a hostedstore.TurnAttribution) string {
 	if a.Origin == turnOriginSystem {
 		return "[from nano]"
 	}
@@ -94,23 +97,23 @@ func hostedTurnPromptHash(prompt string, requireIdle bool) string {
 	return sendTextHash(prompt + "\x00requireIdle")
 }
 
-func (s *server) submitHostedTurnWithOptions(id, action, prompt string, idle bool) (agentTurnRecord, bool, error) {
+func (s *server) submitHostedTurnWithOptions(id, action, prompt string, idle bool) (threads.TurnRecord, bool, error) {
 	origin := turnOriginSystem
 	if !strings.HasPrefix(action, "nano:") {
 		origin = turnOriginAgent
 	}
 	raw, err := json.Marshal(map[string]any{"clientActionId": action, "prompt": prompt, "origin": origin, "requireIdle": idle})
 	if err != nil {
-		return agentTurnRecord{}, false, err
+		return threads.TurnRecord{}, false, err
 	}
 	response := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+id+"/turns", strings.NewReader(string(raw))), id)
+	s.hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+id+"/turns", strings.NewReader(string(raw))), id)
 	if response.Code >= 400 {
-		return agentTurnRecord{}, false, errors.New(response.Body.String())
+		return threads.TurnRecord{}, false, errors.New(response.Body.String())
 	}
-	var view agentTurnView
+	var view hostedmodel.TurnView
 	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
-		return agentTurnRecord{}, false, err
+		return threads.TurnRecord{}, false, err
 	}
 	record, _ := s.agentExecutions.Turn(view.ID)
 	return record, response.Code == http.StatusOK, nil
@@ -118,9 +121,9 @@ func (s *server) submitHostedTurnWithOptions(id, action, prompt string, idle boo
 
 type retiredHostedReceipt struct {
 	state.RetirementReceipt
-	OK          bool                      `json:"ok"`
-	Error       string                    `json:"error,omitempty"`
-	Resolutions []identityResolveResponse `json:"resolutions"`
+	OK          bool                             `json:"ok"`
+	Error       string                           `json:"error,omitempty"`
+	Resolutions []hostedmodel.IdentityResolution `json:"resolutions"`
 }
 
 func (s *server) retireHostedRecords(ctx context.Context, request state.RetirementRequest) retiredHostedReceipt {
@@ -129,7 +132,7 @@ func (s *server) retireHostedRecords(ctx context.Context, request state.Retireme
 		return retiredHostedReceipt{Error: err.Error()}
 	}
 	response := httptest.NewRecorder()
-	s.handleRetiredHostedRecords(response, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted", strings.NewReader(string(raw))).WithContext(ctx))
+	s.hostedController().HandleRetirement(response, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted", strings.NewReader(string(raw))).WithContext(ctx))
 	var receipt retiredHostedReceipt
 	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
 		receipt.Error = err.Error()

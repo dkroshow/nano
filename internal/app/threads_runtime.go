@@ -10,16 +10,17 @@ import (
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
-	hosted "github.com/dkroshow/nano/internal/hosted"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
 type threadRuntimeStores struct {
-	control    *controlMetadataStore
-	executions *agentExecutionStore
-	queue      *queuedTurnStore
-	attempts   *sendAttemptStore
-	completed  *completedTurnStore
+	control    *hostedstore.MetadataStore
+	executions *hostedstore.ExecutionStore
+	queue      *prompts.LegacyQueue
+	attempts   *prompts.LegacyJournal
+	completed  *hostedmodel.CompletedTurnStore
 	turns      *prompts.Store
 }
 
@@ -41,7 +42,7 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 	if err != nil {
 		return nil, err
 	}
-	result := &threadRuntimeStores{control: control, completed: hosted.NewCompletedTurnStore(control.CanonicalDatabase())}
+	result := &threadRuntimeStores{control: control, completed: hostedmodel.NewCompletedTurnStore(control.CanonicalDatabase())}
 	failed := true
 	defer func() {
 		if failed {
@@ -84,7 +85,7 @@ func openThreadRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runI
 }
 
 // Back up the canonical database the two compatibility views read from.
-func backupSubmissionStore(ctx context.Context, queue *queuedTurnStore, attempts *sendAttemptStore, destination string) error {
+func backupSubmissionStore(ctx context.Context, queue *prompts.LegacyQueue, attempts *prompts.LegacyJournal, destination string) error {
 	if queue == nil || attempts == nil || queue.Database() == nil || attempts.Database() == nil || queue.Path() == "" || queue.Path() != attempts.Path() {
 		return fmt.Errorf("submission stores do not share the canonical database")
 	}

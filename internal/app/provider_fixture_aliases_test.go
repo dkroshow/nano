@@ -1,7 +1,7 @@
 package app
 
 import (
-	promptsmodel "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	testfixture "github.com/dkroshow/nano/internal/testsupport"
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
@@ -25,8 +25,8 @@ const claudeReplayResultLine = shimfixture.ReplayResultLine
 
 var testTurnDatabase = testfixture.TurnDatabase
 var testPromptStore = testfixture.PromptStore
-var newQueuedTurnStore = promptsmodel.NewLegacyQueue
-var newSendAttemptStore = promptsmodel.NewLegacyJournal
+var newQueuedTurnStore = prompts.NewLegacyQueue
+var newSendAttemptStore = prompts.NewLegacyJournal
 var QueueSnapshot = testfixture.QueueSnapshot
 var QueueLegacyRows = testfixture.QueueLegacyRows
 var QueueSaveLegacyRows = testfixture.QueueSaveLegacyRows

@@ -3,20 +3,22 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/config"
-	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/config"
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
-func causationTestSession(t *testing.T, hosted string) (*session, *controlMetadataStore) {
+func causationTestSession(t *testing.T, hosted string) (*session, *hostedstore.MetadataStore) {
 	return causationTestSessionForProvider(t, hosted, "codex")
 }
 
-func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*session, *controlMetadataStore) {
+func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*session, *hostedstore.MetadataStore) {
 	t.Helper()
 	store := newTestControlMetadata(t)
 	if err := store.EnsureHostedThread(hosted, provider, presentationShared, "", "", ""); err != nil {
@@ -35,7 +37,7 @@ func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*se
 	return sess, store
 }
 
-func requested(t *testing.T, sess *session, store *controlMetadataStore, field, value string) int64 {
+func requested(t *testing.T, sess *session, store *hostedstore.MetadataStore, field, value string) int64 {
 	t.Helper()
 	if sess.Provider() == "codex" && value != "ultrafast" {
 		body, _ := json.Marshal(map[string]string{field: value})
@@ -94,7 +96,7 @@ func startCausationResponse(t *testing.T, sess *session, request providerRequest
 	waitForClaudeStatus(t, sess, "ready")
 }
 
-func fieldStrings(t *testing.T, store *controlMetadataStore, hosted, field string) (metadataCurrentView, string, string) {
+func fieldStrings(t *testing.T, store *hostedstore.MetadataStore, hosted, field string) (hostedstore.MetadataCurrent, string, string) {
 	t.Helper()
 	v, err := store.View(hosted)
 	if err != nil {
@@ -151,7 +153,7 @@ func TestSpawnSessionCommitsPriorityBeforeImmediateThreadStartAndSettles(t *test
 		received <- struct{}{}
 	})
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +176,7 @@ func TestRunCodexHandshakeAcceptsGranularApprovalPolicy(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.SetStartResult(map[string]any{"model": "gpt-test", "approvalPolicy": map[string]any{"granular": map[string]any{"filesystem": "on-request"}}, "thread": map[string]any{"id": "thread-granular", "cwd": t.TempDir()}})
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD}})
+	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +195,7 @@ func TestCodexTypedStartRejectionSettlesCreationWithoutEffectiveValue(t *testing
 	fake := newFakeAppServer(t)
 	fake.SetStartError("policy rejected start")
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +213,7 @@ func TestCodexTransportFailureLeavesCreationPending(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.SetDropStart(true)
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hosted.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +399,7 @@ func TestClaudeReplayLiveBoundaryKeepsCanonicalMetadataReadable(t *testing.T) {
 	}
 }
 
-func newCausationClaudeAttachment(t *testing.T, store *controlMetadataStore, hosted string) *session {
+func newCausationClaudeAttachment(t *testing.T, store *hostedstore.MetadataStore, hosted string) *session {
 	t.Helper()
 	generation, err := store.BeginTransportBinding(hosted)
 	if err != nil {
@@ -463,7 +465,7 @@ func replayCausationClaude(t *testing.T, sess *session, line []byte) *providerRu
 			c.Reply(call, map[string]any{})
 		}
 	})
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", Mode: "resume", ThreadID: sess.ThreadID(), ClaudeShimWS: shim.WSURL(), ClaudeShimSpools: root, ClaudeBin: "/fake/claude", ClaudeAnchor: attachmentRecord{Provider: "claude", NativeThreadID: sess.ThreadID(), ShimSessionID: "shim-1"}}, nil, func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", Mode: "resume", ThreadID: sess.ThreadID(), ClaudeShimWS: shim.WSURL(), ClaudeShimSpools: root, ClaudeBin: "/fake/claude", ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.ThreadID(), ShimSessionID: "shim-1"}}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	f := &providerRuntimeFixture{session: sess, claude: <-connected, seq: 1}

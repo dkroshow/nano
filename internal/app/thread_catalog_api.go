@@ -15,6 +15,7 @@ import (
 	"github.com/dkroshow/nano/internal/catalog"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sessions"
@@ -227,16 +228,16 @@ func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQu
 	if query.Archived == archivedOnlyFilter {
 		return nil
 	}
-	covered := make(map[attachmentKey]bool, len(page))
+	covered := make(map[hostedstore.AttachmentKey]bool, len(page))
 	for _, item := range page {
 		if item.NativeID != "" {
-			covered[attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
+			covered[hostedstore.AttachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
 		}
 	}
-	attached := make(map[attachmentKey]bool, len(live))
-	var wanted []attachmentKey
+	attached := make(map[hostedstore.AttachmentKey]bool, len(live))
+	var wanted []hostedstore.AttachmentKey
 	for _, sess := range live {
-		key := attachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}
+		key := hostedstore.AttachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}
 		if sess.ThreadID == "" || attached[key] || (query.ThreadID != "" && sess.ThreadID != query.ThreadID) {
 			continue
 		}
@@ -261,7 +262,7 @@ func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQu
 		if query.ThreadID != "" && sess.ThreadID != query.ThreadID {
 			continue
 		}
-		key := attachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}
+		key := hostedstore.AttachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}
 		if _, found := indexed[key]; sess.ThreadID == "" || (err == nil && !covered[key] && !found) {
 			rows = append(rows, sidebar.MemoryThreadRow(sess))
 		}
@@ -280,8 +281,8 @@ func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQu
 // filter widened, in one read per history.MaxThreadIdentities keys. One thread
 // can sit under two roots; the first row in list order wins, as the former
 // one-row point read did.
-func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (map[attachmentKey]sidebar.Thread, error) {
-	found := make(map[attachmentKey]sidebar.Thread, len(keys))
+func (s *server) threadsByIdentity(ctx context.Context, keys []hostedstore.AttachmentKey) (map[hostedstore.AttachmentKey]sidebar.Thread, error) {
+	found := make(map[hostedstore.AttachmentKey]sidebar.Thread, len(keys))
 	for start := 0; start < len(keys); start += history.MaxThreadIdentities {
 		query := threadindex.ListQuery{
 			Identities:       catalogIdentities(keys[start:min(start+history.MaxThreadIdentities, len(keys))]),
@@ -294,7 +295,7 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 				return found, err
 			}
 			for _, item := range page.Items {
-				key := attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}
+				key := hostedstore.AttachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}
 				if _, seen := found[key]; !seen {
 					found[key] = item
 				}
@@ -318,15 +319,15 @@ func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQu
 	if query.ThreadID != "" {
 		return nil
 	}
-	covered, visited := make(map[attachmentKey]bool, len(page)), map[attachmentKey]bool{}
+	covered, visited := make(map[hostedstore.AttachmentKey]bool, len(page)), map[hostedstore.AttachmentKey]bool{}
 	for _, item := range page {
 		if item.NativeID != "" {
-			covered[attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
+			covered[hostedstore.AttachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
 		}
 	}
 	var parents []sidebar.Thread
 	for level := page; len(level) > 0; {
-		var wanted []attachmentKey
+		var wanted []hostedstore.AttachmentKey
 		for _, key := range s.lineageParentKeys(level) {
 			if !covered[key] && !visited[key] {
 				visited[key] = true
@@ -352,9 +353,9 @@ func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQu
 // lineageParentKeys returns each row's supervisor, in row order. A current
 // related-thread assignment wins, then a standalone thread stops, then the
 // hosted invoker, then a subagent's provider-native parent.
-func (s *server) lineageParentKeys(rows []sidebar.Thread) []attachmentKey {
+func (s *server) lineageParentKeys(rows []sidebar.Thread) []hostedstore.AttachmentKey {
 	records, found := s.sidebarOwner().SidebarHostedRecords(rows)
-	var assignments map[string]*orchestrationAssignmentView
+	var assignments map[string]*hostedstore.AssignmentView
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
 		ids := make([]string, 0, len(rows))
 		for i := range rows {
@@ -364,7 +365,7 @@ func (s *server) lineageParentKeys(rows []sidebar.Thread) []attachmentKey {
 		}
 		assignments = s.controlMetadata.CurrentAssignmentsByHostedIDs(ids)
 	}
-	var keys []attachmentKey
+	var keys []hostedstore.AttachmentKey
 	for i, row := range rows {
 		parentID := ""
 		if found[i] {
@@ -378,12 +379,12 @@ func (s *server) lineageParentKeys(rows []sidebar.Thread) []attachmentKey {
 				parentID = records[i].InvokerHostedThreadID
 			}
 			if parent, ok := s.agentExecutions.Session(parentID); ok && parent.Provider != "" && parent.NativeThreadID != "" {
-				keys = append(keys, attachmentKey{Provider: parent.Provider, NativeThreadID: parent.NativeThreadID})
+				keys = append(keys, hostedstore.AttachmentKey{Provider: parent.Provider, NativeThreadID: parent.NativeThreadID})
 				continue
 			}
 		}
 		if parentID == "" && row.Kind == string(history.ThreadSubagent) && row.ParentNativeID != "" {
-			keys = append(keys, attachmentKey{Provider: row.Provider, NativeThreadID: row.ParentNativeID})
+			keys = append(keys, hostedstore.AttachmentKey{Provider: row.Provider, NativeThreadID: row.ParentNativeID})
 		}
 	}
 	return keys

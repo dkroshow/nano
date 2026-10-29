@@ -9,11 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const (

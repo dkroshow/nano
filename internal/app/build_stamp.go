@@ -2,13 +2,14 @@ package app
 
 import (
 	"encoding/json"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
-	"github.com/dkroshow/nano/web"
 	"io/fs"
 	"net/http"
 	"path"
 	"strings"
 	"sync"
+
+	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/web"
 )
 
 // buildStamp identifies the running binary. Set it at link time with
@@ -46,6 +47,6 @@ func handleBuildInfo(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"stamp":       buildStamp,
 		"bundle":      embeddedBundleName(),
-		"storeSchema": turns.TurnSchemaVersion,
+		"storeSchema": prompts.TurnSchemaVersion,
 	})
 }

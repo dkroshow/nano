@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
-	turns "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -23,7 +25,7 @@ import (
 type restartWindow struct {
 	s        *server
 	fake     *fakeAppServer
-	rec      attachmentRecord
+	rec      hostedstore.Attachment
 	catalog  *threadCatalogService
 	attached *pausedAttachedCatalog
 	t        *testing.T
@@ -67,7 +69,7 @@ func newRestartWindow(t *testing.T) *restartWindow {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { historyStore.Close() })
-	w.catalog, err = newThreadCatalogService(ctx, historyStore, threadCatalogServiceOptions{
+	w.catalog, err = newThreadCatalogService(ctx, historyStore, threadindex.Options{
 		Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: root}},
 	})
 	if err != nil {
@@ -142,7 +144,7 @@ func savedPromptTurn(hosted, action, turn string) string {
 `, action, turn, submissionEventID(hosted, action))
 }
 
-func (w *restartWindow) state(t *testing.T, action string) turns.DeliveryState {
+func (w *restartWindow) state(t *testing.T, action string) prompts.DeliveryState {
 	t.Helper()
 	record, _, err := w.s.turns.Get(context.Background(), action)
 	if err != nil {
@@ -226,15 +228,15 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				// p1 was accepted into turn-p1 before Nano stopped; Codex
 				// saved it and the turn's interruption while Nano was down.
 				text := "p1 prompt"
-				if _, _, err := w.s.turns.Submit(ctx, turns.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "p1",
-					ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: turns.HumanOrigin}); err != nil {
+				if _, _, err := w.s.turns.Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "p1",
+					ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: prompts.HumanOrigin}); err != nil {
 					t.Fatal(err)
 				}
-				if _, claimed, err := w.s.turns.Claim(ctx, turns.ClaimRequest{HostedThreadID: hosted, Token: "before-restart", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
+				if _, claimed, err := w.s.turns.Claim(ctx, prompts.ClaimRequest{HostedThreadID: hosted, Token: "before-restart", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 					t.Fatalf("claim p1 = %v, %v", claimed, err)
 				}
-				binding := turns.Binding{EventID: submissionEventID(hosted, "p1"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}
-				if _, err := w.s.turns.Accepted(ctx, turns.Acceptance{ActionID: "p1", ClaimToken: "before-restart", AttachmentEpoch: 1, Binding: binding}); err != nil {
+				binding := prompts.Binding{EventID: submissionEventID(hosted, "p1"), Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}
+				if _, err := w.s.turns.Accepted(ctx, prompts.Acceptance{ActionID: "p1", ClaimToken: "before-restart", AttachmentEpoch: 1, Binding: binding}); err != nil {
 					t.Fatal(err)
 				}
 				release = w.pause()
@@ -360,7 +362,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 
 			waitForClaudeWithin(t, time.Minute, "the queued prompt sent", func() bool {
 				return len(w.fake.StartedTexts()) > len(sentBefore) && sess.Summary().Status == "ready" &&
-					(test.missing || test.unused || w.state(t, "p1") != turns.Accepted)
+					(test.missing || test.unused || w.state(t, "p1") != prompts.Accepted)
 			})
 			time.Sleep(300 * time.Millisecond) // a resend would be queued by now
 			records, err := w.s.turns.List(ctx, hosted)
@@ -373,14 +375,14 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				}
 			}
 			if !test.missing && !test.unused {
-				if state := w.state(t, "p1"); state != turns.Confirmed {
+				if state := w.state(t, "p1"); state != prompts.Confirmed {
 					t.Fatalf("p1 = %s; want confirmed by its saved row", state)
 				}
 			}
 			if got, want := w.fake.StartedTexts(), append(sentBefore, "p2 prompt"); fmt.Sprint(got) != fmt.Sprint(want) {
 				t.Fatalf("provider received %q; want %q", got, want)
 			}
-			if state := w.state(t, "p2"); state != turns.Accepted {
+			if state := w.state(t, "p2"); state != prompts.Accepted {
 				t.Fatalf("p2 = %s; want accepted", state)
 			}
 		})

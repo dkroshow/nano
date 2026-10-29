@@ -1,5 +1,15 @@
 package app
 
+import (
+	"context"
+	"net/http"
+	"net/url"
+
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/threadindex"
+)
+
 // thread_messages_api.go — the agent-ergonomic tail of a thread: GET
 // /api/v1/threads/{id}/messages?tail=N&roles=user,agent&format=text returns
 // clean chronological plain text, so "show me the last messages of thread X" is
@@ -8,16 +18,6 @@ package app
 // It is a thin projection over the existing transcript service — no second
 // parser, no direct SQLite read — and resolves ids the way an agent types them:
 // an exact nano or native id, or an unambiguous prefix of either.
-
-import (
-	"context"
-	"net/http"
-	"net/url"
-
-	"github.com/dkroshow/nano/internal/hosted"
-	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/threadindex"
-)
 
 // hostedThreadNativeID returns the current native thread id for a hosted id,
 // preferring the live session, then the durable execution record. The second
@@ -43,7 +43,7 @@ func (s *server) handleThreadMessages(w http.ResponseWriter, r *http.Request, ra
 		return
 	}
 	reference, err := url.PathUnescape(rawID)
-	if err == nil && hosted.IsHostedReference(reference) {
+	if err == nil && hostedmodel.IsHostedReference(reference) {
 		// Query errors precede hosted lookup errors, as for native references.
 		if _, err := threadindex.ParseMessagesQuery(r); err != nil {
 			httpapi.WriteError(w, http.StatusBadRequest, "invalid_query", err.Error())

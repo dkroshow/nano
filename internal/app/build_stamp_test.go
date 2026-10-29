@@ -2,10 +2,11 @@ package app
 
 import (
 	"encoding/json"
-	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/core/prompts"
 )
 
 func TestBuildInfoPublishesSupportedThreadsSchema(t *testing.T) {
@@ -20,7 +21,7 @@ func TestBuildInfoPublishesSupportedThreadsSchema(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.StoreSchema != turns.TurnSchemaVersion {
-		t.Fatalf("storeSchema = %d, want %d", body.StoreSchema, turns.TurnSchemaVersion)
+	if body.StoreSchema != prompts.TurnSchemaVersion {
+		t.Fatalf("storeSchema = %d, want %d", body.StoreSchema, prompts.TurnSchemaVersion)
 	}
 }

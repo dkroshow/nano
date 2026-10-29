@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
@@ -22,7 +25,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker-alias", "worker", "claude", presentationShared, invoker, &orchestrationAssignment{AssignmentRole: "worker", Focus: "Implement exactly this"})
+	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker-alias", "worker", "claude", presentationShared, invoker, &hostedstore.Assignment{AssignmentRole: "worker", Focus: "Implement exactly this"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +43,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil || metadataView.Fields["orchestrationAssignment"].DesiredDisposition != metadataDispositionConfirmed || metadataView.Fields["orchestrationAssignment"].EffectiveDisposition != metadataDispositionConfirmed || metadataView.Fields["orchestrationAssignment"].DisplayDisposition != metadataDispositionConfirmed {
 		t.Fatalf("generic metadata assignment view = %#v, err=%v", metadataView.Fields["orchestrationAssignment"], err)
 	}
-	retry, created, err := fixtureBeginSessionWithInvoker(store, "worker-alias", "worker", "claude", presentationShared, invoker, &orchestrationAssignment{AssignmentRole: "worker", Focus: "Implement exactly this"})
+	retry, created, err := fixtureBeginSessionWithInvoker(store, "worker-alias", "worker", "claude", presentationShared, invoker, &hostedstore.Assignment{AssignmentRole: "worker", Focus: "Implement exactly this"})
 	if err != nil || created || retry.ID != worker.ID {
 		t.Fatalf("creation retry = %#v, created=%v, err=%v", retry, created, err)
 	}
@@ -62,7 +65,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("assignment update = %d %s", rec.Code, rec.Body.String())
 	}
-	var updated agentSessionView
+	var updated hostedmodel.SessionView
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +79,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 		t.Fatalf("assignment mutation result = %#v, err=%v", updateResult, err)
 	}
 	listed := httptest.NewRecorder()
-	s.handleAgentSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
+	s.hostedViews().HandleSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
 	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte(`"assignmentRole":"auditor"`)) {
 		t.Fatalf("thread list projection = %d %s", listed.Code, listed.Body.String())
 	}
@@ -142,11 +145,11 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if queued.AssignmentEventID == nil || *queued.AssignmentEventID != reassertResult.AssignmentEventID {
 		t.Fatalf("queued snapshot = %#v", queued)
 	}
-	if view := s.agentTurnView(op1); view.Assignment == nil || view.Assignment.EventID != first.EventID {
+	if view := s.hostedViews().TurnView(op1); view.Assignment == nil || view.Assignment.EventID != first.EventID {
 		t.Fatalf("operation projection = %#v", view.Assignment)
 	}
 	bulk := httptest.NewRecorder()
-	s.handleTurnOperationsCollection(bulk, httptest.NewRequest(http.MethodGet, "/api/v1/turn-operations?ids="+op1.ID+","+op2.ID, nil))
+	s.hostedViews().HandleOperationsCollection(bulk, httptest.NewRequest(http.MethodGet, "/api/v1/turn-operations?ids="+op1.ID+","+op2.ID, nil))
 	if bulk.Code != http.StatusOK || !bytes.Contains(bulk.Body.Bytes(), []byte(`"assignmentRole":"worker"`)) || !bytes.Contains(bulk.Body.Bytes(), []byte(`"assignmentRole":"auditor"`)) {
 		t.Fatalf("bulk projection = %d %s", bulk.Code, bulk.Body.String())
 	}
@@ -193,7 +196,7 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent, _, _ := fixtureBeginSession(store, "parent", "parent", "codex", presentationShared)
-	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker", "worker", "codex", presentationShared, parent, &orchestrationAssignment{AssignmentRole: "worker", Focus: "Do not inject this"})
+	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker", "worker", "codex", presentationShared, parent, &hostedstore.Assignment{AssignmentRole: "worker", Focus: "Do not inject this"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +225,7 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 	s := testServerWithSessions(&server{agentExecutions: store, controlMetadata: control, catalog: fixtureNamedCatalog(t, "codex", "native-worker", "Worker sender"), Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 	const prompt = "  Exact caller prompt: do not alter it.  "
 	rec := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)
+	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
@@ -237,7 +240,7 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("provider did not receive prompt")
 	}
-	var operation agentTurnView
+	var operation hostedmodel.TurnView
 	if err := json.Unmarshal(rec.Body.Bytes(), &operation); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +322,7 @@ func TestAssignmentResolutionFailuresAreVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent, _, _ := fixtureBeginSession(store, "parent", "parent", "codex", presentationShared)
-	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker", "worker", "codex", presentationShared, parent, &orchestrationAssignment{AssignmentRole: "worker", Focus: "x"})
+	worker, _, err := fixtureBeginSessionWithInvoker(store, "worker", "worker", "codex", presentationShared, parent, &hostedstore.Assignment{AssignmentRole: "worker", Focus: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,10 +337,10 @@ func TestAssignmentResolutionFailuresAreVisible(t *testing.T) {
 	if assignment, err := control.CurrentOrchestrationAssignment(worker.ID); err == nil || assignment != nil {
 		t.Fatalf("closed DB current assignment = %#v, %v", assignment, err)
 	}
-	if view := s.agentSessionView(worker.ID); !view.AssignmentUnavailable {
+	if view := s.hostedViews().SessionView(worker.ID); !view.AssignmentUnavailable {
 		t.Fatalf("thread assignment failure hidden: %#v", view)
 	}
-	if view := s.agentTurnView(op); !view.AssignmentUnavailable {
+	if view := s.hostedViews().TurnView(op); !view.AssignmentUnavailable {
 		t.Fatalf("operation assignment failure hidden: %#v", view)
 	}
 	failed := httptest.NewRecorder()

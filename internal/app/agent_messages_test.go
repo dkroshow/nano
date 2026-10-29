@@ -15,6 +15,8 @@ import (
 	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // agentMessageSendRequest is the HTTP test client's wire request.
@@ -30,11 +32,11 @@ type agentMessageSendRequest struct {
 	DispositionFeedback bool              `json:"dispositionFeedback,omitempty"`
 }
 
-func sendAgentMessageForTest(t *testing.T, s *server, recipient agentSessionRecord, senderID, clientID, subject, body string, refs []featuremail.Ref) (*httptest.ResponseRecorder, featuremail.Message) {
+func sendAgentMessageForTest(t *testing.T, s *server, recipient threads.SessionRecord, senderID, clientID, subject, body string, refs []featuremail.Ref) (*httptest.ResponseRecorder, featuremail.Message) {
 	return sendAgentMessageWithFeedbackForTest(t, s, recipient, senderID, clientID, subject, body, refs, false)
 }
 
-func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient agentSessionRecord, senderID, clientID, subject, body string, refs []featuremail.Ref, dispositionFeedback bool) (*httptest.ResponseRecorder, featuremail.Message) {
+func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient threads.SessionRecord, senderID, clientID, subject, body string, refs []featuremail.Ref, dispositionFeedback bool) (*httptest.ResponseRecorder, featuremail.Message) {
 	t.Helper()
 	encoded, err := json.Marshal(agentMessageSendRequest{ClientMessageID: clientID, SenderThreadRef: senderID, Subject: subject, Body: body, Refs: refs, DispositionFeedback: dispositionFeedback})
 	if err != nil {
@@ -444,12 +446,12 @@ func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 		_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "mail-agent", "Mail", "Unread", nil)
 		body := `{"clientActionId":"agent-turn","prompt":"Review","senderThreadRef":"` + sender.ID + `"}`
 		rec := httptest.NewRecorder()
-		s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
+		s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
 		if rec.Code != http.StatusAccepted {
 			t.Fatalf("submit=%d %s", rec.Code, rec.Body.String())
 		}
 		got := <-prompts
-		if !strings.Contains(got, senderFooter(turnAttribution{Origin: turnOriginAgent, SenderName: "Claude sender", SenderNativeThreadID: sender.NativeThreadID, SenderSubmittedAt: mustAgentTurn(t, s, recipient.ID, "agent-turn").SenderSubmittedAt})+"\n\n[nano: 1 unread — GET /api/v1/hosted-threads/"+recipient.ID+"/inbox]") {
+		if !strings.Contains(got, senderFooter(hostedstore.TurnAttribution{Origin: turnOriginAgent, SenderName: "Claude sender", SenderNativeThreadID: sender.NativeThreadID, SenderSubmittedAt: mustAgentTurn(t, s, recipient.ID, "agent-turn").SenderSubmittedAt})+"\n\n[nano: 1 unread — GET /api/v1/hosted-threads/"+recipient.ID+"/inbox]") {
 			t.Fatalf("agent prompt footers = %q", got)
 		}
 	})
@@ -477,7 +479,7 @@ func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 	})
 }
 
-func mustAgentTurn(t *testing.T, s *server, hostedID, actionID string) agentTurnRecord {
+func mustAgentTurn(t *testing.T, s *server, hostedID, actionID string) threads.TurnRecord {
 	t.Helper()
 	record, ok := fixtureTurnForAction(s.agentExecutions, hostedID, actionID)
 	if !ok {
@@ -525,7 +527,7 @@ func TestPromptUsesNoticeSnapshotWithoutReadingMailStore(t *testing.T) {
 	}
 	body := `{"clientActionId":"notice-snapshot","prompt":"Deliver without a mail read","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
-	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
+	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit=%d %s", rec.Code, rec.Body.String())
 	}
