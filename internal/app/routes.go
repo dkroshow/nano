@@ -27,11 +27,11 @@ func applicationRoutes(s *server) []applicationRoute {
 	browser := observability.NewBrowserHandlers(s.browserDiagnostics, s.transcriptValidations, s.controlMetadata, s.controlMetadataErr)
 	accountUsage := &usage.Handlers{Store: s.usageLimits, Poller: s.usageLimitsPoller}
 	sessionRoute := func(operation func(http.ResponseWriter, *http.Request, *sessions.Session)) http.HandlerFunc {
-		return s.sessionOperation(operation)
+		return s.SessionOperation(operation)
 	}
 	routes := []applicationRoute{
 		{http.MethodGet, "/healthz", "health.read", s.handleHealth},
-		{http.MethodGet, "/api/sessions", "sessions.list", s.handleSessionsList},
+		{http.MethodGet, "/api/sessions", "sessions.list", s.sidebarOwner().SessionsHandler(s.defaults)},
 		{http.MethodPost, "/api/sessions", "sessions.create", s.hostedController().HandleLegacyCreate},
 		{http.MethodPost, "/api/sessions/preview", "sessions.preview", s.attachmentCoordinator().HandleSpawnPreview},
 		{http.MethodDelete, "/api/sessions/{sessionId}", "sessions.close", sessionRoute(s.hostedController().HandleLegacyClose)},
@@ -160,9 +160,9 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPost, "/api/v1/maintenance/retired-hosted-records", "maintenance.retiredHostedRecords", s.hostedController().HandleRetirement},
 		{http.MethodPost, "/api/v1/maintenance/creation-names", "maintenance.creationNames", s.creationNames().HandleRepair},
 		{http.MethodPost, "/api/v1/maintenance/stale-prompts", "maintenance.stalePrompts", s.attachmentCoordinator().HandleStalePrompts},
-		{http.MethodGet, "/api/v1/files/read", "files.read", s.handleGeneralFileRead},
-		{http.MethodGet, "/api/v1/files/mtime", "files.mtime", s.handleGeneralFileMtime},
-		{http.MethodPut, "/api/v1/files/write", "files.write", s.handleGeneralFileWrite},
+		{http.MethodGet, "/api/v1/files/read", "files.read", s.fileHandlers().HandleRead},
+		{http.MethodGet, "/api/v1/files/mtime", "files.mtime", s.fileHandlers().HandleMtime},
+		{http.MethodPut, "/api/v1/files/write", "files.write", s.fileHandlers().HandleWrite},
 		{http.MethodGet, "/api/v1/search/messages", "search.messages", index.HandleConversationSearchMessages},
 		{http.MethodGet, "/api/v1/search/status", "search.status", index.HandleConversationSearchStatus},
 		{http.MethodGet, "/api/v1/usage/threads", "usage.threads", index.HandleThreadUsageList},

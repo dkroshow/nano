@@ -172,7 +172,7 @@ func TestExecutionControlDegradedModeRejectsHostedMutations(t *testing.T) {
 func TestSessionsRouteDegradedModeKeepsReadsButRejectsNewHostedSession(t *testing.T) {
 	server := &server{Registry: newSessionRegistry(), executionControlErr: "control.sqlite is corrupt"}
 	get := httptest.NewRecorder()
-	server.handleSessionsList(get, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	server.sidebarOwner().SessionsHandler(server.defaults)(get, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	if get.Code != http.StatusOK {
 		t.Fatalf("degraded GET status = %d", get.Code)
 	}
@@ -372,7 +372,7 @@ func TestSessionListCarriesDisplayedMetadataOnly(t *testing.T) {
 	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
 	server := testServerWithSessions(&server{Registry: newSessionRegistry(), controlMetadata: metadata}, map[string]*session{sess.ID(): sess})
 	rec := httptest.NewRecorder()
-	server.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	server.sidebarOwner().SessionsHandler(server.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {
 		Sessions []struct {
 			Metadata map[string]json.RawMessage `json:"metadata"`

@@ -167,7 +167,17 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 				if nameOwner == nil {
 					return hostedstore.MetadataName{}, false
 				}
-				return nameOwner.durableThreadNameRef(provider, native)
+				reader, ok := nameOwner.catalog.(interface {
+					ThreadNameRefFor(context.Context, string, string) (*history.ThreadNameRef, bool)
+				})
+				if !ok || native == "" {
+					return hostedstore.MetadataName{}, false
+				}
+				ref, ok := reader.ThreadNameRefFor(context.Background(), provider, native)
+				if !ok || ref == nil || ref.Value == "" {
+					return hostedstore.MetadataName{}, false
+				}
+				return hostedstore.MetadataName{Value: ref.Value, Provenance: string(ref.Provenance)}, true
 			}
 		})
 		sessions[sessID] = sess
@@ -381,7 +391,7 @@ func TestSessionsListStatementsDoNotGrowWithSessions(t *testing.T) {
 	measure := func(extra int) (statements, catalogCalls int64) {
 		f := newBudgetFixture(t, extra, true)
 		before := f.catalog.calls()
-		statements = f.countControlStatements(t, func() { f.get(t, f.server.handleSessionsList, "/api/sessions") })
+		statements = f.countControlStatements(t, func() { f.get(t, f.server.sidebarOwner().SessionsHandler(f.server.defaults), "/api/sessions") })
 		return statements, f.catalog.calls() - before
 	}
 	smallStatements, smallCalls := measure(4)
@@ -410,7 +420,7 @@ func TestListResponsesShowEachRowsFacts(t *testing.T) {
 			lines = append(lines, kind+" "+rowFacts(row.(map[string]any), paths...))
 		}
 	}
-	sessions := f.get(t, f.server.handleSessionsList, "/api/sessions")
+	sessions := f.get(t, f.server.sidebarOwner().SessionsHandler(f.server.defaults), "/api/sessions")
 	add("session", sessions["sessions"], "id", "threadId", "status", "cwd", "model", "needsAttention",
 		"metadataUnavailable", "metadata.revision")
 	add("detached", sessions["detached"], "provider", "nativeThreadId", "hostedThreadId", "metadataUnavailable",

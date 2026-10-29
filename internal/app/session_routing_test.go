@@ -96,7 +96,7 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 	}, map[string]*session{sess.ID(): sess})
 	registryDone := make(chan struct{})
 	go func() {
-		s.handleSessionsList(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+		s.sidebarOwner().SessionsHandler(s.defaults)(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 		close(registryDone)
 	}()
 

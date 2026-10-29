@@ -1,8 +1,8 @@
-package app
+package sessions
 
-// publishProviderRuntime republishes the runtime status of every session of
+// PublishProviderRuntime republishes the runtime status of every session of
 // provider, so each pane sees that provider's delivery expiry count.
-func (s *server) publishProviderRuntime(provider string) {
+func (s *Registry) PublishProviderRuntime(provider string) {
 	for _, sess := range s.SnapshotSessions() {
 		if sess.Provider() == provider {
 			sess.PublishProjectionRuntime()

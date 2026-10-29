@@ -370,7 +370,7 @@ func construct(cfg config.Config) *application {
 		usageLimits:           usageLimits,
 		Registry:              sessionruntime.NewRegistry(),
 	}
-	s.deliveryExpiries = sessionruntime.NewDeliveryExpiries(deliveryExpiryWindow, s.publishProviderRuntime)
+	s.deliveryExpiries = sessionruntime.NewDeliveryExpiries(deliveryExpiryWindow, s.Registry.PublishProviderRuntime)
 	if agentExecutions != nil {
 		agentExecutions.UseSavedResults(s.attachmentCoordinator().SavedOperationResult, s.attachmentCoordinator().SavedOperationResultFinished)
 	}
@@ -780,46 +780,4 @@ func validateThreadCatalogDBLocation(database string, providerHomes []string) er
 // path without creating the database or any parent directory.
 func canonicalProspectivePath(path string) (string, error) {
 	return configpaths.CanonicalProspective(path)
-}
-
-func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
-	// The position comes first: a change after it is either in this answer or
-	// replayed over it, never missed.
-	var position *sidebar.RuntimePosition
-	if s.runtimeEvents != nil {
-		at := s.runtimeEvents.Position()
-		position = &at
-	}
-	sessions := s.SnapshotSessions()
-
-	listed := s.sidebarOwner().ListedSessions(sessions)
-	live := make(map[hostedstore.AttachmentKey]bool, len(listed))
-	for _, sum := range listed {
-		if sum.ThreadID != "" && sum.Status != sessionruntime.StatusExited {
-			live[hostedstore.AttachmentKey{Provider: sum.Provider, NativeThreadID: sum.ThreadID}] = true
-		}
-	}
-	httpapi.WriteJSON(w, map[string]any{
-		"sessions":      listed,
-		"detached":      s.sidebarOwner().DetachedSessionViews(live),
-		"runtimeStream": position,
-		"defaults": map[string]string{
-			"cwd": s.defaults.CWD, "model": s.defaults.Model,
-			"sandbox": s.defaults.Sandbox, "approval": s.defaults.Approval,
-			"allowedTools": s.defaults.AllowedTools, "claudeBin": s.defaults.ClaudeBin,
-			"grokBin": s.defaults.GrokBin, "grokLeaderSocket": s.defaults.GrokLeaderSocket,
-		},
-	})
-}
-
-func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Request, *sessionruntime.Session)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("sessionId")
-		sess := s.LookupSession(id)
-		if sess == nil {
-			httpapi.WriteHTTPError(w, "no such session", http.StatusNotFound)
-			return
-		}
-		operation(w, r, sess)
-	}
 }

@@ -52,7 +52,7 @@ func TestFileOnlyClaudeFileOpensBySavedOrLiveEvidence(t *testing.T) {
 	h.stream("unsaved", "now editing "+unsaved)
 	for name, want := range map[string]string{"notes.md": saved, "draft.md": unsaved} {
 		rec := httptest.NewRecorder()
-		h.catalog.server.handleGeneralFileRead(rec, httptest.NewRequest(http.MethodGet, "/api/v1/files/read?path="+name+"&sessionId="+h.session.ID(), nil))
+		h.catalog.server.fileHandlers().HandleRead(rec, httptest.NewRequest(http.MethodGet, "/api/v1/files/read?path="+name+"&sessionId="+h.session.ID(), nil))
 		var file struct {
 			Path       string `json:"path"`
 			ResolvedBy string `json:"resolvedBy"`

@@ -40,7 +40,7 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 		if err := catalog.AssignThreadNameIfEmpty(provider, native, name); err != nil {
 			t.Fatal(err)
 		}
-	}, PublishCreationName: server.publishCreationName}, "native-after-restart", "")
+	}, PublishCreationName: server.creationNames().Publish}, "native-after-restart", "")
 	sess := fixture.session
 	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-after-restart"); got != "creation name" {
 		t.Fatalf("bind name = %q, want creation name", got)

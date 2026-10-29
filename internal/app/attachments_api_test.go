@@ -40,7 +40,7 @@ func TestSessionsGETSurfacesDetached(t *testing.T) {
 	s.RegisterSession(liveSession(t, "sess1", "t-live"))
 
 	rec := httptest.NewRecorder()
-	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	s.sidebarOwner().SessionsHandler(s.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
 		Sessions []sessionSummary         `json:"sessions"`
@@ -67,7 +67,7 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 	s.RegisterSession(exited)
 
 	rec := httptest.NewRecorder()
-	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	s.sidebarOwner().SessionsHandler(s.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
 		Sessions []sessionSummary         `json:"sessions"`
@@ -116,7 +116,7 @@ func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 	s.RegisterSession(liveSession(t, "sess1", "shared")) // codex
 
 	rec := httptest.NewRecorder()
-	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	s.sidebarOwner().SessionsHandler(s.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
 		Detached []hostedstore.Attachment `json:"detached"`
@@ -220,7 +220,7 @@ func TestAttachmentDismissEndpoint(t *testing.T) {
 func TestSessionsGETNoStore(t *testing.T) {
 	s := &server{Registry: newSessionRegistry()}
 	rec := httptest.NewRecorder()
-	s.handleSessionsList(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
+	s.sidebarOwner().SessionsHandler(s.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {
 		Detached []hostedstore.Attachment `json:"detached"`
 	}

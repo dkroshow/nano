@@ -1,4 +1,4 @@
-package app
+package fileapi
 
 import (
 	"context"
@@ -11,9 +11,17 @@ import (
 
 	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
+
+// Handlers joins workspace files with saved and live reference evidence.
+type Handlers struct {
+	Catalog  sidebar.CatalogReader
+	Registry *sessions.Registry
+}
 
 const (
 	generalFileMaxBytes  = filemodel.MaxBytes
@@ -25,7 +33,8 @@ type fileEvidenceCatalog interface {
 	FindFileEvidenceBlobs(context.Context, string, string, int, int) ([]string, error)
 }
 
-func (s *server) handleGeneralFileRead(w http.ResponseWriter, r *http.Request) {
+// HandleRead serves the workspace file endpoint.
+func (s *Handlers) HandleRead(w http.ResponseWriter, r *http.Request) {
 	requested := strings.TrimSpace(r.URL.Query().Get("path"))
 	path, resolvedBy, err := s.resolveGeneralFile(r.Context(), requested,
 		strings.TrimSpace(r.URL.Query().Get("cwd")),
@@ -51,7 +60,8 @@ func (s *server) handleGeneralFileRead(w http.ResponseWriter, r *http.Request) {
 	writeGeneralFileJSON(w, http.StatusOK, meta)
 }
 
-func (s *server) handleGeneralFileMtime(w http.ResponseWriter, r *http.Request) {
+// HandleMtime serves the workspace file endpoint.
+func (s *Handlers) HandleMtime(w http.ResponseWriter, r *http.Request) {
 	path, err := filemodel.CanonicalExistingAbsolute(strings.TrimSpace(r.URL.Query().Get("path")))
 	if err != nil {
 		writeGeneralFileError(w, err)
@@ -65,7 +75,8 @@ func (s *server) handleGeneralFileMtime(w http.ResponseWriter, r *http.Request) 
 	writeGeneralFileJSON(w, http.StatusOK, map[string]any{"path": path, "mtime": filemodel.ModificationTime(info)})
 }
 
-func (s *server) handleGeneralFileWrite(w http.ResponseWriter, r *http.Request) {
+// HandleWrite serves the workspace file endpoint.
+func (s *Handlers) HandleWrite(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Path    string   `json:"path"`
 		Content string   `json:"content"`
@@ -120,14 +131,14 @@ func (s *server) handleGeneralFileWrite(w http.ResponseWriter, r *http.Request) 
 	writeGeneralFileJSON(w, http.StatusOK, meta)
 }
 
-func (s *server) resolveGeneralFile(ctx context.Context, requested, cwd, threadID, sessionID string) (string, string, *filemodel.Error) {
+func (s *Handlers) resolveGeneralFile(ctx context.Context, requested, cwd, threadID, sessionID string) (string, string, *filemodel.Error) {
 	threadCWD := s.fileThreadCwd(ctx, threadID, sessionID)
 	if threadID == "" {
 		threadID = s.sessionCatalogThreadID(ctx, sessionID)
 	}
 	return filemodel.Resolve(requested, cwd, threadCWD, func(relative string) []string {
 		blobs := s.liveFileEvidence(ctx, sessionID)
-		if catalog, ok := s.catalog.(fileEvidenceCatalog); ok && threadID != "" {
+		if catalog, ok := s.Catalog.(fileEvidenceCatalog); ok && threadID != "" {
 			if durable, err := catalog.FindFileEvidenceBlobs(ctx, threadID, filepath.Base(relative), fileEvidenceMaxRows, fileEvidenceMaxBytes); err == nil {
 				blobs = append(blobs, durable...)
 			}
@@ -136,22 +147,22 @@ func (s *server) resolveGeneralFile(ctx context.Context, requested, cwd, threadI
 	})
 }
 
-func (s *server) fileThreadCwd(ctx context.Context, threadID, sessionID string) string {
+func (s *Handlers) fileThreadCwd(ctx context.Context, threadID, sessionID string) string {
 	if s == nil {
 		return ""
 	}
 	if sessionID != "" {
-		session := s.LookupSession(sessionID)
+		session := s.Registry.LookupSession(sessionID)
 		if session != nil {
 			if dir := filemodel.CleanDir(session.CWD()); dir != "" {
 				return dir
 			}
 		}
 	}
-	if threadID == "" || s.catalog == nil {
+	if threadID == "" || s.Catalog == nil {
 		return ""
 	}
-	thread, err := s.catalog.LoadThread(ctx, threadID)
+	thread, err := s.Catalog.LoadThread(ctx, threadID)
 	if err != nil || thread.Metadata.CWD.Value == nil {
 		return ""
 	}
@@ -161,12 +172,12 @@ func (s *server) fileThreadCwd(ctx context.Context, threadID, sessionID string) 
 // sessionCatalogThreadID is the catalog thread of a session's current native
 // thread, so a request that names only its session still searches its saved
 // history.
-func (s *server) sessionCatalogThreadID(ctx context.Context, sessionID string) string {
-	resolver, ok := s.catalog.(threadindex.ReferenceResolver)
+func (s *Handlers) sessionCatalogThreadID(ctx context.Context, sessionID string) string {
+	resolver, ok := s.Catalog.(threadindex.ReferenceResolver)
 	if !ok || sessionID == "" {
 		return ""
 	}
-	session := s.LookupSession(sessionID)
+	session := s.Registry.LookupSession(sessionID)
 	if session == nil || session.ThreadID() == "" {
 		return ""
 	}
@@ -180,11 +191,11 @@ func (s *server) sessionCatalogThreadID(ctx context.Context, sessionID string) s
 // liveFileEvidence is the text of the session's unsaved prompts and replies,
 // newest first, within the evidence budget; saved history comes from the
 // catalog.
-func (s *server) liveFileEvidence(ctx context.Context, sessionID string) []string {
+func (s *Handlers) liveFileEvidence(ctx context.Context, sessionID string) []string {
 	if sessionID == "" {
 		return nil
 	}
-	session := s.LookupSession(sessionID)
+	session := s.Registry.LookupSession(sessionID)
 	if session == nil || session.LiveTextService() == nil {
 		return nil
 	}
