@@ -1247,7 +1247,7 @@ func TestServeAnswersWhileStoredThreadsStillReattach(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = authStore.Close() })
-	app := &application{server: s, remoteAuth: remoteauth.New(authStore, "nano.example.ts.net:7690")}
+	app := &application{server: fixtureOwners(s), remoteAuth: remoteauth.New(authStore, "nano.example.ts.net:7690")}
 	local, remote := app.mount()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

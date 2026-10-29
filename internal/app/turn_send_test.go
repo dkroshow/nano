@@ -1041,11 +1041,11 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 		t.Fatal(err)
 	}
 	h.server.turns, h.server.completedTurns, h.server.controlMetadata = h.prompts, hostedmodel.NewCompletedTurnSource(completed), h.control
+	h.server.agentExecutions = newTestAgentExecutionStore(t, "run")
 	fixtureOwners(h.server).attachmentCoordinator().Turns = h.server.turns
 	fixtureOwners(h.server).attachmentCoordinator().Executions = h.server.agentExecutions
 	fixtureOwners(h.server).attachmentCoordinator().CompletedTurns = h.server.completedTurns
 	fixtureOwners(h.server).attachmentCoordinator().Metadata = h.server.controlMetadata
-	h.server.agentExecutions = newTestAgentExecutionStore(t, "run")
 	turnOf := map[string]string{"answered": "claude:shim:701", "twin-a": "claude:shim:703", "twin-b": "claude:shim:703", "unsaved": "claude:shim:702"}
 	for _, action := range []string{"answered", "twin-a", "twin-b", "unsaved"} {
 		turn := turnOf[action]
@@ -1193,7 +1193,6 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	} else {
 		// One reader behind, under an upgrade whose marker this file lacks.
 		reader(strings.Replace(current, "claude-reader-v36", "claude-reader-v35", 1))
-		h.service.SetTranscriptChanged(fixtureOwners(h.server).attachmentCoordinator().ConfirmDurableThread)
 	}
 
 	// Nano starts: the operation store reloads and reads not-saved answers.
@@ -1203,6 +1202,11 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		t.Fatal(err)
 	}
 	h.server.agentExecutions = store
+	coordinator := fixtureOwners(h.server).attachmentCoordinator()
+	coordinator.Turns, coordinator.Metadata, coordinator.Executions = h.prompts, h.control, store
+	if upgrade != "re-read" {
+		h.service.SetTranscriptChanged(coordinator.ConfirmDurableThread)
+	}
 	var reads atomic.Int32
 	store.UseSavedResults(func(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
 		defer reads.Add(1)
@@ -1249,7 +1253,8 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		}
 		t.Cleanup(service.Close)
 		h.service, h.server.catalog = service, service
-		service.SetTranscriptChanged(fixtureOwners(h.server).attachmentCoordinator().ConfirmDurableThread)
+		coordinator.Catalog = h.server.hostedCatalog()
+		service.SetTranscriptChanged(coordinator.ConfirmDurableThread)
 		waitForCatalogWithin(t, time.Minute, func() bool {
 			got, _ := store.Turn(op.ID)
 			return got.Status == agentTurnCompleted
