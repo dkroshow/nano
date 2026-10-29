@@ -411,7 +411,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 		t.Fatalf("33 re-attaches = refresh:%v rows %d sessions %d removed detached %d, want an empty refresh marker",
 			reattach.Refresh, len(reattach.Rows), len(reattach.Sessions), len(reattach.RemovedDetached))
 	}
-	for i := 1; i <= sidebar.RuntimeChangeLimit+1; i++ {
+	for i := 1; i <= 65; i++ {
 		id := fmt.Sprintf("s-%d", i)
 		s.RegisterSession(memorySession(t, id, "codex", fmt.Sprintf("burst-%02d", i), "ready", "/w", "gpt-5.6-sol", now))
 	}

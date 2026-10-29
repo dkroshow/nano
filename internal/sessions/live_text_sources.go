@@ -7,11 +7,8 @@ import (
 
 // LiveTextSources identifies the existing saved-read and diagnostic owners.
 type LiveTextSources struct {
-	Catalog        LiveTextCatalog
-	References     threadindex.ReferenceResolver
-	Transcripts    threadindex.TranscriptCatalog
-	DeferredReread func(string) bool
-	Diagnostics    *diagnostics.Store
+	Catalog     *threadindex.Service
+	Diagnostics *diagnostics.Store
 }
 
 // NewLiveTextLoop constructs the ordered saved/live view for one attachment.

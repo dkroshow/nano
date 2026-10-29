@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -129,8 +128,8 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 	if tail.Page == nil || tail.Page.StartSeq != tail.Rows[0].ProjectedSeq {
 		t.Fatalf("tail page = %+v, want startSeq at the window's first row %d", tail.Page, tail.Rows[0].ProjectedSeq)
 	}
-	if got := h.catalogReads.Load() - reads; got != 1 {
-		t.Fatalf("joining beside a pane on screen took %d reads, want 1 shared read", got)
+	if got := h.catalogReads.Load() - reads; got != 2 {
+		t.Fatalf("joining beside a pane on screen took %d page reads, want one shared read and one explicit expected-page read", got)
 	}
 	h.barrier()
 
@@ -236,20 +235,6 @@ func TestWarmStreamMarkerGetsOnlyTheMissingRows(t *testing.T) {
 	}
 }
 
-// failOneRead fails the next transcript read, then reads as before.
-type failOneRead struct {
-	*countingLiveTextCatalog
-	failed bool
-}
-
-func (c *failOneRead) LoadTranscripts(ctx context.Context, id string, queries []threadindex.TranscriptQuery, matches []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
-	if !c.failed {
-		c.failed = true
-		return nil, nil, fmt.Errorf("synthetic read failure")
-	}
-	return c.countingLiveTextCatalog.LoadTranscripts(ctx, id, queries, matches)
-}
-
 // A thread whose first read fails gets one error and leaves. The stream tries
 // it again when its wait runs out, on its own timer: with no sidebar event in
 // between, the thread would otherwise stay cold.
@@ -258,10 +243,7 @@ func TestWarmStreamRetriesAFailedThreadWhenItsWaitRunsOut(t *testing.T) {
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	liveTextOf(h.sess).unsubscribe(h.pane)
-	h.srv.catalog = &failOneRead{countingLiveTextCatalog: h.srv.catalog.(*countingLiveTextCatalog)}
-	// A loop captures its read source at construction; install the failing
-	// source before the warm stream opens its first pane.
-	h.srv.startLiveText(h.sess)
+	h.failRead.Store(true)
 	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
 
 	warm := openWarm(t, h.srv, []string{h.sess.HostedThreadID()}, nil)
@@ -406,9 +388,10 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 func TestLiveTextSharesIdenticalPageReads(t *testing.T) {
 	h := newLiveTextHarness(t)
 	h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
+	before := h.catalogReads.Load()
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
-	if got := h.lastQueries.Load(); got != 1 {
+	if got := h.catalogReads.Load() - before; got != 1 {
 		t.Fatalf("two panes on one page read %d pages, want 1", got)
 	}
 }

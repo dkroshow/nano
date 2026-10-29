@@ -69,7 +69,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*Controller, ma
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stars.Close() })
-	if err := stars.SetStarred("codex", "starred-old", true); err != nil {
+	if err := stars.setStarred("codex", "starred-old", true); err != nil {
 		t.Fatal(err)
 	}
 	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))

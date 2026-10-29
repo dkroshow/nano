@@ -207,7 +207,7 @@ func (s *Controller) attachSessionChanges(delta *RuntimeDelta, before, after map
 	}
 	sort.Strings(delta.RemovedSessions)
 	changedDetached, removedDetached := s.detachedChanges(liveKeys(summaries))
-	if len(changed)+len(delta.RemovedSessions)+len(changedDetached)+len(removedDetached) > RuntimeChangeLimit {
+	if len(changed)+len(delta.RemovedSessions)+len(changedDetached)+len(removedDetached) > runtimeChangeLimit {
 		// Too large to send as rows: the same empty refresh Marker bounded
 		// sends, without building rows that would be dropped.
 		*delta = RuntimeDelta{Rows: []RuntimeRow{}, Refresh: true, Rebuild: true}

@@ -143,14 +143,14 @@ func TestGrokFileLiveHTTPChunkStarts(t *testing.T) {
 				for i, text := range []string{"First ", "First re", "First reply", "First reply."} {
 					h.feed(frames[i+2 : i+3])
 					v.expect("reply chunk", func(LiveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == text })
-					if got := h.catalogReads.Load() - reads; got != 1 {
-						t.Fatalf("reply chunk %d catalog reads=%d, want 1 (new segment only)", i+1, got)
+					if got := h.catalogReads.Load() - reads; got != 2 {
+						t.Fatalf("reply chunk %d catalog reads=%d, want 2 page queries (one per distinct pane profile, at segment creation only)", i+1, got)
 					}
 				}
 				h.feed(frames[len(frames)-1:])
 				v.expect("segment ended", func(LiveTextMessage) bool { return v.view.reply() != nil && v.view.reply().State == "done" })
-				if got := h.catalogReads.Load() - reads; got != 2 {
-					t.Fatalf("segment end catalog reads=%d, want 2 (creation and end)", got)
+				if got := h.catalogReads.Load() - reads; got != 4 {
+					t.Fatalf("segment end catalog reads=%d, want 4 page queries (two profiles at creation and end)", got)
 				}
 			}
 			for _, line := range frames {

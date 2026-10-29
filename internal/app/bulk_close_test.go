@@ -159,10 +159,10 @@ func TestBulkCloseRequiresAndAppliesExplicitStarPolicy(t *testing.T) {
 	s, store, _ := newBulkCloseTestServer(t)
 	root := createBulkCloseMember(t, store, "root", agentSessionRecord{})
 	child := createBulkCloseMember(t, store, "child", root)
-	if err := s.threadStars.SetStarred(root.Provider, root.NativeThreadID, true); err != nil {
+	if err := fixtureSetStarred(t, s.threadStars, root.Provider, root.NativeThreadID, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.threadStars.SetStarred(child.Provider, child.NativeThreadID, true); err != nil {
+	if err := fixtureSetStarred(t, s.threadStars, child.Provider, child.NativeThreadID, true); err != nil {
 		t.Fatal(err)
 	}
 

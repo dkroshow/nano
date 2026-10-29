@@ -53,7 +53,6 @@ type liveTextHarness struct {
 	held         atomic.Bool
 	barriers     int
 	catalogReads atomic.Int64
-	lastQueries  atomic.Int64 // pages asked in the newest read
 }
 
 // liveTextViewer is one open pane and the browser's view of it.
@@ -111,12 +110,16 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	databasePath := filepath.Join(t.TempDir(), "history.sqlite")
+	h := &liveTextHarness{t: t, file: file}
+	probe := registerLiveReadCounter(t, &h.catalogReads, nil)
+	store, err := history.Open(databasePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	h := &liveTextHarness{t: t, store: store, file: file}
+	h.store = store
+	installLiveReadCounter(t, databasePath, probe)
 	service, err := threadindex.New(context.Background(), store, threadindex.Options{
 		Roots: []history.SourceRoot{{Provider: history.Provider(provider), Kind: rootKind, Path: root}}, DisableWatcher: true,
 		NativeIDProvisional: NativeThreadIDProvisional, ClaudeProjectSlug: setup.ClaudeProjectSlug,
@@ -138,7 +141,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
-	sess.AttachLiveText(NewLiveTextLoop(LiveTextSources{Catalog: &countingLiveTextCatalog{Service: service, reads: &h.catalogReads, queries: &h.lastQueries}, References: service, Transcripts: service, Diagnostics: sink}, sess))
+	sess.AttachLiveText(NewLiveTextLoop(LiveTextSources{Catalog: service, Diagnostics: sink}, sess))
 	sess.ReserveNativeID(nativeThread)
 	h.diagnostics, h.sess, h.service = sink, sess, service
 	h.projection = cfg.Projection
@@ -1744,17 +1747,4 @@ func seedUncertainTransactionalTurn(t *testing.T, store *prompts.Store, hosted s
 	if _, err := store.Uncertain(ctx, prompts.Uncertainty{ActionID: action, ClaimToken: token, AttachmentEpoch: 1, Reason: "no answer"}); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// countingLiveTextCatalog measures the real combined read, preserving the
-// streaming read-budget observation without replacing saved-row behavior.
-type countingLiveTextCatalog struct {
-	*threadindex.Service
-	reads, queries *atomic.Int64
-}
-
-func (c *countingLiveTextCatalog) LoadTranscripts(ctx context.Context, id string, queries []threadindex.TranscriptQuery, matches []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
-	c.reads.Add(1)
-	c.queries.Store(int64(len(queries)))
-	return c.Service.LoadTranscripts(ctx, id, queries, matches)
 }

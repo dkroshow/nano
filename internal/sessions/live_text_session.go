@@ -56,7 +56,7 @@ func (l *LiveTextLoop) writeBackendError(w http.ResponseWriter, err error) {
 
 // ConversationItems reads a bounded page of conversation items.
 func (l *LiveTextLoop) conversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
-	catalog, ok := l.sources.Transcripts, l.sources.Transcripts != nil
+	catalog, ok := l.sources.Catalog, l.sources.Catalog != nil
 	if !ok {
 		return nil, nil, "", errors.New("catalog unavailable")
 	}

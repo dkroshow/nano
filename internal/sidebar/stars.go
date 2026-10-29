@@ -104,8 +104,8 @@ func (s *Stars) IsStarred(provider, nativeID string) bool {
 	return s.cache[threadStarKey(provider, nativeID)]
 }
 
-// SetStarred changes one operator pin and its read cache atomically.
-func (s *Stars) SetStarred(provider, nativeID string, starred bool) error {
+// setStarred changes one operator pin and its read cache atomically.
+func (s *Stars) setStarred(provider, nativeID string, starred bool) error {
 	if s == nil {
 		return errors.New("thread stars store unavailable")
 	}

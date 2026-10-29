@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/threadindex"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func newLiveProjection(provider string, ids ...string) *sessions.LiveProjection {
@@ -137,7 +137,7 @@ func observeProjection(t *testing.T, sess *session) *projectionStream {
 		t.Fatal(err)
 	}
 	t.Cleanup(catalog.Close)
-	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: catalog, References: catalog, Transcripts: catalog}, sess))
+	sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{Catalog: catalog.Service}, sess))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	w := &projectionStream{header: make(http.Header), ready: make(chan struct{})}

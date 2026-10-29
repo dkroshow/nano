@@ -131,12 +131,6 @@ func (l *LiveTextLoop) promptMatch(keys []string) history.TranscriptMatch {
 	return history.TranscriptMatch{Namespace: "native.eventId", ItemType: "user_message", Keys: keys}
 }
 
-// LiveTextCatalog reads pages of a thread and checks exact keys in one
-// catalog transaction.
-type LiveTextCatalog interface {
-	LoadTranscripts(context.Context, string, []threadindex.TranscriptQuery, []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error)
-}
-
 func (l *LiveTextLoop) read(threadID string, queries []threadindex.TranscriptQuery, match []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
 	catalog := l.sources.Catalog
 	if catalog == nil {
@@ -156,7 +150,7 @@ func (l *LiveTextLoop) catalogThreadID() (string, error) {
 		return "", errLiveTextNotIndexed
 	}
 	native := l.sess.ThreadID()
-	resolver, ok := l.sources.References, l.sources.References != nil
+	resolver, ok := l.sources.Catalog, l.sources.Catalog != nil
 	if native == "" || !ok {
 		return "", errLiveTextNotIndexed
 	}

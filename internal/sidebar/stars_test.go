@@ -25,16 +25,16 @@ func TestThreadStarsSetUnsetAndSurviveReopen(t *testing.T) {
 	if store.IsStarred("codex", "native-a") {
 		t.Fatal("empty store reported a star")
 	}
-	if err := store.SetStarred("codex", "native-a", true); err != nil {
+	if err := store.setStarred("codex", "native-a", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetStarred("claude", "native-b", true); err != nil {
+	if err := store.setStarred("claude", "native-b", true); err != nil {
 		t.Fatal(err)
 	}
 	if !store.IsStarred("codex", "native-a") || !store.IsStarred("claude", "native-b") {
 		t.Fatal("set stars missing from cache")
 	}
-	if err := store.SetStarred("codex", "native-a", false); err != nil {
+	if err := store.setStarred("codex", "native-a", false); err != nil {
 		t.Fatal(err)
 	}
 	if store.IsStarred("codex", "native-a") {
@@ -59,7 +59,7 @@ func TestThreadStarsSetUnsetAndSurviveReopen(t *testing.T) {
 
 func TestThreadStarsRejectBlankIdentity(t *testing.T) {
 	store := openTestThreadStars(t)
-	if err := store.SetStarred("codex", "", true); err == nil {
+	if err := store.setStarred("codex", "", true); err == nil {
 		t.Fatal("expected identity error")
 	}
 	if store.IsStarred("codex", "") {
@@ -70,7 +70,7 @@ func TestThreadStarsRejectBlankIdentity(t *testing.T) {
 func TestThreadStarsUnstarManyIsAtomicAndUpdatesCache(t *testing.T) {
 	store := openTestThreadStars(t)
 	for _, nativeID := range []string{"native-a", "native-b"} {
-		if err := store.SetStarred("codex", nativeID, true); err != nil {
+		if err := store.setStarred("codex", nativeID, true); err != nil {
 			t.Fatal(err)
 		}
 	}

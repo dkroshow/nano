@@ -103,16 +103,16 @@ type RuntimeDelta struct {
 	SidebarCurrent bool `json:"-"`
 }
 
-// RuntimeChangeLimit bounds the rows of any kind one delta carries. A larger
+// runtimeChangeLimit bounds the rows of any kind one delta carries. A larger
 // change is sent as one Refresh, a single list read, rather than as a burst
 // of rows.
-const RuntimeChangeLimit = 64
+const runtimeChangeLimit = 64
 
-// bounded is the delta a subscriber receives. Past RuntimeChangeLimit rows,
+// bounded is the delta a subscriber receives. Past runtimeChangeLimit rows,
 // pending merges included, it is a refresh marker with no rows: one list
 // read and one sidebar Rebuild cover what the rows would have said.
 func (d RuntimeDelta) bounded() RuntimeDelta {
-	if len(d.Rows)+len(d.Sessions)+len(d.RemovedSessions)+len(d.DetachedRows)+len(d.RemovedDetached) <= RuntimeChangeLimit {
+	if len(d.Rows)+len(d.Sessions)+len(d.RemovedSessions)+len(d.DetachedRows)+len(d.RemovedDetached) <= runtimeChangeLimit {
 		return d
 	}
 	return RuntimeDelta{Rows: []RuntimeRow{}, Refresh: true, Rebuild: true, Seq: d.Seq}

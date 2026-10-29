@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -27,7 +28,7 @@ func openTestThreadStars(t *testing.T) *sidebar.Stars {
 
 func TestAttachStarredOverlayMarksMatchingRows(t *testing.T) {
 	store := openTestThreadStars(t)
-	if err := store.SetStarred("codex", "native-a", true); err != nil {
+	if err := fixtureSetStarred(t, store, "codex", "native-a", true); err != nil {
 		t.Fatal(err)
 	}
 	s := &server{threadStars: store}
@@ -51,7 +52,7 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 	if item := byNative["starred-old"]; item == nil || item["starred"] != true {
 		t.Fatalf("current star missing from active sidebar: %v", item)
 	}
-	if err := s.threadStars.SetStarred("codex", "starred-old", false); err != nil {
+	if err := fixtureSetStarred(t, s.threadStars, "codex", "starred-old", false); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -143,17 +144,41 @@ func TestThreadStarredEndpointRejectsMissingBody(t *testing.T) {
 
 func strPtr(value string) *string { return &value }
 
-func starEndpointCatalog(t *testing.T) (*threadCatalogService, string) {
+func starEndpointCatalog(t *testing.T, identity ...string) (*threadCatalogService, string) {
+	provider, native := "codex", "native-1"
+	if len(identity) == 2 {
+		provider, native = identity[0], identity[1]
+	}
 	t.Helper()
 	store, err := history.Open(filepath.Join(t.TempDir(), "star-catalog.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	kind := history.RootCodexSessions
+	if provider == "claude" {
+		kind = history.RootClaudeProjects
+	}
+	if provider == "grok" {
+		kind = history.RootGrokSessions
+	}
+	root := history.SourceRoot{Provider: history.Provider(provider), Kind: kind, Path: t.TempDir()}
 	if _, err := store.EnsureRoot(context.Background(), root); err != nil {
 		t.Fatal(err)
 	}
-	id := seedSidebarThread(t, store, root, "native-1", "", history.ThreadMain, time.Now(), []historyCourt{{final: true, text: "Pinned"}})
+	id := seedSidebarThread(t, store, root, native, "", history.ThreadMain, time.Now(), []historyCourt{{final: true, text: "Pinned"}})
 	return newStoredCatalog(t, store), id
+}
+
+// fixtureSetStarred seeds through the real sidebar HTTP mutation and store.
+func fixtureSetStarred(t *testing.T, stars *sidebar.Stars, provider, native string, starred bool) error {
+	t.Helper()
+	catalog, id := starEndpointCatalog(t, provider, native)
+	controller := sidebar.New(sidebar.Sources{Catalog: catalog.Service, Stars: stars})
+	recorder := httptest.NewRecorder()
+	controller.HandleThreadStarred(recorder, httptest.NewRequest(http.MethodPut, "/starred", strings.NewReader(fmt.Sprintf(`{"starred":%t}`, starred))), id)
+	if recorder.Code != http.StatusOK {
+		return fmt.Errorf("star fixture status=%d: %s", recorder.Code, recorder.Body.String())
+	}
+	return nil
 }

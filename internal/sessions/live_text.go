@@ -479,12 +479,16 @@ func (l *LiveTextLoop) checkUnsaved(key string) {
 	if saved {
 		return
 	}
+	deferred := l.sources.Catalog != nil && l.sources.Catalog.DeferredTranscriptReread(threadID)
+	l.reportUnsaved(key, finishedAt, deferred)
+}
+
+// reportUnsaved publishes the bounded diagnostic from the observed file facts.
+func (l *LiveTextLoop) reportUnsaved(key string, finishedAt time.Time, deferred bool) {
 	elapsed := time.Since(finishedAt)
 	label := ""
-	if true {
-		if l.sources.DeferredReread != nil && l.sources.DeferredReread(threadID) {
-			label = "deferred re-read"
-		}
+	if deferred {
+		label = "deferred re-read"
 	}
 	log.Printf("live text reply %s of %s finished %s ago with no saved row label=%q", key, l.hostedID(), elapsed.Round(time.Second), label)
 	if l.sources.Diagnostics == nil {

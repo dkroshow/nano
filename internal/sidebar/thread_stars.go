@@ -74,7 +74,7 @@ func (s *Controller) HandleThreadStarred(w http.ResponseWriter, r *http.Request,
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_starred", `Request body must be {"starred": true} or {"starred": false}`)
 		return
 	}
-	if err := s.threadStars.SetStarred(thread.Provider, thread.NativeID, *payload.Starred); err != nil {
+	if err := s.threadStars.setStarred(thread.Provider, thread.NativeID, *payload.Starred); err != nil {
 		if errors.Is(err, errStarIdentityMissing) {
 			httpapi.WriteError(w, http.StatusConflict, "star_identity_missing", "Thread has no provider-native id to star yet")
 			return

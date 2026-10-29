@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -64,4 +65,13 @@ func TestResolveSpawnDefaultsCodexServiceTierToStandard(t *testing.T) {
 	if resolved.ServiceTier != "priority" {
 		t.Fatalf("explicit service tier = %q, want priority", resolved.ServiceTier)
 	}
+}
+
+func completedFeedForTest(t *testing.T, source *hosted.CompletedTurnSource) *coreturns.Store {
+	t.Helper()
+	store, err := source.Store().CoreStore(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
 }

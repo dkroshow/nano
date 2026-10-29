@@ -1799,7 +1799,7 @@ func TestResumeAnswerWithOlderTerminalTurnsNotifiesNobody(t *testing.T) {
 		return sess != nil && sess.Summary().Status == "ready"
 	})
 	dispatcher.Sweep("")
-	if feed, err := s.completedTurns.After(rec.HostedThreadID, "", 10); err != nil || len(feed) != 0 || len(client.messages) != 0 {
+	if feed, err := completedFeedForTest(t, s.completedTurns).After(context.Background(), rec.HostedThreadID, "", 10); err != nil || len(feed) != 0 || len(client.messages) != 0 {
 		t.Fatalf("feed = %+v (%v), deliveries = %d; want nothing for turns that ended before the stop", feed, err, len(client.messages))
 	}
 }
@@ -1837,7 +1837,7 @@ func TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce(t *testing.T)
 	}})
 	var live []completedTurn
 	waitForClaude(t, "the live completion in the feed", func() bool {
-		live, err = s.completedTurns.After(rec.HostedThreadID, "", 10)
+		live, err = completedFeedForTest(t, s.completedTurns).After(context.Background(), rec.HostedThreadID, "", 10)
 		return err == nil && len(live) == 1
 	})
 	dispatcher.Sweep("")
@@ -1859,7 +1859,7 @@ func TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce(t *testing.T)
 	})
 	dispatcher.Sweep("")
 
-	feed, err := s.completedTurns.After(rec.HostedThreadID, "", 10)
+	feed, err := completedFeedForTest(t, s.completedTurns).After(context.Background(), rec.HostedThreadID, "", 10)
 	if err != nil || len(feed) != 1 || feed[0].Outcome != live[0].Outcome || feed[0].FinalMessageID != live[0].FinalMessageID {
 		t.Fatalf("feed after resume = %+v (%v), want the one live record %+v", feed, err, live)
 	}

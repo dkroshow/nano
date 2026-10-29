@@ -65,7 +65,7 @@ func TestRuntimeHubBoundsAMergedBacklog(t *testing.T) {
 	hub := NewRuntimeHub()
 	slow := hub.Subscribe()
 	defer hub.Unsubscribe(slow)
-	for i := range RuntimeChangeLimit + 1 {
+	for i := range runtimeChangeLimit + 1 {
 		hub.Notify(RuntimeDelta{Rows: []RuntimeRow{{Provider: "codex", NativeID: fmt.Sprintf("t-%02d", i)}}})
 	}
 	merged := <-slow

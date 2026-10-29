@@ -32,8 +32,6 @@ const (
 	agentTurnCompleted         = threads.AgentTurnCompleted
 )
 
-const ()
-
 // queuedTurnRecord is the schema-20 compatibility shape exposed by the read
 // proxy below. Production delivery writes only through internal/core/prompts.Store.
 // HostedThreadID is the stable pre-native identity; migrated records may carry

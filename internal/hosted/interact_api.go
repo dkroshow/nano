@@ -46,7 +46,7 @@ func (s *CompletedFeed) HandleCompletedTurns(w http.ResponseWriter, r *http.Requ
 		limit = min(parsed, maxCompletedTurnFeedLimit)
 	}
 	cursor := strings.TrimSpace(r.URL.Query().Get("after"))
-	rows, err := s.Source.After(hostedThreadID, cursor, limit)
+	rows, err := s.Source.after(hostedThreadID, cursor, limit)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return

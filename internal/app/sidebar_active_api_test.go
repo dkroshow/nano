@@ -130,7 +130,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stars.Close() })
-	if err := stars.SetStarred("codex", "starred-old", true); err != nil {
+	if err := fixtureSetStarred(t, stars, "codex", "starred-old", true); err != nil {
 		t.Fatal(err)
 	}
 	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
@@ -441,7 +441,7 @@ func materializeBootSidebar(t *testing.T, s *server, threads []sidebar.Thread, n
 		}
 		seedSidebarThread(t, store, root, row.NativeID, "", history.ThreadMain, updated, []historyCourt{{final: true, text: "Finished"}})
 		if row.Starred {
-			if err := s.threadStars.SetStarred(row.Provider, row.NativeID, true); err != nil {
+			if err := fixtureSetStarred(t, s.threadStars, row.Provider, row.NativeID, true); err != nil {
 				t.Fatal(err)
 			}
 		}

@@ -2349,7 +2349,7 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 		"threadId": native, "turn": map[string]any{"id": turn, "status": "completed", "completedAt": 1787600100},
 	}})
 	waitForClaude(t, "the turn's completion recorded", func() bool {
-		feed, err := s.completedTurns.After(rec.HostedThreadID, "", 10)
+		feed, err := completedFeedForTest(t, s.completedTurns).After(context.Background(), rec.HostedThreadID, "", 10)
 		return err == nil && len(feed) == 1
 	})
 	if got, _ := s.agentExecutions.Turn(op.ID); threadvalues.TurnTerminal(got.Status) {

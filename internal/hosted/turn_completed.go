@@ -33,8 +33,8 @@ func (s *CompletedTurnSource) Open(target string) bool {
 	return unfinished || err != nil
 }
 
-// After reads completed turns after the supplied cursor.
-func (s *CompletedTurnSource) After(target, cursor string, limit int) ([]completedTurn, error) {
+// after reads completed turns after the supplied cursor.
+func (s *CompletedTurnSource) after(target, cursor string, limit int) ([]completedTurn, error) {
 	if s == nil || s.store == nil {
 		return nil, errors.New("completed-turn source unavailable")
 	}

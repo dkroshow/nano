@@ -13,8 +13,8 @@ func TestLiveTextUnsavedReplyLabelsQueuedAndBuildingRereads(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			sink := diagnostics.NewStore(10, "test")
 			sess := newFixtureSession(Config{Provider: "codex", HostedThreadID: "synthetic-hosted"}, "native-thread")
-			loop := &LiveTextLoop{sources: LiveTextSources{Diagnostics: sink, DeferredReread: func(string) bool { return state != "ordinary" }}, sess: sess, awaiting: map[string]awaitedReply{"missing-reply": {finishedAt: time.Now().Add(-time.Minute)}}}
-			loop.checkUnsaved("missing-reply")
+			loop := &LiveTextLoop{sources: LiveTextSources{Diagnostics: sink}, sess: sess}
+			loop.reportUnsaved("missing-reply", time.Now().Add(-time.Minute), state != "ordinary")
 			events := sink.Recent(10, "", "", "file.reply.unsaved")
 			if len(events) != 1 {
 				t.Fatal("unsaved-reply diagnostic was suppressed", len(events))

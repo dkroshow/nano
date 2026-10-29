@@ -51,20 +51,7 @@ type liveTextHarness struct {
 	held         atomic.Bool
 	barriers     int
 	catalogReads atomic.Int64
-	lastQueries  atomic.Int64 // pages asked in the newest read
-}
-
-// Count the real catalog boundary so streaming tests can distinguish an
-// append from a read without replacing the saved-row behavior.
-type countingLiveTextCatalog struct {
-	*threadCatalogService
-	reads, queries *atomic.Int64
-}
-
-func (c *countingLiveTextCatalog) LoadTranscripts(ctx context.Context, id string, queries []threadindex.TranscriptQuery, matches []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
-	c.reads.Add(1)
-	c.queries.Store(int64(len(queries)))
-	return c.threadCatalogService.LoadTranscripts(ctx, id, queries, matches)
+	failRead     atomic.Bool
 }
 
 // liveTextViewer is one open pane and the browser's view of it.
@@ -122,12 +109,16 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	databasePath := filepath.Join(t.TempDir(), "history.sqlite")
+	h := &liveTextHarness{t: t, file: file}
+	probe := registerLiveReadCounter(t, &h.catalogReads, &h.failRead)
+	store, err := history.Open(databasePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	h := &liveTextHarness{t: t, store: store, file: file}
+	h.store = store
+	installLiveReadCounter(t, databasePath, probe)
 	service, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
 		Roots: []history.SourceRoot{{Provider: history.Provider(provider), Kind: rootKind, Path: root}}, DisableWatcher: true,
 	})
@@ -135,7 +126,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { service.Close() })
-	srv := &server{catalog: &countingLiveTextCatalog{service, &h.catalogReads, &h.lastQueries}, browserDiagnostics: newBrowserDiagnosticStore(64)}
+	srv := &server{catalog: service, browserDiagnostics: newBrowserDiagnosticStore(64)}
 	cfg, generation, _ := providerSessionConfig(t, provider)
 	for _, apply := range configure {
 		apply(&cfg)
