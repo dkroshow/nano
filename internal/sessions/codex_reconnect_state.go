@@ -8,7 +8,6 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -78,14 +77,8 @@ func (sess *Delivery) failCodexReconnect(message string) error {
 		sess.session.stateOwner.NotifyRuntime()
 		sess.session.stateOwner.updateHostedThread("reconnect_failed", message)
 	}()
-	sess.session.stateOwner.stateMu.Lock()
-	closed := sess.session.stateOwner.closed || sess.session.stateOwner.connectionStatusLocked() == StatusExited
-	if !closed {
-		changed = true
-		sess.session.stateOwner.transitionLifecycleLocked(lifecycle.EventNativeMissing)
-		sess.session.stateOwner.spawnError = message
-	}
-	sess.session.stateOwner.stateMu.Unlock()
+	closed, didChange := sess.session.stateOwner.markReconnectFailed(message)
+	changed = didChange
 	if closed {
 		return nil
 	}

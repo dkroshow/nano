@@ -50,9 +50,7 @@ func (sess *State) ActiveTurnSnapshot() (observability.ActiveTurn, bool) {
 func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (string, error) {
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
-	sess.session.stateOwner.stateMu.Lock()
-	status, permission := sess.session.stateOwner.connectionStatusLocked(), sess.session.stateOwner.lifecyclePermissionLocked()
-	sess.session.stateOwner.stateMu.Unlock()
+	status, permission := sess.session.stateOwner.deliveryPermission()
 	// A resting thread had no open work at boot and queues behind its attach.
 	restingIdle := rested && status == "starting"
 	switch {
@@ -74,9 +72,7 @@ func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (strin
 // BusyForMaintenance reports live, restoring or delivering work. Locks do not
 // extend into the caller's maintenance store operations.
 func (sess *Delivery) BusyForMaintenance() bool {
-	sess.session.stateOwner.stateMu.Lock()
-	active := sess.session.stateOwner.workActiveLocked() || sess.session.stateOwner.turnRestoreInProgress
-	sess.session.stateOwner.stateMu.Unlock()
+	active := sess.session.stateOwner.maintenanceActive()
 	if active {
 		return true
 	}

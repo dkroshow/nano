@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"context"
+	"maps"
 
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/liveview"
@@ -57,20 +58,13 @@ func (sess *Lifecycle) closeProvider(requireReady bool) error {
 	// not resurrect the session or its thread routing after teardown
 	// (runCodexHandshake and markTransportReady both re-check this under
 	// stateMu, and a claude transport that lands afterwards closes itself).
-	sess.session.stateOwner.stateMu.Lock()
-	if sess.session.stateOwner.closed {
-		sess.session.stateOwner.stateMu.Unlock()
+	alreadyClosed, err := sess.session.stateOwner.beginClose(requireReady)
+	if alreadyClosed {
 		return sess.closeErr
 	}
-	if requireReady && sess.session.provider == "claude" && sess.session.stateOwner.claude == nil {
-		sess.session.stateOwner.stateMu.Unlock()
-		return errors.New("Claude transport is not ready; stop unconfirmed, retry when attachment settles")
+	if err != nil {
+		return err
 	}
-	sess.session.stateOwner.closed = true
-	sess.session.stateOwner.closeUnconfirmed = sess.session.provider == "claude" && sess.session.stateOwner.claude != nil
-	sess.session.stateOwner.durablyTerminalTurnID = ""
-	sess.session.stateOwner.durablyTerminalTurnThreadID = ""
-	sess.session.stateOwner.stateMu.Unlock()
 	sess.session.stateOwner.releaseCatalogSource()
 	sess.session.stateOwner.observeConnection(lifecycle.EventClose)
 	claude := sess.session.stateOwner.claudeHandle()
@@ -565,4 +559,95 @@ type State struct {
 	autoRejectInteractions bool
 	rejectedInteractionSeq int64
 	state                  map[string]json.RawMessage
+}
+
+// connectionStatus reads the lifecycle without lending its lock to a caller.
+func (sess *State) connectionStatus() string {
+	sess.stateMu.Lock()
+	status := sess.connectionStatusLocked()
+	sess.stateMu.Unlock()
+	return status
+}
+func (sess *State) deliveryPermission() (string, lifecycle.Permission) {
+	sess.stateMu.Lock()
+	status, permission := sess.connectionStatusLocked(), sess.lifecyclePermissionLocked()
+	sess.stateMu.Unlock()
+	return status, permission
+}
+func (sess *State) maintenanceActive() bool {
+	sess.stateMu.Lock()
+	active := sess.workActiveLocked() || sess.turnRestoreInProgress
+	sess.stateMu.Unlock()
+	return active
+}
+func (sess *State) lifecycleEpoch() uint64 {
+	sess.stateMu.Lock()
+	epoch := sess.lifecycleState.Epoch
+	sess.stateMu.Unlock()
+	return epoch
+}
+func (sess *State) settlementWaiting() map[string]bool {
+	sess.stateMu.Lock()
+	waiting := maps.Clone(sess.settleWaiting)
+	sess.stateMu.Unlock()
+	return waiting
+}
+func (sess *State) turnPermission() lifecycle.Permission {
+	sess.stateMu.Lock()
+	permission := sess.lifecyclePermissionLocked()
+	sess.stateMu.Unlock()
+	return permission
+}
+func (sess *State) lifecycleSnapshot() lifecycle.Snapshot {
+	sess.stateMu.Lock()
+	initial := sess.lifecycleState
+	sess.stateMu.Unlock()
+	return initial
+}
+func (sess *State) markReconnectFailed(message string) (closed, changed bool) {
+	sess.stateMu.Lock()
+	closed = sess.closed || sess.connectionStatusLocked() == StatusExited
+	if !closed {
+		changed = true
+		sess.transitionLifecycleLocked(lifecycle.EventNativeMissing)
+		sess.spawnError = message
+	}
+	sess.stateMu.Unlock()
+	return closed, changed
+}
+func (sess *State) beginClose(requireReady bool) (bool, error) {
+	sess.stateMu.Lock()
+	if sess.closed {
+		sess.stateMu.Unlock()
+		return true, nil
+	}
+	if requireReady && sess.session.provider == "claude" && sess.claude == nil {
+		sess.stateMu.Unlock()
+		return false, errors.New("Claude transport is not ready; stop unconfirmed, retry when attachment settles")
+	}
+	sess.closed = true
+	sess.closeUnconfirmed = sess.session.provider == "claude" && sess.claude != nil
+	sess.durablyTerminalTurnID = ""
+	sess.durablyTerminalTurnThreadID = ""
+	sess.stateMu.Unlock()
+	return false, nil
+}
+func (sess *State) repairResultStale(cached TranscriptRepairResponse) bool {
+	sess.stateMu.Lock()
+	stale := sess.threadID != cached.threadID || sess.attachmentGeneration != cached.attachmentGen
+	sess.stateMu.Unlock()
+	return stale
+}
+func (sess *State) repairIdentity() (string, int64) {
+	sess.stateMu.Lock()
+	threadID := sess.threadID
+	attachmentGeneration := sess.attachmentGeneration
+	sess.stateMu.Unlock()
+	return threadID, attachmentGeneration
+}
+func (sess *State) repairability(threadID string, attachmentGeneration int64) string {
+	sess.stateMu.Lock()
+	detail := sess.repairableLocked(threadID, attachmentGeneration)
+	sess.stateMu.Unlock()
+	return detail
 }

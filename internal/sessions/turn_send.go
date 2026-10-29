@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"maps"
 	"net/http"
 	"sort"
 	"strconv"
@@ -125,9 +124,7 @@ func (sess *Delivery) HandleTurn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	status := sess.session.stateOwner.connectionStatusLocked()
-	sess.session.stateOwner.stateMu.Unlock()
+	status := sess.session.stateOwner.connectionStatus()
 	// Starting is a durable queueing state: provider setup and a boot replay
 	// can both take time, but neither makes the operator's submitted text
 	// invalid. queueOrStartTurnSend persists it and markTransportReady drains it.
@@ -580,9 +577,7 @@ func (sess *Delivery) claimAndStartTransactionalTurnLocked(requestActionID strin
 	if sess.nanoIsStopping() {
 		return nil, http.StatusAccepted, "queued_for_next_turn", nil
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	epoch := sess.session.stateOwner.lifecycleState.Epoch
-	sess.session.stateOwner.stateMu.Unlock()
+	epoch := sess.session.stateOwner.lifecycleEpoch()
 	claim, runningTurnID := sess.session.runtime.core.Claim, ""
 	if runningTurn {
 		if _, runningTurnID = sess.session.stateOwner.activeTurn(); runningTurnID == "" {
@@ -821,9 +816,7 @@ func (sess *Delivery) SettlePrompts(ctx context.Context) (map[transcript.Settlem
 	}
 	sess.settleMu.Lock()
 	defer sess.releaseSettle()
-	sess.session.stateOwner.stateMu.Lock()
-	waiting := maps.Clone(sess.session.stateOwner.settleWaiting)
-	sess.session.stateOwner.stateMu.Unlock()
+	waiting := sess.session.stateOwner.settlementWaiting()
 	savedIn := func(ctx context.Context, native string, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 		if native == sess.session.stateOwner.ThreadID() || sess.savedPromptsIn == nil {
 			return sess.savedPrompts(ctx, keys)
@@ -1340,9 +1333,7 @@ func (sess *Delivery) drainQueuedTurn() {
 	}
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
-	sess.session.stateOwner.stateMu.Lock()
-	permission := sess.session.stateOwner.lifecyclePermissionLocked()
-	sess.session.stateOwner.stateMu.Unlock()
+	permission := sess.session.stateOwner.turnPermission()
 	runningTurn := permission.Submit == lifecycle.QueuePrompt
 	if permission.Submit != lifecycle.SendNow && !runningTurn || sess.session.runtime.CorePromptInFlight() {
 		return

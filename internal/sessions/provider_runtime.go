@@ -106,9 +106,7 @@ func (sess *Runtime) ensureCoreSession() error {
 				sess.session.delivery.sendAttempts.BindTransactionStore(promptStore)
 			}
 		}
-		sess.session.stateOwner.stateMu.Lock()
-		initial := sess.session.stateOwner.lifecycleState
-		sess.session.stateOwner.stateMu.Unlock()
+		initial := sess.session.stateOwner.lifecycleSnapshot()
 		if sess.completedTurns == nil && canonicalDB != nil {
 			// Root compatibility fixtures and older construction sites already
 			// carry the canonical threads handle through a queue or metadata view.

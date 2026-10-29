@@ -38,19 +38,17 @@ type TranscriptRepairResponse struct {
 // stopped, idle and ready; panes then read that file. A timeout returns
 // recovered prompt text but never claims the repair.
 func (sess *Lifecycle) StopDiscardAndRepair(parent context.Context, actionID string) (TranscriptRepairResponse, error) {
-	return sess.session.delivery.stopDiscardAndRepairWithin(parent, actionID, transcriptRepairWait)
+	return sess.stopDiscardAndRepairWithin(parent, actionID, transcriptRepairWait)
 }
 
-func (sess *Delivery) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
+func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
 	if sess == nil || sess.session.stateOwner.catalogSources == nil {
 		return TranscriptRepairResponse{}, errors.New("transcript repair is unavailable")
 	}
-	sess.session.lifecycle.transcriptRepairMu.Lock()
-	defer sess.session.lifecycle.transcriptRepairMu.Unlock()
-	if cached, ok := sess.session.lifecycle.transcriptRepairResults[actionID]; ok {
-		sess.session.stateOwner.stateMu.Lock()
-		stale := sess.session.stateOwner.threadID != cached.threadID || sess.session.stateOwner.attachmentGeneration != cached.attachmentGen
-		sess.session.stateOwner.stateMu.Unlock()
+	sess.transcriptRepairMu.Lock()
+	defer sess.transcriptRepairMu.Unlock()
+	if cached, ok := sess.transcriptRepairResults[actionID]; ok {
+		stale := sess.session.stateOwner.repairResultStale(cached)
 		if stale {
 			return TranscriptRepairResponse{}, errors.New("transcript repair result belongs to a prior attachment")
 		}
@@ -63,13 +61,15 @@ func (sess *Delivery) stopDiscardAndRepairWithin(parent context.Context, actionI
 	_ = parent
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
+	return sess.session.delivery.repairTranscript(ctx, actionID)
+}
+
+// repairTranscript keeps the send fence inside the caller's repair transaction.
+func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (TranscriptRepairResponse, error) {
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
 
-	sess.session.stateOwner.stateMu.Lock()
-	threadID := sess.session.stateOwner.threadID
-	attachmentGeneration := sess.session.stateOwner.attachmentGeneration
-	sess.session.stateOwner.stateMu.Unlock()
+	threadID, attachmentGeneration := sess.session.stateOwner.repairIdentity()
 	if threadID == "" {
 		return TranscriptRepairResponse{}, errors.New("provider thread is not attached")
 	}
@@ -89,7 +89,7 @@ func (sess *Delivery) stopDiscardAndRepairWithin(parent context.Context, actionI
 	if err != nil {
 		return TranscriptRepairResponse{}, fmt.Errorf("stop failed: %w", err)
 	}
-	if err := waitForTranscriptRepairIdle(ctx, sess.session); err != nil {
+	if err := sess.session.stateOwner.waitForTranscriptRepairIdle(ctx); err != nil {
 		return TranscriptRepairResponse{}, err
 	}
 
@@ -132,9 +132,7 @@ func (sess *Delivery) stopDiscardAndRepairWithin(parent context.Context, actionI
 	if caughtUp {
 		settleErr = sess.settleSavedPrompts(ctx)
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	detail := sess.session.stateOwner.repairableLocked(threadID, attachmentGeneration)
-	sess.session.stateOwner.stateMu.Unlock()
+	detail := sess.session.stateOwner.repairability(threadID, attachmentGeneration)
 	switch {
 	case detail == transcriptRepairStale:
 		response.Status, response.Detail = "stale_attachment", detail
@@ -148,25 +146,30 @@ func (sess *Delivery) stopDiscardAndRepairWithin(parent context.Context, actionI
 		response.Repaired, response.Status = true, "repaired"
 	}
 
-	if sess.session.lifecycle.transcriptRepairResults == nil {
-		sess.session.lifecycle.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
-	}
-	// One attachment needs only a small replay window. The browser retains the
-	// same action id across a transport retry.
-	if len(sess.session.lifecycle.transcriptRepairResults) >= 8 {
-		sess.session.lifecycle.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
-	}
-	sess.session.lifecycle.transcriptRepairResults[actionID] = response
+	sess.session.lifecycle.rememberRepairResult(actionID, response)
 	return response, nil
 }
 
-func waitForTranscriptRepairIdle(ctx context.Context, sess *Session) error {
+// rememberRepairResult runs under the repair transaction's outer lock.
+func (sess *Lifecycle) rememberRepairResult(actionID string, response TranscriptRepairResponse) {
+	if sess.transcriptRepairResults == nil {
+		sess.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
+	}
+	// One attachment needs only a small replay window. The browser retains the
+	// same action id across a transport retry.
+	if len(sess.transcriptRepairResults) >= 8 {
+		sess.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
+	}
+	sess.transcriptRepairResults[actionID] = response
+}
+
+func (sess *State) waitForTranscriptRepairIdle(ctx context.Context) error {
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		sess.stateOwner.stateMu.Lock()
-		active := sess.stateOwner.workActiveLocked() || sess.stateOwner.turnRestoreInProgress
-		sess.stateOwner.stateMu.Unlock()
+		sess.stateMu.Lock()
+		active := sess.workActiveLocked() || sess.turnRestoreInProgress
+		sess.stateMu.Unlock()
 		if !active {
 			return nil
 		}
