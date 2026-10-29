@@ -925,7 +925,7 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir wire.Direction
 	if gated != nil {
 		gate = gated.queuedWorkAllowed
 	}
-	c.sess.recordWireWith(gate, func() {
+	c.sess.wire.recordWireWith(gate, func() {
 		if gated != nil {
 			gated.admitted()
 		}

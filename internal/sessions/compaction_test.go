@@ -41,13 +41,14 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 		},
 	} {
 		t.Run(test.provider, func(t *testing.T) {
-			sess := &Session{provider: test.provider, subs: map[chan wire.Event]struct{}{},
+			sess := sessionWithOwners(&Session{provider: test.provider,
 				lifecycleState: testLifecycleSnapshot("ready", false),
-				projection:     newDeliveryTestProjection(test.provider)}
+				projection:     newDeliveryTestProjection(test.provider),
+				wire:           Wire{subs: map[chan wire.Event]struct{}{}}})
 			sess.threadID = "16952569-d518-579a-914e-2c422f5d5946"
 			apply := func(lines []fixture.TimedLine) {
 				for _, l := range lines {
-					sess.recordWireAt(protocol.Recv, l.Line, true, false, l.At)
+					sess.wire.recordWireAt(protocol.Recv, l.Line, true, false, l.At)
 				}
 			}
 			shown := func() (pane, rail int64) {
@@ -66,7 +67,7 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 			if pane, _ := shown(); pane == 0 {
 				t.Fatal("a second compaction did not show")
 			}
-			sess.recordWire(protocol.Recv, test.turnEnd)
+			sess.wire.recordWire(protocol.Recv, test.turnEnd)
 			if pane, rail := shown(); pane != 0 || rail != 0 {
 				t.Fatalf("after the turn ended: pane %d, rail %d; want none", pane, rail)
 			}

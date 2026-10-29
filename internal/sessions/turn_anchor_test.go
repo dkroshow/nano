@@ -15,12 +15,13 @@ import (
 )
 
 func anchorTestSession(provider string) *Session {
-	return &Session{id: "sess-anchor",
+	return sessionWithOwners(&Session{id: "sess-anchor",
 		provider:       provider,
 		createdAt:      time.Now(),
-		subs:           map[chan wire.Event]struct{}{},
 		state:          map[string]json.RawMessage{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 }
 
 func codexTurnStartedLine(turnID string, startedAtSeconds int64) []byte {
@@ -71,11 +72,11 @@ func TestCodexTurnStartedAnchorAbsentWhenUnstated(t *testing.T) {
 
 func TestTurnAnchorSetOnStartAndNotMovedByAKeepAlive(t *testing.T) {
 	sess := anchorTestSession("codex")
-	sess.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
+	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
 	if got := sess.turnAnchor(); got != 1785510514000 {
 		t.Fatalf("anchor after start = %d, want 1785510514000", got)
 	}
-	sess.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510999))
+	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510999))
 	if got := sess.turnAnchor(); got != 1785510514000 {
 		t.Fatalf("anchor after a same-turn event = %d, want it unmoved at 1785510514000", got)
 	}
@@ -84,13 +85,13 @@ func TestTurnAnchorSetOnStartAndNotMovedByAKeepAlive(t *testing.T) {
 // A NEW turn must not inherit the old anchor (the other half of D7/D10).
 func TestTurnAnchorResetsForTheNextTurn(t *testing.T) {
 	sess := anchorTestSession("codex")
-	sess.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
+	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
 	completed, _ := json.Marshal(map[string]any{
 		"method": "turn/completed",
 		"params": map[string]any{"threadId": "t1", "turn": map[string]any{"id": "turn-1", "status": "completed"}},
 	})
-	sess.recordWire(protocol.Recv, completed)
-	sess.recordWire(protocol.Recv, codexTurnStartedLine("turn-2", 1785510999))
+	sess.wire.recordWire(protocol.Recv, completed)
+	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-2", 1785510999))
 	if got := sess.turnAnchor(); got != 1785510999000 {
 		t.Fatalf("anchor for the second turn = %d, want 1785510999000", got)
 	}
@@ -110,7 +111,7 @@ func TestTurnAnchorClearsAtEveryTerminalSite(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sess := anchorTestSession("codex")
-			sess.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
+			sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
 			if sess.turnAnchor() == 0 {
 				t.Fatal("precondition: the turn should be anchored")
 			}
@@ -133,18 +134,18 @@ func TestClaudeReplayRecoversTurnStateWithoutInventingAnAnchor(t *testing.T) {
 	userLine := []byte(`{"type":"user","message":{"role":"user"}}`)
 
 	live := anchorTestSession("claude")
-	live.recordWireLive(protocol.Send, userLine, true)
+	live.wire.recordWireLive(protocol.Send, userLine, true)
 	if live.Summary().TurnActive || live.turnAnchor() != 0 {
 		t.Fatal("local send invented execution evidence")
 	}
-	live.recordWireLive(protocol.Recv, []byte(`{"type":"assistant","message":{"role":"assistant"}}`), true)
+	live.wire.recordWireLive(protocol.Recv, []byte(`{"type":"assistant","message":{"role":"assistant"}}`), true)
 	if !live.Summary().TurnActive || live.turnAnchor() == 0 {
 		t.Fatalf("live provider output should open an anchored turn, got %+v", live.Summary())
 	}
 
 	replayed := anchorTestSession("claude")
 	replayed.beginTurnRestore()
-	replayed.recordWireLive(protocol.Send, userLine, false)
+	replayed.wire.recordWireLive(protocol.Send, userLine, false)
 	if replayed.Summary().TurnActive {
 		t.Fatal("replay published work before settlement")
 	}
@@ -168,7 +169,7 @@ func TestRestoreTurnAnchorGuards(t *testing.T) {
 	}
 
 	sess := anchorTestSession("claude")
-	sess.recordWireLive(protocol.Send, []byte(`{"type":"user"}`), false)
+	sess.wire.recordWireLive(protocol.Send, []byte(`{"type":"user"}`), false)
 	if !sess.restoreTurnAnchor(1785510514000) {
 		t.Fatal("an unanchored active turn should accept the persisted anchor")
 	}
@@ -188,7 +189,7 @@ func TestRestoreTurnAnchorGuards(t *testing.T) {
 // keeps the rail from ticking an elapsed at a thread that is standing still.
 func TestWaitingReflectsParkedInteractions(t *testing.T) {
 	sess := anchorTestSession("codex")
-	sess.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
+	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
 	if sum := sess.Summary(); sum.Waiting {
 		t.Fatal("a working session is not waiting")
 	}
@@ -255,9 +256,9 @@ func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 // resume: spawn-time id, then init) must not write twice.
 func TestApplyPendingNameWritesOnceAtTheFirstRealBind(t *testing.T) {
 	var writes []string
-	sess := &Session{provider: "claude",
+	sess := sessionWithOwners(&Session{provider: "claude",
 		pendingName:    "overnight run",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	sess.nameThread = func(provider, nativeID, name string) {
 		writes = append(writes, provider+"/"+nativeID+"="+name)
 	}

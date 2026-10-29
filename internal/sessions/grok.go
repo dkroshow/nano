@@ -704,7 +704,7 @@ func (g *grokSession) recordWire(dir wire.Direction, line []byte) {
 	// Keep it inspectable, but never let another native session mutate parent
 	// conversation, runtime, delivery, or hosted-operation state.
 	if dir == protocol.Recv && !g.wireMayAffectParentSemantics(line) {
-		g.sess.recordWireRaw(dir, sanitizeGrokWire(line))
+		g.sess.wire.recordWireRaw(dir, sanitizeGrokWire(line))
 		return
 	}
 	if dir == protocol.Recv {
@@ -728,7 +728,7 @@ func (g *grokSession) recordWire(dir wire.Direction, line []byte) {
 	if dir == protocol.Recv && grokWireIsReplay(line) {
 		live = false
 	}
-	g.sess.recordWireLive(dir, sanitizeGrokWire(line), live)
+	g.sess.wire.recordWireLive(dir, sanitizeGrokWire(line), live)
 }
 
 // wireMayAffectParentSemantics is the ingress gate for every Grok method that

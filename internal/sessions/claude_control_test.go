@@ -188,7 +188,7 @@ func TestClaudeInterruptIsGatedOnTurnState(t *testing.T) {
 	if err := claude.SendTurn("hello"); err != nil {
 		t.Fatalf("SendTurn: %v", err)
 	}
-	sess.recordWireLive(protocol.Recv, []byte(`{"type":"assistant","message":{"role":"assistant"}}`), true)
+	sess.wire.recordWireLive(protocol.Recv, []byte(`{"type":"assistant","message":{"role":"assistant"}}`), true)
 	res = postJSON(t, sess.HandleInterrupt, "/api/sessions/x/interrupt", "")
 	if res.Code != http.StatusOK {
 		t.Fatalf("live interrupt = %d %s", res.Code, res.Body.String())

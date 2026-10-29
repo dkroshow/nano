@@ -153,14 +153,14 @@ func (sess *Session) releaseCatalogSource() {
 	}
 }
 
-func (sess *Session) recordWire(dir wire.Direction, line []byte) {
+func (sess *Wire) recordWire(dir wire.Direction, line []byte) {
 	sess.recordWireLive(dir, line, true)
 }
 
 // recordWireLive controls whether arrival time may stand as a turn's start
 // anchor. Claude re-attach calls recordWireAt directly so it can also mark
 // a frame as replayed.
-func (sess *Session) recordWireLive(dir wire.Direction, line []byte, live bool, wireSeq ...int64) {
+func (sess *Wire) recordWireLive(dir wire.Direction, line []byte, live bool, wireSeq ...int64) {
 	sess.recordWireAt(dir, line, live, false, time.Time{}, wireSeq...)
 }
 
@@ -168,7 +168,7 @@ func (sess *Session) recordWireLive(dir wire.Direction, line []byte, live bool, 
 // Session multiplexed onto this attachment. It intentionally does not invoke
 // any parent semantic consumer (projection, runtime, send confirmation, or
 // hosted-operation observation).
-func (sess *Session) recordWireRaw(dir wire.Direction, line []byte) {
+func (sess *Wire) recordWireRaw(dir wire.Direction, line []byte) {
 	at := time.Now()
 	// A multiplexed child without its own attachment is not watched: its raw
 	// traffic hints nothing, and only an explicit child attachment opts in.
@@ -191,7 +191,7 @@ func (sess *Session) recordWireRaw(dir wire.Direction, line []byte) {
 // line and now sends it back with the replay, so a replayed line is dated when
 // it happened. A zero `at` means "now" — every genuinely live path, and any
 // line from a shim too old to send one.
-func (sess *Session) recordWireAt(dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
+func (sess *Wire) recordWireAt(dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
 	sess.recordWireWith(nil, nil, dir, line, live, replay, at, wireSeq...)
 }
 
@@ -201,7 +201,7 @@ func (sess *Session) recordWireAt(dir wire.Direction, line []byte, live, replay 
 // prepare runs once the frame is admitted. Replayed send lines take the
 // Session loop too, so they land in spool order among the received frames
 // queued ahead of them.
-func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
+func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
 	if at.IsZero() {
 		at = time.Now()
 	}
@@ -210,7 +210,7 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.
 		Dir: string(dir),
 		Msg: json.RawMessage(append([]byte(nil), line...)),
 	}
-	if core := sess.coreSession(); core != nil && (dir == wire.Recv || replay) {
+	if core := sess.session.coreSession(); core != nil && (dir == wire.Recv || replay) {
 		frame := append([]byte(nil), evt.Msg...)
 		sequence := append([]int64(nil), wireSeq...)
 		adapterEvent, terminal := sess.adapterTurnEvent(dir, frame, live, at)
@@ -224,9 +224,9 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.
 				prepare()
 			}
 			sess.applyWireSemantic(gate, dir, frame, live, replay, at, sequence...)
-			if terminal != nil && sess.projection != nil {
-				terminal.FinalMessageID = sess.projection.finalAgentItemID(terminal.TurnID)
-				if usage := sess.completedTokenUsage(terminal.TurnID); usage != nil {
+			if terminal != nil && sess.session.projection != nil {
+				terminal.FinalMessageID = sess.session.projection.finalAgentItemID(terminal.TurnID)
+				if usage := sess.session.completedTokenUsage(terminal.TurnID); usage != nil {
 					terminal.Usage = coreturns.Usage{InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens, OutputTokens: usage.OutputTokens}
 				}
 			}
@@ -240,10 +240,10 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.
 			sess.publishWireEvent(evt, true)
 			return nil
 		}
-		if gate == nil && prepare == nil && live && !replay && sess.provider == "codex" &&
-			dir == wire.Recv && sess.projection != nil {
+		if gate == nil && prepare == nil && live && !replay && sess.session.provider == "codex" &&
+			dir == wire.Recv && sess.session.projection != nil {
 			if delta, ok := parseQueuedCodexDelta(frame); ok &&
-				(delta.method != "item/agentMessage/delta" || !sess.projection.dropsLiveTextDeltas()) {
+				(delta.method != "item/agentMessage/delta" || !sess.session.projection.dropsLiveTextDeltas()) {
 				delta.at = at
 				delta.event = evt
 				delta.wireSeq = sequence
@@ -291,28 +291,28 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.
 	sess.publishWireEvent(evt, true)
 }
 
-func (sess *Session) adapterTurnEvent(dir wire.Direction, line []byte, live bool, at time.Time) (coresession.AdapterEvent, *coreturns.Finish) {
+func (sess *Wire) adapterTurnEvent(dir wire.Direction, line []byte, live bool, at time.Time) (coresession.AdapterEvent, *coreturns.Finish) {
 	if !live || dir != wire.Recv {
 		return coresession.AdapterEvent{}, nil
 	}
-	active, turnID, _, ok := turnActiveTransition(sess.provider, dir, line)
+	active, turnID, _, ok := turnActiveTransition(sess.session.provider, dir, line)
 	if !ok || turnID == "" {
 		return coresession.AdapterEvent{}, nil
 	}
 	actionID := ""
-	if sess.queuedTurns != nil {
-		if prompt, found := sess.queuedTurns.ByProviderTurn(sess.provider, sess.ThreadID(), sess.hostedThreadID, turnID); found {
+	if sess.session.queuedTurns != nil {
+		if prompt, found := sess.session.queuedTurns.ByProviderTurn(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID, turnID); found {
 			actionID = prompt.ClientActionID
 		}
 	}
 	event := coresession.AdapterEvent{ProviderTurnID: turnID}
 	if active {
-		started := coreturns.Start{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
+		started := coreturns.Start{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.ThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
 		event.TurnEvents = []coresession.TurnEvent{{Started: &started}}
 		return event, nil
 	}
 	status := agentTurnCompleted
-	if sess.provider == "codex" {
+	if sess.session.provider == "codex" {
 		var envelope struct {
 			Params struct {
 				Turn struct {
@@ -323,14 +323,14 @@ func (sess *Session) adapterTurnEvent(dir wire.Direction, line []byte, live bool
 		if json.Unmarshal(line, &envelope) == nil && envelope.Params.Turn.Status != "" {
 			status = envelope.Params.Turn.Status
 		}
-	} else if sess.provider == "grok" {
+	} else if sess.session.provider == "grok" {
 		_, parsedStatus, _, terminal := grokTerminalFromWire(line)
 		if !terminal {
 			return coresession.AdapterEvent{}, nil
 		}
 		status = parsedStatus
 	}
-	finished := &coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
+	finished := &coreturns.Finish{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.ThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
 	event.TurnEvents = []coresession.TurnEvent{{Finished: finished}}
 	return event, finished
 }
@@ -340,39 +340,39 @@ func (sess *Session) adapterTurnEvent(dir wire.Direction, line []byte, live bool
 //
 // gate, when set, is rechecked before the durable agent-operation update, so a
 // frame admitted before its attach was abandoned cannot complete an operation.
-func (sess *Session) applyWireSemantic(gate func() error, dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
+func (sess *Wire) applyWireSemantic(gate func() error, dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
 	// Normalize before publishing the raw line. Every browser therefore sees
 	// the same projection order, and a slow/raw-feed tab cannot affect the
 	// transcript reducer.
-	if sess.projection != nil {
-		sess.projection.applyWireLive(dir, line, at, live, replay, wireSeq...)
+	if sess.session.projection != nil {
+		sess.session.projection.applyWireLive(dir, line, at, live, replay, wireSeq...)
 	}
 	// Wire-native catalog freshness: turn edges hint the session's known
 	// native file. Runs outside every session lock, and the callback is the
 	// catalog's nonblocking queue, so recording never stalls.
-	nudgesCatalog := wireNudgesCatalog(sess.provider, dir, line)
-	if sess.catalogRefresh != nil && nudgesCatalog {
-		if path := sess.catalogPathForNudge(line); path != "" {
-			sess.catalogRefresh(path)
+	nudgesCatalog := wireNudgesCatalog(sess.session.provider, dir, line)
+	if sess.session.catalogRefresh != nil && nudgesCatalog {
+		if path := sess.session.catalogPathForNudge(line); path != "" {
+			sess.session.catalogRefresh(path)
 		}
 	}
-	sess.observeProviderWork(dir, line, live)
-	sess.applyLiveRuntimeWire(dir, line, at)
+	sess.session.observeProviderWork(dir, line, live)
+	sess.session.applyLiveRuntimeWire(dir, line, at)
 	// An MCP server changing startup state means the cached tool registry is
 	// stale; the next panel fetch re-asks app-server (mcp_inventory.go).
-	if inspection.MCPInventoryStale(sess.provider, dir, line) {
-		sess.mcp.Invalidate()
+	if inspection.MCPInventoryStale(sess.session.provider, dir, line) {
+		sess.session.mcp.Invalidate()
 	}
-	if sess.projection != nil && wireNudgesProjectionMeta(sess.provider, dir, line) {
-		sess.projection.nudgeMetaRefresh()
+	if sess.session.projection != nil && wireNudgesProjectionMeta(sess.session.provider, dir, line) {
+		sess.session.projection.nudgeMetaRefresh()
 	}
 	if gate != nil && gate() != nil {
 		return
 	}
-	sess.observeAgentExecutionWire(dir, line)
+	sess.session.observeAgentExecutionWire(dir, line)
 }
 
-func (sess *Session) publishWireEvent(evt wire.Event, writeSpool bool) {
+func (sess *Wire) publishWireEvent(evt wire.Event, writeSpool bool) {
 	sess.mu.Lock()
 	sess.seq++
 	evt.Seq = sess.seq
@@ -391,7 +391,7 @@ func (sess *Session) publishWireEvent(evt wire.Event, writeSpool bool) {
 	if writeSpool && spool != nil {
 		spoolErr = spool.append(evt)
 		if spoolErr != nil {
-			log.Printf("wire spool append %s seq %d: %v", sess.id, evt.Seq, spoolErr)
+			log.Printf("wire spool append %s seq %d: %v", sess.session.id, evt.Seq, spoolErr)
 		}
 	}
 	for _, ch := range subs {
@@ -423,13 +423,13 @@ func nanoNotification(method string, params map[string]any) (wire.Event, bool) {
 // recordNanoEvent publishes a synthetic nano-origin notification into the
 // feed (and spool), keeping actions nano performs outside the agent wire —
 // like instruction-file edits — visible in the Event Feed.
-func (sess *Session) recordNanoEvent(method string, params map[string]any) {
+func (sess *Wire) recordNanoEvent(method string, params map[string]any) {
 	if evt, ok := nanoNotification(method, params); ok {
 		sess.publishWireEvent(evt, true)
 	}
 }
 
-func (sess *Session) recordSpoolDropped(seq int64, err error) {
+func (sess *Wire) recordSpoolDropped(seq int64, err error) {
 	evt, ok := nanoNotification("wire/spool_dropped", map[string]any{
 		"afterSeq": seq,
 		"error":    err.Error(),

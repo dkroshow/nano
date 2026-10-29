@@ -245,7 +245,7 @@ func (c *claudeSession) controlCall(ctx context.Context, subtype string, request
 	ch := c.control.register(id)
 	defer c.control.release(id)
 
-	c.sess.recordWire(protocol.Send, line)
+	c.sess.wire.recordWire(protocol.Send, line)
 	if err := c.tr.sendLine(line); err != nil {
 		return nil, fmt.Errorf("claude %s: %w", subtype, err)
 	}
@@ -566,6 +566,6 @@ func (c *claudeSession) writeControlResponse(response map[string]any) error {
 	if err != nil {
 		return err
 	}
-	c.sess.recordWire(protocol.Send, line)
+	c.sess.wire.recordWire(protocol.Send, line)
 	return c.tr.sendLine(line)
 }

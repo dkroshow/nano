@@ -16,7 +16,7 @@ func retainedTestProjection(turnID string, startedAtMs int64) *LiveProjection {
 }
 func durableTurnTestSession(turnID string, startedAtMs int64) *Session {
 	p := retainedTestProjection(turnID, startedAtMs)
-	return &Session{provider: "codex", threadID: "native-thread", projection: p, turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)}
+	return sessionWithOwners(&Session{provider: "codex", threadID: "native-thread", projection: p, turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)})
 }
 func reconcileWithSavedTurn(sess *Session, saved liveview.DurableTurnEvidence) {
 	sess.savedTurn = func(_ context.Context, id string) (liveview.DurableTurnEvidence, bool) {

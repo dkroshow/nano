@@ -60,20 +60,21 @@ func TestTurnActiveTransition(t *testing.T) {
 // flight must have nothing to address, or the stop affordance could interrupt
 // a turn that already ended.
 func TestSessionTracksTurnID(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	sess.threadID = "thread_a"
 
 	if _, turnID := sess.activeTurn(); turnID != "" {
 		t.Fatalf("idle session already has turn %q", turnID)
 	}
-	sess.recordWire(protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"thread_a","turn":{"id":"turn_7"}}}`))
+	sess.wire.recordWire(protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"thread_a","turn":{"id":"turn_7"}}}`))
 	threadID, turnID := sess.activeTurn()
 	if threadID != "thread_a" || turnID != "turn_7" {
 		t.Fatalf("activeTurn = (%q, %q), want (thread_a, turn_7)", threadID, turnID)
 	}
-	sess.recordWire(protocol.Recv, []byte(`{"method":"turn/completed","params":{"threadId":"thread_a","turn":{"id":"turn_7","status":"completed"}}}`))
+	sess.wire.recordWire(protocol.Recv, []byte(`{"method":"turn/completed","params":{"threadId":"thread_a","turn":{"id":"turn_7","status":"completed"}}}`))
 	if _, turnID := sess.activeTurn(); turnID != "" {
 		t.Fatalf("completed turn still addressable as %q", turnID)
 	}
@@ -83,9 +84,10 @@ func TestSessionTracksTurnID(t *testing.T) {
 // stop a session with no turn in flight is a 200 saying nothing was
 // interrupted, not an error the operator has to read.
 func TestHandleInterruptWithoutTurn(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	sess.threadID = "thread_a"
 
 	rec := httptest.NewRecorder()
@@ -124,9 +126,10 @@ func TestInterruptRaceReason(t *testing.T) {
 // TestHandleTurnOptions proves the per-turn overrides round-trip and that an
 // omitted field is left alone while an explicit empty string clears it.
 func TestHandleTurnOptions(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	sess.model = "gpt-5.6-sol"
 	sess.threadID = "native-1"
 
@@ -173,27 +176,28 @@ func TestHandleTurnOptions(t *testing.T) {
 // silent, and exit clears a stale in-flight flag.
 func TestSessionTurnActiveFromWire(t *testing.T) {
 	var nudges int
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
+	sess := sessionWithOwners(&Session{provider: "codex",
 		runtimeNotify:  func() { nudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
 	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
 
-	sess.recordWire(protocol.Recv, started)
+	sess.wire.recordWire(protocol.Recv, started)
 	if sum := sess.Summary(); !sum.TurnActive || nudges != 1 {
 		t.Fatalf("after turn/started: turnActive = %v nudges = %d", sum.TurnActive, nudges)
 	}
-	sess.recordWire(protocol.Recv, started)
+	sess.wire.recordWire(protocol.Recv, started)
 	if nudges != 1 {
 		t.Fatalf("repeated turn/started nudged again: nudges = %d", nudges)
 	}
-	sess.recordWire(protocol.Recv, completed)
+	sess.wire.recordWire(protocol.Recv, completed)
 	if sum := sess.Summary(); sum.TurnActive || sum.LastTurnEndedAt == "" || nudges != 2 {
 		t.Fatalf("after turn/completed: turnActive = %v nudges = %d", sum.TurnActive, nudges)
 	}
 
-	sess.recordWire(protocol.Recv, started)
+	sess.wire.recordWire(protocol.Recv, started)
 	sess.setStatus("exited")
 	if sum := sess.Summary(); sum.TurnActive {
 		t.Fatal("exit left turnActive set")
@@ -205,14 +209,15 @@ func TestSessionTurnActiveFromWire(t *testing.T) {
 // to the deploy moment on each nano restart (2026-08-06, 14 threads sharing
 // one restart minute). Replay flips the flag; only a live close stamps.
 func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
 	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
 
-	sess.recordWireLive(protocol.Recv, started, false)
-	sess.recordWireLive(protocol.Recv, completed, false)
+	sess.wire.recordWireLive(protocol.Recv, started, false)
+	sess.wire.recordWireLive(protocol.Recv, completed, false)
 	sum := sess.Summary()
 	if sum.TurnActive {
 		t.Fatal("replayed close left turnActive set — state must still reconstruct")
@@ -221,16 +226,16 @@ func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
 		t.Fatalf("replayed close stamped lastTurnEndedAt = %q, want absent (the turn ended before this process existed)", sum.LastTurnEndedAt)
 	}
 
-	sess.recordWireLive(protocol.Recv, started, true)
-	sess.recordWireLive(protocol.Recv, completed, true)
+	sess.wire.recordWireLive(protocol.Recv, started, true)
+	sess.wire.recordWireLive(protocol.Recv, completed, true)
 	if sum := sess.Summary(); sum.LastTurnEndedAt == "" {
 		t.Fatal("live close no longer stamps lastTurnEndedAt")
 	}
 }
 
 func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *testing.T) {
-	sess := &Session{id: "blocked-summary",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{id: "blocked-summary",
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	s := &Registry{sessions: map[string]*Session{sess.id: sess}}
 	sess.stateMu.Lock()
 	done := make(chan struct{})
@@ -264,27 +269,27 @@ func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *test
 // making the sidebar promote and demote the same row for every old turn.
 func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	nudges := 0
-	sess := &Session{provider: "claude",
+	sess := sessionWithOwners(&Session{provider: "claude",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("claude"),
 		runtimeNotify:  func() { nudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	sess.beginTurnRestore()
 
 	user := []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"old prompt"}]}}`)
 	result := []byte(`{"type":"result","subtype":"success"}`)
-	sess.recordWireLive(protocol.Send, user, false)
+	sess.wire.recordWireLive(protocol.Send, user, false)
 	if sess.Summary().TurnActive || nudges != 0 {
 		t.Fatalf("replayed prompt = publicly active %v, nudges %d; want private reconstruction", sess.Summary().TurnActive, nudges)
 	}
-	sess.recordWireLive(protocol.Recv, result, false)
+	sess.wire.recordWireLive(protocol.Recv, result, false)
 	if sess.Summary().TurnActive || nudges != 0 {
 		t.Fatalf("replayed result = active %v, nudges %d; want reconstructed but unpublished", sess.Summary().TurnActive, nudges)
 	}
 	// A second historical turn proves this is not accidental one-slot SSE
 	// conflation: no intermediate edge reaches the runtime hub at all.
-	sess.recordWireLive(protocol.Send, user, false)
-	sess.recordWireLive(protocol.Recv, result, false)
+	sess.wire.recordWireLive(protocol.Send, user, false)
+	sess.wire.recordWireLive(protocol.Recv, result, false)
 	if nudges != 0 {
 		t.Fatalf("historical turn sequence published %d runtime nudges, want 0", nudges)
 	}
@@ -295,13 +300,13 @@ func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	}
 
 	activeNudges := 0
-	active := &Session{provider: "claude",
+	active := sessionWithOwners(&Session{provider: "claude",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("claude"),
 		runtimeNotify:  func() { activeNudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	active.beginTurnRestore()
-	active.recordWireLive(protocol.Send, user, false)
+	active.wire.recordWireLive(protocol.Send, user, false)
 	if active.Summary().TurnActive || activeNudges != 0 {
 		t.Fatalf("open replayed turn = publicly active %v, nudges %d; want private reconstruction", active.Summary().TurnActive, activeNudges)
 	}
@@ -313,11 +318,11 @@ func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 
 func TestClaudeRestoreDefersGenuineLiveCompletionUntilSettlement(t *testing.T) {
 	nudges := 0
-	sess := &Session{provider: "claude",
+	sess := sessionWithOwners(&Session{provider: "claude",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("claude"),
 		runtimeNotify:  func() { nudges++ },
-		lifecycleState: testLifecycleSnapshot("starting", false)}
+		lifecycleState: testLifecycleSnapshot("starting", false)})
 	sess.beginTurnRestore()
 	sess.setTurnActive(true, "live-during-restore", 100, true)
 	sess.setTurnActive(false, "", 0, true)

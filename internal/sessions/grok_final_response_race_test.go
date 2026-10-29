@@ -32,7 +32,7 @@ func grokRaceSession(t *testing.T, withCore bool) (*Session, *grokTerminalRecord
 	if withCore {
 		sess, _ = readyTransactionalSendTestSession(t, nil)
 	} else {
-		sess = &Session{id: "nano-session", threadID: "native-thread", lifecycleState: testLifecycleSnapshot("ready", false)}
+		sess = sessionWithOwners(&Session{id: "nano-session", threadID: "native-thread", lifecycleState: testLifecycleSnapshot("ready", false)})
 	}
 	sess.provider = "grok"
 	sess.hostedThreadID = "hosted"
@@ -92,12 +92,12 @@ func TestGrokRPCOutcomeWaitsForQueuedFinalChunks(t *testing.T) {
 	core := sess.coreSession()
 	g := &grokSession{sess: sess}
 
-	sess.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
+	sess.wire.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
 	flushMailbox(t, core)
 
 	release := holdMailbox(t, core)
-	sess.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-2", "-R2-OK"), true)
-	sess.recordWireLive(protocol.Recv, grokRaceTurnCompleted(), true)
+	sess.wire.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-2", "-R2-OK"), true)
+	sess.wire.recordWireLive(protocol.Recv, grokRaceTurnCompleted(), true)
 	g.observeResolvedPromptOutcome(grokRacePrompt, grokPromptOutcome{response: grokPromptResponse{StopReason: "end_turn"}})
 	release()
 	flushMailbox(t, core)
@@ -113,8 +113,8 @@ func TestGrokRPCOutcomeWaitsForQueuedFinalChunks(t *testing.T) {
 func TestGrokRPCOutcomeCompletesDirectlyWithoutCoreSession(t *testing.T) {
 	sess, store := grokRaceSession(t, false)
 	g := &grokSession{sess: sess}
-	sess.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
-	sess.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-2", "-R2-OK"), true)
+	sess.wire.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
+	sess.wire.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-2", "-R2-OK"), true)
 
 	g.observeResolvedPromptOutcome(grokRacePrompt, grokPromptOutcome{response: grokPromptResponse{StopReason: "end_turn"}})
 
@@ -141,7 +141,7 @@ func TestGrokRPCOutcomeCompletesWithinBoundWhenMailboxStalls(t *testing.T) {
 			sess, store := grokRaceSession(t, true)
 			core := sess.coreSession()
 			g := &grokSession{sess: sess}
-			sess.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
+			sess.wire.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
 			flushMailbox(t, core)
 			if mode == "stalled" {
 				t.Cleanup(holdMailbox(t, core))
@@ -174,8 +174,8 @@ func TestGrokRPCOutcomeTerminalSessionTimer(t *testing.T) {
 	core := sess.coreSession()
 	g := &grokSession{sess: sess}
 	release := holdMailbox(t, core)
-	sess.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
-	sess.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-2", "-R2-OK"), true)
+	sess.wire.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-1", "GROK47-CHECK"), true)
+	sess.wire.recordWireLive(protocol.Recv, grokRaceChunk("native-thread-2", "-R2-OK"), true)
 	g.observeResolvedPromptOutcome(grokRacePrompt, grokPromptOutcome{response: grokPromptResponse{StopReason: "end_turn"}})
 	release()
 	flushMailbox(t, core)

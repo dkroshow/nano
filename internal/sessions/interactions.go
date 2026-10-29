@@ -596,7 +596,7 @@ func (sess *Session) addPendingInteraction(p interact.PendingInteraction) {
 	if sess.projection != nil {
 		sess.projection.upsertInteraction(p)
 	}
-	sess.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
+	sess.wire.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
 	sess.NotifyRuntime()
 	if sess.agentExecutions != nil && sess.hostedThreadID != "" {
 		if err := sess.agentExecutions.MarkWaiting(sess.hostedThreadID, p.TurnID, true); err != nil {
@@ -719,7 +719,7 @@ func (sess *Session) noteInteractionResolved(p interact.PendingInteraction, deci
 	if err := sess.recordPermissionResolution(p, decision, permissionDecisionSource(decision, outcome), outcome); err != nil {
 		log.Printf("session %s: record permission resolution %s: %v", sess.id, p.ID, err)
 	}
-	sess.recordNanoEvent(interactionResolvedEvent, map[string]any{
+	sess.wire.recordNanoEvent(interactionResolvedEvent, map[string]any{
 		"id": p.ID, "method": p.Method, "kind": p.Kind, "outcome": outcome,
 	})
 }

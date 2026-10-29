@@ -44,7 +44,7 @@ func TestCodexTextDeltaIngressDoesNotWaitForOutstandingProviderCall(t *testing.T
 
 	callbackReturned := make(chan struct{})
 	go func() {
-		sess.recordWireAt(wire.Recv, fixture.CodexDeltaFrames("streaming")[0], true, false, time.Now())
+		sess.wire.recordWireAt(wire.Recv, fixture.CodexDeltaFrames("streaming")[0], true, false, time.Now())
 		close(callbackReturned)
 	}()
 	select {

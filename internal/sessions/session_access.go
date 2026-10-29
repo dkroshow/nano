@@ -35,3 +35,11 @@ func (sess *Session) PersistedOperation(ctx context.Context, actionID string) (t
 
 // CWD returns the working directory retained by this attachment.
 func (sess *Session) CWD() string { return sess.cwd }
+
+// Wire returns the attachment's concrete wire owner.
+func (sess *Session) Wire() *Wire {
+	if sess == nil {
+		return nil
+	}
+	return &sess.wire
+}

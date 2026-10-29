@@ -22,7 +22,7 @@ func TestDeliveryErrorsDistinguishRefusalFromUncertainty(t *testing.T) {
 }
 
 func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
-	sess := &Session{lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{lifecycleState: testLifecycleSnapshot("ready", false)})
 	if sess.Summary().TurnActive {
 		t.Fatal("local reservation asserted work")
 	}
@@ -34,11 +34,11 @@ func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
 
 func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testing.T) {
 	hosted := threads.SessionRecord{ID: "nht_lock_boundary"}
-	sess := &Session{id: "nano-lock-boundary",
+	sess := sessionWithOwners(&Session{id: "nano-lock-boundary",
 		hostedThreadID: hosted.ID,
 		provider:       "codex",
 		threadID:       "native-live-only",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	s := NewRegistry()
 	s.RegisterSession(sess)
 
@@ -83,12 +83,12 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 // operations use.
 func TestHostedThreadOperationsUseItsLiveSessionNotAnExitedOne(t *testing.T) {
 	sessions := map[string]*Session{
-		"dead": {id: "dead", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot(StatusExited, false)},
-		"live": {id: "live", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot("ready", false)},
+		"dead": sessionWithOwners(&Session{id: "dead", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot(StatusExited, false)}),
+		"live": sessionWithOwners(&Session{id: "live", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot("ready", false)}),
 	}
 	for i := range 20 { // more entries, so map order varies between lookups
 		id := fmt.Sprintf("other-%d", i)
-		sessions[id] = &Session{id: id, hostedThreadID: id, lifecycleState: testLifecycleSnapshot("ready", false)}
+		sessions[id] = sessionWithOwners(&Session{id: id, hostedThreadID: id, lifecycleState: testLifecycleSnapshot("ready", false)})
 	}
 	s := NewRegistry()
 	for _, sess := range sessions {

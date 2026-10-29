@@ -111,7 +111,7 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 	if !ok {
 		t.Fatal("stalled replay has no pending drain acknowledgement")
 	}
-	before := stalled.seq
+	before := stalled.wire.seq
 	unblock()
 	// A mailbox barrier can finish before the drain goroutine clears the
 	// retry guard. Its acknowledgement orders both publication and retry.
@@ -120,7 +120,7 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("abandoned replay did not acknowledge its drain")
 	}
-	if after := stalled.seq; after != before {
+	if after := stalled.wire.seq; after != before {
 		t.Fatalf("abandoned replay published %d more events after failure", after-before)
 	}
 	if n := h.count(t, turn); n != 0 {
@@ -172,7 +172,7 @@ func TestClaudeReplayDrainFencesSessionRetryAndCompletion(t *testing.T) {
 		t.Fatalf("stalled resume=%v; want unacknowledged drain", err)
 	}
 	stalled := h.current
-	before := stalled.seq
+	before := stalled.wire.seq
 	attaches := len(h.shim.CallsOf(shimMethodAttach))
 	if err := h.resume(t); err == nil || !strings.Contains(err.Error(), "still draining") {
 		t.Fatalf("overlapping retry=%v", err)
@@ -182,7 +182,7 @@ func TestClaudeReplayDrainFencesSessionRetryAndCompletion(t *testing.T) {
 	}
 	unblock()
 	waitForClaude(t, "abandoned drain acknowledgement", func() bool { return claudeDrainSettled(stalled) == nil })
-	if after := stalled.seq; after != before {
+	if after := stalled.wire.seq; after != before {
 		t.Fatalf("abandoned generation published %d events", after-before)
 	}
 	if n := h.count(t, turn); n != 0 {

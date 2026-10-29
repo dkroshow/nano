@@ -39,9 +39,9 @@ func TestClaudeShimAttachTimeoutFollowsTheSpoolAndStaysBounded(t *testing.T) {
 }
 
 func claudeWireEvents(sess *Session) []wire.Event {
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
-	return append([]wire.Event(nil), sess.events...)
+	sess.wire.mu.Lock()
+	defer sess.wire.mu.Unlock()
+	return append([]wire.Event(nil), sess.wire.events...)
 }
 
 // waitForClaudeThreadID waits for the native id the child announces on its

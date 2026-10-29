@@ -82,14 +82,15 @@ func TestWireSpoolReadBeforeSkipsMalformedLines(t *testing.T) {
 }
 
 func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
-	sess := &Session{id: "s1",
-		events:         []wire.Event{testWireEvent(1), testWireEvent(2), testWireEvent(3), testWireEvent(4)},
-		seq:            4,
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{id: "s1",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			events: []wire.Event{testWireEvent(1), testWireEvent(2), testWireEvent(3), testWireEvent(4)},
+			seq:    4,
+			subs:   map[chan wire.Event]struct{}{}}})
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions/s1/events/page?beforeSeq=4&limit=2", nil)
 	rec := httptest.NewRecorder()
-	sess.HandleEventsPage(rec, req)
+	sess.wire.HandleEventsPage(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
@@ -107,18 +108,19 @@ func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
 }
 
 func TestRecordWireCapsMemoryBuffer(t *testing.T) {
-	sess := &Session{subs: map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire:           Wire{subs: map[chan wire.Event]struct{}{}}})
 	for i := 0; i < wireBufferCap+5; i++ {
-		sess.recordWire(protocol.Send, []byte(`{"jsonrpc":"2.0","method":"test"}`))
+		sess.wire.recordWire(protocol.Send, []byte(`{"jsonrpc":"2.0","method":"test"}`))
 	}
-	if got := len(sess.events); got != wireBufferCap {
+	if got := len(sess.wire.events); got != wireBufferCap {
 		t.Fatalf("len(events) = %d, want %d", got, wireBufferCap)
 	}
-	if got := sess.events[0].Seq; got != 6 {
+	if got := sess.wire.events[0].Seq; got != 6 {
 		t.Fatalf("first seq = %d, want 6", got)
 	}
-	if got := sess.events[len(sess.events)-1].Seq; got != wireBufferCap+5 {
+	if got := sess.wire.events[len(sess.wire.events)-1].Seq; got != wireBufferCap+5 {
 		t.Fatalf("last seq = %d, want %d", got, wireBufferCap+5)
 	}
 }

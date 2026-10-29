@@ -38,7 +38,7 @@ for line in sys.stdin:
 		t.Fatal(err)
 	}
 	defer c.Close()
-	sess := &Session{hostedThreadID: "hosted", threadID: grokFixtureThread}
+	sess := sessionWithOwners(&Session{hostedThreadID: "hosted", threadID: grokFixtureThread})
 	g := &grokSession{sess: sess, client: c}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

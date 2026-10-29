@@ -39,9 +39,9 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPost, "/api/sessions", "sessions.create", s.hostedController().HandleLegacyCreate},
 		{http.MethodPost, "/api/sessions/preview", "sessions.preview", s.attachmentCoordinator().HandleSpawnPreview},
 		{http.MethodDelete, "/api/sessions/{sessionId}", "sessions.close", sessionRoute(s.hostedController().HandleLegacyClose)},
-		{http.MethodGet, "/api/sessions/{sessionId}/events", "sessions.events.stream", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleEvents(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/events", "sessions.events.stream", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.Wire().HandleEvents(w, r) })},
 		{http.MethodGet, "/api/sessions/{sessionId}/events/page", "sessions.events.page", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleEventsPage(w, r)
+			value.Wire().HandleEventsPage(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation", "sessions.conversation.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleConversation(w, r)

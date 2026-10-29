@@ -66,11 +66,11 @@ func readySendTestSession(t *testing.T, store *turns.LegacyJournal, sender func(
 	store.BindTransactionStore(turnStore)
 	queue.BindTransactionStore(turnStore)
 	projection := newDeliveryTestProjection("codex")
-	return &Session{id: "nano-session",
+	return sessionWithOwners(&Session{id: "nano-session",
 		provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
 		projection: projection, turns: turnStore, sendAttempts: store, queuedTurns: queue,
 		sendOps: map[string]*turnSendOperation{}, turnSender: sender,
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 }
 
 func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context, string) (json.RawMessage, error)) (*Session, *turns.Store) {
@@ -90,12 +90,12 @@ func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context
 	}
 	projection := newDeliveryTestProjection("codex")
 
-	sess := &Session{
+	sess := sessionWithOwners(&Session{
 		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
 		projection: projection, turns: store, sendAttempts: attempts, queuedTurns: queue,
 		sendOps: map[string]*turnSendOperation{}, turnSender: sender,
 		lifecycleState: testLifecycleSnapshot("ready", false),
-	}
+	})
 	return sess, store
 }
 
@@ -966,7 +966,7 @@ func TestTurnSendAcceptedActionBypassesReadinessGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls atomic.Int32
-	sess := &Session{id: "nano-session",
+	sess := sessionWithOwners(&Session{id: "nano-session",
 		provider:     "codex",
 		threadID:     "native-thread",
 		sendAttempts: store,
@@ -975,7 +975,7 @@ func TestTurnSendAcceptedActionBypassesReadinessGate(t *testing.T) {
 			calls.Add(1)
 			return nil, nil
 		},
-		lifecycleState: testLifecycleSnapshot("starting", false)}
+		lifecycleState: testLifecycleSnapshot("starting", false)})
 	rec := postTurn(t, sess, context.Background(), "accepted-while-starting", "already accepted")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())

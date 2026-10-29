@@ -127,12 +127,13 @@ func newTestCodexSession(t *testing.T, cwd string, sources []string) *Session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Session{id: "test",
+	return sessionWithOwners(&Session{id: "test",
 		provider:       "codex",
 		cwd:            cwd,
-		subs:           map[chan wire.Event]struct{}{},
 		state:          map[string]json.RawMessage{"thread": raw},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 }
 
 func TestInstructionFileReadRequiresAllowlist(t *testing.T) {
@@ -216,10 +217,10 @@ func TestInstructionFileWriteHappyPathConflictAndForce(t *testing.T) {
 	}
 
 	// Both successful writes must be visible in the session feed.
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
-	if len(sess.events) != 2 || !bytes.Contains(sess.events[0].Msg, []byte("nano/instructionFile/written")) {
-		t.Fatalf("expected two nano/instructionFile/written events, got %v", sess.events)
+	sess.wire.mu.Lock()
+	defer sess.wire.mu.Unlock()
+	if len(sess.wire.events) != 2 || !bytes.Contains(sess.wire.events[0].Msg, []byte("nano/instructionFile/written")) {
+		t.Fatalf("expected two nano/instructionFile/written events, got %v", sess.wire.events)
 	}
 }
 
@@ -266,9 +267,9 @@ func TestClaudeInstructionFilesUseDocumentedLoadingRules(t *testing.T) {
 		writeTestFile(t, path, "instructions\n")
 	}
 
-	sess := &Session{provider: "claude",
+	sess := sessionWithOwners(&Session{provider: "claude",
 		cwd:            cwd,
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	sources, _ := sess.instructionFileSources()
 	got := map[string]setup.InstructionFileSource{}
 	for _, src := range sources {

@@ -9,10 +9,10 @@ import (
 // removes the entry for its owner.
 func TestRegisterThreadKeepsFirstBinding(t *testing.T) {
 	d := NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true })
-	first := &Session{id: "aaaa",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	second := &Session{id: "bbbb",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	first := sessionWithOwners(&Session{id: "aaaa",
+		lifecycleState: testLifecycleSnapshot("ready", false)})
+	second := sessionWithOwners(&Session{id: "bbbb",
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	d.registerThread("t1", first)
 	d.registerThread("t1", second)
 	if d.sessions["t1"] != first {

@@ -468,7 +468,7 @@ func (d *CodexDaemon) Call(ctx context.Context, method string, params any, resul
 
 // callForSession performs a Codex request associated with one attachment.
 func (d *CodexDaemon) callForSession(ctx context.Context, sess *Session, method string, params any, result any) error {
-	_, err := d.callForSessionWithWireLog(ctx, sess, method, params, result, sess.recordWire)
+	_, err := d.callForSessionWithWireLog(ctx, sess, method, params, result, sess.wire.recordWire)
 	return err
 }
 
@@ -680,7 +680,7 @@ func (d *CodexDaemon) routeConnectionWire(dir wire.Direction, line []byte) {
 		delete(d.serverRequests, key)
 		d.mu.Unlock()
 		if sess != nil {
-			sess.recordWire(dir, line)
+			sess.wire.recordWire(dir, line)
 		}
 		return
 	}
@@ -696,7 +696,7 @@ func (d *CodexDaemon) routeConnectionWire(dir wire.Direction, line []byte) {
 	}
 	d.mu.Unlock()
 	if sess != nil {
-		sess.recordWire(dir, line)
+		sess.wire.recordWire(dir, line)
 	}
 }
 
@@ -1167,7 +1167,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	causation := sess.snapshotProviderCausation(sent)
 	var threadResp json.RawMessage
 	var decoded *codexResumeResponse
-	wireLog := protocol.WireLogger(sess.recordWire)
+	wireLog := protocol.WireLogger(sess.wire.recordWire)
 	if method == "thread/resume" {
 		wireLog = func(dir wire.Direction, line []byte) {
 			if response := sess.recordResumeWire(dir, line); response != nil {
@@ -1364,26 +1364,26 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 // browser, and leave an explicit marker in the raw Event Feed payload.
 func (sess *Session) recordResumeWire(dir wire.Direction, line []byte) *codexResumeResponse {
 	if dir != protocol.Recv {
-		sess.recordWire(dir, line)
+		sess.wire.recordWire(dir, line)
 		return nil
 	}
 	envelope, err := decodeCodexResumeResponse(line)
 	if err != nil {
-		sess.recordWire(dir, line)
+		sess.wire.recordWire(dir, line)
 		return nil
 	}
 	if _, hasError := envelope.fields["error"]; hasError {
-		sess.recordWire(dir, line)
+		sess.wire.recordWire(dir, line)
 		return nil
 	}
 	fields, ok := envelope.fields["result"].(map[string]any)
 	if !ok {
-		sess.recordWire(dir, line)
+		sess.wire.recordWire(dir, line)
 		return nil
 	}
 	response := newCodexResumeResponse(fields)
 	if _, present := response.thread["turns"]; !present {
-		sess.recordWire(dir, line)
+		sess.wire.recordWire(dir, line)
 		return response
 	}
 	compact := response.compactFields()
@@ -1394,9 +1394,9 @@ func (sess *Session) recordResumeWire(dir wire.Direction, line []byte) *codexRes
 	envelope.fields["result"] = compact
 	compactLine, err := json.Marshal(envelope.fields)
 	if err != nil {
-		sess.recordWire(dir, line)
+		sess.wire.recordWire(dir, line)
 		return response
 	}
-	sess.recordWire(dir, compactLine)
+	sess.wire.recordWire(dir, compactLine)
 	return response
 }

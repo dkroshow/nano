@@ -38,8 +38,8 @@ func TestCodexPriorAttachmentEvidenceCannotResendPrompt(t *testing.T) {
 		}
 		sess.awaitSavedPrompt("prompt")
 		play := func() {
-			sess.recordWireLive(protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"inProgress","items":[]}}}`), true)
-			sess.recordWireLive(protocol.Recv, []byte(`{"method":"turn/completed","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"interrupted"}}}`), true)
+			sess.wire.recordWireLive(protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"inProgress","items":[]}}}`), true)
+			sess.wire.recordWireLive(protocol.Recv, []byte(`{"method":"turn/completed","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"interrupted"}}}`), true)
 		}
 		play()
 		if err := sess.ensureCoreSession(); err != nil {

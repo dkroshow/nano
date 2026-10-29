@@ -99,7 +99,7 @@ func receivedProviderFrames(sess *Session) []wire.Event {
 
 func liveWirePageEvents(sess *Session) []wire.Event {
 	recorder := httptest.NewRecorder()
-	sess.HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
+	sess.wire.HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
 	var page struct {
 		Events []wire.Event `json:"events"`
 	}

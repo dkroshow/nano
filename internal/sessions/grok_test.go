@@ -141,9 +141,9 @@ func TestGrokLoadReconcilesReplayAgainstRunningPrompt(t *testing.T) {
 	replayed := []byte(`{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"unfinished"}},"_meta":{"promptId":"old-prompt","isReplay":true}}}`)
 	replayedTerminal := []byte(`{"method":"_x.ai/session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"turn_completed","prompt_id":"older-prompt","stop_reason":"end_turn"},"_meta":{"eventId":"old-terminal","isReplay":true}}}`)
 
-	stale := &Session{provider: "grok",
+	stale := sessionWithOwners(&Session{provider: "grok",
 		state:          map[string]json.RawMessage{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	(&grokSession{sess: stale}).recordWire(protocol.Recv, replayed)
 	if stale.workActiveLocked() {
 		t.Fatal("historical replay became present-tense activity")
@@ -154,9 +154,9 @@ func TestGrokLoadReconcilesReplayAgainstRunningPrompt(t *testing.T) {
 		t.Fatalf("late stale replay survived load reconciliation: active=%v id=%q ended=%q", stale.workActiveLocked(), stale.turnID, stale.lastTurnEndedAt)
 	}
 
-	running := &Session{provider: "grok",
+	running := sessionWithOwners(&Session{provider: "grok",
 		state:          map[string]json.RawMessage{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	(&grokSession{sess: running}).recordWire(protocol.Recv, replayed)
 	running.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{"x.ai/runningPromptId":"old-prompt"}}`))
 	(&grokSession{sess: running}).recordWire(protocol.Recv, replayedTerminal)
@@ -166,9 +166,9 @@ func TestGrokLoadReconcilesReplayAgainstRunningPrompt(t *testing.T) {
 }
 
 func TestGrokLoadDoesNotRestoreSyntheticContinuation(t *testing.T) {
-	sess := &Session{provider: "grok",
+	sess := sessionWithOwners(&Session{provider: "grok",
 		turnID:         "stale-operator",
-		lifecycleState: testLifecycleSnapshot("ready", true)}
+		lifecycleState: testLifecycleSnapshot("ready", true)})
 	sess.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{"x.ai/runningPromptId":"subagent-completed-child-1"}}`))
 	if sess.workActiveLocked() || sess.turnID != "" {
 		t.Fatalf("synthetic continuation restored operator runtime: active=%v turn=%q", sess.workActiveLocked(), sess.turnID)
@@ -218,9 +218,9 @@ func TestGrokPromptAcceptanceRequiresMatchingQueueText(t *testing.T) {
 }
 
 func TestGrokWireIngressRejectsMultiplexedChildSession(t *testing.T) {
-	sess := &Session{provider: "grok",
+	sess := sessionWithOwners(&Session{provider: "grok",
 		threadID:       "parent",
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false)})
 	grok := &grokSession{sess: sess}
 	child := []byte(`{"method":"session/update","params":{"sessionId":"child","update":{"sessionUpdate":"agent_message_chunk"}}}`)
 	if grok.wireBelongsToAttachedSession(child) {
@@ -276,12 +276,13 @@ func TestGrokInteractionSelectsNativeOptions(t *testing.T) {
 }
 
 func TestGrokPermissionRequestUsesExistingInteractionShape(t *testing.T) {
-	sess := &Session{id: "nano",
+	sess := sessionWithOwners(&Session{id: "nano",
 		provider:       "grok",
 		threadID:       "s1",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","hostname":"private-host","toolCall":{"toolCallId":"call-1","title":"Run tests",` +
 		`"rawInput":{"command":"go test ./..."},"_meta":{"x.ai/tool":{"name":"run_shell","label":"Shell"}}},` +
@@ -310,12 +311,13 @@ func TestGrokPermissionRequestUsesExistingInteractionShape(t *testing.T) {
 // refusing it by name is what the leader reads as a client disconnect, and it
 // cancels the whole turn (the 2026-08-13 hosted-session failure).
 func TestGrokExitPlanRequestParksPlanApproval(t *testing.T) {
-	sess := &Session{id: "nano",
+	sess := sessionWithOwners(&Session{id: "nano",
 		provider:       "grok",
 		threadID:       "s1",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","toolCallId":"call-9","planContent":"# The plan\n"}`)
 	result, rpcErr := grok.handleServerRequest(`"request-9"`, grokExitPlanMethod, params)
@@ -340,12 +342,13 @@ func TestGrokExitPlanRequestParksPlanApproval(t *testing.T) {
 }
 
 func TestGrokAskQuestionRequestParksAsUserInput(t *testing.T) {
-	sess := &Session{id: "nano",
+	sess := sessionWithOwners(&Session{id: "nano",
 		provider:       "grok",
 		threadID:       "s1",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","toolCallId":"call-3",` +
 		`"questions":[{"question":"Pick A or B","options":[{"label":"A"},{"label":"B"}],"multiSelect":null}]}`)
@@ -433,13 +436,14 @@ func TestSanitizeGrokWireBoundsKnownSensitiveFields(t *testing.T) {
 }
 
 func TestGrokUnroutedPermissionFailsClosedWithoutParking(t *testing.T) {
-	sess := &Session{id: "nano",
+	sess := sessionWithOwners(&Session{id: "nano",
 		provider:       "grok",
 		threadID:       "parent",
 		permissionMode: "bypassPermissions",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"child","toolCall":{"toolCallId":"call-1"},"options":[{"optionId":"yes","kind":"allow_once"},{"optionId":"no","kind":"reject_once"}]}`)
 	result, rpcErr := grok.handleServerRequest(`"request-child"`, grokPermissionMethod, params)
@@ -499,12 +503,13 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := &Session{provider: "grok",
+	sess := sessionWithOwners(&Session{provider: "grok",
 		threadID:       "parent-1",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("grok"),
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	sess.projection.setNativeThreadID("parent-1")
 	g := &grokSession{sess: sess, seenPromptIDs: map[string]struct{}{}}
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
@@ -517,7 +522,7 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 		}
 		g.recordWire(protocol.Recv, fixture.Msg)
 	}
-	if len(sess.events) != len(lines) {
-		t.Fatalf("raw events = %d, want %d", len(sess.events), len(lines))
+	if len(sess.wire.events) != len(lines) {
+		t.Fatalf("raw events = %d, want %d", len(sess.wire.events), len(lines))
 	}
 }

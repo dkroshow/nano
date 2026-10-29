@@ -62,7 +62,7 @@ type Config struct {
 
 // New constructs an unstarted attachment from its identity and owner services.
 func New(cfg Config) *Session {
-	return &Session{
+	sess := &Session{
 		id:                    cfg.ID,
 		provider:              cfg.Provider,
 		hostedThreadID:        cfg.HostedThreadID,
@@ -75,7 +75,6 @@ func New(cfg Config) *Session {
 		permissionMode:        cfg.PermissionMode,
 		createdAt:             cfg.CreatedAt,
 		spawnMode:             cfg.SpawnMode,
-		subs:                  map[chan wire.Event]struct{}{},
 		state:                 map[string]json.RawMessage{},
 		reasoningSummary:      cfg.ReasoningSummary,
 		projection:            cfg.Projection,
@@ -106,7 +105,11 @@ func New(cfg Config) *Session {
 		sendAttempts:          cfg.SendAttempts,
 		queuedTurns:           cfg.QueuedTurns,
 		completedTurns:        cfg.CompletedTurns,
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}},
 	}
+	sess.wire.session = sess
+	return sess
 }
 
 // ReserveNativeID establishes the pre-publication native identity of a resume.
@@ -133,8 +136,8 @@ func (sess *Session) ConfigureSavedReaders(turn func(context.Context, string) (l
 }
 
 // OpenWireSpool opens the attachment's ordered wire log.
-func (sess *Session) OpenWireSpool(dir string) error {
-	spool, err := newWireSpool(dir, sess.id)
+func (sess *Wire) OpenWireSpool(dir string) error {
+	spool, err := newWireSpool(dir, sess.session.id)
 	if err != nil {
 		return err
 	}
@@ -179,8 +182,8 @@ func (sess *Session) RecordCreationPosture(req ProviderRequest) {
 // DiscardSpawnResources releases an unpublished or refused attachment's resources.
 func (sess *Session) DiscardSpawnResources() {
 	sess.releaseCatalogSource()
-	if sess.spool != nil {
-		if err := sess.spool.close(true); err != nil {
+	if sess.wire.spool != nil {
+		if err := sess.wire.spool.close(true); err != nil {
 			log.Printf("close wire spool %s: %v", sess.id, err)
 		}
 	}

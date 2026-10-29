@@ -69,7 +69,7 @@ func claudeTestSession(t *testing.T) (*sessions.Session, *testsupport.Attachment
 
 func claudeWireEvents(sess *sessions.Session) []wire.Event {
 	recorder := httptest.NewRecorder()
-	sess.HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
+	sess.Wire().HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
 	var page struct {
 		Events []wire.Event `json:"events"`
 	}

@@ -226,7 +226,7 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 	}, func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 		return s.Catalog.SavedPromptRows(ctx, sess.ThreadID(), keys)
 	}, s.Catalog.SavedPromptRows, s.Catalog.SavedTurnFinal, s.SweepSubscriptions)
-	if err := sess.OpenWireSpool(s.SpoolDir); err != nil {
+	if err := sess.Wire().OpenWireSpool(s.SpoolDir); err != nil {
 		return nil, fmt.Errorf("create wire spool: %w", err)
 	}
 

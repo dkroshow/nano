@@ -24,11 +24,11 @@ func TestRestartRecordTakesLiveAndFailureFromTheLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		var got []string
-		sess := &Session{lifecycleState: snapshot, restartProgress: func(step observability.RestartStep) {
+		sess := sessionWithOwners(&Session{lifecycleState: snapshot, restartProgress: func(step observability.RestartStep) {
 			if step == restartLive {
 				got = append(got, "live")
 			}
-		}, restartFailure: func(reason string) { got = append(got, reason) }}
+		}, restartFailure: func(reason string) { got = append(got, reason) }})
 		sess.stateMu.Lock()
 		for _, event := range test.events {
 			sess.transitionLifecycleLocked(event)

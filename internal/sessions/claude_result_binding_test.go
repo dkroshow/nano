@@ -80,7 +80,7 @@ func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.S
 	sess, store := readyTransactionalSendTestSession(t, nil)
 	sess.provider, sess.hostedThreadID, sess.threadID = "claude", "hosted", "claude-settle"
 	sess.state = map[string]json.RawMessage{}
-	sess.subs = map[chan wire.Event]struct{}{}
+	sess.wire.subs = map[chan wire.Event]struct{}{}
 	sess.interactions = map[string]interact.PendingInteraction{}
 	recorder := &resultRecorder{}
 	sess.agentExecutions = recorder

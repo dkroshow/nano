@@ -144,10 +144,10 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 	before := liveWirePageEvents(sess)
 	prior := before[len(before)-1].Seq
 	spoolDir := t.TempDir()
-	if err := sess.OpenWireSpool(spoolDir); err != nil {
+	if err := sess.wire.OpenWireSpool(spoolDir); err != nil {
 		t.Fatal(err)
 	}
-	httpServer := httptest.NewServer(http.HandlerFunc(sess.HandleEvents))
+	httpServer := httptest.NewServer(http.HandlerFunc(sess.wire.HandleEvents))
 	defer httpServer.Close()
 	response, err := http.Get(httpServer.URL)
 	if err != nil {

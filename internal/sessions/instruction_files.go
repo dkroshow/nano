@@ -285,7 +285,7 @@ func (sess *Session) HandleInstructionFileWrite(w http.ResponseWriter, r *http.R
 		return
 	}
 	meta, _ = inspectInstructionFile(sess.provider, *src, pol)
-	sess.recordNanoEvent("nano/instructionFile/written", map[string]any{
+	sess.wire.recordNanoEvent("nano/instructionFile/written", map[string]any{
 		"path": src.Path, "mtime": meta.Mtime, "sizeBytes": meta.SizeBytes,
 	})
 	httpapi.WriteJSON(w, map[string]any{"file": meta})

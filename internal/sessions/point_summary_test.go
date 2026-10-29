@@ -13,20 +13,20 @@ import (
 // ordering (including timestamp precision), fields and exited-session filter.
 func TestAgentExecutionLiveHostedSessionSelectsOnlyMatchingSummary(t *testing.T) {
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	selected := &Session{
+	selected := sessionWithOwners(&Session{
 		id: "a", provider: "codex", hostedThreadID: "target", threadID: "native", displayName: "display",
 		model: "model", cwd: "/fixture", createdAt: created.Add(900 * time.Millisecond),
 		invokerHostedThreadID: "parent", invokerNativeThreadID: "parent-native", invokerProvider: "claude",
 		sidebarPlacement: threadvalues.SidebarPlacementStandalone, spawnMode: "resume", spawnError: "error",
 		lifecycleState: testLifecycleSnapshot("ready", true), turnStartedAtMs: 1234,
 		metadataDegraded: true, turnEffort: "high", permissionMode: "never", turnServiceTier: "fast",
-	}
-	unrelated := &Session{id: "unrelated", hostedThreadID: "other", lifecycleState: testLifecycleSnapshot("ready", false)}
+	})
+	unrelated := sessionWithOwners(&Session{id: "unrelated", hostedThreadID: "other", lifecycleState: testLifecycleSnapshot("ready", false)})
 	registry := NewRegistry()
 	for _, sess := range map[string]*Session{
 		"a":         selected,
-		"z":         {id: "z", hostedThreadID: "target", createdAt: created.Add(100 * time.Millisecond), lifecycleState: testLifecycleSnapshot("ready", false)},
-		"exited":    {id: "exited", hostedThreadID: "target", createdAt: created.Add(-time.Hour), lifecycleState: testLifecycleSnapshot("exited", false)},
+		"z":         sessionWithOwners(&Session{id: "z", hostedThreadID: "target", createdAt: created.Add(100 * time.Millisecond), lifecycleState: testLifecycleSnapshot("ready", false)}),
+		"exited":    sessionWithOwners(&Session{id: "exited", hostedThreadID: "target", createdAt: created.Add(-time.Hour), lifecycleState: testLifecycleSnapshot("exited", false)}),
 		"unrelated": unrelated,
 	} {
 		registry.RegisterSession(sess)

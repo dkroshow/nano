@@ -35,7 +35,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 	})
 	sess := f.session
 	spoolDir := t.TempDir()
-	if err := sess.OpenWireSpool(spoolDir); err != nil {
+	if err := sess.wire.OpenWireSpool(spoolDir); err != nil {
 		t.Fatal(err)
 	}
 	f.emitAndWait(t, []byte(liveTextDeltaTurnStarted))
@@ -107,7 +107,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 
 	// The public page flushes the spool before its file is inspected.
 	page := httptest.NewRecorder()
-	sess.HandleEventsPage(page, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
+	sess.wire.HandleEventsPage(page, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
 	if page.Code != http.StatusOK {
 		t.Fatalf("wire page = %d %s", page.Code, page.Body.String())
 	}

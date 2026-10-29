@@ -32,19 +32,20 @@ func reconnectTestSession(t *testing.T, daemon *CodexDaemon, threadID string) *S
 
 func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID string, queue *prompts.LegacyQueue, attempts *prompts.LegacyJournal) *Session {
 	t.Helper()
-	sess := &Session{id: threadID,
+	sess := sessionWithOwners(&Session{id: threadID,
 		provider:       "codex",
 		threadID:       threadID,
 		hostedThreadID: "hosted-" + threadID,
 		state:          map[string]json.RawMessage{},
-		subs:           map[chan wire.Event]struct{}{},
 		projection:     newDeliveryTestProjection("codex"),
 		sendOps:        map[string]*turnSendOperation{},
 		turns:          queue.TransactionStore(),
 		queuedTurns:    queue,
 		sendAttempts:   attempts,
 		codex:          daemon,
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	if err := daemon.claimThread(threadID, sess); err != nil {
 		t.Fatal(err)
 	}

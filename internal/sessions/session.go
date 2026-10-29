@@ -205,12 +205,6 @@ type Session struct {
 	// its identity, attachment record, and ready transition cannot interleave.
 	codexHandshakeMu sync.Mutex
 
-	mu     sync.Mutex
-	events []wire.Event
-	seq    int64
-	subs   map[chan wire.Event]struct{}
-	spool  *wireSpool
-
 	// mcp caches the projected MCP tool registry served by
 	// /api/sessions/{id}/mcp, invalidated from the wire (mcp_inventory.go).
 	mcp inspection.MCPCache
@@ -309,6 +303,18 @@ type Session struct {
 
 	// liveText is set for a provider switched to file-only transcripts.
 	liveText *LiveTextLoop
+	wire     Wire
+}
+
+// Wire owns the ordered raw event history, retained spool and event subscribers.
+type Wire struct {
+	session *Session
+
+	mu     sync.Mutex
+	events []wire.Event
+	seq    int64
+	subs   map[chan wire.Event]struct{}
+	spool  *wireSpool
 }
 
 // Summary is the public snapshot of an attachment identity, lifecycle, and provider settings.

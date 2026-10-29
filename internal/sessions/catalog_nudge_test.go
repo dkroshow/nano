@@ -105,43 +105,46 @@ func TestWireNudgesCatalogFiresOnTurnEdgesOnly(t *testing.T) {
 // records without a nudge, the turn edge records with one.
 func TestRecordWireNudgesCatalogOnTurnEdgesOnly(t *testing.T) {
 	var nudges int
-	sess := &Session{provider: "codex",
-		subs:              map[chan wire.Event]struct{}{},
+	sess := sessionWithOwners(&Session{provider: "codex",
 		catalogRefresh:    func(string) { nudges++ },
 		catalogSourcePath: "/sessions/rollout.jsonl",
-		lifecycleState:    testLifecycleSnapshot("ready", false)}
-	sess.recordWire(protocol.Recv, []byte(codexItemCompletedWire))
+		lifecycleState:    testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
+	sess.wire.recordWire(protocol.Recv, []byte(codexItemCompletedWire))
 	if nudges != 0 {
 		t.Fatalf("item/completed nudged the catalog %d times, want 0", nudges)
 	}
-	sess.recordWire(protocol.Recv, []byte(codexTurnCompletedWire))
+	sess.wire.recordWire(protocol.Recv, []byte(codexTurnCompletedWire))
 	if nudges != 1 {
 		t.Fatalf("turn/completed nudged the catalog %d times, want 1", nudges)
 	}
-	if len(sess.events) != 2 {
-		t.Fatalf("recorded %d wire events, want 2", len(sess.events))
+	if len(sess.wire.events) != 2 {
+		t.Fatalf("recorded %d wire events, want 2", len(sess.wire.events))
 	}
 }
 
 func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 	var codexPaths []string
-	codexSession := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
+	codexSession := sessionWithOwners(&Session{provider: "codex",
 		catalogRefresh: func(path string) { codexPaths = append(codexPaths, path) },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	codexSession.recordWire(protocol.Recv, []byte(codexThreadStartedWire))
-	codexSession.recordWire(protocol.Recv, []byte(codexTurnCompletedWire))
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
+	codexSession.wire.recordWire(protocol.Recv, []byte(codexThreadStartedWire))
+	codexSession.wire.recordWire(protocol.Recv, []byte(codexTurnCompletedWire))
 	wantCodex := "/home/user/.codex/sessions/2026/07/05/rollout-2026-07-05T18-02-36-c681a046-47a5-5fd8-92c7-9982f3468d5a.jsonl"
 	if len(codexPaths) != 2 || codexPaths[0] != wantCodex || codexPaths[1] != wantCodex {
 		t.Fatalf("codex refresh paths=%v, want cached %q twice", codexPaths, wantCodex)
 	}
 
 	var claudePath string
-	claudeSession := &Session{provider: "claude", threadID: "native-1", cwd: "/tmp/project",
-		subs:           map[chan wire.Event]struct{}{},
+	claudeSession := sessionWithOwners(&Session{provider: "claude", threadID: "native-1", cwd: "/tmp/project",
 		catalogRefresh: func(path string) { claudePath = path },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	claudeSession.recordWire(protocol.Send, []byte(claudeUserTurnWire))
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
+	claudeSession.wire.recordWire(protocol.Send, []byte(claudeUserTurnWire))
 	if want := claudeTranscriptPath("/tmp/project", "native-1"); claudePath != want {
 		t.Fatalf("claude refresh path=%q, want %q", claudePath, want)
 	}
@@ -152,15 +155,16 @@ func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 // fleet feed needs to report a claude session as working.
 func TestRecordWireNudgesCatalogOnClaudeTurnStart(t *testing.T) {
 	var nudges int
-	sess := &Session{provider: "claude", threadID: "native-1", cwd: "/tmp/project",
-		subs:           map[chan wire.Event]struct{}{},
+	sess := sessionWithOwners(&Session{provider: "claude", threadID: "native-1", cwd: "/tmp/project",
 		catalogRefresh: func(string) { nudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.recordWire(protocol.Recv, []byte(claudeAssistantWire))
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
+	sess.wire.recordWire(protocol.Recv, []byte(claudeAssistantWire))
 	if nudges != 0 {
 		t.Fatalf("assistant line nudged the catalog %d times, want 0", nudges)
 	}
-	sess.recordWire(protocol.Send, []byte(claudeUserTurnWire))
+	sess.wire.recordWire(protocol.Send, []byte(claudeUserTurnWire))
 	if nudges != 1 {
 		t.Fatalf("sent user line nudged the catalog %d times, want 1", nudges)
 	}
@@ -169,12 +173,13 @@ func TestRecordWireNudgesCatalogOnClaudeTurnStart(t *testing.T) {
 // TestRecordWireWithoutCatalogRefreshIsSafe proves a session spawned while the
 // catalog is unavailable (nil callback) records nudging lines without panicking.
 func TestRecordWireWithoutCatalogRefreshIsSafe(t *testing.T) {
-	sess := &Session{provider: "claude",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.recordWire(protocol.Recv, []byte(claudeResultWire))
-	if len(sess.events) != 1 {
-		t.Fatalf("recorded %d wire events, want 1", len(sess.events))
+	sess := sessionWithOwners(&Session{provider: "claude",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
+	sess.wire.recordWire(protocol.Recv, []byte(claudeResultWire))
+	if len(sess.wire.events) != 1 {
+		t.Fatalf("recorded %d wire events, want 1", len(sess.wire.events))
 	}
 }
 
@@ -183,10 +188,10 @@ func TestRecordWireWithoutCatalogRefreshIsSafe(t *testing.T) {
 // parent's raw-wire recording path.
 func TestRecordWireRawStartsNoCatalogWorkForUnattachedChild(t *testing.T) {
 	nudges := 0
-	sess := &Session{provider: "grok",
+	sess := sessionWithOwners(&Session{provider: "grok",
 		catalogRefresh: func(string) { nudges++ },
-		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.recordWireRaw(protocol.Recv, []byte(`{"method":"_x.ai/session/prompt_complete","params":{"sessionId":"child","promptId":"child-prompt","stopReason":"end_turn"}}`))
+		lifecycleState: testLifecycleSnapshot("ready", false)})
+	sess.wire.recordWireRaw(protocol.Recv, []byte(`{"method":"_x.ai/session/prompt_complete","params":{"sessionId":"child","promptId":"child-prompt","stopReason":"end_turn"}}`))
 	if nudges != 0 {
 		t.Fatalf("raw child terminal nudges = %d, want 0", nudges)
 	}

@@ -159,9 +159,10 @@ func TestRouteInteractionLegacyPair(t *testing.T) {
 // and claiming is single-shot so a second tab's answer collapses rather than
 // double-responding.
 func TestPendingInteractionsAreServerOwned(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	p := interact.PendingInteraction{ID: "7", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "2026-07-30T10:00:00Z"}
 	sess.addPendingInteraction(p)
 
@@ -170,7 +171,7 @@ func TestPendingInteractionsAreServerOwned(t *testing.T) {
 	}
 	// The nudge rides the session's own feed as a nano-origin notification.
 	found := false
-	for _, evt := range sess.events {
+	for _, evt := range sess.wire.events {
 		var msg struct {
 			Method string `json:"method"`
 		}
@@ -196,9 +197,10 @@ func TestPendingInteractionsAreServerOwned(t *testing.T) {
 // TestHandleInteractionAlreadyResolved: answering something already answered is
 // a 409 the card collapses on, not an error the operator has to read.
 func TestHandleInteractionAlreadyResolved(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/x/interactions/7", strings.NewReader(`{"decision":"accept"}`))
 	sess.HandleInteraction(rec, req, "7")
@@ -210,9 +212,10 @@ func TestHandleInteractionAlreadyResolved(t *testing.T) {
 // TestHandleInteractionKeepsMalformedAnswerPending: a typo must not consume the
 // dialog — losing it would leave the turn parked with no card to answer it.
 func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	sess.addPendingInteraction(interact.PendingInteraction{
 		ID: "7", Method: methodRequestUserInput, Kind: kindUserInput,
 		Params: json.RawMessage(`{"questions":[{"id":"q1"}]}`), CreatedAt: "2026-07-30T10:00:00Z",
@@ -235,9 +238,10 @@ func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
 // answers. Observed live 2026-07-30.
 func TestServerRequestResolvedCollapses(t *testing.T) {
 	daemon := NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true })
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+	sess := sessionWithOwners(&Session{provider: "codex",
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	sess.threadID = "thread_a"
 	daemon.sessions["thread_a"] = sess
 	sess.addPendingInteraction(interact.PendingInteraction{
@@ -260,10 +264,11 @@ func TestServerRequestResolvedCollapses(t *testing.T) {
 // so a request left unanswered when a session goes away holds its turn open
 // with nobody able to reach it.
 func TestCloseInteractionsAnswersEverythingParked(t *testing.T) {
-	sess := &Session{provider: "codex",
-		subs:           map[chan wire.Event]struct{}{},
+	sess := sessionWithOwners(&Session{provider: "codex",
 		codex:          NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true }),
-		lifecycleState: testLifecycleSnapshot("ready", false)}
+		lifecycleState: testLifecycleSnapshot("ready", false),
+		wire: Wire{
+			subs: map[chan wire.Event]struct{}{}}})
 	sess.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "a"})
 	sess.addPendingInteraction(interact.PendingInteraction{ID: "2", Method: methodRequestUserInput, Kind: kindUserInput, CreatedAt: "b"})
 
@@ -273,7 +278,7 @@ func TestCloseInteractionsAnswersEverythingParked(t *testing.T) {
 		t.Fatalf("still parked after close: %+v", got)
 	}
 	var resolved int
-	for _, evt := range sess.events {
+	for _, evt := range sess.wire.events {
 		var msg struct {
 			Method string `json:"method"`
 		}

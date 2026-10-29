@@ -8,10 +8,10 @@ import (
 )
 
 func lifecycleTestSession(status string, active bool, turnID string) *Session {
-	return &Session{turnID: turnID,
+	return sessionWithOwners(&Session{turnID: turnID,
 		attachmentGeneration: 1,
 		state:                map[string]json.RawMessage{},
-		lifecycleState:       testLifecycleSnapshot(status, active)}
+		lifecycleState:       testLifecycleSnapshot(status, active)})
 }
 
 func TestSessionLifecycleConnectionLossHidesWork(t *testing.T) {

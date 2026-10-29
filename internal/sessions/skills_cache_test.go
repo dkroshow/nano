@@ -26,14 +26,14 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 	cwds := []string{t.TempDir(), t.TempDir(), t.TempDir()}
 	sessions := make([]*Session, 40)
 	for i := range sessions {
-		sessions[i] = &Session{
+		sessions[i] = sessionWithOwners(&Session{
 			id:       NewID(),
 			provider: "codex",
 			cwd:      cwds[i%len(cwds)],
 			codex:    daemon,
 			skills:   cache,
 			state:    map[string]json.RawMessage{},
-		}
+		})
 	}
 
 	var wg sync.WaitGroup

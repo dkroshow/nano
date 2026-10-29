@@ -85,8 +85,8 @@ func (sess *Session) closeProvider(requireReady bool) error {
 		sess.closeInteractions()
 		_ = grok.Close()
 	}
-	if sess.spool != nil {
-		if err := sess.spool.close(true); err != nil {
+	if sess.wire.spool != nil {
+		if err := sess.wire.spool.close(true); err != nil {
 			log.Printf("close wire spool %s: %v", sess.id, err)
 		}
 	}

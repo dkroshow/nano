@@ -28,3 +28,9 @@ func resumeCodexFixture(t *testing.T, cfg Config, nativeID string, fake *fakeApp
 	t.Cleanup(sess.Close)
 	return sess
 }
+
+// sessionWithOwners retains fixture state while connecting the concrete owners.
+func sessionWithOwners(sess *Session) *Session {
+	sess.wire.session = sess
+	return sess
+}

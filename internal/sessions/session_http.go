@@ -21,7 +21,7 @@ import (
 )
 
 // HandleEvents streams the attachment ordered wire events.
-func (sess *Session) HandleEvents(w http.ResponseWriter, r *http.Request) {
+func (sess *Wire) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		httpapi.WriteHTTPError(w, "streaming unsupported", http.StatusInternalServerError)
@@ -77,7 +77,7 @@ func (sess *Session) HandleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleEventsPage serves a page of retained attachment wire events.
-func (sess *Session) HandleEventsPage(w http.ResponseWriter, r *http.Request) {
+func (sess *Wire) HandleEventsPage(w http.ResponseWriter, r *http.Request) {
 	limit := 500
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
