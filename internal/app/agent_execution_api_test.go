@@ -18,6 +18,7 @@ import (
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -1580,9 +1581,9 @@ func TestHostedThreadSidebarPlacementEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hub := newRuntimeHub()
-	changes := hub.subscribe()
-	t.Cleanup(func() { hub.unsubscribe(changes) })
+	hub := sidebar.NewRuntimeHub()
+	changes := hub.Subscribe()
+	t.Cleanup(func() { hub.Unsubscribe(changes) })
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control, runtimeEvents: hub}
 	put := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()

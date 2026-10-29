@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 func (s *server) hostedController() *hosted.Controller {
@@ -38,7 +39,7 @@ func newHostedController(s *server) *hosted.Controller {
 		NotifyRuntime: s.notifyRuntime, RefreshRuntime: s.notifyRuntimeRefresh,
 		PublishRelationshipChange: func() {
 			if s.runtimeEvents != nil {
-				s.runtimeEvents.notify(runtimeDelta{Refresh: true})
+				s.runtimeEvents.Notify(sidebar.RuntimeDelta{Refresh: true})
 			}
 		},
 		LegacyCreate: s.handleSessionCreateAction,

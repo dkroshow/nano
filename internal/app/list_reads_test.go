@@ -211,7 +211,7 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 		catalog: f.catalog, Registry: newSessionRegistry(),
 		attachments: attachments, threadStars: stars,
 		controlMetadata: metadata, agentExecutions: executions,
-		runtimeEvents: newRuntimeHub(), mailEvents: newMailHub(), mail: newTestAgentMessageStore(t),
+		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: newMailHub(), mail: newTestAgentMessageStore(t),
 	}, sessions)
 	s.runtime = s
 	nameOwner = s

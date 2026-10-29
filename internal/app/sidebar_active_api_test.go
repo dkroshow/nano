@@ -234,7 +234,7 @@ func TestSidebarManualCloseOverridesWatchedFleetUntilTreeDisappears(t *testing.T
 	closed.Starred = false
 	parent := catalogThread{Thread: threadindex.Thread{ID: "parent", Provider: "codex", NativeID: "parent-native"}, HostedThreadID: "hosted-parent", HostedStatus: sessionStatusExited, Fleet: watched}
 	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", HostedStatus: "ready", InvokerHostedThreadID: parent.HostedThreadID, Fleet: watched}
-	child.Runtime = &runtimeInfo{Attached: true, Status: "ready", TurnActive: true}
+	child.Runtime = &sidebar.RuntimeInfo{Attached: true, Status: "ready", TurnActive: true}
 	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{parent, child}, sidebarRuntimeSnapshot{})
 	if !nodes[0].included || !nodes[0].structural || !nodes[1].included {
@@ -250,7 +250,7 @@ func TestSidebarManualCloseOverridesWatchedFleetUntilTreeDisappears(t *testing.T
 
 func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
 	root := catalogThread{Thread: threadindex.Thread{ID: "root", Provider: "codex", NativeID: "root-native"}, HostedThreadID: "hosted-root", HostedStatus: sessionStatusExited}
-	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", HostedStatus: agentSessionDetached, InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true}}
+	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", HostedStatus: agentSessionDetached, InvokerHostedThreadID: root.HostedThreadID, Runtime: &sidebar.RuntimeInfo{Detached: true}}
 	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child}, sidebarRuntimeSnapshot{})
 	if nodes[0].included || nodes[1].included {
@@ -272,9 +272,9 @@ func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
 // stayed resting. A resting thread keeps its place like an attached one; a
 // detached one is still history. Boundary: sidebar assembly.
 func TestSidebarKeepsRestingThreadsActive(t *testing.T) {
-	root := catalogThread{Thread: threadindex.Thread{ID: "root", Provider: "codex", NativeID: "root-native"}, HostedThreadID: "hosted-root", Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
-	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", InvokerHostedThreadID: root.HostedThreadID, Runtime: &runtimeInfo{Detached: true, Status: "resting"}}
-	detached := catalogThread{Thread: threadindex.Thread{ID: "detached", Provider: "codex", NativeID: "detached-native"}, HostedThreadID: "hosted-detached", Runtime: &runtimeInfo{Detached: true}}
+	root := catalogThread{Thread: threadindex.Thread{ID: "root", Provider: "codex", NativeID: "root-native"}, HostedThreadID: "hosted-root", Runtime: &sidebar.RuntimeInfo{Detached: true, Status: "resting"}}
+	child := catalogThread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", InvokerHostedThreadID: root.HostedThreadID, Runtime: &sidebar.RuntimeInfo{Detached: true, Status: "resting"}}
+	detached := catalogThread{Thread: threadindex.Thread{ID: "detached", Provider: "codex", NativeID: "detached-native"}, HostedThreadID: "hosted-detached", Runtime: &sidebar.RuntimeInfo{Detached: true}}
 	s := &server{Registry: newSessionRegistry()}
 	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []catalogThread{root, child, detached}, sidebarRuntimeSnapshot{})
 	included := map[string]bool{}
@@ -534,7 +534,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 		catalog: svc, Registry: newSessionRegistry(),
 		attachments: attachments, threadStars: stars,
 		controlMetadata: metadata, agentExecutions: executions,
-		runtimeEvents: newRuntimeHub(), mailEvents: newMailHub(),
+		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: newMailHub(),
 		mail: newTestAgentMessageStore(t),
 	}, map[string]*session{
 		"sess-attached": attached, "sess-parent": parentLive, "sess-child": childLive,

@@ -566,8 +566,8 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.prepareBootReattach()
-	updates := s.runtimeEvents.subscribe()
-	defer s.runtimeEvents.unsubscribe(updates)
+	updates := s.runtimeEvents.Subscribe()
+	defer s.runtimeEvents.Unsubscribe(updates)
 
 	s.runtimeSnapshotMu.Lock()
 	held := true
@@ -638,8 +638,8 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.prepareBootReattach()
-	updates := s.runtimeEvents.subscribe()
-	defer s.runtimeEvents.unsubscribe(updates)
+	updates := s.runtimeEvents.Subscribe()
+	defer s.runtimeEvents.Unsubscribe(updates)
 
 	s.runtimeSnapshotMu.Lock()
 	held := true
@@ -723,8 +723,8 @@ published:
 func TestBootReattachRuntimeGateKeepsRefreshAndPrioritizedRegistration(t *testing.T) {
 	s, daemon, rec := startingCodexServer(t)
 	daemon.SetReplyDelay("thread/resume", 10*time.Second)
-	updates := s.runtimeEvents.subscribe()
-	defer s.runtimeEvents.unsubscribe(updates)
+	updates := s.runtimeEvents.Subscribe()
+	defer s.runtimeEvents.Unsubscribe(updates)
 	s.publishRuntime(false)
 	<-updates
 	// The prepared starting thread is opened while the boot publisher is active.
@@ -1575,8 +1575,8 @@ func TestPromptToAStartingThreadRegistersItOnceAndQueues(t *testing.T) {
 func TestOpeningAStartingThreadRegistersItFirst(t *testing.T) {
 	s, daemon, rec := startingCodexServer(t)
 	daemon.SetReplyDelay("thread/resume", 10*time.Second)
-	updates := s.runtimeEvents.subscribe()
-	defer s.runtimeEvents.unsubscribe(updates)
+	updates := s.runtimeEvents.Subscribe()
+	defer s.runtimeEvents.Unsubscribe(updates)
 	handler := applicationHandler(s)
 	prioritize := func() string {
 		t.Helper()

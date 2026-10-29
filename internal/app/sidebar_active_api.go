@@ -13,6 +13,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -86,7 +87,7 @@ type sidebarNode struct {
 }
 
 type sidebarRuntimeSnapshot struct {
-	overlays  map[attachmentKey]runtimeInfo
+	overlays  map[attachmentKey]sidebar.RuntimeInfo
 	batched   bool
 	summaries []sessions.Summary
 }

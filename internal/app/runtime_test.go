@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/catalog"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -64,7 +65,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 
 	assertRuntime := func(t *testing.T, raw json.RawMessage, wantTurnActive bool) {
 		t.Helper()
-		var runtime runtimeInfo
+		var runtime sidebar.RuntimeInfo
 		if err := json.Unmarshal(raw, &runtime); err != nil {
 			t.Fatal(err)
 		}
@@ -144,6 +145,8 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 // a dead session lingering in the map must not read as attached, and must not
 // hide the detached record behind it.
 func TestRuntimeForThreeStates(t *testing.T) {
+	// A nil runtime hub leaves the application publisher inert.
+	(&server{}).notifyRuntime()
 	attachments := newTestStore(t)
 	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "codex-detached", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	attachments.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
@@ -164,18 +167,18 @@ func TestRuntimeForThreeStates(t *testing.T) {
 		name     string
 		provider string
 		nativeID string
-		want     runtimeInfo
+		want     sidebar.RuntimeInfo
 		wantOK   bool
 	}{
-		{"codex attached working", "codex", "codex-live", runtimeInfo{Attached: true, SessionID: "s1", Status: "ready", TurnActive: true, TurnStartedAtMs: 1787600000000, ThreadStatus: fleetWorking, PresentationMode: presentationShared}, true},
-		{"claude attached starting", "claude", "claude-live", runtimeInfo{Attached: true, SessionID: "s2", Status: "starting", ThreadStatus: fleetIdle, PresentationMode: presentationShared}, true},
-		{"codex detached", "codex", "codex-detached", runtimeInfo{Detached: true}, true},
-		{"claude detached", "claude", "claude-detached", runtimeInfo{Detached: true}, true},
-		{"exited session with record reads detached", "claude", "claude-exited", runtimeInfo{Detached: true}, true},
-		{"exited session without record reads absent", "codex", "codex-gone", runtimeInfo{}, false},
-		{"unknown thread", "codex", "never-seen", runtimeInfo{}, false},
-		{"wrong provider for the record", "codex", "claude-detached", runtimeInfo{}, false},
-		{"empty native id", "codex", "", runtimeInfo{}, false},
+		{"codex attached working", "codex", "codex-live", sidebar.RuntimeInfo{Attached: true, SessionID: "s1", Status: "ready", TurnActive: true, TurnStartedAtMs: 1787600000000, ThreadStatus: fleetWorking, PresentationMode: presentationShared}, true},
+		{"claude attached starting", "claude", "claude-live", sidebar.RuntimeInfo{Attached: true, SessionID: "s2", Status: "starting", ThreadStatus: fleetIdle, PresentationMode: presentationShared}, true},
+		{"codex detached", "codex", "codex-detached", sidebar.RuntimeInfo{Detached: true}, true},
+		{"claude detached", "claude", "claude-detached", sidebar.RuntimeInfo{Detached: true}, true},
+		{"exited session with record reads detached", "claude", "claude-exited", sidebar.RuntimeInfo{Detached: true}, true},
+		{"exited session without record reads absent", "codex", "codex-gone", sidebar.RuntimeInfo{}, false},
+		{"unknown thread", "codex", "never-seen", sidebar.RuntimeInfo{}, false},
+		{"wrong provider for the record", "codex", "claude-detached", sidebar.RuntimeInfo{}, false},
+		{"empty native id", "codex", "", sidebar.RuntimeInfo{}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -188,7 +191,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 
 	// A server without an attachment store simply has no detached state.
 	bare := &server{Registry: newSessionRegistry()}
-	if info, ok := bare.RuntimeFor("codex", "codex-detached"); ok || !reflect.DeepEqual(info, runtimeInfo{}) {
+	if info, ok := bare.RuntimeFor("codex", "codex-detached"); ok || !reflect.DeepEqual(info, sidebar.RuntimeInfo{}) {
 		t.Fatalf("nil attachment store = %#v, %v", info, ok)
 	}
 }
@@ -221,9 +224,9 @@ func TestDetachedOverlayJSON(t *testing.T) {
 // runtime overlay, so open Explorers must be told to refetch — the same nudge
 // bind and unbind fire.
 func TestAttachmentDismissNudgesRuntime(t *testing.T) {
-	s := &server{attachments: newTestStore(t), runtimeEvents: newRuntimeHub(), Registry: newSessionRegistry()}
+	s := &server{attachments: newTestStore(t), runtimeEvents: sidebar.NewRuntimeHub(), Registry: newSessionRegistry()}
 	s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "t-1", AttachedAt: "2026-07-27T10:00:00Z"})
-	nudges := s.runtimeEvents.subscribe()
+	nudges := s.runtimeEvents.Subscribe()
 
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/t-1", nil))
@@ -288,7 +291,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 
 	// Creation/provider metadata can publish independent runtime wakeups. Skip
 	// those lossy hints and require the real ready attachment delta.
-	readRuntimeUntil(t, reader, "ready", func(delta runtimeDelta) bool {
+	readRuntimeUntil(t, reader, "ready", func(delta sidebar.RuntimeDelta) bool {
 		return len(delta.Sessions) == 1 && delta.Sessions[0].ThreadID == threadID && len(delta.Rows) == 1 && delta.Rows[0].NativeID == threadID
 	})
 	if got := waitForSessionStatus(t, s, sum.ID, "ready"); got.ThreadID != threadID {
@@ -297,7 +300,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 
 	// turnActive flip.
 	fakeCodex.EmitThreadNotification(threadID, map[string]any{"method": "turn/started", "params": map[string]any{"threadId": threadID}})
-	readRuntimeUntil(t, reader, "turnActive", func(delta runtimeDelta) bool {
+	readRuntimeUntil(t, reader, "turnActive", func(delta sidebar.RuntimeDelta) bool {
 		return !delta.Refresh && len(delta.Rows) == 1 && delta.Rows[0].Runtime != nil && delta.Rows[0].Runtime.TurnActive
 	})
 
@@ -316,7 +319,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	if event, data := readSSEEvent(t, reader); event != "runtime" {
 		t.Fatalf("unbind event = %q %q, want runtime delta", event, data)
 	} else {
-		var delta runtimeDelta
+		var delta sidebar.RuntimeDelta
 		err := json.Unmarshal([]byte(data), &delta)
 		// The closed session is listed as exited until the registry drops it.
 		listed := slices.Equal(delta.RemovedSessions, []string{sum.ID}) ||
@@ -329,7 +332,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	// A page whose list read came just before the latest delta connects from
 	// that position: its first runtime event replays what it missed, up to now,
 	// instead of a refresh that would read the list again.
-	at := s.runtimeEvents.position()
+	at := s.runtimeEvents.Position()
 	query := url.Values{"runtimeGeneration": {at.Generation}, "runtimeSeq": {strconv.FormatUint(at.Seq-1, 10)}}
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"?"+query.Encode(), nil)
 	if err != nil {
@@ -340,7 +343,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer replay.Body.Close()
-	readRuntimeUntil(t, bufio.NewReader(replay.Body), "replay", func(delta runtimeDelta) bool {
+	readRuntimeUntil(t, bufio.NewReader(replay.Body), "replay", func(delta sidebar.RuntimeDelta) bool {
 		if delta.Refresh || delta.Seq < at.Seq {
 			t.Fatalf("first runtime event after connecting from seq %d = %+v, want the replay through seq %d", at.Seq-1, delta, at.Seq)
 		}
@@ -348,14 +351,14 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	})
 }
 
-func readRuntimeUntil(t *testing.T, reader *bufio.Reader, want string, matches func(runtimeDelta) bool) {
+func readRuntimeUntil(t *testing.T, reader *bufio.Reader, want string, matches func(sidebar.RuntimeDelta) bool) {
 	t.Helper()
 	for attempts := 0; attempts < 8; attempts++ {
 		event, data := readSSEEvent(t, reader)
 		if event != "runtime" {
 			continue
 		}
-		var delta runtimeDelta
+		var delta sidebar.RuntimeDelta
 		if err := json.Unmarshal([]byte(data), &delta); err != nil {
 			t.Fatalf("%s runtime JSON %q: %v", want, data, err)
 		}
@@ -364,57 +367,6 @@ func readRuntimeUntil(t *testing.T, reader *bufio.Reader, want string, matches f
 		}
 	}
 	t.Fatalf("did not receive %s runtime transition after metadata-only wakeups", want)
-}
-
-// TestRuntimeHubConflatesAndNeverBlocks mirrors the catalog hub guarantees for
-// the runtime hub: a never-draining subscriber cannot stall notify, repeated
-// nudges conflate into the single pending slot, and unsubscribe is idempotent.
-func TestRuntimeHubConflatesAndNeverBlocks(t *testing.T) {
-	hub := newRuntimeHub()
-	slow := hub.subscribe()
-
-	done := make(chan struct{})
-	go func() {
-		hub.notify()
-		hub.notify()
-		hub.notify()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("notify blocked on a slow subscriber")
-	}
-	if len(slow) != 1 {
-		t.Fatalf("pending nudges = %d, want 1 (conflated)", len(slow))
-	}
-	first := <-slow
-	hub.notify(runtimeDelta{Rows: []runtimeDeltaRow{{Provider: "codex", NativeID: "old"}}})
-	hub.notify(runtimeDelta{Rows: []runtimeDeltaRow{{Provider: "codex", NativeID: "latest"}}})
-	latest := <-slow
-	if len(first.Rows) != 0 || len(latest.Rows) != 2 || latest.Rows[0].NativeID != "latest" || latest.Rows[1].NativeID != "old" {
-		t.Fatalf("runtime deltas = first:%#v latest:%#v, want the pending rows merged", first, latest)
-	}
-
-	hub.unsubscribe(slow)
-	hub.unsubscribe(slow) // idempotent, no double-close
-	hub.notify()          // no subscribers, no panic
-
-	// A nil hub on the server is inert.
-	(&server{}).notifyRuntime()
-}
-
-func TestRuntimeHubPreservesPendingRefresh(t *testing.T) {
-	hub := newRuntimeHub()
-	slow := hub.subscribe()
-	defer hub.unsubscribe(slow)
-
-	hub.notify(runtimeDelta{Refresh: true})
-	hub.notify(runtimeDelta{Rows: []runtimeDeltaRow{{Provider: "codex", NativeID: "latest"}}})
-	latest := <-slow
-	if !latest.Refresh || len(latest.Rows) != 1 || latest.Rows[0].NativeID != "latest" {
-		t.Fatalf("conflated runtime delta = %#v, want latest rows with pending refresh", latest)
-	}
 }
 
 // Failure caught (2026-10-19, served after a restart): each change event of
@@ -441,11 +393,11 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	// rows of any kind, runtime overlays included: first 33 of the parked
 	// threads re-attaching together (33 sessions + 33 detached keys, only 33
 	// runtime rows), then a burst of new sessions.
-	s.runtimeEvents = newRuntimeHub()
-	browser := s.runtimeEvents.subscribe()
-	defer s.runtimeEvents.unsubscribe(browser)
-	emptyRefresh := func(event runtimeDelta) bool {
-		return event.Refresh && event.rebuild && !event.sidebarCurrent && event.Rows != nil &&
+	s.runtimeEvents = sidebar.NewRuntimeHub()
+	browser := s.runtimeEvents.Subscribe()
+	defer s.runtimeEvents.Unsubscribe(browser)
+	emptyRefresh := func(event sidebar.RuntimeDelta) bool {
+		return event.Refresh && event.Rebuild && !event.SidebarCurrent && event.Rows != nil &&
 			len(event.Rows)+len(event.Sessions)+len(event.RemovedSessions)+len(event.DetachedRows)+len(event.RemovedDetached) == 0
 	}
 	for i := 1; i <= 33; i++ {
@@ -459,113 +411,13 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 		t.Fatalf("33 re-attaches = refresh:%v rows %d sessions %d removed detached %d, want an empty refresh marker",
 			reattach.Refresh, len(reattach.Rows), len(reattach.Sessions), len(reattach.RemovedDetached))
 	}
-	for i := 1; i <= runtimeChangeLimit+1; i++ {
+	for i := 1; i <= sidebar.RuntimeChangeLimit+1; i++ {
 		id := fmt.Sprintf("s-%d", i)
 		s.RegisterSession(memorySession(t, id, "codex", fmt.Sprintf("burst-%02d", i), "ready", "/w", "gpt-5.6-sol", now))
 	}
 	s.publishRuntimeDelta(false, false)
 	if burst := <-browser; !emptyRefresh(burst) {
-		t.Fatalf("burst event = refresh:%v rebuild:%v rows %d sessions %d, want an empty refresh marker", burst.Refresh, burst.rebuild, len(burst.Rows), len(burst.Sessions))
-	}
-}
-
-// A slow subscriber's pending deltas merge; small changes that add up past
-// the bound reach it as one refresh marker, not as an unbounded event.
-func TestRuntimeHubBoundsAMergedBacklog(t *testing.T) {
-	hub := newRuntimeHub()
-	slow := hub.subscribe()
-	defer hub.unsubscribe(slow)
-	for i := range runtimeChangeLimit + 1 {
-		hub.notify(runtimeDelta{Rows: []runtimeDeltaRow{{Provider: "codex", NativeID: fmt.Sprintf("t-%02d", i)}}})
-	}
-	merged := <-slow
-	if !merged.Refresh || merged.Rows == nil || len(merged.Rows) != 0 {
-		t.Fatalf("merged backlog = refresh:%v rows %d, want an empty refresh marker", merged.Refresh, len(merged.Rows))
-	}
-}
-
-// A page reads the session list at a stream position and connects from it.
-// Before, runtime events were not replayed, so every page load read the list
-// again when its stream opened. A connect from a position this process still
-// holds must replay exactly what came after it; one it cannot replay must
-// refresh, or the page keeps a stale list with nothing to correct it.
-func TestRuntimeHubReplaysFromAListReadPosition(t *testing.T) {
-	hub := newRuntimeHub()
-	row := func(id string) runtimeDelta {
-		return runtimeDelta{Rows: []runtimeDeltaRow{{Provider: "codex", NativeID: id}}}
-	}
-	hub.notify(row("before-read"))
-	read := hub.position()
-	hub.notify(row("missed-1"))
-	hub.notify(row("missed-2"))
-	connect := func(from runtimePosition) (runtimeDelta, bool) {
-		ch := hub.subscribeFrom(from)
-		defer hub.unsubscribe(ch)
-		select {
-		case delta := <-ch:
-			return delta, true
-		default:
-			return runtimeDelta{}, false
-		}
-	}
-
-	replayed, ok := connect(read)
-	ids := []string{}
-	for _, r := range replayed.Rows {
-		ids = append(ids, r.NativeID)
-	}
-	if !ok || replayed.Refresh || !slices.Equal(ids, []string{"missed-1", "missed-2"}) || replayed.Seq != read.Seq+2 {
-		t.Fatalf("connect from the read = %v %+v, want missed-1 and missed-2 at seq %d", ok, replayed, read.Seq+2)
-	}
-	if delta, ok := connect(hub.position()); ok {
-		t.Fatalf("connect from the current position replayed %+v, want nothing", delta)
-	}
-	for name, from := range map[string]runtimePosition{
-		"another process": {Generation: "restarted", Seq: read.Seq},
-		"no read yet":     {},
-	} {
-		if delta, ok := connect(from); !ok || !delta.Refresh {
-			t.Fatalf("connect from %s = %v %+v, want a refresh", name, ok, delta)
-		}
-	}
-	for i := range runtimeReplayLimit {
-		hub.notify(row(fmt.Sprintf("later-%02d", i)))
-	}
-	if delta, ok := connect(read); !ok || !delta.Refresh {
-		t.Fatalf("connect from a position older than the kept deltas = %v %+v, want a refresh", ok, delta)
-	}
-}
-
-// A slow subscriber reads merged deltas; merging session changes wrongly
-// would leave its page holding a session that left, or missing one that
-// came back, with no list read to correct it.
-func TestRuntimeHubMergesSessionChanges(t *testing.T) {
-	hub := newRuntimeHub()
-	slow := hub.subscribe()
-	defer hub.unsubscribe(slow)
-
-	row := func(id string) listedSession { return listedSession{Summary: sessionSummary{ID: id}} }
-	detached := func(native string) detachedSessionView {
-		return detachedSessionView{attachmentRecord: attachmentRecord{Provider: "codex", NativeThreadID: native}}
-	}
-	hub.notify(runtimeDelta{
-		Sessions: []listedSession{row("came-and-left")}, RemovedSessions: []string{"left-and-came"},
-		DetachedRows: []detachedSessionView{detached("parked-then-attached")}, RemovedDetached: []string{"codex:attached-then-parked"},
-	})
-	hub.notify(runtimeDelta{
-		Sessions: []listedSession{row("left-and-came")}, RemovedSessions: []string{"came-and-left"},
-		DetachedRows: []detachedSessionView{detached("attached-then-parked")}, RemovedDetached: []string{"codex:parked-then-attached"},
-	})
-	merged := <-slow
-	if len(merged.Sessions) != 1 || merged.Sessions[0].ID != "left-and-came" ||
-		!slices.Equal(merged.RemovedSessions, []string{"came-and-left"}) {
-		t.Fatalf("merged session changes = sessions %+v removed %v, want left-and-came present and came-and-left removed",
-			merged.Sessions, merged.RemovedSessions)
-	}
-	if len(merged.DetachedRows) != 1 || merged.DetachedRows[0].NativeThreadID != "attached-then-parked" ||
-		!slices.Equal(merged.RemovedDetached, []string{"codex:parked-then-attached"}) {
-		t.Fatalf("merged detached changes = rows %+v removed %v, want attached-then-parked present and parked-then-attached removed",
-			merged.DetachedRows, merged.RemovedDetached)
+		t.Fatalf("burst event = refresh:%v Rebuild:%v rows %d sessions %d, want an empty refresh marker", burst.Refresh, burst.Rebuild, len(burst.Rows), len(burst.Sessions))
 	}
 }
 
@@ -611,7 +463,7 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 	s := &server{Registry: newSessionRegistry()}
 	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
 
-	carries := func(delta runtimeDelta) bool {
+	carries := func(delta sidebar.RuntimeDelta) bool {
 		return !delta.Refresh && len(delta.Sessions) == 1 && delta.Sessions[0].ID == "pending"
 	}
 	s.RegisterSession(pending)
@@ -740,23 +592,5 @@ func TestRuntimeDeltaCarriesOnlyChangedRows(t *testing.T) {
 	gone := s.runtimeDeltaSnapshot()
 	if gone.Refresh || !slices.Equal(gone.RemovedSessions, []string{"sess-b"}) || len(gone.Rows) != 1 || gone.Rows[0].NativeID != "thread-b" || gone.Rows[0].Runtime != nil {
 		t.Fatalf("release delta = refresh:%v removed:%v %#v, want sess-b removed and thread-b with no overlay", gone.Refresh, gone.RemovedSessions, gone.Rows)
-	}
-}
-
-// A refresh that needs the sidebar rebuilt, merged with a later star update
-// that applied cleanly, must still rebuild: the materializer reads one flag.
-func TestRuntimeHubMergeKeepsRebuildNeed(t *testing.T) {
-	hub := newRuntimeHub()
-	slow := hub.subscribe()
-	defer hub.unsubscribe(slow)
-
-	hub.notify(runtimeDelta{Refresh: true})
-	hub.notify(runtimeDelta{Refresh: true, sidebarCurrent: true, Rows: []runtimeDeltaRow{}})
-	merged := <-slow
-	if !merged.Refresh || merged.sidebarCurrent {
-		t.Fatalf("merged delta = %+v, want refresh with the rebuild still needed", merged)
-	}
-	if merged.Rows == nil {
-		t.Fatal("merged delta lost its rows field; browsers read a missing one as a whole-list read")
 	}
 }

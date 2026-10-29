@@ -18,6 +18,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -288,7 +289,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake := &fakeThreadCatalog{page: catalogPage{Items: []catalogThread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread", Metadata: threadindex.Metadata{}}}}}}
-	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: newRuntimeHub(), Registry: newSessionRegistry()}
+	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: sidebar.NewRuntimeHub(), Registry: newSessionRegistry()}
 
 	readCatalog := func() catalogThread {
 		t.Helper()
@@ -316,7 +317,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 		t.Fatalf("assigned catalog row marked unavailable: %#v", assigned)
 	}
 
-	nudges := s.runtimeEvents.subscribe()
+	nudges := s.runtimeEvents.Subscribe()
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/worker/assignment", bytes.NewBufferString(`{"clientActionId":"clear-assignment","assignment":null}`)))
 	if rec.Code != http.StatusOK {

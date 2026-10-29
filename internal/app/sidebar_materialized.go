@@ -11,6 +11,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -303,13 +304,13 @@ func (m *sidebarMaterializedState) applyMailDelta(delta mailDelta) {
 	m.replace(all, query, active, nodes, version)
 }
 
-func (m *sidebarMaterializedState) applyRuntimeDelta(delta runtimeDelta) {
+func (m *sidebarMaterializedState) applyRuntimeDelta(delta sidebar.RuntimeDelta) {
 	if m == nil {
 		return
 	}
 	m.updateMu.Lock()
 	defer m.updateMu.Unlock()
-	overlays := make(map[attachmentKey]*runtimeInfo, len(delta.Rows))
+	overlays := make(map[attachmentKey]*sidebar.RuntimeInfo, len(delta.Rows))
 	for _, row := range delta.Rows {
 		overlays[attachmentKey{Provider: row.Provider, NativeThreadID: row.NativeID}] = row.Runtime
 	}
@@ -642,10 +643,10 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 	if stream, ok := s.catalog.(threadCatalogStream); ok {
 		catalogEvents, stopCatalog = stream.SubscribeCatalog()
 	}
-	var runtimeEvents <-chan runtimeDelta
-	var runtimeChannel chan runtimeDelta
+	var runtimeEvents <-chan sidebar.RuntimeDelta
+	var runtimeChannel chan sidebar.RuntimeDelta
 	if s.runtimeEvents != nil {
-		runtimeChannel = s.runtimeEvents.subscribe()
+		runtimeChannel = s.runtimeEvents.Subscribe()
 		runtimeEvents = runtimeChannel
 	}
 	err := s.materializeSidebar(ctx, now)
@@ -655,7 +656,7 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 			defer stopCatalog()
 		}
 		if runtimeChannel != nil {
-			defer s.runtimeEvents.unsubscribe(runtimeChannel)
+			defer s.runtimeEvents.Unsubscribe(runtimeChannel)
 		}
 		window := time.NewTicker(time.Hour)
 		defer window.Stop()
@@ -667,7 +668,7 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 		rebuild := func(reason string) {
 			start := time.Now()
 			if rebuildErr := s.materializeSidebar(ctx, start); rebuildErr != nil {
-				log.Printf("sidebar %s rebuild: %v", reason, rebuildErr)
+				log.Printf("sidebar %s Rebuild: %v", reason, rebuildErr)
 				return
 			}
 			pacer.rebuilt(start)
@@ -715,7 +716,7 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 				}
 				// A refresh marker may carry no rows, so it is never applied as
 				// a snapshot; the rebuild reads the runtime state itself.
-				if delta.sidebarCurrent || !delta.rebuild && !delta.Refresh {
+				if delta.SidebarCurrent || !delta.Rebuild && !delta.Refresh {
 					s.sidebar.applyRuntimeDelta(delta)
 				} else {
 					rebuild("runtime")

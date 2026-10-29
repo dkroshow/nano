@@ -18,6 +18,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -648,16 +649,16 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	// or a refresh when that cannot be replayed. A consumer that names none
 	// gets only the deltas from now on. A server without the hub (tests)
 	// leaves the channel nil, which never fires.
-	var runtimeEvents <-chan runtimeDelta
+	var runtimeEvents <-chan sidebar.RuntimeDelta
 	if s.runtimeEvents != nil {
-		var ch chan runtimeDelta
+		var ch chan sidebar.RuntimeDelta
 		if query := r.URL.Query(); query.Has("runtimeGeneration") {
 			seq, _ := strconv.ParseUint(query.Get("runtimeSeq"), 10, 64)
-			ch = s.runtimeEvents.subscribeFrom(runtimePosition{Generation: query.Get("runtimeGeneration"), Seq: seq})
+			ch = s.runtimeEvents.SubscribeFrom(sidebar.RuntimePosition{Generation: query.Get("runtimeGeneration"), Seq: seq})
 		} else {
-			ch = s.runtimeEvents.subscribe()
+			ch = s.runtimeEvents.Subscribe()
 		}
-		defer s.runtimeEvents.unsubscribe(ch)
+		defer s.runtimeEvents.Unsubscribe(ch)
 		runtimeEvents = ch
 	}
 	// Fleet transitions mirror onto the same stream for always-connected
@@ -784,7 +785,7 @@ func writeCatalogChangeEvent(w io.Writer, change catalog.Change) {
 // thread whose runtime changed, null for a thread Nano released. The named
 // event stays separate from catalog version changes because these rows are
 // volatile and must not advance catalog_version.
-func writeRuntimeEvent(w io.Writer, delta runtimeDelta) {
+func writeRuntimeEvent(w io.Writer, delta sidebar.RuntimeDelta) {
 	payload, err := json.Marshal(delta)
 	if err != nil {
 		return
@@ -832,7 +833,7 @@ type catalogThread struct {
 	// Runtime is the volatile hosted-session overlay, stamped at response time
 	// from the session registry (runtime.go) — never stored in SQLite, never
 	// part of catalog_version. Absent = no nano session attached.
-	Runtime *runtimeInfo `json:"runtime,omitempty"`
+	Runtime *sidebar.RuntimeInfo `json:"runtime,omitempty"`
 	// Assignment is the current canonical hosted-thread assignment. It is a
 	// read-time overlay beside hosted identity, never catalog storage.
 	Assignment            *orchestrationAssignmentView `json:"assignment,omitempty"`

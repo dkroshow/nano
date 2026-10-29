@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -27,7 +28,7 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 		defaults:        sessionDefaults{cwd: t.TempDir()},
 		codex:           newCodexDaemon(wsURL, supervisedDaemonLabel),
 		spoolDir:        t.TempDir(),
-		runtimeEvents:   newRuntimeHub(),
+		runtimeEvents:   sidebar.NewRuntimeHub(),
 		Registry:        newSessionRegistry(),
 		controlMetadata: metadata,
 		agentExecutions: executions,

@@ -90,7 +90,7 @@ type server struct {
 	runtime runtimeSource
 	// runtimeEvents fans compact `runtime` SSE deltas to thread-index event
 	// subscribers on session bind/unbind and turnActive flips.
-	runtimeEvents *runtimeHub
+	runtimeEvents *sidebar.RuntimeHub
 	// mailEvents fans per-thread inbox count changes (`mail` SSE events) to
 	// thread-index event subscribers so sidebar badges and open inbox panels
 	// refresh without polling (agent_mail_overlay.go).
@@ -106,7 +106,7 @@ type server struct {
 	mailErr           string
 	runtimeSnapshotMu sync.Mutex
 	runtimePublishMu  sync.Mutex // one snapshot and its notify at a time (publishRuntimeDelta)
-	runtimeSnapshot   map[attachmentKey]runtimeInfo
+	runtimeSnapshot   map[attachmentKey]sidebar.RuntimeInfo
 	runtimeSessions   map[string]string
 	runtimeDetached   map[attachmentKey]string // detached records as last sent (detachedChanges)
 	// attachments persists durable codex attachments so hosted threads survive
@@ -389,7 +389,7 @@ func construct(cfg config.Config) *application {
 		catalog:               catalog,
 		catalogRefresh:        catalogRefresh,
 		catalogSources:        catalogSources,
-		runtimeEvents:         newRuntimeHub(),
+		runtimeEvents:         sidebar.NewRuntimeHub(),
 		mailEvents:            newMailHub(),
 		mail:                  mail,
 		attachments:           attachments,
@@ -829,9 +829,9 @@ func canonicalProspectivePath(path string) (string, error) {
 func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 	// The position comes first: a change after it is either in this answer or
 	// replayed over it, never missed.
-	var position *runtimePosition
+	var position *sidebar.RuntimePosition
 	if s.runtimeEvents != nil {
-		at := s.runtimeEvents.position()
+		at := s.runtimeEvents.Position()
 		position = &at
 	}
 	sessions := s.SnapshotSessions()
@@ -860,7 +860,7 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 // list read and the runtime event that names joined sessions share it, so a
 // browser holds the same row either way. Every per-session fact is read in
 // bounded batches, never once per session: views, attention, badges and names.
-func (s *server) listedSessions(sessions []*sessionruntime.Session) []listedSession {
+func (s *server) listedSessions(sessions []*sessionruntime.Session) []sidebar.ListedSession {
 	var summaryDB *sql.DB
 	if s.controlMetadata != nil {
 		summaryDB = s.controlMetadata.ReadPool()
@@ -887,9 +887,9 @@ func (s *server) listedSessions(sessions []*sessionruntime.Session) []listedSess
 	sort.Slice(summaries, func(i, j int) bool {
 		return threadvalues.TimestampBefore(summaries[i].CreatedAt, summaries[j].CreatedAt)
 	})
-	listed := make([]listedSession, len(summaries))
+	listed := make([]sidebar.ListedSession, len(summaries))
 	for i, sum := range summaries {
-		listed[i] = listedSession{Summary: sum, Metadata: listMetadata(sum.Metadata)}
+		listed[i] = sidebar.ListedSession{Summary: sum, Metadata: sidebar.ListMetadata(sum.Metadata)}
 	}
 	return listed
 }
@@ -900,7 +900,7 @@ func (s *server) listedSessions(sessions []*sessionruntime.Session) []listedSess
 // whose resume failed (daemon down, thread gone), offered as one-click
 // re-attachable. Absent the store, the list is empty. Kept out of s.sessions
 // by design, so they carry no runtime overlay in the Explorer.
-func (s *server) detachedSessionViews(live map[attachmentKey]bool) []detachedSessionView {
+func (s *server) detachedSessionViews(live map[attachmentKey]bool) []sidebar.DetachedSessionView {
 	var records []attachmentRecord
 	if s.attachments != nil {
 		records = s.attachments.DetachedExcept(live)
@@ -909,7 +909,7 @@ func (s *server) detachedSessionViews(live map[attachmentKey]bool) []detachedSes
 }
 
 // detachedViewsOf is the list rows of these detached records.
-func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionView {
+func (s *server) detachedViewsOf(records []attachmentRecord) []sidebar.DetachedSessionView {
 	var summaryDB *sql.DB
 	if s.controlMetadata != nil {
 		summaryDB = s.controlMetadata.ReadPool()
@@ -921,9 +921,9 @@ func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionVi
 		}
 	}
 	detachedViews, detachedErr := s.controlMetadata.ViewsFrom(summaryDB, detachedIDs)
-	detached := []detachedSessionView{}
+	detached := []sidebar.DetachedSessionView{}
 	for _, record := range records {
-		view := detachedSessionView{attachmentRecord: record}
+		view := sidebar.DetachedSessionView{Attachment: record}
 		if state := s.bootAttachments.State(record.Key()); state != "" {
 			view.Status = state
 		}
@@ -933,38 +933,13 @@ func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionVi
 		if record.HostedThreadID == "" || s.controlMetadata == nil || s.controlMetadataErr != "" {
 			view.MetadataUnavailable = record.HostedThreadID != ""
 		} else if metadata, ok := detachedViews[record.HostedThreadID]; ok && detachedErr == nil {
-			view.Metadata = listMetadata(&metadata)
+			view.Metadata = sidebar.ListMetadata(&metadata)
 		} else {
 			view.MetadataUnavailable = true
 		}
 		detached = append(detached, view)
 	}
 	return detached
-}
-
-type listedSession struct {
-	sessionruntime.Summary
-	Metadata *listedMetadata `json:"metadata,omitempty"`
-}
-
-type listedMetadata struct {
-	Revision int64                          `json:"revision"`
-	Fields   map[string]listedMetadataField `json:"fields"`
-}
-
-type listedMetadataField struct {
-	DisplayValue json.RawMessage `json:"displayValue,omitempty"`
-}
-
-func listMetadata(view *hostedMetadataView) *listedMetadata {
-	if view == nil {
-		return nil
-	}
-	fields := make(map[string]listedMetadataField, len(view.Fields))
-	for name, field := range view.Fields {
-		fields[name] = listedMetadataField{DisplayValue: field.DisplayValue}
-	}
-	return &listedMetadata{Revision: view.Revision, Fields: fields}
 }
 
 func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Request, *sessionruntime.Session)) http.HandlerFunc {
@@ -1050,17 +1025,4 @@ func (s *server) handleGrokModels(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(models)
-}
-
-// detachedSessionView keeps the legacy attachment shape required to locate a
-// resumable provider transport, while exposing hosted facts only through the
-// listed metadata live sessions carry; the full view is a thread's own read.
-// The embedded record is deliberately scrubbed at response construction; old
-// JSON cwd/model/tier values are migration input, not API truth.
-type detachedSessionView struct {
-	attachmentRecord
-	// Status is "starting" while the boot loop has not registered the thread.
-	Status              string          `json:"status,omitempty"`
-	Metadata            *listedMetadata `json:"metadata,omitempty"`
-	MetadataUnavailable bool            `json:"metadataUnavailable,omitempty"`
 }

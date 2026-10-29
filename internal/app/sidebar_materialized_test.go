@@ -9,6 +9,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -147,7 +148,7 @@ func TestSidebarFailedRuntimeRebuildKeepsWaitingCatalogRebuild(t *testing.T) {
 	c.mu.Lock()
 	c.failNext = true
 	c.mu.Unlock()
-	s.runtimeEvents.notify(runtimeDelta{Refresh: true})
+	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Refresh: true})
 
 	awaitSidebarRow(t, s, isLate, sidebarRebuildMinInterval+3*time.Second)
 }
@@ -159,7 +160,7 @@ func TestSidebarRuntimeRefreshMarkerKeepsOtherRuntime(t *testing.T) {
 	events := s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
 
-	s.runtimeEvents.notify(runtimeDelta{Refresh: true})
+	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Refresh: true})
 	select {
 	case <-events:
 	case <-time.After(500 * time.Millisecond):
@@ -212,8 +213,8 @@ func TestSidebarRebuildAgreesWithRuntimeDelta(t *testing.T) {
 	events := s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
 	delta := s.runtimeDeltaSnapshot()
-	delta.Refresh, delta.rebuild = false, false // patch in place, as an ordinary turn-state change does
-	s.runtimeEvents.notify(delta)
+	delta.Refresh, delta.Rebuild = false, false // patch in place, as an ordinary turn-state change does
+	s.runtimeEvents.Notify(delta)
 	select {
 	case <-events:
 	case <-time.After(500 * time.Millisecond):
@@ -241,9 +242,9 @@ func TestSidebarPartialRuntimeDeltaKeepsUnnamedRuntime(t *testing.T) {
 	s, _ := startSidebarFixture(t)
 	events := s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
-	s.runtimeEvents.notify(runtimeDelta{Rows: []runtimeDeltaRow{{
+	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Rows: []sidebar.RuntimeRow{{
 		Provider: "codex", NativeID: "attached-recent",
-		Runtime: &runtimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
+		Runtime: &sidebar.RuntimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
 	}}})
 	select {
 	case <-events:
@@ -275,9 +276,9 @@ func TestSidebarGenerationNamesTheProcess(t *testing.T) {
 	}
 	events := s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
-	s.runtimeEvents.notify(runtimeDelta{Rows: []runtimeDeltaRow{{
+	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Rows: []sidebar.RuntimeRow{{
 		Provider: "codex", NativeID: "attached-recent",
-		Runtime: &runtimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
+		Runtime: &sidebar.RuntimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
 	}}})
 	select {
 	case delta := <-events:

@@ -20,6 +20,7 @@ import (
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sidebar"
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -82,7 +83,7 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.Att
 			claudeShimSpools: t.TempDir(),
 		},
 		spoolDir:        t.TempDir(),
-		runtimeEvents:   newRuntimeHub(),
+		runtimeEvents:   sidebar.NewRuntimeHub(),
 		attachments:     store,
 		Registry:        newSessionRegistry(),
 		controlMetadata: control,

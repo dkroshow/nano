@@ -96,9 +96,9 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 
 func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 	store := openTestThreadStars(t)
-	hub := newRuntimeHub()
-	ch := hub.subscribe()
-	t.Cleanup(func() { hub.unsubscribe(ch) })
+	hub := sidebar.NewRuntimeHub()
+	ch := hub.Subscribe()
+	t.Cleanup(func() { hub.Unsubscribe(ch) })
 	s := &server{
 		catalog:       &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
 		threadStars:   store,
