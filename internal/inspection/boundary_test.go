@@ -27,7 +27,8 @@ func TestInspectionDependencyDirection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.HasPrefix(dependency, "github.com/dkroshow/nano/") && dependency != "github.com/dkroshow/nano/internal/wire/codex" {
+			// Direction now lives at its canonical owner in wire; wire/codex already depended on it.
+			if strings.HasPrefix(dependency, "github.com/dkroshow/nano/") && dependency != "github.com/dkroshow/nano/internal/wire/codex" && dependency != "github.com/dkroshow/nano/internal/wire" {
 				t.Errorf("%s imports forbidden dependency %s", path, dependency)
 			}
 		}
