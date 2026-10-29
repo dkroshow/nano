@@ -211,7 +211,14 @@ func TestResumeHappyPathAndCloseDetaches(t *testing.T) {
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
-	fake.OnResume = func(json.RawMessage) { <-release }
+	resumeEntered := make(chan struct{}, 1)
+	fake.OnResume = func(json.RawMessage) {
+		select {
+		case resumeEntered <- struct{}{}:
+		default:
+		}
+		<-release
+	}
 	s := newResumeTestServer(t, fake.WSURL())
 	const threadID = "0199a213-abcd-7000-8000-000000000001"
 
@@ -229,7 +236,9 @@ func TestResumeHappyPathAndCloseDetaches(t *testing.T) {
 	// The pre-claim IS the routing registration: the thread routes to this
 	// session immediately, whether or not the handshake has finished.
 	routed := s.LookupSession(sum.ID)
-	waitForClaude(t, "daemon connection", func() bool { fake.Mu.Lock(); defer fake.Mu.Unlock(); return len(fake.Connections) > 0 })
+	// The daemon is serving this connection once its resume request reaches
+	// the fake. Keep that reply blocked while testing pre-handshake routing.
+	<-resumeEntered
 	fake.EmitNotification(map[string]any{"method": "routing/probe", "params": map[string]any{"threadId": threadID, "marker": "pre-handshake"}})
 	waitForClaude(t, "pre-handshake routing notification", func() bool {
 		for _, event := range claudeWireEvents(routed) {
