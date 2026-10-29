@@ -1,4 +1,4 @@
-package app
+package observability
 
 import (
 	"crypto/sha256"
@@ -10,11 +10,8 @@ import (
 	"github.com/dkroshow/nano/internal/diagnostics"
 )
 
-// browserDuplicateIncident is the durable, content-free observation. Raw DOM
+// diagnostics.BrowserDuplicateIncident is the durable, content-free observation. Raw DOM
 // keys and semantic message IDs are hashed before this record is written.
-type browserDuplicateIncident = diagnostics.BrowserDuplicateIncident
-
-type browserDuplicateIncidentFilter = diagnostics.BrowserDuplicateIncidentFilter
 
 func contentFreeIdentityFingerprint(namespace string, values []string) string {
 	seen := make(map[string]bool, len(values))
@@ -58,17 +55,17 @@ func duplicateIdentitySets(rows []transcriptValidationRow) (rawKeys, semanticIDs
 	return rawKeys, semanticIDs
 }
 
-func deriveBrowserDuplicateIncident(snapshot transcriptValidationSnapshot, receivedAt time.Time) (browserDuplicateIncident, bool) {
+func deriveBrowserDuplicateIncident(snapshot transcriptValidationSnapshot, receivedAt time.Time) (diagnostics.BrowserDuplicateIncident, bool) {
 	rawKeys, semanticIDs := duplicateIdentitySets(snapshot.MountedRows)
 	if len(rawKeys) == 0 && len(semanticIDs) == 0 {
-		return browserDuplicateIncident{}, false
+		return diagnostics.BrowserDuplicateIncident{}, false
 	}
 	threadIdentity := snapshot.HostedThreadID
 	if threadIdentity == "" {
 		threadIdentity = snapshot.Provider + ":" + snapshot.ThreadID
 	}
 	if strings.Trim(threadIdentity, ":") == "" || snapshot.PaneID == "" {
-		return browserDuplicateIncident{}, false
+		return diagnostics.BrowserDuplicateIncident{}, false
 	}
 	rawFingerprint := contentFreeIdentityFingerprint("browser-render-key-v1", rawKeys)
 	semanticFingerprint := contentFreeIdentityFingerprint("browser-semantic-id-v1", semanticIDs)
@@ -80,7 +77,7 @@ func deriveBrowserDuplicateIncident(snapshot transcriptValidationSnapshot, recei
 		observedAt = checked.UTC()
 	}
 	stamp := observedAt.Format(time.RFC3339Nano)
-	return browserDuplicateIncident{
+	return diagnostics.BrowserDuplicateIncident{
 		IncidentFingerprint: incidentFingerprint, Provider: snapshot.Provider,
 		ThreadID: snapshot.ThreadID, HostedThreadID: snapshot.HostedThreadID,
 		RawRenderKeyFingerprint: rawFingerprint, SemanticIDFingerprint: semanticFingerprint,

@@ -1,15 +1,16 @@
-package app
+package observability
 
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
 func TestBrowserDiagnosticsAcceptsDeduplicatesAndFilters(t *testing.T) {
-	s := &server{browserDiagnostics: newBrowserDiagnosticStore(10)}
+	s := &BrowserHandlers{browserDiagnostics: newBrowserDiagnosticStore(10)}
 	body := []byte(`{"events":[
 		{"eventId":"tab-1:1","kind":"projection.open","tabId":"tab-1","threadId":"thread-1","interactionId":"request-5","revision":7,"activeRenderSource":"messageItems","visibleItemCount":3,"matchingDOMActionRowCount":0,"expectedRowCount":4,"mountedRowCount":3,"missingRowCount":1,"extraRowCount":0,"duplicateRowCount":0,"semanticDuplicateRowCount":1,"blankRowCount":0,"typeMismatchCount":0,"orderMismatchCount":0,"arrivalRateCps":275,"batchIntervalMs":121,"layoutSequence":4,"rowIndex":0,"previousRowIndex":3,"topPx":0,"previousTopPx":120,"movementPx":120,"movementCount":7,"maxMovementPx":240,"reorderCount":5,"addedCount":1,"removedCount":2,"workingCount":3,"starredCount":1,"scrollTop":0,"scrollHeight":1200,"viewportHeight":640},
 		{"eventId":"tab-1:1","kind":"projection.open","tabId":"tab-1","threadId":"thread-1","revision":7},
@@ -17,7 +18,7 @@ func TestBrowserDiagnosticsAcceptsDeduplicatesAndFilters(t *testing.T) {
 	]}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/browser-diagnostics", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	s.handleBrowserDiagnosticsRecord(rec, req)
+	s.HandleBrowserDiagnosticsRecord(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -34,9 +35,9 @@ func TestBrowserDiagnosticsAcceptsDeduplicatesAndFilters(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/browser-diagnostics?threadId=thread-1&limit=10", nil)
 	rec = httptest.NewRecorder()
-	s.handleBrowserDiagnosticsList(rec, req)
+	s.HandleBrowserDiagnosticsList(rec, req)
 	var got struct {
-		Events []browserDiagnosticEvent `json:"events"`
+		Events []diagnostics.Event `json:"events"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -71,15 +72,15 @@ func TestBrowserDiagnosticsAcceptsDeduplicatesAndFilters(t *testing.T) {
 
 // The agent-readable API must distinguish missing measurements from a real zero.
 func TestBrowserDiagnosticsThreadOpenTimingRoundTrip(t *testing.T) {
-	s := &server{browserDiagnostics: newBrowserDiagnosticStore(10)}
+	s := &BrowserHandlers{browserDiagnostics: newBrowserDiagnosticStore(10)}
 	body := `{"events":[{"eventId":"open:1","kind":"thread_open","actionId":"open-one","trigger":"sidebar","view":"enhanced","firstRowsMs":0,"newestRowsMs":32,"historyMs":8,"historyBytes":1024,"outcome":"ready","warm":true},{"eventId":"open:2","kind":"thread_open","actionId":"open-two","trigger":"private-title","view":"private-text","outcome":"abandoned"}]}`
 	recorded := httptest.NewRecorder()
-	s.handleBrowserDiagnosticsRecord(recorded, httptest.NewRequest(http.MethodPost, "/api/v1/browser-diagnostics", bytes.NewBufferString(body)))
+	s.HandleBrowserDiagnosticsRecord(recorded, httptest.NewRequest(http.MethodPost, "/api/v1/browser-diagnostics", bytes.NewBufferString(body)))
 	if recorded.Code != http.StatusOK {
 		t.Fatalf("record: %s", recorded.Body.String())
 	}
 	read := httptest.NewRecorder()
-	s.handleBrowserDiagnosticsList(read, httptest.NewRequest(http.MethodGet, "/api/v1/browser-diagnostics?kind=thread_open", nil))
+	s.HandleBrowserDiagnosticsList(read, httptest.NewRequest(http.MethodGet, "/api/v1/browser-diagnostics?kind=thread_open", nil))
 	var got struct {
 		Events []map[string]any `json:"events"`
 	}

@@ -11,7 +11,7 @@ func (s *server) agentController() *agentapi.Controller {
 			BuildStamp: buildStamp, BundleName: embeddedBundleName(),
 		}
 		if s.browserDiagnostics != nil {
-			sources.Diagnostics = s.browserDiagnostics.Store
+			sources.Diagnostics = s.browserDiagnostics
 		}
 		s.agent = agentapi.New(sources)
 	})

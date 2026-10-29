@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -63,7 +64,7 @@ func TestFeedbackKeepsTheSavingTabsEvidenceForTheThread(t *testing.T) {
 		t.Fatalf("read = %d %s", code, raw)
 	}
 	note := decodePinJSON[feedback.Note](t, raw)
-	var events []browserDiagnosticEvent
+	var events []diagnostics.Event
 	if err := json.Unmarshal(note.Events, &events); err != nil {
 		t.Fatal(err)
 	}

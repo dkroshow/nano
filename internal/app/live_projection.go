@@ -86,7 +86,7 @@ func (s *server) confirmDurableThread(ctx context.Context, change threadindex.Tr
 }
 
 func (s *server) transcriptRepairPriority(candidate history.TranscriptParserBackfillCandidate) int {
-	if s.transcriptValidations != nil && s.transcriptValidations.freshVisibleThread(candidate.NativeThreadID, time.Now().UTC()) {
+	if s.transcriptValidations != nil && s.transcriptValidations.FreshVisibleThread(candidate.NativeThreadID, time.Now().UTC()) {
 		return 0
 	}
 	if s.SessionForThread(string(candidate.Provider), candidate.NativeThreadID) != nil {

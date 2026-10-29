@@ -1,4 +1,4 @@
-package app
+package observability
 
 import (
 	"encoding/json"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/dkroshow/nano/internal/diagnostics"
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -17,33 +16,7 @@ const (
 	maxBrowserDiagnosticBodyBytes    = 256 << 10
 )
 
-type browserDiagnosticEvent = diagnostics.Event
-
-type browserDiagnosticStore struct{ *diagnostics.Store }
-
-func newBrowserDiagnosticStore(capacity int) *browserDiagnosticStore {
-	return &browserDiagnosticStore{Store: diagnostics.NewStore(capacity, sessions.NewID())}
-}
-
-func (store *browserDiagnosticStore) add(events []browserDiagnosticEvent) int {
-	return store.Add(events)
-}
-
-func (store *browserDiagnosticStore) recent(limit int, threadID, tabID, kind string) []browserDiagnosticEvent {
-	return store.Recent(limit, threadID, tabID, kind)
-}
-
-func normalizeBrowserDiagnosticEvent(event *browserDiagnosticEvent) bool {
-	return diagnostics.NormalizeEvent(event)
-}
-
-func diagnosticToken(value string, maxLength int) string {
-	return diagnostics.Token(value, maxLength)
-}
-
-func diagnosticTime(value string) string { return diagnostics.Time(value) }
-
-func (s *server) handleBrowserDiagnosticsRecord(w http.ResponseWriter, r *http.Request) {
+func (s *BrowserHandlers) HandleBrowserDiagnosticsRecord(w http.ResponseWriter, r *http.Request) {
 	if s.browserDiagnostics == nil {
 		httpapi.WriteHTTPError(w, "browser diagnostics unavailable", http.StatusServiceUnavailable)
 		return
@@ -51,7 +24,7 @@ func (s *server) handleBrowserDiagnosticsRecord(w http.ResponseWriter, r *http.R
 	defer r.Body.Close()
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxBrowserDiagnosticBodyBytes))
 	var body struct {
-		Events []browserDiagnosticEvent `json:"events"`
+		Events []diagnostics.Event `json:"events"`
 	}
 	if err := decoder.Decode(&body); err != nil {
 		httpapi.WriteHTTPError(w, "invalid browser diagnostic batch", http.StatusBadRequest)
@@ -62,12 +35,12 @@ func (s *server) handleBrowserDiagnosticsRecord(w http.ResponseWriter, r *http.R
 		return
 	}
 	httpapi.WriteJSON(w, map[string]any{
-		"accepted": s.browserDiagnostics.add(body.Events),
+		"accepted": s.browserDiagnostics.Add(body.Events),
 		"bootId":   s.browserDiagnostics.BootID(),
 	})
 }
 
-func (s *server) handleBrowserDiagnosticsList(w http.ResponseWriter, r *http.Request) {
+func (s *BrowserHandlers) HandleBrowserDiagnosticsList(w http.ResponseWriter, r *http.Request) {
 	if s.browserDiagnostics == nil {
 		httpapi.WriteHTTPError(w, "browser diagnostics unavailable", http.StatusServiceUnavailable)
 		return
@@ -75,7 +48,7 @@ func (s *server) handleBrowserDiagnosticsList(w http.ResponseWriter, r *http.Req
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	httpapi.WriteJSON(w, map[string]any{
 		"bootId": s.browserDiagnostics.BootID(),
-		"events": s.browserDiagnostics.recent(
+		"events": s.browserDiagnostics.Recent(
 			limit,
 			r.URL.Query().Get("threadId"),
 			r.URL.Query().Get("tabId"),

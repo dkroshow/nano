@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/usage"
 	"net/http"
 	"sort"
@@ -20,6 +21,7 @@ type applicationRoute struct {
 
 func applicationRoutes(s *server) []applicationRoute {
 	index := threadindex.NewHandlers(s.catalog)
+	browser := observability.NewBrowserHandlers(s.browserDiagnostics, s.transcriptValidations, s.controlMetadata, s.controlMetadataErr)
 	accountUsage := &usage.Handlers{Store: s.usageLimits, Poller: s.usageLimitsPoller}
 	sessionRoute := func(operation func(http.ResponseWriter, *http.Request, *sessions.Session)) http.HandlerFunc {
 		return s.sessionOperation(operation)
@@ -124,15 +126,15 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodDelete, "/api/v1/turn-operations/{operationId}", "turnOperations.cancel", s.handleTurnOperationCancel},
 		{http.MethodGet, "/api/v1/usage-limits", "usageLimits.read", accountUsage.HandleSummary},
 		{http.MethodGet, "/api/v1/usage-limits/detail", "usageLimits.detail", accountUsage.HandleDetail},
-		{http.MethodGet, "/api/v1/browser-diagnostics", "browserDiagnostics.list", s.handleBrowserDiagnosticsList},
-		{http.MethodPost, "/api/v1/browser-diagnostics", "browserDiagnostics.record", s.handleBrowserDiagnosticsRecord},
+		{http.MethodGet, "/api/v1/browser-diagnostics", "browserDiagnostics.list", browser.HandleBrowserDiagnosticsList},
+		{http.MethodPost, "/api/v1/browser-diagnostics", "browserDiagnostics.record", browser.HandleBrowserDiagnosticsRecord},
 		{http.MethodGet, "/api/v1/feedback", "feedback.list", s.agentController().HandleFeedbackList},
 		{http.MethodPost, "/api/v1/feedback", "feedback.create", s.agentController().HandleFeedbackCreate},
 		{http.MethodGet, "/api/v1/feedback/{feedbackId}", "feedback.read", s.agentController().HandleFeedbackRead},
-		{http.MethodGet, "/api/v1/browser-validations", "browserValidations.list", s.handleTranscriptValidationsList},
-		{http.MethodPost, "/api/v1/browser-validations", "browserValidations.record", s.handleTranscriptValidationRecord},
-		{http.MethodGet, "/api/v1/transcript-validations", "transcriptValidations.list", s.handleTranscriptValidationsList},
-		{http.MethodPost, "/api/v1/transcript-validations", "transcriptValidations.record", s.handleTranscriptValidationRecord},
+		{http.MethodGet, "/api/v1/browser-validations", "browserValidations.list", browser.HandleTranscriptValidationsList},
+		{http.MethodPost, "/api/v1/browser-validations", "browserValidations.record", browser.HandleTranscriptValidationRecord},
+		{http.MethodGet, "/api/v1/transcript-validations", "transcriptValidations.list", browser.HandleTranscriptValidationsList},
+		{http.MethodPost, "/api/v1/transcript-validations", "transcriptValidations.record", browser.HandleTranscriptValidationRecord},
 		{http.MethodPost, "/api/v1/transcript-audits", "transcriptAudits.create", s.handleTranscriptAuditCreate},
 		{http.MethodGet, "/api/v1/transcript-audits/{auditId}", "transcriptAudits.read", func(w http.ResponseWriter, r *http.Request) {
 			s.handleTranscriptAuditRead(w, r, r.PathValue("auditId"))

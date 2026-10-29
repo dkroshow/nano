@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"io"
 	"net/http"
 	"slices"
@@ -279,11 +280,11 @@ func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Requ
 		httpapi.WriteHTTPError(w, "invalid transcript audit request", http.StatusBadRequest)
 		return
 	}
-	body.ClientActionID = diagnosticToken(body.ClientActionID, 160)
-	body.ThreadRef = diagnosticToken(body.ThreadRef, 200)
-	body.TabID = diagnosticToken(body.TabID, 100)
-	body.PageID = diagnosticToken(body.PageID, 100)
-	body.PaneID = diagnosticToken(body.PaneID, 100)
+	body.ClientActionID = diagnostics.Token(body.ClientActionID, 160)
+	body.ThreadRef = diagnostics.Token(body.ThreadRef, 200)
+	body.TabID = diagnostics.Token(body.TabID, 100)
+	body.PageID = diagnostics.Token(body.PageID, 100)
+	body.PaneID = diagnostics.Token(body.PaneID, 100)
 	scopes, validScopes := normalizeTranscriptAuditScopes(body.Scopes)
 	if body.ClientActionID == "" || body.ThreadRef == "" || body.TabID == "" || body.PageID == "" || body.PaneID == "" || !validScopes {
 		httpapi.WriteHTTPError(w, "invalid transcript audit request", http.StatusBadRequest)
@@ -332,7 +333,7 @@ func (s *server) handleTranscriptAuditRead(w http.ResponseWriter, _ *http.Reques
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	request, ok := s.transcriptAudits.get(diagnosticToken(id, 200))
+	request, ok := s.transcriptAudits.get(diagnostics.Token(id, 200))
 	if !ok {
 		httpapi.WriteHTTPError(w, "transcript audit not found", http.StatusNotFound)
 		return
@@ -352,7 +353,7 @@ func (s *server) handleTranscriptAuditReference(w http.ResponseWriter, r *http.R
 		httpapi.WriteHTTPError(w, "transcript catalog unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	request, found := s.transcriptAudits.get(diagnosticToken(id, 200))
+	request, found := s.transcriptAudits.get(diagnostics.Token(id, 200))
 	if !found {
 		httpapi.WriteHTTPError(w, "transcript audit not found", http.StatusNotFound)
 		return
@@ -387,7 +388,7 @@ func (s *server) handleTranscriptAuditResult(w http.ResponseWriter, r *http.Requ
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	request, found := s.transcriptAudits.get(diagnosticToken(id, 200))
+	request, found := s.transcriptAudits.get(diagnostics.Token(id, 200))
 	if !found {
 		httpapi.WriteHTTPError(w, "transcript audit not found", http.StatusNotFound)
 		return
@@ -424,14 +425,14 @@ func (s *server) handleTranscriptAuditResult(w http.ResponseWriter, r *http.Requ
 		httpapi.WriteHTTPError(w, "invalid transcript audit result", http.StatusBadRequest)
 		return
 	}
-	result.CapturedAt = diagnosticTime(body.CapturedAt)
-	result.PageID = diagnosticToken(body.PageID, 100)
-	result.ViewMode = diagnosticToken(body.ViewMode, 32)
-	result.Build = diagnosticToken(body.Build, 100)
+	result.CapturedAt = diagnostics.Time(body.CapturedAt)
+	result.PageID = diagnostics.Token(body.PageID, 100)
+	result.ViewMode = diagnostics.Token(body.ViewMode, 32)
+	result.Build = diagnostics.Token(body.Build, 100)
 	capturedAt, capturedErr := time.Parse(time.RFC3339Nano, result.CapturedAt)
-	paneThreadID, paneThreadErr := s.resolveThreadReference(r.Context(), diagnosticToken(body.PaneThreadRef, 200))
+	paneThreadID, paneThreadErr := s.resolveThreadReference(r.Context(), diagnostics.Token(body.PaneThreadRef, 200))
 	switch {
-	case diagnosticToken(body.TabID, 100) != request.TabID || diagnosticToken(body.PageID, 100) != request.PageID || diagnosticToken(body.PaneID, 100) != request.PaneID:
+	case diagnostics.Token(body.TabID, 100) != request.TabID || diagnostics.Token(body.PageID, 100) != request.PageID || diagnostics.Token(body.PaneID, 100) != request.PaneID:
 		result = inconclusiveTranscriptAudit(request.Scopes, "wrong_browser_pane")
 	case body.PaneThreadRef == "" || paneThreadErr != nil || paneThreadID != request.CatalogThreadID:
 		result = inconclusiveTranscriptAudit(request.Scopes, "wrong_thread")
@@ -441,13 +442,13 @@ func (s *server) handleTranscriptAuditResult(w http.ResponseWriter, r *http.Requ
 		result = inconclusiveTranscriptAudit(request.Scopes, "browser_pane_not_visible")
 	case capturedErr != nil || capturedAt.Before(request.requestedAt) || capturedAt.After(request.deadline):
 		result = inconclusiveTranscriptAudit(request.Scopes, "stale_browser_capture")
-	case diagnosticToken(body.ProjectionKey, 200) != request.ReferenceProjectionKey || body.SnapshotHeadSeq != request.ReferenceSnapshotHead:
+	case diagnostics.Token(body.ProjectionKey, 200) != request.ReferenceProjectionKey || body.SnapshotHeadSeq != request.ReferenceSnapshotHead:
 		result = inconclusiveTranscriptAudit(request.Scopes, "saved_reference_changed")
 	}
-	result.CapturedAt = diagnosticTime(body.CapturedAt)
-	result.PageID = diagnosticToken(body.PageID, 100)
-	result.ViewMode = diagnosticToken(body.ViewMode, 32)
-	result.Build = diagnosticToken(body.Build, 100)
+	result.CapturedAt = diagnostics.Time(body.CapturedAt)
+	result.PageID = diagnostics.Token(body.PageID, 100)
+	result.ViewMode = diagnostics.Token(body.ViewMode, 32)
+	result.Build = diagnostics.Token(body.Build, 100)
 	finished, _ := s.transcriptAudits.finish(request.ID, result)
 	httpapi.WriteJSON(w, finished)
 }
@@ -468,24 +469,24 @@ func normalizeTranscriptAuditResult(result transcriptAuditResult, expectedScopes
 	allowedDifferences := map[string]bool{"missing": true, "extra": true, "duplicate": true, "reordered": true, "changed": true, "structured_changed": true}
 	for index := range result.Differences {
 		diff := &result.Differences[index]
-		diff.Kind = diagnosticToken(diff.Kind, 32)
-		diff.ID = diagnosticToken(diff.ID, 280)
-		diff.Field = diagnosticToken(diff.Field, 32)
-		diff.ExpectedHash = diagnosticToken(diff.ExpectedHash, 80)
-		diff.BrowserHash = diagnosticToken(diff.BrowserHash, 80)
+		diff.Kind = diagnostics.Token(diff.Kind, 32)
+		diff.ID = diagnostics.Token(diff.ID, 280)
+		diff.Field = diagnostics.Token(diff.Field, 32)
+		diff.ExpectedHash = diagnostics.Token(diff.ExpectedHash, 80)
+		diff.BrowserHash = diagnostics.Token(diff.BrowserHash, 80)
 		if !allowedDifferences[diff.Kind] || diff.ExpectedLength < 0 || diff.BrowserLength < 0 || diff.BrowserCount < 0 {
 			return result, false
 		}
 	}
 	for index := range result.Exclusions {
-		result.Exclusions[index].Scope = diagnosticToken(result.Exclusions[index].Scope, 32)
-		result.Exclusions[index].Reason = diagnosticToken(result.Exclusions[index].Reason, 80)
+		result.Exclusions[index].Scope = diagnostics.Token(result.Exclusions[index].Scope, 32)
+		result.Exclusions[index].Reason = diagnostics.Token(result.Exclusions[index].Reason, 80)
 		if result.Exclusions[index].Reason == "" || result.Exclusions[index].Count < 0 {
 			return result, false
 		}
 	}
 	for index := range result.Reasons {
-		result.Reasons[index] = diagnosticToken(result.Reasons[index], 80)
+		result.Reasons[index] = diagnostics.Token(result.Reasons[index], 80)
 		if result.Reasons[index] == "" {
 			return result, false
 		}

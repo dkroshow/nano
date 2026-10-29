@@ -12,7 +12,7 @@ func (s *server) attachmentCoordinator() *hosted.AttachmentCoordinator {
 			SweepSubscriptions: func(id string) { s.agentController().SweepSubscriptions(id) },
 		}
 		if s.browserDiagnostics != nil {
-			sources.Diagnostics = s.browserDiagnostics.Store
+			sources.Diagnostics = s.browserDiagnostics
 		}
 		metadata := s.controlMetadata
 		if (metadata == nil || s.controlMetadataErr != "") && s.agentExecutions != nil {

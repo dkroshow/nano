@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"github.com/dkroshow/nano/internal/historical"
 	"github.com/dkroshow/nano/internal/usage"
 	"io"
@@ -119,10 +120,10 @@ type server struct {
 	// browserDiagnostics is a bounded, content-free flight recorder uploaded by
 	// open Nano tabs. It explains browser/store/stream divergence after the hard
 	// refresh that would otherwise erase the evidence.
-	browserDiagnostics *browserDiagnosticStore
+	browserDiagnostics *diagnostics.Store
 	// transcriptValidations exposes the latest intended-vs-mounted row snapshot
 	// per browser pane so agents can validate the actual presentation surface.
-	transcriptValidations *transcriptValidationStore
+	transcriptValidations *observability.ValidationStore
 	// transcriptAudits holds only short-lived, content-free request/result
 	// metadata. Browser captures and SQLite reference bodies are never durable.
 	transcriptAudits      *transcriptAuditStore
@@ -363,8 +364,8 @@ func construct(cfg config.Config) *application {
 		turns:                 turnStore,
 		agentExecutions:       agentExecutions,
 		notices:               interact.NewNotices(),
-		browserDiagnostics:    newBrowserDiagnosticStore(defaultBrowserDiagnosticCapacity),
-		transcriptValidations: newTranscriptValidationStore(defaultTranscriptValidationCapacity),
+		browserDiagnostics:    diagnostics.NewStore(diagnostics.DefaultCapacity, sessionruntime.NewID()),
+		transcriptValidations: observability.NewValidationStore(observability.DefaultValidationCapacity),
 		transcriptAudits:      newTranscriptAuditStore(),
 		transcriptAuditEvents: newTranscriptAuditHub(),
 		usageLimits:           usageLimits,

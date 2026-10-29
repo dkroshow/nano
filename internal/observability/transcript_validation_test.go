@@ -1,48 +1,23 @@
-package app
+package observability
 
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	featuremail "github.com/dkroshow/nano/internal/features/mail"
-	"github.com/dkroshow/nano/internal/history"
 )
 
-func TestTranscriptRepairPriorityUsesFreshVisibleValidation(t *testing.T) {
-	visible := true
-	store := newTranscriptValidationStore(10)
-	if !store.put(transcriptValidationSnapshot{
-		SnapshotID: "tab:1", TabID: "tab", PaneID: "pane", Surface: "transcript", ThreadID: "native-open", Status: "match",
-		PageVisible: &visible, SurfaceVisible: &visible,
-	}) {
-		t.Fatal("validation put failed")
-	}
-	server := testServerWithSessions(&server{transcriptValidations: store, Registry: newSessionRegistry()}, map[string]*session{
-		"attached": newFixtureSession(sessionConfig{ID: "attached", Provider: "codex"}, "native-attached"),
-	})
-	if got := server.transcriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-open"}); got != 0 {
-		t.Fatalf("open priority=%d", got)
-	}
-	if got := server.transcriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-attached"}); got != 1 {
-		t.Fatalf("attached priority=%d", got)
-	}
-	if got := server.transcriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-other"}); got != 2 {
-		t.Fatalf("ordinary priority=%d", got)
-	}
-}
-
 func TestTranscriptValidationsExposeLatestBrowserObservedRowsPerPane(t *testing.T) {
-	s := &server{transcriptValidations: newTranscriptValidationStore(10)}
+	s := &BrowserHandlers{transcriptValidations: NewValidationStore(10)}
 	post := func(body string) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/transcript-validations", bytes.NewBufferString(body))
 		rec := httptest.NewRecorder()
-		s.handleTranscriptValidationRecord(rec, req)
+		s.HandleTranscriptValidationRecord(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("POST status = %d, body = %s", rec.Code, rec.Body.String())
 		}
@@ -52,7 +27,7 @@ func TestTranscriptValidationsExposeLatestBrowserObservedRowsPerPane(t *testing.
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/transcript-validations?threadId=thread-1", nil)
 	rec := httptest.NewRecorder()
-	s.handleTranscriptValidationsList(rec, req)
+	s.HandleTranscriptValidationsList(rec, req)
 	var got struct {
 		Validations []transcriptValidationSnapshot `json:"validations"`
 		History     []transcriptValidationSnapshot `json:"history"`
@@ -75,7 +50,7 @@ func TestTranscriptValidationsExposeLatestBrowserObservedRowsPerPane(t *testing.
 }
 
 func TestTranscriptValidationHistoryIgnoresHeartbeatsAndPrefersMismatches(t *testing.T) {
-	store := newTranscriptValidationStore(10)
+	store := NewValidationStore(10)
 	snapshot := transcriptValidationSnapshot{
 		SnapshotID: "tab:1", TabID: "tab", PaneID: "pane", Surface: "sidebar", Status: "match",
 		ExpectedRows: []transcriptValidationRow{{Key: "sidebar:one", Source: "sidebar", ID: "one", Type: "thread"}},
@@ -121,7 +96,7 @@ func TestTranscriptValidationHistoryIgnoresHeartbeatsAndPrefersMismatches(t *tes
 }
 
 func TestTranscriptValidationHistoryReturnsRecoveredMismatchByStatus(t *testing.T) {
-	store := newTranscriptValidationStore(10)
+	store := NewValidationStore(10)
 	snapshot := transcriptValidationSnapshot{
 		SnapshotID: "tab:1", TabID: "tab", PaneID: "pane", Surface: "transcript", Status: "mismatch",
 		ExpectedRows: []transcriptValidationRow{{Key: "live:one", Source: "live", ID: "one", Type: "userMessage"}},
@@ -139,17 +114,17 @@ func TestTranscriptValidationHistoryReturnsRecoveredMismatchByStatus(t *testing.
 }
 
 func TestTranscriptValidationRejectsContentAndInvalidRowIdentity(t *testing.T) {
-	s := &server{transcriptValidations: newTranscriptValidationStore(10)}
+	s := &BrowserHandlers{transcriptValidations: NewValidationStore(10)}
 	body := `{"snapshotId":"tab-1:1","tabId":"tab-1","paneId":"pane-1","status":"match","expectedRows":[{"key":"live:wrong","source":"live","id":"user-1","type":"userMessage","text":"secret"}],"mountedRows":[]}`
 	rec := httptest.NewRecorder()
-	s.handleTranscriptValidationRecord(rec, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-validations", bytes.NewBufferString(body)))
+	s.HandleTranscriptValidationRecord(rec, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-validations", bytes.NewBufferString(body)))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }
 
 func TestTranscriptValidationAcceptsGrokSplitMessageIdentity(t *testing.T) {
-	store := newTranscriptValidationStore(10)
+	store := NewValidationStore(10)
 	row := transcriptValidationRow{
 		Key:    "live:4cd567a3-366f-4ab1-9a7a-732fdfafdce5/agentMessage#2",
 		Source: "live",
@@ -178,16 +153,16 @@ func duplicateValidationBody(snapshotID, paneID, build string) string {
 	return `{"snapshotId":"` + snapshotID + `","checkedAt":"2026-08-31T22:10:00Z","tabId":"tab-1","pageId":"page-1","build":"` + build + `","paneId":"` + paneID + `","surface":"transcript","provider":"codex","threadId":"native-duplicate-thread","hostedThreadId":"nht_duplicate_thread","pageVisible":true,"surfaceVisible":true,"status":"mismatch","expectedRows":[{"key":"live:row-1","source":"live","id":"row-1","semanticId":"semantic-1","type":"userMessage","expectsContent":true}],"mountedRows":[{"key":"live:row-1","source":"live","id":"row-1","semanticId":"semantic-1","type":"userMessage","hasContent":true},{"key":"live:row-1","source":"live","id":"row-1","semanticId":"semantic-1","type":"userMessage","hasContent":true}]}`
 }
 
-func postTranscriptValidationForTest(t *testing.T, s *server, body string) *httptest.ResponseRecorder {
+func postTranscriptValidationForTest(t *testing.T, s *BrowserHandlers, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	s.handleTranscriptValidationRecord(rec, httptest.NewRequest(http.MethodPost, "/api/v1/browser-validations", bytes.NewBufferString(body)))
+	s.HandleTranscriptValidationRecord(rec, httptest.NewRequest(http.MethodPost, "/api/v1/browser-validations", bytes.NewBufferString(body)))
 	return rec
 }
 
 func TestTranscriptDuplicateIncidentPersistsOnceAcrossRepeatedObservations(t *testing.T) {
 	control := newTestControlMetadata(t)
-	s := &server{controlMetadata: control, transcriptValidations: newTranscriptValidationStore(10), mailEvents: featuremail.NewHub()}
+	s := &BrowserHandlers{controlMetadata: control, transcriptValidations: NewValidationStore(10)}
 
 	first := postTranscriptValidationForTest(t, s, duplicateValidationBody("tab-1:1", "pane-1", "index-first.js"))
 	if first.Code != http.StatusOK {
@@ -198,7 +173,7 @@ func TestTranscriptDuplicateIncidentPersistsOnceAcrossRepeatedObservations(t *te
 		t.Fatalf("repeat duplicate POST = %d %s", second.Code, second.Body.String())
 	}
 
-	incidents, err := control.ListBrowserDuplicateIncidents(browserDuplicateIncidentFilter{ThreadID: "native-duplicate-thread", Limit: 10})
+	incidents, err := control.ListBrowserDuplicateIncidents(diagnostics.BrowserDuplicateIncidentFilter{ThreadID: "native-duplicate-thread", Limit: 10})
 	if err != nil || len(incidents) != 1 {
 		t.Fatalf("incidents = %+v, err=%v", incidents, err)
 	}
@@ -246,12 +221,12 @@ func TestTranscriptDuplicateFingerprintsRawAndSemanticIdentitySeparately(t *test
 
 func TestTranscriptValidationNormalPathCreatesNoDuplicateIncident(t *testing.T) {
 	control := newTestControlMetadata(t)
-	s := &server{controlMetadata: control, transcriptValidations: newTranscriptValidationStore(10)}
+	s := &BrowserHandlers{controlMetadata: control, transcriptValidations: NewValidationStore(10)}
 	body := `{"snapshotId":"tab-1:normal","checkedAt":"2026-08-31T22:10:00Z","tabId":"tab-1","build":"index-normal.js","paneId":"pane-1","surface":"transcript","threadId":"native-normal-thread","pageVisible":true,"surfaceVisible":true,"status":"match","expectedRows":[{"key":"live:row-1","source":"live","id":"row-1","semanticId":"semantic-1","type":"userMessage","expectsContent":true}],"mountedRows":[{"key":"live:row-1","source":"live","id":"row-1","semanticId":"semantic-1","type":"userMessage","hasContent":true}]}`
 	if rec := postTranscriptValidationForTest(t, s, body); rec.Code != http.StatusOK {
 		t.Fatalf("normal POST = %d %s", rec.Code, rec.Body.String())
 	}
-	incidents, err := control.ListBrowserDuplicateIncidents(browserDuplicateIncidentFilter{Limit: 10})
+	incidents, err := control.ListBrowserDuplicateIncidents(diagnostics.BrowserDuplicateIncidentFilter{Limit: 10})
 	if err != nil || len(incidents) != 0 {
 		t.Fatalf("normal incidents = %+v, err=%v", incidents, err)
 	}

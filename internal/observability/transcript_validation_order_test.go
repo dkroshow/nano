@@ -1,9 +1,9 @@
-package app
+package observability
 
 import "testing"
 
 func TestTranscriptValidationHistoryOrdersUnequalTimestampPrecision(t *testing.T) {
-	store := newTranscriptValidationStore(10)
+	store := NewValidationStore(10)
 	// RFC3339Nano omits trailing zeroes. These are real server receipt times
 	// from a failing suite run; their text order is the reverse of time order.
 	store.history["pane"] = []storedTranscriptValidation{

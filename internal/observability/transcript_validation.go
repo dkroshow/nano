@@ -1,7 +1,8 @@
-package app
+package observability
 
 import (
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"io"
 	"net/http"
 	"sort"
@@ -14,11 +15,12 @@ import (
 )
 
 const (
-	defaultTranscriptValidationCapacity = 500
-	maxTranscriptValidationBodyBytes    = 256 << 10
-	maxTranscriptValidationRows         = 500
-	maxTranscriptValidationHistory      = 20
-	maxTranscriptValidationStoreBytes   = 4 << 20
+	// DefaultValidationCapacity bounds retained browser pane snapshots.
+	DefaultValidationCapacity         = 500
+	maxTranscriptValidationBodyBytes  = 256 << 10
+	maxTranscriptValidationRows       = 500
+	maxTranscriptValidationHistory    = 20
+	maxTranscriptValidationStoreBytes = 4 << 20
 )
 
 // transcriptValidationSnapshot is a browser-observed comparison between the
@@ -72,7 +74,8 @@ type storedTranscriptValidation struct {
 	bytes     int
 }
 
-type transcriptValidationStore struct {
+// ValidationStore retains bounded current and historical browser row comparisons.
+type ValidationStore struct {
 	mu       sync.Mutex
 	capacity int
 	order    []string
@@ -81,11 +84,12 @@ type transcriptValidationStore struct {
 	bytes    int
 }
 
-func newTranscriptValidationStore(capacity int) *transcriptValidationStore {
+// NewValidationStore creates a bounded in-memory validation store.
+func NewValidationStore(capacity int) *ValidationStore {
 	if capacity <= 0 {
-		capacity = defaultTranscriptValidationCapacity
+		capacity = DefaultValidationCapacity
 	}
-	return &transcriptValidationStore{
+	return &ValidationStore{
 		capacity: capacity,
 		latest:   make(map[string]storedTranscriptValidation),
 		history:  make(map[string][]storedTranscriptValidation),
@@ -115,7 +119,7 @@ func storedValidation(snapshot transcriptValidationSnapshot) storedTranscriptVal
 	return storedTranscriptValidation{snapshot: snapshot, signature: transcriptValidationSignature(snapshot), bytes: len(value)}
 }
 
-func (s *transcriptValidationStore) put(snapshot transcriptValidationSnapshot) bool {
+func (s *ValidationStore) put(snapshot transcriptValidationSnapshot) bool {
 	if s == nil || !normalizeTranscriptValidation(&snapshot) {
 		return false
 	}
@@ -152,7 +156,7 @@ func (s *transcriptValidationStore) put(snapshot transcriptValidationSnapshot) b
 	return true
 }
 
-func (s *transcriptValidationStore) trimSurfaceHistory(key string) {
+func (s *ValidationStore) trimSurfaceHistory(key string) {
 	for len(s.history[key]) > maxTranscriptValidationHistory {
 		remove := 0
 		for index, entry := range s.history[key] {
@@ -166,7 +170,7 @@ func (s *transcriptValidationStore) trimSurfaceHistory(key string) {
 	}
 }
 
-func (s *transcriptValidationStore) deleteSurface(key string) {
+func (s *ValidationStore) deleteSurface(key string) {
 	if latest, ok := s.latest[key]; ok {
 		s.bytes -= latest.bytes
 		delete(s.latest, key)
@@ -177,7 +181,7 @@ func (s *transcriptValidationStore) deleteSurface(key string) {
 	delete(s.history, key)
 }
 
-func (s *transcriptValidationStore) trimToByteLimit() {
+func (s *ValidationStore) trimToByteLimit() {
 	for s.bytes > maxTranscriptValidationStoreBytes {
 		removed := false
 		for _, status := range []string{"match", ""} {
@@ -210,7 +214,7 @@ func (s *transcriptValidationStore) trimToByteLimit() {
 	}
 }
 
-func (s *transcriptValidationStore) list(limit int, threadID, hostedThreadID, paneID, surface, status string) ([]transcriptValidationSnapshot, []transcriptValidationSnapshot) {
+func (s *ValidationStore) list(limit int, threadID, hostedThreadID, paneID, surface, status string) ([]transcriptValidationSnapshot, []transcriptValidationSnapshot) {
 	if s == nil {
 		return nil, nil
 	}
@@ -253,10 +257,11 @@ func (s *transcriptValidationStore) list(limit int, threadID, hostedThreadID, pa
 	return result, history
 }
 
-// freshVisibleThread reuses the browser's existing mounted-transcript proof as
+// FreshVisibleThread reuses the browser's existing mounted-transcript proof as
 // repair priority evidence. It is not a second presence system: the same
 // 45-second freshness rule powers the public validation response.
-func (s *transcriptValidationStore) freshVisibleThread(threadID string, now time.Time) bool {
+// FreshVisibleThread reports a recent visible browser observation of a native thread.
+func (s *ValidationStore) FreshVisibleThread(threadID string, now time.Time) bool {
 	if s == nil || threadID == "" {
 		return false
 	}
@@ -358,7 +363,7 @@ func normalizeTranscriptValidationRow(row *transcriptValidationRow, expected boo
 	return true
 }
 
-func (s *server) handleTranscriptValidationRecord(w http.ResponseWriter, r *http.Request) {
+func (s *BrowserHandlers) HandleTranscriptValidationRecord(w http.ResponseWriter, r *http.Request) {
 	if s.transcriptValidations == nil {
 		httpapi.WriteHTTPError(w, "transcript validations unavailable", http.StatusServiceUnavailable)
 		return
@@ -393,7 +398,7 @@ func (s *server) handleTranscriptValidationRecord(w http.ResponseWriter, r *http
 	httpapi.WriteJSON(w, response)
 }
 
-func (s *server) handleTranscriptValidationsList(w http.ResponseWriter, r *http.Request) {
+func (s *BrowserHandlers) HandleTranscriptValidationsList(w http.ResponseWriter, r *http.Request) {
 	if s.transcriptValidations == nil {
 		httpapi.WriteHTTPError(w, "transcript validations unavailable", http.StatusServiceUnavailable)
 		return
@@ -414,7 +419,7 @@ func (s *server) handleTranscriptValidationsList(w http.ResponseWriter, r *http.
 	)
 	response := map[string]any{"validations": latest, "history": history}
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
-		incidents, err := s.controlMetadata.ListBrowserDuplicateIncidents(browserDuplicateIncidentFilter{
+		incidents, err := s.controlMetadata.ListBrowserDuplicateIncidents(diagnostics.BrowserDuplicateIncidentFilter{
 			ThreadID: r.URL.Query().Get("threadId"), HostedThreadID: r.URL.Query().Get("hostedThreadId"),
 			PaneID: r.URL.Query().Get("paneId"), Limit: limit,
 		})
