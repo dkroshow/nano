@@ -1,4 +1,4 @@
-package app
+package historical
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/setup"
-	"github.com/dkroshow/nano/internal/sidebar"
+
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -87,7 +87,7 @@ func TestHistoricalClaudeResolverSharesWorkspaceAndSeparatesEvidence(t *testing.
 		t.Fatal(err)
 	}
 	defer store.Close()
-	resolver := newHistoricalClaudeResolver(store, claudeBin)
+	resolver := NewClaudeResolver(store, claudeBin)
 	resolver.now = func() time.Time { return time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC) }
 
 	first := testClaudeCatalogThread(child, "recorded-model", "bypassPermissions", transcript)
@@ -179,23 +179,23 @@ func TestHistoricalClaudeResolverDoesNotRunForMissingCWD(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	resolver := newHistoricalClaudeResolver(store, "/missing/claude")
-	resolution := resolver.Resolve(context.Background(), sidebar.Thread{Thread: threadindex.Thread{Provider: "claude"}})
+	resolver := NewClaudeResolver(store, "/missing/claude")
+	resolution := resolver.Resolve(context.Background(), threadindex.Thread{Provider: "claude"})
 	if resolution.State != "unavailable" {
 		t.Fatalf("resolution state = %s", resolution.State)
 	}
 }
 
-func testClaudeCatalogThread(cwd, model, permission, sourcePath string) sidebar.Thread {
+func testClaudeCatalogThread(cwd, model, permission, sourcePath string) threadindex.Thread {
 	evidence := "native_durable"
 	providerVersion := "2.1.207"
 	sources := []threadindex.SourceDetail{{Path: sourcePath}}
-	return sidebar.Thread{Thread: threadindex.Thread{Provider: "claude", ProviderVersion: &providerVersion, Metadata: threadindex.Metadata{
+	return threadindex.Thread{Provider: "claude", ProviderVersion: &providerVersion, Metadata: threadindex.Metadata{
 		CWD:        threadindex.Value{State: "known", Value: &cwd, Evidence: &evidence},
 		Model:      threadindex.Value{State: "known", Value: &model, Evidence: &evidence},
 		Effort:     threadindex.Value{State: "unknown"},
 		Permission: threadindex.Value{State: "known", Value: &permission, Evidence: &evidence},
-	}, Sources: &sources}}
+	}, Sources: &sources}
 }
 
 func writeClaudeTestFile(t *testing.T, path, content string) {

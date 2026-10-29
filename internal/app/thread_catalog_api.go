@@ -422,10 +422,10 @@ func (s *server) handleCatalogThreadRead(w http.ResponseWriter, r *http.Request,
 	s.sidebarOwner().AttachMailOverlay(mailRow)
 	thread.Mail = mailRow[0].Mail
 	if thread.Provider == "codex" && s.historicalCodex != nil {
-		resolution := s.historicalCodex.ResolvePrepared(r.Context(), thread)
+		resolution := s.historicalCodex.ResolvePrepared(r.Context(), thread.Thread)
 		thread.CurrentResolution = &resolution
 	} else if thread.Provider == "claude" && s.historicalClaude != nil {
-		resolution := s.historicalClaude.ResolvePrepared(r.Context(), thread)
+		resolution := s.historicalClaude.ResolvePrepared(r.Context(), thread.Thread)
 		thread.CurrentResolution = &resolution
 	}
 	writeCatalogJSON(w, http.StatusOK, thread)

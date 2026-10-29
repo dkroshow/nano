@@ -1,20 +1,20 @@
-package app
+package historical
 
 import (
 	"context"
 	"fmt"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/dkroshow/nano/internal/inspection"
-	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 // ResolvePrepared keeps Codex thread detail a read path. It returns a
 // persisted or memory snapshot immediately and refreshes missing/stale work in
 // the background.
-func (r *historicalConfigResolver) ResolvePrepared(_ context.Context, thread sidebar.Thread) inspection.CurrentResolution {
+func (r *CodexResolver) ResolvePrepared(_ context.Context, thread threadindex.Thread) inspection.CurrentResolution {
 	target, targetPending := r.preparedTarget(thread)
 	cwd := target.CWD
 	if cwd == "" {
@@ -51,7 +51,7 @@ func (r *historicalConfigResolver) ResolvePrepared(_ context.Context, thread sid
 	return resolution
 }
 
-func (r *historicalConfigResolver) preparedWorkspace(cwd string) (codexWorkspaceSnapshot, bool, bool, string) {
+func (r *CodexResolver) preparedWorkspace(cwd string) (codexWorkspaceSnapshot, bool, bool, string) {
 	r.mu.Lock()
 	snapshot, found := r.memory[cwd]
 	refreshErr := r.refreshErrors[cwd]
@@ -83,7 +83,7 @@ func (r *historicalConfigResolver) preparedWorkspace(cwd string) (codexWorkspace
 	return codexWorkspaceSnapshot{}, false, true, refreshErr
 }
 
-func (r *historicalConfigResolver) refreshWorkspaceAsync(cwd string) {
+func (r *CodexResolver) refreshWorkspaceAsync(cwd string) {
 	r.mu.Lock()
 	if _, running := r.inflight[cwd]; running {
 		r.mu.Unlock()
@@ -104,7 +104,7 @@ func (r *historicalConfigResolver) refreshWorkspaceAsync(cwd string) {
 	}()
 }
 
-func (r *historicalConfigResolver) preparedTarget(thread sidebar.Thread) (codexResolutionTarget, bool) {
+func (r *CodexResolver) preparedTarget(thread threadindex.Thread) (codexResolutionTarget, bool) {
 	key := threadResolutionTargetKey(thread)
 	r.mu.Lock()
 	if target, ok := r.targets[key]; ok {
@@ -133,7 +133,7 @@ func (r *historicalConfigResolver) preparedTarget(thread sidebar.Thread) (codexR
 	return fallback, true
 }
 
-func threadResolutionTargetKey(thread sidebar.Thread) string {
+func threadResolutionTargetKey(thread threadindex.Thread) string {
 	if thread.ID != "" {
 		return thread.ID
 	}
@@ -141,7 +141,7 @@ func threadResolutionTargetKey(thread sidebar.Thread) string {
 }
 
 // ResolvePrepared is Claude's filesystem-only equivalent.
-func (r *historicalClaudeResolver) ResolvePrepared(_ context.Context, thread sidebar.Thread) inspection.CurrentResolution {
+func (r *ClaudeResolver) ResolvePrepared(_ context.Context, thread threadindex.Thread) inspection.CurrentResolution {
 	target := readClaudeResolutionTarget(thread)
 	if target.CWD == "" {
 		return unavailableClaudeResolution("", "The Claude transcript does not record a working directory.")
@@ -173,7 +173,7 @@ func (r *historicalClaudeResolver) ResolvePrepared(_ context.Context, thread sid
 	return resolution
 }
 
-func (r *historicalClaudeResolver) preparedWorkspace(cwd string) (claudeWorkspaceSnapshot, bool, bool, string) {
+func (r *ClaudeResolver) preparedWorkspace(cwd string) (claudeWorkspaceSnapshot, bool, bool, string) {
 	r.mu.Lock()
 	if snapshot, ok := r.memory[cwd]; ok {
 		stale := r.now().Sub(snapshot.ResolvedAt) >= r.ttl
@@ -205,7 +205,7 @@ func (r *historicalClaudeResolver) preparedWorkspace(cwd string) (claudeWorkspac
 	return claudeWorkspaceSnapshot{}, false, true, refreshErr
 }
 
-func (r *historicalClaudeResolver) refreshWorkspaceAsync(cwd string) {
+func (r *ClaudeResolver) refreshWorkspaceAsync(cwd string) {
 	r.mu.Lock()
 	if _, running := r.inflight[cwd]; running {
 		r.mu.Unlock()

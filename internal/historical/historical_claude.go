@@ -1,4 +1,4 @@
-package app
+package historical
 
 import (
 	"bufio"
@@ -17,42 +17,40 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/setup"
-	"github.com/dkroshow/nano/internal/sidebar"
+
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const historicalClaudeResolverVersion = "claude-docs-2.1.220+nano-1"
 
-type resolvedClaudePermissions = inspection.ClaudePermissions
-type resolvedClaudeSettings = inspection.ClaudeSettings
-
 type claudeWorkspaceSnapshot struct {
 	ResolvedAt    time.Time
 	TargetCWD     string
-	Settings      resolvedClaudeSettings
+	Settings      inspection.ClaudeSettings
 	Instructions  []setup.ClaudeContextSource
 	ConfigSources []setup.ClaudeContextSource
 	Skills        []resolvedSkill
 	MCPServers    []string
 	Plugins       []string
 	CLIVersion    string
-	Git           resolvedGit
+	Git           inspection.Git
 	Diagnostics   []string
 }
 
 type persistedClaudeWorkspaceSnapshot struct {
-	Settings      resolvedClaudeSettings      `json:"settings"`
+	Settings      inspection.ClaudeSettings   `json:"settings"`
 	Instructions  []setup.ClaudeContextSource `json:"instructions"`
 	ConfigSources []setup.ClaudeContextSource `json:"configSources"`
 	Skills        []resolvedSkill             `json:"skills"`
 	MCPServers    []string                    `json:"mcpServers"`
 	Plugins       []string                    `json:"plugins"`
 	CLIVersion    string                      `json:"cliVersion,omitempty"`
-	Git           resolvedGit                 `json:"git"`
+	Git           inspection.Git              `json:"git"`
 	Diagnostics   []string                    `json:"diagnostics"`
 }
 
-type historicalClaudeResolver struct {
+// ClaudeResolver resolves documented current Claude workspace inputs.
+type ClaudeResolver struct {
 	store     *history.Store
 	claudeBin string
 	ttl       time.Duration
@@ -71,11 +69,12 @@ type claudeResolutionTarget struct {
 	Diagnostics     []string
 }
 
-func newHistoricalClaudeResolver(store *history.Store, claudeBin string) *historicalClaudeResolver {
+// NewClaudeResolver shares workspace snapshots through the existing history store.
+func NewClaudeResolver(store *history.Store, claudeBin string) *ClaudeResolver {
 	if store == nil {
 		return nil
 	}
-	return &historicalClaudeResolver{
+	return &ClaudeResolver{
 		store: store, claudeBin: claudeBin,
 		ttl: historicalResolutionTTL, now: time.Now,
 		memory: map[string]claudeWorkspaceSnapshot{}, inflight: map[string]chan struct{}{},
@@ -83,7 +82,7 @@ func newHistoricalClaudeResolver(store *history.Store, claudeBin string) *histor
 	}
 }
 
-func (r *historicalClaudeResolver) Resolve(ctx context.Context, thread sidebar.Thread) inspection.CurrentResolution {
+func (r *ClaudeResolver) Resolve(ctx context.Context, thread threadindex.Thread) inspection.CurrentResolution {
 	target := readClaudeResolutionTarget(thread)
 	if target.CWD == "" {
 		return unavailableClaudeResolution("", "The Claude transcript does not record a working directory.")
@@ -116,7 +115,7 @@ func unavailableClaudeResolution(cwd, diagnostic string) inspection.CurrentResol
 	}
 }
 
-func (r *historicalClaudeResolver) workspace(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, bool, error) {
+func (r *ClaudeResolver) workspace(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, bool, error) {
 	for {
 		r.mu.Lock()
 		if snapshot, ok := r.memory[cwd]; ok && r.now().Sub(snapshot.ResolvedAt) < r.ttl {
@@ -148,7 +147,7 @@ func (r *historicalClaudeResolver) workspace(ctx context.Context, cwd string) (c
 	}
 }
 
-func (r *historicalClaudeResolver) resolveOrLoad(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, bool, error) {
+func (r *ClaudeResolver) resolveOrLoad(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, bool, error) {
 	cached, cachedOK, cacheErr := r.loadPersisted(ctx, cwd)
 	if cacheErr != nil {
 		cachedOK = false
@@ -171,7 +170,7 @@ func (r *historicalClaudeResolver) resolveOrLoad(ctx context.Context, cwd string
 	return fresh, false, nil
 }
 
-func (r *historicalClaudeResolver) resolveWorkspace(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, error) {
+func (r *ClaudeResolver) resolveWorkspace(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, error) {
 	settings, settingsDiagnostics := resolveClaudeSettings(cwd)
 	instructions, instructionDiagnostics := resolveHistoricalClaudeInstructions(cwd, settings)
 	configSources := setup.ClaudeConfigSources(cwd)
@@ -199,7 +198,7 @@ func (r *historicalClaudeResolver) resolveWorkspace(ctx context.Context, cwd str
 }
 
 func overlayClaudeThreadResolution(
-	thread sidebar.Thread,
+	thread threadindex.Thread,
 	snapshot claudeWorkspaceSnapshot,
 	stale bool,
 	target claudeResolutionTarget,
@@ -261,7 +260,7 @@ func stringResolved(value, source string) inspection.ResolvedValue {
 	return knownResolved(value, source)
 }
 
-func readClaudeResolutionTarget(thread sidebar.Thread) claudeResolutionTarget {
+func readClaudeResolutionTarget(thread threadindex.Thread) claudeResolutionTarget {
 	target := claudeResolutionTarget{
 		CWD:        knownCatalogValue(thread.Metadata.CWD),
 		Entrypoint: knownCatalogValue(thread.Metadata.Origin),
@@ -281,7 +280,7 @@ func firstNonempty(values ...string) string {
 	return ""
 }
 
-func resolveClaudeSettings(cwd string) (resolvedClaudeSettings, []string) {
+func resolveClaudeSettings(cwd string) (inspection.ClaudeSettings, []string) {
 	return inspection.ReadClaudeSettings(claudeSettingsLayerPaths(cwd))
 }
 
@@ -300,7 +299,7 @@ func claudeSettingsLayerPaths(cwd string) []string {
 	return uniqueNonempty(paths)
 }
 
-func resolveHistoricalClaudeInstructions(cwd string, settings resolvedClaudeSettings) ([]setup.ClaudeContextSource, []string) {
+func resolveHistoricalClaudeInstructions(cwd string, settings inspection.ClaudeSettings) ([]setup.ClaudeContextSource, []string) {
 	sources := setup.ClaudeContextSources(cwd, nil)
 	filtered := make([]setup.ClaudeContextSource, 0, len(sources))
 	for _, source := range sources {
@@ -575,7 +574,7 @@ func inferClaudeBinaryVersion(bin string) string {
 	return ""
 }
 
-func (r *historicalClaudeResolver) loadPersisted(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, bool, error) {
+func (r *ClaudeResolver) loadPersisted(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, bool, error) {
 	row, ok, err := r.store.LoadClaudeWorkspaceResolution(ctx, cwd, historicalClaudeResolverVersion)
 	if err != nil || !ok {
 		return claudeWorkspaceSnapshot{}, ok, err
@@ -592,7 +591,7 @@ func (r *historicalClaudeResolver) loadPersisted(ctx context.Context, cwd string
 	}, true, nil
 }
 
-func (r *historicalClaudeResolver) savePersisted(ctx context.Context, snapshot claudeWorkspaceSnapshot) error {
+func (r *ClaudeResolver) savePersisted(ctx context.Context, snapshot claudeWorkspaceSnapshot) error {
 	payload, err := json.Marshal(persistedClaudeWorkspaceSnapshot{
 		Settings: snapshot.Settings, Instructions: snapshot.Instructions,
 		ConfigSources: snapshot.ConfigSources, Skills: snapshot.Skills,
@@ -608,7 +607,8 @@ func (r *historicalClaudeResolver) savePersisted(ctx context.Context, snapshot c
 	})
 }
 
-func (r *historicalClaudeResolver) WarmCatalog(ctx context.Context, catalog threadCatalog) {
+// WarmCatalog primes workspace snapshots for saved Claude threads.
+func (r *ClaudeResolver) WarmCatalog(ctx context.Context, catalog *threadindex.Service) {
 	if r == nil || catalog == nil {
 		return
 	}
@@ -616,7 +616,7 @@ func (r *historicalClaudeResolver) WarmCatalog(ctx context.Context, catalog thre
 	cursor := ""
 	for {
 		page, err := catalog.ListThreads(ctx, threadindex.ListQuery{
-			IncludeSubagents: true, IncludeProgrammatic: true, Archived: archivedIncludeFilter,
+			IncludeSubagents: true, IncludeProgrammatic: true, Archived: string(history.ArchivedInclude),
 			Limit: threadindex.MaxThreadCatalogLimit, Cursor: cursor,
 		})
 		if err != nil {

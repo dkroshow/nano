@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/dkroshow/nano/internal/historical"
 	"io"
 	"io/fs"
 	"log"
@@ -127,10 +128,10 @@ type server struct {
 	transcriptAuditEvents *transcriptAuditHub
 	// historicalCodex resolves the current setup for an on-disk Codex thread
 	// without starting or resuming it. Results are shared by workspace.
-	historicalCodex *historicalConfigResolver
+	historicalCodex *historical.CodexResolver
 	// historicalClaude resolves documented current Claude inputs for an
 	// on-disk thread using filesystem evidence only.
-	historicalClaude *historicalClaudeResolver
+	historicalClaude *historical.ClaudeResolver
 	// skills is the process-wide, cwd-keyed Codex skills/list cache. Session
 	// state reads never call the provider and boot fan-out is bounded here.
 	skills *setup.SkillsListCache
@@ -389,9 +390,9 @@ func construct(cfg config.Config) *application {
 		if providerHomes, err := configuredProviderHomes(); err != nil {
 			log.Printf("historical Codex resolver unavailable: %v", err)
 		} else if len(providerHomes) > 0 {
-			s.historicalCodex = newHistoricalConfigResolver(codexDaemon, catalogStore, providerHomes[0])
+			s.historicalCodex = historical.NewCodexResolver(codexDaemon, catalogStore, providerHomes[0])
 		}
-		s.historicalClaude = newHistoricalClaudeResolver(catalogStore, s.defaults.ClaudeBin)
+		s.historicalClaude = historical.NewClaudeResolver(catalogStore, s.defaults.ClaudeBin)
 	}
 	if store, err := sidebar.OpenStars(cfg.Paths.ThreadStarsDB); err != nil {
 		log.Printf("thread stars store unavailable: %v", err)
@@ -427,10 +428,10 @@ func construct(cfg config.Config) *application {
 		log.Printf("heartbeat store ready (scheduler enabled=%v; max wakes/hour=%d)", cfg.HeartbeatEnabled, cfg.HeartbeatMaxWakesPerHour)
 	}
 	if s.historicalCodex != nil && catalog != nil {
-		go s.historicalCodex.WarmCatalog(context.Background(), catalog)
+		go s.historicalCodex.WarmCatalog(context.Background(), s.hostedCatalog())
 	}
 	if s.historicalClaude != nil && catalog != nil {
-		go s.historicalClaude.WarmCatalog(context.Background(), catalog)
+		go s.historicalClaude.WarmCatalog(context.Background(), s.hostedCatalog())
 	}
 	// Every stored attachment comes back as a live session so a deploy restart
 	// never leaves threads detached (boot_reattach.go). HTTP opens first; until

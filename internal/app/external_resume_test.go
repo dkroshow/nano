@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/inspection"
 
 	"github.com/dkroshow/nano/internal/hosted"
 	"net/http"
@@ -104,7 +105,7 @@ func (f *externalResumeFixture) setPermission(t *testing.T, value string) {
 	f.index.FileChanged(f.path)
 	waitForCatalog(t, func() bool {
 		page, err := f.index.ListThreads(context.Background(), threadindex.ListQuery{IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true, Archived: "include", Limit: 50})
-		return err == nil && len(page.Items) == 1 && knownCatalogValue(page.Items[0].Metadata.Permission) == value
+		return err == nil && len(page.Items) == 1 && inspection.KnownMetadataValue(page.Items[0].Metadata.Permission.State, page.Items[0].Metadata.Permission.Value) == value
 	})
 }
 func (f *externalResumeFixture) filenameIdentity(t *testing.T) {

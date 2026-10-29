@@ -1,4 +1,4 @@
-package app
+package historical
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/sidebar"
+
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -83,7 +83,7 @@ func TestHistoricalResolverPreparedReadDoesNotWaitForColdResolution(t *testing.T
 
 	block := make(chan struct{})
 	fake := &fakePassiveCodex{block: block}
-	resolver := newHistoricalConfigResolver(fake, store, codexHome)
+	resolver := NewCodexResolver(fake, store, codexHome)
 	thread := testCodexCatalogThread(cwd, "recorded-model")
 
 	started := time.Now()
@@ -135,7 +135,7 @@ func TestHistoricalResolverSharesWorkspaceWorkAndOverlaysThreadSettings(t *testi
 	}
 	defer store.Close()
 	fake := &fakePassiveCodex{}
-	resolver := newHistoricalConfigResolver(fake, store, codexHome)
+	resolver := NewCodexResolver(fake, store, codexHome)
 	resolver.now = func() time.Time { return time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC) }
 
 	first := testCodexCatalogThread(child, "thread-model-one")
@@ -204,7 +204,7 @@ func TestHistoricalResolverLeavesProviderFilesUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	resolver := newHistoricalConfigResolver(&fakePassiveCodex{}, store, codexHome)
+	resolver := NewCodexResolver(&fakePassiveCodex{}, store, codexHome)
 	if got := resolver.Resolve(context.Background(), testCodexCatalogThread(cwd, "recorded-model")); got.State != "ready" {
 		t.Fatalf("resolution = %#v", got)
 	}
@@ -237,7 +237,7 @@ func TestHistoricalResolverMarksPreparedSnapshotStaleWhenInputsChange(t *testing
 		t.Fatal(err)
 	}
 	defer store.Close()
-	resolver := newHistoricalConfigResolver(&fakePassiveCodex{}, store, codexHome)
+	resolver := NewCodexResolver(&fakePassiveCodex{}, store, codexHome)
 	resolver.ttl = time.Hour
 	thread := testCodexCatalogThread(cwd, "recorded-model")
 	if got := resolver.Resolve(context.Background(), thread); got.State != "ready" {
@@ -304,7 +304,7 @@ func TestReadCodexResolutionTargetUsesSessionMetadata(t *testing.T) {
 	}
 	later := "/catalog/latest-turn"
 	sources := []threadindex.SourceDetail{{Path: path}}
-	thread := sidebar.Thread{Thread: threadindex.Thread{Metadata: threadindex.Metadata{CWD: threadindex.Value{State: "known", Value: &later}}, Sources: &sources}}
+	thread := threadindex.Thread{Metadata: threadindex.Metadata{CWD: threadindex.Value{State: "known", Value: &later}}, Sources: &sources}
 	target := readCodexResolutionTarget(thread)
 	if target.CWD != "/recorded/session" || target.ModelProvider != "openai" || target.ApprovalsReviewer != "auto_review" {
 		t.Fatalf("target = %#v", target)
@@ -331,11 +331,11 @@ func TestNonProjectRootMarkersIgnoreProjectLayer(t *testing.T) {
 	}
 }
 
-func testCodexCatalogThread(cwd, model string) sidebar.Thread {
+func testCodexCatalogThread(cwd, model string) threadindex.Thread {
 	evidence := "session_meta"
-	return sidebar.Thread{Thread: threadindex.Thread{Provider: "codex", Metadata: threadindex.Metadata{
+	return threadindex.Thread{Provider: "codex", Metadata: threadindex.Metadata{
 		CWD:    threadindex.Value{State: "known", Value: &cwd, Evidence: &evidence},
 		Model:  threadindex.Value{State: "known", Value: &model, Evidence: &evidence},
 		Effort: threadindex.Value{State: "unknown"},
-	}}}
+	}}
 }

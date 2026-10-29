@@ -1,4 +1,4 @@
-package app
+package historical
 
 import (
 	"bufio"
@@ -16,7 +16,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
-	"github.com/dkroshow/nano/internal/sidebar"
+
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -48,8 +48,6 @@ type resolvedModel struct {
 	Default        bool     `json:"default,omitempty"`
 }
 
-type resolvedGit = inspection.Git
-
 type codexWorkspaceSnapshot struct {
 	ResolvedAt         time.Time
 	TargetCWD          string
@@ -61,7 +59,7 @@ type codexWorkspaceSnapshot struct {
 	MCPServers         []string
 	PermissionProfiles []string
 	Models             []resolvedModel
-	Git                resolvedGit
+	Git                inspection.Git
 	Diagnostics        []string
 }
 
@@ -74,7 +72,7 @@ type persistedWorkspaceSnapshot struct {
 	MCPServers         []string                    `json:"mcpServers"`
 	PermissionProfiles []string                    `json:"permissionProfiles"`
 	Models             []resolvedModel             `json:"models"`
-	Git                resolvedGit                 `json:"git"`
+	Git                inspection.Git              `json:"git"`
 	Diagnostics        []string                    `json:"diagnostics"`
 }
 
@@ -82,7 +80,8 @@ type codexPassiveCaller interface {
 	Call(context.Context, string, any, any) error
 }
 
-type historicalConfigResolver struct {
+// CodexResolver resolves current workspace inputs for a saved Codex thread.
+type CodexResolver struct {
 	codex     codexPassiveCaller
 	store     *history.Store
 	codexHome string
@@ -113,11 +112,12 @@ type codexConfigLayer struct {
 	DisabledReason *string                    `json:"disabledReason"`
 }
 
-func newHistoricalConfigResolver(codex codexPassiveCaller, store *history.Store, codexHome string) *historicalConfigResolver {
+// NewCodexResolver shares workspace snapshots through the existing history store.
+func NewCodexResolver(codex codexPassiveCaller, store *history.Store, codexHome string) *CodexResolver {
 	if codex == nil || store == nil {
 		return nil
 	}
-	return &historicalConfigResolver{
+	return &CodexResolver{
 		codex: codex, store: store, codexHome: codexHome,
 		ttl: historicalResolutionTTL, now: time.Now,
 		memory: map[string]codexWorkspaceSnapshot{}, inflight: map[string]chan struct{}{},
@@ -126,7 +126,7 @@ func newHistoricalConfigResolver(codex codexPassiveCaller, store *history.Store,
 	}
 }
 
-func (r *historicalConfigResolver) Resolve(ctx context.Context, thread sidebar.Thread) inspection.CurrentResolution {
+func (r *CodexResolver) Resolve(ctx context.Context, thread threadindex.Thread) inspection.CurrentResolution {
 	target := readCodexResolutionTarget(thread)
 	cwd := target.CWD
 	if cwd == "" {
@@ -160,7 +160,7 @@ func unavailableResolution(cwd, diagnostic string) inspection.CurrentResolution 
 	}
 }
 
-func (r *historicalConfigResolver) workspace(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
+func (r *CodexResolver) workspace(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
 	for {
 		r.mu.Lock()
 		snapshot, cached := r.memory[cwd]
@@ -195,7 +195,7 @@ func (r *historicalConfigResolver) workspace(ctx context.Context, cwd string) (c
 	}
 }
 
-func (r *historicalConfigResolver) resolveOrLoad(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
+func (r *CodexResolver) resolveOrLoad(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
 	cached, cachedOK, cacheErr := r.loadPersisted(ctx, cwd)
 	if cacheErr != nil {
 		cachedOK = false
@@ -218,7 +218,7 @@ func (r *historicalConfigResolver) resolveOrLoad(ctx context.Context, cwd string
 	return fresh, false, nil
 }
 
-func (r *historicalConfigResolver) resolveWorkspace(ctx context.Context, cwd string) (codexWorkspaceSnapshot, error) {
+func (r *CodexResolver) resolveWorkspace(ctx context.Context, cwd string) (codexWorkspaceSnapshot, error) {
 	var configResponse struct {
 		Config map[string]json.RawMessage `json:"config"`
 		Layers []codexConfigLayer         `json:"layers"`
@@ -338,7 +338,7 @@ func (r *historicalConfigResolver) resolveWorkspace(ctx context.Context, cwd str
 // workspaceSnapshotStale checks only local filesystem metadata. It keeps the
 // detail endpoint non-blocking while detecting configuration, instruction, and
 // skill changes before the TTL backstop expires.
-func (r *historicalConfigResolver) workspaceSnapshotStale(snapshot codexWorkspaceSnapshot) bool {
+func (r *CodexResolver) workspaceSnapshotStale(snapshot codexWorkspaceSnapshot) bool {
 	if snapshot.Fingerprint == "" || len(snapshot.WatchPaths) == 0 {
 		return true // cached rows from before fingerprints are safely refreshed.
 	}
@@ -585,10 +585,12 @@ func intConfig(config map[string]json.RawMessage, key string, fallback int) int 
 	return value
 }
 
-func observeGit(ctx context.Context, cwd string) resolvedGit { return inspection.ObserveGit(ctx, cwd) }
+func observeGit(ctx context.Context, cwd string) inspection.Git {
+	return inspection.ObserveGit(ctx, cwd)
+}
 
 func overlayThreadResolution(
-	thread sidebar.Thread,
+	thread threadindex.Thread,
 	snapshot codexWorkspaceSnapshot,
 	stale bool,
 	recordedProvider,
@@ -649,7 +651,7 @@ func overlayThreadResolution(
 	}
 }
 
-func readCodexResolutionTarget(thread sidebar.Thread) codexResolutionTarget {
+func readCodexResolutionTarget(thread threadindex.Thread) codexResolutionTarget {
 	fallback := knownCatalogValue(thread.Metadata.CWD)
 	if thread.Sources == nil {
 		return codexResolutionTarget{CWD: fallback}
@@ -767,7 +769,7 @@ func rawResolved(raw json.RawMessage, source string) inspection.ResolvedValue {
 	return knownResolved(value, source)
 }
 
-func (r *historicalConfigResolver) loadPersisted(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
+func (r *CodexResolver) loadPersisted(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
 	row, ok, err := r.store.LoadCodexWorkspaceResolution(ctx, cwd, historicalResolverVersion)
 	if err != nil || !ok {
 		return codexWorkspaceSnapshot{}, ok, err
@@ -785,7 +787,7 @@ func (r *historicalConfigResolver) loadPersisted(ctx context.Context, cwd string
 	}, true, nil
 }
 
-func (r *historicalConfigResolver) savePersisted(ctx context.Context, snapshot codexWorkspaceSnapshot) error {
+func (r *CodexResolver) savePersisted(ctx context.Context, snapshot codexWorkspaceSnapshot) error {
 	payload, err := json.Marshal(persistedWorkspaceSnapshot{
 		Fingerprint: snapshot.Fingerprint, WatchPaths: snapshot.WatchPaths,
 		Config: snapshot.Config, Instructions: snapshot.Instructions, Skills: snapshot.Skills,
@@ -847,7 +849,8 @@ func configFeatureEnabled(raw json.RawMessage, name string) bool {
 	return json.Unmarshal(features[name], &enabled) == nil && enabled
 }
 
-func (r *historicalConfigResolver) WarmCatalog(ctx context.Context, catalog threadCatalog) {
+// WarmCatalog primes workspace snapshots for saved Codex threads.
+func (r *CodexResolver) WarmCatalog(ctx context.Context, catalog *threadindex.Service) {
 	if r == nil || catalog == nil {
 		return
 	}
@@ -855,7 +858,7 @@ func (r *historicalConfigResolver) WarmCatalog(ctx context.Context, catalog thre
 	cursor := ""
 	for {
 		page, err := catalog.ListThreads(ctx, threadindex.ListQuery{
-			IncludeSubagents: true, IncludeProgrammatic: true, Archived: archivedIncludeFilter,
+			IncludeSubagents: true, IncludeProgrammatic: true, Archived: string(history.ArchivedInclude),
 			Limit: threadindex.MaxThreadCatalogLimit, Cursor: cursor,
 		})
 		if err != nil {
