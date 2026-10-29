@@ -68,9 +68,10 @@ func readySendTestSession(t *testing.T, store *turns.LegacyJournal, sender func(
 	projection := newDeliveryTestProjection("codex")
 	return sessionWithOwners(&Session{id: "nano-session",
 		provider: "codex", hostedThreadID: "hosted-thread",
-		projection: projection,
 		stateOwner: State{threadID: "native-thread",
 			lifecycleState: testLifecycleSnapshot("ready", false)},
+		view: View{
+			projection: projection},
 		delivery: Delivery{turns: turnStore, sendAttempts: store, queuedTurns: queue,
 			sendOps: map[string]*turnSendOperation{}, turnSender: sender}})
 }
@@ -94,9 +95,10 @@ func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context
 
 	sess := sessionWithOwners(&Session{
 		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread",
-		projection: projection,
 		stateOwner: State{threadID: "native-thread",
 			lifecycleState: testLifecycleSnapshot("ready", false)},
+		view: View{
+			projection: projection},
 		delivery: Delivery{turns: store, sendAttempts: attempts, queuedTurns: queue,
 			sendOps: map[string]*turnSendOperation{}, turnSender: sender},
 	})
@@ -1141,8 +1143,8 @@ func TestClaudePromptSentWhileATurnWorksIsDeliveredAtOnce(t *testing.T) {
 		return json.RawMessage(`{"turn":{"id":"claude:hosted-thread:2"}}`), nil
 	})
 	sess.provider = "claude"
-	sess.projection = newDeliveryTestProjection("claude")
-	sess.projection.setNativeThreadID("native-thread")
+	sess.view.projection = newDeliveryTestProjection("claude")
+	sess.view.projection.setNativeThreadID("native-thread")
 	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}

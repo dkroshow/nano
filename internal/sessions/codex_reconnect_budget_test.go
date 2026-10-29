@@ -26,5 +26,5 @@ func TestReconnectAuditDeadlineBudgets(t *testing.T) {
 			t.Fatalf("attempt %d budget: %s, %v", attempt+1, raw, err)
 		}
 	}
-	sess.Close()
+	sess.lifecycle.Close()
 }

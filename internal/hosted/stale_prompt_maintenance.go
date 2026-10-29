@@ -188,7 +188,7 @@ func (s *AttachmentCoordinator) expireStalePrompts(ctx context.Context, apply bo
 				receipt.Expired++
 				// An open pane drops an expired prompt only when told.
 				if sess := s.Registry.SessionForHostedThread(hosted); sess != nil {
-					sess.PublishLiveOutbox(current.Outbox)
+					sess.View().PublishLiveOutbox(current.Outbox)
 				}
 			case current.Outbox.State == prompts.Confirmed:
 				receipt.Settled++

@@ -265,7 +265,7 @@ func TestClaudeExplicitStartingCloseDoesNotClaimSuccess(t *testing.T) {
 	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{sess.ID(): sess})
 	w := httptest.NewRecorder()
 	fixtureOwners(s).hostedController().HandleLegacyClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
-	if w.Code != 502 || s.LookupSession(sess.ID()) != sess || sess.Summary().Status == sessionStatusExited {
+	if w.Code != 502 || s.LookupSession(sess.ID()) != sess || sess.View().Summary().Status == sessionStatusExited {
 		t.Fatalf("starting close lost in-flight attachment: %d %s", w.Code, w.Body)
 	}
 }
@@ -354,7 +354,7 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sess.Close()
+			sess.Lifecycle().Close()
 			record, _ := store.Session(hosted.ID)
 			turn, _ := store.Turn(op.ID)
 			if success {

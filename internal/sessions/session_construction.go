@@ -71,12 +71,6 @@ func New(cfg Config) *Session {
 		invokerProvider:       cfg.InvokerProvider,
 		createdAt:             cfg.CreatedAt,
 		spawnMode:             cfg.SpawnMode,
-		projection:            cfg.Projection,
-		nameThread:            cfg.NameThread,
-		publishCreationName:   cfg.PublishCreationName,
-		creationName:          cfg.CreationName,
-		metadataName:          cfg.MetadataName,
-		skills:                cfg.Skills,
 		agentExecutions:       cfg.AgentExecutions,
 		metadata:              cfg.Metadata,
 		processStarted:        cfg.ProcessStarted,
@@ -102,6 +96,13 @@ func New(cfg Config) *Session {
 		runtime: Runtime{
 			reasoningSummary: cfg.ReasoningSummary,
 			completedTurns:   cfg.CompletedTurns},
+		view: View{
+			projection:          cfg.Projection,
+			nameThread:          cfg.NameThread,
+			publishCreationName: cfg.PublishCreationName,
+			creationName:        cfg.CreationName,
+			metadataName:        cfg.MetadataName,
+			skills:              cfg.Skills},
 		delivery: Delivery{
 			turns:            cfg.Turns,
 			appendUnread:     cfg.AppendUnread,
@@ -115,6 +116,8 @@ func New(cfg Config) *Session {
 	sess.delivery.session = sess
 	sess.stateOwner.session = sess
 	sess.runtime.session = sess
+	sess.lifecycle.session = sess
+	sess.view.session = sess
 	return sess
 }
 
@@ -178,7 +181,7 @@ func (sess *Session) DidRegister() {
 }
 
 // WarmSkills begins the shared cwd read without waiting for a pane request.
-func (sess *Session) WarmSkills() { sess.skills.Current(sess.stateOwner.cwd) }
+func (sess *View) WarmSkills() { sess.skills.Current(sess.session.stateOwner.cwd) }
 
 // RecordCreationPosture records the provider values of the admitted creation.
 func (sess *State) RecordCreationPosture(req ProviderRequest) {
@@ -197,9 +200,9 @@ func (sess *Session) DiscardSpawnResources() {
 
 // AttachLiveText connects the view and its ordered parsed-evidence observer.
 func (sess *Session) AttachLiveText(view *LiveTextLoop) {
-	sess.liveText = view
-	sess.projection.setLiveText(view)
+	sess.view.liveText = view
+	sess.view.projection.setLiveText(view)
 }
 
 // LiveTextService returns the view service for application-owned pane reads.
-func (sess *Session) LiveTextService() *LiveTextLoop { return sess.liveText }
+func (sess *View) LiveTextService() *LiveTextLoop { return sess.liveText }

@@ -469,7 +469,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		return fmt.Errorf("verify %s reasoning effort: %w", method, effortErr)
 	}
 	sess.stateOwner.setProjectionThreadID(threadID)
-	sess.applyPendingName(threadID)
+	sess.view.applyPendingName(threadID)
 	sess.stateOwner.rememberDurableAttachment(hostedstore.Attachment{
 		Provider: "grok", NativeThreadID: threadID, Cwd: req.Cwd, Model: model,
 		AttachedAt: time.Now().UTC().Format(time.RFC3339Nano),

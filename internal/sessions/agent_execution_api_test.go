@@ -24,11 +24,11 @@ func TestDeliveryErrorsDistinguishRefusalFromUncertainty(t *testing.T) {
 func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
 	sess := sessionWithOwners(&Session{
 		stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)}})
-	if sess.Summary().TurnActive {
+	if sess.view.Summary().TurnActive {
 		t.Fatal("local reservation asserted work")
 	}
 	sess.stateOwner.acceptProviderTurn("accepted-turn")
-	if summary := sess.Summary(); !summary.TurnActive {
+	if summary := sess.view.Summary(); !summary.TurnActive {
 		t.Fatalf("accepted provider turn summary = %#v", summary)
 	}
 }

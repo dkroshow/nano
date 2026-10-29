@@ -40,7 +40,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 	}
 	f.emitAndWait(t, []byte(liveTextDeltaTurnStarted))
 
-	if !sess.Summary().TurnActive {
+	if !sess.view.Summary().TurnActive {
 		t.Fatal("turn did not become active before the incident burst")
 	}
 	queuedText := "next prompt after large command output"

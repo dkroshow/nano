@@ -89,14 +89,14 @@ func (l *LiveTextLoop) conversationItems(ctx context.Context, view liveview.View
 }
 
 // PublishLiveOutbox keeps the optional view notification behind its session owner.
-func (sess *Session) PublishLiveOutbox(entries ...prompts.OutboxEntry) {
+func (sess *View) PublishLiveOutbox(entries ...prompts.OutboxEntry) {
 	if sess.liveText != nil {
 		sess.liveText.outboxChanged(entries...)
 	}
 }
 
 // NotifySavedTranscript notifies the live view that its saved transcript changed.
-func (sess *Session) NotifySavedTranscript() {
+func (sess *View) NotifySavedTranscript() {
 	if sess.liveText != nil {
 		sess.liveText.applied()
 	}

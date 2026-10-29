@@ -156,7 +156,7 @@ func TestBootReattachResumesClaudeThroughLiveShim(t *testing.T) {
 		t.Fatalf("summary = %#v, want the shim thread attached and ready", sum)
 	}
 	waitForClaude(t, "boot re-attach to restore the shim's active turn", func() bool {
-		return sessions[0].Summary().TurnActive
+		return sessions[0].View().Summary().TurnActive
 	})
 	if attaches := shim.CallsOf(shimMethodAttach); len(attaches) != 1 {
 		t.Fatalf("session/attach calls = %d, want 1", len(attaches))
@@ -233,7 +233,7 @@ func TestBootReattachUsesRetainedClaudeHistorySeam(t *testing.T) {
 		for _, candidate := range s.SnapshotSessions() {
 			sess = candidate
 		}
-		return sess != nil && sess.Summary().Status == "ready"
+		return sess != nil && sess.View().Summary().Status == "ready"
 	})
 	var params struct {
 		FromSeq int64 `json:"fromSeq"`
@@ -281,7 +281,7 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 		t.Fatal("boot did not register the provisional Claude session")
 	}
 	waitForSessionStatus(t, s, sess.ID(), "ready")
-	if sum := sess.Summary(); sum.Name != "nano api fable" {
+	if sum := sess.View().Summary(); sum.Name != "nano api fable" {
 		t.Fatalf("summary name = %q, want restored pending title", sum.Name)
 	}
 	stored, ok := store.Get("claude", "cs_shim_pending")
@@ -746,7 +746,7 @@ func TestBootReattachRegistersAllShellsBeforeSlowClaudeHandshake(t *testing.T) {
 	for time.Now().Before(deadline) {
 		allReady = len(s.SnapshotSessions()) == 2
 		for _, sess := range s.SnapshotSessions() {
-			allReady = allReady && sess.Summary().Status == "ready"
+			allReady = allReady && sess.View().Summary().Status == "ready"
 		}
 		if allReady {
 			break
@@ -791,7 +791,7 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 		t.Fatalf("registered Grok shells = %d, want %d", len(sessions), sessionCount)
 	}
 	for _, sess := range sessions {
-		if got := sess.Summary().Status; got != "starting" {
+		if got := sess.View().Summary().Status; got != "starting" {
 			t.Fatalf("waiting Grok shell %s status = %q, want starting", sess.ID(), got)
 		}
 	}
@@ -803,7 +803,7 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 	for time.Now().Before(deadline) {
 		ready := 0
 		for _, sess := range sessions {
-			if sess.Summary().Status == "ready" {
+			if sess.View().Summary().Status == "ready" {
 				ready++
 			}
 		}
@@ -813,7 +813,7 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	for _, sess := range sessions {
-		if got := sess.Summary().Status; got != "ready" {
+		if got := sess.View().Summary().Status; got != "ready" {
 			t.Fatalf("released Grok shell %s status = %q, want ready", sess.ID(), got)
 		}
 	}
@@ -903,7 +903,7 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 			return false
 		}
 		for _, sess := range s.SnapshotSessions() {
-			if sess.Summary().Status != "ready" {
+			if sess.View().Summary().Status != "ready" {
 				return false
 			}
 		}
@@ -1015,10 +1015,10 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 		t.Fatalf("decode first-turn operation: %v", err)
 	}
 	waitForClaude(t, "post-start resume on the replacement connection", func() bool {
-		summary := sess.Summary()
+		summary := sess.View().Summary()
 		return daemon.ResumeCount() == 3 && summary.Status == "ready" && summary.TurnActive
 	})
-	summary := sess.Summary()
+	summary := sess.View().Summary()
 	if count := daemon.ResumeCount(); count != 3 || summary.Status != "ready" || !summary.TurnActive {
 		t.Fatalf("post-start recovery: %d resumes, summary=%+v; want exactly three resumes and ready with its in-flight turn", count, summary)
 	}
@@ -1040,7 +1040,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	defer func() {
 		if t.Failed() {
 			got, _ := s.agentExecutions.Turn(operation.ID)
-			t.Logf("first-turn operation: %+v; lifecycle: %+v; wire: %+v", got, sess.Summary(), claudeWireEvents(sess))
+			t.Logf("first-turn operation: %+v; lifecycle: %+v; wire: %+v", got, sess.View().Summary(), claudeWireEvents(sess))
 		}
 	}()
 	// The prompt went out with its own client id, so the wire's completion
@@ -1590,7 +1590,7 @@ func TestResumeAnswerWithOlderTerminalTurnsNotifiesNobody(t *testing.T) {
 	fixtureReattach(s, rec.HostedThreadID) // no work open, so it rests until needed
 	waitForClaude(t, "the reattached session", func() bool {
 		sess := s.SessionForHostedThread(rec.HostedThreadID)
-		return sess != nil && sess.Summary().Status == "ready"
+		return sess != nil && sess.View().Summary().Status == "ready"
 	})
 	dispatcher.Sweep("")
 	if feed, err := completedFeedForTest(t, s.completedTurns).After(context.Background(), rec.HostedThreadID, "", 10); err != nil || len(feed) != 0 || len(client.messages) != 0 {
@@ -1620,7 +1620,7 @@ func TestCodexReconnectDeliversCompletedTurnSubscriptionOnce(t *testing.T) {
 		if sess == nil {
 			return false
 		}
-		return sess.Summary().TurnActive
+		return sess.View().Summary().TurnActive
 	})
 	daemon.EmitThreadNotification(rec.NativeThreadID, map[string]any{"method": "item/completed", "params": map[string]any{
 		"threadId": rec.NativeThreadID, "turnId": "turn-live",
@@ -1649,7 +1649,7 @@ func TestCodexReconnectDeliversCompletedTurnSubscriptionOnce(t *testing.T) {
 	before := daemon.ResumeCount()
 	daemon.DropConnections()
 	waitForClaude(t, "the completed turn to be seen on reconnect", func() bool {
-		return daemon.ResumeCount() > before && sess.Summary().Status == "ready"
+		return daemon.ResumeCount() > before && sess.View().Summary().Status == "ready"
 	})
 	dispatcher.Sweep("")
 

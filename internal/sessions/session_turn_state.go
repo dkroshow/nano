@@ -126,7 +126,7 @@ func (sess *State) setTurnActiveState(active bool, turnID string, startedAtMs in
 	}
 	sess.stateMu.Unlock()
 	if changed && publish && !restoring {
-		sess.session.PublishProjectionRuntime()
+		sess.session.view.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 		if drain {
 			sess.session.delivery.kickQueuedTurnDrain()
@@ -160,7 +160,7 @@ func (sess *State) settleRestoredTurnStateLocked() (drain bool, status string) {
 }
 
 func (sess *State) publishRestoredTurnState(drain bool, status string) {
-	sess.session.PublishProjectionRuntime()
+	sess.session.view.PublishProjectionRuntime()
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
@@ -205,7 +205,7 @@ func (sess *State) restoreTurnAnchorState(startedAtMs int64, publish bool) bool 
 	}
 	sess.stateMu.Unlock()
 	if restore && publish && !restoring {
-		sess.session.PublishProjectionRuntime()
+		sess.session.view.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 	}
 	return restore
@@ -246,7 +246,7 @@ func (sess *State) markCompacting(compacting bool, startedAtMs int64) {
 	sess.compactingSinceMs = since
 	sess.stateMu.Unlock()
 	if changed {
-		sess.session.PublishProjectionRuntime()
+		sess.session.view.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 	}
 }

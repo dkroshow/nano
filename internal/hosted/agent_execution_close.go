@@ -88,11 +88,11 @@ func (s *Controller) closeAgentSession(sess *sessions.Session) error {
 		attachment, remembered = s.Attachments.Get(sess.Provider(), sess.State().ThreadID())
 	}
 	if remembered && sess.Provider() == "claude" {
-		if err := sess.VerifyClaudeAttachment(attachment.ShimSessionID); err != nil {
+		if err := sess.Lifecycle().VerifyClaudeAttachment(attachment.ShimSessionID); err != nil {
 			return err
 		}
 	}
-	err := sess.CloseWithResult()
+	err := sess.Lifecycle().CloseWithResult()
 	if !sess.State().IsClosed() {
 		return err
 	}
@@ -106,6 +106,6 @@ func (s *Controller) closeAgentSession(sess *sessions.Session) error {
 			return err
 		}
 	}
-	sess.ConfirmClaudeClose()
+	sess.Lifecycle().ConfirmClaudeClose()
 	return nil
 }

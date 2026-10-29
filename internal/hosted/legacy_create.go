@@ -42,7 +42,7 @@ func (s *Controller) handleSessionCreateAction(w http.ResponseWriter, r *http.Re
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	sum := sess.Summary() // snapshot under the state lock; claude's threadID lands async
+	sum := sess.View().Summary() // snapshot under the state lock; claude's threadID lands async
 	log.Printf("spawned %s session %s (thread %q, cwd %s)", sum.Provider, sum.ID, sum.ThreadID, sum.Cwd)
 	httpapi.WriteJSON(w, sum)
 }

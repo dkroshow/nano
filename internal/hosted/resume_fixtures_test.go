@@ -94,14 +94,14 @@ func readyClaimSession(t *testing.T, cfg sessions.Config, native string) *sessio
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Cwd: t.TempDir(), ClaudeShimWS: shimServer.WSURL(), ClaudeShimSpools: t.TempDir(), ClaudeBin: "/fake/claude"}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if sess.Summary().Status == "ready" {
+		if sess.View().Summary().Status == "ready" {
 			return sess
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatalf("live claim fixture did not become ready: %+v", sess.Summary())
+	t.Fatalf("live claim fixture did not become ready: %+v", sess.View().Summary())
 	return nil
 }

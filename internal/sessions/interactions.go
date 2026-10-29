@@ -593,8 +593,8 @@ func (sess *Delivery) addPendingInteraction(p interact.PendingInteraction) {
 	sess.session.stateOwner.interactions[p.ID] = p
 	sess.session.stateOwner.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
 	sess.session.stateOwner.stateMu.Unlock()
-	if sess.session.projection != nil {
-		sess.session.projection.upsertInteraction(p)
+	if sess.session.view.projection != nil {
+		sess.session.view.projection.upsertInteraction(p)
 	}
 	sess.session.wire.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
 	sess.session.stateOwner.NotifyRuntime()
@@ -651,8 +651,8 @@ func (sess *Delivery) takePendingInteraction(id string) (interact.PendingInterac
 			sess.session.stateOwner.observeInteractionLocked(lifecycle.EventAnswered, "")
 		}
 	}
-	if ok && sess.session.projection != nil {
-		sess.session.projection.removeInteraction(id)
+	if ok && sess.session.view.projection != nil {
+		sess.session.view.projection.removeInteraction(id)
 	}
 	return p, ok
 }
@@ -685,9 +685,9 @@ func (sess *Delivery) drainPendingInteractions() []interact.PendingInteraction {
 	sess.session.stateOwner.interactions = nil
 	sess.session.stateOwner.observeInteractionLocked(lifecycle.EventAnswered, "")
 	sess.session.stateOwner.stateMu.Unlock()
-	if sess.session.projection != nil {
+	if sess.session.view.projection != nil {
 		for _, interaction := range out {
-			sess.session.projection.removeInteraction(interaction.ID)
+			sess.session.view.projection.removeInteraction(interaction.ID)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })

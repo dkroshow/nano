@@ -22,7 +22,7 @@ func TestMCPEndpointRejectsClaudeSessions(t *testing.T) {
 		stateOwner: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	rec := httptest.NewRecorder()
-	sess.HandleMCPServers(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/claude-1/mcp", nil))
+	sess.view.HandleMCPServers(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/claude-1/mcp", nil))
 	if rec.Code != http.StatusNotImplemented {
 		t.Errorf("got %d, want %d", rec.Code, http.StatusNotImplemented)
 	}
@@ -54,7 +54,7 @@ func resumedSession(t *testing.T, fake *fakeAppServer) *Session {
 	if err := startCodexSession(sess, daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "thread-mcp-1"}); err != nil {
 		t.Fatal(err)
 	}
-	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
+	waitReconnectCondition(t, func() bool { return sess.view.Summary().Status == "ready" })
 	return sess
 }
 
@@ -71,7 +71,7 @@ func TestStateDoesNotFetchMCPInventory(t *testing.T) {
 	fake := newFakeAppServer(t)
 	sess := resumedSession(t, fake)
 
-	rec := getSessionPath(t, sess.HandleState, "/api/sessions/"+sess.ID()+"/state")
+	rec := getSessionPath(t, sess.view.HandleState, "/api/sessions/"+sess.ID()+"/state")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/state: got %d, want 200 (%s)", rec.Code, rec.Body.String())
 	}
@@ -98,7 +98,7 @@ func TestMCPEndpointProjectsAndCaches(t *testing.T) {
 	sess := resumedSession(t, fake)
 
 	var first inspection.MCPInventory
-	rec := getSessionPath(t, sess.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
+	rec := getSessionPath(t, sess.view.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/mcp: got %d, want 200 (%s)", rec.Code, rec.Body.String())
 	}
@@ -132,7 +132,7 @@ func TestMCPEndpointProjectsAndCaches(t *testing.T) {
 	}
 
 	// Second request is served from the cache: no new wire call.
-	if rec := getSessionPath(t, sess.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp"); rec.Code != http.StatusOK {
+	if rec := getSessionPath(t, sess.view.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp"); rec.Code != http.StatusOK {
 		t.Fatalf("second /mcp: got %d, want 200", rec.Code)
 	}
 	calls, details := fake.McpListCalls()
@@ -148,13 +148,13 @@ func TestMCPCacheInvalidatedByStartupNotification(t *testing.T) {
 	fake := newFakeAppServer(t)
 	sess := resumedSession(t, fake)
 
-	getSessionPath(t, sess.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
+	getSessionPath(t, sess.view.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
 	sess.wire.recordWire(protocol.Recv, []byte(`{"method":"mcpServer/startupStatus/updated","params":{"name":"docs","status":"ready"}}`))
 	// The ingress queues work; wait for its processor before reading the cache.
 	if err := sess.runtime.core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
 		t.Fatal(err)
 	}
-	getSessionPath(t, sess.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
+	getSessionPath(t, sess.view.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
 
 	if calls, _ := fake.McpListCalls(); calls != 2 {
 		t.Errorf("mcpServerStatus/list calls: got %d, want 2 (startup transition invalidates)", calls)

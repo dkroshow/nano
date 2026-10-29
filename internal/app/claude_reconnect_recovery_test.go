@@ -204,7 +204,7 @@ func TestClaudeReconnectMidMessageKeepsNativeBlockIdentity(t *testing.T) {
 			}
 
 			sess := sessionForNative(t, s)
-			texts := sess.LiveTextService().CurrentTexts(context.Background())
+			texts := sess.View().LiveTextService().CurrentTexts(context.Background())
 			if !slices.Contains(texts, "first block") || !slices.Contains(texts, "second block so far") {
 				t.Fatalf("live text after the replay = %q, want each block of the open message", texts)
 			}
@@ -375,7 +375,7 @@ func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
 	}
 	sess := sessionForNative(t, s)
 	count := 0
-	for _, text := range sess.LiveTextService().CurrentTexts(context.Background()) {
+	for _, text := range sess.View().LiveTextService().CurrentTexts(context.Background()) {
 		if text == "appended after the scan" {
 			count++
 		}

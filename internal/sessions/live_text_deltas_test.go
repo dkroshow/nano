@@ -177,7 +177,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 		frames[i], _ = json.Marshal(value)
 		f.emitAndWait(t, frames[i])
 	}
-	if !sess.Summary().TurnActive {
+	if !sess.view.Summary().TurnActive {
 		t.Fatal("runtime observer missed turn/started")
 	}
 	tail := [][]byte{liveTextDeltaItemCompleted("Hello world"), liveTextDeltaTurnCompleted("completed")}
@@ -188,7 +188,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 		f.emitAndWait(t, tail[i])
 	}
 	frames = append(frames, tail...)
-	if sess.Summary().TurnActive {
+	if sess.view.Summary().TurnActive {
 		t.Fatal("runtime observer missed turn/completed")
 	}
 	if texts := liveTextDeltaAgentTexts(t, projection); len(texts) != 1 || texts[0] != "Hello world" {

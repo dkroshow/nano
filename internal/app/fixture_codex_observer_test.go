@@ -35,7 +35,7 @@ func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, ho
 	}
 	sess.ReserveNativeID(nativeID)
 	fake := newFakeAppServer(t)
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	return sess, fake
 }
 func startCodexObserverFixture(t *testing.T, sess *sessions.Session, fake *fakeAppServer) {
@@ -45,10 +45,10 @@ func startCodexObserverFixture(t *testing.T, sess *sessions.Session, fake *fakeA
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if status := sess.Summary().Status; status == "ready" {
+		if status := sess.View().Summary().Status; status == "ready" {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatalf("observer attachment did not become ready: %+v", sess.Summary())
+	t.Fatalf("observer attachment did not become ready: %+v", sess.View().Summary())
 }

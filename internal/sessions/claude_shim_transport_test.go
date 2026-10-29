@@ -50,12 +50,12 @@ func claudeWireEvents(sess *Session) []wire.Event {
 // for "the handshake landed" — the identity is what these assertions are about.
 func waitForClaudeThreadID(t *testing.T, sess *Session, want string) {
 	t.Helper()
-	waitForClaude(t, "native thread id "+want, func() bool { return sess.Summary().ThreadID == want })
+	waitForClaude(t, "native thread id "+want, func() bool { return sess.view.Summary().ThreadID == want })
 }
 
 func waitForClaudeStatus(t *testing.T, sess *Session, want string) {
 	t.Helper()
-	waitForClaude(t, "session status "+want, func() bool { return sess.Summary().Status == want })
+	waitForClaude(t, "session status "+want, func() bool { return sess.view.Summary().Status == want })
 }
 
 func claudeShimSpawnRequest(sess *Session, shimURL string) ProviderRequest {
@@ -88,7 +88,7 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 	}
 	defer claude.Close()
 
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if sum.Status != "ready" {
 		t.Fatalf("summary = %+v, want ready as soon as the transport is up", sum)
 	}
@@ -136,7 +136,7 @@ func TestClaudeAttachIsReadyWithoutAReplayedInit(t *testing.T) {
 	}
 	defer claude.Close()
 
-	if sum := sess.Summary(); sum.Status != "ready" {
+	if sum := sess.view.Summary(); sum.Status != "ready" {
 		t.Fatalf("summary = %+v, want the attached session ready", sum)
 	}
 }
@@ -193,7 +193,7 @@ func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
 	if len(events) != 1 || events[0].Dir != "recv" || string(events[0].Msg) != claudeInitLine {
 		t.Fatalf("wire events = %+v", events)
 	}
-	if sum := sess.Summary(); sum.ThreadID != "native-1" || sum.Model != "sonnet" {
+	if sum := sess.view.Summary(); sum.ThreadID != "native-1" || sum.Model != "sonnet" {
 		t.Fatalf("summary = %+v", sum)
 	}
 
@@ -246,7 +246,7 @@ func TestClaudeShimSendTurnRecordsSendOnce(t *testing.T) {
 	if len(events) != 1 || events[0].Dir != "send" || string(events[0].Msg) != lines[0] {
 		t.Fatalf("wire events = %+v, want one send matching the input line", events)
 	}
-	if sess.Summary().TurnActive {
+	if sess.view.Summary().TurnActive {
 		t.Fatal("local send line invented provider work")
 	}
 }
@@ -349,7 +349,7 @@ func TestClaudeShimUnreachableFallsBackToDirectChild(t *testing.T) {
 	defer claude.Close()
 
 	waitForClaudeThreadID(t, sess, "native-direct")
-	if sum := sess.Summary(); sum.Status != "ready" {
+	if sum := sess.view.Summary(); sum.Status != "ready" {
 		t.Fatalf("summary = %+v, want the direct child ready", sum)
 	}
 	if got := logs.String(); !strings.Contains(got, "WARNING: claude shim unreachable — direct child spawn (no durability)") {
@@ -442,7 +442,7 @@ func TestAttachClaudeSessionReplaysThenFollowsLive(t *testing.T) {
 	}
 
 	// Replay has landed by the time attach returns: identity is re-derived.
-	if sum := sess.Summary(); sum.Status != "ready" || sum.ThreadID != "native-1" || sum.Model != "sonnet" {
+	if sum := sess.view.Summary(); sum.Status != "ready" || sum.ThreadID != "native-1" || sum.Model != "sonnet" {
 		t.Fatalf("summary after attach = %+v", sum)
 	}
 	// The control channel starts as soon as replay completes, so its initialize
@@ -640,7 +640,7 @@ func TestClaudeAttachWaitsForReplayProcessing(t *testing.T) {
 				t.Fatalf("attach returned before replay processing was released: %v", got.err)
 			case <-time.After(150 * time.Millisecond):
 			}
-			if state == "running" && sess.Summary().Status == "ready" {
+			if state == "running" && sess.view.Summary().Status == "ready" {
 				t.Fatal("attachment became ready before replay processing finished")
 			}
 			unblock()
@@ -767,15 +767,15 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	sess.projection = newBlockedProjection("claude")
+	sess.view.projection = newBlockedProjection("claude")
 	// Make projection consumption slower than socket ingestion. A correct
 	// transport keeps reading and queues ordered notifications until this lock
 	// is released; the old transport blocked its sole reader here.
-	sess.projection.mu.Lock()
+	sess.view.projection.mu.Lock()
 	locked := true
 	defer func() {
 		if locked {
-			sess.projection.mu.Unlock()
+			sess.view.projection.mu.Unlock()
 		}
 	}()
 	attached := make(chan struct {
@@ -799,7 +799,7 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 	if wrote != replayCount {
 		t.Fatalf("shim socket stalled after %d replay lines, want all %d drained", wrote, replayCount)
 	}
-	sess.projection.mu.Unlock()
+	sess.view.projection.mu.Unlock()
 	locked = false
 
 	var result struct {
@@ -822,7 +822,7 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 
 func TestClaudeReattachWithTwoHundredSpooledLinesDoesNotBlockCoreMailbox(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	sess.projection = newBlockedProjection("claude")
+	sess.view.projection = newBlockedProjection("claude")
 	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
@@ -868,7 +868,7 @@ func TestClaudeReattachWithTwoHundredSpooledLinesDoesNotBlockCoreMailbox(t *test
 // next line, and the eventual projection order must remain exact.
 func TestClaudeShimNotificationIngestionDoesNotBlockOnProjection(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	sess.projection = newBlockedProjection("claude")
+	sess.view.projection = newBlockedProjection("claude")
 	owner := newClaudeSession(sess, "native-1")
 	tr := &claudeShimTransport{owner: owner, replayDone: make(chan struct{})}
 
@@ -884,11 +884,11 @@ func TestClaudeShimNotificationIngestionDoesNotBlockOnProjection(t *testing.T) {
 	}
 
 	tr.onNotify(shimMethodLine, line(1, "first"))
-	sess.projection.mu.Lock()
+	sess.view.projection.mu.Lock()
 	locked := true
 	defer func() {
 		if locked {
-			sess.projection.mu.Unlock()
+			sess.view.projection.mu.Unlock()
 		}
 	}()
 	ready := make(chan struct{})
@@ -908,7 +908,7 @@ func TestClaudeShimNotificationIngestionDoesNotBlockOnProjection(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("onNotify blocked behind transcript projection")
 	}
-	sess.projection.mu.Unlock()
+	sess.view.projection.mu.Unlock()
 	locked = false
 	select {
 	case <-ready:
@@ -943,13 +943,13 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	sess.projection = newBlockedProjection("claude")
+	sess.view.projection = newBlockedProjection("claude")
 
-	sess.projection.mu.Lock()
+	sess.view.projection.mu.Lock()
 	locked := true
 	defer func() {
 		if locked {
-			sess.projection.mu.Unlock()
+			sess.view.projection.mu.Unlock()
 		}
 	}()
 	attached := make(chan struct {
@@ -979,7 +979,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	// Admission publishes the owner snapshot before acknowledging the prompt,
 	// so it may wait briefly for replay's projection critical section.
 	time.Sleep(20 * time.Millisecond)
-	sess.projection.mu.Unlock()
+	sess.view.projection.mu.Unlock()
 	locked = false
 	var rec *httptest.ResponseRecorder
 	select {

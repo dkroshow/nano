@@ -16,14 +16,15 @@ func retainedTestProjection(turnID string, startedAtMs int64) *LiveProjection {
 }
 func durableTurnTestSession(turnID string, startedAtMs int64) *Session {
 	p := retainedTestProjection(turnID, startedAtMs)
-	return sessionWithOwners(&Session{provider: "codex", projection: p,
-		stateOwner: State{threadID: "native-thread", turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)}})
+	return sessionWithOwners(&Session{provider: "codex",
+		stateOwner: State{threadID: "native-thread", turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)},
+		view:       View{projection: p}})
 }
 func reconcileWithSavedTurn(sess *Session, saved liveview.DurableTurnEvidence) {
 	sess.stateOwner.savedTurn = func(_ context.Context, id string) (liveview.DurableTurnEvidence, bool) {
 		return saved, id == saved.Turn.ID
 	}
-	sess.ReconcileDurableTurn(context.Background())
+	sess.view.ReconcileDurableTurn(context.Background())
 }
 func TestDurableReconciliationSettlesResumeBeforeHandshakeCannotResurrect(t *testing.T) {
 	started := time.Now().Add(-time.Minute).UnixMilli()
@@ -88,7 +89,7 @@ func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
 	started := time.Date(2026, 9, 11, 3, 0, 0, 0, time.UTC)
 	sess.stateOwner.turnID = "turn-file"
 	sess.stateOwner.lifecycleState = testLifecycleSnapshot("ready", true)
-	sess.projection = retainedTestProjection("turn-file", started.UnixMilli())
+	sess.view.projection = retainedTestProjection("turn-file", started.UnixMilli())
 
 	reconcileWithSavedTurn(sess, liveview.DurableTurnEvidence{
 		Turn: liveview.Turn{ID: "turn-file", Status: "completed", StartedAtMs: started.UnixMilli(), CompletedAtMs: started.Add(time.Minute).UnixMilli()},
@@ -126,7 +127,7 @@ func checkSavedAttachmentReplacement(t *testing.T) {
 				test.change(sess)
 				return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}, id == "turn-1"
 			}
-			sess.ReconcileDurableTurn(context.Background())
+			sess.view.ReconcileDurableTurn(context.Background())
 			sess.stateOwner.stateMu.Lock()
 			working := sess.stateOwner.workActiveLocked()
 			sess.stateOwner.stateMu.Unlock()

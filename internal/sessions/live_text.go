@@ -327,7 +327,7 @@ func (l *LiveTextLoop) sessionWorking() bool {
 	if l.sess == nil {
 		return false
 	}
-	return l.sess.LiveTurnActive()
+	return l.sess.view.LiveTurnActive()
 }
 
 func (l *LiveTextLoop) reset() {

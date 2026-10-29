@@ -142,7 +142,7 @@ func (sess *State) observeConnection(event lifecycle.Event) {
 	if status == StatusExited {
 		sess.session.delivery.settleAgentTurnsOnExit(closed)
 	}
-	sess.session.PublishProjectionRuntime()
+	sess.session.view.PublishProjectionRuntime()
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
@@ -173,7 +173,7 @@ func (sess *State) acceptProviderTurn(turnID string) {
 	}
 	sess.stateMu.Unlock()
 	if changed {
-		sess.session.PublishProjectionRuntime()
+		sess.session.view.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 	}
 }

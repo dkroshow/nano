@@ -274,7 +274,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				fixtureReattach(w.s, hosted) // no work open, so it rests until needed
 				waitForClaude(t, "the first attachment", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
-					return sess != nil && sess.Summary().Status == "ready"
+					return sess != nil && sess.View().Summary().Status == "ready"
 				})
 				// p1 starts turn-p1 on the first attachment. The link drops
 				// before Codex's echo of p1 arrives; in the gap Codex saves p1
@@ -288,7 +288,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 					"threadId": native, "turn": map[string]any{"id": turn, "status": "inProgress", "items": []any{}}}})
 				waitForClaude(t, "turn-p1 working", func() bool {
 					record, _, err := sess.Delivery().PromptStore().Get(ctx, "p1")
-					return err == nil && record.ProviderTurnID == turn && sess.Summary().TurnActive
+					return err == nil && record.ProviderTurnID == turn && sess.View().Summary().TurnActive
 				})
 				release = w.pause()
 				w.appendSaved(t, savedPromptTurn(hosted, "p1", turn))
@@ -298,7 +298,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				}
 				resumes = w.fake.ResumeCount()
 				w.fake.DropConnections()
-				waitForClaude(t, "the link loss", func() bool { return sess.Summary().Status == "reconnecting" })
+				waitForClaude(t, "the link loss", func() bool { return sess.View().Summary().Status == "reconnecting" })
 			}
 			defer release()
 			if test.ahead {
@@ -317,7 +317,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 			notReady := func(why string) {
 				t.Helper()
 				for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-					if status, sent := sess.Summary().Status, w.fake.StartedTexts(); status == "ready" || fmt.Sprint(sent) != fmt.Sprint(sentBefore) {
+					if status, sent := sess.View().Summary().Status, w.fake.StartedTexts(); status == "ready" || fmt.Sprint(sent) != fmt.Sprint(sentBefore) {
 						t.Fatalf("%s: status %s, sent %q", why, status, sent)
 					}
 				}
@@ -346,7 +346,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 					t.Fatal("written file did not catch up")
 				}
 
-				if status := sess.Summary().Status; status != "starting" {
+				if status := sess.View().Summary().Status; status != "starting" {
 					t.Fatalf("the resume answer was processed before the file was indexed (status %s)", status)
 				}
 			case !test.unused:
@@ -378,7 +378,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 			}
 
 			waitForClaudeWithin(t, time.Minute, "the queued prompt sent", func() bool {
-				return len(w.fake.StartedTexts()) > len(sentBefore) && sess.Summary().Status == "ready" &&
+				return len(w.fake.StartedTexts()) > len(sentBefore) && sess.View().Summary().Status == "ready" &&
 					(test.missing || test.unused || w.state(t, "p1") != prompts.Accepted)
 			})
 			time.Sleep(300 * time.Millisecond) // a resend would be queued by now

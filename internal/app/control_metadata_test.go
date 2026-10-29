@@ -195,10 +195,10 @@ func TestRecordPostureFailureSeparatesDegradedIngestionFromReadAvailability(t *t
 	if notified != 1 {
 		t.Fatalf("runtime notifications = %d", notified)
 	}
-	if !sess.Summary().MetadataUnavailable {
+	if !sess.View().Summary().MetadataUnavailable {
 		t.Fatal("missing canonical record was not unavailable in summary")
 	}
-	if !sess.Summary().MetadataDegraded {
+	if !sess.View().Summary().MetadataDegraded {
 		t.Fatal("failed metadata ingestion was not degraded in summary")
 	}
 }
@@ -222,7 +222,7 @@ func TestIngestionFailureKeepsLastCommittedCanonicalStateVisible(t *testing.T) {
 	metadata.fail = true
 	sess.State().RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "bad"})
 
-	summary := sess.Summary()
+	summary := sess.View().Summary()
 	if summary.MetadataUnavailable || !summary.MetadataDegraded || summary.Metadata == nil {
 		t.Fatalf("degraded readable summary = %+v", summary)
 	}
@@ -247,7 +247,7 @@ func TestPostureStoreCommitPrecedesRuntimePublication(t *testing.T) {
 	var sess *sessions.Session
 	f := newProviderRuntimeFixture(t, sessions.Config{ID: "nano-1", Provider: "codex", HostedThreadID: hosted, Metadata: metadata, RuntimeNotify: func() {
 		notified.Add(1)
-		if sess != nil && sess.Summary().Status == "ready" {
+		if sess != nil && sess.View().Summary().Status == "ready" {
 			readyOnce.Do(func() { close(ready) })
 		}
 	}}, "native-notify", "", func(f *providerRuntimeFixture) { sess = f.session })
@@ -276,8 +276,8 @@ func TestPostureStoreCommitPrecedesRuntimePublication(t *testing.T) {
 	}
 	metadata.fail.Store(true)
 	f.emitAndDrain(t, []byte(`{"method":"thread/settings/updated","params":{"threadId":"native-notify","threadSettings":{"serviceTier":"default"}}}`))
-	if got := notified.Load() - before; got != 3 || !sess.Summary().MetadataDegraded {
-		t.Fatalf("failed provider observation did not publish degraded state: notifications=%d degraded=%v", got, sess.Summary().MetadataDegraded)
+	if got := notified.Load() - before; got != 3 || !sess.View().Summary().MetadataDegraded {
+		t.Fatalf("failed provider observation did not publish degraded state: notifications=%d degraded=%v", got, sess.View().Summary().MetadataDegraded)
 	}
 }
 
@@ -415,7 +415,7 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	live.ReserveNativeID("native-attachment-view")
-	t.Cleanup(live.Close)
+	t.Cleanup(live.Lifecycle().Close)
 
 	s.RegisterSession(live)
 	rec = httptest.NewRecorder()

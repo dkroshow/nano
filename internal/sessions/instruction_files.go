@@ -65,15 +65,15 @@ func instructionEvidence(src setup.InstructionFileSource) string {
 // write policy. Codex paths are wire-authoritative (the thread response reports
 // them); Claude paths are documented-expected from Claude Code's memory loading
 // rules, but not wire-attested as exact prompt input.
-func (sess *Session) instructionFileSources() ([]setup.InstructionFileSource, instructionFilePolicy) {
+func (sess *View) instructionFileSources() ([]setup.InstructionFileSource, instructionFilePolicy) {
 	pol := instructionFilePolicy{protectedRoots: setup.ProtectedProviderRoots()}
 	var sources []setup.InstructionFileSource
-	switch sess.provider {
+	switch sess.session.provider {
 	case "codex":
-		sess.stateOwner.stateMu.Lock()
-		raw := sess.stateOwner.state["thread"]
-		cwd := sess.stateOwner.cwd // the background resume handshake may still be updating it
-		sess.stateOwner.stateMu.Unlock()
+		sess.session.stateOwner.stateMu.Lock()
+		raw := sess.session.stateOwner.state["thread"]
+		cwd := sess.session.stateOwner.cwd // the background resume handshake may still be updating it
+		sess.session.stateOwner.stateMu.Unlock()
 		var thread struct {
 			Cwd                   string   `json:"cwd"`
 			InstructionSources    []string `json:"instructionSources"`
@@ -101,11 +101,11 @@ func (sess *Session) instructionFileSources() ([]setup.InstructionFileSource, in
 			pol.writeRoots = append(pol.writeRoots, filemodel.CanonicalPath(r))
 		}
 	case "claude":
-		sess.stateOwner.stateMu.Lock()
-		initRaw := sess.stateOwner.state["init"]
-		sess.stateOwner.stateMu.Unlock()
-		sources = append(sources, setup.ClaudeInstructionSources(sess.stateOwner.cwd, initRaw)...)
-		pol.writeRoots = []string{filemodel.CanonicalPath(sess.stateOwner.cwd)}
+		sess.session.stateOwner.stateMu.Lock()
+		initRaw := sess.session.stateOwner.state["init"]
+		sess.session.stateOwner.stateMu.Unlock()
+		sources = append(sources, setup.ClaudeInstructionSources(sess.session.stateOwner.cwd, initRaw)...)
+		pol.writeRoots = []string{filemodel.CanonicalPath(sess.session.stateOwner.cwd)}
 	}
 	return sources, pol
 }
@@ -183,25 +183,25 @@ func inspectInstructionFile(provider string, src setup.InstructionFileSource, po
 }
 
 // HandleInstructionFiles lists instruction files visible to the attachment.
-func (sess *Session) HandleInstructionFiles(w http.ResponseWriter, r *http.Request) {
+func (sess *View) HandleInstructionFiles(w http.ResponseWriter, r *http.Request) {
 	sources, pol := sess.instructionFileSources()
 	files := make([]instructionFileMeta, 0, len(sources))
 	for _, src := range sources {
-		meta, _ := inspectInstructionFile(sess.provider, src, pol)
+		meta, _ := inspectInstructionFile(sess.session.provider, src, pol)
 		files = append(files, meta)
 	}
 	httpapi.WriteJSON(w, map[string]any{"files": files})
 }
 
 // HandleInstructionFileRead reads an allowed instruction file.
-func (sess *Session) HandleInstructionFileRead(w http.ResponseWriter, r *http.Request) {
+func (sess *View) HandleInstructionFileRead(w http.ResponseWriter, r *http.Request) {
 	sources, pol := sess.instructionFileSources()
 	src := findInstructionSource(sources, r.URL.Query().Get("path"))
 	if src == nil {
 		httpapi.WriteHTTPError(w, "path is not an instruction source of this session", http.StatusNotFound)
 		return
 	}
-	meta, content := inspectInstructionFile(sess.provider, *src, pol)
+	meta, content := inspectInstructionFile(sess.session.provider, *src, pol)
 	if !meta.Exists {
 		httpapi.WriteHTTPError(w, meta.ReadOnlyReason, http.StatusNotFound)
 		return
@@ -221,7 +221,7 @@ func (sess *Session) HandleInstructionFileRead(w http.ResponseWriter, r *http.Re
 
 // HandleInstructionFileMtime reports the current on-disk mtime for an
 // allowlisted file so the viewer can poll for external changes cheaply.
-func (sess *Session) HandleInstructionFileMtime(w http.ResponseWriter, r *http.Request) {
+func (sess *View) HandleInstructionFileMtime(w http.ResponseWriter, r *http.Request) {
 	sources, _ := sess.instructionFileSources()
 	src := findInstructionSource(sources, r.URL.Query().Get("path"))
 	if src == nil {
@@ -237,7 +237,7 @@ func (sess *Session) HandleInstructionFileMtime(w http.ResponseWriter, r *http.R
 }
 
 // HandleInstructionFileWrite writes an editable instruction file with conflict checks.
-func (sess *Session) HandleInstructionFileWrite(w http.ResponseWriter, r *http.Request) {
+func (sess *View) HandleInstructionFileWrite(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path    string   `json:"path"`
 		Content string   `json:"content"`
@@ -257,7 +257,7 @@ func (sess *Session) HandleInstructionFileWrite(w http.ResponseWriter, r *http.R
 		httpapi.WriteHTTPError(w, "path is not an instruction source of this session", http.StatusNotFound)
 		return
 	}
-	meta, _ := inspectInstructionFile(sess.provider, *src, pol)
+	meta, _ := inspectInstructionFile(sess.session.provider, *src, pol)
 	if !meta.Exists {
 		httpapi.WriteHTTPError(w, "file does not exist (nano does not create instruction files)", http.StatusNotFound)
 		return
@@ -284,8 +284,8 @@ func (sess *Session) HandleInstructionFileWrite(w http.ResponseWriter, r *http.R
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	meta, _ = inspectInstructionFile(sess.provider, *src, pol)
-	sess.wire.recordNanoEvent("nano/instructionFile/written", map[string]any{
+	meta, _ = inspectInstructionFile(sess.session.provider, *src, pol)
+	sess.session.wire.recordNanoEvent("nano/instructionFile/written", map[string]any{
 		"path": src.Path, "mtime": meta.Mtime, "sizeBytes": meta.SizeBytes,
 	})
 	httpapi.WriteJSON(w, map[string]any{"file": meta})

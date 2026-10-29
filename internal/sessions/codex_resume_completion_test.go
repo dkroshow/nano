@@ -46,7 +46,7 @@ func (c *resumeCompletionClient) SubmitPrompt(context.Context, interact.SubmitPr
 func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	ctx := context.Background()
 	sess, _ := readyTransactionalSendTestSession(t, nil)
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.lifecycle.Close)
 	db := sess.delivery.queuedTurns.Database()
 	if _, err := db.Exec(`INSERT INTO hosted_threads (hosted_thread_id,provider,presentation_mode,terminal_notification_policy,revision,created_at,updated_at) VALUES (?,'codex','background','inbox',1,'now','now')`, sess.hostedThreadID); err != nil {
 		t.Fatal(err)

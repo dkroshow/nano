@@ -82,7 +82,7 @@ func TestRuntimeOverlayCarriesAnchorAndWaiting(t *testing.T) {
 		t.Fatalf("overlay = %+v, want attached+working+anchored+waiting", info)
 	}
 
-	row := sidebar.MemoryThreadRow(sess.Summary())
+	row := sidebar.MemoryThreadRow(sess.View().Summary())
 	if row.Runtime == nil || row.Runtime.TurnStartedAtMs != 1785510514000 || !row.Runtime.Waiting {
 		t.Fatalf("memory row runtime = %+v, want the same anchor and waiting flag", row.Runtime)
 	}

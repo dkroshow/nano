@@ -129,13 +129,13 @@ func observeClaudeWork(sess *Session, dir wire.Direction, line []byte, live bool
 	if active && startedAtMs == 0 && live {
 		startedAtMs = time.Now().UnixMilli()
 	}
-	if active && sess.projection != nil {
-		turnID = sess.projection.ensureClaudeActiveTurn(startedAtMs)
+	if active && sess.view.projection != nil {
+		turnID = sess.view.projection.ensureClaudeActiveTurn(startedAtMs)
 	}
 	// A live result names the turn it ended, so a send acknowledged after it
 	// cannot reopen that turn (acceptProviderTurn).
-	if !active && live && dir == protocol.Recv && sess.projection != nil {
-		turnID = sess.projection.claudeResultTurn()
+	if !active && live && dir == protocol.Recv && sess.view.projection != nil {
+		turnID = sess.view.projection.claudeResultTurn()
 	}
 	if !live {
 		sess.stateOwner.restoreTurnActive(active, turnID, startedAtMs)
@@ -158,10 +158,10 @@ func claudeRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at ti
 		}
 	case "result":
 		if usagePayload := claudeResultUsagePayload(message); usagePayload != nil {
-			sess.setLiveTokenUsageForTurn(sess.projection.latestTerminalTurnID(), usagePayload)
+			sess.view.setLiveTokenUsageForTurn(sess.view.projection.latestTerminalTurnID(), usagePayload)
 		}
 		if wire.Bool(message["is_error"]) && !strings.HasPrefix(wire.String(message["terminal_reason"]), "aborted") {
-			sess.setLiveError(threadvalues.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "turn failed"))
+			sess.view.setLiveError(threadvalues.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "turn failed"))
 		}
 	}
 }

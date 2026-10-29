@@ -12,7 +12,7 @@ func TestProviderLinkLossDoesNotCompleteProjectedTurn(t *testing.T) {
 	waitReconnectCondition(t, func() bool { return len(projectionStateForTest(fixture.projection).Turns) == 1 })
 	fixture.codex.SetReplyDelay("thread/resume", time.Second)
 	fixture.codex.DropConnections()
-	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "reconnecting" })
+	waitReconnectCondition(t, func() bool { return sess.view.Summary().Status == "reconnecting" })
 	snapshot := projectionStateForTest(fixture.projection)
 	if snapshot.Runtime.TurnID != "" || snapshot.Runtime.TurnActive {
 		t.Fatalf("disconnected runtime exposes work: %+v", snapshot.Runtime)

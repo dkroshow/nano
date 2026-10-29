@@ -17,7 +17,7 @@ func newFileOnlyClaude(t *testing.T) *claudeHandoff {
 	t.Helper()
 	h := newClaudeHandoff(t)
 	h.catalog.server.startLiveText(h.session)
-	if h.session.LiveTextService() == nil {
+	if h.session.View().LiveTextService() == nil {
 		t.Fatal("a Claude session was not wired file-only")
 	}
 	return h

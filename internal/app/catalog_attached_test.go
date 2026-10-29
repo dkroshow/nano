@@ -54,7 +54,7 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 	if attachments, held, unresolved := view(); attachments != 1 || held != 1 || len(unresolved) != 0 {
 		t.Fatalf("resolved: attachments %d, held %d, unresolved %v", attachments, held, unresolved)
 	}
-	sess.Close()
+	sess.Lifecycle().Close()
 	if attachments, held, _ := view(); attachments != 0 || held != 0 {
 		t.Fatalf("released: attachments %d, held %d", attachments, held)
 	}

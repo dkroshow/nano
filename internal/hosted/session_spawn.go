@@ -246,7 +246,7 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 	if req.Provider == "codex" {
 		// Boot can register dozens of panes at once. Start the shared cwd refresh
 		// now, without waiting for a browser to ask each session for /state.
-		sess.WarmSkills()
+		sess.View().WarmSkills()
 	}
 
 	if req.Mode != "resume" {

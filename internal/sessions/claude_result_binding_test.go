@@ -85,7 +85,7 @@ func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.S
 	recorder := &resultRecorder{}
 	sess.agentExecutions = recorder
 	identities := fixture.ClaudeResultPromptIdentities()
-	sess.projection = newResultProjection("claude", map[string]string{identities[0].Turn: fixture.ClaudeResultAnswerA, identities[3].Turn: fixture.ClaudeResultAnswerMerged})
+	sess.view.projection = newResultProjection("claude", map[string]string{identities[0].Turn: fixture.ClaudeResultAnswerA, identities[3].Turn: fixture.ClaudeResultAnswerMerged})
 	var order []resultPrompt
 	replacements := []string{"{{NATIVE}}", sess.stateOwner.ThreadID()}
 	for _, identity := range identities {
@@ -204,7 +204,7 @@ func TestClaudeResultIngressBindsToAnsweredPrompt(t *testing.T) {
 			t.Fatalf("absorbed E took D's result: %+v", call)
 		}
 	}
-	if sess.Summary().TurnActive {
+	if sess.view.Summary().TurnActive {
 		t.Fatal("the harness-started turn did not end")
 	}
 }
@@ -228,7 +228,7 @@ func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	old := log.Writer()
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(old) })
-	sess.projection.setClaudeProviderTurnID(order[3].turn)
+	sess.view.projection.setClaudeProviderTurnID(order[3].turn)
 	if _, err := owner.sendTurnWithEventID("prompt D", order[3].event); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	if n := strings.Count(logs.String(), "names no prompt while one Nano wrote is unanswered"); n != 1 {
 		t.Fatalf("unnamed-result log lines = %d; want 1", n)
 	}
-	if sess.Summary().TurnActive {
+	if sess.view.Summary().TurnActive {
 		t.Fatal("the harness-started turn did not end")
 	}
 }

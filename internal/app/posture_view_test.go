@@ -52,12 +52,12 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	}
 
 	want := hostedstore.Posture{Model: "haiku", Effort: "xhigh", PermissionMode: "acceptEdits"}
-	if got := sess.Summary().Posture; got != want {
+	if got := sess.View().Summary().Posture; got != want {
 		t.Fatalf("summary posture = %+v, want %+v", got, want)
 	}
 
 	w := httptest.NewRecorder()
-	sess.HandleState(w, httptest.NewRequest(http.MethodGet, "/api/sessions/x/state", nil))
+	sess.View().HandleState(w, httptest.NewRequest(http.MethodGet, "/api/sessions/x/state", nil))
 	var state struct {
 		Posture hostedstore.Posture `json:"posture"`
 	}
@@ -71,7 +71,7 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	// A thread with no recorded decisions serves live session evidence — the
 	// legacy-session fallback.
 	legacy := newProviderRuntimeFixture(t, sessions.Config{ID: "legacy-model", Provider: "claude", HostedThreadID: "nht_legacy"}, "legacy-native", "claude-opus-5").session
-	if got := legacy.Summary().Posture.Model; got != "" {
+	if got := legacy.View().Summary().Posture.Model; got != "" {
 		t.Fatalf("unavailable metadata fabricated model = %q", got)
 	}
 }
@@ -149,7 +149,7 @@ func TestCanonicalResumeIntentReachesHTTPAndSpawnOptions(t *testing.T) {
 			view.Fields[postureFieldServiceTier] = view.Fields[postureFieldModel]
 			fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "canonical-resume", Provider: "codex", HostedThreadID: hostedID, Metadata: fixedMetadataView{Metadata: metadata, view: view}}, "canonical-native", "")
 			read := httptest.NewRecorder()
-			fixture.session.HandleTurnOptionsRead(read, httptest.NewRequest(http.MethodGet, "/turn-options", nil))
+			fixture.session.View().HandleTurnOptionsRead(read, httptest.NewRequest(http.MethodGet, "/turn-options", nil))
 			var options struct {
 				Model       string `json:"model"`
 				ServiceTier string `json:"serviceTier"`

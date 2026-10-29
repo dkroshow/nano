@@ -29,7 +29,7 @@ func TestClaudeSpawnFailureTranslatedDespiteTheSeededThreadID(t *testing.T) {
 
 	c.captureState(&claudeChildTransport{owner: c}, []byte(claudeMissingTranscriptResult))
 
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if sum.Status != "exited" || !strings.Contains(sum.Error, "no longer on disk") {
 		t.Fatalf("summary = %#v, want the pre-init failure translated", sum)
 	}
@@ -46,7 +46,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	c.captureState(tr, []byte(claudeInitLine))
 	c.captureState(tr, []byte(claudeMissingTranscriptResult))
 
-	if sum := sess.Summary(); sum.Status != "ready" || sum.Error != "" {
+	if sum := sess.view.Summary(); sum.Status != "ready" || sum.Error != "" {
 		t.Fatalf("summary = %#v, want the handshaken session untouched", sum)
 	}
 
@@ -62,7 +62,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	child.markTransportReady()
 	child.captureState(shim, []byte(claudeInitLine))
 	child.captureState(shim, []byte(claudeMissingTranscriptResult))
-	if sum := unrecorded.Summary(); sum.Status == "exited" || strings.Contains(sum.Error, "no longer on disk") {
+	if sum := unrecorded.view.Summary(); sum.Status == "exited" || strings.Contains(sum.Error, "no longer on disk") {
 		t.Fatalf("summary = %#v; a handshake whose pair was not recorded became a failed spawn", sum)
 	}
 	if got := unrecorded.stateOwner.ThreadID(); got != "cs_handle" {
@@ -78,11 +78,11 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 func TestClaudeInitAfterCloseDoesNotResurrectTheSession(t *testing.T) {
 	sess, attachments := claudeTestSession(t)
 	c := newClaudeSession(sess, "")
-	sess.Close()
+	sess.lifecycle.Close()
 
 	c.captureState(&claudeChildTransport{owner: c}, []byte(claudeInitLine))
 
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if sum.Status != StatusExited {
 		t.Fatalf("status = %q after a post-close init, want it to stay exited", sum.Status)
 	}

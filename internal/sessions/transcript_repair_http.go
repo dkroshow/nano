@@ -12,7 +12,7 @@ type transcriptRepairRequest struct {
 }
 
 // HandleTranscriptRepair stops, discards and repairs the current attachment.
-func (sess *Session) HandleTranscriptRepair(w http.ResponseWriter, r *http.Request) {
+func (sess *Lifecycle) HandleTranscriptRepair(w http.ResponseWriter, r *http.Request) {
 	var request transcriptRepairRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
 	decoder.DisallowUnknownFields()

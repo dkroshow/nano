@@ -38,7 +38,7 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.refusals > 1 {
-				waitForClaude(t, "the bounded reconnect attempts to park", func() bool { return sess.Summary().Status == "reconnect_parked" })
+				waitForClaude(t, "the bounded reconnect attempts to park", func() bool { return sess.view.Summary().Status == "reconnect_parked" })
 				for repeat := 0; repeat < 2; repeat++ {
 					if response := postTurn(t, sess.Delivery(), context.Background(), "after-parking", "prompt to a parked thread"); response.Code != http.StatusAccepted && response.Code != http.StatusOK {
 						t.Fatalf("parked prompt: %d %s", response.Code, response.Body.String())
@@ -46,7 +46,7 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 				}
 				waitTurnSendDone(t, sess, "after-parking")
 			}
-			waitForClaude(t, "the resumed session to become ready", func() bool { return sess.Summary().Status == "ready" })
+			waitForClaude(t, "the resumed session to become ready", func() bool { return sess.view.Summary().Status == "ready" })
 			if got := daemon.ResumeCount(); got != tc.refusals+1 {
 				t.Fatalf("thread/resume calls = %d, want %d refused and one that succeeds", got, tc.refusals)
 			}

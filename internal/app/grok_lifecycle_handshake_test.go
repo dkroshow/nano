@@ -65,7 +65,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			sess.ReserveNativeID("native-thread")
-			t.Cleanup(sess.Close)
+			t.Cleanup(sess.Lifecycle().Close)
 
 			root := t.TempDir()
 			dir := filepath.Join(root, url.PathEscape(sess.CWD()), sess.State().ThreadID())
@@ -159,9 +159,9 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 			}
 
 			if tc.ready {
-				waitForClaude(t, "the never-prompted session to become ready", func() bool { return sess.Summary().Status == "ready" })
+				waitForClaude(t, "the never-prompted session to become ready", func() bool { return sess.View().Summary().Status == "ready" })
 				waitTurnSendDone(t, sess, "after-restart")
-				if got := sess.Summary().Status; got != "ready" || sends.Load() != 1 {
+				if got := sess.View().Summary().Status; got != "ready" || sends.Load() != 1 {
 					t.Fatalf("never-prompted session: status %q, sends %d; want ready and the first prompt sent once", got, sends.Load())
 				}
 				return
@@ -172,7 +172,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				case <-time.After(10 * time.Second):
 					t.Fatal("the proxy did not exit")
 				}
-				waitForClaude(t, "the session to observe its lost proxy", func() bool { return sess.Summary().Status == "reconnecting" })
+				waitForClaude(t, "the session to observe its lost proxy", func() bool { return sess.View().Summary().Status == "reconnecting" })
 			}
 			if !tc.exits {
 				// Close in the phase under test, once initialize has answered and the
@@ -187,7 +187,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				}
 				waitForClaude(t, "the fake app-server to answer initialize", func() bool {
 					rec := httptest.NewRecorder()
-					sess.HandleState(rec, httptest.NewRequest(http.MethodGet, "/state", nil))
+					sess.View().HandleState(rec, httptest.NewRequest(http.MethodGet, "/state", nil))
 					var state map[string]json.RawMessage
 					if err := json.Unmarshal(rec.Body.Bytes(), &state); err != nil {
 						t.Fatal(err)
@@ -197,12 +197,12 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				})
 			}
 			for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-				if got := sess.Summary().Status; got == "ready" || sends.Load() != 0 {
+				if got := sess.View().Summary().Status; got == "ready" || sends.Load() != 0 {
 					t.Fatalf("status %q, sends %d; want not ready and nothing sent", got, sends.Load())
 				}
 			}
 			if !tc.exits {
-				sess.Close() // ends the wait for a transcript that is not coming
+				sess.Lifecycle().Close() // ends the wait for a transcript that is not coming
 				select {
 				case <-peerEnded:
 				case <-time.After(10 * time.Second):

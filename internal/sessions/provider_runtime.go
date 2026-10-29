@@ -1,6 +1,8 @@
 package sessions
 
 import (
+	"sync"
+
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -172,15 +174,15 @@ func (n finishedTurnNotifier) Finished(ctx context.Context, finish coreturns.Fin
 }
 
 func (sess *Runtime) recordCoreAsyncError(_ error) {
-	if sess == nil || sess.session.projection == nil {
+	if sess == nil || sess.session.view.projection == nil {
 		return
 	}
-	sess.session.projection.RecordDiagnostic(observability.ThreadDiagnostic{
+	sess.session.view.projection.RecordDiagnostic(observability.ThreadDiagnostic{
 		Code:    "async_session_event_failed",
 		Message: "An asynchronous session event could not be applied.",
 		Source:  "session",
 	}, false)
-	sess.session.projection.nudgeMetaRefresh()
+	sess.session.view.projection.nudgeMetaRefresh()
 	sess.session.stateOwner.NotifyRuntime()
 }
 
@@ -518,4 +520,24 @@ func scopeNativeTurn(scope model.Scope) string {
 		return ""
 	}
 	return *scope.NativeTurnID
+}
+
+// Runtime owns provider handles, handshake serialization and the core event coordinator.
+type Runtime struct {
+	session *Session
+
+	codex            *CodexDaemon   // codex provider: shared daemon client
+	claude           *claudeSession // claude provider
+	grok             *grokSession   // grok provider: stdio proxy to the durable native leader
+	reasoningSummary string         // codex: turn/start summary level
+	completedTurns   func(context.Context) (*coreturns.Store, error)
+	core             *coresession.Session
+	coreMu           sync.RWMutex
+	coreOnce         sync.Once
+	coreErr          error
+	providerAdapter  providers.Adapter
+	// A daemon reconnect may begin while the previous thread handshake is still
+	// unwinding its response. Serialize the whole bind transaction per session so
+	// its identity, attachment record, and ready transition cannot interleave.
+	codexHandshakeMu sync.Mutex
 }

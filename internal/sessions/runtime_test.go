@@ -138,7 +138,7 @@ func TestHandleTurnOptions(t *testing.T) {
 
 	post := func(body string) map[string]any {
 		rec := httptest.NewRecorder()
-		sess.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/x/turn-options", strings.NewReader(body)))
+		sess.view.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/x/turn-options", strings.NewReader(body)))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
 		}
@@ -189,7 +189,7 @@ func TestSessionTurnActiveFromWire(t *testing.T) {
 	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
 
 	sess.wire.recordWire(protocol.Recv, started)
-	if sum := sess.Summary(); !sum.TurnActive || nudges != 1 {
+	if sum := sess.view.Summary(); !sum.TurnActive || nudges != 1 {
 		t.Fatalf("after turn/started: turnActive = %v nudges = %d", sum.TurnActive, nudges)
 	}
 	sess.wire.recordWire(protocol.Recv, started)
@@ -197,13 +197,13 @@ func TestSessionTurnActiveFromWire(t *testing.T) {
 		t.Fatalf("repeated turn/started nudged again: nudges = %d", nudges)
 	}
 	sess.wire.recordWire(protocol.Recv, completed)
-	if sum := sess.Summary(); sum.TurnActive || sum.LastTurnEndedAt == "" || nudges != 2 {
+	if sum := sess.view.Summary(); sum.TurnActive || sum.LastTurnEndedAt == "" || nudges != 2 {
 		t.Fatalf("after turn/completed: turnActive = %v nudges = %d", sum.TurnActive, nudges)
 	}
 
 	sess.wire.recordWire(protocol.Recv, started)
 	sess.setStatus("exited")
-	if sum := sess.Summary(); sum.TurnActive {
+	if sum := sess.view.Summary(); sum.TurnActive {
 		t.Fatal("exit left turnActive set")
 	}
 }
@@ -223,7 +223,7 @@ func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
 
 	sess.wire.recordWireLive(protocol.Recv, started, false)
 	sess.wire.recordWireLive(protocol.Recv, completed, false)
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if sum.TurnActive {
 		t.Fatal("replayed close left turnActive set — state must still reconstruct")
 	}
@@ -233,7 +233,7 @@ func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
 
 	sess.wire.recordWireLive(protocol.Recv, started, true)
 	sess.wire.recordWireLive(protocol.Recv, completed, true)
-	if sum := sess.Summary(); sum.LastTurnEndedAt == "" {
+	if sum := sess.view.Summary(); sum.LastTurnEndedAt == "" {
 		t.Fatal("live close no longer stamps lastTurnEndedAt")
 	}
 }
@@ -276,22 +276,23 @@ func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *test
 func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	nudges := 0
 	sess := sessionWithOwners(&Session{provider: "claude",
-		projection: newDeliveryTestProjection("claude"),
 		stateOwner: State{
 			state:          map[string]json.RawMessage{},
 			runtimeNotify:  func() { nudges++ },
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		view: View{
+			projection: newDeliveryTestProjection("claude")}})
 	sess.stateOwner.beginTurnRestore()
 
 	user := []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"old prompt"}]}}`)
 	result := []byte(`{"type":"result","subtype":"success"}`)
 	sess.wire.recordWireLive(protocol.Send, user, false)
-	if sess.Summary().TurnActive || nudges != 0 {
-		t.Fatalf("replayed prompt = publicly active %v, nudges %d; want private reconstruction", sess.Summary().TurnActive, nudges)
+	if sess.view.Summary().TurnActive || nudges != 0 {
+		t.Fatalf("replayed prompt = publicly active %v, nudges %d; want private reconstruction", sess.view.Summary().TurnActive, nudges)
 	}
 	sess.wire.recordWireLive(protocol.Recv, result, false)
-	if sess.Summary().TurnActive || nudges != 0 {
-		t.Fatalf("replayed result = active %v, nudges %d; want reconstructed but unpublished", sess.Summary().TurnActive, nudges)
+	if sess.view.Summary().TurnActive || nudges != 0 {
+		t.Fatalf("replayed result = active %v, nudges %d; want reconstructed but unpublished", sess.view.Summary().TurnActive, nudges)
 	}
 	// A second historical turn proves this is not accidental one-slot SSE
 	// conflation: no intermediate edge reaches the runtime hub at all.
@@ -302,36 +303,38 @@ func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	}
 
 	sess.stateOwner.settleRestoredTurnState()
-	if sess.Summary().TurnActive || nudges != 1 {
-		t.Fatalf("settled replay = active %v, nudges %d; want one idle publication", sess.Summary().TurnActive, nudges)
+	if sess.view.Summary().TurnActive || nudges != 1 {
+		t.Fatalf("settled replay = active %v, nudges %d; want one idle publication", sess.view.Summary().TurnActive, nudges)
 	}
 
 	activeNudges := 0
 	active := sessionWithOwners(&Session{provider: "claude",
-		projection: newDeliveryTestProjection("claude"),
 		stateOwner: State{
 			state:          map[string]json.RawMessage{},
 			runtimeNotify:  func() { activeNudges++ },
-			lifecycleState: testLifecycleSnapshot("ready", false)}})
+			lifecycleState: testLifecycleSnapshot("ready", false)},
+		view: View{
+			projection: newDeliveryTestProjection("claude")}})
 	active.stateOwner.beginTurnRestore()
 	active.wire.recordWireLive(protocol.Send, user, false)
-	if active.Summary().TurnActive || activeNudges != 0 {
-		t.Fatalf("open replayed turn = publicly active %v, nudges %d; want private reconstruction", active.Summary().TurnActive, activeNudges)
+	if active.view.Summary().TurnActive || activeNudges != 0 {
+		t.Fatalf("open replayed turn = publicly active %v, nudges %d; want private reconstruction", active.view.Summary().TurnActive, activeNudges)
 	}
 	active.stateOwner.settleRestoredTurnState()
-	if !active.Summary().TurnActive || activeNudges != 1 {
-		t.Fatalf("settled active replay = active %v, nudges %d; want one active publication", active.Summary().TurnActive, activeNudges)
+	if !active.view.Summary().TurnActive || activeNudges != 1 {
+		t.Fatalf("settled active replay = active %v, nudges %d; want one active publication", active.view.Summary().TurnActive, activeNudges)
 	}
 }
 
 func TestClaudeRestoreDefersGenuineLiveCompletionUntilSettlement(t *testing.T) {
 	nudges := 0
 	sess := sessionWithOwners(&Session{provider: "claude",
-		projection: newDeliveryTestProjection("claude"),
 		stateOwner: State{
 			state:          map[string]json.RawMessage{},
 			runtimeNotify:  func() { nudges++ },
-			lifecycleState: testLifecycleSnapshot("starting", false)}})
+			lifecycleState: testLifecycleSnapshot("starting", false)},
+		view: View{
+			projection: newDeliveryTestProjection("claude")}})
 	sess.stateOwner.beginTurnRestore()
 	sess.stateOwner.setTurnActive(true, "live-during-restore", 100, true)
 	sess.stateOwner.setTurnActive(false, "", 0, true)
@@ -339,7 +342,7 @@ func TestClaudeRestoreDefersGenuineLiveCompletionUntilSettlement(t *testing.T) {
 		t.Fatalf("pre-settlement runtime = nudges %d; want deferred", nudges)
 	}
 	sess.stateOwner.settleRestoredTurnState()
-	if nudges != 1 || sess.Summary().TurnActive {
-		t.Fatalf("settled runtime = active %v, nudges %d; want one idle publication", sess.Summary().TurnActive, nudges)
+	if nudges != 1 || sess.view.Summary().TurnActive {
+		t.Fatalf("settled runtime = active %v, nudges %d; want one idle publication", sess.view.Summary().TurnActive, nudges)
 	}
 }

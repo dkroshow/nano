@@ -47,14 +47,14 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				idle.PublishLiveOutbox(record.Outbox)
-				if live := idle.LiveTextService().CurrentTexts(context.Background()); len(live) == 0 {
+				idle.View().PublishLiveOutbox(record.Outbox)
+				if live := idle.View().LiveTextService().CurrentTexts(context.Background()); len(live) == 0 {
 					t.Fatal("the open pane shows none of the stale prompts")
 				}
 				seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{idle.ID(): idle})
 			},
 			after: func(t *testing.T) {
-				if live := idle.LiveTextService().CurrentTexts(context.Background()); len(live) != 0 {
+				if live := idle.View().LiveTextService().CurrentTexts(context.Background()); len(live) != 0 {
 					t.Fatalf("live text after expiry = %+v, want none", live)
 				}
 			},

@@ -370,8 +370,8 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 		if *res.TurnActive {
 			startedAtMs = stored.TurnStartedAtMs
 			turnID := ""
-			if sess.projection != nil {
-				turnID = sess.projection.ensureClaudeActiveTurn(startedAtMs)
+			if sess.view.projection != nil {
+				turnID = sess.view.projection.ensureClaudeActiveTurn(startedAtMs)
 			}
 			sess.stateOwner.restoreTurnActive(true, turnID, startedAtMs)
 		} else {
@@ -631,8 +631,8 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 	// A spooled frame carries its own identity to the projection when it is
 	// applied (claudeFrameTurn). Only the acknowledgement of a live send, which
 	// has no spool sequence yet, sets it here, before its own send line.
-	if sess.session.projection != nil && event.Seq == 0 {
-		sess.session.projection.setClaudeProviderTurnID(event.ProviderTurnID)
+	if sess.session.view.projection != nil && event.Seq == 0 {
+		sess.session.view.projection.setClaudeProviderTurnID(event.ProviderTurnID)
 	}
 	core := sess.coreSession()
 	if core == nil {
@@ -675,12 +675,12 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 		if finish.TurnID = turnID; turnID == "" {
 			return nil // a finish that names no turn finishes nothing
 		}
-		if sess.session.projection != nil {
-			finish.FinalMessageID = sess.session.projection.finalAgentItemID(turnID)
+		if sess.session.view.projection != nil {
+			finish.FinalMessageID = sess.session.view.projection.finalAgentItemID(turnID)
 		}
 		// The result line is this turn's own usage evidence. A narrowed replay
 		// has no projection turn for the prompt to key live usage by.
-		usage := sess.session.completedTokenUsage(turnID)
+		usage := sess.session.view.completedTokenUsage(turnID)
 		var message map[string]json.RawMessage
 		if json.Unmarshal(event.Line, &message) == nil {
 			if lineUsage := normalizeTokenUsage(claudeResultUsagePayload(message)); lineUsage != nil {

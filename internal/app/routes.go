@@ -44,7 +44,7 @@ func applicationRoutes(s *server) []applicationRoute {
 			value.Wire().HandleEventsPage(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation", "sessions.conversation.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleConversation(w, r)
+			value.View().HandleConversation(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/history", "sessions.conversation.history", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
@@ -57,25 +57,25 @@ func applicationRoutes(s *server) []applicationRoute {
 			}(w, r, value)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/events", "sessions.conversation.events", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleConversationEvents(w, r)
+			value.View().HandleConversationEvents(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files", "sessions.instructions.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleInstructionFiles(w, r)
+			value.View().HandleInstructionFiles(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files/read", "sessions.instructions.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleInstructionFileRead(w, r)
+			value.View().HandleInstructionFileRead(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/instruction-files/mtime", "sessions.instructions.mtime", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleInstructionFileMtime(w, r)
+			value.View().HandleInstructionFileMtime(w, r)
 		})},
 		{http.MethodPut, "/api/sessions/{sessionId}/instruction-files/write", "sessions.instructions.write", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleInstructionFileWrite(w, r)
+			value.View().HandleInstructionFileWrite(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/state", "sessions.state.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleState(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/state", "sessions.state.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.View().HandleState(w, r) })},
 		{http.MethodGet, "/api/sessions/{sessionId}/mcp", "sessions.mcp.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleMCPServers(w, r)
+			value.View().HandleMCPServers(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleSkills(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.View().HandleSkills(w, r) })},
 		{http.MethodPut, "/api/sessions/{sessionId}/name", "sessions.name.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
 				var namer threadindex.Namer
@@ -101,16 +101,16 @@ func applicationRoutes(s *server) []applicationRoute {
 			value.Delivery().HandleTurnDeliveryResend(w, r, r.PathValue("clientActionId"))
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleTurnOptionsRead(w, r)
+			value.View().HandleTurnOptionsRead(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleTurnOptionsUpdate(w, r)
+			value.View().HandleTurnOptionsUpdate(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/interrupt", "sessions.turn.interrupt", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.Delivery().HandleInterrupt(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/transcript-repair", "sessions.transcript.repair", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.HandleTranscriptRepair(w, r)
+			value.Lifecycle().HandleTranscriptRepair(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/interactions/{requestId}", "sessions.interactions.answer", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.Delivery().HandleInteraction(w, r, r.PathValue("requestId"))

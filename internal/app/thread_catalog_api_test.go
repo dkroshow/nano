@@ -406,7 +406,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	if summary := put("  draft name  "); summary.Name != "draft name" {
 		t.Fatalf("unbound summary name = %q", summary.Name)
 	}
-	if name := sess.Summary().Name; name != "draft name" {
+	if name := sess.View().Summary().Name; name != "draft name" {
 		t.Fatalf("unbound name=%q", name)
 	}
 
@@ -418,7 +418,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 		name, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-1")
 		return name == "bound name"
 	})
-	if sess.Summary().Name != "bound name" {
+	if sess.View().Summary().Name != "bound name" {
 		t.Fatal("bound session name lost")
 	}
 
@@ -436,7 +436,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	conn := <-connected
 	waitForClaudeStatus(t, sess, "ready")
 	emitClaudeInit(t, sess, conn, 1, "native-2", "")
@@ -476,7 +476,7 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("provisional rename status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if name := sess.Summary().Name; name != "nano api fable" {
+	if name := sess.View().Summary().Name; name != "nano api fable" {
 		t.Fatalf("provisional rename name=%q", name)
 	}
 	if name, ok := catalog.ThreadNameFor(context.Background(), "claude", "cs_shim"); ok {
@@ -508,7 +508,7 @@ func memorySession(t *testing.T, id, provider, threadID, status, cwd, model stri
 		t.Fatal(err)
 	}
 	if status == "exited" {
-		sess.Close()
+		sess.Lifecycle().Close()
 	}
 	return sess
 }

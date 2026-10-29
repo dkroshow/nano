@@ -192,13 +192,13 @@ func connectProviderRuntimeFixture(t *testing.T, sess *sessions.Session, view *s
 		select {
 		case f.grok = <-connected:
 		case <-time.After(30 * time.Second):
-			t.Fatalf("Grok fixture did not connect: %+v", sess.Summary())
+			t.Fatalf("Grok fixture did not connect: %+v", sess.View().Summary())
 		}
 	default:
 		t.Fatalf("unsupported runtime fixture provider %q", sess.Provider())
 	}
-	t.Cleanup(sess.Close)
-	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
+	t.Cleanup(sess.Lifecycle().Close)
+	waitReconnectCondition(t, func() bool { return sess.View().Summary().Status == "ready" })
 	if sess.Provider() == "claude" {
 		emitClaudeInit(t, sess, f.claude, 1, native, model)
 		f.seq = 2
@@ -264,7 +264,7 @@ func configuredFixtureSession(t *testing.T, cfg sessions.Config, native, status,
 			case "grok":
 				f.emit(t, []byte(`{"method":"session/update","params":{"sessionId":"`+f.session.State().ThreadID()+`","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"working"}},"_meta":{"promptId":"fixture-turn","eventId":"fixture-event"}}}`))
 			}
-			waitReconnectCondition(t, func() bool { return f.session.Summary().TurnActive })
+			waitReconnectCondition(t, func() bool { return f.session.View().Summary().TurnActive })
 		}
 		return f.session
 	}
@@ -273,7 +273,7 @@ func configuredFixtureSession(t *testing.T, cfg sessions.Config, native, status,
 		t.Fatal(err)
 	}
 	if status == sessionStatusExited {
-		sess.Close()
+		sess.Lifecycle().Close()
 	}
 	return sess
 }
@@ -319,7 +319,7 @@ func (f *providerRuntimeFixture) activate(t *testing.T) {
 	case "claude":
 		f.emitAndWait(t, []byte(`{"type":"assistant","message":{"id":"fixture-message","role":"assistant","content":[{"type":"text","text":"working"}]}}`))
 	}
-	waitForClaude(t, "active provider turn", func() bool { return f.session.Summary().TurnActive })
+	waitForClaude(t, "active provider turn", func() bool { return f.session.View().Summary().TurnActive })
 }
 func (f *providerRuntimeFixture) finishTurn(t *testing.T) {
 	if f.session.Provider() == "codex" {

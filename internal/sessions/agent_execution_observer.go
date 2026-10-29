@@ -187,8 +187,8 @@ func (sess *Delivery) observeGrokAgentTerminal(sessionID, promptID, status, code
 		}
 	}
 	itemID := ""
-	if status == agentTurnCompleted && sess.session.projection != nil {
-		itemID = sess.session.projection.finalAgentItemID(promptID)
+	if status == agentTurnCompleted && sess.session.view.projection != nil {
+		itemID = sess.session.view.projection.finalAgentItemID(promptID)
 	}
 	if sess.session.agentExecutions != nil {
 		if err := sess.session.agentExecutions.MarkTurnTerminal(
@@ -209,7 +209,7 @@ func (sess *Delivery) observeClaudeAgentResult(line []byte) {
 	}
 	// The turn of the prompt the result names (claudeAnsweredTurn), on every
 	// transport; a result naming none completes no operation.
-	turnID := sess.session.projection.claudeResultTurn()
+	turnID := sess.session.view.projection.claudeResultTurn()
 	status, detail := ClaudeProjectionTerminal(line)
 	var executionErr *threadvalues.ExecutionError
 	if status == agentTurnFailed {
@@ -221,8 +221,8 @@ func (sess *Delivery) observeClaudeAgentResult(line []byte) {
 		response = wire.String(message["result"])
 	}
 	itemID := ""
-	if sess.session.projection != nil {
-		itemID = sess.session.projection.finalAgentItemID(turnID)
+	if sess.session.view.projection != nil {
+		itemID = sess.session.view.projection.finalAgentItemID(turnID)
 	}
 	if sess.finishesOnSavedProof("claude", turnID) {
 		// The result names an execution, not the saved consumption of the
@@ -487,10 +487,10 @@ func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string)
 // race and rebuilds terminal state from a resumed projection after Nano
 // restarts. The saved-result reader supplies the answer.
 func (sess *Delivery) reconcileAgentOperations() {
-	if sess.session.agentExecutions == nil || sess.session.hostedThreadID == "" || sess.session.projection == nil {
+	if sess.session.agentExecutions == nil || sess.session.hostedThreadID == "" || sess.session.view.projection == nil {
 		return
 	}
-	for _, turn := range sess.session.projection.turnList() {
+	for _, turn := range sess.session.view.projection.turnList() {
 		if turn.ID == "" || !CodexResumeTurnTerminal(turn.Status) {
 			continue
 		}
@@ -605,8 +605,8 @@ func (sess *Delivery) observeCodexResumedTurnFinish(nativeThreadID string, turn 
 		}
 	}
 	// The final message resume decoded wins; the projection may not hold it.
-	if finish.FinalMessageID = codexResumeFinalItemID(turn); finish.FinalMessageID == "" && sess.session.projection != nil {
-		finish.FinalMessageID = sess.session.projection.finalAgentItemID(turn.ID)
+	if finish.FinalMessageID = codexResumeFinalItemID(turn); finish.FinalMessageID == "" && sess.session.view.projection != nil {
+		finish.FinalMessageID = sess.session.view.projection.finalAgentItemID(turn.ID)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

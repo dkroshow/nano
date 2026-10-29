@@ -114,7 +114,7 @@ func (s *Controller) HandleWarmTranscripts(w http.ResponseWriter, r *http.Reques
 			sess := s.registry.SessionForHostedThread(ref)
 			reason := ""
 			switch {
-			case sess == nil || sess.LiveTextService() == nil:
+			case sess == nil || sess.View().LiveTextService() == nil:
 				reason = "no live session holds this thread"
 			case !s.warm.admit(ref):
 				reason = "the warm budget is spent"
@@ -131,7 +131,7 @@ func (s *Controller) HandleWarmTranscripts(w http.ResponseWriter, r *http.Reques
 				}
 				continue
 			}
-			pane := stream.NewPane(ref, sess.LiveTextService(), request.Markers[ref])
+			pane := stream.NewPane(ref, sess.View().LiveTextService(), request.Markers[ref])
 			members[ref] = member{sess: sess, pane: pane, joining: true, joinedAt: now}
 			joining++
 			soonest(sessions.WarmJoinWait)

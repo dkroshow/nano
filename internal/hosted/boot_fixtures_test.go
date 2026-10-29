@@ -64,7 +64,7 @@ func newBootCoordinator(t *testing.T, shimURL, codexURL string) (*bootTestCoordi
 	coordinator := &bootTestCoordinator{AttachmentCoordinator: NewAttachmentCoordinator(sources), events: events}
 	t.Cleanup(func() {
 		for _, sess := range registry.SnapshotSessions() {
-			sess.Close()
+			sess.Lifecycle().Close()
 		}
 	})
 	return coordinator, store

@@ -42,10 +42,11 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 	} {
 		t.Run(test.provider, func(t *testing.T) {
 			sess := sessionWithOwners(&Session{provider: test.provider,
-				projection: newDeliveryTestProjection(test.provider),
-				wire:       Wire{subs: map[chan wire.Event]struct{}{}},
+				wire: Wire{subs: map[chan wire.Event]struct{}{}},
 				stateOwner: State{
-					lifecycleState: testLifecycleSnapshot("ready", false)}})
+					lifecycleState: testLifecycleSnapshot("ready", false)},
+				view: View{
+					projection: newDeliveryTestProjection(test.provider)}})
 			sess.stateOwner.threadID = "16952569-d518-579a-914e-2c422f5d5946"
 			apply := func(lines []fixture.TimedLine) {
 				for _, l := range lines {
@@ -53,8 +54,8 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 				}
 			}
 			shown := func() (pane, rail int64) {
-				summary, _ := sess.volatileSummary(false)
-				return sess.projection.status().Runtime.CompactingSinceMs, summary.CompactingSinceMs
+				summary, _ := sess.view.volatileSummary(false)
+				return sess.view.projection.status().Runtime.CompactingSinceMs, summary.CompactingSinceMs
 			}
 			apply(test.start)
 			if pane, rail := shown(); pane != test.since || rail != test.since {

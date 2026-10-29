@@ -46,7 +46,7 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 			sessions = append(sessions, sess)
 		}
 		for _, sess := range sessions {
-			sess.Close()
+			sess.Lifecycle().Close()
 		}
 	})
 	return s
@@ -71,7 +71,7 @@ func waitForSessionStatus(t *testing.T, s *server, sessionID, want string) sessi
 		if sess == nil {
 			t.Fatalf("session %s disappeared while waiting for status %q", sessionID, want)
 		}
-		if sum := sess.Summary(); sum.Status == want {
+		if sum := sess.View().Summary(); sum.Status == want {
 			return sum
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -105,7 +105,7 @@ func TestCodexDaemonReconnectsExistingSessionsWithoutAnotherRPC(t *testing.T) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
 			sess := s.LookupSession(spawned.ID)
 			if sess != nil {
-				sess.Close()
+				sess.Lifecycle().Close()
 			}
 			return
 		}
@@ -132,7 +132,7 @@ func TestCodexDaemonReconnectOwnsResumeFailureFromDroppedSocket(t *testing.T) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
 			sess := s.LookupSession(spawned.ID)
 			if sess != nil {
-				sess.Close()
+				sess.Lifecycle().Close()
 			}
 			return
 		}
@@ -146,7 +146,7 @@ func waitSessionStatus(s *server, sessionID string) string {
 	if sess == nil {
 		return "missing"
 	}
-	return sess.Summary().Status
+	return sess.View().Summary().Status
 }
 
 func getSessionState(t *testing.T, s *server, sessionID string) map[string]json.RawMessage {
@@ -253,7 +253,7 @@ func TestResumeHappyPathAndCloseDetaches(t *testing.T) {
 		}
 		return false
 	})
-	if routed.Summary().Status != "starting" {
+	if routed.View().Summary().Status != "starting" {
 		t.Fatal("routing probe did not precede the delayed handshake")
 	}
 
@@ -298,7 +298,7 @@ func TestCodexResumeDurableTerminalTurnEndsIdleAfterHandshake(t *testing.T) {
 	}
 	fixture := &providerRuntimeFixture{session: sess, codex: fake}
 	fixture.emitAndWait(t, []byte(`{"method":"turn/started","params":{"threadId":"thread-durable-terminal","turn":{"id":"turn-durable-terminal"}}}`))
-	if summary := sess.Summary(); summary.TurnActive {
+	if summary := sess.View().Summary(); summary.TurnActive {
 		t.Fatalf("durable terminal guard allowed the old turn to reopen: %+v", summary)
 	}
 }

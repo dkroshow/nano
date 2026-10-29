@@ -53,7 +53,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 				fixture.emitAndWait(t, []byte(`{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-hosted","turnId":"fleet-turn","itemId":"fleet-command","command":"echo test"}}`))
 				waitForClaude(t, "fleet waiting state", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
 			}
-			sess.PublishProjectionRuntime()
+			sess.View().PublishProjectionRuntime()
 			fake := &fakeFleetCatalog{
 				catalogRowsFixture: catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
 				// Deliberately contradict idle and waiting lifecycle states. Hosted
@@ -93,7 +93,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			if err := json.Unmarshal(items[0]["runtime"], &overlay); err != nil {
 				t.Fatal(err)
 			}
-			raw, err := json.Marshal(sess.Summary())
+			raw, err := json.Marshal(sess.View().Summary())
 			if err != nil {
 				t.Fatal(err)
 			}

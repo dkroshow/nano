@@ -22,7 +22,7 @@ import (
 func (s *Controller) runtimeFor(provider, nativeThreadID string) (RuntimeInfo, bool) {
 	if s.registry != nil {
 		if sess := s.registry.SessionForThread(provider, nativeThreadID); sess != nil {
-			return sessionRuntimeInfo(sess.Summary()), true
+			return sessionRuntimeInfo(sess.View().Summary()), true
 		}
 	}
 	if s.attachments != nil {

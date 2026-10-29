@@ -23,7 +23,7 @@ func (s *Controller) HandleHostedThreadConversation(w http.ResponseWriter, r *ht
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.HandleConversationView(w, r, liveview.Messages)
+	sess.View().HandleConversationView(w, r, liveview.Messages)
 }
 
 // HandleHostedThreadConversationEvents serves the attached hosted session.
@@ -33,7 +33,7 @@ func (s *Controller) HandleHostedThreadConversationEvents(w http.ResponseWriter,
 		httpapi.WriteHTTPError(w, "hosted thread is not attached", http.StatusConflict)
 		return
 	}
-	sess.HandleConversationEventsView(w, r, liveview.Messages)
+	sess.View().HandleConversationEventsView(w, r, liveview.Messages)
 }
 
 // HandleHostedThreadInteraction serves the attached hosted session.
@@ -66,5 +66,5 @@ func (s *Controller) HandleHostedThreadLive(w http.ResponseWriter, r *http.Reque
 		httpapi.WriteHTTPError(w, "no live session is attached to this thread", http.StatusConflict)
 		return
 	}
-	sess.HandleLiveStream(w, r)
+	sess.View().HandleLiveStream(w, r)
 }

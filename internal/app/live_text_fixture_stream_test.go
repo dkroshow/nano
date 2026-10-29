@@ -141,14 +141,14 @@ func (l *testLiveTextLoop) subscribe(p *liveTextPane) {
 	p.cancel = cancel
 	go func() {
 		defer close(p.done)
-		l.sess.HandleLiveStream(p, httptest.NewRequest("GET", "/?"+q.Encode(), nil).WithContext(ctx))
+		l.sess.View().HandleLiveStream(p, httptest.NewRequest("GET", "/?"+q.Encode(), nil).WithContext(ctx))
 	}()
 }
 func (l *testLiveTextLoop) unsubscribe(p *liveTextPane) { p.Stop(); <-p.done }
 func newLiveTextLoop(s *server, sess *sessions.Session) *sessions.LiveTextLoop {
 	if sess != nil {
 		s.startLiveText(sess)
-		return sess.LiveTextService()
+		return sess.View().LiveTextService()
 	}
 	return sessions.NewLiveTextLoop(sessions.LiveTextSources{}, nil)
 }

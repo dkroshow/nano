@@ -61,7 +61,7 @@ func TestLiveTextDeltasEnvironmentSwitch(t *testing.T) {
 	} {
 		runtime.emitAndWait(t, []byte(line))
 	}
-	for _, text := range runtime.session.LiveTextService().CurrentTexts(context.Background()) {
+	for _, text := range runtime.session.View().LiveTextService().CurrentTexts(context.Background()) {
 		if strings.Contains(text, "hidden-text") {
 			t.Fatal("server setting did not reach the session projection")
 		}

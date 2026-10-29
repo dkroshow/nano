@@ -158,10 +158,10 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 		return sess
 	}
 	created := now.Add(-time.Hour)
-	live("onpage-live", "/canon/onpage", "canon-model-a", true, created).SetDisplayName("Onpage display")
+	live("onpage-live", "/canon/onpage", "canon-model-a", true, created).View().SetDisplayName("Onpage display")
 	live("outside-live", "/canon/outside", "canon-model-b", true, created.Add(time.Second))
 	live("unindexed-live", "/canon/unindexed", "canon-model-c", true, created.Add(2*time.Second))
-	live("failed-live", "/canon/failed", "canon-model-d", true, created.Add(3*time.Second)).SetDisplayName("Failed display")
+	live("failed-live", "/canon/failed", "canon-model-d", true, created.Add(3*time.Second)).View().SetDisplayName("Failed display")
 	live("badged-live", "/canon/badged", "canon-model-e", true, created.Add(4*time.Second))
 	live("missing-record-live", "", "", false, created.Add(5*time.Second))
 	for i := 0; i < extra; i++ {
@@ -668,7 +668,7 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 			t.Fatalf("own backlog = %+v", v)
 		}
 		provider.EmitThreadNotification(sess.State().ThreadID(), map[string]any{"method": "turn/started", "params": map[string]any{"threadId": sess.State().ThreadID(), "turn": map[string]any{"id": "t1"}}})
-		waitForClaude(t, "availability working turn", func() bool { return sess.Summary().TurnActive })
+		waitForClaude(t, "availability working turn", func() bool { return sess.View().Summary().TurnActive })
 		return nil
 	}); err != nil || reason != "" {
 		t.Fatalf("fixture delivery lock: %s %v", reason, err)

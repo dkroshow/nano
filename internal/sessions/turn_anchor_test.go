@@ -120,7 +120,7 @@ func TestTurnAnchorClearsAtEveryTerminalSite(t *testing.T) {
 			if got := sess.stateOwner.turnAnchor(); got != 0 {
 				t.Fatalf("anchor after %s = %d, want 0", tc.name, got)
 			}
-			if sum := sess.Summary(); sum.TurnStartedAtMs != 0 {
+			if sum := sess.view.Summary(); sum.TurnStartedAtMs != 0 {
 				t.Fatalf("summary still carries anchor %d", sum.TurnStartedAtMs)
 			}
 		})
@@ -136,22 +136,22 @@ func TestClaudeReplayRecoversTurnStateWithoutInventingAnAnchor(t *testing.T) {
 
 	live := anchorTestSession("claude")
 	live.wire.recordWireLive(protocol.Send, userLine, true)
-	if live.Summary().TurnActive || live.stateOwner.turnAnchor() != 0 {
+	if live.view.Summary().TurnActive || live.stateOwner.turnAnchor() != 0 {
 		t.Fatal("local send invented execution evidence")
 	}
 	live.wire.recordWireLive(protocol.Recv, []byte(`{"type":"assistant","message":{"role":"assistant"}}`), true)
-	if !live.Summary().TurnActive || live.stateOwner.turnAnchor() == 0 {
-		t.Fatalf("live provider output should open an anchored turn, got %+v", live.Summary())
+	if !live.view.Summary().TurnActive || live.stateOwner.turnAnchor() == 0 {
+		t.Fatalf("live provider output should open an anchored turn, got %+v", live.view.Summary())
 	}
 
 	replayed := anchorTestSession("claude")
 	replayed.stateOwner.beginTurnRestore()
 	replayed.wire.recordWireLive(protocol.Send, userLine, false)
-	if replayed.Summary().TurnActive {
+	if replayed.view.Summary().TurnActive {
 		t.Fatal("replay published work before settlement")
 	}
 	replayed.stateOwner.settleRestoredTurnState()
-	if !replayed.Summary().TurnActive {
+	if !replayed.view.Summary().TurnActive {
 		t.Fatal("a replayed send should still recover the turn state")
 	}
 	if got := replayed.stateOwner.turnAnchor(); got != 0 {
@@ -191,11 +191,11 @@ func TestRestoreTurnAnchorGuards(t *testing.T) {
 func TestWaitingReflectsParkedInteractions(t *testing.T) {
 	sess := anchorTestSession("codex")
 	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
-	if sum := sess.Summary(); sum.Waiting {
+	if sum := sess.view.Summary(); sum.Waiting {
 		t.Fatal("a working session is not waiting")
 	}
 	sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if !sum.Waiting {
 		t.Fatal("a parked interaction must read as waiting")
 	}
@@ -205,7 +205,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 	if _, ok := sess.delivery.claimPendingInteraction("1"); !ok {
 		t.Fatal("the interaction should still be claimable")
 	}
-	if sess.Summary().Waiting {
+	if sess.view.Summary().Waiting {
 		t.Fatal("claiming the last interaction ends the wait")
 	}
 }
@@ -261,16 +261,16 @@ func TestApplyPendingNameWritesOnceAtTheFirstRealBind(t *testing.T) {
 		stateOwner: State{
 			pendingName:    "overnight run",
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	sess.nameThread = func(provider, nativeID, name string) {
+	sess.view.nameThread = func(provider, nativeID, name string) {
 		writes = append(writes, provider+"/"+nativeID+"="+name)
 	}
 
-	sess.applyPendingName("") // no id yet: nothing written, name kept
+	sess.view.applyPendingName("") // no id yet: nothing written, name kept
 	if len(writes) != 0 {
 		t.Fatalf("wrote a name with no native id: %v", writes)
 	}
-	sess.applyPendingName("sess-native-1")
-	sess.applyPendingName("sess-native-1") // second bind site: no double write
+	sess.view.applyPendingName("sess-native-1")
+	sess.view.applyPendingName("sess-native-1") // second bind site: no double write
 	if len(writes) != 1 || writes[0] != "claude/sess-native-1=overnight run" {
 		t.Fatalf("expected exactly one name write, got %v", writes)
 	}
@@ -417,7 +417,7 @@ func TestClaudeReattachRestoresPersistedAnchorForALiveTurn(t *testing.T) {
 		TurnStartedAtMs: 1785510514000, TurnAnchorSeq: 0,
 	})
 
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if !sum.TurnActive {
 		t.Fatal("the replayed turn should still read as in flight")
 	}
@@ -444,7 +444,7 @@ func TestClaudeReattachDiscardsAnchorWhenTheTurnFinishedUnattended(t *testing.T)
 		TurnStartedAtMs: 1785510514000, TurnAnchorSeq: 0,
 	})
 
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if sum.TurnActive || sum.TurnStartedAtMs != 0 {
 		t.Fatalf("summary = %+v, want an idle, unanchored session", sum)
 	}
@@ -471,7 +471,7 @@ func TestClaudeReattachRefusesAnAnchorFromAnEarlierTurn(t *testing.T) {
 		TurnStartedAtMs: 1785510514000, TurnAnchorSeq: 9,
 	})
 
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if !sum.TurnActive {
 		t.Fatal("the turn state still comes from the replay")
 	}
@@ -495,7 +495,7 @@ func TestClaudeReattachWithoutAPersistedAnchorShowsNoTimer(t *testing.T) {
 		Provider: "claude", NativeThreadID: "native-1",
 	})
 
-	sum := sess.Summary()
+	sum := sess.view.Summary()
 	if !sum.TurnActive {
 		t.Fatal("the replayed turn should still read as in flight")
 	}

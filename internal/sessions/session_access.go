@@ -21,7 +21,7 @@ func (sess *Session) HostedThreadID() string { return sess.hostedThreadID }
 func (sess *Delivery) PromptStore() *prompts.Store { return sess.turns }
 
 // LiveTurnActive reads the view's active-turn fact without exposing its state.
-func (sess *Session) LiveTurnActive() bool {
+func (sess *View) LiveTurnActive() bool {
 	return sess.projection != nil && sess.projection.turnActive()
 }
 
@@ -66,4 +66,20 @@ func (sess *Session) Runtime() *Runtime {
 		return nil
 	}
 	return &sess.runtime
+}
+
+// Lifecycle returns the attachment's concrete lifecycle owner.
+func (sess *Session) Lifecycle() *Lifecycle {
+	if sess == nil {
+		return nil
+	}
+	return &sess.lifecycle
+}
+
+// View returns the attachment's concrete view owner.
+func (sess *Session) View() *View {
+	if sess == nil {
+		return nil
+	}
+	return &sess.view
 }

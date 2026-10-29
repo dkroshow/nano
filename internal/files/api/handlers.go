@@ -190,10 +190,10 @@ func (s *Handlers) liveFileEvidence(ctx context.Context, sessionID string) []str
 		return nil
 	}
 	session := s.Registry.LookupSession(sessionID)
-	if session == nil || session.LiveTextService() == nil {
+	if session == nil || session.View().LiveTextService() == nil {
 		return nil
 	}
-	texts := session.LiveTextService().CurrentTexts(ctx)
+	texts := session.View().LiveTextService().CurrentTexts(ctx)
 	var blobs []string
 	total := 0
 	for index := len(texts) - 1; index >= 0 && total < fileEvidenceMaxBytes; index-- {

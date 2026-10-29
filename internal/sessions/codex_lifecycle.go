@@ -131,20 +131,20 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 			sess.stateOwner.markCompacting(envelope.Method == "item/started", started)
 		}
 	case "thread/tokenUsage/updated":
-		sess.setLiveTokenUsageForTurn(wire.String(envelope.Params["turnId"]), envelope.Params["tokenUsage"])
+		sess.view.setLiveTokenUsageForTurn(wire.String(envelope.Params["turnId"]), envelope.Params["tokenUsage"])
 	case "error":
 		var payload map[string]json.RawMessage
 		if json.Unmarshal(envelope.Params["error"], &payload) == nil {
-			sess.setLiveError(wire.String(payload["message"]))
+			sess.view.setLiveError(wire.String(payload["message"]))
 		} else {
-			sess.setLiveError(wire.String(envelope.Params["message"]))
+			sess.view.setLiveError(wire.String(envelope.Params["message"]))
 		}
 	case "turn/completed":
 		var turn map[string]json.RawMessage
 		if json.Unmarshal(envelope.Params["turn"], &turn) == nil {
 			status := wire.String(turn["status"])
 			turnID := wire.String(turn["id"])
-			sess.projection.updateCompletedTurn(turnID, status, wire.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
+			sess.view.projection.updateCompletedTurn(turnID, status, wire.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
 			if status == "interrupted" {
 				// A turn interrupted before it recorded its input saves nothing,
 				// so no saved commit may follow to settle a prompt it dropped.

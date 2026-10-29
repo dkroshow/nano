@@ -40,9 +40,9 @@ func TestGuardedHostedTurnAdmissionRejectsWithoutSideEffectsAndPreservesReplay(t
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	deadline := time.Now().Add(5 * time.Second)
-	for sess.Summary().Status != "ready" {
+	for sess.View().Summary().Status != "ready" {
 		if time.Now().After(deadline) {
 			t.Fatal("session did not become ready")
 		}

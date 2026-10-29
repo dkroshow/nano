@@ -139,7 +139,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	h.metadata, _ = cfg.Metadata.(*hostedstore.MetadataStore)
 	cfg.Metadata = journalReadMetadata{Metadata: cfg.Metadata, db: cfg.QueuedTurns.Database()}
 	sess := New(cfg)
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.lifecycle.Close)
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	h.journal = cfg.SendAttempts
 	service.SetTranscriptChanged(func(context.Context, threadindex.TranscriptChange) {
 		if !h.held.Load() {
-			sess.NotifySavedTranscript()
+			sess.view.NotifySavedTranscript()
 		}
 	})
 	h.liveTextViewer = h.open(query)
@@ -172,7 +172,7 @@ func (h *liveTextHarness) hold() { h.held.Store(true) }
 
 func (h *liveTextHarness) release() {
 	h.held.Store(false)
-	h.sess.NotifySavedTranscript()
+	h.sess.view.NotifySavedTranscript()
 }
 
 // page reads the catalog directly: the test's own view of what is saved.
@@ -436,11 +436,11 @@ func TestLiveTextHandsOverToSavedRowsInOneMessage(t *testing.T) {
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt},
 	}
 	h.view.expectSaved["prompt:action-1"] = accepted.PresentationText
-	h.sess.PublishLiveOutbox(accepted)
+	h.sess.view.PublishLiveOutbox(accepted)
 	h.expect("prompt", func(LiveTextMessage) bool { return len(h.view.live) == 1 })
 	confirmed := accepted
 	confirmed.State = prompts.Confirmed
-	h.sess.PublishLiveOutbox(confirmed)
+	h.sess.view.PublishLiveOutbox(confirmed)
 	h.barrier()
 	if !containsEntry(h.view.live, "prompt:action-1") {
 		t.Fatalf("confirmation removed the prompt before its saved row: %+v", h.view.live)
@@ -502,7 +502,7 @@ func TestLiveTextQueuedPromptLeavesOnItsSavedRow(t *testing.T) {
 		Binding: &prompts.Binding{EventID: queuedPrompt},
 	}
 	h.view.expectSaved["prompt:action-2"] = queued.PresentationText
-	h.sess.PublishLiveOutbox(queued)
+	h.sess.view.PublishLiveOutbox(queued)
 	h.expect("queued prompt", func(LiveTextMessage) bool { return containsEntry(h.view.live, "prompt:action-2") })
 	h.save(fixtureLines(t, "claude-queued-prompt.jsonl"))
 	h.expect("queued prompt saved", func(LiveTextMessage) bool { return !containsEntry(h.view.live, "prompt:action-2") })
@@ -531,7 +531,7 @@ func TestLiveTextNamesAPromptSavedBeforeItWasShown(t *testing.T) {
 		Binding: &prompts.Binding{EventID: prompt},
 	}
 	h.view.expectSaved["prompt:action-2"] = entry.PresentationText
-	h.sess.PublishLiveOutbox(entry)
+	h.sess.view.PublishLiveOutbox(entry)
 	h.expect("the prompt named saved", func(m LiveTextMessage) bool { return slices.Contains(m.Saved, "prompt:action-2") })
 	if h.view.shown["prompt:action-2"] {
 		t.Fatal("a prompt saved before Nano admitted it was listed live")
@@ -634,7 +634,7 @@ func TestLiveTextMergedPromptsLeaveOnTheirSavedRow(t *testing.T) {
 			PresentationText: prompt.text, State: prompts.Accepted, Binding: &prompts.Binding{EventID: prompt.event},
 		}
 		h.view.expectSaved["prompt:"+prompt.action] = prompt.text
-		h.sess.PublishLiveOutbox(entry)
+		h.sess.view.PublishLiveOutbox(entry)
 	}
 	h.expect("merged prompts", func(LiveTextMessage) bool {
 		return containsEntry(h.view.live, "prompt:merged-first") && containsEntry(h.view.live, "prompt:merged-third")
@@ -668,12 +668,12 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 			t.Fatalf("page = %+v, want the first turn's reply off it", h.page(query))
 		}
 	}
-	h.sess.PublishLiveOutbox(prompts.OutboxEntry{
+	h.sess.view.PublishLiveOutbox(prompts.OutboxEntry{
 		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-1", Sequence: 1,
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt},
 	})
-	h.sess.PublishLiveOutbox(prompts.OutboxEntry{
+	h.sess.view.PublishLiveOutbox(prompts.OutboxEntry{
 		HostedThreadID: h.sess.HostedThreadID(), ActionID: "action-2", Sequence: 2,
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: "99999999-2222-4333-8444-555555555555"},
@@ -689,7 +689,7 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 	h.projection = NewLiveProjection("claude", h.sess.HostedThreadID(), false)
 	h.projection.setNativeThreadID(h.sess.stateOwner.ThreadID())
 	h.projection.setClaudeProviderTurnID(turn)
-	h.projection.setLiveText(h.sess.LiveTextService())
+	h.projection.setLiveText(h.sess.view.LiveTextService())
 	for _, line := range wire {
 		if strings.HasPrefix(string(line), `{"type": "assistant"`) && strings.Contains(string(line), `"type": "text"`) {
 			h.feed([][]byte{line})
@@ -807,7 +807,7 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 	// leaves every pane with that row.
 	next := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "next", Sequence: 2,
 		PresentationText: "next", State: prompts.Accepted, Binding: &prompts.Binding{EventID: "22222222-3333-4444-8555-666666666666"}}
-	h.sess.PublishLiveOutbox(next)
+	h.sess.view.PublishLiveOutbox(next)
 	h.expect("next prompt", func(LiveTextMessage) bool { return containsEntry(h.view.live, "prompt:next") })
 	saved := fixtureLines(t, "claude-tool-error.saved.jsonl")
 	h.save(saved[:lineWith(saved, "22222222-3333-4444-8555-666666666666")+1])
@@ -852,10 +852,10 @@ func (h *liveTextHarness) barrier() {
 	id := fmt.Sprintf("barrier-%d", h.barriers)
 	entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: id,
 		Sequence: 99, PresentationText: "barrier", State: prompts.Queued}
-	h.sess.PublishLiveOutbox(entry)
+	h.sess.view.PublishLiveOutbox(entry)
 	h.expect("barrier", func(LiveTextMessage) bool { return containsEntry(h.view.live, "prompt:"+id) })
 	entry.State = prompts.Refused
-	h.sess.PublishLiveOutbox(entry)
+	h.sess.view.PublishLiveOutbox(entry)
 	h.expect("barrier gone", func(LiveTextMessage) bool { return !containsEntry(h.view.live, "prompt:"+id) })
 }
 
@@ -867,7 +867,7 @@ func TestLiveTextStreamCarriesStatusFirst(t *testing.T) {
 	h := newLiveTextHarness(t)
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.waitSaved(fixtureReply)
-	stream := httptest.NewServer(http.HandlerFunc(h.sess.HandleLiveStream))
+	stream := httptest.NewServer(http.HandlerFunc(h.sess.view.HandleLiveStream))
 	defer stream.Close()
 	response, err := http.Get(stream.URL + "?view=enhanced&limit=40")
 	if err != nil {
@@ -974,7 +974,7 @@ func (h *liveTextHarness) blockedStream() (*streamRecorder, chan struct{}) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		h.sess.HandleLiveStream(writer, httptest.NewRequest("GET", "/live?view=enhanced&limit=40", nil).WithContext(ctx))
+		h.sess.view.HandleLiveStream(writer, httptest.NewRequest("GET", "/live?view=enhanced&limit=40", nil).WithContext(ctx))
 	}()
 	<-writer.wrote
 	h.t.Cleanup(cancel)
@@ -1035,8 +1035,8 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 		PresentationText: "Reply with two short sentences about rain.", State: prompts.Accepted,
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt}}
 	h.view.expectSaved["prompt:bound"] = bound.PresentationText
-	h.sess.PublishLiveOutbox(bound)
-	h.sess.PublishLiveOutbox(prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "next",
+	h.sess.view.PublishLiveOutbox(bound)
+	h.sess.view.PublishLiveOutbox(prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "next",
 		Sequence: 2, PresentationText: "next prompt", State: prompts.Queued})
 	h.expect("prompts", func(LiveTextMessage) bool { return len(h.view.live) == 2 })
 	// Rewriting the file in place (new inode) is a new source generation: the
@@ -1057,7 +1057,7 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 		t.Fatalf("the rebuild tail names %v saved, want the prompt it saved", saved)
 	}
 	// A tail larger than a pane's backlog limit still lands.
-	h.sess.PublishLiveOutbox(prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "large",
+	h.sess.view.PublishLiveOutbox(prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "large",
 		Sequence: 3, PresentationText: strings.Repeat("x", liveTextPaneBacklog+1), State: prompts.Queued})
 	reopened := h.open(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	if !containsEntry(reopened.view.live, "prompt:large") {
@@ -1065,7 +1065,7 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 	}
 	// A failed read is shown, and the stream ends instead of retrying.
 	h.store.Close()
-	h.sess.NotifySavedTranscript()
+	h.sess.view.NotifySavedTranscript()
 	reopened.expect("read error", func(m LiveTextMessage) bool { return m.Type == "error" })
 	if !reopened.pane.isClosed() {
 		t.Fatal("the pane stream stayed open after its read failed")
@@ -1085,7 +1085,7 @@ func TestLiveTextShowsQueueInDeliveryOrder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h.sess.PublishLiveOutbox(record.Outbox)
+		h.sess.view.PublishLiveOutbox(record.Outbox)
 	}
 	h.expect("queue", func(LiveTextMessage) bool { return len(h.view.live) == 2 })
 	if h.view.live[0].ID != "prompt:human" {
@@ -1100,7 +1100,7 @@ func TestLiveTextShowsQueueInDeliveryOrder(t *testing.T) {
 		Binding: &prompts.Binding{EventID: liveTextFixturePrompt},
 	}
 	h.view.expectSaved["prompt:action-uncertain"] = uncertain.PresentationText
-	h.sess.PublishLiveOutbox(uncertain)
+	h.sess.view.PublishLiveOutbox(uncertain)
 	h.expect("uncertain prompt", func(LiveTextMessage) bool {
 		for _, entry := range h.view.live {
 			if entry.ID == "prompt:action-uncertain" {
@@ -1225,10 +1225,10 @@ func TestLiveTextCodexHandsOverByTurnAndItem(t *testing.T) {
 				h.view.expectSaved["prompt:"+action] = text + "\n\n[from nano]"
 				// Delivery binds a Codex prompt to its turn only once the turn starts.
 				entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: action, Sequence: 1, PresentationText: text, State: prompts.Delivering}
-				h.sess.PublishLiveOutbox(entry)
+				h.sess.view.PublishLiveOutbox(entry)
 				entry.State = prompts.Accepted
 				entry.Binding = &prompts.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: "codex", NativeThreadID: &thread, NativeTurnID: &turn}}
-				h.sess.PublishLiveOutbox(entry)
+				h.sess.view.PublishLiveOutbox(entry)
 			}
 			ended := func(v *livePaneView) func(LiveTextMessage) bool {
 				return func(LiveTextMessage) bool { return v.reply() != nil && v.reply().State == "done" }
@@ -1323,8 +1323,8 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 			second := accept("second", "A second correction.", "client-second")
 			h.view.expectSaved["prompt:legacy"] = legacy.PresentationText
 			h.view.expectSaved["prompt:second"] = second.PresentationText
-			h.sess.PublishLiveOutbox(legacy)
-			h.sess.PublishLiveOutbox(second)
+			h.sess.view.PublishLiveOutbox(legacy)
+			h.sess.view.PublishLiveOutbox(second)
 			if restarted {
 				// Confirmed before this attach, so it is not live and only its
 				// stored binding still claims its row.
@@ -1333,7 +1333,7 @@ func TestLiveTextCodexPromptsSharingATurnLeaveOnTheirOwnRows(t *testing.T) {
 				}
 			} else {
 				h.view.expectSaved["prompt:correction"] = correction.PresentationText
-				h.sess.PublishLiveOutbox(correction)
+				h.sess.view.PublishLiveOutbox(correction)
 			}
 			lines := [][]byte{fixtureLines(t, "codex-turns.saved.jsonl")[0],
 				[]byte(fmt.Sprintf(`{"timestamp":"2026-10-01T07:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":%q}}`, turn))}
@@ -1424,19 +1424,19 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	stopped := "reply:" + codexFixtureStopped
 
 	h := newLiveTextHarnessFor(t, "codex", query)
-	h.sess.PublishLiveOutbox(bound(h, "action-1", firstText, "", prompts.Delivering))
+	h.sess.view.PublishLiveOutbox(bound(h, "action-1", firstText, "", prompts.Delivering))
 	h.expect("unbound prompt", func(LiveTextMessage) bool { return containsEntry(h.view.live, "prompt:action-1") })
 	h.save(saved[:complete+1])
 	h.waitSaved(codexFixtureReply1)
 	h.barrier()
 	// Unbound, the prompt cannot be matched yet; its binding hands it over.
 	h.view.expectSaved["prompt:action-1"] = firstText + "\n\n[from nano]"
-	h.sess.PublishLiveOutbox(bound(h, "action-1", firstText, codexFixtureTurn1, prompts.Accepted))
+	h.sess.view.PublishLiveOutbox(bound(h, "action-1", firstText, codexFixtureTurn1, prompts.Accepted))
 	h.expect("bound prompt handed over", func(LiveTextMessage) bool { return !containsEntry(h.view.live, "prompt:action-1") })
 
 	h.view.expectSaved["prompt:action-2"] = stopText + "\n\n[from nano]"
 	h.view.neverSaved[stopped] = true
-	h.sess.PublishLiveOutbox(bound(h, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
+	h.sess.view.PublishLiveOutbox(bound(h, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
 	h.feed(without(turns[1], `"turn/completed"`))
 	h.expect("streaming stopped reply", func(LiveTextMessage) bool { return h.view.reply() != nil })
 	// The file without task_started leaves the turn's end unknown.
@@ -1464,7 +1464,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	h.feed(turns[1][len(turns[1])-1:]) // the live end arrives late
 	h.barrier()
 
-	h.sess.PublishLiveOutbox(bound(h, "action-3", "Reply with exactly: CODEX_AFTER_STOP", codexFixtureTurn3, prompts.Accepted))
+	h.sess.view.PublishLiveOutbox(bound(h, "action-3", "Reply with exactly: CODEX_AFTER_STOP", codexFixtureTurn3, prompts.Accepted))
 	h.view.expectSaved["prompt:action-3"] = "Reply with exactly: CODEX_AFTER_STOP\n\n[from nano]"
 	h.feed(without(turns[2], `"item/started","params":{"item":{"type":"agentMessage"`))
 	h.save(saved[aborted+1:])
@@ -1477,7 +1477,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	r := newLiveTextHarnessFor(t, "codex", query)
 	r.view.neverSaved[stopped] = true
 	r.view.expectSaved["prompt:action-2"] = stopText + "\n\n[from nano]"
-	r.sess.PublishLiveOutbox(bound(r, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
+	r.sess.view.PublishLiveOutbox(bound(r, "action-2", stopText, codexFixtureTurn2, prompts.Accepted))
 	r.feed(turns[1])
 	r.expect("stopped reply", func(LiveTextMessage) bool { return r.view.reply() != nil && r.view.reply().State == "done" })
 	r.save(saved[:aborted+1])
@@ -1554,7 +1554,7 @@ func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin pr
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	h.sess.PublishLiveOutbox(accepted.Outbox)
+	h.sess.view.PublishLiveOutbox(accepted.Outbox)
 }
 
 // The live stream and a reload's journal present each prompt from its one
@@ -1609,7 +1609,7 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess.PublishLiveOutbox(uncertain.Outbox, parked.Outbox, slow.Outbox, queued.Outbox)
+	sess.view.PublishLiveOutbox(uncertain.Outbox, parked.Outbox, slow.Outbox, queued.Outbox)
 	h.expect("four prompts shown", func(LiveTextMessage) bool { return len(h.view.live) == 4 })
 	if entry := liveEntry(h.view.live, "prompt:slow"); entry.State != string(prompts.Delivering) || entry.Label != "" || entry.AllowedActions != nil {
 		t.Fatalf("slow entry before the threshold = %+v; want delivering with no label or action", entry)
@@ -1704,7 +1704,7 @@ type journalReadMetadata struct {
 }
 
 func (m journalReadMetadata) ReadPool() *sql.DB { return m.db }
-func liveTextOf(sess *Session) *LiveTextLoop    { return sess.liveText }
+func liveTextOf(sess *Session) *LiveTextLoop    { return sess.view.liveText }
 func liveTextTestConfig(t *testing.T, provider string) (Config, int64) {
 	t.Helper()
 	metadataDB, _, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "metadata.json"))

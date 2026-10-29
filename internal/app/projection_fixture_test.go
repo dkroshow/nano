@@ -42,13 +42,13 @@ func (w *firstStatusWriter) Write(data []byte) (int, error) {
 }
 func liveStatusForTest(t *testing.T, sess *sessions.Session) liveview.Status {
 	t.Helper()
-	if sess.LiveTextService() == nil {
+	if sess.View().LiveTextService() == nil {
 		sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, sess))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	w := &firstStatusWriter{httptest.NewRecorder(), cancel}
-	sess.HandleLiveStream(w, httptest.NewRequest("GET", "/live?view=enhanced", nil).WithContext(ctx))
+	sess.View().HandleLiveStream(w, httptest.NewRequest("GET", "/live?view=enhanced", nil).WithContext(ctx))
 	for _, line := range bytes.Split(w.Body.Bytes(), []byte("\n")) {
 		if raw, ok := bytes.CutPrefix(line, []byte("data: ")); ok {
 			var message struct {
@@ -144,7 +144,7 @@ func observeProjection(t *testing.T, sess *sessions.Session) *projectionStream {
 	w := &projectionStream{header: make(http.Header), ready: make(chan struct{})}
 	go func() {
 		defer close(done)
-		sess.HandleConversationEvents(w, httptest.NewRequest("GET", "/conversation/events", nil).WithContext(ctx))
+		sess.View().HandleConversationEvents(w, httptest.NewRequest("GET", "/conversation/events", nil).WithContext(ctx))
 	}()
 	t.Cleanup(func() { cancel(); <-done })
 	select {

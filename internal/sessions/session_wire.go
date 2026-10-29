@@ -1,6 +1,8 @@
 package sessions
 
 import (
+	"sync"
+
 	"encoding/json"
 	"log"
 	"strings"
@@ -118,8 +120,8 @@ func (sess *State) setProjectionThreadID(id string) {
 		sess.durablyTerminalTurnThreadID = ""
 	}
 	sess.stateMu.Unlock()
-	if sess.session.projection != nil {
-		sess.session.projection.setNativeThreadID(id)
+	if sess.session.view.projection != nil {
+		sess.session.view.projection.setNativeThreadID(id)
 	}
 	sess.bindCatalogSource(id)
 }
@@ -224,9 +226,9 @@ func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Dir
 				prepare()
 			}
 			sess.applyWireSemantic(gate, dir, frame, live, replay, at, sequence...)
-			if terminal != nil && sess.session.projection != nil {
-				terminal.FinalMessageID = sess.session.projection.finalAgentItemID(terminal.TurnID)
-				if usage := sess.session.completedTokenUsage(terminal.TurnID); usage != nil {
+			if terminal != nil && sess.session.view.projection != nil {
+				terminal.FinalMessageID = sess.session.view.projection.finalAgentItemID(terminal.TurnID)
+				if usage := sess.session.view.completedTokenUsage(terminal.TurnID); usage != nil {
 					terminal.Usage = coreturns.Usage{InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens, OutputTokens: usage.OutputTokens}
 				}
 			}
@@ -241,9 +243,9 @@ func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Dir
 			return nil
 		}
 		if gate == nil && prepare == nil && live && !replay && sess.session.provider == "codex" &&
-			dir == wire.Recv && sess.session.projection != nil {
+			dir == wire.Recv && sess.session.view.projection != nil {
 			if delta, ok := parseQueuedCodexDelta(frame); ok &&
-				(delta.method != "item/agentMessage/delta" || !sess.session.projection.dropsLiveTextDeltas()) {
+				(delta.method != "item/agentMessage/delta" || !sess.session.view.projection.dropsLiveTextDeltas()) {
 				delta.at = at
 				delta.event = evt
 				delta.wireSeq = sequence
@@ -344,8 +346,8 @@ func (sess *Wire) applyWireSemantic(gate func() error, dir wire.Direction, line 
 	// Normalize before publishing the raw line. Every browser therefore sees
 	// the same projection order, and a slow/raw-feed tab cannot affect the
 	// transcript reducer.
-	if sess.session.projection != nil {
-		sess.session.projection.applyWireLive(dir, line, at, live, replay, wireSeq...)
+	if sess.session.view.projection != nil {
+		sess.session.view.projection.applyWireLive(dir, line, at, live, replay, wireSeq...)
 	}
 	// Wire-native catalog freshness: turn edges hint the session's known
 	// native file. Runs outside every session lock, and the callback is the
@@ -357,14 +359,14 @@ func (sess *Wire) applyWireSemantic(gate func() error, dir wire.Direction, line 
 		}
 	}
 	sess.session.stateOwner.observeProviderWork(dir, line, live)
-	sess.session.applyLiveRuntimeWire(dir, line, at)
+	sess.session.view.applyLiveRuntimeWire(dir, line, at)
 	// An MCP server changing startup state means the cached tool registry is
 	// stale; the next panel fetch re-asks app-server (mcp_inventory.go).
 	if inspection.MCPInventoryStale(sess.session.provider, dir, line) {
-		sess.session.mcp.Invalidate()
+		sess.session.view.mcp.Invalidate()
 	}
-	if sess.session.projection != nil && wireNudgesProjectionMeta(sess.session.provider, dir, line) {
-		sess.session.projection.nudgeMetaRefresh()
+	if sess.session.view.projection != nil && wireNudgesProjectionMeta(sess.session.provider, dir, line) {
+		sess.session.view.projection.nudgeMetaRefresh()
 	}
 	if gate != nil && gate() != nil {
 		return
@@ -437,4 +439,15 @@ func (sess *Wire) recordSpoolDropped(seq int64, err error) {
 	if ok {
 		sess.publishWireEvent(evt, false) // the spool just failed; don't re-enter it
 	}
+}
+
+// Wire owns the ordered raw event history, retained spool and event subscribers.
+type Wire struct {
+	session *Session
+
+	mu     sync.Mutex
+	events []wire.Event
+	seq    int64
+	subs   map[chan wire.Event]struct{}
+	spool  *wireSpool
 }

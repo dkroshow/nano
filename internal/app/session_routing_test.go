@@ -41,7 +41,7 @@ func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		rec := httptest.NewRecorder()
-		sess.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost,
+		sess.View().HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost,
 			"/api/sessions/sess-fast/turn-options", strings.NewReader(`{"serviceTier":"priority"}`)))
 		done <- rec
 	}()
@@ -163,7 +163,7 @@ func TestUltrafastTurnOptionsValidateModelAndPreserveIntent(t *testing.T) {
 		{`{"model":"gpt-6-sol"}`, 400},
 	} {
 		rec := httptest.NewRecorder()
-		sess.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/turn-options", strings.NewReader(tc.body)))
+		sess.View().HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/turn-options", strings.NewReader(tc.body)))
 		if rec.Code != tc.code {
 			t.Fatalf("%s: %d %s", tc.body, rec.Code, rec.Body)
 		}
@@ -173,7 +173,7 @@ func TestUltrafastTurnOptionsValidateModelAndPreserveIntent(t *testing.T) {
 		t.Fatalf("pending tier = %+v %s %s", f, desired, effective)
 	}
 	read := httptest.NewRecorder()
-	sess.HandleTurnOptionsRead(read, httptest.NewRequest(http.MethodGet, "/turn-options", nil))
+	sess.View().HandleTurnOptionsRead(read, httptest.NewRequest(http.MethodGet, "/turn-options", nil))
 	var options struct {
 		Model       string `json:"model"`
 		ServiceTier string `json:"serviceTier"`

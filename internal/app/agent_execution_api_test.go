@@ -323,12 +323,12 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatalf("hosted-thread list status = %d, body %s", listed.Code, listed.Body.String())
 	}
 	sess := s.LookupSession(summary.ID)
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	deadline := time.Now().Add(time.Second)
-	for sess.Summary().Status != "ready" && time.Now().Before(deadline) {
+	for sess.View().Summary().Status != "ready" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if got := sess.Summary().Status; got != "ready" {
+	if got := sess.View().Summary().Status; got != "ready" {
 		t.Fatalf("human-created session status = %q", got)
 	}
 	provider.Mu.Lock()
@@ -432,12 +432,12 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	if sess == nil {
 		t.Fatal("API-created hosted thread did not enter the ordinary session registry")
 	}
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	deadline := time.Now().Add(time.Second)
-	for sess.Summary().Status != "ready" && time.Now().Before(deadline) {
+	for sess.View().Summary().Status != "ready" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if summary := sess.Summary(); summary.Status != "ready" || summary.HostedThreadID != hosted.ID || summary.InvokerHostedThreadID != parent.ID {
+	if summary := sess.View().Summary(); summary.Status != "ready" || summary.HostedThreadID != hosted.ID || summary.InvokerHostedThreadID != parent.ID {
 		t.Fatalf("ordinary session summary = %#v", summary)
 	}
 	provider.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-api"}})
@@ -1125,7 +1125,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 
 	latest := waitForAgentTurnStatus(t, executions, queued.ID, agentTurnRunning)
 	if latest.ProviderTurnID != "claude:1" {
@@ -1417,7 +1417,7 @@ func startFastClaudeFixture(t *testing.T, sess *sessions.Session, includeResult 
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 }
 
 func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
@@ -1557,7 +1557,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || view.PresentationMode != presentationBackground {
 		t.Fatalf("view mode = %q err=%v", view.PresentationMode, err)
 	}
-	if sess.Summary().PresentationMode != presentationBackground {
+	if sess.View().Summary().PresentationMode != presentationBackground {
 		t.Fatal("live session summary did not flip")
 	}
 	if got, ok := store.PresentationModeFor(hosted.ID); !ok || got != presentationBackground {
@@ -1571,7 +1571,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	if rec := put("nano-1", `{"presentationMode":"shared"}`); rec.Code != http.StatusOK {
 		t.Fatalf("flip back = %d", rec.Code)
 	}
-	if sess.Summary().PresentationMode != presentationShared {
+	if sess.View().Summary().PresentationMode != presentationShared {
 		t.Fatal("flip back did not reach the live session")
 	}
 

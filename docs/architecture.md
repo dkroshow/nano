@@ -50,7 +50,7 @@ for the parsing module, the state layer and lifecycle.
 | `usage`, `usageclients` | Account-usage polling, retention and HTTP reads; read-only Claude, Codex and Grok clients. |
 | `historical` | Prepared workspace/configuration reads for saved Codex and Claude threads. |
 | `files/api` | Workspace file HTTP operations and reference resolution over saved and live evidence; `files` keeps its standard-library filesystem primitives. |
-| `setup` | Read-only Claude context sources and the workspace skills cache. Session receiver handlers live in `sessions`. |
+| `setup` | Read-only Claude context sources and the workspace skills cache. Attachment view handlers live in `sessions`. |
 | `observability` | Bounded request measurements, rotating process logs, host-monitor reads, browser validation and transcript audits. Durable browser evidence remains in diagnostics. |
 | `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution; content-free browser evidence. |
 | `httpapi`, `httpapi/remoteauth` | HTTP transport conventions, compression, discovery document delivery and connection measurement; the password-guarded remote listener and its store. |
@@ -62,6 +62,22 @@ the durable store, every path explicit), `transcript-dump` (run the parsers on
 a file with no server), and `nano-launcher` (a small fixed parent process
 for launchd jobs, so a macOS privacy grant keys to one binary and survives
 CLI upgrades).
+
+## One live attachment
+
+`sessions.Session` keeps identity, construction and concrete owner accessors.
+Callers use those owners directly: `Delivery` handles prompt sends and
+settlement, `State` holds atomic lifecycle and turn facts, `Runtime` coordinates
+provider handles and the core event loop, `Wire` retains raw events, `Lifecycle`
+closes or repairs an attachment, and `View` serves summaries and projections.
+Each owner holds its own state; there is no forwarding facade on Session.
+
+The original lock boundaries remain intact. State's lock still protects the
+provider-handle/ready transition across State and Runtime. Delivery retains the
+send and settlement locks; Wire retains the event-buffer lock; Lifecycle retains
+the close and repair locks. `LiveTextLoop` remains the single owner of saved/live
+reconciliation and keeps its event order. All these owners live in `sessions`;
+none needs a new package or interface.
 
 ## Provider runtimes
 

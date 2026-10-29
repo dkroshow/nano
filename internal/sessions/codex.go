@@ -1023,7 +1023,7 @@ func (sess *Runtime) markCodexZeroTurnReady(model string) bool {
 	sess.session.stateOwner.codexZeroTurnResume = true
 	sess.session.stateOwner.stateMu.Unlock()
 	sess.session.stateOwner.setState("codexReconnect", json.RawMessage(`{"retrying":false,"zeroTurn":true}`))
-	sess.session.PublishProjectionRuntime()
+	sess.session.view.PublishProjectionRuntime()
 	sess.session.stateOwner.NotifyRuntime()
 	sess.session.stateOwner.updateHostedThread("ready", "")
 	sess.session.delivery.kickQueuedTurnDrain()
@@ -1240,17 +1240,17 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		// Boot and recovery resumes both pass here, before readiness.
 		sess.stateOwner.recordRestartStep(restartAttached)
 	}
-	if method == "thread/resume" && sess.projection != nil {
+	if method == "thread/resume" && sess.view.projection != nil {
 		// Restore action-bearing rows before the lossy provider baseline so a
 		// returned user item promotes the same logical row instead of duplicating
 		// it. The outbox is scrubbed only after durable/provider confirmation.
 		sess.delivery.restoreSubmissionOutbox()
-		seedCodexResume(sess.projection, decoded)
+		seedCodexResume(sess.view.projection, decoded)
 		sess.delivery.observeCodexResume(decoded)
 		// A resume payload is explicitly lossy and can lag the active rollout.
 		// Settle the open turn from its saved copy; later catalog changes
 		// repeat this repair.
-		sess.ReconcileDurableTurn(ctx)
+		sess.view.ReconcileDurableTurn(ctx)
 		// This is the one successful-resume transition for both the session-owned
 		// zero-turn task and an ordinary daemon reconnect that wins the race.
 
@@ -1293,7 +1293,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	sess.stateOwner.recordProviderEvidence(method+"_response", providerValues, metadataFreshnessLive, causation)
 	// The native id is authoritative from here: a dialog-supplied session name
 	// can finally reach the names store (start and resume both land here).
-	sess.applyPendingName(thread.Thread.ID)
+	sess.view.applyPendingName(thread.Thread.ID)
 	// starting → ready is a runtime-visible transition (frozen R3 contract).
 	// Re-attaching to a thread whose turn is still running: seed both the
 	// working state and its anchor from the response's own turns array. Nothing

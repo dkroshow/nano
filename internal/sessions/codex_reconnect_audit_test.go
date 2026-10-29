@@ -35,13 +35,14 @@ func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID 
 	sess := sessionWithOwners(&Session{id: threadID,
 		provider:       "codex",
 		hostedThreadID: "hosted-" + threadID,
-		projection:     newDeliveryTestProjection("codex"),
 		stateOwner: State{
 			threadID:       threadID,
 			state:          map[string]json.RawMessage{},
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
+		view: View{
+			projection: newDeliveryTestProjection("codex")},
 		delivery: Delivery{
 			sendOps:      map[string]*turnSendOperation{},
 			turns:        queue.TransactionStore(),
@@ -53,7 +54,7 @@ func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		sess.Close()
+		sess.lifecycle.Close()
 		waitReconnectCondition(t, func() bool {
 			daemon.mu.Lock()
 			defer daemon.mu.Unlock()
@@ -107,7 +108,7 @@ func TestReconnectAuditPersistentFleetParksAndRearms(t *testing.T) {
 			if index < 6 {
 				want = "reconnect_parked"
 			}
-			if sess.Summary().Status != want {
+			if sess.view.Summary().Status != want {
 				return false
 			}
 		}
@@ -155,8 +156,8 @@ func TestReconnectAuditZeroTurnReadyAndSingleDelivery(t *testing.T) {
 	waitReconnectCondition(t, func() bool { return !sess.runtime.codexZeroTurnRecoveryNeeded() })
 	fake.Mu.Lock()
 	defer fake.Mu.Unlock()
-	if fake.TurnStarts != 1 || sess.Summary().Status != "ready" {
-		t.Fatalf("zero-turn recovery: starts=%d status=%s", fake.TurnStarts, sess.Summary().Status)
+	if fake.TurnStarts != 1 || sess.view.Summary().Status != "ready" {
+		t.Fatalf("zero-turn recovery: starts=%d status=%s", fake.TurnStarts, sess.view.Summary().Status)
 	}
 	attempt, _ := sess.delivery.sendAttempts.Get("first")
 	if attempt.Status != sendAttemptAccepted || attempt.Reason == codexNativeMissing {
@@ -201,7 +202,7 @@ func TestReconnectAuditTransportReplacementDuringBackoff(t *testing.T) {
 	waitReconnectCondition(t, func() bool { return fake.ResumeCount() == 1 })
 	fake.SetResumeError("")
 	fake.DropConnections()
-	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" && fake.ResumeCount() >= 2 })
+	waitReconnectCondition(t, func() bool { return sess.view.Summary().Status == "ready" && fake.ResumeCount() >= 2 })
 	time.Sleep(100 * time.Millisecond)
 	if fake.ResumeCount() != 2 {
 		t.Fatalf("replacement resumed %d times", fake.ResumeCount())
@@ -280,7 +281,7 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 			}
 			waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 1 })
 			fake.SetReplyDelay("thread/resume", 0)
-			waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 2 && sess.Summary().Status == "ready" })
+			waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 2 && sess.view.Summary().Status == "ready" })
 			if status == sendAttemptQueued {
 				waitTurnSendDone(t, sess, "journal-action")
 				fake.EmitThreadNotification(sess.stateOwner.ThreadID(), map[string]any{"method": "item/completed", "params": map[string]any{

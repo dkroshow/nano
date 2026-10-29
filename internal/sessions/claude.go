@@ -422,7 +422,7 @@ func resumeClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, er
 	// turn's init supplies the native id, or we would persist the name under an
 	// identity the catalog will immediately retire.
 	if !req.ClaudeAnchor.Provisional() {
-		sess.applyPendingName(req.ThreadID)
+		sess.view.applyPendingName(req.ThreadID)
 	}
 	if shimURL := strings.TrimSpace(req.ClaudeShimWS); shimURL != "" {
 		// The replay floor comes from durable prompt facts and the shim's
@@ -697,7 +697,7 @@ func (c *claudeSession) adoptDurableIdentity(tr claudeTransport) {
 	c.sess.stateOwner.threadID = rec.ShimSessionID
 	c.sess.stateOwner.stateMu.Unlock()
 	c.sess.stateOwner.setProjectionThreadID(rec.ShimSessionID)
-	c.sess.PublishProjectionRuntime()
+	c.sess.view.PublishProjectionRuntime()
 	c.sess.stateOwner.NotifyRuntime()
 	c.sess.stateOwner.updateHostedThread("ready", "")
 	if c.sess.stateOwner.rememberAttachment == nil {
@@ -823,7 +823,7 @@ func (c *claudeSession) markTransportReady() bool {
 	status := c.sess.stateOwner.connectionStatusLocked()
 	c.sess.stateOwner.stateMu.Unlock()
 	if changed {
-		c.sess.PublishProjectionRuntime()
+		c.sess.view.PublishProjectionRuntime()
 		c.sess.stateOwner.NotifyRuntime()
 		c.sess.stateOwner.updateHostedThread(status, "")
 	}
@@ -930,19 +930,19 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir wire.Direction
 			gated.admitted()
 		}
 		switch {
-		case c.sess.projection == nil:
+		case c.sess.view.projection == nil:
 		case result:
 			// On every transport a result's turn is the prompt it names, never
 			// a frame tag or the prompt last sent.
 			id, named := c.sess.runtime.claudeAnsweredTurn(line)
-			c.sess.projection.setClaudeResultTurnID(id)
+			c.sess.view.projection.setClaudeResultTurnID(id)
 			native := c.sess.stateOwner.ThreadID()
 			if c.noteAnswered(line) && !named && c.unnamedLoggedFor != native {
 				c.unnamedLoggedFor = native
 				log.Printf("Claude result on %s names no prompt while one Nano wrote is unanswered; it finishes no operation (logged once per transcript)", c.sess.hostedThreadID)
 			}
 		case turn.known:
-			c.sess.projection.setClaudeFrameTurnID(turn.id)
+			c.sess.view.projection.setClaudeFrameTurnID(turn.id)
 		}
 	}, dir, line, !replaying, replaying, at, seq)
 	if dir == protocol.Recv {
@@ -1313,10 +1313,10 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	c.sess.stateOwner.setProjectionThreadID(sessionID)
 	// A fresh claude start learns its native id here (init lands with the
 	// first turn), which is the earliest a dialog-supplied name can be written.
-	c.sess.applyPendingName(sessionID)
+	c.sess.view.applyPendingName(sessionID)
 	// The threadID landing is what makes this session matchable by the
 	// catalog's runtime overlay (provider + nativeId).
-	c.sess.PublishProjectionRuntime()
+	c.sess.view.PublishProjectionRuntime()
 	c.sess.stateOwner.NotifyRuntime()
 	c.sess.stateOwner.updateHostedThread("ready", "")
 	// A `--resume` child mints a fresh native id; an attach lands back on the
@@ -1469,8 +1469,8 @@ func (c *claudeSession) sendTurnWithEventID(text, eventID string, contexts ...co
 		c.unansweredMu.Unlock()
 	}
 	turnID := ""
-	if c.sess.projection != nil {
-		turnID = c.sess.projection.currentTurnID()
+	if c.sess.view.projection != nil {
+		turnID = c.sess.view.projection.currentTurnID()
 	}
 	c.releaseTurnIngressLocked()
 	c.turnIngressMu.Unlock()

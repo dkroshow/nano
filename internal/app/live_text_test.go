@@ -151,7 +151,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	h.journal = cfg.SendAttempts
 	service.SetTranscriptChanged(func(context.Context, threadindex.TranscriptChange) {
 		if !h.held.Load() {
-			sess.NotifySavedTranscript()
+			sess.View().NotifySavedTranscript()
 		}
 	})
 	h.liveTextViewer = h.open(query)
@@ -173,7 +173,7 @@ func (h *liveTextHarness) hold() { h.held.Store(true) }
 
 func (h *liveTextHarness) release() {
 	h.held.Store(false)
-	h.sess.NotifySavedTranscript()
+	h.sess.View().NotifySavedTranscript()
 }
 
 // page reads the catalog directly: the test's own view of what is saved.
@@ -422,10 +422,10 @@ func (h *liveTextHarness) barrier() {
 	id := fmt.Sprintf("barrier-%d", h.barriers)
 	entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: id,
 		Sequence: 99, PresentationText: "barrier", State: prompts.Queued}
-	h.sess.PublishLiveOutbox(entry)
+	h.sess.View().PublishLiveOutbox(entry)
 	h.expect("barrier", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:"+id) })
 	entry.State = prompts.Refused
-	h.sess.PublishLiveOutbox(entry)
+	h.sess.View().PublishLiveOutbox(entry)
 	h.expect("barrier gone", func(liveTextMessage) bool { return !containsEntry(h.view.live, "prompt:"+id) })
 }
 
@@ -448,7 +448,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 		out := map[string]string{}
 		for _, view := range []liveview.View{liveview.Messages, liveview.Full} {
 			rec := httptest.NewRecorder()
-			h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view="+string(view), nil), view)
+			h.sess.View().HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view="+string(view), nil), view)
 			out["conversation "+string(view)] = rec.Body.String()
 		}
 		rec := httptest.NewRecorder()
@@ -488,13 +488,13 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	// continues from it.
 	cursor := liveStatusForTest(t, h.sess)
 	rec := httptest.NewRecorder()
-	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), liveview.Messages)
+	h.sess.View().HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), liveview.Messages)
 	var snapshot liveview.Snapshot
 	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil || snapshot.Epoch != cursor.Epoch || snapshot.Revision != cursor.Revision {
 		t.Fatalf("snapshot cursor = %s/%d (%v), want the status cursor %s/%d", snapshot.Epoch, snapshot.Revision, err, cursor.Epoch, cursor.Revision)
 	}
 	stream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.sess.HandleConversationEventsView(w, r, liveview.Messages)
+		h.sess.View().HandleConversationEventsView(w, r, liveview.Messages)
 	}))
 	defer stream.Close()
 	response, err := http.Get(stream.URL)
@@ -527,7 +527,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	// A failed read is an error to agents, never an empty transcript.
 	h.store.Close()
 	rec = httptest.NewRecorder()
-	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), liveview.Messages)
+	h.sess.View().HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), liveview.Messages)
 	if rec.Code == 200 {
 		t.Fatalf("conversation read after a store failure = 200 %s, want an error", rec.Body.String())
 	}
@@ -601,7 +601,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			store = emptyReader
 			fresh := newFixtureSession(sessions.Config{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.Delivery().PromptStore(), AgentExecutions: store}, h.sess.State().ThreadID())
 			h.srv.startLiveText(fresh)
-			stream := httptest.NewServer(http.HandlerFunc(fresh.HandleLiveStream))
+			stream := httptest.NewServer(http.HandlerFunc(fresh.View().HandleLiveStream))
 			defer stream.Close()
 			client := &http.Client{Timeout: 5 * time.Second}
 			response, err := client.Get(stream.URL + "?view=enhanced&limit=40")
@@ -719,7 +719,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				sess.ConfigureSavedReaders(nil, h.srv.savedPromptsFor(sess), nil, nil, nil)
 				var settledCommits atomic.Int32
 				h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
-					sess.NotifySavedTranscript()
+					sess.View().NotifySavedTranscript()
 					fixtureOwners(h.srv).attachmentCoordinator().ConfirmDurableThread(ctx, change)
 					settledCommits.Add(1)
 				})
@@ -955,7 +955,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("hold = %v, %v", ok, err)
 	}
-	sess.PublishLiveOutbox(held.Outbox)
+	sess.View().PublishLiveOutbox(held.Outbox)
 	h.expect("unsaved prompt shown", func(liveTextMessage) bool { return containsEntry(h.view.live, "prompt:dropped") })
 
 	discard := httptest.NewRecorder()
@@ -1033,7 +1033,7 @@ func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin pr
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	h.sess.PublishLiveOutbox(accepted.Outbox)
+	h.sess.View().PublishLiveOutbox(accepted.Outbox)
 }
 
 // An accepted prompt shows no dot, so one its provider never took must not
@@ -1131,7 +1131,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.view.expectSaved["prompt:"+action] = "Continue the reply."
-	h.sess.PublishLiveOutbox(accepted.Outbox)
+	h.sess.View().PublishLiveOutbox(accepted.Outbox)
 	h.turn = turn
 	h.feed(wire[:15]) // init and A1/A2, without a turn result
 	h.save(saved[:3])
@@ -1181,10 +1181,10 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	fixtureOwners(srv).attachmentCoordinator().PrepareBoot()
 	fixtureReattach(srv, hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
 	fresh := srv.SessionForThread("claude", native)
-	if fresh == nil || fresh == h.sess || fresh.LiveTextService() == h.sess.LiveTextService() {
+	if fresh == nil || fresh == h.sess || fresh.View().LiveTextService() == h.sess.View().LiveTextService() {
 		t.Fatal("boot did not construct a fresh session and live-text loop")
 	}
-	waitForClaude(t, "running turn reattached", func() bool { return fresh.Summary().TurnActive })
+	waitForClaude(t, "running turn reattached", func() bool { return fresh.View().Summary().TurnActive })
 	restored, attempt, err := fresh.Delivery().PromptStore().Get(ctx, action)
 	if err != nil || restored.Outbox.Binding == nil || restored.Outbox.Binding.EventID != promptID || attempt.ProviderTurnID != turn {
 		t.Fatalf("restored delivery binding: %+v, %+v, %v", restored, attempt, err)
@@ -1235,7 +1235,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	}) // livePaneView.apply checks never-both and never-neither on every update
 	assertRows(4)
 	connection.LineForTurn(24, "recv", turn, string(wire[22]))
-	waitForClaude(t, "same turn ended", func() bool { return !fresh.Summary().TurnActive })
+	waitForClaude(t, "same turn ended", func() bool { return !fresh.View().Summary().TurnActive })
 	h.barrier()
 	assertRows(4)
 	if len(shim.CallsOf(shimMethodStart)) != 0 {

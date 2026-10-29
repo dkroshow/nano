@@ -512,14 +512,15 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess := sessionWithOwners(&Session{provider: "grok",
-		projection: newDeliveryTestProjection("grok"),
 		stateOwner: State{
 			threadID:       "parent-1",
 			state:          map[string]json.RawMessage{},
 			lifecycleState: testLifecycleSnapshot("ready", false)},
+		view: View{
+			projection: newDeliveryTestProjection("grok")},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}}})
-	sess.projection.setNativeThreadID("parent-1")
+	sess.view.projection.setNativeThreadID("parent-1")
 	g := &grokSession{sess: sess, seenPromptIDs: map[string]struct{}{}}
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
 	for _, line := range lines {

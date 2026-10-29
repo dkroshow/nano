@@ -107,7 +107,7 @@ func (s *ViewService) SessionView(id string) SessionView {
 	}
 	_, waiting := s.Boot.WaitingHosted(id)
 	if live := s.sessionForHosted(id); live != nil {
-		sum := live.Summary()
+		sum := live.View().Summary()
 		ready, working := live.State().ReadyAndWorking()
 		view.NanoSessionID, view.NativeThreadID, view.Status = sum.ID, sum.ThreadID, sum.Status
 		view.Error, view.TurnActive, view.Waiting = sum.Error, sum.TurnActive, sum.Waiting
@@ -162,7 +162,7 @@ func (s *ViewService) DecorateMetadata(metadata hostedstore.MetadataView, attach
 func (s *ViewService) AttachmentState(id string) hostedstore.AttachmentView {
 	_, waiting := s.Boot.WaitingHosted(id)
 	if live := s.sessionForHosted(id); live != nil {
-		sum := live.Summary()
+		sum := live.View().Summary()
 		attachment := hostedstore.AttachmentView{State: sum.Status, Provenance: "live_session", Error: sum.Error}
 		if attachment.State == "" {
 			attachment.State = "attached"

@@ -1802,7 +1802,7 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 				case stop:
 					// The person stops the turn the pane shows working.
 					waitForCatalogWithin(t, 10*time.Second, func() bool {
-						return sess.Summary().TurnActive && liveStatusForTest(t, runtime.session).Runtime.TurnID == turn
+						return sess.View().Summary().TurnActive && liveStatusForTest(t, runtime.session).Runtime.TurnID == turn
 					})
 					rec := httptest.NewRecorder()
 					sess.Delivery().HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
@@ -2193,7 +2193,7 @@ func TestCodexLateRPCEchoBindsAndSettlesSavedPrompt(t *testing.T) {
 			if test.reconnect {
 				before := runtime.codex.ResumeCount()
 				runtime.codex.DropConnections()
-				waitForClaude(t, "echo after reconnect", func() bool { return runtime.codex.ResumeCount() > before && sess.Summary().Status == "ready" })
+				waitForClaude(t, "echo after reconnect", func() bool { return runtime.codex.ResumeCount() > before && sess.View().Summary().Status == "ready" })
 			}
 			if !test.echoFirst {
 				for _, frame := range []string{started, echo} {
@@ -2247,7 +2247,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	var sess *sessions.Session
 	waitForClaude(t, "the reattached session", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)
-		return sess != nil && sess.Summary().Status == "ready" && sess.Delivery().PromptStore() != nil
+		return sess != nil && sess.View().Summary().Status == "ready" && sess.Delivery().PromptStore() != nil
 	})
 	native, turn := rec.NativeThreadID, "turn-shared"
 	proveSaved := func(op threads.TurnRecord) {
@@ -2279,7 +2279,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 	daemon.SetResumeResult(reply)
 	beforeResume := daemon.ResumeCount()
 	daemon.DropConnections()
-	waitForClaude(t, "shared-turn reconnect", func() bool { return daemon.ResumeCount() > beforeResume && sess.Summary().Status == "ready" })
+	waitForClaude(t, "shared-turn reconnect", func() bool { return daemon.ResumeCount() > beforeResume && sess.View().Summary().Status == "ready" })
 	waitForClaude(t, "both operations finished", func() bool {
 		for _, op := range ops {
 			if got, _ := s.agentExecutions.Turn(op.ID); !threads.TurnTerminal(got.Status) {
@@ -2342,7 +2342,7 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 		if sess == nil || sess.Delivery().PromptStore() == nil {
 			return false
 		}
-		return sess.Summary().TurnActive
+		return sess.View().Summary().TurnActive
 	})
 	native, turn, action := rec.NativeThreadID, "turn-human", op.TransportActionID
 	text := "prompt correction"

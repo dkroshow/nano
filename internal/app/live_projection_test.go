@@ -72,7 +72,7 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 		ThreadID: "nth_1", Provider: "codex", NativeThreadID: "native-thread",
 	})
 
-	if summary := sess.Summary(); summary.TurnActive {
+	if summary := sess.View().Summary(); summary.TurnActive {
 		t.Fatalf("catalog notification did not reach the session's open turn: %#v", summary)
 	}
 }
@@ -327,7 +327,7 @@ func reconcileWithSavedTurn(sess *sessions.Session, saved liveview.DurableTurnEv
 	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return saved, turnID == saved.Turn.ID
 	}, nil, nil, nil, nil)
-	sess.ReconcileDurableTurn(context.Background())
+	sess.View().ReconcileDurableTurn(context.Background())
 }
 
 func durableTurnTestSession(t *testing.T, turnID string, startedAtMs int64, drop ...bool) (*sessions.Session, *sessions.LiveProjection) {

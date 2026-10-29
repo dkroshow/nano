@@ -56,7 +56,7 @@ func startingShim(t *testing.T, hold, speak <-chan struct{}) *claudeshim.Server 
 func provisionallyAdopted(t *testing.T, sess *sessions.Session, speak chan struct{}) {
 	t.Helper()
 	waitForClaude(t, "the shim id to be the recorded provisional identity", func() bool {
-		view := sess.Summary().Metadata
+		view := sess.View().Summary().Metadata
 		return view != nil && view.NativeThreadID == startingShimID
 	})
 	close(speak)
@@ -94,7 +94,7 @@ func TestClaudeStartReturnsStartingWhileTransportComesUp(t *testing.T) {
 	provisionallyAdopted(t, sess, speak)
 	waitForClaudeThreadID(t, sess, "native-1")
 	waitForClaudeStatus(t, sess, "ready")
-	if got := sess.Summary().Status; got != "ready" {
+	if got := sess.View().Summary().Status; got != "ready" {
 		t.Fatalf("status = %q after the transport came up, want ready", got)
 	}
 }
@@ -122,9 +122,9 @@ func TestClaudeStartTransportFailureLandsOnTheSession(t *testing.T) {
 	}
 	sess := s.LookupSession(sum.ID)
 	waitForClaude(t, "the spawn failure to reach the session", func() bool {
-		return strings.Contains(sess.Summary().Error, "starting claude")
+		return strings.Contains(sess.View().Summary().Error, "starting claude")
 	})
-	if got := sess.Summary().Status; got != sessionStatusExited {
+	if got := sess.View().Summary().Status; got != sessionStatusExited {
 		t.Fatalf("status = %q, want exited alongside the error (the R3 contract)", got)
 	}
 }
@@ -177,10 +177,10 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	waitForClaude(t, "the orphaned shim session to be closed", func() bool {
 		return len(shim.CallsOf(shimMethodClose)) == 1
 	})
-	if got := sess.Summary().Status; got != sessionStatusExited {
+	if got := sess.View().Summary().Status; got != sessionStatusExited {
 		t.Fatalf("status = %q after a close raced the handshake, want it to stay exited", got)
 	}
-	if got := sess.Summary().Error; got != "" {
+	if got := sess.View().Summary().Error; got != "" {
 		t.Fatalf("closing a starting session reported a spawn failure: %q", got)
 	}
 	listed := s.LookupSession(sum.ID) != nil

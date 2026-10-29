@@ -37,10 +37,10 @@ func (s *AttachmentCoordinator) HandleSessionName(w http.ResponseWriter, r *http
 	// A native id, once present, is immutable for the hosted session. Holding
 	// the lock while merely recording a pre-bind name lets applyPendingName see
 	// exactly this value when the provider announces its identity.
-	provider, nativeID, staged := sess.StageNameBeforeBinding(name)
+	provider, nativeID, staged := sess.View().StageNameBeforeBinding(name)
 	if staged {
 		s.NotifyRuntimeRefresh()
-		httpapi.WriteJSON(w, sess.Summary())
+		httpapi.WriteJSON(w, sess.View().Summary())
 		return
 	}
 
@@ -55,11 +55,11 @@ func (s *AttachmentCoordinator) HandleSessionName(w http.ResponseWriter, r *http
 	// proves the staged value will still be picked up.
 	if rec, ok := s.attachmentFor(provider, nativeID); ok && rec.Provisional() {
 		var staged bool
-		nativeID, staged = sess.StageProvisionalName(nativeID, name)
+		nativeID, staged = sess.View().StageProvisionalName(nativeID, name)
 		if staged {
 			s.setAttachmentPendingName(provider, nativeID, name)
 			s.NotifyRuntimeRefresh()
-			httpapi.WriteJSON(w, sess.Summary())
+			httpapi.WriteJSON(w, sess.View().Summary())
 			return
 		}
 		// The real id landed while we probed; assign under it normally.
@@ -69,7 +69,7 @@ func (s *AttachmentCoordinator) HandleSessionName(w http.ResponseWriter, r *http
 		threadindex.WriteThreadNameError(w, err)
 		return
 	}
-	sess.SetDisplayName(name)
+	sess.View().SetDisplayName(name)
 	s.NotifyRuntimeRefresh()
-	httpapi.WriteJSON(w, sess.Summary())
+	httpapi.WriteJSON(w, sess.View().Summary())
 }

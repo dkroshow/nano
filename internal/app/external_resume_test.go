@@ -404,7 +404,7 @@ while :; do sleep 1; done
 	if firstSession == nil {
 		t.Fatal("first Grok session disappeared during blocked handshake")
 	}
-	firstSession.Close()
+	firstSession.Lifecycle().Close()
 }
 
 func TestExternalClaudeResumeFailsWithoutExclusiveShimAttachment(t *testing.T) {

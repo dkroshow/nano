@@ -26,7 +26,7 @@ func resumeCodexFixture(t *testing.T, cfg sessions.Config, nativeID string, fake
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: nativeID}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
-	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
-	t.Cleanup(sess.Close)
+	waitReconnectCondition(t, func() bool { return sess.View().Summary().Status == "ready" })
+	t.Cleanup(sess.Lifecycle().Close)
 	return sess
 }

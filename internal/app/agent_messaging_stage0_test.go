@@ -73,7 +73,7 @@ func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, thread
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
+	waitReconnectCondition(t, func() bool { return sess.View().Summary().Status == "ready" })
 	// Stop transport work before the shared database cleanup.
 	t.Cleanup(func() {
 		for _, done := range sess.Delivery().InFlightDeliveries() {
@@ -83,7 +83,7 @@ func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, thread
 				t.Error("fixture delivery did not finish")
 			}
 		}
-		sess.Close()
+		sess.Lifecycle().Close()
 	})
 	seedTestSessionRegistry(&s.Registry, map[string]*sessions.Session{sess.ID(): sess})
 	return s, store, sess, sender, worker, prompts, fake

@@ -65,7 +65,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					sender.Provider = ""
 					wantCode = "sender_identity_incomplete"
 				case "no name":
-					live.SetDisplayName("")
+					live.View().SetDisplayName("")
 					prefix := sender.NativeThreadID
 					if len(prefix) > 8 {
 						prefix = prefix[:8]

@@ -48,7 +48,7 @@ func (sess *Runtime) codexZeroTurnEvidence(refusedAction string) bool {
 			}
 		}
 	}
-	return sess.session.projection == nil || len(sess.session.projection.turnList()) == 0
+	return sess.session.view.projection == nil || len(sess.session.view.projection.turnList()) == 0
 }
 
 func (sess *Runtime) codexZeroTurnNativeMissing(actionID string, err error) bool {
@@ -74,7 +74,7 @@ func (sess *Runtime) failCodexReconnect(message string) error {
 		if !changed {
 			return
 		}
-		sess.session.PublishProjectionRuntime()
+		sess.session.view.PublishProjectionRuntime()
 		sess.session.stateOwner.NotifyRuntime()
 		sess.session.stateOwner.updateHostedThread("reconnect_failed", message)
 	}()

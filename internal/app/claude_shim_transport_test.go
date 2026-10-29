@@ -84,7 +84,7 @@ func claudeWireEvents(sess *sessions.Session) []wire.Event {
 
 func waitForClaudeStatus(t *testing.T, sess *sessions.Session, want string) {
 	t.Helper()
-	waitForClaude(t, "session status "+want, func() bool { return sess.Summary().Status == want })
+	waitForClaude(t, "session status "+want, func() bool { return sess.View().Summary().Status == want })
 }
 
 // waitForClaudeThreadID waits for the native id the child announces on its
@@ -93,7 +93,7 @@ func waitForClaudeStatus(t *testing.T, sess *sessions.Session, want string) {
 // for "the handshake landed" — the identity is what these assertions are about.
 func waitForClaudeThreadID(t *testing.T, sess *sessions.Session, want string) {
 	t.Helper()
-	waitForClaude(t, "native thread id "+want, func() bool { return sess.Summary().ThreadID == want })
+	waitForClaude(t, "native thread id "+want, func() bool { return sess.View().Summary().ThreadID == want })
 }
 
 func claudeShimSpawnRequest(sess *sessions.Session, shimURL string) hostedmodel.SpawnRequest {

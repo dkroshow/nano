@@ -21,9 +21,9 @@ func TestChildLaunchDoesNotBecomeParentWork(t *testing.T) {
 	// The provider's own turn ends after the asynchronous launch. The child
 	// remains running, but must not keep the parent's runtime working.
 	runtime.emitAtAndWait(t, []byte(`{"type":"result","subtype":"success","is_error":false}`), at, "")
-	waitReconnectCondition(t, func() bool { return !sess.Summary().TurnActive })
+	waitReconnectCondition(t, func() bool { return !sess.View().Summary().TurnActive })
 	app := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{"parent": sess})
-	summary := sess.Summary()
+	summary := sess.View().Summary()
 	if summary.TurnActive || fixtureOwners(app).hostedViews().SessionView("hosted-parent").Working {
 		t.Fatal("child launch became parent's own work")
 	}

@@ -199,7 +199,7 @@ func TestCompletionSubscriptionReactsToFinishedTurnsWithoutPolling(t *testing.T)
 		if sess == nil {
 			return false
 		}
-		return sess.Summary().TurnActive
+		return sess.View().Summary().TurnActive
 	})
 
 	settled, _ := client.counts()
@@ -266,7 +266,7 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 		if sess == nil {
 			return false
 		}
-		return sess.Summary().TurnActive
+		return sess.View().Summary().TurnActive
 	})
 	daemon.EmitThreadNotification(childRec.NativeThreadID, map[string]any{"method": "turn/completed", "params": map[string]any{
 		"threadId": childRec.NativeThreadID, "turn": map[string]any{"id": "turn-live", "status": "completed", "completedAt": 1787600100},

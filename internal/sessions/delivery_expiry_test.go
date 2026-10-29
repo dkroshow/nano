@@ -20,8 +20,8 @@ func TestDeliveryDeadlineExpiryShowsInRuntimeStatusUntilItAgesOut(t *testing.T) 
 	sess := readySendTestSession(t, store, func(context.Context, string) (json.RawMessage, error) {
 		return nil, context.DeadlineExceeded // the provider did not answer in time
 	})
-	sess.delivery.deliveryExpiries = NewDeliveryExpiries(time.Second, func(string) { sess.PublishProjectionRuntime() })
-	shown := func() int { return sess.projection.status().Runtime.DeliveryExpiries }
+	sess.delivery.deliveryExpiries = NewDeliveryExpiries(time.Second, func(string) { sess.view.PublishProjectionRuntime() })
+	shown := func() int { return sess.view.projection.status().Runtime.DeliveryExpiries }
 
 	if rec := postTurn(t, sess.Delivery(), context.Background(), "slow", "slow prompt"); rec.Code != http.StatusAccepted {
 		t.Fatalf("send = %d %s; want 202", rec.Code, rec.Body.String())

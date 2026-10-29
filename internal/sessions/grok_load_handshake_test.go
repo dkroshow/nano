@@ -41,7 +41,7 @@ func TestGrokLoadHandshakeSettlesLifecycleAndQueue(t *testing.T) {
 			sess.stateOwner.state = map[string]json.RawMessage{}
 			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
 			sess.stateOwner.turnID, sess.stateOwner.turnStartedAtMs = "old-anchor", 123
-			t.Cleanup(sess.Close)
+			t.Cleanup(sess.lifecycle.Close)
 			if rec := postTurn(t, sess.Delivery(), context.Background(), "after-restart", "queued while starting"); rec.Code != http.StatusAccepted {
 				t.Fatalf("queue status %d: %s", rec.Code, rec.Body.String())
 			}
@@ -95,7 +95,7 @@ while IFS= read -r request; do :; done
 			}
 			err = runGrokHandshake(sess, ProviderRequest{Mode: tc.mode, ThreadID: requestedID, Cwd: t.TempDir(), GrokBin: bin})
 			if tc.identity == "wrong" {
-				if err == nil || !strings.Contains(err.Error(), "sessionId") || sends.Load() != 0 || sess.Summary().Status == "ready" {
+				if err == nil || !strings.Contains(err.Error(), "sessionId") || sends.Load() != 0 || sess.view.Summary().Status == "ready" {
 					t.Fatalf("mismatched native identity accepted: err=%v, sends=%d", err, sends.Load())
 				}
 				return
@@ -103,11 +103,11 @@ while IFS= read -r request; do :; done
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := sess.Summary().Status; got != "ready" {
+			if got := sess.view.Summary().Status; got != "ready" {
 				t.Fatalf("settled session/load left connection %q", got)
 			}
 			if tc.active {
-				if sum := sess.Summary(); !sum.TurnActive || sum.TurnStartedAtMs != 0 || sess.stateOwner.turnID != "surviving-turn" {
+				if sum := sess.view.Summary(); !sum.TurnActive || sum.TurnStartedAtMs != 0 || sess.stateOwner.turnID != "surviving-turn" {
 					t.Fatalf("provider work was lost or inherited an old anchor: %+v, turn %q", sum, sess.stateOwner.turnID)
 				}
 				sess.delivery.drainQueuedTurn()

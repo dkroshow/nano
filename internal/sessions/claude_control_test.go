@@ -352,7 +352,7 @@ func TestClaudeSetModelRecordsOnlyWhatTheWireAccepted(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{} })
 	sess, _ := startControlSession(t, shim)
 
-	res := postJSON(t, sess.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":"haiku"}`)
+	res := postJSON(t, sess.view.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":"haiku"}`)
 	if res.Code != http.StatusOK {
 		t.Fatalf("set model = %d %s", res.Code, res.Body.String())
 	}
@@ -366,7 +366,7 @@ func TestClaudeSetModelRecordsOnlyWhatTheWireAccepted(t *testing.T) {
 
 	// Clearing the override sends the CLI's own reset token rather than an empty
 	// string, which it would not recognize.
-	postJSON(t, sess.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":""}`)
+	postJSON(t, sess.view.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":""}`)
 	frames = controlFramesOf(shim, claudeSubtypeSetModel)
 	if len(frames) != 2 || !strings.Contains(frames[1], `"model":"`+claudeSetModelDefault+`"`) {
 		t.Fatalf("reset frame = %#v", frames)

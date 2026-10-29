@@ -148,7 +148,7 @@ func TestInstructionFileReadRequiresAllowlist(t *testing.T) {
 	for path, want := range map[string]int{listed: http.StatusOK, unlisted: http.StatusNotFound} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/read?path="+path, nil)
-		sess.HandleInstructionFileRead(rec, req)
+		sess.view.HandleInstructionFileRead(rec, req)
 		if rec.Code != want {
 			t.Fatalf("read %s: status %d, want %d (%s)", path, rec.Code, want, rec.Body.String())
 		}
@@ -166,7 +166,7 @@ func TestInstructionFileMtimeRequiresAllowlist(t *testing.T) {
 	for path, want := range map[string]int{listed: http.StatusOK, unlisted: http.StatusNotFound} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/mtime?path="+path, nil)
-		sess.HandleInstructionFileMtime(rec, req)
+		sess.view.HandleInstructionFileMtime(rec, req)
 		if rec.Code != want {
 			t.Fatalf("mtime %s: status %d, want %d (%s)", path, rec.Code, want, rec.Body.String())
 		}
@@ -189,7 +189,7 @@ func TestInstructionFileWriteHappyPathConflictAndForce(t *testing.T) {
 		raw, _ := json.Marshal(body)
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/write", bytes.NewReader(raw))
-		sess.HandleInstructionFileWrite(rec, req)
+		sess.view.HandleInstructionFileWrite(rec, req)
 		return rec
 	}
 
@@ -272,7 +272,7 @@ func TestClaudeInstructionFilesUseDocumentedLoadingRules(t *testing.T) {
 		stateOwner: State{
 			cwd:            cwd,
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	sources, _ := sess.instructionFileSources()
+	sources, _ := sess.view.instructionFileSources()
 	got := map[string]setup.InstructionFileSource{}
 	for _, src := range sources {
 		got[src.Path] = src

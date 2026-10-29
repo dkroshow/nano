@@ -62,7 +62,7 @@ func BenchmarkCodexResumeConsumers(b *testing.B) {
 			b.Fatal(err)
 		}
 		deadline := time.NewTimer(10 * time.Second)
-		for sess.Summary().Status != "ready" {
+		for sess.view.Summary().Status != "ready" {
 			select {
 			case <-changed:
 			case <-deadline.C:
@@ -74,6 +74,6 @@ func BenchmarkCodexResumeConsumers(b *testing.B) {
 			b.Fatal("resume skipped the real projection")
 		}
 		b.StopTimer()
-		sess.Close()
+		sess.lifecycle.Close()
 	}
 }

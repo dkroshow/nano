@@ -1,6 +1,8 @@
 package sessions
 
 import (
+	"sync/atomic"
+
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -723,7 +725,7 @@ func (sess *Delivery) runTransactionalTurnSend(op *turnSendOperation, claimed pr
 }
 
 func (sess *Delivery) publishTransactionalOutbox(entry prompts.OutboxEntry) {
-	sess.session.PublishLiveOutbox(entry)
+	sess.session.view.PublishLiveOutbox(entry)
 }
 
 // restoreSubmissionOutbox recreates the presentation rows owned by unsettled
@@ -937,7 +939,7 @@ func settleThreadPromptsResolving(ctx context.Context, store *prompts.Store, sav
 					break
 				}
 				outcome = settlementHeld
-				live.sess.PublishLiveOutbox(held.Outbox)
+				live.sess.view.PublishLiveOutbox(held.Outbox)
 				break
 			}
 			// Nano resends by itself only a prompt still accepted; one held
@@ -968,7 +970,7 @@ func settleThreadPromptsResolving(ctx context.Context, store *prompts.Store, sav
 			}
 			outcome = settlementHeld
 			if live != nil {
-				live.sess.PublishLiveOutbox(held.Outbox)
+				live.sess.view.PublishLiveOutbox(held.Outbox)
 			}
 		}
 		results[entry.ActionID] = outcome
@@ -1151,7 +1153,7 @@ func claudeHandedAt(turnID string) (spool string, sequence int64, ok bool) {
 // publishResent shows a prompt resent for the next turn in place of the one
 // it retires, both in one live-text change.
 func (sess *Delivery) publishResent(retired, resent prompts.Record) {
-	sess.session.PublishLiveOutbox(retired.Outbox, resent.Outbox)
+	sess.session.view.PublishLiveOutbox(retired.Outbox, resent.Outbox)
 }
 
 // keepWaiting records one settlement pass: of the prompts it saw waiting,
@@ -1312,7 +1314,7 @@ func (sess *Delivery) runMemberStepHeld() {
 }
 
 func (sess *Delivery) restoreQueuedTurnBootDiagnostics() {
-	if sess == nil || sess.session.projection == nil || sess.queuedTurns == nil {
+	if sess == nil || sess.session.view.projection == nil || sess.queuedTurns == nil {
 		return
 	}
 	for _, parked := range sess.queuedTurns.BootParksFor(sess.session.provider, sess.session.stateOwner.ThreadID(), sess.session.hostedThreadID) {
@@ -1322,7 +1324,7 @@ func (sess *Delivery) restoreQueuedTurnBootDiagnostics() {
 			Source:   "turn-store-boot",
 			ActionID: parked.ActionID,
 		}
-		sess.session.projection.RecordDiagnostic(diagnostic, true)
+		sess.session.view.projection.RecordDiagnostic(diagnostic, true)
 	}
 }
 
@@ -1399,7 +1401,7 @@ func (sess *Delivery) CancelQueuedTurnAction(actionID, by string) (prompts.Queue
 	// Live text, which shows the prompt until a saved row settles it, drops
 	// it when told.
 	if record, _, err := sess.queuedTurns.TransactionStore().Get(context.Background(), actionID); err == nil {
-		sess.session.PublishLiveOutbox(record.Outbox)
+		sess.session.view.PublishLiveOutbox(record.Outbox)
 	}
 	return queued, nil
 }
@@ -1692,4 +1694,49 @@ func (d *DeliveryExpiries) recentLocked(provider string) []time.Time {
 		times = times[1:]
 	}
 	return times
+}
+
+// Delivery owns prompt admission, delivery, settlement and interaction operations.
+type Delivery struct {
+	session      *Session
+	savedPrompts SavedPromptReader
+	// savedPromptsIn reads saved user rows in a named native thread, for a
+	// Claude prompt whose exact native is not the current one; savedTurnFinal
+	// reads a decided saved turn's own final answer from the catalog.
+	savedPromptsIn savedPromptNativeReader
+	savedTurnFinal savedTurnFinalReader
+	// owedHint says this hosted thread may have Claude prompts that owe their
+	// member completion: set when settlement records one or an owed read finds
+	// one, cleared only when a member step reads none. It only gates the pass;
+	// the owed rows are the fact.
+	owedHint atomic.Bool
+	// memberDirty records a member step a trigger asked for while settleMu
+	// was held (requestMemberStep, releaseSettle).
+	memberDirty atomic.Bool
+	// memberCursor is the delivery sequence the next member step starts its
+	// owed read from. Guarded by settleMu.
+	memberCursor uint64
+	// discardedUnknown names the actions the person discarded before Nano had
+	// them, so an attempt still on its way is refused. Guarded by sendMu.
+	discardedUnknown map[string]bool
+	// settleMu runs one settlement pass at a time, so an older pass never
+	// restores a prompt a newer one settled.
+	settleMu sync.Mutex
+
+	// Submitted prompts are idempotent operations keyed by the browser's
+	// clientActionId. sendAttempts carries their small hash-only journal across
+	// Nano restarts; sendOps lets duplicate requests join an in-flight send.
+	sendAttempts Journal
+	queuedTurns  Queue
+	turns        *prompts.Store
+	appendUnread func(string, string) string
+	sendMu       sync.Mutex
+	sendOps      map[string]*turnSendOperation
+	// nanoStopping is the server's stop flag. Once it is set, no delivery
+	// starts; see claimAndStartTransactionalTurnLocked.
+	nanoStopping *atomic.Bool
+	// deliveryExpiries is the server's count of recent delivery deadline
+	// expiries per provider, shown in this session's runtime status. Nil-safe.
+	deliveryExpiries *DeliveryExpiries
+	turnSender       func(context.Context, string) (json.RawMessage, error) // test seam
 }

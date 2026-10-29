@@ -101,7 +101,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 	owner := seedHostedNative(t, store, "claude", revivedNativeID, agentSessionDetached)
 	other := seedHostedNative(t, store, "claude", "cs_other", "ready")
 	sess := configuredFixtureSession(t, sessions.Config{HostedThreadID: other.ID, Provider: "claude", Metadata: control, AgentExecutions: store}, revivedNativeID, "ready", "", false)
-	sess.Close()
+	sess.Lifecycle().Close()
 	if err := hostedstore.SkipOwnedNativeClaim(store.BindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
 		t.Fatal(err)
 	}

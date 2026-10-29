@@ -338,9 +338,9 @@ func memorySession(t *testing.T, id, provider, native, status, cwd, model string
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID(native)
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	if status == "exited" {
-		sess.Close()
+		sess.Lifecycle().Close()
 		return sess
 	}
 	if status != "ready" {
@@ -357,7 +357,7 @@ func memorySession(t *testing.T, id, provider, native, status, cwd, model string
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
-	for sess.Summary().Status != "ready" {
+	for sess.View().Summary().Status != "ready" {
 		if time.Now().After(deadline) {
 			t.Fatal("sidebar runtime did not become ready")
 		}

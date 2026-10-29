@@ -28,7 +28,7 @@ func TestCodexReconnectFleetStorm(t *testing.T) {
 	fake.SetReplyDelay("thread/resume", 0)
 	waitReconnectCondition(t, func() bool {
 		for _, sess := range sessions {
-			if sess.Summary().Status != "ready" {
+			if sess.view.Summary().Status != "ready" {
 				return false
 			}
 		}
@@ -37,7 +37,7 @@ func TestCodexReconnectFleetStorm(t *testing.T) {
 	for index, sess := range sessions {
 		want := fmt.Sprintf("storm-%03d", index)
 		if sess.stateOwner.ThreadID() != want || sess.HostedThreadID() != "hosted-"+want {
-			t.Fatalf("identity changed: %+v", sess.Summary())
+			t.Fatalf("identity changed: %+v", sess.view.Summary())
 		}
 	}
 }
@@ -107,7 +107,7 @@ func TestCodexReconnectNoRolloutStopsWithoutLosingIdentity(t *testing.T) {
 		return !daemon.reconnecting[sess.ID()]
 	})
 	time.Sleep(300 * time.Millisecond)
-	if fake.ResumeCount() != 2 || sess.stateOwner.ThreadID() != "missing-rollout" || sess.Summary().Status != "reconnect_failed" {
+	if fake.ResumeCount() != 2 || sess.stateOwner.ThreadID() != "missing-rollout" || sess.view.Summary().Status != "reconnect_failed" {
 		t.Fatal("missing rollout was retried automatically or changed identity/status")
 	}
 	fake.SetResumeError("")
@@ -115,7 +115,7 @@ func TestCodexReconnectNoRolloutStopsWithoutLosingIdentity(t *testing.T) {
 	// Confirmed native absence stays unreachable for this attachment. A new
 	// explicit resume must allocate a new durable epoch before readiness.
 	time.Sleep(100 * time.Millisecond)
-	if got := sess.Summary().Status; got != "reconnect_failed" {
+	if got := sess.view.Summary().Status; got != "reconnect_failed" {
 		t.Fatalf("late ready reopened unreachable attachment: %s", got)
 	}
 }
@@ -143,13 +143,13 @@ func TestCodexReconnectClosedSessionStopsRetrying(t *testing.T) {
 	sess.setStatus("reconnecting")
 	daemon.requestSessionRecovery(sess)
 	waitReconnectCondition(t, func() bool { return fake.ResumeCount() == 2 })
-	sess.Close()
+	sess.lifecycle.Close()
 	waitReconnectCondition(t, func() bool {
 		daemon.mu.Lock()
 		defer daemon.mu.Unlock()
 		return !daemon.reconnecting[sess.ID()]
 	})
-	if fake.ResumeCount() != 2 || sess.Summary().Status != StatusExited {
+	if fake.ResumeCount() != 2 || sess.view.Summary().Status != StatusExited {
 		t.Fatal("closed session was retried or resurrected")
 	}
 }

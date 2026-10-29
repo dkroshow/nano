@@ -122,6 +122,6 @@ func TestCodexDaemonWaitsForLoadedSupervisorAndReconnects(t *testing.T) {
 		t.Fatalf("connect after supervised port returned: %v", err)
 	}
 	waitReconnectCondition(t, func() bool {
-		return fake.ResumeCount() == 1 && sess.Summary().Status == "ready"
+		return fake.ResumeCount() == 1 && sess.view.Summary().Status == "ready"
 	})
 }

@@ -162,7 +162,7 @@ func (s *Controller) bulkCloseMemberWorking(record ownedthreads.SessionRecord) b
 	if live == nil {
 		return false
 	}
-	summary := live.Summary()
+	summary := live.View().Summary()
 	return summary.TurnActive && !summary.Waiting
 }
 

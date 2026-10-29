@@ -32,8 +32,8 @@ func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing
 	sess := fixture.session
 	observer := observeProjection(t, sess)
 	fixture.emitAt(t, []byte(`{"type":"stream_event","event":{"type":"message_start","message":{"id":"notification-turn"}}}`), time.Time{}, "claude:notification:1")
-	waitReconnectCondition(t, func() bool { return sess.Summary().TurnActive })
-	if sum := sess.Summary(); !sum.TurnActive || sum.TurnStartedAtMs == 0 {
+	waitReconnectCondition(t, func() bool { return sess.View().Summary().TurnActive })
+	if sum := sess.View().Summary(); !sum.TurnActive || sum.TurnStartedAtMs == 0 {
 		t.Fatalf("execution evidence summary = %+v, want an anchored active turn", sum)
 	}
 	snapshot := observer.Snapshot()
@@ -42,8 +42,8 @@ func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing
 	}
 
 	fixture.emitAt(t, []byte(`{"type":"result","subtype":"success"}`), time.Time{}, "claude:notification:1")
-	waitReconnectCondition(t, func() bool { return !sess.Summary().TurnActive })
-	if sum := sess.Summary(); sum.TurnActive {
+	waitReconnectCondition(t, func() bool { return !sess.View().Summary().TurnActive })
+	if sum := sess.View().Summary(); sum.TurnActive {
 		t.Fatalf("terminal result left notification-started turn active: %+v", sum)
 	}
 }
@@ -63,7 +63,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	s := &server{catalog: (fake).source(t), Registry: newSessionRegistry()}
 	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "s1", Provider: "codex"}, "native-live", "model")
 	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"inProgress"}}}`))
-	waitReconnectCondition(t, func() bool { return fixture.session.Summary().TurnActive })
+	waitReconnectCondition(t, func() bool { return fixture.session.View().Summary().TurnActive })
 	s.RegisterSession(fixture.session)
 
 	assertRuntime := func(t *testing.T, raw json.RawMessage, wantTurnActive bool) {
@@ -103,7 +103,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 
 	// turnActive flips are reflected on the next response.
 	fixture.emit(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"completed"}}}`))
-	waitReconnectCondition(t, func() bool { return !fixture.session.Summary().TurnActive })
+	waitReconnectCondition(t, func() bool { return !fixture.session.View().Summary().TurnActive })
 	rec = httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	detail = nil
@@ -158,7 +158,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 
 	active := newProviderRuntimeFixture(t, sessions.Config{ID: "s1", Provider: "codex"}, "codex-live", "model")
 	active.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"codex-live","turn":{"id":"turn-1","status":"inProgress","startedAt":1787600000}}}`))
-	waitReconnectCondition(t, func() bool { return active.session.Summary().TurnActive })
+	waitReconnectCondition(t, func() bool { return active.session.View().Summary().TurnActive })
 	s := testServerWithSessions(&server{attachments: attachments, Registry: newSessionRegistry()}, map[string]*sessions.Session{
 		"s1": active.session,
 		"s2": memorySession(t, "s2", "claude", "claude-live", "starting", "", "", time.Time{}),
@@ -510,8 +510,8 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 	if err := pending.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(pending.Close)
-	waitReconnectCondition(t, func() bool { return pending.Summary().Status == "ready" })
+	t.Cleanup(pending.Lifecycle().Close)
+	waitReconnectCondition(t, func() bool { return pending.View().Summary().Status == "ready" })
 	pending.ReserveNativeID("")
 	if changed := runtimeSnapshotForTest(t, s); !carries(changed) || changed.Sessions[0].Status != "ready" {
 		t.Fatalf("a status change of a session without a native id = %+v, want its new row", changed)
@@ -534,8 +534,8 @@ func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
 	if err := pending.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(pending.Close)
-	waitReconnectCondition(t, func() bool { return pending.Summary().Status == "exited" })
+	t.Cleanup(pending.Lifecycle().Close)
+	waitReconnectCondition(t, func() bool { return pending.View().Summary().Status == "exited" })
 	failed := runtimeSnapshotForTest(t, s)
 	if len(failed.RemovedSessions) != 0 || len(failed.Sessions) != 1 || failed.Sessions[0].Status != sessionStatusExited || failed.Sessions[0].Error != "thread/start: rpc error -32000: handshake failed" {
 		t.Fatalf("failed spawn delta = sessions %+v removed %v, want its exited row with the error", failed.Sessions, failed.RemovedSessions)
@@ -623,7 +623,7 @@ func TestRuntimeDeltaCarriesOnlyChangedRows(t *testing.T) {
 		t.Fatalf("an unchanged runtime produced %d rows", len(same.Rows))
 	}
 	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"thread-a","turn":{"id":"turn-a","status":"inProgress"}}}`))
-	waitReconnectCondition(t, func() bool { return a.Summary().TurnActive })
+	waitReconnectCondition(t, func() bool { return a.View().Summary().TurnActive })
 	flip := runtimeSnapshotForTest(t, s)
 	if len(flip.Rows) != 1 || flip.Rows[0].NativeID != "thread-a" || flip.Rows[0].Runtime == nil || !flip.Rows[0].Runtime.TurnActive {
 		t.Fatalf("turnActive flip delta = %#v, want only thread-a", flip.Rows)

@@ -60,7 +60,7 @@ func repairSession(t *testing.T, catalog *repairCatalog) *sessions.Session {
 func postRepair(t *testing.T, s *server, sess *sessions.Session, action string) (int, sessions.TranscriptRepairResponse) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
-	sess.HandleTranscriptRepair(recorder, httptest.NewRequest(http.MethodPost, "/api/sessions/"+sess.ID()+"/transcript-repair",
+	sess.Lifecycle().HandleTranscriptRepair(recorder, httptest.NewRequest(http.MethodPost, "/api/sessions/"+sess.ID()+"/transcript-repair",
 		bytes.NewBufferString(`{"clientActionId":"`+action+`"}`)))
 	var response sessions.TranscriptRepairResponse
 	if recorder.Code == http.StatusOK {
@@ -131,7 +131,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 		}, func(t *testing.T, sess *sessions.Session, catalog *repairCatalog) {
 			fake := catalog.provider
 			fake.EmitThreadNotification("thread", map[string]any{"method": "turn/started", "params": map[string]any{"threadId": "thread", "turn": map[string]any{"id": "turn-1", "status": "inProgress"}}})
-			waitReconnectCondition(t, func() bool { return sess.Summary().TurnActive })
+			waitReconnectCondition(t, func() bool { return sess.View().Summary().TurnActive })
 			fake.OnTurnInterrupt = func() {
 				fake.EmitThreadNotification("thread", map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "thread", "turn": map[string]any{"id": "turn-1", "status": "interrupted"}}})
 			}

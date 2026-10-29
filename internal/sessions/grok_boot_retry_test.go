@@ -56,11 +56,11 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 			sess.id, sess.provider = "grok-boot-"+tc.name, "grok"
 			sess.hostedThreadID, sess.stateOwner.threadID = "nht_grok_boot_"+tc.name, "native-"+tc.name
 			sess.stateOwner.state = map[string]json.RawMessage{}
-			sess.projection = newDeliveryTestProjection("grok")
+			sess.view.projection = newDeliveryTestProjection("grok")
 			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
 			executions := &bootStatusRecorder{}
 			sess.agentExecutions = executions
-			t.Cleanup(sess.Close)
+			t.Cleanup(sess.lifecycle.Close)
 
 			if err := sess.runtime.BeginProviderSpawn(ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.stateOwner.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {
 				t.Fatal(err)
@@ -84,7 +84,7 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 				t.Fatalf("published hosted status = %q; want %s", status, tc.wantStatus)
 			}
 			if tc.wantStatus == "exited" {
-				summary := sess.Summary()
+				summary := sess.view.Summary()
 				if !strings.Contains(summary.Error, "session/load") || !strings.Contains(summary.Error, context.DeadlineExceeded.Error()) {
 					t.Fatalf("terminal reason = %q, want session/load deadline", summary.Error)
 				}
@@ -157,10 +157,10 @@ func waitForGrokStatus(t *testing.T, sess *Session, want string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if sess.Summary().Status == want {
+		if sess.view.Summary().Status == want {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatalf("Grok session status = %q, want %q", sess.Summary().Status, want)
+	t.Fatalf("Grok session status = %q, want %q", sess.view.Summary().Status, want)
 }

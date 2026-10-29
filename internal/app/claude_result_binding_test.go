@@ -173,6 +173,6 @@ func newClaudeResultSession(t *testing.T, f claudeResultFixture) *sessions.Sessi
 		h.runtimes = map[*sessions.Session]*providerRuntimeFixture{}
 	}
 	h.runtimes[sess] = &providerRuntimeFixture{session: sess, projection: p}
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	return sess
 }

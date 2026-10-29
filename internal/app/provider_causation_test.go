@@ -35,7 +35,7 @@ func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*se
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("native")
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	return sess, store
 }
 
@@ -44,7 +44,7 @@ func requested(t *testing.T, sess *sessions.Session, store *hostedstore.Metadata
 	if sess.Provider() == "codex" && value != "ultrafast" {
 		body, _ := json.Marshal(map[string]string{field: value})
 		response := httptest.NewRecorder()
-		sess.HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(string(body))))
+		sess.View().HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(string(body))))
 		if response.Code != http.StatusOK {
 			t.Fatalf("requested %s: %d %s", field, response.Code, response.Body.String())
 		}
@@ -340,7 +340,7 @@ func TestClaudeReplayCannotSettleNewDesiredButFreshInitSettlesOwnRequest(t *test
 	if old == newer || f.DesiredEventID == nil || *f.DesiredEventID != newer || f.DesiredDisposition != metadataDispositionRequested || desired != "new" {
 		t.Fatalf("replay settled newer desired: %+v", f)
 	}
-	sess.Close()
+	sess.Lifecycle().Close()
 	sess = newCausationClaudeAttachment(t, store, sess.HostedThreadID())
 	fresh := startCausationClaude(t, sess, "new")
 	fresh.emitAndDrain(t, []byte(`{"type":"system","subtype":"init","session_id":"claude-native","model":"new","permissionMode":""}`))
@@ -364,7 +364,7 @@ func TestCaptureInitReplayAndFreshLaunchUseImmutableSnapshots(t *testing.T) {
 	if err := store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND evidence_freshness=?`, sess.HostedThreadID(), metadataFreshnessReplayed).Scan(&replayed); err != nil || replayed == 0 {
 		t.Fatalf("captureInit did not store replayed evidence: count=%d err=%v", replayed, err)
 	}
-	sess.Close()
+	sess.Lifecycle().Close()
 	sess = newCausationClaudeAttachment(t, store, sess.HostedThreadID())
 	// Capture the old request at launch, then create the new decision before its response.
 	requested(t, sess, store, postureFieldModel, "old")
@@ -382,7 +382,7 @@ func TestClaudeReplayLiveBoundaryKeepsCanonicalMetadataReadable(t *testing.T) {
 	line := []byte(`{"type":"system","subtype":"init","session_id":"claude-native","model":"claude-fable-5","permissionMode":"bypassPermissions"}`)
 	f := replayCausationClaude(t, sess, line)
 	f.emitAndDrain(t, line)
-	if summary := sess.Summary(); summary.MetadataUnavailable || summary.Metadata == nil {
+	if summary := sess.View().Summary(); summary.MetadataUnavailable || summary.Metadata == nil {
 		t.Fatalf("healthy canonical state hidden after replay/live boundary: %+v", summary)
 	}
 	var count int
@@ -412,7 +412,7 @@ func newCausationClaudeAttachment(t *testing.T, store *hostedstore.MetadataStore
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("claude-native")
-	t.Cleanup(sess.Close)
+	t.Cleanup(sess.Lifecycle().Close)
 	return sess
 }
 
@@ -553,7 +553,7 @@ func TestUltrafastSettingEvidenceSettlesOnlyTheRequestedTier(t *testing.T) {
 	fake.ModelList = map[string]any{"data": []any{map[string]any{"model": "gpt-6.1-sol", "serviceTiers": []any{map[string]any{"id": "ultrafast"}}}}}
 	fake.Mu.Unlock()
 	response := httptest.NewRecorder()
-	sess.HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(`{"model":"gpt-6.1-sol","serviceTier":"ultrafast"}`)))
+	sess.View().HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(`{"model":"gpt-6.1-sol","serviceTier":"ultrafast"}`)))
 	if response.Code != http.StatusOK {
 		t.Fatalf("provider-advertised Ultrafast must be valid canonical intent: %d %s", response.Code, response.Body.String())
 	}

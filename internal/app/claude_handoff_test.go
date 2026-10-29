@@ -112,7 +112,7 @@ func (h *claudeHandoff) submit(t *testing.T, action, providerTurn, text string) 
 			Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &providerTurn,
 		}},
 	}
-	h.session.PublishLiveOutbox(entry)
+	h.session.View().PublishLiveOutbox(entry)
 	h.turn = providerTurn
 	eventID := submissionEventID("hosted-handoff", action)
 	h.runtime.emitDirectionAtAndWait(t, "send", []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":%q}]}}`, eventID, text)), time.Now(), h.turn)

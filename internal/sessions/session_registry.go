@@ -194,7 +194,7 @@ func (s *Registry) VolatileSummaries(needsAttention map[string]bool) []Summary {
 	sessions := s.SnapshotSessions()
 	summaries := make([]Summary, 0, len(sessions))
 	for _, sess := range sessions {
-		summary, live := sess.volatileSummary(needsAttention[sess.hostedThreadID])
+		summary, live := sess.view.volatileSummary(needsAttention[sess.hostedThreadID])
 		if live {
 			summaries = append(summaries, summary)
 		}
@@ -228,7 +228,7 @@ func (s *Registry) ForgetDetachedClaude(nativeID string, forget func() error) er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider == "claude" && sess.stateOwner.ThreadID() == nativeID && sess.Summary().Status != StatusExited {
+		if sess.provider == "claude" && sess.stateOwner.ThreadID() == nativeID && sess.view.Summary().Status != StatusExited {
 			return fmt.Errorf("thread is attached; end its session before forgetting")
 		}
 	}
@@ -258,7 +258,7 @@ func (s *Registry) LiveHostedSummary(hostedID string, needsAttention func(string
 	if oldest == nil {
 		return Summary{}, false
 	}
-	return oldest.volatileSummary(needsAttention(hostedID))
+	return oldest.view.volatileSummary(needsAttention(hostedID))
 }
 
 // MonitorSnapshot counts held sessions and snapshots their active turns.

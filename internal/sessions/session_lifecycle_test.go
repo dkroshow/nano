@@ -18,7 +18,7 @@ func lifecycleTestSession(status string, active bool, turnID string) *Session {
 func TestSessionLifecycleConnectionLossHidesWork(t *testing.T) {
 	sess := lifecycleTestSession("ready", true, "running")
 	sess.setStatus("reconnecting")
-	if sum := sess.Summary(); sum.Status != "reconnecting" || sum.TurnActive || sum.Waiting {
+	if sum := sess.view.Summary(); sum.Status != "reconnecting" || sum.TurnActive || sum.Waiting {
 		t.Fatalf("disconnected summary derived work: %+v", sum)
 	}
 }
@@ -27,7 +27,7 @@ func TestSessionLifecycleClosedAttachmentRejectsLateReady(t *testing.T) {
 	sess := lifecycleTestSession("ready", false, "")
 	sess.setStatus("exited")
 	sess.setStatus("ready")
-	if got := sess.Summary().Status; got != "exited" {
+	if got := sess.view.Summary().Status; got != "exited" {
 		t.Fatalf("late provider readiness reopened closed attachment: %s", got)
 	}
 }
@@ -45,11 +45,11 @@ func TestSessionLifecycleReplayMustSettleBeforeReady(t *testing.T) {
 	sess.stateOwner.beginTurnRestore()
 	sess.stateOwner.restoreTurnActive(true, "provider-current", 10)
 	sess.setStatus("ready")
-	if sum := sess.Summary(); sum.Status != "starting" || sum.TurnActive {
+	if sum := sess.view.Summary(); sum.Status != "starting" || sum.TurnActive {
 		t.Fatalf("unsettled replay escaped through readiness: %+v", sum)
 	}
 	sess.stateOwner.settleRestoredTurnState()
-	if sum := sess.Summary(); sum.Status != "ready" || !sum.TurnActive || sum.TurnStartedAtMs != 10 {
+	if sum := sess.view.Summary(); sum.Status != "ready" || !sum.TurnActive || sum.TurnStartedAtMs != 10 {
 		t.Fatalf("settled provider state did not become current: %+v", sum)
 	}
 }

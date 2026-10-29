@@ -74,7 +74,7 @@ func (s *Controller) ListedSessions(sessions []*sessionruntime.Session) []Listed
 		if viewErr == nil && !found {
 			viewErr = sql.ErrNoRows
 		}
-		sum := sess.SummaryWith(view, viewErr, sess.HostedThreadID() != "" && needsAttention[sess.HostedThreadID()])
+		sum := sess.View().SummaryWith(view, viewErr, sess.HostedThreadID() != "" && needsAttention[sess.HostedThreadID()])
 		summaries = append(summaries, sum)
 	}
 	s.attachStarredOnSessions(summaries)
