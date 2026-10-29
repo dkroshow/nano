@@ -23,11 +23,7 @@ func TestChildCreationQueuedBehindTreeMutationCannotUseClosedInvoker(t *testing.
 	root, _ = store.Session(root.ID)
 	s := testController(t, store)
 	cwd := t.TempDir()
-	s.PrepareCreation = func(req CreationRequest) (CreationPlan, error) {
-		return CreationPlan{ClientSessionID: req.ClientSessionID, Provider: req.Provider, Mode: "start", PresentationMode: ownedthreads.PresentationShared, SidebarPlacement: ownedthreads.SidebarPlacementInvoker,
-			Attach: func(record ownedthreads.SessionRecord, _ bool) (string, error) { return record.ID, nil },
-		}, nil
-	}
+	// Use the real preparation path; admission must still wait on the tree lock.
 
 	s.relationshipMu.Lock()
 	done := make(chan *httptest.ResponseRecorder, 1)
