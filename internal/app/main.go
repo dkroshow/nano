@@ -126,8 +126,8 @@ type server struct {
 	transcriptValidations *observability.ValidationStore
 	// transcriptAudits holds only short-lived, content-free request/result
 	// metadata. Browser captures and SQLite reference bodies are never durable.
-	transcriptAudits      *transcriptAuditStore
-	transcriptAuditEvents *transcriptAuditHub
+	transcriptAudits      *observability.AuditStore
+	transcriptAuditEvents *observability.AuditHub
 	// historicalCodex resolves the current setup for an on-disk Codex thread
 	// without starting or resuming it. Results are shared by workspace.
 	historicalCodex *historical.CodexResolver
@@ -366,8 +366,8 @@ func construct(cfg config.Config) *application {
 		notices:               interact.NewNotices(),
 		browserDiagnostics:    diagnostics.NewStore(diagnostics.DefaultCapacity, sessionruntime.NewID()),
 		transcriptValidations: observability.NewValidationStore(observability.DefaultValidationCapacity),
-		transcriptAudits:      newTranscriptAuditStore(),
-		transcriptAuditEvents: newTranscriptAuditHub(),
+		transcriptAudits:      observability.NewAuditStore(),
+		transcriptAuditEvents: observability.NewAuditHub(),
 		usageLimits:           usageLimits,
 		Registry:              sessionruntime.NewRegistry(),
 	}

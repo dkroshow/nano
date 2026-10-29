@@ -1,11 +1,12 @@
-package app
+package observability
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/diagnostics"
 	"io"
 	"net/http"
 	"slices"
@@ -13,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/diagnostics"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -56,7 +57,8 @@ type transcriptAuditRequest struct {
 	deadline               time.Time
 }
 
-type transcriptAuditEvent struct {
+// AuditEvent identifies the browser pane requested to capture an audit.
+type AuditEvent struct {
 	AuditID         string                   `json:"auditId"`
 	ThreadID        string                   `json:"threadId"`
 	CatalogThreadID string                   `json:"catalogThreadId"`
@@ -121,18 +123,20 @@ type transcriptAuditResult struct {
 	Build                string                      `json:"build,omitempty"`
 }
 
-type transcriptAuditStore struct {
+// AuditStore retains bounded pending and completed browser audits.
+type AuditStore struct {
 	mu       sync.Mutex
 	order    []string
 	requests map[string]*transcriptAuditRequest
 	now      func() time.Time
 }
 
-func newTranscriptAuditStore() *transcriptAuditStore {
-	return &transcriptAuditStore{requests: make(map[string]*transcriptAuditRequest), now: time.Now}
+// NewAuditStore creates the bounded audit record owner.
+func NewAuditStore() *AuditStore {
+	return &AuditStore{requests: make(map[string]*transcriptAuditRequest), now: time.Now}
 }
 
-func (s *transcriptAuditStore) create(request transcriptAuditRequest) (transcriptAuditRequest, error) {
+func (s *AuditStore) create(request transcriptAuditRequest) (transcriptAuditRequest, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expireLocked()
@@ -165,7 +169,7 @@ func (s *transcriptAuditStore) create(request transcriptAuditRequest) (transcrip
 	return copy, nil
 }
 
-func (s *transcriptAuditStore) get(id string) (transcriptAuditRequest, bool) {
+func (s *AuditStore) get(id string) (transcriptAuditRequest, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expireLocked()
@@ -176,7 +180,7 @@ func (s *transcriptAuditStore) get(id string) (transcriptAuditRequest, bool) {
 	return *request, true
 }
 
-func (s *transcriptAuditStore) finish(id string, result transcriptAuditResult) (transcriptAuditRequest, bool) {
+func (s *AuditStore) finish(id string, result transcriptAuditResult) (transcriptAuditRequest, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expireLocked()
@@ -191,7 +195,7 @@ func (s *transcriptAuditStore) finish(id string, result transcriptAuditResult) (
 	return *request, true
 }
 
-func (s *transcriptAuditStore) expireLocked() {
+func (s *AuditStore) expireLocked() {
 	now := s.now().UTC()
 	for _, request := range s.requests {
 		if request.Status != "pending" || now.Before(request.deadline) {
@@ -203,24 +207,28 @@ func (s *transcriptAuditStore) expireLocked() {
 	}
 }
 
-type transcriptAuditHub struct {
+// AuditHub publishes audit requests for the browser event stream.
+type AuditHub struct {
 	mu   sync.Mutex
-	subs map[chan transcriptAuditEvent]struct{}
+	subs map[chan AuditEvent]struct{}
 }
 
-func newTranscriptAuditHub() *transcriptAuditHub {
-	return &transcriptAuditHub{subs: make(map[chan transcriptAuditEvent]struct{})}
+// NewAuditHub creates an audit notification hub.
+func NewAuditHub() *AuditHub {
+	return &AuditHub{subs: make(map[chan AuditEvent]struct{})}
 }
 
-func (h *transcriptAuditHub) subscribe() chan transcriptAuditEvent {
-	ch := make(chan transcriptAuditEvent, maxTranscriptAuditPending)
+// Subscribe registers a browser stream for audit requests.
+func (h *AuditHub) Subscribe() chan AuditEvent {
+	ch := make(chan AuditEvent, maxTranscriptAuditPending)
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
 	h.mu.Unlock()
 	return ch
 }
 
-func (h *transcriptAuditHub) unsubscribe(ch chan transcriptAuditEvent) {
+// Unsubscribe releases a browser audit subscription.
+func (h *AuditHub) Unsubscribe(ch chan AuditEvent) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if _, ok := h.subs[ch]; ok {
@@ -229,7 +237,7 @@ func (h *transcriptAuditHub) unsubscribe(ch chan transcriptAuditEvent) {
 	}
 }
 
-func (h *transcriptAuditHub) notify(event transcriptAuditEvent) {
+func (h *AuditHub) notify(event AuditEvent) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch := range h.subs {
@@ -254,9 +262,9 @@ func normalizeTranscriptAuditScopes(scopes []threadindex.AuditScope) ([]threadin
 	return []threadindex.AuditScope{threadindex.AuditMessages}, true
 }
 
-func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Request) {
+func (s *AuditHandlers) HandleTranscriptAuditCreate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	if s.transcriptAudits == nil || s.transcriptAuditEvents == nil {
+	if s.transcriptAudits == nil || s.AuditEvents == nil {
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -292,20 +300,20 @@ func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Requ
 	}
 	id, err := s.resolveThreadReference(r.Context(), body.ThreadRef)
 	if err != nil {
-		writeThreadReferenceError(w, err)
+		threadindex.WriteThreadReferenceError(w, err)
 		return
 	}
 	pin, err := catalog.LoadTranscript(r.Context(), id, threadindex.TranscriptQuery{Limit: 1, View: threadindex.DevThreadTranscriptView, HiddenSpecified: true})
 	if err != nil {
-		writeTranscriptBackendError(w, err)
+		threadindex.WriteTranscriptBackendError(w, err)
 		return
 	}
 	now := time.Now().UTC()
 	request := transcriptAuditRequest{
-		ID: "tau_" + sessions.NewID(), ClientActionID: body.ClientActionID, ThreadID: body.ThreadRef,
+		ID: "tau_" + auditID(), ClientActionID: body.ClientActionID, ThreadID: body.ThreadRef,
 		TabID: body.TabID, PageID: body.PageID, PaneID: body.PaneID, Scopes: scopes, Status: "pending",
 		RequestedAt: now.Format(time.RFC3339Nano), Deadline: now.Add(transcriptAuditTTL).Format(time.RFC3339Nano),
-		ExpectedBuild: embeddedBundleName(), ReferenceProjectionKey: pin.Projection.Key,
+		ExpectedBuild: s.buildName, ReferenceProjectionKey: pin.Projection.Key,
 		ReferenceSnapshotHead: pin.Page.SnapshotHeadSeq, ReferenceState: pin.Projection.State,
 		CatalogThreadID: id, requestedAt: now, deadline: now.Add(transcriptAuditTTL),
 	}
@@ -323,12 +331,12 @@ func (s *server) handleTranscriptAuditCreate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if stored.Status == "pending" {
-		s.transcriptAuditEvents.notify(transcriptAuditEvent{AuditID: stored.ID, ThreadID: stored.ThreadID, CatalogThreadID: stored.CatalogThreadID, TabID: stored.TabID, PageID: stored.PageID, PaneID: stored.PaneID, Scopes: stored.Scopes, Deadline: stored.Deadline})
+		s.AuditEvents.notify(AuditEvent{AuditID: stored.ID, ThreadID: stored.ThreadID, CatalogThreadID: stored.CatalogThreadID, TabID: stored.TabID, PageID: stored.PageID, PaneID: stored.PaneID, Scopes: stored.Scopes, Deadline: stored.Deadline})
 	}
 	httpapi.WriteJSON(w, stored)
 }
 
-func (s *server) handleTranscriptAuditRead(w http.ResponseWriter, _ *http.Request, id string) {
+func (s *AuditHandlers) HandleTranscriptAuditRead(w http.ResponseWriter, _ *http.Request, id string) {
 	if s.transcriptAudits == nil {
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
 		return
@@ -342,7 +350,7 @@ func (s *server) handleTranscriptAuditRead(w http.ResponseWriter, _ *http.Reques
 	httpapi.WriteJSON(w, request)
 }
 
-func (s *server) handleTranscriptAuditReference(w http.ResponseWriter, r *http.Request, id string) {
+func (s *AuditHandlers) HandleTranscriptAuditReference(w http.ResponseWriter, r *http.Request, id string) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	if s.transcriptAudits == nil {
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
@@ -376,13 +384,13 @@ func (s *server) handleTranscriptAuditReference(w http.ResponseWriter, r *http.R
 			httpapi.WriteHTTPError(w, "transcript audit reference changed", http.StatusConflict)
 			return
 		}
-		writeTranscriptBackendError(w, err)
+		threadindex.WriteTranscriptBackendError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, reference)
 }
 
-func (s *server) handleTranscriptAuditResult(w http.ResponseWriter, r *http.Request, id string) {
+func (s *AuditHandlers) HandleTranscriptAuditResult(w http.ResponseWriter, r *http.Request, id string) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	if s.transcriptAudits == nil {
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
@@ -524,9 +532,32 @@ func inconclusiveTranscriptAudit(scopes []threadindex.AuditScope, reason string)
 	return transcriptAuditResult{Status: "inconclusive", Scopes: append([]threadindex.AuditScope(nil), scopes...), Differences: []transcriptAuditDifference{}, Exclusions: []transcriptAuditExclusion{}, Reasons: []string{reason}}
 }
 
-func writeTranscriptAuditEvent(w io.Writer, event transcriptAuditEvent) {
+// WriteTranscriptAuditEvent writes one content-free browser SSE request.
+func WriteTranscriptAuditEvent(w io.Writer, event AuditEvent) {
 	payload, err := json.Marshal(event)
 	if err == nil {
 		fmt.Fprintf(w, "event: transcript-audit\ndata: %s\n\n", payload)
 	}
 }
+
+// AuditHandlers coordinates bounded browser audits against saved transcript references.
+type AuditHandlers struct {
+	catalog          transcriptAuditCatalog
+	transcriptAudits *AuditStore
+	AuditEvents      *AuditHub
+	buildName        string
+}
+
+// NewAuditHandlers binds browser audits to the concrete saved transcript owner.
+func NewAuditHandlers(catalog *threadindex.Service, store *AuditStore, events *AuditHub, buildName string) *AuditHandlers {
+	h := &AuditHandlers{transcriptAudits: store, AuditEvents: events, buildName: buildName}
+	if catalog != nil {
+		h.catalog = catalog
+	}
+	return h
+}
+func (s *AuditHandlers) resolveThreadReference(ctx context.Context, ref string) (string, error) {
+	resolver, _ := s.catalog.(threadindex.ReferenceResolver)
+	return threadindex.ResolveReference(ctx, resolver, ref)
+}
+func auditID() string { b := make([]byte, 4); rand.Read(b); return hex.EncodeToString(b) }

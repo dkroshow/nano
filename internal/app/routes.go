@@ -21,6 +21,7 @@ type applicationRoute struct {
 
 func applicationRoutes(s *server) []applicationRoute {
 	index := threadindex.NewHandlers(s.catalog)
+	audits := observability.NewAuditHandlers(s.hostedCatalog(), s.transcriptAudits, s.transcriptAuditEvents, embeddedBundleName())
 	browser := observability.NewBrowserHandlers(s.browserDiagnostics, s.transcriptValidations, s.controlMetadata, s.controlMetadataErr)
 	accountUsage := &usage.Handlers{Store: s.usageLimits, Poller: s.usageLimitsPoller}
 	sessionRoute := func(operation func(http.ResponseWriter, *http.Request, *sessions.Session)) http.HandlerFunc {
@@ -135,15 +136,15 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPost, "/api/v1/browser-validations", "browserValidations.record", browser.HandleTranscriptValidationRecord},
 		{http.MethodGet, "/api/v1/transcript-validations", "transcriptValidations.list", browser.HandleTranscriptValidationsList},
 		{http.MethodPost, "/api/v1/transcript-validations", "transcriptValidations.record", browser.HandleTranscriptValidationRecord},
-		{http.MethodPost, "/api/v1/transcript-audits", "transcriptAudits.create", s.handleTranscriptAuditCreate},
+		{http.MethodPost, "/api/v1/transcript-audits", "transcriptAudits.create", audits.HandleTranscriptAuditCreate},
 		{http.MethodGet, "/api/v1/transcript-audits/{auditId}", "transcriptAudits.read", func(w http.ResponseWriter, r *http.Request) {
-			s.handleTranscriptAuditRead(w, r, r.PathValue("auditId"))
+			audits.HandleTranscriptAuditRead(w, r, r.PathValue("auditId"))
 		}},
 		{http.MethodGet, "/api/v1/transcript-audits/{auditId}/reference", "transcriptAudits.reference", func(w http.ResponseWriter, r *http.Request) {
-			s.handleTranscriptAuditReference(w, r, r.PathValue("auditId"))
+			audits.HandleTranscriptAuditReference(w, r, r.PathValue("auditId"))
 		}},
 		{http.MethodPost, "/api/v1/transcript-audits/{auditId}/result", "transcriptAudits.result", func(w http.ResponseWriter, r *http.Request) {
-			s.handleTranscriptAuditResult(w, r, r.PathValue("auditId"))
+			audits.HandleTranscriptAuditResult(w, r, r.PathValue("auditId"))
 		}},
 		{http.MethodGet, "/api/v1/thread-references/{reference}", "threadReferences.resolve", s.handleThreadReference},
 		{http.MethodGet, "/api/v1/identity/resolve", "identity.resolve", s.handleIdentityResolve},

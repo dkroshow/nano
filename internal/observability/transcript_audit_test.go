@@ -1,4 +1,4 @@
-package app
+package observability
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 )
 
 type fakeTranscriptAuditCatalog struct {
-	fakeTranscriptCatalog
+	fakeAuditTranscript
 	reference           threadindex.AuditReference
 	referenceErr        error
 	referenceThread     string
@@ -37,9 +37,9 @@ func (f *fakeTranscriptAuditCatalog) LoadTranscriptAuditReference(_ context.Cont
 	return f.reference, f.referenceErr
 }
 
-func newTranscriptAuditTestServer() (*server, *fakeTranscriptAuditCatalog) {
+func newTranscriptAuditTestServer() (*AuditHandlers, *fakeTranscriptAuditCatalog) {
 	catalog := &fakeTranscriptAuditCatalog{
-		fakeTranscriptCatalog: fakeTranscriptCatalog{response: threadindex.TranscriptResponse{
+		fakeAuditTranscript: fakeAuditTranscript{response: threadindex.TranscriptResponse{
 			ThreadID: "nth-one", Projection: threadindex.TranscriptProjection{Key: "projection-1", State: "ready", SourceStatus: "present"},
 			Page: threadindex.TranscriptPageInfo{SnapshotHeadSeq: 3},
 		}},
@@ -48,14 +48,14 @@ func newTranscriptAuditTestServer() (*server, *fakeTranscriptAuditCatalog) {
 			Rows: []threadindex.AuditReferenceRow{{ID: "a", ProjectedSeq: 1, Category: "messages", Role: "assistant", Text: "private-reference-body"}},
 		},
 	}
-	return &server{catalog: catalog, transcriptAudits: newTranscriptAuditStore(), transcriptAuditEvents: newTranscriptAuditHub()}, catalog
+	return &AuditHandlers{catalog: catalog, transcriptAudits: NewAuditStore(), AuditEvents: NewAuditHub(), buildName: "index-audit-test.js"}, catalog
 }
 
-func createTranscriptAuditForTest(t *testing.T, s *server) transcriptAuditRequest {
+func createTranscriptAuditForTest(t *testing.T, s *AuditHandlers) transcriptAuditRequest {
 	t.Helper()
 	body := `{"clientActionId":"action-1","threadRef":"nth-one","tabId":"tab-1","pageId":"page-1","paneId":"pane-1"}`
 	recorder := httptest.NewRecorder()
-	s.handleTranscriptAuditCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(body)))
+	s.HandleTranscriptAuditCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(body)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("create = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -68,10 +68,10 @@ func createTranscriptAuditForTest(t *testing.T, s *server) transcriptAuditReques
 
 // Handler tests pin a synthetic build independently of the embedded assets.
 // Production still rejects missing or different browser builds.
-func pinTranscriptAuditTestBuild(t *testing.T, s *server, request transcriptAuditRequest) transcriptAuditRequest {
+func pinTranscriptAuditTestBuild(t *testing.T, s *AuditHandlers, request transcriptAuditRequest) transcriptAuditRequest {
 	t.Helper()
-	if request.ExpectedBuild != embeddedBundleName() {
-		t.Fatalf("expected build = %q, want the embedded bundle %q", request.ExpectedBuild, embeddedBundleName())
+	if request.ExpectedBuild != s.buildName {
+		t.Fatalf("expected build = %q, want the embedded bundle %q", request.ExpectedBuild, s.buildName)
 	}
 	request.ExpectedBuild = "index-audit-test.js"
 	s.transcriptAudits.mu.Lock()
@@ -82,8 +82,8 @@ func pinTranscriptAuditTestBuild(t *testing.T, s *server, request transcriptAudi
 
 func TestTranscriptAuditTargetsExactPaneAndPinsReference(t *testing.T) {
 	s, catalog := newTranscriptAuditTestServer()
-	events := s.transcriptAuditEvents.subscribe()
-	defer s.transcriptAuditEvents.unsubscribe(events)
+	events := s.AuditEvents.Subscribe()
+	defer s.AuditEvents.Unsubscribe(events)
 	request := createTranscriptAuditForTest(t, s)
 	if request.Status != "pending" || request.CatalogThreadID != "nth-one" || !slices.Equal(request.Scopes, []threadindex.AuditScope{threadindex.AuditMessages}) || request.ReferenceProjectionKey != "projection-1" || request.ReferenceSnapshotHead != 3 {
 		t.Fatalf("request = %#v", request)
@@ -99,7 +99,7 @@ func TestTranscriptAuditTargetsExactPaneAndPinsReference(t *testing.T) {
 
 	referenceRecorder := httptest.NewRecorder()
 	referenceURL := "/api/v1/transcript-audits/" + request.ID + "/reference?minProjectedSeq=1&maxProjectedSeq=3"
-	s.handleTranscriptAuditReference(referenceRecorder, httptest.NewRequest(http.MethodGet, referenceURL, nil), request.ID)
+	s.HandleTranscriptAuditReference(referenceRecorder, httptest.NewRequest(http.MethodGet, referenceURL, nil), request.ID)
 	if referenceRecorder.Code != http.StatusOK {
 		t.Fatalf("reference = %d %s", referenceRecorder.Code, referenceRecorder.Body.String())
 	}
@@ -127,7 +127,7 @@ func TestTranscriptAuditAcceptsContentFreeScopedMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
-	s.handleTranscriptAuditResult(recorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)), request.ID)
+	s.HandleTranscriptAuditResult(recorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)), request.ID)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("result = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -147,7 +147,7 @@ func TestTranscriptAuditRejectsRemovedScopes(t *testing.T) {
 			s, _ := newTranscriptAuditTestServer()
 			body := `{"clientActionId":"removed-scope","threadRef":"nth-one","tabId":"tab-1","pageId":"page-1","paneId":"pane-1","scopes":["` + scope + `"]}`
 			recorder := httptest.NewRecorder()
-			s.handleTranscriptAuditCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(body)))
+			s.HandleTranscriptAuditCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(body)))
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("removed scope accepted: %d %s", recorder.Code, recorder.Body.String())
 			}
@@ -160,7 +160,7 @@ func TestTranscriptAuditRejectsMalformedReferenceRange(t *testing.T) {
 	request := createTranscriptAuditForTest(t, s)
 	recorder := httptest.NewRecorder()
 	url := "/api/v1/transcript-audits/" + request.ID + "/reference?minProjectedSeq=not-a-number"
-	s.handleTranscriptAuditReference(recorder, httptest.NewRequest(http.MethodGet, url, nil), request.ID)
+	s.HandleTranscriptAuditReference(recorder, httptest.NewRequest(http.MethodGet, url, nil), request.ID)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("reference = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -171,7 +171,7 @@ func TestTranscriptAuditRejectsIdempotencyConflict(t *testing.T) {
 	createTranscriptAuditForTest(t, s)
 	body := `{"clientActionId":"action-1","threadRef":"nth-one","tabId":"tab-1","pageId":"different-page","paneId":"pane-1","scopes":["messages"]}`
 	recorder := httptest.NewRecorder()
-	s.handleTranscriptAuditCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(body)))
+	s.HandleTranscriptAuditCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(body)))
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("create = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -183,7 +183,7 @@ func TestTranscriptAuditWrongBuildAndChangedReferenceCannotPass(t *testing.T) {
 		request := createTranscriptAuditForTest(t, s)
 		body := `{"capturedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","tabId":"tab-1","pageId":"page-1","build":"index-stale.js","paneId":"pane-1","paneThreadRef":"nth-one","viewMode":"clean","pageVisible":true,"surfaceVisible":true,"projectionKey":"projection-1","snapshotHeadSeq":3,"result":{"status":"match","complete":true,"scopes":["messages"],"counts":{},"differences":[],"differencesTruncated":false,"exclusions":[],"reasons":[],"range":{}}}`
 		recorder := httptest.NewRecorder()
-		s.handleTranscriptAuditResult(recorder, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)), request.ID)
+		s.HandleTranscriptAuditResult(recorder, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)), request.ID)
 		stored, _ := s.transcriptAudits.get(request.ID)
 		if stored.Status != "inconclusive" || stored.Result == nil || stored.Result.Reasons[0] != "wrong_or_stale_build" {
 			t.Fatalf("stored = %#v", stored)
@@ -195,7 +195,7 @@ func TestTranscriptAuditWrongBuildAndChangedReferenceCannotPass(t *testing.T) {
 		request := createTranscriptAuditForTest(t, s)
 		catalog.referenceErr = history.ErrTranscriptChanged
 		recorder := httptest.NewRecorder()
-		s.handleTranscriptAuditReference(recorder, httptest.NewRequest(http.MethodGet, "/", nil), request.ID)
+		s.HandleTranscriptAuditReference(recorder, httptest.NewRequest(http.MethodGet, "/", nil), request.ID)
 		stored, _ := s.transcriptAudits.get(request.ID)
 		if recorder.Code != http.StatusConflict || stored.Status != "inconclusive" || stored.Result.Reasons[0] != "saved_reference_changed" {
 			t.Fatalf("response=%d stored=%#v", recorder.Code, stored)
@@ -231,7 +231,7 @@ func TestTranscriptAuditWrongOrStaleBrowserCannotPass(t *testing.T) {
 				t.Fatal(err)
 			}
 			recorder := httptest.NewRecorder()
-			s.handleTranscriptAuditResult(recorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(encoded)), request.ID)
+			s.HandleTranscriptAuditResult(recorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(encoded)), request.ID)
 			stored, _ := s.transcriptAudits.get(request.ID)
 			if recorder.Code != http.StatusOK || stored.Status != "inconclusive" || stored.Result == nil || stored.Result.Reasons[0] != test.wantReason {
 				t.Fatalf("response=%d stored=%#v", recorder.Code, stored)
@@ -241,7 +241,7 @@ func TestTranscriptAuditWrongOrStaleBrowserCannotPass(t *testing.T) {
 }
 
 func TestTranscriptAuditExpiresWithoutBrowserAndCapsConcurrency(t *testing.T) {
-	store := newTranscriptAuditStore()
+	store := NewAuditStore()
 	now := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
 	store.now = func() time.Time { return now }
 	for index := 0; index < maxTranscriptAuditPending; index++ {
@@ -349,10 +349,10 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 		}
 	}
 
-	realServer := &server{catalog: service, transcriptAudits: newTranscriptAuditStore(), transcriptAuditEvents: newTranscriptAuditHub()}
+	realServer := &AuditHandlers{catalog: service, transcriptAudits: NewAuditStore(), AuditEvents: NewAuditHub(), buildName: "index-audit-test.js"}
 	createBody := `{"clientActionId":"real-resolver","threadRef":"native-audit","tabId":"tab-real","pageId":"page-real","paneId":"pane-real"}`
 	createRecorder := httptest.NewRecorder()
-	realServer.handleTranscriptAuditCreate(createRecorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(createBody)))
+	realServer.HandleTranscriptAuditCreate(createRecorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(createBody)))
 	var realRequest transcriptAuditRequest
 	if createRecorder.Code != http.StatusOK || json.Unmarshal(createRecorder.Body.Bytes(), &realRequest) != nil || realRequest.CatalogThreadID != applied.ThreadID {
 		t.Fatalf("real resolver create = %d %s", createRecorder.Code, createRecorder.Body.String())
@@ -365,7 +365,7 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 		"result": map[string]any{"status": "match", "complete": true, "scopes": []string{"messages"}, "counts": map[string]int{}, "differences": []any{}, "differencesTruncated": false, "exclusions": []any{}, "reasons": []any{}, "range": map[string]any{}},
 	})
 	resultRecorder := httptest.NewRecorder()
-	realServer.handleTranscriptAuditResult(resultRecorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(resultBody)), realRequest.ID)
+	realServer.HandleTranscriptAuditResult(resultRecorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(resultBody)), realRequest.ID)
 	realFinished, _ := realServer.transcriptAudits.get(realRequest.ID)
 	if resultRecorder.Code != http.StatusOK || realFinished.Status != "match" {
 		t.Fatalf("real resolver result = %d %#v", resultRecorder.Code, realFinished)
@@ -391,4 +391,26 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 	if err != nil || !byteDetail.CapReached || byteDetail.CapReason != "bytes" || len(byteDetail.Rows) != 1 || byteDetail.StartSeq != 105 {
 		t.Fatalf("byte-capped detail = %#v err=%v", byteDetail, err)
 	}
+}
+
+type fakeAuditTranscript struct {
+	response threadindex.TranscriptResponse
+	query    threadindex.TranscriptQuery
+	threadID string
+	err      error
+}
+
+func (f *fakeAuditTranscript) LoadTranscript(_ context.Context, id string, q threadindex.TranscriptQuery) (threadindex.TranscriptResponse, error) {
+	f.threadID = id
+	f.query = q
+	return f.response, f.err
+}
+func newStoredCatalog(t *testing.T, store *history.Store) *threadindex.Service {
+	t.Helper()
+	s, err := threadindex.New(context.Background(), store, threadindex.Options{Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}}, DisableWatcher: true, NativeIDProvisional: func(string, string) bool { return false }, ClaudeProjectSlug: func(s string) string { return s }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	return s
 }

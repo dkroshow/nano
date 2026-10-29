@@ -16,6 +16,7 @@ import (
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -496,10 +497,10 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	// Transcript audit requests reuse the app-wide browser stream. The event is
 	// content-free and targets one exact tab and pane; the browser fetches the
 	// bounded SQLite reference only after that pane claims the request.
-	var transcriptAuditEvents <-chan transcriptAuditEvent
+	var transcriptAuditEvents <-chan observability.AuditEvent
 	if s.transcriptAuditEvents != nil {
-		ch := s.transcriptAuditEvents.subscribe()
-		defer s.transcriptAuditEvents.unsubscribe(ch)
+		ch := s.transcriptAuditEvents.Subscribe()
+		defer s.transcriptAuditEvents.Unsubscribe(ch)
 		transcriptAuditEvents = ch
 	}
 	version, err := stream.CatalogVersion(r.Context())
@@ -564,7 +565,7 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 				transcriptAuditEvents = nil
 				continue
 			}
-			writeTranscriptAuditEvent(w, audit)
+			observability.WriteTranscriptAuditEvent(w, audit)
 			flusher.Flush()
 		case <-heartbeat.C:
 			io.WriteString(w, ": heartbeat\n\n")
