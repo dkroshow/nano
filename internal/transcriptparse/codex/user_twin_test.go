@@ -79,7 +79,7 @@ func TestCodexCompletedUserAmbiguityAndRepeats(t *testing.T) {
 func TestCodexOperatorUserTwins(t *testing.T) {
 	path := os.Getenv("NANO_CODEX_TWIN_TRANSCRIPT")
 	if path == "" {
-		t.Skip("opt-in read-only operator transcript")
+		t.Skip("opt-in audit against a local corpus; set NANO_CODEX_TWIN_TRANSCRIPT to run")
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {

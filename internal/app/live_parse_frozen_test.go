@@ -12,7 +12,7 @@ import (
 func TestFrozenClaudeSecondBlockThroughConvertedFile(t *testing.T) {
 	path := os.Getenv("NANO_CLAUDE_BLOCK_REPLAY_FIXTURE")
 	if path == "" {
-		t.Skip("set NANO_CLAUDE_BLOCK_REPLAY_FIXTURE to frozen receipt 00093-5cdfcac18395")
+		t.Skip("opt-in audit against a local corpus; set NANO_CLAUDE_BLOCK_REPLAY_FIXTURE to run")
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {

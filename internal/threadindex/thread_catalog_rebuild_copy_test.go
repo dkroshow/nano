@@ -22,7 +22,7 @@ import (
 func TestCopiedIndexParserRebuild(t *testing.T) {
 	path := os.Getenv("NANO_REBUILD_INDEX_COPY")
 	if path == "" {
-		t.Skip("set NANO_REBUILD_INDEX_COPY to the owned index-proof/rebuild.sqlite clone")
+		t.Skip("opt-in audit against a local corpus; set NANO_REBUILD_INDEX_COPY to run")
 	}
 	if !filepath.IsAbs(path) || filepath.Base(path) != "rebuild.sqlite" {
 		t.Fatal("expected an absolute owned rebuild.sqlite clone")

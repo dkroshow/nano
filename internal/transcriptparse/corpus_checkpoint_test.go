@@ -20,7 +20,7 @@ import (
 func TestClaudeLargestCorpusCheckpointBound(t *testing.T) {
 	path := os.Getenv("NANO_CHECKPOINT_FIXTURE")
 	if path == "" {
-		t.Skip("set NANO_CHECKPOINT_FIXTURE to the frozen sample-task largest-checkpoint source")
+		t.Skip("opt-in audit against a local corpus; set NANO_CHECKPOINT_FIXTURE to run")
 	}
 	if !filepath.IsAbs(path) {
 		t.Fatal("fixture path must be absolute")

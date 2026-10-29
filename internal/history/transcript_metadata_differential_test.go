@@ -33,7 +33,7 @@ type catalogDifferentialReceipt struct {
 func TestCatalogDifferentialCapture(t *testing.T) {
 	dir, report := os.Getenv("NANO_METADATA_DIFFERENTIAL_DIR"), os.Getenv("NANO_METADATA_DIFFERENTIAL_REPORT")
 	if dir == "" {
-		t.Skip("set NANO_METADATA_DIFFERENTIAL_DIR and NANO_METADATA_DIFFERENTIAL_REPORT for the frozen catalog audit")
+		t.Skip("opt-in audit against a local corpus; set NANO_METADATA_DIFFERENTIAL_DIR and NANO_METADATA_DIFFERENTIAL_REPORT to run")
 	}
 	if !filepath.IsAbs(dir) || !filepath.IsAbs(report) {
 		t.Fatal("absolute corpus directory and new report path required")

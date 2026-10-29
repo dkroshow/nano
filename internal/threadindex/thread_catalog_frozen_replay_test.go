@@ -19,7 +19,7 @@ import (
 func TestFrozenClaudeReplayThroughCatalogFileCutover(t *testing.T) {
 	sourcePath := os.Getenv("NANO_LATE_REPLAY_FIXTURE")
 	if sourcePath == "" {
-		t.Skip("set NANO_LATE_REPLAY_FIXTURE to frozen receipt 00245-0821da629feb")
+		t.Skip("opt-in audit against a local corpus; set NANO_LATE_REPLAY_FIXTURE to run")
 	}
 	raw, err := os.ReadFile(sourcePath)
 	if err != nil {
