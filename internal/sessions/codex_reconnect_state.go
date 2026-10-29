@@ -26,8 +26,8 @@ func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
 		return false
 	}
 	var attempts []prompts.SendAttempt
-	if sess.delivery.sendAttempts != nil {
-		attempts = sess.delivery.sendAttempts.ListThread("codex", sess.ThreadID())
+	if sess.delivery.sendJournal() != nil {
+		attempts = sess.delivery.sendJournal().ListThread("codex", sess.ThreadID())
 	}
 	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
@@ -47,7 +47,7 @@ func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
 			}
 		}
 	}
-	return sess.view.projection == nil || len(sess.view.projection.turnList()) == 0
+	return sess.view.liveProjection() == nil || len(sess.view.liveProjection().turnList()) == 0
 }
 
 func (sess *Runtime) codexZeroTurnNativeMissing(actionID string, err error) bool {

@@ -1043,7 +1043,7 @@ func (sess *State) finishCodexZeroTurnRecovery() {
 }
 
 func (sess *State) startCodexZeroTurnRecovery() {
-	if sess == nil || !ProviderLifecycleCapabilities(sess.identity.provider).ResumeWithoutTranscript || sess.runtime.codex == nil {
+	if sess == nil || !ProviderLifecycleCapabilities(sess.identity.provider).ResumeWithoutTranscript || sess.runtime.daemon() == nil {
 		return
 	}
 	sess.stateMu.Lock()
@@ -1075,7 +1075,7 @@ func (sess *State) runCodexZeroTurnRecovery() {
 			}
 		}
 		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}
-		err := runCodexHandshakeWithTimeout(context.Background(), sess.runtime, sess.runtime.codex, req, codexZeroTurnRecoveryAttemptTimeout)
+		err := runCodexHandshakeWithTimeout(context.Background(), sess.runtime, sess.runtime.daemon(), req, codexZeroTurnRecoveryAttemptTimeout)
 		if err == nil || !sess.codexZeroTurnRecoveryNeeded() {
 			return
 		}
@@ -1084,7 +1084,7 @@ func (sess *State) runCodexZeroTurnRecovery() {
 		sess.observeConnection(lifecycle.EventLinkLost)
 		var rpcErr *protocol.RPCError
 		if !errors.As(err, &rpcErr) {
-			sess.runtime.codex.requestSessionRecovery(sess.runtime)
+			sess.runtime.daemon().requestSessionRecovery(sess.runtime)
 			// Transport loss owns its replacement connection and ordinary resume.
 			// The shared success path below clears the zero-turn flag if it wins.
 			return
@@ -1100,7 +1100,7 @@ func (sess *State) runCodexZeroTurnRecovery() {
 	}
 	log.Printf("zero-turn recovery exhausted for thread %s (session %s); leaving session reconnecting",
 		sess.ThreadID(), sess.identity.id)
-	sess.runtime.codex.requestSessionRecovery(sess.runtime)
+	sess.runtime.daemon().requestSessionRecovery(sess.runtime)
 }
 
 // runCodexHandshake performs the thread/start or thread/resume call and
@@ -1240,12 +1240,12 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 		// Boot and recovery resumes both pass here, before readiness.
 		sess.stateOwner.recordRestartStep(restartAttached)
 	}
-	if method == "thread/resume" && sess.view.projection != nil {
+	if method == "thread/resume" && sess.view.liveProjection() != nil {
 		// Restore action-bearing rows before the lossy provider baseline so a
 		// returned user item promotes the same logical row instead of duplicating
 		// it. The outbox is scrubbed only after durable/provider confirmation.
 		sess.stateOwner.restoreSubmissionOutbox()
-		seedCodexResume(sess.view.projection, decoded)
+		seedCodexResume(sess.view.liveProjection(), decoded)
 		sess.delivery.observeCodexResume(decoded)
 		// A resume payload is explicitly lossy and can lag the active rollout.
 		// Settle the open turn from its saved copy; later catalog changes

@@ -208,7 +208,7 @@ func (sess *Delivery) respondInteraction(ctx context.Context, p interact.Pending
 		scope.NativeTurnID = &p.TurnID
 	}
 	request := model.Item{ID: p.ID, Scope: scope, Detail: append(json.RawMessage(nil), p.Params...)}
-	return sess.runtime.core.RespondInteraction(ctx, providers.InteractionResponse{
+	return sess.runtime.coordinator().RespondInteraction(ctx, providers.InteractionResponse{
 		Request: request, RequestID: p.ID, Method: p.Method, Params: p.Params,
 		Kind: providers.InteractionKind(p.Kind), Decision: decision, Answers: answers,
 	})
@@ -593,8 +593,8 @@ func (sess *State) addPendingInteraction(p interact.PendingInteraction) {
 	sess.interactions[p.ID] = p
 	sess.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
 	sess.stateMu.Unlock()
-	if sess.view.projection != nil {
-		sess.view.projection.upsertInteraction(p)
+	if sess.view.liveProjection() != nil {
+		sess.view.liveProjection().upsertInteraction(p)
 	}
 	sess.wire.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
 	sess.NotifyRuntime()
@@ -651,8 +651,8 @@ func (sess *State) takePendingInteraction(id string) (interact.PendingInteractio
 			sess.observeInteractionLocked(lifecycle.EventAnswered, "")
 		}
 	}
-	if ok && sess.view.projection != nil {
-		sess.view.projection.removeInteraction(id)
+	if ok && sess.view.liveProjection() != nil {
+		sess.view.liveProjection().removeInteraction(id)
 	}
 	return p, ok
 }
@@ -685,9 +685,9 @@ func (sess *State) drainPendingInteractions() []interact.PendingInteraction {
 	sess.interactions = nil
 	sess.observeInteractionLocked(lifecycle.EventAnswered, "")
 	sess.stateMu.Unlock()
-	if sess.view.projection != nil {
+	if sess.view.liveProjection() != nil {
 		for _, interaction := range out {
-			sess.view.projection.removeInteraction(interaction.ID)
+			sess.view.liveProjection().removeInteraction(interaction.ID)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })

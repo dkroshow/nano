@@ -20,7 +20,7 @@ import (
 
 // PublishProjectionRuntime publishes the current attachment runtime into the live projection.
 func (sess *State) PublishProjectionRuntime() {
-	if sess.view.projection == nil {
+	if sess.view.liveProjection() == nil {
 		return
 	}
 	sess.stateMu.Lock()
@@ -33,7 +33,7 @@ func (sess *State) PublishProjectionRuntime() {
 		CompactingSinceMs: sess.compactingSinceMsLocked(),
 		TokenUsage:        append(json.RawMessage(nil), sess.tokenUsage...),
 		LastError:         sess.lastError,
-		DeliveryExpiries:  sess.delivery.deliveryExpiries.count(sess.identity.provider),
+		DeliveryExpiries:  sess.delivery.expiryCounter().count(sess.identity.provider),
 	}
 	// The transcript's runtime upsert must not interpret hidden disconnected
 	// work as a completed turn. Only provider terminal evidence completes it.
@@ -41,7 +41,7 @@ func (sess *State) PublishProjectionRuntime() {
 		runtime.TurnID, runtime.TurnStartedAtMs = "", 0
 	}
 	sess.stateMu.Unlock()
-	sess.view.projection.updateRuntime(runtime)
+	sess.view.liveProjection().updateRuntime(runtime)
 }
 
 func (sess *View) applyLiveRuntimeWire(dir wire.Direction, line []byte, at time.Time) {
@@ -60,7 +60,7 @@ func (sess *State) setLiveTokenUsage(raw json.RawMessage) {
 	sess.stateMu.Lock()
 	sess.tokenUsage = append(json.RawMessage(nil), raw...)
 	sess.stateMu.Unlock()
-	sess.view.projection.updateTokenUsage(raw)
+	sess.view.liveProjection().updateTokenUsage(raw)
 }
 
 func (sess *State) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage) {
@@ -98,13 +98,13 @@ func (sess *State) setLiveError(message string) {
 	sess.stateMu.Lock()
 	sess.lastError = message
 	sess.stateMu.Unlock()
-	sess.view.projection.updateError(message)
+	sess.view.liveProjection().updateError(message)
 }
 
 // ReconcileDurableTurn settles the session's open turn from its saved status
 // when the live terminal event was lost. It reads only while a turn is open.
 func (sess *State) ReconcileDurableTurn(ctx context.Context) {
-	if sess == nil || sess.view.projection == nil || sess.savedTurn == nil {
+	if sess == nil || sess.view.liveProjection() == nil || sess.savedTurn == nil {
 		return
 	}
 	sess.stateMu.Lock()
@@ -114,12 +114,12 @@ func (sess *State) ReconcileDurableTurn(ctx context.Context) {
 	sessionTurnActive := sess.workActiveLocked()
 	sess.stateMu.Unlock()
 	if turnID == "" {
-		turnID = sess.view.projection.currentTurnID()
+		turnID = sess.view.liveProjection().currentTurnID()
 	}
 	if turnID == "" {
 		return
 	}
-	liveTurn, wireEvidenceAtMs, version, retained := sess.view.projection.retainedTurnEvidence(turnID)
+	liveTurn, wireEvidenceAtMs, version, retained := sess.view.liveProjection().retainedTurnEvidence(turnID)
 	if !retained {
 		return
 	}
@@ -141,7 +141,7 @@ func (sess *State) ReconcileDurableTurn(ctx context.Context) {
 	// and only if the turn did no live work while it was read.
 	sess.stateMu.Lock()
 	if sess.attachmentGeneration != generation || threadID != "" && sess.threadID != threadID ||
-		!sess.view.projection.completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
+		!sess.view.liveProjection().completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
 		sess.workActiveLocked() && sess.turnID != turnID {
 		sess.stateMu.Unlock()
 		return
@@ -223,10 +223,8 @@ func ReconcileSavedTranscript(ctx context.Context, sess *State) {
 type View struct {
 	identity   *attachmentIdentity
 	wire       *Wire
-	delivery   *Delivery
 	stateOwner *State
 	runtime    *Runtime
-	lifecycle  *Lifecycle
 	projection *LiveProjection // normalized live transcript, one per session
 	nameThread func(provider, nativeThreadID, name string)
 	// publishCreationName refreshes the derived name projection from the
@@ -251,3 +249,7 @@ type View struct {
 	// liveText is set for a provider switched to file-only transcripts.
 	liveText *LiveTextLoop
 }
+
+func (sess *View) liveProjection() *LiveProjection { return sess.projection }
+func (sess *View) skillsFor(cwd string) []byte     { return sess.skills.Current(cwd) }
+func (sess *View) invalidateMCP()                  { sess.mcp.Invalidate() }

@@ -40,7 +40,7 @@ func (sess *View) mcpServers(ctx context.Context) (*inspection.MCPInventory, err
 
 	var raw json.RawMessage
 	params := map[string]any{"threadId": sess.stateOwner.ThreadID(), "detail": mcpInventoryDetail}
-	if err := sess.runtime.codex.callForSession(ctx, sess.runtime, "mcpServerStatus/list", params, &raw); err != nil {
+	if err := sess.runtime.daemon().callForSession(ctx, sess.runtime, "mcpServerStatus/list", params, &raw); err != nil {
 		return nil, err
 	}
 	inventory := inspection.ProjectMCPInventory(raw)

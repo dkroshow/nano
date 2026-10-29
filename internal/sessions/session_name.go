@@ -42,23 +42,27 @@ func (sess *State) applyPendingName(nativeThreadID string) {
 	name := sess.pendingName
 	sess.pendingName = ""
 	sess.stateMu.Unlock()
+	sess.view.publishPendingName(sess.identity.provider, nativeThreadID, name)
+}
+
+func (sess *View) publishPendingName(provider, nativeThreadID, name string) {
 	if name != "" {
-		if sess.view.nameThread != nil {
-			sess.view.nameThread(sess.identity.provider, nativeThreadID, name)
+		if sess.nameThread != nil {
+			sess.nameThread(provider, nativeThreadID, name)
 		}
 		return
 	}
-	if sess.view.creationName == nil {
+	if sess.creationName == nil {
 		return
 	}
-	name = sess.view.creationName()
+	name = sess.creationName()
 	if name == "" {
 		return
 	}
-	if sess.view.publishCreationName != nil {
-		sess.view.publishCreationName(sess.identity.provider, nativeThreadID, name)
-	} else if sess.view.nameThread != nil {
+	if sess.publishCreationName != nil {
+		sess.publishCreationName(provider, nativeThreadID, name)
+	} else if sess.nameThread != nil {
 		// A narrow fallback for legacy embedders without a derived projection.
-		sess.view.nameThread(sess.identity.provider, nativeThreadID, name)
+		sess.nameThread(provider, nativeThreadID, name)
 	}
 }

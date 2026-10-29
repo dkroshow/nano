@@ -107,7 +107,7 @@ func New(cfg Config) *Session {
 	sess.wire.delivery = &sess.delivery
 	sess.wire.stateOwner = &sess.stateOwner
 	sess.wire.runtime = &sess.runtime
-	sess.wire.lifecycle = &sess.lifecycle
+
 	sess.wire.view = &sess.view
 	sess.delivery.identity = &sess.identity
 	sess.delivery.wire = &sess.wire
@@ -119,26 +119,26 @@ func New(cfg Config) *Session {
 	sess.stateOwner.wire = &sess.wire
 	sess.stateOwner.delivery = &sess.delivery
 	sess.stateOwner.runtime = &sess.runtime
-	sess.stateOwner.lifecycle = &sess.lifecycle
+
 	sess.stateOwner.view = &sess.view
 	sess.runtime.identity = &sess.identity
 	sess.runtime.wire = &sess.wire
 	sess.runtime.delivery = &sess.delivery
 	sess.runtime.stateOwner = &sess.stateOwner
-	sess.runtime.lifecycle = &sess.lifecycle
+
 	sess.runtime.view = &sess.view
 	sess.lifecycle.identity = &sess.identity
 	sess.lifecycle.wire = &sess.wire
 	sess.lifecycle.delivery = &sess.delivery
 	sess.lifecycle.stateOwner = &sess.stateOwner
 	sess.lifecycle.runtime = &sess.runtime
-	sess.lifecycle.view = &sess.view
+
 	sess.view.identity = &sess.identity
 	sess.view.wire = &sess.wire
-	sess.view.delivery = &sess.delivery
+
 	sess.view.stateOwner = &sess.stateOwner
 	sess.view.runtime = &sess.runtime
-	sess.view.lifecycle = &sess.lifecycle
+
 	return sess
 }
 
@@ -202,7 +202,7 @@ func (sess *Session) DidRegister() {
 }
 
 // WarmSkills begins the shared cwd read without waiting for a pane request.
-func (sess *State) WarmSkills() { sess.view.skills.Current(sess.cwd) }
+func (sess *State) WarmSkills() { sess.view.skillsFor(sess.cwd) }
 
 // RecordCreationPosture records the provider values of the admitted creation.
 func (sess *State) RecordCreationPosture(req ProviderRequest) {
@@ -212,17 +212,13 @@ func (sess *State) RecordCreationPosture(req ProviderRequest) {
 // DiscardSpawnResources releases an unpublished or refused attachment's resources.
 func (sess *Session) DiscardSpawnResources() {
 	sess.stateOwner.releaseCatalogSource()
-	if sess.wire.spool != nil {
-		if err := sess.wire.spool.close(true); err != nil {
-			log.Printf("close wire spool %s: %v", sess.identity.id, err)
-		}
-	}
+	sess.wire.closeSpool()
 }
 
 // AttachLiveText connects the view and its ordered parsed-evidence observer.
 func (sess *Session) AttachLiveText(view *LiveTextLoop) {
 	sess.view.liveText = view
-	sess.view.projection.setLiveText(view)
+	sess.view.liveProjection().setLiveText(view)
 }
 
 // LiveTextService returns the view service for application-owned pane reads.

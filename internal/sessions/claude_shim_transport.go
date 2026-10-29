@@ -370,8 +370,8 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 		if *res.TurnActive {
 			startedAtMs = stored.TurnStartedAtMs
 			turnID := ""
-			if sess.view.projection != nil {
-				turnID = sess.view.projection.ensureClaudeActiveTurn(startedAtMs)
+			if sess.view.liveProjection() != nil {
+				turnID = sess.view.liveProjection().ensureClaudeActiveTurn(startedAtMs)
 			}
 			sess.stateOwner.restoreTurnActive(true, turnID, startedAtMs)
 		} else {
@@ -631,8 +631,8 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 	// A spooled frame carries its own identity to the projection when it is
 	// applied (claudeFrameTurn). Only the acknowledgement of a live send, which
 	// has no spool sequence yet, sets it here, before its own send line.
-	if sess.view.projection != nil && event.Seq == 0 {
-		sess.view.projection.setClaudeProviderTurnID(event.ProviderTurnID)
+	if sess.view.liveProjection() != nil && event.Seq == 0 {
+		sess.view.liveProjection().setClaudeProviderTurnID(event.ProviderTurnID)
 	}
 	core := sess.coreSession()
 	if core == nil {
@@ -675,8 +675,8 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 		if finish.TurnID = turnID; turnID == "" {
 			return nil // a finish that names no turn finishes nothing
 		}
-		if sess.view.projection != nil {
-			finish.FinalMessageID = sess.view.projection.finalAgentItemID(turnID)
+		if sess.view.liveProjection() != nil {
+			finish.FinalMessageID = sess.view.liveProjection().finalAgentItemID(turnID)
 		}
 		// The result line is this turn's own usage evidence. A narrowed replay
 		// has no projection turn for the prompt to key live usage by.
@@ -708,10 +708,10 @@ func (sess *Runtime) claudeAnsweredTurn(line []byte) (turnID string, named bool)
 	if json.Unmarshal(line, &result) != nil || result.UserMessageUUID == "" {
 		return "", false
 	}
-	if sess.delivery.turns == nil || sess.identity.hostedThreadID == "" {
+	if sess.delivery.PromptStore() == nil || sess.identity.hostedThreadID == "" {
 		return "", true
 	}
-	records, err := sess.delivery.turns.ByEvent(context.Background(), sess.identity.hostedThreadID, result.UserMessageUUID)
+	records, err := sess.delivery.PromptStore().ByEvent(context.Background(), sess.identity.hostedThreadID, result.UserMessageUUID)
 	if err != nil {
 		log.Printf("Claude result on %s: its prompt is unreadable: %v", sess.identity.hostedThreadID, err)
 		return "", true

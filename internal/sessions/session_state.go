@@ -70,8 +70,8 @@ func (sess *Lifecycle) closeProvider(requireReady bool) error {
 	claude := sess.stateOwner.claudeHandle()
 	grok := sess.stateOwner.grokHandle()
 	switch {
-	case sess.runtime.codex != nil:
-		sess.runtime.codex.closeSession(sess.runtime)
+	case sess.runtime.daemon() != nil:
+		sess.runtime.daemon().closeSession(sess.runtime)
 	case claude != nil:
 		// Same rule as codex (closeSession): answer everything still parked
 		// before the transport goes away. A shim-hosted child outlives nano, so
@@ -86,11 +86,7 @@ func (sess *Lifecycle) closeProvider(requireReady bool) error {
 		sess.delivery.closeInteractions()
 		_ = grok.Close()
 	}
-	if sess.wire.spool != nil {
-		if err := sess.wire.spool.close(true); err != nil {
-			log.Printf("close wire spool %s: %v", sess.identity.id, err)
-		}
-	}
+	sess.wire.closeSpool()
 	if core := sess.runtime.coreSession(); core != nil {
 		core.Close()
 	}
@@ -157,8 +153,8 @@ func (sess *State) SummaryWith(view hostedstore.MetadataView, viewErr error, nee
 	}
 	sess.stateMu.Unlock()
 	summary.RunningTurnInput = sess.runtime.acceptsRunningTurnInput()
-	if sess.view.projection != nil {
-		summary.ThreadDiagnostics = sess.view.projection.ThreadDiagnosticsSnapshot()
+	if sess.view.liveProjection() != nil {
+		summary.ThreadDiagnostics = sess.view.liveProjection().ThreadDiagnosticsSnapshot()
 	}
 	summary.NeedsAttention = needsAttention
 	summary.FileTranscript = true
@@ -382,7 +378,6 @@ type State struct {
 	wire             *Wire
 	delivery         *Delivery
 	runtime          *Runtime
-	lifecycle        *Lifecycle
 	view             *View
 	presentationMode string
 	sidebarPlacement string
@@ -655,4 +650,12 @@ func (sess *State) repairability(threadID string, attachmentGeneration int64) st
 	detail := sess.repairableLocked(threadID, attachmentGeneration)
 	sess.stateMu.Unlock()
 	return detail
+}
+
+func (sess *State) catalogAvailable() bool { return sess.catalogSources != nil }
+func (sess *State) awaitAttachedCurrent(id string, freshness bool, progress func() bool, done <-chan struct{}) bool {
+	return sess.catalogSources.AwaitAttachedCurrent(id, freshness, progress, done)
+}
+func (sess *State) savedTurnReader() func(context.Context, string) (liveview.DurableTurnEvidence, bool) {
+	return sess.savedTurn
 }

@@ -560,14 +560,14 @@ func (sess *State) adoptResolvedClaudeNative(handle, native string, anchor hoste
 // status, a legacy or unmanaged row, an orphan journal row, another owner)
 // counts as possibly delivered, and an unreadable store is an error.
 func (sess *Runtime) provisionalMayHaveDelivered(ctx context.Context, handle string) (bool, error) {
-	if sess.delivery.turns == nil {
+	if sess.delivery.PromptStore() == nil {
 		return false, errors.New("prompt store unavailable")
 	}
-	records, err := sess.delivery.turns.List(ctx, sess.identity.hostedThreadID)
+	records, err := sess.delivery.PromptStore().List(ctx, sess.identity.hostedThreadID)
 	if err != nil {
 		return false, err
 	}
-	attempts, err := sess.delivery.turns.ListThreadAttempts(ctx, transcriptmodel.ProviderClaude, handle)
+	attempts, err := sess.delivery.PromptStore().ListThreadAttempts(ctx, transcriptmodel.ProviderClaude, handle)
 	if err != nil {
 		return false, err
 	}
@@ -930,19 +930,19 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir wire.Direction
 			gated.admitted()
 		}
 		switch {
-		case c.sess.view.projection == nil:
+		case c.sess.view.liveProjection() == nil:
 		case result:
 			// On every transport a result's turn is the prompt it names, never
 			// a frame tag or the prompt last sent.
 			id, named := c.sess.claudeAnsweredTurn(line)
-			c.sess.view.projection.setClaudeResultTurnID(id)
+			c.sess.view.liveProjection().setClaudeResultTurnID(id)
 			native := c.sess.stateOwner.ThreadID()
 			if c.noteAnswered(line) && !named && c.unnamedLoggedFor != native {
 				c.unnamedLoggedFor = native
 				log.Printf("Claude result on %s names no prompt while one Nano wrote is unanswered; it finishes no operation (logged once per transcript)", c.sess.identity.hostedThreadID)
 			}
 		case turn.known:
-			c.sess.view.projection.setClaudeFrameTurnID(turn.id)
+			c.sess.view.liveProjection().setClaudeFrameTurnID(turn.id)
 		}
 	}, dir, line, !replaying, replaying, at, seq)
 	if dir == protocol.Recv {
@@ -1326,11 +1326,11 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	succeeds := c.supersedes != "" && c.supersedes != sessionID
 	provisionalRetired := false
 	if succeeds {
-		err := c.sess.requireTransactionalTurnsLocked()
+		err := c.sess.delivery.requireTransactionalTurnsLocked()
 		if err != nil {
 			log.Printf("rebind transactional turns %s to %s: %v", c.supersedes, sessionID, err)
 		} else {
-			outbox, err := c.sess.delivery.turns.RebindNativeThread(context.Background(), c.sess.identity.hostedThreadID, transcriptmodel.Provider(c.sess.identity.provider), c.supersedes, sessionID)
+			outbox, err := c.sess.delivery.PromptStore().RebindNativeThread(context.Background(), c.sess.identity.hostedThreadID, transcriptmodel.Provider(c.sess.identity.provider), c.supersedes, sessionID)
 			if err != nil {
 				log.Printf("rebind transactional turns %s to %s: %v", c.supersedes, sessionID, err)
 			} else {
@@ -1469,8 +1469,8 @@ func (c *claudeSession) sendTurnWithEventID(text, eventID string, contexts ...co
 		c.unansweredMu.Unlock()
 	}
 	turnID := ""
-	if c.sess.view.projection != nil {
-		turnID = c.sess.view.projection.currentTurnID()
+	if c.sess.view.liveProjection() != nil {
+		turnID = c.sess.view.liveProjection().currentTurnID()
 	}
 	c.releaseTurnIngressLocked()
 	c.turnIngressMu.Unlock()

@@ -51,7 +51,7 @@ func (sess *State) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDa
 					sess.recordRestartFailure("closed")
 					return
 				}
-				if err := sess.runtime.resumeClaudeForSpawn(req); err != nil {
+				if err := sess.resumeClaudeForSpawn(req); err != nil {
 					if errors.Is(err, errSpawnSessionClosed) {
 						sess.recordRestartFailure("closed")
 						log.Printf("claude boot session %s was closed before its transport came up", sess.identity.id)
@@ -66,7 +66,7 @@ func (sess *State) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDa
 		}
 		if req.ExternalResumePosture {
 			go func() {
-				if err := sess.runtime.resumeClaudeForSpawn(req); err != nil {
+				if err := sess.resumeClaudeForSpawn(req); err != nil {
 					if errors.Is(err, errSpawnSessionClosed) {
 						return
 					}
@@ -75,7 +75,7 @@ func (sess *State) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDa
 			}()
 			return nil
 		}
-		return sess.runtime.resumeClaudeForSpawn(req)
+		return sess.resumeClaudeForSpawn(req)
 	}
 	go func() {
 		if _, err := startClaudeSession(sess.runtime, req); err != nil {
@@ -90,21 +90,21 @@ func (sess *State) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDa
 	return nil
 }
 
-func (sess *Runtime) resumeClaudeForSpawn(req ProviderRequest) error {
+func (sess *State) resumeClaudeForSpawn(req ProviderRequest) error {
 	// The manual path calls this synchronously because its rungs decide WHICH
 	// session the operator gets (attach, respawn, or refuse), and the refusal is
 	// the frozen 409 the frontend routes on. Boot runs the same work behind its
 	// already-registered shell because no HTTP caller is waiting for that choice.
-	_, err := resumeClaudeSession(sess, req)
+	_, err := resumeClaudeSession(sess.runtime, req)
 	if err == nil {
-		sess.stateOwner.recordRestartStep(restartAttached)
+		sess.recordRestartStep(restartAttached)
 	}
-	if errors.Is(err, errClaudeProvisionalGone) && sess.stateOwner.forgetAttachment != nil {
+	if errors.Is(err, errClaudeProvisionalGone) && sess.forgetAttachment != nil {
 		// The never-prompted thread's child is gone and it has no transcript
 		// to come back from. Retire the record: an empty conversation lost is
 		// nothing lost, while a surviving record would sit in the sidebar as
 		// a detached row that can never resume.
-		sess.stateOwner.forgetAttachment("claude", req.ThreadID)
+		sess.forgetAttachment("claude", req.ThreadID)
 	}
 	return err
 }

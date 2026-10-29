@@ -28,8 +28,8 @@ func (sess *State) volatileSummary(needsAttention bool) (Summary, bool) {
 	if summary.Status == StatusExited {
 		return Summary{}, false
 	}
-	if sess.view.projection != nil {
-		summary.ThreadDiagnostics = sess.view.projection.ThreadDiagnosticsSnapshot()
+	if sess.view.liveProjection() != nil {
+		summary.ThreadDiagnostics = sess.view.liveProjection().ThreadDiagnosticsSnapshot()
 	}
 	summary.NeedsAttention = needsAttention
 	return summary, true

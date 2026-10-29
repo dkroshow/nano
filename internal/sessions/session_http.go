@@ -306,7 +306,7 @@ func (sess *State) interruptTurn(ctx context.Context) (map[string]any, error) {
 		sess.stoppedTurns[turnID] = true
 		sess.stateMu.Unlock()
 	}
-	result, err := sess.runtime.core.Interrupt(ctx, providers.InterruptRequest{Scope: scope})
+	result, err := sess.runtime.coordinator().Interrupt(ctx, providers.InterruptRequest{Scope: scope})
 	if errors.Is(err, coresession.ErrInterruptNotAccepted) {
 		// The stop button must fail loudly rather than hang. Core kept the
 		// interrupt at the front of the session queue, so it still reaches the
@@ -399,7 +399,7 @@ func (sess *State) HandleTurnOptionsUpdate(w http.ResponseWriter, r *http.Reques
 					model = sess.model
 				}
 			}
-			if err := sess.runtime.codex.ValidateUltrafast(model, tier); err != nil {
+			if err := sess.runtime.daemon().ValidateUltrafast(model, tier); err != nil {
 				httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -490,7 +490,7 @@ func (sess *State) turnOptionsPayload() map[string]any {
 		"model":       sess.turnModel,
 		"effort":      sess.turnEffort,
 		"serviceTier": sess.turnServiceTier,
-		"summary":     sess.runtime.reasoningSummary,
+		"summary":     sess.runtime.summaryLevel(),
 		"threadModel": sess.model,
 	}
 }

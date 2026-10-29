@@ -18,5 +18,5 @@ func (sess *State) HandleSkills(w http.ResponseWriter, _ *http.Request) {
 	cwd := sess.cwd
 	sess.stateMu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(sess.view.skills.Current(cwd))
+	w.Write(sess.view.skillsFor(cwd))
 }

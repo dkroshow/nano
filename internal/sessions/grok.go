@@ -508,10 +508,10 @@ func runGrokHandshake(sess *Runtime, req ProviderRequest) error {
 // attempt sent, parked or of unknown outcome, proves nothing.
 func (sess *Runtime) grokNeverPrompted(ctx context.Context) bool {
 	native := sess.stateOwner.ThreadID()
-	if sess.delivery.turns == nil || sess.identity.metadata == nil || native == "" {
+	if sess.delivery.PromptStore() == nil || sess.identity.metadata == nil || native == "" {
 		return false
 	}
-	attempts, err := sess.delivery.turns.ListThreadAttempts(ctx, "grok", native)
+	attempts, err := sess.delivery.PromptStore().ListThreadAttempts(ctx, "grok", native)
 	if err != nil {
 		return false
 	}

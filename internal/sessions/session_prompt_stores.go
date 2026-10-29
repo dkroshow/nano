@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
@@ -108,3 +109,29 @@ func (sess *Delivery) DeliveryWasAttempted(actionID string, fallback Journal) bo
 	attempt, ok := fallback.Get(actionID)
 	return ok && (attempt.Status == sendAttemptSending || attempt.Status == sendAttemptAccepted)
 }
+
+// initializePromptStore runs once during Runtime coordinator construction.
+func (sess *Delivery) initializePromptStore(canonicalDB *sql.DB) error {
+	if sess.turns == nil && canonicalDB != nil {
+		promptStore, err := prompts.OpenStore(context.Background(), canonicalDB)
+		if err != nil {
+			return err
+		}
+		if _, err := promptStore.AdoptLegacy(context.Background()); err != nil {
+			return err
+		}
+		sess.turns = promptStore
+		if sess.queuedTurns != nil {
+			sess.queuedTurns.BindTransactionStore(promptStore)
+		}
+		if sess.sendAttempts != nil {
+			sess.sendAttempts.BindTransactionStore(promptStore)
+		}
+	}
+	return nil
+}
+
+func (sess *Delivery) queuedPromptStore() Queue         { return sess.queuedTurns }
+func (sess *Delivery) sendJournal() Journal             { return sess.sendAttempts }
+func (sess *Delivery) expiryCounter() *DeliveryExpiries { return sess.deliveryExpiries }
+func (sess *Delivery) memberWorkPending() bool          { return sess.owedHint.Load() }

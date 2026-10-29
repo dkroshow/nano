@@ -144,7 +144,7 @@ func codexRuntimeEvidence(sess *State, dir wire.Direction, line []byte, at time.
 		if json.Unmarshal(envelope.Params["turn"], &turn) == nil {
 			status := wire.String(turn["status"])
 			turnID := wire.String(turn["id"])
-			sess.view.projection.updateCompletedTurn(turnID, status, wire.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
+			sess.view.liveProjection().updateCompletedTurn(turnID, status, wire.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
 			if status == "interrupted" {
 				// A turn interrupted before it recorded its input saves nothing,
 				// so no saved commit may follow to settle a prompt it dropped.
@@ -328,7 +328,7 @@ func (sess *State) deliveredCodexEcho(actionID string, unbound bool) {
 // it, exactly as an on-time reply would have, so its saved row can settle it.
 func (sess *Runtime) bindCodexEcho(wait codexEchoWait) bool {
 	binding, _ := sess.submissionBinding(wait.scope, wait.turnID, SubmissionEventID(sess.identity.hostedThreadID, wait.actionID))
-	record, err := sess.delivery.turns.Accepted(context.Background(), prompts.Acceptance{
+	record, err := sess.delivery.PromptStore().Accepted(context.Background(), prompts.Acceptance{
 		ActionID: wait.actionID, ClaimToken: wait.claimToken, AttachmentEpoch: wait.claimEpoch, Binding: binding,
 	})
 	if err != nil {

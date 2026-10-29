@@ -187,8 +187,8 @@ func (sess *Delivery) observeGrokAgentTerminal(sessionID, promptID, status, code
 		}
 	}
 	itemID := ""
-	if status == agentTurnCompleted && sess.view.projection != nil {
-		itemID = sess.view.projection.finalAgentItemID(promptID)
+	if status == agentTurnCompleted && sess.view.liveProjection() != nil {
+		itemID = sess.view.liveProjection().finalAgentItemID(promptID)
 	}
 	if sess.identity.agentExecutions != nil {
 		if err := sess.identity.agentExecutions.MarkTurnTerminal(
@@ -209,7 +209,7 @@ func (sess *Delivery) observeClaudeAgentResult(line []byte) {
 	}
 	// The turn of the prompt the result names (claudeAnsweredTurn), on every
 	// transport; a result naming none completes no operation.
-	turnID := sess.view.projection.claudeResultTurn()
+	turnID := sess.view.liveProjection().claudeResultTurn()
 	status, detail := ClaudeProjectionTerminal(line)
 	var executionErr *threadvalues.ExecutionError
 	if status == agentTurnFailed {
@@ -221,8 +221,8 @@ func (sess *Delivery) observeClaudeAgentResult(line []byte) {
 		response = wire.String(message["result"])
 	}
 	itemID := ""
-	if sess.view.projection != nil {
-		itemID = sess.view.projection.finalAgentItemID(turnID)
+	if sess.view.liveProjection() != nil {
+		itemID = sess.view.liveProjection().finalAgentItemID(turnID)
 	}
 	if sess.finishesOnSavedProof("claude", turnID) {
 		// The result names an execution, not the saved consumption of the
@@ -266,10 +266,10 @@ const ClaudeMemberBatch = 32
 // missing, unknown or unreadable stays owed for the next trigger, and the
 // thread keeps its owed hint while any is read. The caller holds settleMu.
 func (sess *Delivery) memberStepLocked(ctx context.Context) {
-	if sess.identity.provider != string(model.ProviderClaude) || sess.turns == nil || sess.runtime.completedTurns == nil || sess.identity.agentExecutions == nil {
+	if sess.identity.provider != string(model.ProviderClaude) || sess.turns == nil || sess.runtime.completedTurnReader() == nil || sess.identity.agentExecutions == nil {
 		return
 	}
-	store, err := sess.runtime.completedTurns(ctx)
+	store, err := sess.runtime.completedTurnReader()(ctx)
 	if err != nil {
 		log.Printf("Claude members of %s: turn store unavailable: %v", sess.identity.hostedThreadID, err)
 		return
@@ -442,10 +442,10 @@ func (sess *Delivery) finishesOnSavedProof(provider, turnID string, openOperatio
 // fact arrives second calls this, so an operation missing either stays open.
 func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string) {
 	claude := sess.identity.provider == string(model.ProviderClaude)
-	if sess.identity.agentExecutions == nil || sess.turns == nil || sess.runtime.completedTurns == nil || !claude && !sess.runtime.acceptsRunningTurnInput() {
+	if sess.identity.agentExecutions == nil || sess.turns == nil || sess.runtime.completedTurnReader() == nil || !claude && !sess.runtime.acceptsRunningTurnInput() {
 		return
 	}
-	store, err := sess.runtime.completedTurns(ctx)
+	store, err := sess.runtime.completedTurnReader()(ctx)
 	if err != nil {
 		return
 	}
@@ -487,10 +487,10 @@ func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string)
 // race and rebuilds terminal state from a resumed projection after Nano
 // restarts. The saved-result reader supplies the answer.
 func (sess *Delivery) reconcileAgentOperations() {
-	if sess.identity.agentExecutions == nil || sess.identity.hostedThreadID == "" || sess.view.projection == nil {
+	if sess.identity.agentExecutions == nil || sess.identity.hostedThreadID == "" || sess.view.liveProjection() == nil {
 		return
 	}
-	for _, turn := range sess.view.projection.turnList() {
+	for _, turn := range sess.view.liveProjection().turnList() {
 		if turn.ID == "" || !CodexResumeTurnTerminal(turn.Status) {
 			continue
 		}
@@ -605,8 +605,8 @@ func (sess *Delivery) observeCodexResumedTurnFinish(nativeThreadID string, turn 
 		}
 	}
 	// The final message resume decoded wins; the projection may not hold it.
-	if finish.FinalMessageID = codexResumeFinalItemID(turn); finish.FinalMessageID == "" && sess.view.projection != nil {
-		finish.FinalMessageID = sess.view.projection.finalAgentItemID(turn.ID)
+	if finish.FinalMessageID = codexResumeFinalItemID(turn); finish.FinalMessageID == "" && sess.view.liveProjection() != nil {
+		finish.FinalMessageID = sess.view.liveProjection().finalAgentItemID(turn.ID)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

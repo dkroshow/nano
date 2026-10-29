@@ -42,7 +42,7 @@ func (sess *Lifecycle) StopDiscardAndRepair(parent context.Context, actionID str
 }
 
 func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
-	if sess == nil || sess.stateOwner.catalogSources == nil {
+	if sess == nil || sess.stateOwner.catalogAvailable() == false {
 		return TranscriptRepairResponse{}, errors.New("transcript repair is unavailable")
 	}
 	sess.transcriptRepairMu.Lock()
@@ -127,7 +127,7 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 	// A fresh pass proves the file current after the stop. The wait follows
 	// this session's hold, so the recheck after it, whatever the waits found,
 	// names a replaced attachment as stale.
-	caughtUp := sess.stateOwner.catalogSources.AwaitAttachedCurrent(sess.identity.id, true, nil, ctx.Done())
+	caughtUp := sess.stateOwner.awaitAttachedCurrent(sess.identity.id, true, nil, ctx.Done())
 	var settleErr error
 	if caughtUp {
 		settleErr = sess.settleSavedPrompts(ctx)
@@ -205,7 +205,6 @@ type Lifecycle struct {
 	delivery   *Delivery
 	stateOwner *State
 	runtime    *Runtime
-	view       *View
 	// transcriptRepairMu serializes the operator's stop/discard/rebuild action
 	// and retains its last idempotent response until the attachment changes.
 	transcriptRepairMu      sync.Mutex
