@@ -140,7 +140,7 @@ func TestSidebarFailedRuntimeRebuildKeepsWaitingCatalogRebuild(t *testing.T) {
 	s.updateMu.Unlock()
 	s.runtimeEvents.Notify(RuntimeDelta{Refresh: true})
 	deadline := time.Now().Add(time.Second)
-	for !strings.Contains(c.logs.String(), "sidebar runtime Rebuild:") {
+	for !strings.Contains(c.logs.String(), "sidebar runtime rebuild:") {
 		if time.Now().After(deadline) {
 			t.Fatal("runtime rebuild did not report the unavailable source")
 		}
