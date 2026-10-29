@@ -11,19 +11,21 @@ import (
 
 func TestLifecycleMovedFunctionsHaveNoProviderDispatch(t *testing.T) {
 	functions := map[string][]string{
-		"boot_reattach.go":                          {"reattachOnBoot"},
-		"../sessions/codex.go":                      {"startCodexZeroTurnRecovery"},
-		"../sessions/codex_reconnect_state.go":      {"codexZeroTurnNativeMissing"},
-		"../hosted/hosted_native_recovery_store.go": {"NativeRecoveryResumeGuard"},
-		"../sessions/session_projection.go":         {"applyLiveRuntimeWire"},
-		"../hosted/thread_reference_api.go":         {"resolveNativeThreadReference"},
-		"../sessions/turn_send.go":                  {"runTransactionalTurnSend", "drainQueuedTurn"},
-		"../sessions/session_wire.go":               {"recordWireAt"},
-		"../sessions/provider_lifecycle.go":         nil,
-		"../sessions/session_lifecycle.go":          nil,
-		"../sessions/runtime.go":                    {"NativeThreadIDProvisional", "codexTurnFromParams", "startedAtMs"},
-		"../sessions/session_registry.go":           {"SessionForThread"},
-		"runtime_overlay.go":                        nil,
+		"boot_reattach.go":                                {"reattachOnBoot"},
+		"../sessions/codex.go":                            {"startCodexZeroTurnRecovery"},
+		"../sessions/codex_reconnect_state.go":            {"codexZeroTurnNativeMissing"},
+		"../hosted/store/hosted_native_recovery_store.go": {"NativeRecoveryResumeGuard"},
+		"../sessions/session_projection.go":               {"applyLiveRuntimeWire"},
+		"../hosted/thread_reference_api.go":               {"resolveNativeThreadReference"},
+		"../sessions/turn_send.go":                        {"runTransactionalTurnSend", "drainQueuedTurn"},
+		"../sessions/session_wire.go":                     {"recordWireAt"},
+		"../sessions/provider_lifecycle.go":               nil,
+		"../sessions/session_lifecycle.go":                nil,
+		"../sessions/runtime.go":                          {"NativeThreadIDProvisional", "codexTurnFromParams", "startedAtMs"},
+		"../sessions/session_registry.go":                 {"SessionForThread"},
+		"../sidebar/runtime_projection.go":                nil,
+		"../sidebar/runtime_hub.go":                       nil,
+		"runtime_overlay.go":                              nil,
 	}
 	for path, names := range functions {
 		fset := token.NewFileSet()

@@ -11,7 +11,7 @@ import (
 // These are real merged saved rows from the exact keyed-block probe, with
 // neutral text. The prompt alias and final reply event remain exact.
 func TestGrokSavedSubmissionKeyAndLastChunk(t *testing.T) {
-	raw, err := os.ReadFile("../../app/testdata/live_text/grok-turns.saved.jsonl")
+	raw, err := os.ReadFile("../../sessions/testdata/live_text/grok-turns.saved.jsonl")
 	if err != nil {
 		t.Fatal(err)
 	}

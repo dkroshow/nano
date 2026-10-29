@@ -251,7 +251,7 @@ func TestParserBackfillLeavesUnscannedSourcesPending(t *testing.T) {
 
 func scopeFixtureLines(t *testing.T) [][]byte {
 	t.Helper()
-	data, err := os.ReadFile("../app/testdata/live_text/claude-sent-command.jsonl")
+	data, err := os.ReadFile("../sessions/testdata/live_text/claude-sent-command.jsonl")
 	if err != nil {
 		t.Fatal(err)
 	}
