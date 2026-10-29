@@ -9,6 +9,8 @@ import (
 
 	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testing.T) {
@@ -66,7 +68,7 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 // creationNameCatalogBeforeFact drains startup names work while the canonical
 // source is empty. Later names can reach the catalog only through the bind
 // publication under test, not a background refresh left over from setup.
-func creationNameCatalogBeforeFact(t *testing.T, source func(context.Context) ([]history.ThreadNameRecord, error)) *threadCatalogService {
+func creationNameCatalogBeforeFact(t *testing.T, source func(context.Context) ([]history.ThreadNameRecord, error)) *sidebar.CatalogSource {
 	t.Helper()
 	if records, err := source(context.Background()); err != nil || len(records) != 0 {
 		t.Fatalf("creation-name fixture must start without facts: %v, %v", records, err)
@@ -78,7 +80,7 @@ func creationNameCatalogBeforeFact(t *testing.T, source func(context.Context) ([
 	}
 	t.Cleanup(func() { store.Close() })
 	refreshed := make(chan struct{}, 1)
-	catalog, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
+	catalog, err := newThreadCatalogService(context.Background(), store, threadindex.Options{
 		Roots:     []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}},
 		NamesPath: filepath.Join(dir, "names.json"), DisableWatcher: true,
 		Logf: func(format string, args ...any) {
