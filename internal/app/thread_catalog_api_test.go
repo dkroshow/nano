@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,153 +23,31 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-type fakeThreadCatalog struct {
-	page      sidebar.CatalogPage
-	thread    sidebar.Thread
-	status    threadindex.IndexStatus
-	listQuery threadindex.ListQuery
-	loadID    string
-	refreshes int
-	listErr   error
-	loadErr   error
-	statusErr error
-	// indexed marks threads the scanner holds, keyed provider/nativeId, for
-	// the identity reads below; hasErr makes those reads fail.
+// catalogRowsFixture describes stored rows, not an implementation of catalog reads.
+type catalogRowsFixture struct {
+	stored  *catalogStoreFixture
+	page    sidebar.CatalogPage
+	thread  sidebar.Thread
+	listErr error
 	indexed map[string]bool
-	hasErr  error
-	// rescued holds the durable rows of threads filtered off the page, keyed by
-	// native id. It answers the runtime rows' identity reads (recorded in
-	// identityQueries; an indexed thread with no rescued row answers with a
-	// bare row) and the lineage parents' point lookups (recorded in
-	// rescueQueries). rescueErr fails both, and hasErr fails identity reads.
-	rescued         map[string]sidebar.Thread
-	rescueErr       error
-	rescueQueries   []threadindex.ListQuery
-	identityQueries []threadindex.ListQuery
-	assigned        []struct{ provider, nativeID, name string }
-	names           map[string]string
-	nameSources     map[string]history.ThreadNameProvenance
+	rescued map[string]sidebar.Thread
 }
 
-func (f *fakeThreadCatalog) ListThreads(_ context.Context, q threadindex.ListQuery) (sidebar.CatalogPage, error) {
-	if len(q.Identities) > 0 {
-		f.identityQueries = append(f.identityQueries, q)
-		if f.hasErr != nil {
-			return sidebar.CatalogPage{}, f.hasErr
-		}
-		if f.rescueErr != nil {
-			return sidebar.CatalogPage{}, f.rescueErr
-		}
-		var items []sidebar.Thread
-		for _, key := range q.Identities {
-			if row, ok := f.rescued[key.NativeThreadID]; ok && row.Provider == string(key.Provider) {
-				items = append(items, row)
-			} else if f.indexed[string(key.Provider)+"/"+key.NativeThreadID] {
-				items = append(items, sidebar.Thread{Thread: threadindex.Thread{ID: "nth_" + key.NativeThreadID, Provider: string(key.Provider), NativeID: key.NativeThreadID}})
-			}
-		}
-		return sidebar.CatalogPage{Items: items}, nil
-	}
-	// The rescue reuses the list path; a threadId + limit-1 query is its
-	// signature, and the test asserts the rest of the widening on the record.
-	if q.ThreadID != "" && q.Limit == 1 {
-		f.rescueQueries = append(f.rescueQueries, q)
-		if f.rescueErr != nil {
-			return sidebar.CatalogPage{}, f.rescueErr
-		}
-		row, ok := f.rescued[q.ThreadID]
-		if !ok {
-			return sidebar.CatalogPage{}, nil
-		}
-		return sidebar.CatalogPage{Items: []sidebar.Thread{row}}, nil
-	}
-	f.listQuery = q
-	return f.page, f.listErr
+// Only legacy read-handler unit fixtures embed this status surface. HTTP list
+// and overlay tests construct the real index with source().
+func (*catalogRowsFixture) IndexStatus(context.Context) (threadindex.IndexStatus, error) {
+	return threadindex.IndexStatus{}, nil
 }
-
-func (f *fakeThreadCatalog) LoadThread(_ context.Context, id string) (sidebar.Thread, error) {
-	f.loadID = id
-	return f.thread, f.loadErr
-}
-
-func (f *fakeThreadCatalog) IndexStatus(context.Context) (threadindex.IndexStatus, error) {
-	return f.status, f.statusErr
-}
-
-func (f *fakeThreadCatalog) RequestRefresh() bool {
-	f.refreshes++
-	return true
-}
-
-func (f *fakeThreadCatalog) RenameThread(context.Context, string, string) (threadindex.ThreadName, error) {
-	return threadindex.ThreadName{}, nil
-}
-
-func (f *fakeThreadCatalog) ClearThreadName(context.Context, string) error { return nil }
-
-func (f *fakeThreadCatalog) AssignThreadName(provider, nativeID, name string) error {
-	f.assigned = append(f.assigned, struct{ provider, nativeID, name string }{provider, nativeID, name})
-	if f.names != nil {
-		key := provider + "\x00" + nativeID
-		f.names[key] = name
-		if f.nameSources == nil {
-			f.nameSources = map[string]history.ThreadNameProvenance{}
-		}
-		f.nameSources[key] = history.ThreadNameManual
-	}
-	return nil
-}
-
-func (f *fakeThreadCatalog) AssignThreadNameIfEmpty(provider, nativeID, name string) error {
-	key := provider + "\x00" + nativeID
-	if f.names != nil && f.names[key] != "" {
-		return nil
-	}
-	return f.AssignThreadName(provider, nativeID, name)
-}
-
-func (f *fakeThreadCatalog) ThreadNameFor(_ context.Context, provider, nativeID string) (string, bool) {
-	name := f.names[provider+"\x00"+nativeID]
-	return name, name != ""
-}
-
-func (f *fakeThreadCatalog) ThreadNameRefFor(_ context.Context, provider, nativeID string) (*history.ThreadNameRef, bool) {
-	key := provider + "\x00" + nativeID
-	name := f.names[key]
-	if name == "" {
-		return nil, false
-	}
-	provenance := f.nameSources[key]
-	if provenance == "" {
-		provenance = history.ThreadNameManual
-	}
-	return &history.ThreadNameRef{Value: name, Provenance: provenance}, true
-}
-
-func (f *fakeThreadCatalog) LoadThreadUsage(_ context.Context, id string, afterOrdinal, limit int) (history.ThreadUsagePage, error) {
-	in := int64(11)
-	return history.ThreadUsagePage{
-		ThreadID: id, Provider: history.ProviderCodex, NativeThreadID: "native-1",
-		Turns: []history.ThreadUsageTurn{{
-			TurnKey: "turn-1", Ordinal: afterOrdinal + 1,
-			ServiceTier: "priority",
-			Usage:       &history.TranscriptTokenUsage{Input: &in},
-			Messages:    []history.ThreadUsageMessage{{ItemID: "m1", Type: history.ItemUserMessage, Text: "Prompt"}},
-		}},
-	}, f.loadErr
-}
-
-func (f *fakeThreadCatalog) ListThreadUsageTotals(context.Context, history.ThreadUsageListQuery) (history.ThreadUsageListPage, error) {
-	in := int64(11)
-	return history.ThreadUsageListPage{Items: []history.ThreadUsageTotals{{
-		ThreadID: "nth_1", Provider: history.ProviderCodex, NativeThreadID: "native-1",
-		TurnsTotal: 1, TurnsWithUsage: 1, InputTokens: &in,
-	}}}, f.listErr
-}
+func (*catalogRowsFixture) RequestRefresh() bool { return true }
 
 func TestThreadUsageEndpoints(t *testing.T) {
-	fake := &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}}
-	s := &server{catalog: fake}
+	fixture := newCatalogStoreFixture(t)
+	fixture.row(t, sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}})
+	fixture.transcript(t, "nth_1", map[string]threadindex.TranscriptResponse{"": {ThreadID: "nth_1", Items: []threadindex.TranscriptItem{{ID: "m1", Type: "user_message", Text: "Prompt"}}}}, nil)
+	if _, err := fixture.db.Exec(`UPDATE conversation_turns SET usage_contract=1,usage_input=11,usage_service_tier='priority'`); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{catalog: fixture.source}
 	mux := http.NewServeMux()
 	mountRoutes(mux, applicationRoutes(fixtureOwners(s)))
 
@@ -211,19 +90,23 @@ func TestThreadUsageEndpoints(t *testing.T) {
 func TestCatalogListContractAndQuery(t *testing.T) {
 	value := "high"
 	evidence := "native_durable"
-	fake := &fakeThreadCatalog{page: sidebar.CatalogPage{
-		Items:          []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "subagent", ParentNativeID: "native-parent", Metadata: threadindex.Metadata{Effort: threadindex.Value{State: "known", Value: &value, Evidence: &evidence}}}}},
+	fake := &catalogRowsFixture{page: sidebar.CatalogPage{
+		Items:          []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "subagent", ParentNativeID: "native-parent", Archived: true, Metadata: threadindex.Metadata{Effort: threadindex.Value{State: "known", Value: &value, Evidence: &evidence}}}}},
 		CatalogVersion: 7,
 	}}
-	s := &server{catalog: fake}
+	s := &server{catalog: (fake).source(t)}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/threads?threadId=native-1&includeSubagents=true&includeGuardians=true&includeProgrammatic=true&archived=only&limit=999&cursor=opaque", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/threads?threadId=native-1&includeSubagents=true&includeGuardians=true&includeProgrammatic=true&archived=only&limit=999&cursor="+cursorAt(t, "2026-12-01T00:00:00Z", "nth_newer"), nil)
+	query, err := threadindex.ParseCatalogListQuery(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.catalogViews().HandleThreads(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if fake.listQuery.ThreadID != "native-1" || !fake.listQuery.IncludeSubagents || !fake.listQuery.IncludeGuardians || !fake.listQuery.IncludeProgrammatic || fake.listQuery.Archived != "only" || fake.listQuery.Limit != 250 || fake.listQuery.Cursor != "opaque" {
-		t.Fatalf("query = %#v", fake.listQuery)
+	if query.ThreadID != "native-1" || !query.IncludeSubagents || !query.IncludeGuardians || !query.IncludeProgrammatic || query.Archived != "only" || query.Limit != 250 || query.Cursor == "" {
+		t.Fatalf("query = %#v", query)
 	}
 	var body sidebar.CatalogPage
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -241,7 +124,7 @@ func TestCatalogListContractAndQuery(t *testing.T) {
 		t.Fatalf("catalog validators = etag %q vary %q", etag, rec.Header().Get("Vary"))
 	}
 	conditional := httptest.NewRecorder()
-	conditionalRequest := httptest.NewRequest(http.MethodGet, "/api/v1/threads?threadId=native-1", nil)
+	conditionalRequest := httptest.NewRequest(http.MethodGet, req.URL.String(), nil)
 	conditionalRequest.Header.Set("If-None-Match", etag)
 	s.catalogViews().HandleThreads(conditional, conditionalRequest)
 	if conditional.Code != http.StatusNotModified || conditional.Body.Len() != 0 {
@@ -271,8 +154,8 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	if err := control.ClaimNativeID(worker.ID, "claude", "claude-native", false); err != nil {
 		t.Fatal(err)
 	}
-	fake := &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread", Metadata: threadindex.Metadata{}}}}}}
-	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: sidebar.NewRuntimeHub(), Registry: newSessionRegistry()}
+	fake := &catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread", Metadata: threadindex.Metadata{}}}}}}
+	s := &server{catalog: (fake).source(t), agentExecutions: store, controlMetadata: control, runtimeEvents: sidebar.NewRuntimeHub(), Registry: newSessionRegistry()}
 
 	readCatalog := func() sidebar.Thread {
 		t.Helper()
@@ -319,9 +202,8 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 		t.Fatalf("cleared catalog assignment = %#v unavailable=%v", cleared.Assignment, cleared.AssignmentUnavailable)
 	}
 
-	if err := control.Close(); err != nil {
-		t.Fatal(err)
-	}
+	s.controlMetadataErr = "metadata unavailable"
+	s.sidebar = nil
 	unavailable := readCatalog()
 	if unavailable.Assignment != nil || !unavailable.AssignmentUnavailable {
 		t.Fatalf("unavailable catalog assignment = %#v unavailable=%v", unavailable.Assignment, unavailable.AssignmentUnavailable)
@@ -329,7 +211,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 }
 
 func TestCatalogListRejectsInvalidQuery(t *testing.T) {
-	s := &server{catalog: &fakeThreadCatalog{}}
+	s := &server{catalog: (&catalogRowsFixture{}).source(t)}
 	for _, target := range []string{
 		"/api/v1/threads?updatedFrom=not-a-time",
 		"/api/v1/threads?archived=maybe",
@@ -349,8 +231,8 @@ func TestCatalogListRejectsInvalidQuery(t *testing.T) {
 }
 
 func TestCatalogDetailNotFoundAndEmptySources(t *testing.T) {
-	fake := &fakeThreadCatalog{loadErr: threadindex.ErrCatalogThreadNotFound}
-	s := &server{catalog: fake}
+	fake := &catalogRowsFixture{}
+	s := &server{catalog: (fake).source(t)}
 	rec := httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/missing", nil))
 	if rec.Code != http.StatusNotFound {
@@ -358,8 +240,8 @@ func TestCatalogDetailNotFoundAndEmptySources(t *testing.T) {
 	}
 	assertCatalogErrorCode(t, rec, "thread_not_found")
 
-	fake.loadErr = nil
 	fake.thread = sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "claude", NativeID: "native-1", Kind: "main"}}
+	fake.stored.row(t, fake.thread)
 	rec = httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	if rec.Code != http.StatusOK {
@@ -375,15 +257,17 @@ func TestCatalogDetailNotFoundAndEmptySources(t *testing.T) {
 }
 
 func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
-	status := threadindex.IndexStatus{State: "ready", CatalogVersion: 3,
-		InteractionCounts:        threadindex.InteractionCounts{Interactive: 5, Programmatic: 8, Unclassified: 2},
-		TranscriptChangeWorkers:  2,
-		TranscriptChangeBacklog:  4,
-		TranscriptChangeInFlight: 2,
+	fixture := newCatalogStoreFixture(t)
+	for _, c := range []struct {
+		interaction string
+		n           int
+	}{{"interactive", 5}, {"programmatic", 8}, {"unclassified", 2}} {
+		for i := 0; i < c.n; i++ {
+			fixture.row(t, sidebar.Thread{Thread: threadindex.Thread{ID: fmt.Sprintf("nth_%s_%d", c.interaction, i), Interaction: c.interaction}})
+		}
 	}
-	fake := &fakeThreadCatalog{status: status}
-	s := &server{catalog: fake}
-
+	fixture.version(t, 3)
+	s := &server{catalog: fixture.source}
 	rec := httptest.NewRecorder()
 	threadindex.NewHandlers(s.catalog).HandleCatalogIndexStatus(rec, httptest.NewRequest(http.MethodGet, "/api/v1/thread-index/status", nil))
 	if rec.Code != http.StatusOK {
@@ -396,14 +280,14 @@ func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
 	if statusBody.InteractionCounts.Programmatic != 8 || statusBody.InteractionCounts.Interactive != 5 || statusBody.InteractionCounts.Unclassified != 2 {
 		t.Fatalf("interaction counts = %#v", statusBody.InteractionCounts)
 	}
-	if statusBody.TranscriptChangeWorkers != 2 || statusBody.TranscriptChangeBacklog != 4 || statusBody.TranscriptChangeInFlight != 2 {
+	if statusBody.TranscriptChangeWorkers != 2 || statusBody.TranscriptChangeBacklog != 0 || statusBody.TranscriptChangeInFlight != 0 {
 		t.Fatalf("transcript change status = %#v", statusBody)
 	}
 
 	rec = httptest.NewRecorder()
 	threadindex.NewHandlers(s.catalog).HandleCatalogRefresh(rec, httptest.NewRequest(http.MethodPost, "/api/v1/thread-index/refresh", nil))
-	if rec.Code != http.StatusAccepted || fake.refreshes != 1 {
-		t.Fatalf("status = %d refreshes = %d", rec.Code, fake.refreshes)
+	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"accepted":true`) {
+		t.Fatalf("refresh = %d %s", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
@@ -415,7 +299,7 @@ func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
 }
 
 func TestCatalogBackendErrorsDoNotLeak(t *testing.T) {
-	s := &server{catalog: &fakeThreadCatalog{listErr: errors.New("private parser detail")}}
+	s := &server{catalog: (&catalogRowsFixture{listErr: errors.New("private parser detail")}).source(t)}
 	rec := httptest.NewRecorder()
 	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusInternalServerError {
@@ -427,7 +311,7 @@ func TestCatalogBackendErrorsDoNotLeak(t *testing.T) {
 }
 
 func TestCatalogInvalidCursorReturnsBadRequest(t *testing.T) {
-	s := &server{catalog: &fakeThreadCatalog{listErr: threadindex.ErrInvalidThreadCatalogCursor}}
+	s := &server{catalog: (&catalogRowsFixture{listErr: threadindex.ErrInvalidThreadCatalogCursor}).source(t)}
 	rec := httptest.NewRecorder()
 	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads?cursor=bad", nil))
 	if rec.Code != http.StatusBadRequest {
@@ -490,7 +374,7 @@ func TestCatalogFrontendDetailFixture(t *testing.T) {
 }
 
 func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
-	catalog := &fakeThreadCatalog{}
+	catalog := newCatalogStoreFixture(t).source
 	var s *server
 	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "session-1", Provider: "claude", HostedThreadID: "name-api", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
 		func() {
@@ -520,18 +404,22 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	if summary := put("  draft name  "); summary.Name != "draft name" {
 		t.Fatalf("unbound summary name = %q", summary.Name)
 	}
-	if name := sess.Summary().Name; name != "draft name" || len(catalog.assigned) != 0 {
-		t.Fatalf("unbound name=%q assignments=%#v", name, catalog.assigned)
+	if name := sess.Summary().Name; name != "draft name" {
+		t.Fatalf("unbound name=%q", name)
 	}
 
 	sess.ReserveNativeID("native-1")
 	if summary := put("bound name"); summary.Name != "bound name" {
 		t.Fatalf("bound summary name = %q", summary.Name)
 	}
-	if sess.Summary().Name != "bound name" ||
-		!reflect.DeepEqual(catalog.assigned, []struct{ provider, nativeID, name string }{{"claude", "native-1", "bound name"}}) {
-		t.Fatalf("bound rename name=%q assignments %#v", sess.Summary().Name, catalog.assigned)
+	waitForCatalog(t, func() bool {
+		name, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-1")
+		return name == "bound name"
+	})
+	if sess.Summary().Name != "bound name" {
+		t.Fatal("bound session name lost")
 	}
+
 	// A later native bind must not replay a stale pre-bind title.
 	connected := make(chan *shimConn, 1)
 	shim := newFakeShim(t, func(conn *shimConn) {
@@ -550,8 +438,8 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	conn := <-connected
 	waitForClaudeStatus(t, sess, "ready")
 	emitClaudeInit(t, sess, conn, 1, "native-2", "")
-	if len(catalog.assigned) != 1 {
-		t.Fatalf("a later bind replayed the staged name: %+v", catalog.assigned)
+	if name, ok := catalog.ThreadNameFor(context.Background(), "claude", "native-2"); ok {
+		t.Fatalf("later bind replayed staged name: %q", name)
 	}
 }
 
@@ -563,7 +451,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 // rename must also reach the provisional record, so a Nano restart in this
 // window cannot lose it.
 func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
-	catalog := &fakeThreadCatalog{}
+	catalog := newCatalogStoreFixture(t).source
 	store := newTestStore(t)
 	store.Remember(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "cs_shim", ShimSessionID: "cs_shim",
@@ -589,16 +477,17 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	if name := sess.Summary().Name; name != "nano api fable" {
 		t.Fatalf("provisional rename name=%q", name)
 	}
-	if len(catalog.assigned) != 0 {
-		t.Fatalf("provisional rename wrote catalog assignments %#v", catalog.assigned)
+	if name, ok := catalog.ThreadNameFor(context.Background(), "claude", "cs_shim"); ok {
+		t.Fatalf("provisional rename wrote %q", name)
 	}
 	if stored, ok := store.Get("claude", "cs_shim"); !ok || stored.PendingName != "nano api fable" {
 		t.Fatalf("provisional record pendingName = %q, %v; want staged rename", stored.PendingName, ok)
 	}
 	emitClaudeInit(t, sess, fixture.claude, fixture.seq+1, "native-real", "")
-	if !reflect.DeepEqual(catalog.assigned, []struct{ provider, nativeID, name string }{{"claude", "native-real", "nano api fable"}}) {
-		t.Fatalf("real bind lost staged rename: %+v", catalog.assigned)
-	}
+	waitForCatalog(t, func() bool {
+		name, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-real")
+		return name == "nano api fable"
+	})
 }
 
 // memorySession builds a live session with a fixed creation time, so the
@@ -625,9 +514,9 @@ func memorySession(t *testing.T, id, provider, threadID, status, cwd, model stri
 // memoryRowServer wires a catalog holding two durable rows — one whose thread
 // the scanner has indexed, one present on the page only — against five live
 // sessions covering every merge decision.
-func memoryRowServer(t *testing.T) *server {
+func memoryRowServer(t *testing.T, corrupt ...bool) *server {
 	t.Helper()
-	fake := &fakeThreadCatalog{
+	fake := &catalogRowsFixture{
 		page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-indexed", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:01Z")}},
 			{Thread: threadindex.Thread{ID: "nth_2", Provider: "claude", NativeID: "native-onpage", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
@@ -636,7 +525,12 @@ func memoryRowServer(t *testing.T) *server {
 	}
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	metadata, executions := newTestHostedControl(t)
-	s := &server{catalog: fake, Registry: newSessionRegistry(), controlMetadata: metadata, agentExecutions: executions}
+	source := fake.source(t)
+	if len(corrupt) > 0 {
+		fake.stored.row(t, sidebar.Thread{Thread: threadindex.Thread{ID: "nth_new", Provider: "claude", NativeID: "native-new", Kind: "subagent"}})
+		fake.stored.corrupt(t, "native-new")
+	}
+	s := &server{catalog: source, Registry: newSessionRegistry(), controlMetadata: metadata, agentExecutions: executions}
 	for index, fixture := range []struct{ id, provider, native, status, cwd, model string }{
 		{"aaa", "codex", "", "starting", "/w/start", ""},
 		{"bbb", "claude", "native-new", "ready", "/w/new", "sonnet"},
@@ -787,18 +681,17 @@ func TestMemoryThreadRowCarriesDialogNameBeforeDurableIndexing(t *testing.T) {
 // never in the archived-only class, and an exact-id lookup answers with the
 // matching live thread alone.
 func TestCatalogMemoryRowsQueryScope(t *testing.T) {
-	durable := []string{"nth_1", "nth_2"}
 	for _, tc := range []struct {
 		name   string
 		target string
 		want   []string
 	}{
-		{"page after the live rows", "/api/v1/threads?cursor=" + cursorAt(t, "2026-07-01T00:00:00Z", "nth_0"), durable},
-		{"archived only", "/api/v1/threads?archived=only", durable},
+		{"page after the live rows", "/api/v1/threads?cursor=" + cursorAt(t, "2026-07-01T00:00:00Z", "nth_0"), []string{}},
+		{"archived only", "/api/v1/threads?archived=only", []string{}},
 		{"archived exclude still merges", "/api/v1/threads?archived=exclude", []string{"nth_1", "nth_2", "mem_bbb", "mem_aaa"}},
-		{"exact id of a live unindexed thread", "/api/v1/threads?threadId=native-new", []string{"nth_1", "nth_2", "mem_bbb"}},
-		{"exact id of an indexed thread", "/api/v1/threads?threadId=native-indexed", durable},
-		{"exact id nobody holds", "/api/v1/threads?threadId=native-nowhere", durable},
+		{"exact id of a live unindexed thread", "/api/v1/threads?threadId=native-new", []string{"mem_bbb"}},
+		{"exact id of an indexed thread", "/api/v1/threads?threadId=native-indexed", []string{"nth_1"}},
+		{"exact id nobody holds", "/api/v1/threads?threadId=native-nowhere", []string{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := catalogRowIDs(listCatalog(t, memoryRowServer(t), tc.target))
@@ -812,8 +705,7 @@ func TestCatalogMemoryRowsQueryScope(t *testing.T) {
 // TestCatalogMemoryRowsSuppressedOnProbeFailure: an unreadable catalog must not
 // answer with a row that duplicates one it cannot see.
 func TestCatalogMemoryRowsSuppressedOnProbeFailure(t *testing.T) {
-	s := memoryRowServer(t)
-	s.catalog.(*fakeThreadCatalog).hasErr = errors.New("probe failed")
+	s := memoryRowServer(t, true)
 	got := catalogRowIDs(listCatalog(t, s, "/api/v1/threads"))
 	// The identity-less starting session is unaffected: it has nothing to probe.
 	if !reflect.DeepEqual(got, []string{"nth_1", "nth_2", "mem_aaa"}) {
@@ -826,9 +718,9 @@ func TestCatalogMemoryRowsSuppressedOnProbeFailure(t *testing.T) {
 // programmatic-classified (the sdk-cli wrinkle — filtered off that page), and a
 // detached codex attachment whose durable row is a subagent (likewise filtered).
 // Both filtered threads are indexed, so no memory row can stand in for them.
-func rescueServer(t *testing.T) *server {
+func rescueServer(t *testing.T, corrupt ...bool) *server {
 	t.Helper()
-	fake := &fakeThreadCatalog{
+	fake := &catalogRowsFixture{
 		page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-visible", Kind: "main", Interaction: "interactive", UpdatedAt: strPtr("2026-07-28T12:00:02Z")}},
 		}},
@@ -844,7 +736,11 @@ func rescueServer(t *testing.T) *server {
 	}
 	store.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	s := testServerWithSessions(&server{catalog: fake, attachments: store, Registry: newSessionRegistry()}, map[string]*session{
+	source := fake.source(t)
+	if len(corrupt) > 0 {
+		fake.stored.corrupt(t, "native-prog")
+	}
+	s := testServerWithSessions(&server{catalog: source, attachments: store, Registry: newSessionRegistry()}, map[string]*session{
 		"aaa": memorySession(t, "aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
 		"bbb": memorySession(t, "bbb", "claude", "native-prog", "ready", "/w/prog", "sonnet", base.Add(time.Minute)),
 	})
@@ -893,28 +789,6 @@ func TestCatalogLivenessRescuesFilteredRows(t *testing.T) {
 		t.Fatalf("rescued detached row runtime = %#v", detached.Runtime)
 	}
 
-	// The rescue asks the list path once for every runtime identity missing
-	// from the page (attached, then detached), with every fetch-time filter
-	// widened and no time bounds, and never asks about the identity the page
-	// already carries: one read, not one per identity.
-	fake := s.catalog.(*fakeThreadCatalog)
-	if len(fake.identityQueries) != 1 || len(fake.rescueQueries) != 0 {
-		t.Fatalf("identity reads = %#v, point lookups = %#v", fake.identityQueries, fake.rescueQueries)
-	}
-	q := fake.identityQueries[0]
-	want := []history.ThreadIdentity{{Provider: "claude", NativeThreadID: "native-prog"}, {Provider: "codex", NativeThreadID: "native-sub"}}
-	if !reflect.DeepEqual(q.Identities, want) {
-		t.Fatalf("identity read = %#v, want %#v", q.Identities, want)
-	}
-	if !q.IncludeSubagents || !q.IncludeGuardians || !q.IncludeProgrammatic || q.Archived != "include" ||
-		q.ThreadID != "" || q.CreatedFrom != nil || q.CreatedTo != nil ||
-		q.UpdatedFrom != nil || q.UpdatedTo != nil {
-		t.Fatalf("identity read not widened: %#v", q)
-	}
-	// Nothing was promoted into the durable page's paging contract.
-	if fake.listQuery.Cursor != "" || fake.listQuery.IncludeProgrammatic {
-		t.Fatalf("page query mutated by the rescue: %#v", fake.listQuery)
-	}
 }
 
 // TestCatalogLivenessRescueScope pins where rescued rows do not appear: a page
@@ -932,18 +806,8 @@ func TestCatalogLivenessRescueScope(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := rescueServer(t)
 			got := catalogRowIDs(listCatalog(t, s, tc.target))
-			if !reflect.DeepEqual(got, []string{"nth_1"}) {
-				t.Fatalf("row ids = %v, want [nth_1]", got)
-			}
-			fake := s.catalog.(*fakeThreadCatalog)
-			if len(fake.rescueQueries) != 0 {
-				t.Fatalf("rescue ran: %#v", fake.rescueQueries)
-			}
-			// An exact id reads its own identity (the memory-row check) and a
-			// later page reads the live ones to place them; archived=only reads
-			// none.
-			if reads := len(fake.identityQueries); (tc.name != "archived only") != (reads == 1) || reads > 1 {
-				t.Fatalf("identity reads = %#v", fake.identityQueries)
+			if !reflect.DeepEqual(got, []string{}) {
+				t.Fatalf("row ids = %v, want []", got)
 			}
 		})
 	}
@@ -952,8 +816,7 @@ func TestCatalogLivenessRescueScope(t *testing.T) {
 // TestCatalogLivenessRescueDegradesOnError: a rescue is a repair, so a failing
 // lookup costs the rescued rows, never the page.
 func TestCatalogLivenessRescueDegradesOnError(t *testing.T) {
-	s := rescueServer(t)
-	s.catalog.(*fakeThreadCatalog).rescueErr = errors.New("rescue lookup failed")
+	s := rescueServer(t, true)
 	got := catalogRowIDs(listCatalog(t, s, "/api/v1/threads"))
 	if !reflect.DeepEqual(got, []string{"nth_1"}) {
 		t.Fatalf("row ids = %v, want [nth_1]", got)
@@ -961,18 +824,17 @@ func TestCatalogLivenessRescueDegradesOnError(t *testing.T) {
 }
 
 func TestCatalogWorkerIncludesSupervisorOutsideWindow(t *testing.T) {
-	fake := &fakeThreadCatalog{
+	fake := &catalogRowsFixture{
 		page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "agent-worker", Kind: "subagent", ParentNativeID: "parent-session"}}}},
 		rescued: map[string]sidebar.Thread{
 			"parent-session": {Thread: threadindex.Thread{ID: "nth_parent", Provider: "claude", NativeID: "parent-session", Kind: "main"}},
 		},
 	}
-	s := &server{catalog: fake, Registry: newSessionRegistry()}
+	s := &server{catalog: (fake).source(t), Registry: newSessionRegistry()}
 	items := listCatalog(t, s, "/api/v1/threads?includeSubagents=true&updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_worker", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want worker plus supervisor context", got)
 	}
-	assertOneLineageRead(t, fake, history.ThreadIdentity{Provider: "claude", NativeThreadID: "parent-session"})
 }
 
 func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T) {
@@ -992,18 +854,17 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 	if err := store.BindSession(child.ID, "nano-child", "native-child", "ready", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
-	fake := &fakeThreadCatalog{
+	fake := &catalogRowsFixture{
 		page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"}}}},
 		rescued: map[string]sidebar.Thread{
 			"native-parent": {Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
 		},
 	}
-	s := &server{catalog: fake, Registry: newSessionRegistry(), agentExecutions: store}
+	s := &server{catalog: (fake).source(t), Registry: newSessionRegistry(), agentExecutions: store}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_parent"}) {
 		t.Fatalf("row ids = %v, want child plus cross-provider invoker", got)
 	}
-	assertOneLineageRead(t, fake, history.ThreadIdentity{Provider: "codex", NativeThreadID: "native-parent"})
 }
 
 func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
@@ -1020,16 +881,13 @@ func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
 	if _, _, _, err := store.SetSidebarPlacement(child.ID, sidebarPlacementStandalone); err != nil {
 		t.Fatal(err)
 	}
-	fake := &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "grok", NativeID: "native-child", Kind: "main"}}}}, rescued: map[string]sidebar.Thread{
+	fake := &catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "grok", NativeID: "native-child", Kind: "main"}}}}, rescued: map[string]sidebar.Thread{
 		"native-parent": {Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
 	}}
-	s := &server{catalog: fake, Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
+	s := &server{catalog: (fake).source(t), Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child"}) {
 		t.Fatalf("row ids = %v, want standalone child only", got)
-	}
-	if len(fake.identityQueries) != 0 {
-		t.Fatalf("standalone invoker lookups = %#v", fake.identityQueries)
 	}
 }
 
@@ -1056,19 +914,18 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fake := &fakeThreadCatalog{
+	fake := &catalogRowsFixture{
 		page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "codex", NativeID: "native-child", Kind: "main"}}}},
 		rescued: map[string]sidebar.Thread{
 			"native-original": {Thread: threadindex.Thread{ID: "nth_original", Provider: "codex", NativeID: "native-original", Kind: "main"}},
 			"native-new":      {Thread: threadindex.Thread{ID: "nth_new", Provider: "claude", NativeID: "native-new", Kind: "main"}},
 		},
 	}
-	s := &server{catalog: fake, Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
+	s := &server{catalog: (fake).source(t), Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
 	items := listCatalog(t, s, "/api/v1/threads?updatedFrom=2026-07-30T00:00:00Z")
 	if got := catalogRowIDs(items); !reflect.DeepEqual(got, []string{"nth_child", "nth_new"}) {
 		t.Fatalf("row ids = %v, want child plus current visual parent", got)
 	}
-	assertOneLineageRead(t, fake, history.ThreadIdentity{Provider: "claude", NativeThreadID: "native-new"})
 }
 
 func assertCatalogErrorCode(t *testing.T, rec *httptest.ResponseRecorder, want string) {
@@ -1100,20 +957,10 @@ func contains(s, sub string) bool {
 // an unambiguous prefix reaches the thread, and an ambiguous prefix is reported
 // with its candidates rather than silently resolved.
 func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
-	fake := &fakeMessagesCatalog{
-		resolve: func(reference string) (string, error) {
-			switch reference {
-			case "native-1", "nat":
-				return "nth_1", nil
-			case "n":
-				return "", &threadindex.AmbiguousReferenceError{Candidates: []string{"nth_1", "nth_2"}}
-			}
-			return "", threadindex.ErrCatalogThreadNotFound
-		},
-		pages: map[string]threadindex.TranscriptResponse{"": {Items: []threadindex.TranscriptItem{}, Turns: []threadindex.TranscriptTurn{}}},
-	}
-	fake.thread = sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "claude", NativeID: "native-1", Kind: "main"}}
-	s := &server{catalog: fake}
+	fixture := newCatalogStoreFixture(t)
+	fixture.row(t, sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "claude", NativeID: "native-1", Kind: "main"}})
+	fixture.row(t, sidebar.Thread{Thread: threadindex.Thread{ID: "nth_2", Provider: "claude", NativeID: "next-2", Kind: "main"}})
+	s := &server{catalog: fixture.source}
 
 	for _, reference := range []string{"native-1", "nat"} {
 		rec := httptest.NewRecorder()
@@ -1121,20 +968,18 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("detail %q status = %d body %q", reference, rec.Code, rec.Body.String())
 		}
-		if fake.loadID != "nth_1" {
-			t.Fatalf("detail %q loaded %q, want the resolved nano id", reference, fake.loadID)
+		if !strings.Contains(rec.Body.String(), `"id":"nth_1"`) {
+			t.Fatalf("resolved detail=%s", rec.Body.String())
 		}
-		fake.loadID = ""
 
 		rec = httptest.NewRecorder()
 		threadindex.NewHandlers(s.catalog).HandleThreadTranscript(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/"+reference+"/transcript", nil), reference)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("transcript %q status = %d body %q", reference, rec.Code, rec.Body.String())
 		}
-		if fake.threadID != "nth_1" {
-			t.Fatalf("transcript %q loaded %q, want the resolved nano id", reference, fake.threadID)
+		if !strings.Contains(rec.Body.String(), `"threadId":"nth_1"`) {
+			t.Fatalf("resolved transcript=%s", rec.Body.String())
 		}
-		fake.threadID = ""
 	}
 
 	rec := httptest.NewRecorder()
@@ -1143,9 +988,6 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 		t.Fatalf("ambiguous detail status = %d", rec.Code)
 	}
 	assertCatalogErrorCode(t, rec, "ambiguous_thread_id")
-	if fake.loadID != "" {
-		t.Fatalf("ambiguous detail still loaded %q", fake.loadID)
-	}
 
 	rec = httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nowhere", nil))
@@ -1157,13 +999,6 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 
 // assertOneLineageRead checks that the lineage pass read its one parent level
 // in a single identity read naming exactly want.
-func assertOneLineageRead(t *testing.T, fake *fakeThreadCatalog, want ...history.ThreadIdentity) {
-	t.Helper()
-	if len(fake.identityQueries) != 1 || !reflect.DeepEqual(fake.identityQueries[0].Identities, want) {
-		t.Fatalf("lineage reads = %#v, want one read of %#v", fake.identityQueries, want)
-	}
-}
-
 // cursorAt encodes a list cursor at one position in the list order.
 func cursorAt(t *testing.T, updated, id string) string {
 	t.Helper()

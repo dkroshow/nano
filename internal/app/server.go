@@ -36,7 +36,7 @@ type server struct {
 	defaults           config.SessionDefaults
 	codex              *sessionruntime.CodexDaemon
 	spoolDir           string
-	catalog            sidebar.CatalogReader
+	catalog            *sidebar.CatalogSource
 
 	// catalogRefresh is the thread catalog's nonblocking hint for one known
 	// native file, handed to each spawned session so hosted-session wire

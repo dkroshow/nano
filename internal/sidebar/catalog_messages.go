@@ -11,7 +11,7 @@ import (
 // HandleMessages serves a native or hosted transcript tail.
 func (s *CatalogViews) HandleMessages(w http.ResponseWriter, r *http.Request, rawID string) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	if _, ok := s.Catalog.(threadindex.TranscriptCatalog); s.Catalog == nil || !ok {
+	if s.Catalog == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
 	}

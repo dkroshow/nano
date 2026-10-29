@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -51,14 +52,14 @@ func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing
 // while a session matches provider+nativeId, absent when detached and when the
 // runtime source is nil.
 func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
-	fake := &fakeThreadCatalog{
+	fake := &catalogRowsFixture{
 		page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:01Z")}},
 			{Thread: threadindex.Thread{ID: "nth_2", Provider: "claude", NativeID: "native-idle", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		}},
 		thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"}},
 	}
-	s := &server{catalog: fake, Registry: newSessionRegistry()}
+	s := &server{catalog: (fake).source(t), Registry: newSessionRegistry()}
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "native-live", "model")
 	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"inProgress"}}}`))
 	waitReconnectCondition(t, func() bool { return fixture.session.Summary().TurnActive })
@@ -204,7 +205,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 	attachments := newTestStore(t)
 	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	s := &server{
-		catalog:     &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}}},
+		catalog:     (&catalogRowsFixture{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}}}).source(t),
 		attachments: attachments,
 		Registry:    newSessionRegistry(),
 	}
@@ -245,10 +246,9 @@ func TestAttachmentDismissNudgesRuntime(t *testing.T) {
 // catalog events keep their version-only payload.
 func TestRuntimeEventsOnStream(t *testing.T) {
 	fakeCodex := newFakeAppServer(t)
-	hub := newCatalogHub()
-	catalogFixture := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: hub, version: 5}
+	catalogFixture := &catalogEventFixture{catalogRowsFixture: &catalogRowsFixture{}, version: 5}
 	s := newResumeTestServer(t, fakeCodex.WSURL())
-	s.catalog = catalogFixture
+	s.catalog = catalogFixture.source(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(s.catalogViews().HandleEvents))
 	defer srv.Close()
@@ -305,9 +305,38 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	})
 
 	// An ordinary catalog update carries the row that needs repair.
-	hub.Notify(catalog.Change{Version: 6, ThreadIDs: []string{"nth_changed"}})
-	if event, data := readSSEEvent(t, reader); event != "catalog" || data != `{"catalogVersion":6,"threadIds":["nth_changed"]}` {
-		t.Fatalf("catalog event = %q %q, want named row repair", event, data)
+	if err := catalogFixture.stored.source.AssignThreadName("codex", "native-changed", "renamed"); err != nil {
+		t.Fatal(err)
+	}
+	if event, data := readSSEEvent(t, reader); event != "catalog" || data != `{"catalogVersion":6,"refresh":true}` {
+		t.Fatalf("name refresh event = %q %q", event, data)
+	}
+	// A newly indexed provider file publishes the changed row on the same stream.
+	changedPath := filepath.Join(catalogFixture.stored.root.Root.Path, "rollout-native-stream.jsonl")
+	writeSettlementFile(t, changedPath, `{"type":"session_meta","payload":{"id":"native-stream","timestamp":"2026-07-31T12:00:00Z","cwd":"/work"}}
+{"type":"event_msg","payload":{"type":"user_message","message":"stream fixture"}}
+`)
+	catalogFixture.stored.source.RequestRefresh()
+	var changedID string
+	waitForCatalog(t, func() bool {
+		id, err := catalogFixture.stored.source.ResolveThreadReference(context.Background(), "native-stream")
+		changedID = id
+		return err == nil
+	})
+	for {
+		event, data := readSSEEvent(t, reader)
+		if event != "catalog" {
+			continue
+		}
+		var change struct {
+			ThreadIDs []string `json:"threadIds"`
+		}
+		if err := json.Unmarshal([]byte(data), &change); err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(change.ThreadIDs, changedID) {
+			break
+		}
 	}
 
 	// Unbind: closing the session nudges the stream.

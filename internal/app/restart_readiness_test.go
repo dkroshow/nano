@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -28,7 +30,7 @@ type restartWindow struct {
 	fake     *fakeAppServer
 	rec      hostedstore.Attachment
 	catalog  *sidebar.CatalogSource
-	attached *pausedAttachedCatalog
+	attached *restartAttachedCatalog
 	t        *testing.T
 	path     string
 	// failReads makes every catalog read of the rollout fail; failedReads
@@ -38,17 +40,30 @@ type restartWindow struct {
 	failSavedRows atomic.Bool
 }
 
-// failingSavedRows is the catalog with a settlement read that can fail.
-type failingSavedRows struct {
-	*sidebar.CatalogSource
-	fail *atomic.Bool
+// restartAttachedCatalog installs a failing saved-prompt reader at registration,
+// before the provider begins. The real catalog still owns every successful read.
+type restartAttachedCatalog struct {
+	*pausedAttachedCatalog
+	window     *restartWindow
+	configured sync.Map
 }
 
-func (c failingSavedRows) LoadSavedUserRows(ctx context.Context, threadID string, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-	if c.fail.Load() {
-		return nil, errors.New("saved rows unreadable")
+func (c *restartAttachedCatalog) BindAttachedSource(owner, provider, nativeID, cwd, known string, background bool) {
+	if sess := c.window.s.LookupSession(owner); sess != nil {
+		if _, already := c.configured.LoadOrStore(owner, true); !already {
+			index := c.CatalogSource
+			sess.ConfigureSavedReaders(func(ctx context.Context, turn string) (liveview.DurableTurnEvidence, bool) {
+				return index.SavedTurnEvidence(ctx, sess.Provider(), sess.ThreadID(), turn)
+			},
+				func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
+					if c.window.failSavedRows.Load() {
+						return nil, errors.New("saved rows unreadable")
+					}
+					return index.SavedPromptRows(ctx, sess.ThreadID(), keys)
+				}, index.SavedPromptRows, index.SavedTurnFinal, func(string) {})
+		}
 	}
-	return c.CatalogSource.LoadSavedUserRows(ctx, threadID, keys)
+	c.CatalogSource.BindAttachedSource(owner, provider, nativeID, cwd, known, background)
 }
 
 func newRestartWindow(t *testing.T) *restartWindow {
@@ -82,10 +97,10 @@ func newRestartWindow(t *testing.T) *restartWindow {
 		id, err := w.catalog.ResolveThreadReference(ctx, rec.NativeThreadID)
 		return err == nil && id != ""
 	})
-	w.attached = &pausedAttachedCatalog{CatalogSource: w.catalog}
+	w.attached = &restartAttachedCatalog{pausedAttachedCatalog: &pausedAttachedCatalog{CatalogSource: w.catalog}, window: w}
 	w.failReads = catalogReadFailure{t: t, path: w.path, catalog: w.catalog}
 	t.Cleanup(func() { w.failReads.Store(false) })
-	s.catalog, s.catalogSources = failingSavedRows{w.catalog, &w.failSavedRows}, w.attached
+	s.catalog, s.catalogSources = w.catalog, w.attached
 	w.catalog.SetTranscriptChanged(fixtureOwners(s).attachmentCoordinator().ConfirmDurableThread)
 	store.Remember(rec)
 	seedBootAttachments(t, s)

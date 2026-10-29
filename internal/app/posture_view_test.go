@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -185,17 +184,6 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 	}
 }
 
-// namedThreadCatalog adds the optional name-reader surface to the fake.
-type namedThreadCatalog struct {
-	fakeThreadCatalog
-	names map[string]string
-}
-
-func (c *namedThreadCatalog) ThreadNameFor(_ context.Context, provider, nativeID string) (string, bool) {
-	name, ok := c.names[provider+":"+nativeID]
-	return name, ok
-}
-
 // A resumed thread picks its durable name back up at spawn, so the boot/click
 // summary carries it without waiting for the catalog overlay.
 func TestResumeHydratesDurableName(t *testing.T) {
@@ -208,9 +196,7 @@ func TestResumeHydratesDurableName(t *testing.T) {
 		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
-	s.catalog = &namedThreadCatalog{
-		names: map[string]string{"claude:" + claudeResumeThreadID: "overnight refactor"},
-	}
+	s.catalog = fixtureNamedCatalog(t, "claude", claudeResumeThreadID, "overnight refactor")
 	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))

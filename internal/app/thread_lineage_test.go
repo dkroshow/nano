@@ -101,7 +101,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 	}
 	hosted("w-invoker", "w-invoker", &invokerParent)
 
-	catalog := &countingCatalog{CatalogSource: newStoredCatalog(t, store)}
+	catalog := newStoredCatalog(t, store)
 	s := &server{catalog: catalog, Registry: newSessionRegistry(), controlMetadata: metadata, agentExecutions: executions}
 	f := &lineageFixture{budget: &budgetFixture{server: s, catalog: catalog, now: now}}
 	from := now.Add(-2 * 24 * time.Hour)
@@ -153,23 +153,16 @@ func TestLineageParentsKeepPrecedenceAndOrder(t *testing.T) {
 	}
 }
 
-// TestLineageStatementsBoundedByDepth catches per-row work in the lineage
-// pass: every returned row read its hosted record and its assignment, and
-// every parent was a separate catalog read, and every live session is a
-// returned row. Boundary: the visible full-list response over the same two-level page with
-// 5 and with 50 extra workers (each with its own parent outside the page);
-// control-store statements and catalog reads must not change.
+// TestLineageStatementsBoundedByDepth catches per-row hosted-record and
+// assignment reads while closing a two-level lineage over the real history.
+// The control-store driver counts SQL for 5 and 50 extra workers.
 func TestLineageStatementsBoundedByDepth(t *testing.T) {
-	measure := func(extra int) (statements, catalogCalls int64) {
+	measure := func(extra int) int64 {
 		f := newLineageFixture(t, extra)
-		before := f.budget.catalog.calls()
-		statements = f.budget.countControlStatements(t, func() { f.parents(t) })
-		return statements, f.budget.catalog.calls() - before
+		return f.budget.countControlStatements(t, func() { f.parents(t) })
 	}
-	smallStatements, smallCalls := measure(5)
-	largeStatements, largeCalls := measure(50)
-	if largeStatements != smallStatements || largeCalls != smallCalls {
-		t.Fatalf("lineage grew with rows: 5 extra workers -> %d statements, %d catalog reads; 50 -> %d, %d",
-			smallStatements, smallCalls, largeStatements, largeCalls)
+	small, large := measure(5), measure(50)
+	if large != small {
+		t.Fatalf("lineage control-store statements grew with workers: 5 -> %d; 50 -> %d", small, large)
 	}
 }

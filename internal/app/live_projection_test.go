@@ -63,7 +63,7 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: turnID, Status: "completed", CompletedAtMs: started + 1}}, turnID == "turn-1"
 	}, nil, nil, nil, nil)
-	s := testServerWithSessions(&server{catalog: &fakeMessagesCatalog{}, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
+	s := testServerWithSessions(&server{catalog: newCatalogStoreFixture(t).source, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 	fixtureOwners(
 
 		// Transcript notifications use the catalog's nth_ identity, while hosted

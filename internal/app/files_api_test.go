@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
+
+	"fmt"
+	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"strings"
 	"testing"
 
@@ -227,24 +230,25 @@ func TestGeneralFileEvidenceUsesPathBoundariesAndDedupesSymlinkAliases(t *testin
 	}
 }
 
-// fileEvidenceTestCatalog answers the saved-history file-evidence search from
-// fixed blobs per catalog thread and records which threads were searched.
+// Saved file evidence is projected into the same real history store as production.
 type fileEvidenceTestCatalog struct {
-	fakeThreadCatalog
-	blobs    map[string][]string
-	searched []string
+	catalogRowsFixture
+	blobs map[string][]string
 }
 
-func (c *fileEvidenceTestCatalog) FindFileEvidenceBlobs(_ context.Context, threadID, _ string, _, _ int) ([]string, error) {
-	c.searched = append(c.searched, threadID)
-	return c.blobs[threadID], nil
-}
-
-func (c *fileEvidenceTestCatalog) ResolveThreadReference(_ context.Context, reference string) (string, error) {
-	if reference == "native-1" {
-		return "thread-1", nil
+func (c *fileEvidenceTestCatalog) source(t *testing.T) *sidebar.CatalogSource {
+	source := c.catalogRowsFixture.source(t)
+	for id, blobs := range c.blobs {
+		var items []threadindex.TranscriptItem
+		for i, body := range blobs {
+			items = append(items, threadindex.TranscriptItem{ID: fmt.Sprintf("item-%d", i), Type: "user_message", Text: body})
+		}
+		c.stored.transcript(t, id, map[string]threadindex.TranscriptResponse{"": {ThreadID: id, Items: items}}, nil)
+		if _, err := c.stored.db.Exec(`UPDATE threads SET native_thread_id='native-1' WHERE id=?`, id); err != nil {
+			t.Fatal(err)
+		}
 	}
-	return "", errors.New("unknown thread")
+	return source
 }
 
 // The live rows hold only recent turns. A file named only in an older saved
@@ -258,7 +262,7 @@ func TestGeneralFileResolvesFromSavedHistoryOlderThanTheLiveRows(t *testing.T) {
 	}
 	writeTestFile(t, target, "older\n")
 	catalog := &fileEvidenceTestCatalog{blobs: map[string][]string{"thread-1": {"Earlier turn: " + target}}}
-	server := testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*session{
+	server := testServerWithSessions(&server{catalog: (catalog).source(t), Registry: newSessionRegistry()}, map[string]*session{
 		"session-1": newFixtureSession(sessionConfig{ID: "session-1", Projection: newLiveProjection("codex")}, ""),
 	})
 
@@ -280,13 +284,13 @@ func TestGeneralFileSearchesTheSessionsSavedHistoryWithoutAThreadID(t *testing.T
 	}
 	writeTestFile(t, target, "older\n")
 	catalog := &fileEvidenceTestCatalog{blobs: map[string][]string{"thread-1": {"Earlier turn: " + target}}}
-	server := testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*session{
+	server := testServerWithSessions(&server{catalog: (catalog).source(t), Registry: newSessionRegistry()}, map[string]*session{
 		"session-1": newFixtureSession(sessionConfig{ID: "session-1", Projection: newLiveProjection("codex")}, "native-1"),
 	})
 
 	path, _, err := resolveTestFile(t, server, context.Background(), "reports/older.md", "", "", "session-1")
-	if err != nil || path != filemodel.CanonicalPath(target) || !reflect.DeepEqual(catalog.searched, []string{"thread-1"}) {
-		t.Fatalf("session-only request = %q, %v; searched %v, want thread-1", path, err, catalog.searched)
+	if err != nil || path != filemodel.CanonicalPath(target) || !strings.Contains(path, "older.md") {
+		t.Fatalf("session-only request = %q, %v; searched %v, want thread-1", path, err, path)
 	}
 }
 

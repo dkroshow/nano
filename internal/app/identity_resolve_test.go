@@ -98,11 +98,11 @@ func TestIdentityResolveFollowsRename(t *testing.T) {
 		t.Fatalf("old name = %d %#v (%s)", status, body, raw)
 	}
 
-	if err := s.catalog.(*sidebar.CatalogSource).AssignThreadName("codex", identityNativeOld, "new name"); err != nil {
+	if err := s.catalog.AssignThreadName("codex", identityNativeOld, "new name"); err != nil {
 		t.Fatal(err)
 	}
 	waitForCatalog(t, func() bool {
-		name, _ := s.catalog.(*sidebar.CatalogSource).ThreadNameFor(context.Background(), "codex", identityNativeOld)
+		name, _ := s.catalog.ThreadNameFor(context.Background(), "codex", identityNativeOld)
 		return name == "new name"
 	})
 	status, _, raw = resolveIdentity(t, s, "old%20name")

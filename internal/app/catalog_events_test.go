@@ -9,34 +9,20 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/dkroshow/nano/internal/catalog"
 )
 
-// fakeStreamCatalog is a sidebar.CatalogReader that also exposes the SSE stream surface,
-// backed by a real catalogHub so tests can drive bumps.
-type fakeStreamCatalog struct {
-	*fakeThreadCatalog
-	hub     *catalogHub
+// catalogEventFixture drives the real names-file publication path.
+type catalogEventFixture struct {
+	*catalogRowsFixture
 	version int64
-}
-
-func (f *fakeStreamCatalog) SubscribeCatalog() (<-chan catalog.Change, func()) {
-	ch := f.hub.Subscribe()
-	return ch, func() { f.hub.Unsubscribe(ch) }
-}
-
-func (f *fakeStreamCatalog) CatalogVersion(context.Context) (int64, error) {
-	return f.version, nil
 }
 
 // TestCatalogEventsStreamDeliversVersionOnConnectAndBump covers the D1 handler
 // contract: the first event is the current version, a bump delivers an event,
 // and the SSE headers/format are exact.
 func TestCatalogEventsStreamDeliversVersionOnConnectAndBump(t *testing.T) {
-	hub := newCatalogHub()
-	fake := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: hub, version: 5}
-	srv := httptest.NewServer(http.HandlerFunc((&server{catalog: fake}).catalogViews().HandleEvents))
+	fake := &catalogEventFixture{catalogRowsFixture: &catalogRowsFixture{}, version: 5}
+	srv := httptest.NewServer(http.HandlerFunc((&server{catalog: fake.source(t)}).catalogViews().HandleEvents))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -61,23 +47,25 @@ func TestCatalogEventsStreamDeliversVersionOnConnectAndBump(t *testing.T) {
 	if got := readCatalogVersionEvent(t, reader); got != 5 {
 		t.Fatalf("version-on-connect = %d, want 5", got)
 	}
-	hub.Notify(catalog.Change{Version: 6, ThreadIDs: []string{"nth_changed"}})
+	if err := fake.stored.source.AssignThreadName("codex", "native-changed", "renamed"); err != nil {
+		t.Fatal(err)
+	}
 	if got := readCatalogVersionEvent(t, reader); got != 6 {
 		t.Fatalf("bump event = %d, want 6", got)
 	}
 }
 
 func TestCatalogEventsStreamRejectsNonGetAndUnavailable(t *testing.T) {
-	fake := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: newCatalogHub(), version: 1}
+	fake := &catalogEventFixture{catalogRowsFixture: &catalogRowsFixture{}, version: 1}
 	rec := httptest.NewRecorder()
-	applicationHandler(fixtureOwners(&server{catalog: fake})).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/thread-index/events", nil))
+	applicationHandler(fixtureOwners(&server{catalog: fake.source(t)})).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/thread-index/events", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST status = %d", rec.Code)
 	}
 
 	// A catalog without the stream surface reports unavailable, not a panic.
 	rec = httptest.NewRecorder()
-	(&server{catalog: &fakeThreadCatalog{}}).catalogViews().HandleEvents(rec, httptest.NewRequest(http.MethodGet, "/api/v1/thread-index/events", nil))
+	(&server{}).catalogViews().HandleEvents(rec, httptest.NewRequest(http.MethodGet, "/api/v1/thread-index/events", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no-stream status = %d", rec.Code)
 	}

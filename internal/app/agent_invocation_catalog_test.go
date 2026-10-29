@@ -28,11 +28,11 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	catalog := &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
+	catalog := &catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{
 		{Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
 		{Thread: threadindex.Thread{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"}},
 	}}}
-	s := &server{catalog: catalog, Registry: newSessionRegistry(), agentExecutions: store}
+	s := &server{catalog: (catalog).source(t), Registry: newSessionRegistry(), agentExecutions: store}
 	rec := httptest.NewRecorder()
 	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusOK {

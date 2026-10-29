@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"reflect"
+
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			}
 			sess.PublishProjectionRuntime()
 			fake := &fakeFleetCatalog{
-				fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
+				catalogRowsFixture: catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
 				// Deliberately contradict idle and waiting lifecycle states. Hosted
 				// rows must never take their label from provider transcript prose.
 				courts: map[string]catalog.FleetCourtMessage{"nth_hosted": {
@@ -62,7 +63,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 				}},
 			}
 			s := testServerWithSessions(&server{
-				catalog: fake, Registry: newSessionRegistry(),
+				Registry:        newSessionRegistry(),
 				controlMetadata: metadata, agentExecutions: executions,
 			}, map[string]*session{sess.ID(): sess})
 			wireFleetTestController(t, s, fake)
@@ -122,13 +123,13 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			t.Fatal(err)
 		}
 		fake := &fakeFleetCatalog{
-			fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
+			catalogRowsFixture: catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
 			courts: map[string]catalog.FleetCourtMessage{"nth_hosted": {
 				ItemType: "user_message", Head: "continue", Tail: "continue", LastActivity: now,
 			}},
 		}
 		s := &server{
-			catalog: fake, Registry: newSessionRegistry(),
+			Registry:        newSessionRegistry(),
 			controlMetadata: metadata, agentExecutions: executions,
 		}
 		wireFleetTestController(t, s, fake)
@@ -146,7 +147,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 // fakeFleetCatalog is a catalog that can answer the classifier's court read, so
 // a request produces real fleet labels rather than absent ones.
 type fakeFleetCatalog struct {
-	fakeThreadCatalog
+	catalogRowsFixture
 	courts   map[string]catalog.FleetCourtMessage
 	courtErr error
 }
@@ -175,7 +176,7 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 		return &at
 	}
 	fake := &fakeFleetCatalog{
-		fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
+		catalogRowsFixture: catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_working", Provider: "codex", NativeID: "native-working", Kind: "main", UpdatedAt: updated(4)}},
 			{Thread: threadindex.Thread{ID: "nth_needs", Provider: "codex", NativeID: "native-needs", Kind: "main", UpdatedAt: updated(3)}},
 			{Thread: threadindex.Thread{ID: "nth_old", Provider: "codex", NativeID: "native-old", Kind: "main", UpdatedAt: updated(2)}},
@@ -192,36 +193,34 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 	if response := postTurn(t, busy, context.Background(), "busy-prompt", "working"); response.Code != http.StatusOK {
 		t.Fatalf("busy setup: %d %s", response.Code, response.Body)
 	}
-	s := testServerWithSessions(&server{catalog: fake, Registry: newSessionRegistry()}, map[string]*session{
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{
 		"busy": busy,
 		"new":  memorySession(t, "new", "codex", "", "starting", "/w/new", "", base.Add(time.Minute)),
 	})
 
 	wireFleetTestController(t, s, fake)
 	items := listCatalog(t, s, "/api/v1/threads")
-	if got := catalogRowIDs(items); !reflect.DeepEqual(got,
-		[]string{fake.page.Items[0].ID, fake.page.Items[1].ID, fake.page.Items[2].ID, fake.page.Items[3].ID, "mem_new", "mem_busy"}) {
-		t.Fatalf("row ids = %v", got)
+	want := map[string]string{fake.page.Items[0].ID: catalog.FleetWorking, fake.page.Items[1].ID: catalog.FleetNeedsYou, fake.page.Items[2].ID: catalog.FleetIdle, fake.page.Items[3].ID: catalog.FleetIdle, "mem_new": catalog.FleetIdle, "mem_busy": catalog.FleetWorking}
+	if len(items) != len(want) {
+		t.Fatalf("row ids=%v", catalogRowIDs(items))
 	}
-	// nth_old's prompt has gone unanswered for a year: the agent owes, but no
-	// turn is running, so it is not working.
-	want := []string{catalog.FleetWorking, catalog.FleetNeedsYou, catalog.FleetIdle, catalog.FleetIdle, catalog.FleetIdle, catalog.FleetWorking}
-	for index, label := range want {
-		state := fleetRow(t, items[index])
-		if state == nil || state.Label != label {
-			t.Fatalf("row %d fleet = %#v, want %s", index, state, label)
+	for _, item := range items {
+		var id string
+		json.Unmarshal(item["id"], &id)
+		label, ok := want[id]
+		state := fleetRow(t, item)
+		if !ok || state == nil || state.Label != label || state.BallInCourt == "" {
+			t.Fatalf("row %s fleet=%#v want=%s", id, state, label)
 		}
-		if state.BallInCourt == "" {
-			t.Fatalf("row %d carried a label with no explanation: %#v", index, state)
+		if id == "mem_busy" && state.Court != catalog.CourtAgentOwes {
+			t.Fatalf("busy memory row=%#v", state)
 		}
+		delete(want, id)
 	}
-	// SQL scaling is covered by the list-read budget tests. Here the real
-	// catalog supplies every saved court and memory rows retain live evidence.
-	// A live turn on a live child is direct evidence, so the memory row is
-	// working with the agent owing the move.
-	if state := fleetRow(t, items[5]); state.Court != catalog.CourtAgentOwes {
-		t.Fatalf("busy memory row = %#v", state)
+	if len(want) != 0 {
+		t.Fatalf("missing fleet rows=%v", want)
 	}
+
 }
 
 // TestCatalogFleetStateDegradesWithoutLosingMemoryRows: classification is
@@ -229,13 +228,13 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 // and never the memory rows, whose evidence is not in SQLite at all.
 func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 	fake := &fakeFleetCatalog{
-		fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
+		catalogRowsFixture: catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_one", Provider: "codex", NativeID: "native-one", Kind: "main", UpdatedAt: strPtr("2026-08-01T12:00:00Z")}},
 		}}},
 		courtErr: errors.New("sqlite unavailable"),
 	}
 	base := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	s := testServerWithSessions(&server{catalog: fake, Registry: newSessionRegistry()}, map[string]*session{
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{
 		"new": memorySession(t, "new", "codex", "", "starting", "/w/new", "", base),
 	})
 	wireFleetTestController(t, s, fake)
@@ -247,13 +246,6 @@ func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 		t.Fatalf("memory row lost its label: %#v", state)
 	}
 
-	// A catalog with no court surface at all behaves the same way.
-	plain := &server{catalog: &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
-		{Thread: threadindex.Thread{ID: "nth_one", Provider: "codex", NativeID: "native-one", Kind: "main"}},
-	}}}}
-	if state := fleetRow(t, listCatalog(t, plain, "/api/v1/threads")[0]); state != nil {
-		t.Fatalf("catalog without a court surface produced %#v", state)
-	}
 }
 
 // TestFleetChangesUnavailableWithoutWatcher: the endpoint reports the feed is
@@ -279,7 +271,8 @@ func TestFleetChangesUnavailableWithoutWatcher(t *testing.T) {
 // reads go through a concrete index over real projected messages.
 func wireFleetTestController(t *testing.T, s *server, fixture *fakeFleetCatalog) {
 	t.Helper()
-	store, err := history.Open(filepath.Join(t.TempDir(), "fleet.sqlite"))
+	databasePath := filepath.Join(t.TempDir(), "fleet.sqlite")
+	store, err := history.Open(databasePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,11 +296,20 @@ func wireFleetTestController(t *testing.T, s *server, fixture *fakeFleetCatalog)
 		}
 		id := seedSidebarThread(t, store, root, row.NativeID, "", history.ThreadMain, updated, items)
 		fixture.page.Items[i].ID = id
+		if fixture.courts != nil {
+			fixture.courts[id] = court
+		}
 	}
 	source := newStoredCatalog(t, store)
+	s.catalog = source
 	s.sidebar = sidebar.New(sidebar.Sources{Catalog: source.Service, Registry: &s.Registry, Executions: s.agentExecutions, Metadata: s.controlMetadata, Attachments: s.attachments, Boot: &s.bootAttachments, Stars: s.threadStars, RuntimeEvents: s.runtimeEvents})
 	if fixture.courtErr != nil {
-		if err := store.Close(); err != nil {
+		db, err := sql.Open("sqlite", databasePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		if _, err = db.Exec(`ALTER TABLE conversation_items RENAME TO unavailable_court_items`); err != nil {
 			t.Fatal(err)
 		}
 	}

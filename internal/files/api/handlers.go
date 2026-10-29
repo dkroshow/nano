@@ -14,12 +14,11 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
-	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // Handlers joins workspace files with saved and live reference evidence.
 type Handlers struct {
-	Catalog  sidebar.CatalogReader
+	Catalog  *sidebar.CatalogSource
 	Registry *sessions.Registry
 }
 
@@ -28,10 +27,6 @@ const (
 	fileEvidenceMaxRows  = 2000
 	fileEvidenceMaxBytes = 4 << 20
 )
-
-type fileEvidenceCatalog interface {
-	FindFileEvidenceBlobs(context.Context, string, string, int, int) ([]string, error)
-}
 
 // HandleRead serves the workspace file endpoint.
 func (s *Handlers) HandleRead(w http.ResponseWriter, r *http.Request) {
@@ -138,8 +133,8 @@ func (s *Handlers) resolveGeneralFile(ctx context.Context, requested, cwd, threa
 	}
 	return filemodel.Resolve(requested, cwd, threadCWD, func(relative string) []string {
 		blobs := s.liveFileEvidence(ctx, sessionID)
-		if catalog, ok := s.Catalog.(fileEvidenceCatalog); ok && threadID != "" {
-			if durable, err := catalog.FindFileEvidenceBlobs(ctx, threadID, filepath.Base(relative), fileEvidenceMaxRows, fileEvidenceMaxBytes); err == nil {
+		if s.Catalog != nil && threadID != "" {
+			if durable, err := s.Catalog.FindFileEvidenceBlobs(ctx, threadID, filepath.Base(relative), fileEvidenceMaxRows, fileEvidenceMaxBytes); err == nil {
 				blobs = append(blobs, durable...)
 			}
 		}
@@ -173,15 +168,14 @@ func (s *Handlers) fileThreadCwd(ctx context.Context, threadID, sessionID string
 // thread, so a request that names only its session still searches its saved
 // history.
 func (s *Handlers) sessionCatalogThreadID(ctx context.Context, sessionID string) string {
-	resolver, ok := s.Catalog.(threadindex.ReferenceResolver)
-	if !ok || sessionID == "" {
+	if s.Catalog == nil || sessionID == "" {
 		return ""
 	}
 	session := s.Registry.LookupSession(sessionID)
 	if session == nil || session.ThreadID() == "" {
 		return ""
 	}
-	threadID, err := resolver.ResolveThreadReference(ctx, session.ThreadID())
+	threadID, err := s.Catalog.ResolveThreadReference(ctx, session.ThreadID())
 	if err != nil {
 		return ""
 	}

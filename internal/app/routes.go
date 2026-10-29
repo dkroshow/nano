@@ -21,7 +21,11 @@ type applicationRoute struct {
 }
 
 func applicationRoutes(s *server) []applicationRoute {
-	index := threadindex.NewHandlers(s.catalog)
+	var indexCatalog threadindex.Index
+	if s.catalog != nil {
+		indexCatalog = s.catalog
+	}
+	index := threadindex.NewHandlers(indexCatalog)
 	monitor := s.monitorHandlers()
 	audits := observability.NewAuditHandlers(s.hostedCatalog(), s.transcriptAudits, s.transcriptAuditEvents, embeddedBundleName())
 	browser := observability.NewBrowserHandlers(s.browserDiagnostics, s.transcriptValidations, s.controlMetadata, s.controlMetadataErr)
@@ -74,7 +78,10 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleSkills(w, r) })},
 		{http.MethodPut, "/api/sessions/{sessionId}/name", "sessions.name.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
-				namer, _ := s.catalog.(threadindex.Namer)
+				var namer threadindex.Namer
+				if s.catalog != nil {
+					namer = s.catalog
+				}
 				s.attachmentCoordinator().HandleSessionName(w, r, sess, namer)
 			}(w, r, value)
 		})},

@@ -60,7 +60,7 @@ func construct(cfg config.Config) *application {
 		log.Fatalf("remote authentication unavailable: %v", err)
 	}
 	remoteAuth := remoteauth.New(remoteAuthStore, cfg.RemoteAuthHost)
-	var catalog sidebar.CatalogReader
+	var catalog *sidebar.CatalogSource
 	var catalogRefresh func(string)
 	var catalogSources sessionruntime.AttachedCatalog
 	if catalogService != nil {

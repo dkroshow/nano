@@ -28,28 +28,12 @@ import (
 type CatalogViews struct {
 	NativeID          func(string) (string, bool)
 	IsHostedReference func(string) bool
-	Catalog           CatalogReader
+	Catalog           *CatalogSource
 	Runtime           *Controller
 	HistoricalCodex   *historical.CodexResolver
 	HistoricalClaude  *historical.ClaudeResolver
 	MailEvents        *featuremail.Hub
 	Audits            *observability.AuditHub
-}
-
-// CatalogReader reads saved rows before the visible projection is assembled.
-type CatalogReader interface {
-	ListThreads(context.Context, threadindex.ListQuery) (CatalogPage, error)
-	LoadThread(context.Context, string) (Thread, error)
-	IndexStatus(context.Context) (threadindex.IndexStatus, error)
-	RequestRefresh() bool
-}
-
-// catalogStream is the SSE push surface: a subscription for version bumps
-// plus the version-on-connect read. Optional so a catalog without live push
-// (or a stub in tests) simply reports the endpoint unavailable.
-type catalogStream interface {
-	SubscribeCatalog() (<-chan catalog.Change, func())
-	CatalogVersion(context.Context) (int64, error)
 }
 
 // HandleThreads serves the visible catalog projection.
@@ -371,8 +355,7 @@ func (s *CatalogViews) HandleThread(w http.ResponseWriter, r *http.Request, rawI
 // Everything that can fail is checked before the 200 header commits the stream.
 // HandleEvents serves the visible catalog projection.
 func (s *CatalogViews) HandleEvents(w http.ResponseWriter, r *http.Request) {
-	stream, ok := s.Catalog.(catalogStream)
-	if s.Catalog == nil || !ok {
+	if s.Catalog == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
 	}
@@ -384,7 +367,7 @@ func (s *CatalogViews) HandleEvents(w http.ResponseWriter, r *http.Request) {
 
 	// Subscribe before the version read so a bump between the two lands in the
 	// channel rather than slipping through the gap.
-	events, unsubscribe := stream.SubscribeCatalog()
+	events, unsubscribe := s.Catalog.SubscribeCatalog()
 	defer unsubscribe()
 	// Runtime deltas ride the same stream as a second named event type. A
 	// browser names the stream position of its session list read
@@ -436,7 +419,7 @@ func (s *CatalogViews) HandleEvents(w http.ResponseWriter, r *http.Request) {
 		defer s.Audits.Unsubscribe(ch)
 		transcriptAuditEvents = ch
 	}
-	version, err := stream.CatalogVersion(r.Context())
+	version, err := s.Catalog.CatalogVersion(r.Context())
 	if err != nil {
 		threadindex.WriteCatalogBackendError(w, err)
 		return
@@ -567,9 +550,11 @@ type CatalogPage struct {
 	CatalogVersion int64    `json:"catalogVersion"`
 }
 
-func resolveCatalogReference(ctx context.Context, catalog CatalogReader, ref string) (string, error) {
-	resolver, _ := catalog.(threadindex.ReferenceResolver)
-	return threadindex.ResolveReference(ctx, resolver, ref)
+func resolveCatalogReference(ctx context.Context, catalog *CatalogSource, ref string) (string, error) {
+	if catalog == nil {
+		return threadindex.ResolveReference(ctx, nil, ref)
+	}
+	return threadindex.ResolveReference(ctx, catalog.Service, ref)
 }
 
 const (
