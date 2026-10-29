@@ -13,8 +13,8 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -90,10 +90,10 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	// Seeded after adoption, as the schema-20 rows retirement handles: an
 	// adopted journal row would carry the retiring hosted id, which the
 	// retirement check refuses.
-	if err := prompts.SaveQueuedTurns(ctx, control.CanonicalDatabase(), []queuedTurnRecord{{ClientActionID: "unconfirmed", Provider: "codex", HostedThreadID: old.ID, NativeThreadID: identityNativeOld, Text: "keep this evidence", State: submissionAccepted}}); err != nil {
+	if err := prompts.SaveQueuedTurns(ctx, control.CanonicalDatabase(), []prompts.QueuedTurn{{ClientActionID: "unconfirmed", Provider: "codex", HostedThreadID: old.ID, NativeThreadID: identityNativeOld, Text: "keep this evidence", State: submissionAccepted}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := prompts.SaveSendAttempts(ctx, control.CanonicalDatabase(), []sendAttemptRecord{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
+	if err := prompts.SaveSendAttempts(ctx, control.CanonicalDatabase(), []prompts.SendAttempt{{ClientActionID: "unconfirmed", Provider: "codex", NativeThreadID: identityNativeOld, Status: sendAttemptAccepted}}); err != nil {
 		t.Fatal(err)
 	}
 	return retirementServerFixture{server: &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, Registry: newSessionRegistry()}, old: old, owner: owner, child: child, oldTurn: oldTurn, childTurn: childTurn}
@@ -156,7 +156,7 @@ func TestRetiredHostedHTTPKeepsCachesAndResolverConsistent(t *testing.T) {
 			}
 			// Exercise later ordinary writes: stale maps must not restore deleted facts
 			// or undo either owner-column update.
-			if _, _, err := QueueEnqueue(s.queuedTurns, queuedTurnRecord{ClientActionID: "later", Provider: "codex", HostedThreadID: f.child.ID, Text: "later evidence"}); err != nil {
+			if _, _, err := QueueEnqueue(s.queuedTurns, prompts.QueuedTurn{ClientActionID: "later", Provider: "codex", HostedThreadID: f.child.ID, Text: "later evidence"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.agentExecutions.UpdateSession(f.child.ID, "", "", "detached", ""); err != nil {
@@ -224,9 +224,9 @@ func TestRetiredHostedRefusesRuntimeAndAttachmentReferences(t *testing.T) {
 			s := f.server
 			switch kind {
 			case "runtime-owner":
-				s.RegisterSession(newFixtureSession(sessionConfig{HostedThreadID: f.old.ID}, ""))
+				s.RegisterSession(newFixtureSession(sessions.Config{HostedThreadID: f.old.ID}, ""))
 			case "runtime-invoker":
-				s.RegisterSession(newFixtureSession(sessionConfig{HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}, ""))
+				s.RegisterSession(newFixtureSession(sessions.Config{HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}, ""))
 			case "attachment-owner":
 				s.attachments = newTestStore(t)
 				s.attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.old.ID})

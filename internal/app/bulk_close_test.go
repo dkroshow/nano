@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -206,7 +207,7 @@ func TestBulkCloseReportsPartialMemberFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := QueueEnqueue(queue, queuedTurnRecord{
+	if _, _, err := QueueEnqueue(queue, prompts.QueuedTurn{
 		ClientActionID: "queued-root", Provider: root.Provider, HostedThreadID: root.ID,
 		NativeThreadID: root.NativeThreadID, Text: "still queued", TextHash: "hash", State: submissionQueued,
 	}); err != nil {

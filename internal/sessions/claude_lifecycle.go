@@ -9,6 +9,7 @@ import (
 	"github.com/dkroshow/nano/internal/lifecycle"
 	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -18,7 +19,7 @@ import (
 // Each attach replays only the unsaved tail (docs/decisions/claude-shim-daemon.md).
 const claudeBootHandshakeLimit = 8
 
-func claudeWorkEvidence(dir protocol.Direction, line []byte) (active bool, turnID string, startedAtMs int64, ok bool) {
+func claudeWorkEvidence(dir wire.Direction, line []byte) (active bool, turnID string, startedAtMs int64, ok bool) {
 	if active, ok := claudeTurnBoundaryTransition(dir, line); ok {
 		return active, "", 0, true
 	}
@@ -27,7 +28,7 @@ func claudeWorkEvidence(dir protocol.Direction, line []byte) (active bool, turnI
 	}
 	return false, "", 0, false
 }
-func claudeLifecycleNudge(dir protocol.Direction, line []byte) bool {
+func claudeLifecycleNudge(dir wire.Direction, line []byte) bool {
 	var probe struct {
 		Type    string `json:"type"`
 		Subtype string `json:"subtype"`
@@ -46,7 +47,7 @@ func claudeLifecycleNudge(dir protocol.Direction, line []byte) bool {
 // the shim spool. Keep it separate from flowing execution evidence: replay
 // reconstruction needs the exact opening user-line sequence, while a live
 // assistant/stream line can assert activity for turns started by a harness.
-func claudeTurnBoundaryTransition(dir protocol.Direction, line []byte) (active, ok bool) {
+func claudeTurnBoundaryTransition(dir wire.Direction, line []byte) (active, ok bool) {
 	var probe struct {
 		Type string `json:"type"`
 	}
@@ -116,7 +117,7 @@ func (a claudeLifecycleAdapter) Current() (lifecycle.Observation, bool) {
 	return lifecycle.Observation{Event: event, Epoch: a.epoch, Sequence: a.sequence}, true
 }
 
-func observeClaudeWork(sess *Session, dir protocol.Direction, line []byte, live bool) {
+func observeClaudeWork(sess *Session, dir wire.Direction, line []byte, live bool) {
 	active, turnID, startedAtMs, ok := claudeWorkEvidence(dir, line)
 	if !ok || (!live && dir == protocol.Recv && active) {
 		return
@@ -144,7 +145,7 @@ func observeClaudeWork(sess *Session, dir protocol.Direction, line []byte, live 
 	}
 }
 
-func claudeRuntimeEvidence(sess *Session, dir protocol.Direction, line []byte, at time.Time) {
+func claudeRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {
 	var message map[string]json.RawMessage
 	if json.Unmarshal(line, &message) != nil {
 		return

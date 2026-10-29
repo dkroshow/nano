@@ -532,7 +532,7 @@ func TestControlExecutionRetentionDeletesOnlyExplicitlyPrunedTerminalRows(t *tes
 	const total = maxAgentTurns + 40
 	for i := 0; i < total; i++ {
 		id := fmt.Sprintf("op-retain-%03d", i)
-		rec := agentTurnRecord{ID: id, HostedThreadID: hosted.ID, ClientActionID: id, TransportActionID: id, PromptHash: id, Provider: "codex", Status: agentTurnCompleted, RunID: "run-1", CreatedAt: retentionAt(i), UpdatedAt: retentionAt(i), Revision: 1}
+		rec := threadvalues.TurnRecord{ID: id, HostedThreadID: hosted.ID, ClientActionID: id, TransportActionID: id, PromptHash: id, Provider: "codex", Status: agentTurnCompleted, RunID: "run-1", CreatedAt: retentionAt(i), UpdatedAt: retentionAt(i), Revision: 1}
 		store.setTurnLocked(rec.ID, &rec)
 	}
 	persist := func() {
@@ -623,7 +623,7 @@ func TestControlExecutionRetentionDoesNotSliceSmallTerminalSet(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ {
 		id := fmt.Sprintf("op-small-%d", i)
-		rec := agentTurnRecord{ID: id, HostedThreadID: hosted.ID, ClientActionID: id, TransportActionID: id, PromptHash: id, Provider: "codex", Status: agentTurnCompleted, RunID: "run", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: fmt.Sprintf("2026-01-01T00:00:0%dZ", i), Revision: 1}
+		rec := threadvalues.TurnRecord{ID: id, HostedThreadID: hosted.ID, ClientActionID: id, TransportActionID: id, PromptHash: id, Provider: "codex", Status: agentTurnCompleted, RunID: "run", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: fmt.Sprintf("2026-01-01T00:00:0%dZ", i), Revision: 1}
 		store.setTurnLocked(rec.ID, &rec)
 	}
 	store.mu.Lock()
@@ -751,7 +751,7 @@ func TestAgentExecutionStoreGuardSerializesCreationAndPreservesReplay(t *testing
 	releaseGuard := make(chan struct{})
 	continuationDone := make(chan error, 1)
 	go func() {
-		_, _, err := store.BeginTurnAttributedGuarded(hosted.ID, "nano:guarded", "guarded-hash", TurnAttribution{Origin: turnOriginSystem}, func(existing []agentTurnRecord) error {
+		_, _, err := store.BeginTurnAttributedGuarded(hosted.ID, "nano:guarded", "guarded-hash", TurnAttribution{Origin: turnOriginSystem}, func(existing []threadvalues.TurnRecord) error {
 			if len(existing) != 0 {
 				return fmt.Errorf("guard saw unexpected operations: %#v", existing)
 			}
@@ -782,7 +782,7 @@ func TestAgentExecutionStoreGuardSerializesCreationAndPreservesReplay(t *testing
 	}
 
 	guardCalled := false
-	replay, created, err := store.BeginTurnAttributedGuarded(hosted.ID, "nano:guarded", "guarded-hash", TurnAttribution{Origin: turnOriginSystem}, func([]agentTurnRecord) error {
+	replay, created, err := store.BeginTurnAttributedGuarded(hosted.ID, "nano:guarded", "guarded-hash", TurnAttribution{Origin: turnOriginSystem}, func([]threadvalues.TurnRecord) error {
 		guardCalled = true
 		return errors.New("replay must not be re-evaluated")
 	})
@@ -801,7 +801,7 @@ func TestAgentExecutionStoreGuardRejectsWithoutCreatingOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	rejected := errors.New("superseded")
-	if _, created, err := store.BeginTurnAttributedGuarded(hosted.ID, "nano:rejected", "rejected-hash", TurnAttribution{Origin: turnOriginSystem}, func([]agentTurnRecord) error {
+	if _, created, err := store.BeginTurnAttributedGuarded(hosted.ID, "nano:rejected", "rejected-hash", TurnAttribution{Origin: turnOriginSystem}, func([]threadvalues.TurnRecord) error {
 		return rejected
 	}); !errors.Is(err, rejected) || created {
 		t.Fatalf("guarded rejection created=%v err=%v", created, err)
@@ -818,7 +818,7 @@ func TestAgentExecutionStoreFailureNeverLeaksCandidateResponse(t *testing.T) {
 	turn, _, _ := store.beginTurn(session.ID, "action-1", "prompt-hash")
 	_ = store.MarkTurnDelivery(turn.ID, "claude:1", agentTurnRunning, nil)
 	_ = store.ObserveCandidate("claude", "native-1", "claude:1", "assistant-1", "", "partial answer")
-	wantErr := &agentExecutionError{Source: "provider", Code: "error", Message: "Claude failed"}
+	wantErr := &threadvalues.ExecutionError{Source: "provider", Code: "error", Message: "Claude failed"}
 	if err := store.MarkTurnTerminal("claude", "native-1", "claude:1", agentTurnFailed, wantErr, "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -840,7 +840,7 @@ func TestAgentExecutionStoreKeepsProjectionTruncationExplicit(t *testing.T) {
 	_ = store.MarkTurnDelivery(turn.ID, "turn-1", agentTurnRunning, nil)
 	if err := store.MarkTurnTerminal(
 		"codex", "native-1", "turn-1", agentTurnCompleted, nil, "bounded projection", "item-1",
-		agentResultMeta{Bytes: 100_000, Truncated: true},
+		ResultMeta{Bytes: 100_000, Truncated: true},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -894,7 +894,7 @@ func TestAgentExecutionStoreLongPollWaitsForRevision(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	session, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
 	turn, _, _ := store.beginTurn(session.ID, "action-1", "prompt-hash")
-	done := make(chan agentTurnRecord, 1)
+	done := make(chan threadvalues.TurnRecord, 1)
 	go func() {
 		rec, _ := store.WaitTurn(context.Background(), turn.ID, turn.Revision, time.Second)
 		done <- rec
@@ -917,7 +917,7 @@ func TestAgentExecutionStoreSettlesOpenTurnsWhenSessionEnds(t *testing.T) {
 	session, _, _ := store.beginSession("caller-session", "request-hash", "codex", presentationShared)
 	first, _, _ := store.beginTurn(session.ID, "action-1", "prompt-hash-1")
 	_ = store.MarkTurnDelivery(first.ID, "provider-turn-1", agentTurnRunning, nil)
-	if err := store.MarkSessionTurns(session.ID, agentTurnDeliveryUnknown, &agentExecutionError{Source: "transport", Message: "lost"}); err != nil {
+	if err := store.MarkSessionTurns(session.ID, agentTurnDeliveryUnknown, &threadvalues.ExecutionError{Source: "transport", Message: "lost"}); err != nil {
 		t.Fatal(err)
 	}
 	uncertain, _ := store.Turn(first.ID)
@@ -926,7 +926,7 @@ func TestAgentExecutionStoreSettlesOpenTurnsWhenSessionEnds(t *testing.T) {
 	}
 
 	second, _, _ := store.beginTurn(session.ID, "action-2", "prompt-hash-2")
-	if err := store.MarkSessionTurns(session.ID, agentTurnInterrupted, &agentExecutionError{Source: "client", Message: "closed"}); err != nil {
+	if err := store.MarkSessionTurns(session.ID, agentTurnInterrupted, &threadvalues.ExecutionError{Source: "client", Message: "closed"}); err != nil {
 		t.Fatal(err)
 	}
 	interrupted, _ := store.Turn(second.ID)
@@ -1083,7 +1083,7 @@ func TestSharedProviderTurnFinishesEachOperationOnItsOwnProof(t *testing.T) {
 		}
 	}
 	for _, id := range ids[:2] {
-		if err := store.FinishJoinedTurn(id, "shared-turn", agentTurnCompleted, nil, "answer to the correction", "final", agentResultMeta{}); err != nil {
+		if err := store.FinishJoinedTurn(id, "shared-turn", agentTurnCompleted, nil, "answer to the correction", "final", ResultMeta{}); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := store.Turn(id)
@@ -1137,7 +1137,7 @@ func TestAgentExecutionResumedTurnsPreserveMatchingAndReplyOrder(t *testing.T) {
 		{"shared-open", "target", "codex", "native", "turn-shared"},
 		{"shared-terminal", "target", "codex", "native", "turn-shared"},
 	} {
-		rec := agentTurnRecord{
+		rec := threadvalues.TurnRecord{
 			ID: fixture.id, HostedThreadID: fixture.hosted, ClientActionID: fixture.id, TransportActionID: fixture.id, PromptHash: fixture.id,
 			Provider: fixture.provider, NativeThreadID: fixture.native, ProviderTurnID: fixture.turn, Status: agentTurnRunning,
 			CandidateResponse: "candidate", CandidateItemID: "candidate-item", CandidateBytes: 9,
@@ -1155,8 +1155,8 @@ func TestAgentExecutionResumedTurnsPreserveMatchingAndReplyOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	bookmark := store.changes.since("", nil).Bookmark
-	failure := &agentExecutionError{Source: "provider", Code: "failed", Message: "failed offline"}
-	marks := []agentTerminalTurn{
+	failure := &threadvalues.ExecutionError{Source: "provider", Code: "failed", Message: "failed offline"}
+	marks := []TerminalTurn{
 		{ProviderTurnID: "turn-open", Status: agentTurnCompleted, Response: "reply", ItemID: "reply-item"},
 		{ProviderTurnID: "turn-legacy", Status: agentTurnCompleted},
 		{ProviderTurnID: "turn-failed", Status: agentTurnFailed, Error: failure},
@@ -1258,7 +1258,7 @@ func TestAgentExecutionResumedTurnsRevalidateMatches(t *testing.T) {
 			if err := store.MarkTurnDelivery(op.ID, "turn", agentTurnRunning, nil); err != nil {
 				t.Fatal(err)
 			}
-			marks := []agentTerminalTurn{{ProviderTurnID: "turn", Status: agentTurnCompleted, Response: "resume answer", ItemID: "resume-item"}}
+			marks := []TerminalTurn{{ProviderTurnID: "turn", Status: agentTurnCompleted, Response: "resume answer", ItemID: "resume-item"}}
 			matches := store.ResumedTurnMatches(hosted.ID, "codex", "native", marks)
 			if err := test.change(store, hosted.ID, op.ID); err != nil {
 				t.Fatal(err)
@@ -1292,7 +1292,7 @@ func TestAgentExecutionThreadWorkDoesNotScanFleet(t *testing.T) {
 	for thread := range 200 {
 		for turn := range maxAgentTurns {
 			id := fmt.Sprintf("indexed-op-%d-%d", thread, turn)
-			rec := agentTurnRecord{ID: id, HostedThreadID: fmt.Sprintf("indexed-host-%d", thread), ClientActionID: id, TransportActionID: id, PromptHash: id, Provider: "codex", Status: agentTurnCompleted, RunID: "indexed-run", CreatedAt: fmt.Sprintf("%04d", turn), UpdatedAt: fmt.Sprintf("%04d", turn), Revision: 1}
+			rec := threadvalues.TurnRecord{ID: id, HostedThreadID: fmt.Sprintf("indexed-host-%d", thread), ClientActionID: id, TransportActionID: id, PromptHash: id, Provider: "codex", Status: agentTurnCompleted, RunID: "indexed-run", CreatedAt: fmt.Sprintf("%04d", turn), UpdatedAt: fmt.Sprintf("%04d", turn), Revision: 1}
 			store.setTurnLocked(rec.ID, &rec)
 		}
 	}
@@ -1349,10 +1349,10 @@ func TestAgentExecutionIndexedPersistenceKeepsRetentionAndRows(t *testing.T) {
 	// Times as stored, a microsecond apart: RFC3339Nano trims trailing zeros, so
 	// as text ".2374Z" (row 0) and ".23741Z" (row 10) sort after later rows.
 	base := time.Date(2026, 1, 1, 0, 0, 4, 237400000, time.UTC)
-	fixture := func(i int) agentTurnRecord {
+	fixture := func(i int) threadvalues.TurnRecord {
 		id := fmt.Sprintf("retained-%03d", i)
 		at := base.Add(time.Duration(i) * time.Microsecond).Format(time.RFC3339Nano)
-		return agentTurnRecord{
+		return threadvalues.TurnRecord{
 			ID: id, HostedThreadID: "retained", ClientActionID: id, TransportActionID: id, PromptHash: id,
 			Provider: "codex", ProviderTurnID: "provider-" + id, Status: agentTurnCompleted,
 			Origin: turnOriginAgent, SenderSubmittedAt: "2026-01-01T00:00:00Z",
@@ -1491,7 +1491,7 @@ func TestAgentExecutionIndexedAttentionTracksLatestAndMoves(t *testing.T) {
 		if step.hosted == "" {
 			store.setTurnLocked(step.id, nil)
 		} else {
-			rec := agentTurnRecord{ID: step.id, HostedThreadID: step.hosted, ClientActionID: step.id, TransportActionID: step.id, PromptHash: step.id, Provider: "codex", RunID: store.runID, CreatedAt: step.created, Status: step.status}
+			rec := threadvalues.TurnRecord{ID: step.id, HostedThreadID: step.hosted, ClientActionID: step.id, TransportActionID: step.id, PromptHash: step.id, Provider: "codex", RunID: store.runID, CreatedAt: step.created, Status: step.status}
 			rec.Revision = store.turns[step.id].Revision
 			touchAgentTurn(&rec)
 			store.setTurnLocked(rec.ID, &rec)
@@ -1621,7 +1621,7 @@ func TestMarkWaitingResumesTheNewestOpenTurnAcrossTrimmedFractions(t *testing.T)
 		id, status string
 		created    time.Time
 	}{{"older", agentTurnRunning, at}, {"newer", agentTurnWaiting, at.Add(time.Microsecond)}} {
-		rec := agentTurnRecord{ID: step.id, HostedThreadID: "target", ClientActionID: step.id, TransportActionID: step.id, PromptHash: step.id, Provider: "codex", RunID: store.runID, CreatedAt: step.created.Format(time.RFC3339Nano), Status: step.status}
+		rec := threadvalues.TurnRecord{ID: step.id, HostedThreadID: "target", ClientActionID: step.id, TransportActionID: step.id, PromptHash: step.id, Provider: "codex", RunID: store.runID, CreatedAt: step.created.Format(time.RFC3339Nano), Status: step.status}
 		touchAgentTurn(&rec)
 		store.setTurnLocked(rec.ID, &rec)
 	}

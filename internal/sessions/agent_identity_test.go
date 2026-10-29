@@ -74,7 +74,7 @@ func TestClaudeResumeArgsKeepsSingleIdentityPair(t *testing.T) {
 // text first and verbatim — and baseInstructions is never touched, because it
 // replaces the built-in system prompt rather than extending it.
 func TestCodexIdentityInjection(t *testing.T) {
-	base := providerRequest{Provider: "codex", Cwd: "/w", Approval: "never", Sandbox: "workspace-write",
+	base := ProviderRequest{Provider: "codex", Cwd: "/w", Approval: "never", Sandbox: "workspace-write",
 		HostedThreadID: "nht_test123", APIOrigin: "http://127.0.0.1:7999"}
 
 	t.Run("block alone when the caller sent none", func(t *testing.T) {
@@ -119,7 +119,7 @@ func TestCodexIdentityInjection(t *testing.T) {
 // Claude injection: the identity flag rides argv as a singleton pair, absent
 // whenever the request cannot honestly name a hosted identity.
 func TestClaudeArgsIdentityFlag(t *testing.T) {
-	req := providerRequest{Provider: "claude", HostedThreadID: "nht_claude1", APIOrigin: "http://127.0.0.1:7999"}
+	req := ProviderRequest{Provider: "claude", HostedThreadID: "nht_claude1", APIOrigin: "http://127.0.0.1:7999"}
 	args := claudeArgs(req)
 	block := singletonValue(t, args, claudeIdentityFlag)
 	if !strings.Contains(block, "hostedThreadId: nht_claude1") ||
@@ -127,9 +127,9 @@ func TestClaudeArgsIdentityFlag(t *testing.T) {
 		t.Fatalf("identity block = %q, want hosted id and provider", block)
 	}
 
-	for name, strip := range map[string]func(r providerRequest) providerRequest{
-		"no hosted id": func(r providerRequest) providerRequest { r.HostedThreadID = ""; return r },
-		"no origin":    func(r providerRequest) providerRequest { r.APIOrigin = ""; return r },
+	for name, strip := range map[string]func(r ProviderRequest) ProviderRequest{
+		"no hosted id": func(r ProviderRequest) ProviderRequest { r.HostedThreadID = ""; return r },
+		"no origin":    func(r ProviderRequest) ProviderRequest { r.APIOrigin = ""; return r },
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, a := range claudeArgs(strip(req)) {

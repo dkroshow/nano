@@ -5,6 +5,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -44,7 +45,7 @@ func (cache *MCPCache) Store(inventory *MCPInventory, generation uint64) {
 	cache.mu.Unlock()
 }
 
-func MCPInventoryStale(provider string, direction protocol.Direction, line []byte) bool {
+func MCPInventoryStale(provider string, direction wire.Direction, line []byte) bool {
 	if provider != "codex" || direction != protocol.Recv {
 		return false
 	}

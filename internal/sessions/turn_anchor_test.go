@@ -7,6 +7,10 @@ import (
 	"testing"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/interact"
+	protocoltypes "github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -14,7 +18,7 @@ func anchorTestSession(provider string) *Session {
 	return &Session{id: "sess-anchor",
 		provider:       provider,
 		createdAt:      time.Now(),
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		state:          map[string]json.RawMessage{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 }
@@ -188,7 +192,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 	if sum := sess.Summary(); sum.Waiting {
 		t.Fatal("a working session is not waiting")
 	}
-	sess.addPendingInteraction(pendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
+	sess.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
 	sum := sess.Summary()
 	if !sum.Waiting {
 		t.Fatal("a parked interaction must read as waiting")
@@ -210,7 +214,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 // is reset after setup so each case measures only its own transition.
 func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 	park := func(s *Session) {
-		s.addPendingInteraction(pendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
+		s.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
 	}
 	cases := []struct {
 		name  string
@@ -312,7 +316,7 @@ func TestCodexInFlightTurnIgnoresFinishedAndMissingTurns(t *testing.T) {
 type anchorRecorder struct {
 	mu      sync.Mutex
 	writes  []anchorWrite
-	records map[string]attachmentRecord
+	records map[string]hostedstore.Attachment
 }
 
 type anchorWrite struct {
@@ -323,7 +327,7 @@ type anchorWrite struct {
 }
 
 func newAnchorRecorder() *anchorRecorder {
-	return &anchorRecorder{records: map[string]attachmentRecord{}}
+	return &anchorRecorder{records: map[string]hostedstore.Attachment{}}
 }
 
 func (r *anchorRecorder) set(provider, threadID string, startedAtMs, seq int64) {
@@ -357,9 +361,9 @@ func replayingShim(t *testing.T, lines []struct {
 	seq  int64
 	dir  string
 	line string
-}) *fakeShim {
+}) *claudeshim.Server {
 	t.Helper()
-	return newFakeShim(t, func(c *shimConn) {
+	return newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -380,7 +384,7 @@ func replayingShim(t *testing.T, lines []struct {
 	})
 }
 
-func attachWithStoredAnchor(t *testing.T, shim *fakeShim, stored attachmentRecord) (*session, *claudeSession, *anchorRecorder) {
+func attachWithStoredAnchor(t *testing.T, shim *claudeshim.Server, stored hostedstore.Attachment) (*Session, *claudeSession, *anchorRecorder) {
 	t.Helper()
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
@@ -405,7 +409,7 @@ func TestClaudeReattachRestoresPersistedAnchorForALiveTurn(t *testing.T) {
 		{1, "send", claudeReplayUserLine},
 		{2, "recv", claudeInitLine},
 	})
-	sess, _, _ := attachWithStoredAnchor(t, shim, attachmentRecord{
+	sess, _, _ := attachWithStoredAnchor(t, shim, hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1",
 		TurnStartedAtMs: 1785510514000, TurnAnchorSeq: 0,
 	})
@@ -432,7 +436,7 @@ func TestClaudeReattachDiscardsAnchorWhenTheTurnFinishedUnattended(t *testing.T)
 		{2, "recv", claudeInitLine},
 		{3, "recv", claudeReplayResultLine},
 	})
-	sess, _, anchors := attachWithStoredAnchor(t, shim, attachmentRecord{
+	sess, _, anchors := attachWithStoredAnchor(t, shim, hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1",
 		TurnStartedAtMs: 1785510514000, TurnAnchorSeq: 0,
 	})
@@ -459,7 +463,7 @@ func TestClaudeReattachRefusesAnAnchorFromAnEarlierTurn(t *testing.T) {
 		{1, "send", claudeReplayUserLine},
 		{2, "recv", claudeInitLine},
 	})
-	sess, _, _ := attachWithStoredAnchor(t, shim, attachmentRecord{
+	sess, _, _ := attachWithStoredAnchor(t, shim, hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1",
 		TurnStartedAtMs: 1785510514000, TurnAnchorSeq: 9,
 	})
@@ -484,7 +488,7 @@ func TestClaudeReattachWithoutAPersistedAnchorShowsNoTimer(t *testing.T) {
 		{1, "send", claudeReplayUserLine},
 		{2, "recv", claudeInitLine},
 	})
-	sess, _, _ := attachWithStoredAnchor(t, shim, attachmentRecord{
+	sess, _, _ := attachWithStoredAnchor(t, shim, hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1",
 	})
 
@@ -501,7 +505,7 @@ func TestClaudeReattachWithoutAPersistedAnchorShowsNoTimer(t *testing.T) {
 // with the sequence number sampled before the send. Completing the turn clears
 // both, so nothing stale is left for the next restart to find.
 func TestClaudeSendTurnPersistsAndClearsTheAnchor(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -559,7 +563,7 @@ func TestClaudeFirstTurnAnchorIsPersistedOnceTheInitLineLands(t *testing.T) {
 	// window — without the gate, the assertion races the init processing and
 	// fails spuriously under full-suite load.
 	releaseInit := make(chan struct{})
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return

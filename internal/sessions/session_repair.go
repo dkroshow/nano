@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/dkroshow/nano/internal/core/prompts"
 )
 
 const transcriptRepairWait = 10 * time.Second
@@ -71,7 +73,7 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 	}
 
 	queue := sess.queuedPrompts(threadID)
-	discardable := make([]queuedTurnRecord, 0, len(queue))
+	discardable := make([]prompts.QueuedTurn, 0, len(queue))
 	actionIDs := make([]string, 0, len(queue))
 	for _, record := range queue {
 		if record.State != submissionQueued && record.State != submissionParked {

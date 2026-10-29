@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
@@ -168,7 +169,7 @@ func (s *Controller) attachFleetStates(ctx context.Context, threads []Thread) {
 }
 
 // fleetCourts reads the saved-file evidence of the rows Nano does not hold.
-func (s *Controller) fleetCourts(ctx context.Context, threads []Thread) (map[string]fleetCourtMessage, error) {
+func (s *Controller) fleetCourts(ctx context.Context, threads []Thread) (map[string]catalog.FleetCourtMessage, error) {
 	source := s.catalog
 	if source == nil {
 		return nil, errors.New("catalog has no fleet court read")

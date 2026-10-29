@@ -9,15 +9,15 @@ import (
 // Queue consumes the hosted owner's compatibility view of durable prompts.
 type Queue interface {
 	// Get reads compatibility evidence for an action.
-	Get(string) (queuedTurnRecord, bool)
+	Get(string) (prompts.QueuedTurn, bool)
 	// First reads the next queued prompt for an attachment.
-	First(string, string, string) (queuedTurnRecord, bool)
+	First(string, string, string) (prompts.QueuedTurn, bool)
 	// ByProviderTurn reads a prompt bound to the named provider turn.
-	ByProviderTurn(string, string, string, string) (queuedTurnRecord, bool)
+	ByProviderTurn(string, string, string, string) (prompts.QueuedTurn, bool)
 	// ListThread reads compatibility records for a thread.
-	ListThread(string, string, string) []queuedTurnRecord
+	ListThread(string, string, string) []prompts.QueuedTurn
 	// ListThreadFrom reads compatibility records through the supplied journal.
-	ListThreadFrom(prompts.JournalReader, string, string, string) []queuedTurnRecord
+	ListThreadFrom(prompts.JournalReader, string, string, string) []prompts.QueuedTurn
 	// BootParksFor reads prompts parked during boot for the attachment.
 	BootParksFor(string, string, string) []prompts.BootPark
 	// QueuedCount counts queued prompts for the attachment.
@@ -35,9 +35,9 @@ type Queue interface {
 // Journal reads delivery evidence and its restart identity.
 type Journal interface {
 	// Get reads compatibility evidence for an action.
-	Get(string) (sendAttemptRecord, bool)
+	Get(string) (prompts.SendAttempt, bool)
 	// ListThread reads compatibility records for a thread.
-	ListThread(string, string) []sendAttemptRecord
+	ListThread(string, string) []prompts.SendAttempt
 	// TransactionStore returns the canonical transactional prompt store.
 	TransactionStore() *prompts.Store
 	// BindTransactionStore sets the canonical transactional prompt store.
@@ -47,21 +47,21 @@ type Journal interface {
 }
 
 // QueuedPrompt reads one queued prompt from the attachment store.
-func (sess *Session) QueuedPrompt(actionID string) (queuedTurnRecord, bool) {
+func (sess *Session) QueuedPrompt(actionID string) (prompts.QueuedTurn, bool) {
 	if sess.queuedTurns == nil {
-		return queuedTurnRecord{}, false
+		return prompts.QueuedTurn{}, false
 	}
 	return sess.queuedTurns.Get(actionID)
 }
 
-func (sess *Session) sendAttempt(actionID string) (sendAttemptRecord, bool) {
+func (sess *Session) sendAttempt(actionID string) (prompts.SendAttempt, bool) {
 	if sess.sendAttempts == nil {
-		return sendAttemptRecord{}, false
+		return prompts.SendAttempt{}, false
 	}
 	return sess.sendAttempts.Get(actionID)
 }
 
-func (sess *Session) queuedPrompts(nativeID string) []queuedTurnRecord {
+func (sess *Session) queuedPrompts(nativeID string) []prompts.QueuedTurn {
 	if sess.queuedTurns == nil {
 		return nil
 	}

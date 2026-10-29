@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // Catches: the host monitor losing the active turns its finished-turn row
@@ -50,12 +51,12 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f := newProviderRuntimeFixture(t, sessionConfig{ID: "working", Provider: "codex", HostedThreadID: "nht_working", DisplayName: "busy agent", CWD: "/w", CreatedAt: now}, "native-working", "model", func(f *providerRuntimeFixture) {
+	f := newProviderRuntimeFixture(t, sessions.Config{ID: "working", Provider: "codex", HostedThreadID: "nht_working", DisplayName: "busy agent", CWD: "/w", CreatedAt: now}, "native-working", "model", func(f *providerRuntimeFixture) {
 		f.resumeResult = map[string]any{"model": "model", "thread": map[string]any{"id": "native-working", "turns": []any{map[string]any{"id": "busy-turn", "status": "inProgress"}}}}
 	})
 	working := f.session
 	idle := memorySession(t, "idle", "claude", "native-idle", "ready", "/w", "model", now)
-	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: observability.NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}, map[string]*session{working.ID(): working, idle.ID(): idle})
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: observability.NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}, map[string]*sessions.Session{working.ID(): working, idle.ID(): idle})
 
 	rec := httptest.NewRecorder()
 	s.monitorHandlers().HandleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))

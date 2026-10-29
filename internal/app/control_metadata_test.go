@@ -17,6 +17,7 @@ import (
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func newTestAgentMessageStore(t *testing.T) *featuremail.Store {
@@ -38,7 +39,7 @@ func TestHostedMetadataAPIReadsCanonicalCurrentState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_api", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+	if _, err := store.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: "nht_api", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 		t.Fatal(err)
 	}
 	executions := newTestAgentExecutionStore(t, "test")
@@ -93,7 +94,7 @@ func TestHostedMetadataEventsAPIUsesPublicFilteredCursorContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, event := range []metadataEvent{
+	for _, event := range []hostedstore.MetadataEvent{
 		{HostedThreadID: "nht_event_api", Field: postureFieldModel, Value: "old", Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Freshness: metadataFreshnessHistorical, SourceEventKey: "old-model"},
 		{HostedThreadID: "nht_event_api", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: "priority"},
 		{HostedThreadID: "nht_event_api", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: "priority-confirmed"},
@@ -186,11 +187,11 @@ func TestSessionsRouteDegradedModeKeepsReadsButRejectsNewHostedSession(t *testin
 func TestRecordPostureFailureSeparatesDegradedIngestionFromReadAvailability(t *testing.T) {
 	store := newTestControlMetadata(t)
 	notified := 0
-	sess := newSession(sessionConfig{HostedThreadID: "nht_missing", ID: "nano-1", Metadata: store, RuntimeNotify: func() { notified++ }})
+	sess := newSession(sessions.Config{HostedThreadID: "nht_missing", ID: "nano-1", Metadata: store, RuntimeNotify: func() { notified++ }})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
-	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
+	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
 	if notified != 1 {
 		t.Fatalf("runtime notifications = %d", notified)
 	}
@@ -212,14 +213,14 @@ func TestIngestionFailureKeepsLastCommittedCanonicalStateVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := &failingMetadataAppend{MetadataStore: store}
-	sess := newSession(sessionConfig{HostedThreadID: "nht_degraded_readable", Provider: "codex", ID: "nano-1", Metadata: metadata})
+	sess := newSession(sessions.Config{HostedThreadID: "nht_degraded_readable", Provider: "codex", ID: "nano-1", Metadata: metadata})
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
-	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
+	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
 	// A rejected newer append must not hide the healthy committed view.
 	metadata.fail = true
-	sess.RecordCreationPosture(providerRequest{ServiceTier: "bad"})
+	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "bad"})
 
 	summary := sess.Summary()
 	if summary.MetadataUnavailable || !summary.MetadataDegraded || summary.Metadata == nil {
@@ -230,7 +231,7 @@ func TestIngestionFailureKeepsLastCommittedCanonicalStateVisible(t *testing.T) {
 	}
 }
 
-func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
+func TestPostureStoreCommitPrecedesRuntimePublication(t *testing.T) {
 	store := newTestControlMetadata(t)
 	const hosted = "nht_runtime_commit"
 	if err := store.EnsureHostedThread(hosted, "codex", presentationShared, "", "", ""); err != nil {
@@ -239,12 +240,12 @@ func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
 	if _, err := store.BeginTransportBinding(hosted); err != nil {
 		t.Fatal(err)
 	}
-	metadata := &atomicFailMetadataAppend{sessionMetadata: store}
+	metadata := &atomicFailMetadataAppend{Metadata: store}
 	var notified atomic.Int32
 	ready := make(chan struct{})
 	var readyOnce sync.Once
-	var sess *session
-	f := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted, Metadata: metadata, RuntimeNotify: func() {
+	var sess *sessions.Session
+	f := newProviderRuntimeFixture(t, sessions.Config{ID: "nano-1", Provider: "codex", HostedThreadID: hosted, Metadata: metadata, RuntimeNotify: func() {
 		notified.Add(1)
 		if sess != nil && sess.Summary().Status == "ready" {
 			readyOnce.Do(func() { close(ready) })
@@ -252,7 +253,7 @@ func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
 	}}, "native-notify", "", func(f *providerRuntimeFixture) { sess = f.session })
 	<-ready
 	before := notified.Load()
-	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
+	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
 	if got := notified.Load() - before; got != 1 {
 		t.Fatalf("runtime notifications = %d, want one committed mutation", got)
 	}
@@ -281,15 +282,15 @@ func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
 }
 
 type atomicFailMetadataAppend struct {
-	sessionMetadata
+	sessions.Metadata
 	fail atomic.Bool
 }
 
-func (m *atomicFailMetadataAppend) AppendEvent(event metadataEvent) (metadataEvent, error) {
+func (m *atomicFailMetadataAppend) AppendEvent(event hostedstore.MetadataEvent) (hostedstore.MetadataEvent, error) {
 	if m.fail.Load() {
-		return metadataEvent{}, errors.New("injected metadata append failure")
+		return hostedstore.MetadataEvent{}, errors.New("injected metadata append failure")
 	}
-	return m.sessionMetadata.AppendEvent(event)
+	return m.Metadata.AppendEvent(event)
 }
 
 func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
@@ -298,7 +299,7 @@ func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
 		t.Fatal(err)
 	}
 	g, _ := store.BeginTransportBinding("nht_hint")
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_hint", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
+	if _, err := store.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: "nht_hint", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
 		t.Fatal(err)
 	}
 	exec := newTestAgentExecutionStore(t, "test")
@@ -368,9 +369,9 @@ func TestSessionListCarriesDisplayedMetadataOnly(t *testing.T) {
 	if err := metadata.EnsureHostedThread("nht_listed", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	sess := configuredFixtureSession(t, sessionConfig{ID: "session-listed", Provider: "codex", HostedThreadID: "nht_listed", CreatedAt: time.Now(), Metadata: metadata, RuntimeNotify: func() {}}, "native-listed", "ready", "")
-	sess.RecordCreationPosture(providerRequest{ServiceTier: "priority"})
-	server := testServerWithSessions(&server{Registry: newSessionRegistry(), controlMetadata: metadata}, map[string]*session{sess.ID(): sess})
+	sess := configuredFixtureSession(t, sessions.Config{ID: "session-listed", Provider: "codex", HostedThreadID: "nht_listed", CreatedAt: time.Now(), Metadata: metadata, RuntimeNotify: func() {}}, "native-listed", "ready", "")
+	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
+	server := testServerWithSessions(&server{Registry: newSessionRegistry(), controlMetadata: metadata}, map[string]*sessions.Session{sess.ID(): sess})
 	rec := httptest.NewRecorder()
 	server.sidebarOwner().SessionsHandler(server.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 	var body struct {
@@ -409,7 +410,7 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 	if rec.Code != http.StatusOK || !containsAll(rec.Body.String(), `"attachment":{"state":"detached","provenance":"execution_record"`) {
 		t.Fatalf("detached metadata = %d %s", rec.Code, rec.Body.String())
 	}
-	live := newSession(runtimeFixtureConfig(t, sessionConfig{ID: "live", Provider: "codex", HostedThreadID: "nht_attachment_api", Projection: newLiveProjection("codex")}))
+	live := newSession(runtimeFixtureConfig(t, sessions.Config{ID: "live", Provider: "codex", HostedThreadID: "nht_attachment_api", Projection: newLiveProjection("codex")}))
 	if err := live.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +425,7 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 	}
 	fake := newFakeAppServer(t)
 	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": live.ThreadID()}})
-	if err := live.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: live.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	if err := live.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: live.ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, live, "ready")
@@ -484,9 +485,9 @@ type failingMetadataAppend struct {
 	fail bool
 }
 
-func (m *failingMetadataAppend) AppendEvent(event metadataEvent) (metadataEvent, error) {
+func (m *failingMetadataAppend) AppendEvent(event hostedstore.MetadataEvent) (hostedstore.MetadataEvent, error) {
 	if m.fail {
-		return metadataEvent{}, errors.New("injected append failure")
+		return hostedstore.MetadataEvent{}, errors.New("injected append failure")
 	}
 	return m.MetadataStore.AppendEvent(event)
 }

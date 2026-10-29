@@ -12,13 +12,15 @@ import (
 	"github.com/dkroshow/nano/internal/config"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
-func causationTestSession(t *testing.T, hosted string) (*session, *hostedstore.MetadataStore) {
+func causationTestSession(t *testing.T, hosted string) (*sessions.Session, *hostedstore.MetadataStore) {
 	return causationTestSessionForProvider(t, hosted, "codex")
 }
 
-func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*session, *hostedstore.MetadataStore) {
+func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*sessions.Session, *hostedstore.MetadataStore) {
 	t.Helper()
 	store := newTestControlMetadata(t)
 	if err := store.EnsureHostedThread(hosted, provider, presentationShared, "", "", ""); err != nil {
@@ -28,7 +30,7 @@ func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*se
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := newSession(runtimeFixtureConfig(t, sessionConfig{ID: "sess_" + hosted, Provider: provider, HostedThreadID: hosted, Metadata: store, Projection: newLiveProjection(provider, hosted)}))
+	sess := newSession(runtimeFixtureConfig(t, sessions.Config{ID: "sess_" + hosted, Provider: provider, HostedThreadID: hosted, Metadata: store, Projection: newLiveProjection(provider, hosted)}))
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +39,7 @@ func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*se
 	return sess, store
 }
 
-func requested(t *testing.T, sess *session, store *hostedstore.MetadataStore, field, value string) int64 {
+func requested(t *testing.T, sess *sessions.Session, store *hostedstore.MetadataStore, field, value string) int64 {
 	t.Helper()
 	if sess.Provider() == "codex" && value != "ultrafast" {
 		body, _ := json.Marshal(map[string]string{field: value})
@@ -47,7 +49,7 @@ func requested(t *testing.T, sess *session, store *hostedstore.MetadataStore, fi
 			t.Fatalf("requested %s: %d %s", field, response.Code, response.Body.String())
 		}
 	} else {
-		if _, err := store.AppendEvent(metadataEvent{HostedThreadID: sess.HostedThreadID(), Field: field, Value: value, Disposition: metadataDispositionRequested, Source: postureSourceOperator, Evidence: "test", Freshness: metadataFreshnessLive}); err != nil {
+		if _, err := store.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: sess.HostedThreadID(), Field: field, Value: value, Disposition: metadataDispositionRequested, Source: postureSourceOperator, Evidence: "test", Freshness: metadataFreshnessLive}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -58,30 +60,30 @@ func requested(t *testing.T, sess *session, store *hostedstore.MetadataStore, fi
 	return *view.Fields[field].DesiredEventID
 }
 
-func startCausationCodex(t *testing.T, sess *session) *fakeAppServer {
+func startCausationCodex(t *testing.T, sess *sessions.Session) *fakeAppServer {
 	t.Helper()
 	fake := newFakeAppServer(t)
 	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.ThreadID()}})
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "causal-turn"}})
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")
 	return fake
 }
-func sendCausationTurn(t *testing.T, sess *session) {
+func sendCausationTurn(t *testing.T, sess *sessions.Session) {
 	t.Helper()
 	if response := postTurn(t, sess, context.Background(), "causation-turn", "test prompt"); response.Code != http.StatusOK {
 		t.Fatalf("causal turn: %d %s", response.Code, response.Body.String())
 	}
 }
-func emitCausation(t *testing.T, sess *session, fake *fakeAppServer, payload json.RawMessage) {
+func emitCausation(t *testing.T, sess *sessions.Session, fake *fakeAppServer, payload json.RawMessage) {
 	t.Helper()
 	line := append([]byte(`{"method":"thread/settings/updated","params":`), payload...)
 	line = append(line, '}')
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndDrain(t, line)
 }
-func startCausationResponse(t *testing.T, sess *session, request providerRequest, values map[string]any, before func(json.RawMessage)) {
+func startCausationResponse(t *testing.T, sess *sessions.Session, request sessions.ProviderRequest, values map[string]any, before func(json.RawMessage)) {
 	t.Helper()
 	fake := newFakeAppServer(t)
 	values["thread"] = map[string]any{"id": sess.ThreadID()}
@@ -109,7 +111,7 @@ func fieldStrings(t *testing.T, store *hostedstore.MetadataStore, hosted, field 
 	return f, desired, effective
 }
 
-func finishCausationTurn(t *testing.T, sess *session, fake *fakeAppServer, actionID string) {
+func finishCausationTurn(t *testing.T, sess *sessions.Session, fake *fakeAppServer, actionID string) {
 	t.Helper()
 	record, _, err := sess.PromptStore().Get(context.Background(), actionID)
 	if err != nil || record.ProviderTurnID == "" {
@@ -122,7 +124,7 @@ func finishCausationTurn(t *testing.T, sess *session, fake *fakeAppServer, actio
 func TestCreationRequestPriorityExistsBeforeImmediateThreadStartResponse(t *testing.T) {
 	sess, store := causationTestSession(t, "nht_fast_start")
 	requestID := requested(t, sess, store, postureFieldServiceTier, "priority")
-	startCausationResponse(t, sess, providerRequest{ServiceTier: "priority"}, map[string]any{"serviceTier": "priority"}, func(json.RawMessage) {
+	startCausationResponse(t, sess, sessions.ProviderRequest{ServiceTier: "priority"}, map[string]any{"serviceTier": "priority"}, func(json.RawMessage) {
 		view, err := store.View(sess.HostedThreadID())
 		if err != nil {
 			t.Error(err)
@@ -153,7 +155,7 @@ func TestSpawnSessionCommitsPriorityBeforeImmediateThreadStartAndSettles(t *test
 		received <- struct{}{}
 	})
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +178,7 @@ func TestRunCodexHandshakeAcceptsGranularApprovalPolicy(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.SetStartResult(map[string]any{"model": "gpt-test", "approvalPolicy": map[string]any{"granular": map[string]any{"filesystem": "on-request"}}, "thread": map[string]any{"id": "thread-granular", "cwd": t.TempDir()}})
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD}})
+	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +197,7 @@ func TestCodexTypedStartRejectionSettlesCreationWithoutEffectiveValue(t *testing
 	fake := newFakeAppServer(t)
 	fake.SetStartError("policy rejected start")
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +215,7 @@ func TestCodexTransportFailureLeavesCreationPending(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.SetDropStart(true)
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +231,7 @@ func TestCodexTransportFailureLeavesCreationPending(t *testing.T) {
 func TestMatchingStartResponseSettlesItsEvent(t *testing.T) {
 	sess, store := causationTestSession(t, "nht_match_start")
 	id := requested(t, sess, store, postureFieldModel, "gpt-5")
-	startCausationResponse(t, sess, providerRequest{Model: "gpt-5"}, map[string]any{"model": "gpt-5"}, nil)
+	startCausationResponse(t, sess, sessions.ProviderRequest{Model: "gpt-5"}, map[string]any{"model": "gpt-5"}, nil)
 	f, desired, effective := fieldStrings(t, store, sess.HostedThreadID(), postureFieldModel)
 	if f.DesiredEventID == nil || *f.DesiredEventID != id || f.DesiredSettlementEventID == nil || f.DesiredDisposition != metadataDispositionConfirmed || desired != "gpt-5" || effective != "gpt-5" {
 		t.Fatalf("matching settlement = %+v desired=%q effective=%q", f, desired, effective)
@@ -239,7 +241,7 @@ func TestMatchingStartResponseSettlesItsEvent(t *testing.T) {
 func TestMismatchingStartResponseRejectsRequestedAndConfirmsActual(t *testing.T) {
 	sess, store := causationTestSession(t, "nht_mismatch_start")
 	id := requested(t, sess, store, postureFieldServiceTier, "priority")
-	startCausationResponse(t, sess, providerRequest{ServiceTier: "priority"}, map[string]any{"serviceTier": "default"}, nil)
+	startCausationResponse(t, sess, sessions.ProviderRequest{ServiceTier: "priority"}, map[string]any{"serviceTier": "default"}, nil)
 	f, desired, effective := fieldStrings(t, store, sess.HostedThreadID(), postureFieldServiceTier)
 	if f.DesiredEventID == nil || *f.DesiredEventID != id || f.DesiredDisposition != metadataDispositionRejected || desired != "priority" || effective != "default" || f.EffectiveDisposition != metadataDispositionConfirmed {
 		t.Fatalf("mismatch current = %+v desired=%q effective=%q", f, desired, effective)
@@ -250,7 +252,7 @@ func TestOlderStartResponseCannotSettleNewerOperatorChoice(t *testing.T) {
 	sess, store := causationTestSession(t, "nht_old_response")
 	old := requested(t, sess, store, postureFieldServiceTier, "priority")
 	var newer int64
-	startCausationResponse(t, sess, providerRequest{ServiceTier: "priority"}, map[string]any{"serviceTier": "priority"}, func(json.RawMessage) { newer = requested(t, sess, store, postureFieldServiceTier, "default") })
+	startCausationResponse(t, sess, sessions.ProviderRequest{ServiceTier: "priority"}, map[string]any{"serviceTier": "priority"}, func(json.RawMessage) { newer = requested(t, sess, store, postureFieldServiceTier, "default") })
 	f, desired, _ := fieldStrings(t, store, sess.HostedThreadID(), postureFieldServiceTier)
 	if old == newer || f.DesiredEventID == nil || *f.DesiredEventID != newer || f.DesiredDisposition != metadataDispositionRequested || desired != "default" {
 		t.Fatalf("older response settled newer request: %+v desired=%q", f, desired)
@@ -399,13 +401,13 @@ func TestClaudeReplayLiveBoundaryKeepsCanonicalMetadataReadable(t *testing.T) {
 	}
 }
 
-func newCausationClaudeAttachment(t *testing.T, store *hostedstore.MetadataStore, hosted string) *session {
+func newCausationClaudeAttachment(t *testing.T, store *hostedstore.MetadataStore, hosted string) *sessions.Session {
 	t.Helper()
 	generation, err := store.BeginTransportBinding(hosted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := newSession(runtimeFixtureConfig(t, sessionConfig{ID: "causation-clone", Provider: "claude", HostedThreadID: hosted, Metadata: store, Projection: newLiveProjection("claude", hosted)}))
+	sess := newSession(runtimeFixtureConfig(t, sessions.Config{ID: "causation-clone", Provider: "claude", HostedThreadID: hosted, Metadata: store, Projection: newLiveProjection("claude", hosted)}))
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
@@ -414,10 +416,10 @@ func newCausationClaudeAttachment(t *testing.T, store *hostedstore.MetadataStore
 	return sess
 }
 
-func startCausationClaude(t *testing.T, sess *session, model string) *providerRuntimeFixture {
+func startCausationClaude(t *testing.T, sess *sessions.Session, model string) *providerRuntimeFixture {
 	t.Helper()
-	connected := make(chan *shimConn, 1)
-	shim := newFakeShim(t, func(c *shimConn) {
+	connected := make(chan *claudeshim.Conn, 1)
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -432,7 +434,7 @@ func startCausationClaude(t *testing.T, sess *session, model string) *providerRu
 			c.Reply(call, map[string]any{})
 		}
 	})
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", Model: model, ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Model: model, ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	f := &providerRuntimeFixture{session: sess, claude: <-connected}
@@ -440,19 +442,19 @@ func startCausationClaude(t *testing.T, sess *session, model string) *providerRu
 	return f
 }
 
-func replayCausationClaude(t *testing.T, sess *session, line []byte) *providerRuntimeFixture {
+func replayCausationClaude(t *testing.T, sess *sessions.Session, line []byte) *providerRuntimeFixture {
 	t.Helper()
 	sess.ReserveNativeID("claude-native")
 	root := t.TempDir()
 	writeClaudeTestSpool(t, root, sess.HostedThreadID())
-	connected := make(chan *shimConn, 1)
-	shim := newFakeShim(t, func(c *shimConn) {
+	connected := make(chan *claudeshim.Conn, 1)
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
 		}
 		// The init arrives after Nano's disk scan, so the attach must replay it.
-		writeClaudeTestSpool(t, root, sess.HostedThreadID(), claudeTestFrame{Seq: 1, Dir: "recv", Line: string(line)})
+		writeClaudeTestSpool(t, root, sess.HostedThreadID(), claudeshim.Frame{Seq: 1, Dir: "recv", Line: string(line)})
 		c.Reply(attach, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": "claude-native", "state": "running", "turnActive": false, "lastSeq": 1})
 		c.Line(1, "recv", string(line))
 		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
@@ -465,7 +467,7 @@ func replayCausationClaude(t *testing.T, sess *session, line []byte) *providerRu
 			c.Reply(call, map[string]any{})
 		}
 	})
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", Mode: "resume", ThreadID: sess.ThreadID(), ClaudeShimWS: shim.WSURL(), ClaudeShimSpools: root, ClaudeBin: "/fake/claude", ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.ThreadID(), ShimSessionID: "shim-1"}}, nil, func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: sess.ThreadID(), ClaudeShimWS: shim.WSURL(), ClaudeShimSpools: root, ClaudeBin: "/fake/claude", ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.ThreadID(), ShimSessionID: "shim-1"}}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	f := &providerRuntimeFixture{session: sess, claude: <-connected, seq: 1}

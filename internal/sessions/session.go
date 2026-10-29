@@ -10,9 +10,13 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/providers"
 	"github.com/dkroshow/nano/internal/setup"
 )
@@ -52,7 +56,7 @@ type Session struct {
 	completedTurns   func(context.Context) (*coreturns.Store, error)
 	// savedTurn reads the saved status of one turn by exact native turn id,
 	// to settle a live turn whose terminal event was lost.
-	savedTurn    func(ctx context.Context, turnID string) (durableTurnEvidence, bool)
+	savedTurn    func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool)
 	savedPrompts SavedPromptReader
 	// savedPromptsIn reads saved user rows in a named native thread, for a
 	// Claude prompt whose exact native is not the current one; savedTurnFinal
@@ -115,7 +119,7 @@ type Session struct {
 	// including its provider — only a handshake knows whether the session is
 	// actually durable. Nil when the store is unavailable; set once at spawn
 	// like the nudges above.
-	rememberAttachment func(rec attachmentRecord)
+	rememberAttachment func(rec hostedstore.Attachment)
 	// forgetAttachment retires a durable attachment record by identity. Used by
 	// the claude `--resume` fallback, whose successor child mints a fresh native
 	// id and so leaves the superseded record pointing at nothing. Nil when the
@@ -149,7 +153,7 @@ type Session struct {
 	// metadataName reads the names-store overlay with its provenance. It is
 	// separate from displayName, which is only the immediate pre-catalog UI
 	// value while a new native id has not yet been indexed.
-	metadataName func(provider, nativeThreadID string) (hostedMetadataName, bool)
+	metadataName func(provider, nativeThreadID string) (hostedstore.MetadataName, bool)
 
 	// Submitted prompts are idempotent operations keyed by the browser's
 	// clientActionId. sendAttempts carries their small hash-only journal across
@@ -202,9 +206,9 @@ type Session struct {
 	codexHandshakeMu sync.Mutex
 
 	mu     sync.Mutex
-	events []wireEvent
+	events []protocol.Event
 	seq    int64
-	subs   map[chan wireEvent]struct{}
+	subs   map[chan protocol.Event]struct{}
 	spool  *wireSpool
 
 	// mcp caches the projected MCP tool registry served by
@@ -283,7 +287,7 @@ type Session struct {
 	closeUnconfirmed bool       // stateMu: suppress settlement until stop acknowledgement
 	spawnError       string     // background handshake failure; surfaced as "error" (Slice R3)
 	tokenUsage       json.RawMessage
-	turnTokenUsage   map[string]*tokenUsage
+	turnTokenUsage   map[string]*interact.TokenUsage
 	lastError        string
 	// codexZeroTurnResume marks the boot-only fallback for a daemon-resident
 	// thread whose first rollout does not exist yet. Its routing claim stays live
@@ -295,7 +299,7 @@ type Session struct {
 	// keyed by JSON-RPC request id. Server-owned truth, not wire inference: the
 	// wire buffer is bounded, so a tab opened after the request landed could
 	// never rediscover it by replay (interactions.go).
-	interactions map[string]pendingInteraction
+	interactions map[string]interact.PendingInteraction
 	// status classifiers reject every provider interaction before it enters the
 	// visible pending-card state. rejectedInteractionSeq tells the dispatcher
 	// that the otherwise-hidden abnormal attempt must fail closed.
@@ -352,7 +356,7 @@ type Summary struct {
 	NeedsAttention bool `json:"needsAttention,omitempty"`
 	// ThreadDiagnostics is the thread's bounded list of delivery and
 	// session facts (thread_diagnostics.go).
-	ThreadDiagnostics []threadDiagnostic `json:"threadDiagnostics,omitempty"`
+	ThreadDiagnostics []observability.ThreadDiagnostic `json:"threadDiagnostics,omitempty"`
 	// LastTurnEndedAt is the server wall-clock instant at which the most recent
 	// hosted turn ended. It seeds the client's completed stack on reload.
 	LastTurnEndedAt string `json:"lastTurnEndedAt,omitempty"`
@@ -361,10 +365,10 @@ type Summary struct {
 	// pending sidebar row can join the Starred section before its catalog row.
 	Starred bool `json:"starred,omitempty"`
 	// Posture and Metadata both come from control.sqlite for hosted threads.
-	Posture             sessionPosture      `json:"posture"`
-	Metadata            *hostedMetadataView `json:"metadata,omitempty"`
-	MetadataUnavailable bool                `json:"metadataUnavailable,omitempty"`
-	MetadataDegraded    bool                `json:"metadataDegraded,omitempty"`
+	Posture             hostedstore.Posture       `json:"posture"`
+	Metadata            *hostedstore.MetadataView `json:"metadata,omitempty"`
+	MetadataUnavailable bool                      `json:"metadataUnavailable,omitempty"`
+	MetadataDegraded    bool                      `json:"metadataDegraded,omitempty"`
 	// FileTranscript is always true: every provider serves pane rows and live
 	// text through its file transcript stream (live_text.go).
 	FileTranscript bool `json:"fileTranscript"`

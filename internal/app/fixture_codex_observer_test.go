@@ -5,6 +5,7 @@ import (
 	"time"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // quietRuntimeExecutions keeps attachment setup out of tests of stored turn evidence.
@@ -16,7 +17,7 @@ func (*quietRuntimeExecutions) UpdateSession(string, string, string, string, str
 	return nil
 }
 
-func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, hostedID, nativeID string) (*session, *fakeAppServer) {
+func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, hostedID, nativeID string) (*sessions.Session, *fakeAppServer) {
 	t.Helper()
 	migrateTestControl(t, store.Control())
 	prompts := testPromptStore(t, store.Control().CanonicalDatabase())
@@ -28,7 +29,7 @@ func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, ho
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := newSession(sessionConfig{ID: "observer-attachment", Provider: "codex", HostedThreadID: hostedID, Projection: newLiveProjection("codex", hostedID), AgentExecutions: &quietRuntimeExecutions{store}, Turns: prompts, QueuedTurns: queue, SendAttempts: journal, CreatedAt: time.Now()})
+	sess := newSession(sessions.Config{ID: "observer-attachment", Provider: "codex", HostedThreadID: hostedID, Projection: newLiveProjection("codex", hostedID), AgentExecutions: &quietRuntimeExecutions{store}, Turns: prompts, QueuedTurns: queue, SendAttempts: journal, CreatedAt: time.Now()})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -37,9 +38,9 @@ func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, ho
 	t.Cleanup(sess.Close)
 	return sess, fake
 }
-func startCodexObserverFixture(t *testing.T, sess *session, fake *fakeAppServer) {
+func startCodexObserverFixture(t *testing.T, sess *sessions.Session, fake *fakeAppServer) {
 	t.Helper()
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)

@@ -6,26 +6,29 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/liveview"
 )
 
 func retainedTestProjection(turnID string, startedAtMs int64) *LiveProjection {
 	p := newDeliveryTestProjection("codex")
-	p.seedResumeTurns("native-thread", []*liveProjectionTurn{{ID: turnID, Status: "in_progress", StartedAtMs: startedAtMs}})
+	p.seedResumeTurns("native-thread", []*liveview.Turn{{ID: turnID, Status: "in_progress", StartedAtMs: startedAtMs}})
 	return p
 }
-func durableTurnTestSession(turnID string, startedAtMs int64) *session {
+func durableTurnTestSession(turnID string, startedAtMs int64) *Session {
 	p := retainedTestProjection(turnID, startedAtMs)
-	return &session{provider: "codex", threadID: "native-thread", projection: p, turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)}
+	return &Session{provider: "codex", threadID: "native-thread", projection: p, turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)}
 }
-func reconcileWithSavedTurn(sess *session, saved durableTurnEvidence) {
-	sess.savedTurn = func(_ context.Context, id string) (durableTurnEvidence, bool) { return saved, id == saved.Turn.ID }
+func reconcileWithSavedTurn(sess *Session, saved liveview.DurableTurnEvidence) {
+	sess.savedTurn = func(_ context.Context, id string) (liveview.DurableTurnEvidence, bool) {
+		return saved, id == saved.Turn.ID
+	}
 	sess.ReconcileDurableTurn(context.Background())
 }
 func TestDurableReconciliationSettlesResumeBeforeHandshakeCannotResurrect(t *testing.T) {
 	started := time.Now().Add(-time.Minute).UnixMilli()
 	sess := durableTurnTestSession("turn-resume", started)
-	reconcileWithSavedTurn(sess, durableTurnEvidence{
-		Turn: liveProjectionTurn{ID: "turn-resume", Status: "completed", CompletedAtMs: started + 1, DurationMS: 1},
+	reconcileWithSavedTurn(sess, liveview.DurableTurnEvidence{
+		Turn: liveview.Turn{ID: "turn-resume", Status: "completed", CompletedAtMs: started + 1, DurationMS: 1},
 	})
 	sess.setTurnActive(true, "turn-resume", started, true) // late thread/resume handshake
 	sess.stateMu.Lock()
@@ -39,8 +42,8 @@ func TestDurableReconciliationSettlesResumeBeforeHandshakeCannotResurrect(t *tes
 func TestDurableCatalogReconciliationSettlesExactCurrentTurnAndAllowsNewerTurn(t *testing.T) {
 	started := time.Now().Add(-time.Minute).UnixMilli()
 	sess := durableTurnTestSession("turn-current", started)
-	reconcileWithSavedTurn(sess, durableTurnEvidence{
-		Turn: liveProjectionTurn{ID: "turn-current", Status: "interrupted", CompletedAtMs: started + 1},
+	reconcileWithSavedTurn(sess, liveview.DurableTurnEvidence{
+		Turn: liveview.Turn{ID: "turn-current", Status: "interrupted", CompletedAtMs: started + 1},
 	})
 	sess.stateMu.Lock()
 	active := sess.workActiveLocked()
@@ -59,9 +62,9 @@ func TestDurableCatalogReconciliationSettlesExactCurrentTurnAndAllowsNewerTurn(t
 
 func TestDurableReconciliationLeavesWeakOrMismatchedEvidenceWorking(t *testing.T) {
 	started := time.Now().UnixMilli()
-	for _, saved := range []durableTurnEvidence{
-		{Turn: liveProjectionTurn{ID: "turn-current", Status: "completed"}},
-		{Turn: liveProjectionTurn{ID: "turn-other", Status: "completed", CompletedAtMs: started + 1}},
+	for _, saved := range []liveview.DurableTurnEvidence{
+		{Turn: liveview.Turn{ID: "turn-current", Status: "completed"}},
+		{Turn: liveview.Turn{ID: "turn-other", Status: "completed", CompletedAtMs: started + 1}},
 	} {
 		sess := durableTurnTestSession("turn-current", started)
 		reconcileWithSavedTurn(sess, saved)
@@ -86,8 +89,8 @@ func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
 	sess.lifecycleState = testLifecycleSnapshot("ready", true)
 	sess.projection = retainedTestProjection("turn-file", started.UnixMilli())
 
-	reconcileWithSavedTurn(sess, durableTurnEvidence{
-		Turn: liveProjectionTurn{ID: "turn-file", Status: "completed", StartedAtMs: started.UnixMilli(), CompletedAtMs: started.Add(time.Minute).UnixMilli()},
+	reconcileWithSavedTurn(sess, liveview.DurableTurnEvidence{
+		Turn: liveview.Turn{ID: "turn-file", Status: "completed", StartedAtMs: started.UnixMilli(), CompletedAtMs: started.Add(time.Minute).UnixMilli()},
 	})
 	rows, err := store.After(context.Background(), sess.hostedThreadID, "", 10)
 	if err != nil {
@@ -102,17 +105,17 @@ func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
 func checkSavedAttachmentReplacement(t *testing.T) {
 	for _, test := range []struct {
 		name   string
-		change func(*session)
+		change func(*Session)
 	}{
-		{"attachment replaced during the read", func(sess *session) { sess.stateMu.Lock(); sess.attachmentGeneration++; sess.stateMu.Unlock() }},
-		{"native thread replaced during the read", func(sess *session) { sess.stateMu.Lock(); sess.threadID = "native-replacement"; sess.stateMu.Unlock() }},
+		{"attachment replaced during the read", func(sess *Session) { sess.stateMu.Lock(); sess.attachmentGeneration++; sess.stateMu.Unlock() }},
+		{"native thread replaced during the read", func(sess *Session) { sess.stateMu.Lock(); sess.threadID = "native-replacement"; sess.stateMu.Unlock() }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			started := time.Now().Add(-time.Minute)
 			sess := durableTurnTestSession("turn-1", started.UnixMilli())
-			sess.savedTurn = func(_ context.Context, id string) (durableTurnEvidence, bool) {
+			sess.savedTurn = func(_ context.Context, id string) (liveview.DurableTurnEvidence, bool) {
 				test.change(sess)
-				return durableTurnEvidence{Turn: liveProjectionTurn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}, id == "turn-1"
+				return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}, id == "turn-1"
 			}
 			sess.ReconcileDurableTurn(context.Background())
 			sess.stateMu.Lock()

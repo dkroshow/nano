@@ -11,6 +11,7 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	fixture "github.com/dkroshow/nano/internal/testsupport"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -96,12 +97,12 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 // Boundary: the saved-commit member step on a real catalog and operation store.
 // The session sibling preserves the live shim transport and result-routing checks.
 // The shared claude-result-binding fixture is a scrubbed capture of that sequence.
-func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
+func TestClaudeResultSavedRowsBindToAnsweredPrompt(t *testing.T) {
 	ctx := context.Background()
 	f := newClaudeResultFixture(t)
 	h, executions, core, order, fill := f.h, f.executions, f.core, f.order, f.fill
 	sess := newClaudeResultSession(t, f)
-	seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
+	seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{sess.ID(): sess})
 	// The session sibling proves these captured result identities at ingress.
 	// This boundary owns their saved-row joins and durable operation results.
 	for _, result := range []struct{ turn, final string }{{order[0].turn, fixture.ClaudeResultAnswerA}, {order[3].turn, fixture.ClaudeResultAnswerMerged}} {
@@ -158,18 +159,18 @@ func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
 		t.Fatalf("owed = %v, %v; want none", owing, err)
 	}
 }
-func newClaudeResultSession(t *testing.T, f claudeResultFixture) *session {
+func newClaudeResultSession(t *testing.T, f claudeResultFixture) *sessions.Session {
 	t.Helper()
 	h := f.h
 	p := newLiveProjection("claude", "hosted")
-	sess := newSession(sessionConfig{ID: "nano-session", Provider: "claude", HostedThreadID: "hosted", Projection: p, AgentExecutions: f.executions, Metadata: h.control, CompletedTurns: f.completed.CoreStore, Turns: h.prompts, QueuedTurns: h.queue, SendAttempts: h.attempts})
+	sess := newSession(sessions.Config{ID: "nano-session", Provider: "claude", HostedThreadID: "hosted", Projection: p, AgentExecutions: f.executions, Metadata: h.control, CompletedTurns: f.completed.CoreStore, Turns: h.prompts, QueuedTurns: h.queue, SendAttempts: h.attempts})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID(h.fixture.native)
 	sess.ConfigureSavedReaders(nil, h.server.savedPromptsFor(sess), h.server.hostedCatalog().SavedPromptRows, h.server.hostedCatalog().SavedTurnFinal, nil)
 	if h.runtimes == nil {
-		h.runtimes = map[*session]*providerRuntimeFixture{}
+		h.runtimes = map[*sessions.Session]*providerRuntimeFixture{}
 	}
 	h.runtimes[sess] = &providerRuntimeFixture{session: sess, projection: p}
 	t.Cleanup(sess.Close)

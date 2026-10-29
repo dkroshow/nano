@@ -6,11 +6,9 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 )
 
-type tokenUsage = interact.TokenUsage
-
 // normalizeTokenUsage keeps only the provider counters needed by feature
 // clients. Codex reports them under last; Claude and Grok use the direct shape.
-func normalizeTokenUsage(raw json.RawMessage) *tokenUsage {
+func normalizeTokenUsage(raw json.RawMessage) *interact.TokenUsage {
 	var body map[string]json.RawMessage
 	if len(raw) == 0 || json.Unmarshal(raw, &body) != nil {
 		return nil
@@ -21,7 +19,7 @@ func normalizeTokenUsage(raw json.RawMessage) *tokenUsage {
 			body = last
 		}
 	}
-	usage := &tokenUsage{
+	usage := &interact.TokenUsage{
 		InputTokens:       nonnegativeTokenCount(body["inputTokens"]),
 		CachedInputTokens: nonnegativeTokenCount(body["cachedInputTokens"]),
 		OutputTokens:      nonnegativeTokenCount(body["outputTokens"]),

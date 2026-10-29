@@ -12,7 +12,7 @@ import (
 )
 
 func TestDurableTerminalAuthority(t *testing.T) {
-	completed := durableTurnEvidence{Turn: liveProjectionTurn{ID: "turn-1", Status: "completed", CompletedAtMs: 200}}
+	completed := liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: "turn-1", Status: "completed", CompletedAtMs: 200}}
 	cases := []struct {
 		name   string
 		exact  bool
@@ -245,8 +245,8 @@ func TestLiveProjectionClosesALaggingSubscriber(t *testing.T) {
 	defer cancel()
 	p.mu.Lock()
 	for i := 0; i < cap(ch)+10; i++ {
-		p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert,
-			Turn: &liveProjectionTurn{ID: "turn", Status: "in_progress"}})
+		p.appendLocked(liveview.Update{Op: projectionTurnUpsert,
+			Turn: &liveview.Turn{ID: "turn", Status: "in_progress"}})
 	}
 	p.mu.Unlock()
 	closed := false

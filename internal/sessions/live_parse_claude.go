@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/transcriptparse/claude"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 type claudeLiveAdapter struct {
@@ -18,7 +19,7 @@ func newClaudeLiveAdapter() *claudeLiveAdapter {
 	return &claudeLiveAdapter{}
 }
 
-func (a *claudeLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *claudeLiveAdapter) apply(dir wire.Direction, line []byte, at time.Time) model.Batch {
 	next, batch, err := claude.ParseWire(a.reader, liveParseInput(dir, line, at))
 	if err != nil {
 		return model.Batch{}
@@ -27,7 +28,7 @@ func (a *claudeLiveAdapter) apply(dir protocol.Direction, line []byte, at time.T
 	return batch
 }
 
-func parsedClaudeLiveItem(parsed model.Item, at time.Time) *liveProjectionItem {
+func parsedClaudeLiveItem(parsed model.Item, at time.Time) *liveview.Item {
 	item := parsedLiveItem(parsed, at)
 	if parsed.NativeItemID == "" && parsed.Type == model.ItemUserMessage {
 		for _, observation := range parsed.Observations {

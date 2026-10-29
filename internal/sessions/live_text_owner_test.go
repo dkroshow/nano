@@ -22,6 +22,8 @@ import (
 	"github.com/dkroshow/nano/internal/diagnostics"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -41,7 +43,7 @@ type liveTextHarness struct {
 	*liveTextViewer
 	t           *testing.T
 	diagnostics *diagnostics.Store
-	sess        *session
+	sess        *Session
 	projection  *LiveProjection
 	queue       Queue
 	journal     Journal
@@ -909,16 +911,16 @@ func TestLiveTextStreamCarriesStatusFirst(t *testing.T) {
 			return
 		}
 	}
-	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
+	h.projection.updateRuntime(liveview.Runtime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
 	expect("working=true cards=0")
-	h.projection.upsertInteraction(pendingInteraction{ID: "ask-1", Kind: "question", CreatedAt: "2026-10-03T00:00:00Z"})
+	h.projection.upsertInteraction(interact.PendingInteraction{ID: "ask-1", Kind: "question", CreatedAt: "2026-10-03T00:00:00Z"})
 	expect("working=true cards=1")
 	// Live rows change the projection too, with compact row records that
 	// carry no status; they must not read as a turn ending or a card leaving.
 	h.feed(fixtureLines(t, "claude-turn.wire.jsonl"))
 	h.projection.removeInteraction("ask-1")
 	expect("working=true cards=0")
-	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
+	h.projection.updateRuntime(liveview.Runtime{SessionStatus: "ready"})
 	expect("working=false cards=0")
 }
 
@@ -946,8 +948,8 @@ func TestLiveTextStreamEndsWhenStatusLags(t *testing.T) {
 func TestLiveTextStreamKeepsEveryQueuedFlip(t *testing.T) {
 	h := newLiveTextHarness(t)
 	writer, done := h.blockedStream()
-	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
-	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
+	h.projection.updateRuntime(liveview.Runtime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-2"})
+	h.projection.updateRuntime(liveview.Runtime{SessionStatus: "ready"})
 	close(writer.release)
 	deadline := time.Now().Add(10 * time.Second)
 	for len(writer.statuses()) < 3 && time.Now().Before(deadline) {
@@ -1007,11 +1009,11 @@ func (w *streamRecorder) Write(b []byte) (int, error) {
 	return w.body.Write(b)
 }
 
-func (w *streamRecorder) statuses() []liveTextStatus {
+func (w *streamRecorder) statuses() []liveview.Status {
 	w.mu.Lock()
 	body := w.body.String()
 	w.mu.Unlock()
-	var statuses []liveTextStatus
+	var statuses []liveview.Status
 	for _, line := range strings.Split(body, "\n") {
 		var message LiveTextMessage
 		if data, ok := strings.CutPrefix(line, "data: "); ok && json.Unmarshal([]byte(data), &message) == nil && message.Status != nil {
@@ -1493,12 +1495,12 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 
 // deliveryJournal reads the thread's delivery journal as a reloading browser
 // does, by action id.
-func (h *liveTextHarness) deliveryJournal() map[string]promptView {
+func (h *liveTextHarness) deliveryJournal() map[string]prompts.View {
 	h.t.Helper()
 	rec := httptest.NewRecorder()
 	h.sess.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
 	var body struct {
-		Operations []promptView `json:"operations"`
+		Operations []prompts.View `json:"operations"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		h.t.Fatalf("journal = %d %s: %v", rec.Code, rec.Body.String(), err)
@@ -1516,7 +1518,7 @@ func (h *liveTextHarness) deliveryJournal() map[string]promptView {
 			}
 		}
 	}
-	rows := map[string]promptView{}
+	rows := map[string]prompts.View{}
 	for _, row := range body.Operations {
 		rows[row.ClientActionID] = row
 	}
@@ -1630,7 +1632,7 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	sess.HandleTurnDeliveryRead(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery/slow", nil), "slow")
-	var read promptView
+	var read prompts.View
 	if err := json.Unmarshal(rec.Body.Bytes(), &read); err != nil || read.State != string(prompts.Delivering) || read.Label != slowLabel || read.AllowedActions != nil {
 		t.Fatalf("single read of slow = %d %s, %v", rec.Code, rec.Body.String(), err)
 	}

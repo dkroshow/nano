@@ -19,16 +19,16 @@ func newTestStore(t *testing.T) *AttachmentStore {
 	return store
 }
 
-func attach(id, cwd, at string) attachmentRecord {
-	return attachmentRecord{Provider: "codex", NativeThreadID: id, Cwd: cwd, Model: "gpt-5", AttachedAt: at}
+func attach(id, cwd, at string) Attachment {
+	return Attachment{Provider: "codex", NativeThreadID: id, Cwd: cwd, Model: "gpt-5", AttachedAt: at}
 }
 
 // liveCodex builds the composite live set detachedExcept expects from codex
 // native ids — the common shape in these tests.
-func liveCodex(ids ...string) map[attachmentKey]bool {
-	live := map[attachmentKey]bool{}
+func liveCodex(ids ...string) map[AttachmentKey]bool {
+	live := map[AttachmentKey]bool{}
 	for _, id := range ids {
-		live[attachmentKey{Provider: "codex", NativeThreadID: id}] = true
+		live[AttachmentKey{Provider: "codex", NativeThreadID: id}] = true
 	}
 	return live
 }
@@ -110,7 +110,7 @@ func TestAttachmentMigratesAgentSessionIDToHostedThreadID(t *testing.T) {
 // incoming value (a pre-init rename) still replaces it.
 func TestAttachmentCarriesPendingNameForward(t *testing.T) {
 	store := newTestStore(t)
-	provisional := attachmentRecord{
+	provisional := Attachment{
 		Provider: "claude", NativeThreadID: "cs_shim", ShimSessionID: "cs_shim",
 		Cwd: "/w", PendingName: "nano api fable", AttachedAt: "2026-08-06T10:00:00Z",
 	}
@@ -151,7 +151,7 @@ func TestAttachmentRememberScrubsRetiredMetadataWithoutLosingTransport(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Remember(attachmentRecord{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: "nht_legacy", Bin: "/claude", Args: []string{"-p", "--resume", "native-1"}, ShimSessionID: "shim-1", AttachedAt: "2026-08-02T00:00:00Z"})
+	store.Remember(Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: "nht_legacy", Bin: "/claude", Args: []string{"-p", "--resume", "native-1"}, ShimSessionID: "shim-1", AttachedAt: "2026-08-02T00:00:00Z"})
 	reopened, err := NewAttachmentStore(path)
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestAttachmentOnDiskShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var Records []attachmentRecord
+	var Records []Attachment
 	if err := json.Unmarshal(data, &Records); err != nil {
 		t.Fatalf("on-disk file is not a record array: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestAttachmentClaudeRecordRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := []string{"-p", "--permission-mode", "bypassPermissions", "--model", "opus"}
-	first.Remember(attachmentRecord{
+	first.Remember(Attachment{
 		Provider:       "claude",
 		NativeThreadID: "c-1",
 		Cwd:            "/w",
@@ -322,7 +322,7 @@ func TestAttachmentClaudeRecordRoundTrips(t *testing.T) {
 func TestAttachmentProviderScopedIdentity(t *testing.T) {
 	store := newTestStore(t)
 	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(attachmentRecord{
+	store.Remember(Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		Cwd:            "/b",
@@ -333,7 +333,7 @@ func TestAttachmentProviderScopedIdentity(t *testing.T) {
 	}
 
 	// A live claude session hides only the claude record.
-	got := store.DetachedExcept(map[attachmentKey]bool{
+	got := store.DetachedExcept(map[AttachmentKey]bool{
 		{Provider: "claude", NativeThreadID: "shared"}: true,
 	})
 	if len(got) != 1 || got[0].Provider != "codex" {
@@ -353,7 +353,7 @@ func TestAttachmentProviderScopedIdentity(t *testing.T) {
 func TestAttachmentForgetEveryProvider(t *testing.T) {
 	store := newTestStore(t)
 	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(attachmentRecord{
+	store.Remember(Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",

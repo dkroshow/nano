@@ -11,7 +11,7 @@ import (
 
 // The application sibling checks the saved answer and zero usage. This portion
 // keeps the receiver's private restart hint assertion at its owning boundary.
-func TestClaudeOwedPersonPromptFinishesAfterARestartOnALaterSavedCommit(t *testing.T) {
+func TestClaudeOwedPromptAttachEnablesSavedCommitSettlement(t *testing.T) {
 	ctx := context.Background()
 	sess, store := readyTransactionalSendTestSession(t, nil)
 	sess.provider = "claude"

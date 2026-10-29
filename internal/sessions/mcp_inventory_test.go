@@ -10,6 +10,7 @@ import (
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -31,20 +32,20 @@ func TestMCPCacheDropsResultInvalidatedMidFetch(t *testing.T) {
 	cache := &inspection.MCPCache{}
 	_, generation := cache.Cached()
 	cache.Invalidate() // as if a startup notification landed mid-fetch
-	cache.Store(&mcpInventory{Servers: []inspection.MCPServer{{Name: "stale"}}}, generation)
+	cache.Store(&inspection.MCPInventory{Servers: []inspection.MCPServer{{Name: "stale"}}}, generation)
 	if cached, _ := cache.Cached(); cached != nil {
 		t.Errorf("cached a stale inventory: %+v", cached)
 	}
 
 	_, generation = cache.Cached()
-	cache.Store(&mcpInventory{Servers: []inspection.MCPServer{{Name: "fresh"}}}, generation)
+	cache.Store(&inspection.MCPInventory{Servers: []inspection.MCPServer{{Name: "fresh"}}}, generation)
 	cached, _ := cache.Cached()
 	if cached == nil || cached.Servers[0].Name != "fresh" {
 		t.Errorf("did not cache a current inventory: %+v", cached)
 	}
 }
 
-func resumedSession(t *testing.T, fake *fakeAppServer) *session {
+func resumedSession(t *testing.T, fake *fakeAppServer) *Session {
 	t.Helper()
 	daemon := fake.daemon()
 	sess := reconnectTestSession(t, daemon, "thread-mcp-1")
@@ -95,7 +96,7 @@ func TestMCPEndpointProjectsAndCaches(t *testing.T) {
 	fake := newFakeAppServer(t)
 	sess := resumedSession(t, fake)
 
-	var first mcpInventory
+	var first inspection.MCPInventory
 	rec := getSessionPath(t, sess.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/mcp: got %d, want 200 (%s)", rec.Code, rec.Body.String())
@@ -103,7 +104,7 @@ func TestMCPEndpointProjectsAndCaches(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
 		t.Fatal(err)
 	}
-	want := mcpInventory{Servers: []inspection.MCPServer{
+	want := inspection.MCPInventory{Servers: []inspection.MCPServer{
 		{Name: "docs", Tools: []string{"fetch_doc", "list_endpoints"}}, // sorted
 		{Name: "empty", Tools: []string{}},
 	}}
@@ -164,7 +165,7 @@ func TestMCPInventoryStale(t *testing.T) {
 	cases := []struct {
 		name     string
 		provider string
-		dir      protocol.Direction
+		dir      wire.Direction
 		line     []byte
 		want     bool
 	}{

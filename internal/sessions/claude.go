@@ -21,6 +21,7 @@ import (
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/setup"
 	transcriptmodel "github.com/dkroshow/nano/internal/transcriptparse/model"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -71,7 +72,7 @@ type claudeTransport interface {
 	// durableAttachment builds the attachment record to remember once the
 	// native session id lands, or reports false when the session dies with
 	// nano — remembering a doomed child would be a lie (attachments.go).
-	durableAttachment(nativeThreadID, model string) (attachmentRecord, bool)
+	durableAttachment(nativeThreadID, model string) (hostedstore.Attachment, bool)
 }
 
 type claudeContextLineSender interface {
@@ -120,7 +121,7 @@ type claudeSession struct {
 	// storedAnchor is the turn anchor read off the attachment record BEFORE
 	// this session attached — the replay's own captureInit rewrites the record
 	// wholesale, so reading it later would find it already erased.
-	storedAnchor attachmentRecord
+	storedAnchor hostedstore.Attachment
 
 	// replayTurnSeq is the shim sequence number of the newest turn-opening user
 	// line seen during the replay, cleared by the result line that closes that
@@ -171,7 +172,7 @@ type claudeSession struct {
 
 type claudeIngressLine struct {
 	tr        claudeTransport
-	dir       protocol.Direction
+	dir       wire.Direction
 	line      []byte
 	seq       int64
 	at        time.Time
@@ -527,11 +528,11 @@ var errClaudeProvisionalGone = errors.New("claude session was never prompted and
 // failed write leaves the handle's record on disk. A claim error, including
 // one reported after its commit, stops the resume with the record intact; a
 // retry finds the recorded resolution.
-func (sess *Session) adoptResolvedClaudeNative(handle, native string, anchor attachmentRecord) (attachmentRecord, error) {
+func (sess *Session) adoptResolvedClaudeNative(handle, native string, anchor hostedstore.Attachment) (hostedstore.Attachment, error) {
 	if sess.metadata == nil || sess.hostedThreadID == "" {
 		return anchor, fmt.Errorf("%w: no claim owner for %s", errClaudeRecoveryUnproven, handle)
 	}
-	pair := nativeResolution{Handle: handle, Native: native}
+	pair := hostedstore.NativeResolution{Handle: handle, Native: native}
 	if err := sess.metadata.ClaimNativeIDResolving(sess.hostedThreadID, sess.provider, native, false, &pair); err != nil {
 		return anchor, fmt.Errorf("%w: record provisional %s as %s: %v", errClaudeRecoveryUnproven, handle, native, err)
 	}
@@ -843,13 +844,13 @@ func (c *claudeSession) markTransportReady() bool {
 // zero for a direct child (and for a shim too old to send one), which dates
 // the line to now. Without it a replay would stamp the whole conversation with
 // the re-attach instant; see session.recordWireAt.
-func (c *claudeSession) deliverLine(tr claudeTransport, dir protocol.Direction, line []byte, seq int64, at time.Time) {
+func (c *claudeSession) deliverLine(tr claudeTransport, dir wire.Direction, line []byte, seq int64, at time.Time) {
 	c.deliverFrame(tr, dir, line, seq, at, claudeFrameTurn{}, nil)
 }
 
 // deliverFrame applies one frame, or holds it behind a send in flight. then,
 // if set, runs once the frame is applied, held or not.
-func (c *claudeSession) deliverFrame(tr claudeTransport, dir protocol.Direction, line []byte, seq int64, at time.Time, turn claudeFrameTurn, then func()) {
+func (c *claudeSession) deliverFrame(tr claudeTransport, dir wire.Direction, line []byte, seq int64, at time.Time, turn claudeFrameTurn, then func()) {
 	replaying := tr.isReplaying()
 	c.turnIngressMu.Lock()
 	if c.turnIngressHeld {
@@ -890,7 +891,7 @@ func (c *claudeSession) deliverHeldLocked(pending claudeIngressLine) {
 	}
 }
 
-func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir protocol.Direction, line []byte, seq int64, at time.Time, replaying bool, turn claudeFrameTurn) {
+func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir wire.Direction, line []byte, seq int64, at time.Time, replaying bool, turn claudeFrameTurn) {
 	if at.IsZero() {
 		at = time.Now()
 	}
@@ -1017,7 +1018,7 @@ func (c *claudeSession) drainTurnIngressThroughInitLocked() {
 // opened it" is answered from the spool alone. Probed 2026-07-31: the shim
 // replays nano's own send lines WITH their sequence numbers, so this is real
 // identity evidence and not an inference.
-func (c *claudeSession) noteReplayedTurnBoundary(dir protocol.Direction, line []byte, seq int64) {
+func (c *claudeSession) noteReplayedTurnBoundary(dir wire.Direction, line []byte, seq int64) {
 	active, ok := claudeTurnBoundaryTransition(dir, line)
 	if !ok {
 		return
@@ -1218,8 +1219,8 @@ func (t *claudeChildTransport) close() error {
 // durableAttachment: never. A direct child is killed by the restart that would
 // make the record useful, so remembering it would offer a re-attach that
 // cannot work.
-func (t *claudeChildTransport) durableAttachment(string, string) (attachmentRecord, bool) {
-	return attachmentRecord{}, false
+func (t *claudeChildTransport) durableAttachment(string, string) (hostedstore.Attachment, bool) {
+	return hostedstore.Attachment{}, false
 }
 
 // claudeMissingTranscriptMarker is how `claude -p --resume` reports a session
@@ -1268,7 +1269,7 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	// the identity stays provisional and a replayed or later init retries.
 	if !closed && c.supersedes != "" && c.supersedes != sessionID && c.sess.metadata != nil && c.sess.hostedThreadID != "" {
 		if rec, ok := tr.durableAttachment(sessionID, model); ok && rec.ShimSessionID == c.supersedes {
-			pair := nativeResolution{Handle: c.supersedes, Native: sessionID}
+			pair := hostedstore.NativeResolution{Handle: c.supersedes, Native: sessionID}
 			if err := c.sess.metadata.ClaimNativeIDResolving(c.sess.hostedThreadID, c.sess.provider, sessionID, false, &pair); err != nil {
 				log.Printf("claude %s: record provisional %s as %s: %v", c.sess.hostedThreadID, c.supersedes, sessionID, err)
 				// The child did complete its handshake: a later error result

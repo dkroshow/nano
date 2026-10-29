@@ -10,6 +10,8 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/providers"
 	providerclaude "github.com/dkroshow/nano/internal/providers/claude"
 	providercodex "github.com/dkroshow/nano/internal/providers/codex"
@@ -173,7 +175,7 @@ func (sess *Session) recordCoreAsyncError(_ error) {
 	if sess == nil || sess.projection == nil {
 		return
 	}
-	sess.projection.RecordDiagnostic(threadDiagnostic{
+	sess.projection.RecordDiagnostic(observability.ThreadDiagnostic{
 		Code:    "async_session_event_failed",
 		Message: "An asynchronous session event could not be applied.",
 		Source:  "session",
@@ -247,9 +249,9 @@ func codexProviderOperations(sess *Session) providers.Operations {
 			}
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
-		RespondInteraction: providerInteractionOperation(func(p pendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
+		RespondInteraction: providerInteractionOperation(func(p interact.PendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
 			return interactionDecisionResult(p.Method, decision, p.Params, answers)
-		}, func(p pendingInteraction, result any, rpcErr *protocol.RPCError) error {
+		}, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
 			return sess.codex.respondToInteraction(p.ID, result, rpcErr)
 		}),
 	}
@@ -285,7 +287,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 			}
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
-		RespondInteraction: providerInteractionOperation(claudeInteractionResult, func(p pendingInteraction, result any, rpcErr *protocol.RPCError) error {
+		RespondInteraction: providerInteractionOperation(claudeInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
 			claude := sess.claudeHandle()
 			if claude == nil {
 				return errClaudeControlClosed
@@ -318,7 +320,7 @@ func grokProviderOperations(sess *Session) providers.Operations {
 			}
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
-		RespondInteraction: providerInteractionOperation(grokInteractionResult, func(p pendingInteraction, result any, rpcErr *protocol.RPCError) error {
+		RespondInteraction: providerInteractionOperation(grokInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
 			grok := sess.grokHandle()
 			if grok == nil {
 				return errors.New("grok ACP proxy is not connected")
@@ -328,12 +330,12 @@ func grokProviderOperations(sess *Session) providers.Operations {
 	}
 }
 
-type providerInteractionTranslator func(pendingInteraction, string, json.RawMessage) (any, *protocol.RPCError)
-type providerInteractionResponder func(pendingInteraction, any, *protocol.RPCError) error
+type providerInteractionTranslator func(interact.PendingInteraction, string, json.RawMessage) (any, *protocol.RPCError)
+type providerInteractionResponder func(interact.PendingInteraction, any, *protocol.RPCError) error
 
 func providerInteractionOperation(translate providerInteractionTranslator, respond providerInteractionResponder) func(context.Context, providers.InteractionResponse) (model.Batch, error) {
 	return func(_ context.Context, response providers.InteractionResponse) (model.Batch, error) {
-		pending := pendingInteraction{
+		pending := interact.PendingInteraction{
 			ID: response.RequestID, Method: response.Method, Kind: string(response.Kind),
 			ThreadID: scopeNativeThread(response.Request.Scope), TurnID: scopeNativeTurn(response.Request.Scope),
 			Params: append(json.RawMessage(nil), response.Params...),

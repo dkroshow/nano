@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func permissionTestSession(t *testing.T, provider, mode string) (*providerRuntimeFixture, *hostedstore.MetadataStore) {
@@ -18,7 +19,7 @@ func permissionTestSession(t *testing.T, provider, mode string) (*providerRuntim
 	if err := store.EnsureHostedThread(hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-permission-test", Provider: provider, HostedThreadID: hostedID, PermissionMode: mode, Metadata: store}, "native-permission-test", "")
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "nano-permission-test", Provider: provider, HostedThreadID: hostedID, PermissionMode: mode, Metadata: store}, "native-permission-test", "")
 	return fixture, store
 }
 

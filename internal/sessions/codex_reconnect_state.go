@@ -9,6 +9,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -25,7 +26,7 @@ func (sess *Session) codexZeroTurnEvidence(refusedAction string) bool {
 	if !eligible {
 		return false
 	}
-	var attempts []sendAttemptRecord
+	var attempts []prompts.SendAttempt
 	if sess.sendAttempts != nil {
 		attempts = sess.sendAttempts.ListThread("codex", sess.ThreadID())
 	}
@@ -117,7 +118,7 @@ func (sess *Session) failCodexReconnect(message string) error {
 		if sess.agentExecutions != nil {
 			if operation, found := sess.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
 				if err := sess.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,
-					&agentExecutionError{Source: "reconnect", Code: "reconnect_failed", Message: message}); err != nil {
+					&threads.ExecutionError{Source: "reconnect", Code: "reconnect_failed", Message: message}); err != nil {
 					return fmt.Errorf("settle terminal operation: %w", err)
 				}
 			}

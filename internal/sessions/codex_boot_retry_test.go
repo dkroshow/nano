@@ -34,7 +34,7 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 			}
 			daemon.SetResumeErrorSequence(refusals...)
 
-			if err := startCodexSession(sess, connection, providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.threadID, Cwd: t.TempDir(), BootReattach: NewBootControl(0)}); err != nil {
+			if err := startCodexSession(sess, connection, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.threadID, Cwd: t.TempDir(), BootReattach: NewBootControl(0)}); err != nil {
 				t.Fatal(err)
 			}
 			if tc.refusals > 1 {

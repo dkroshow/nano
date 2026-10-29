@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/sessions"
 	fixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
@@ -13,12 +15,12 @@ var dataLines = fixture.DataLines
 var waitForClaude = fixture.WaitFor
 var waitForClaudeWithin = fixture.WaitForWithin
 
-func claudeDataWireEvents(sess *session) []wireEvent {
+func claudeDataWireEvents(sess *sessions.Session) []protocol.Event {
 	return fixture.DataEvents(claudeWireEvents(sess))
 }
 
 // emitClaudeInit waits for a following wire frame so the init's name publication has finished.
-func emitClaudeInit(t *testing.T, sess *session, conn *shimConn, seq int64, native, model string) {
+func emitClaudeInit(t *testing.T, sess *sessions.Session, conn *fixture.Conn, seq int64, native, model string) {
 	t.Helper()
 	line, _ := json.Marshal(map[string]any{"type": "system", "subtype": "init", "session_id": native, "model": model})
 	conn.Line(seq, "recv", string(line))

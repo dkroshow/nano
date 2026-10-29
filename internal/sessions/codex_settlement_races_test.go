@@ -17,7 +17,7 @@ import (
 
 // The app sibling checks saved-transcript settlement. This case retains the
 // original mailbox order: reset queued, link lost, then stale wire evidence.
-func TestCodexPromptIsResentOnlyOnProofItsTurnDroppedIt(t *testing.T) {
+func TestCodexPriorAttachmentEvidenceCannotResendPrompt(t *testing.T) {
 	t.Run("evidence from the previous attachment: reset still queued, then the link drops again", func(t *testing.T) {
 		ctx := context.Background()
 		sent := make(chan string, 4)
@@ -78,8 +78,8 @@ func TestCodexPromptIsResentOnlyOnProofItsTurnDroppedIt(t *testing.T) {
 
 // The app sibling covers late real RPC timeouts and saved settlement. This
 // receiver case preserves the echo-before-outcome interleaving deterministically.
-func TestCodexPromptTakenPastTheDeadlineIsBoundByItsEcho(t *testing.T) {
-	var sess *session
+func TestCodexEchoBeforeRPCDeadlineOutcomeKeepsPromptBound(t *testing.T) {
+	var sess *Session
 	sess, store := readyTransactionalSendTestSession(t, func(context.Context, string) (json.RawMessage, error) {
 		event := SubmissionEventID(sess.HostedThreadID(), "late")
 		sess.observeCodexTurnInput([]byte(`{"method":"item/started","params":{"threadId":"` + sess.ThreadID() + `","turnId":"turn-late","item":{"id":"late-item","type":"userMessage","clientId":"` + event + `","content":[{"type":"text","text":"late prompt"}]}}}`))

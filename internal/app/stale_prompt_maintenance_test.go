@@ -14,6 +14,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -24,7 +25,7 @@ import (
 // preview, and an expired prompt is no longer published, listed or shown.
 // Boundary: the maintenance endpoint on a real catalog of each saved format.
 func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
-	var idle *session
+	var idle *sessions.Session
 	for _, test := range []struct {
 		name     string
 		provider string
@@ -50,7 +51,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				if live := idle.LiveTextService().CurrentTexts(context.Background()); len(live) == 0 {
 					t.Fatal("the open pane shows none of the stale prompts")
 				}
-				seedTestSessionRegistry(&h.server.Registry, map[string]*session{idle.ID(): idle})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{idle.ID(): idle})
 			},
 			after: func(t *testing.T) {
 				if live := idle.LiveTextService().CurrentTexts(context.Background()); len(live) != 0 {
@@ -67,7 +68,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 			setup: func(t *testing.T, h *settlementHarness) {
 				seedAcceptedTransactionalTurn(t, h.prompts, "busy", model.ProviderCodex, "busy-native", "busy", "turn-busy", "busy prompt")
 				seedAcceptedTransactionalTurn(t, h.prompts, "hosted", model.ProviderCodex, h.fixture.native, "recent", "turn-recent", "recent prompt")
-				seedTestSessionRegistry(&h.server.Registry, map[string]*session{"busy-session": configuredFixtureSession(t, sessionConfig{ID: "busy-session", Provider: "codex", HostedThreadID: "busy"}, "busy-native", "ready", "", true)})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{"busy-session": configuredFixtureSession(t, sessions.Config{ID: "busy-session", Provider: "codex", HostedThreadID: "busy"}, "busy-native", "ready", "", true)})
 			},
 			want: map[string]prompts.DeliveryState{"old": prompts.Confirmed, "new": prompts.Confirmed, "running": prompts.Expired,
 				"unproven": prompts.Expired, "unanswered": prompts.Expired, "busy": prompts.Accepted, "recent": prompts.Accepted},
@@ -87,7 +88,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				h.setSavedReader(sess, func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) {
 					return nil, errors.New("catalog read failed")
 				})
-				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{sess.ID(): sess})
 			},
 			want: map[string]prompts.DeliveryState{"running": prompts.Accepted, "unproven": prompts.Accepted, "unanswered": prompts.Uncertain},
 		},
@@ -102,7 +103,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 					h.runtimes[sess].emitAndWait(t, []byte(`{"method":"turn/started","params":{"threadId":"`+sess.ThreadID()+`","turn":{"id":"new-work"}}}`))
 					return saved(ctx, keys)
 				})
-				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{sess.ID(): sess})
 			},
 			want: map[string]prompts.DeliveryState{"running": prompts.Accepted, "unproven": prompts.Accepted, "unanswered": prompts.Uncertain},
 		},
@@ -134,7 +135,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 					}
 					return saved(ctx, keys)
 				})
-				seedTestSessionRegistry(&h.server.Registry, map[string]*session{sess.ID(): sess})
+				seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{sess.ID(): sess})
 			},
 			want: map[string]prompts.DeliveryState{"running": prompts.Accepted, "unproven": prompts.Accepted, "unanswered": prompts.Uncertain},
 		},

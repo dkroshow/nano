@@ -3,11 +3,13 @@ package app
 import (
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestChildLaunchDoesNotBecomeParentWork(t *testing.T) {
 	projection := newLiveProjection("claude")
-	runtime := newProviderRuntimeFixture(t, sessionConfig{ID: "parent", HostedThreadID: "hosted-parent", Provider: "claude", Projection: projection}, "parent", "")
+	runtime := newProviderRuntimeFixture(t, sessions.Config{ID: "parent", HostedThreadID: "hosted-parent", Provider: "claude", Projection: projection}, "parent", "")
 	sess := runtime.session
 	at := time.Now()
 	for _, line := range []string{
@@ -20,7 +22,7 @@ func TestChildLaunchDoesNotBecomeParentWork(t *testing.T) {
 	// remains running, but must not keep the parent's runtime working.
 	runtime.emitAtAndWait(t, []byte(`{"type":"result","subtype":"success","is_error":false}`), at, "")
 	waitReconnectCondition(t, func() bool { return !sess.Summary().TurnActive })
-	app := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"parent": sess})
+	app := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{"parent": sess})
 	summary := sess.Summary()
 	if summary.TurnActive || fixtureOwners(app).hostedViews().SessionView("hosted-parent").Working {
 		t.Fatal("child launch became parent's own work")

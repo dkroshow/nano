@@ -16,11 +16,9 @@ import (
 // event log and current-state projection; live transport and retired JSON are
 // never a fallback for a hosted identity.
 
-type sessionPosture = hostedstore.Posture
-
 // overlayFold writes the folded decision for one field over dst, leaving dst
 // alone when the log holds no decision for it.
-func overlayFold(folded map[string]postureEntry, field string, dst *string) {
+func overlayFold(folded map[string]hostedstore.PostureEntry, field string, dst *string) {
 	if e, ok := folded[field]; ok {
 		*dst = e.Value
 	}
@@ -29,9 +27,9 @@ func overlayFold(folded map[string]postureEntry, field string, dst *string) {
 // posture is the canonical hosted-thread display projection. Legacy JSON is a
 // migration input only; unavailable metadata stays unknown rather than being
 // silently reconstructed from the retired posture log or local defaults.
-func (sess *Session) posture() sessionPosture {
+func (sess *Session) posture() hostedstore.Posture {
 	if sess.metadata == nil {
-		return sessionPosture{}
+		return hostedstore.Posture{}
 	}
 	return sess.metadata.Posture(sess.hostedThreadID)
 }
@@ -49,7 +47,7 @@ func (sess *Session) markMetadataDegraded() {
 // recordPosture is the one live mutation adapter.  It writes immutable events
 // to control.sqlite only; canonical posture store is a read-only migration and
 // rollback parser and is never dual-written by production code.
-func (sess *Session) recordPosture(entries []postureEntry, freshness string) {
+func (sess *Session) recordPosture(entries []hostedstore.PostureEntry, freshness string) {
 	if sess.metadata == nil {
 		return
 	}
@@ -62,7 +60,7 @@ func (sess *Session) recordPosture(entries []postureEntry, freshness string) {
 		if entry.Source == postureSourceProvider {
 			disposition = metadataDispositionConfirmed
 		}
-		appended, err := sess.metadata.AppendEvent(metadataEvent{
+		appended, err := sess.metadata.AppendEvent(hostedstore.MetadataEvent{
 			HostedThreadID: sess.hostedThreadID, Field: entry.Field, Value: entry.Value,
 			Disposition: disposition, Source: entry.Source, Evidence: entry.Evidence,
 			NativeThreadID: sess.ThreadID(), NanoSessionID: sess.id,
@@ -214,7 +212,7 @@ func (sess *Session) recordProviderEvidence(seam string, values map[string]strin
 				id := cause.EventID
 				causeID = &id
 			}
-			appended, err := sess.metadata.AppendEvent(metadataEvent{
+			appended, err := sess.metadata.AppendEvent(hostedstore.MetadataEvent{
 				HostedThreadID: sess.hostedThreadID, Field: field, Value: value,
 				Disposition: disposition, Source: postureSourceProvider, Evidence: seam,
 				NativeThreadID: nativeID, NanoSessionID: sess.id,
@@ -259,7 +257,7 @@ func (sess *Session) recordProviderRejection(seam string, snapshot providerCausa
 	committed, failed := false, false
 	for field, causal := range snapshot {
 		id := causal.EventID
-		appended, err := sess.metadata.AppendEvent(metadataEvent{
+		appended, err := sess.metadata.AppendEvent(hostedstore.MetadataEvent{
 			HostedThreadID: sess.hostedThreadID, Field: field, Value: causal.Value,
 			Disposition: metadataDispositionRejected, Source: postureSourceProvider,
 			Evidence: seam, NativeThreadID: nativeID, NanoSessionID: sess.id,

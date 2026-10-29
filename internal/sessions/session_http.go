@@ -17,6 +17,7 @@ import (
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/providers"
 	"github.com/dkroshow/nano/internal/setup"
+	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 // HandleEvents streams the attachment ordered wire events.
@@ -29,9 +30,9 @@ func (sess *Session) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	ch := make(chan wireEvent, 512)
+	ch := make(chan protocol.Event, 512)
 	sess.mu.Lock()
-	replay := append([]wireEvent(nil), sess.events...)
+	replay := append([]protocol.Event(nil), sess.events...)
 	sess.subs[ch] = struct{}{}
 	sess.mu.Unlock()
 	defer func() {
@@ -40,7 +41,7 @@ func (sess *Session) HandleEvents(w http.ResponseWriter, r *http.Request) {
 		sess.mu.Unlock()
 	}()
 
-	writeEvent := func(evt wireEvent) bool {
+	writeEvent := func(evt protocol.Event) bool {
 		data, err := json.Marshal(evt)
 		if err != nil {
 			return false
@@ -96,7 +97,7 @@ func (sess *Session) HandleEventsPage(w http.ResponseWriter, r *http.Request) {
 		firstSeq = sess.events[0].Seq
 	}
 	currentSeq := sess.seq
-	memory := append([]wireEvent(nil), sess.events...)
+	memory := append([]protocol.Event(nil), sess.events...)
 	spool := sess.spool
 	sess.mu.Unlock()
 
@@ -131,11 +132,11 @@ func (sess *Session) HandleEventsPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func readEventsBefore(memory []wireEvent, spool *wireSpool, beforeSeq int64, limit int) ([]wireEvent, bool, error) {
+func readEventsBefore(memory []protocol.Event, spool *wireSpool, beforeSeq int64, limit int) ([]protocol.Event, bool, error) {
 	if spool != nil {
 		return spool.readBefore(beforeSeq, limit)
 	}
-	var older []wireEvent
+	var older []protocol.Event
 	for _, evt := range memory {
 		if evt.Seq < beforeSeq {
 			older = append(older, evt)
@@ -194,7 +195,7 @@ func (sess *Session) HandleState(w http.ResponseWriter, r *http.Request) {
 	out["posture"] = sess.posture()
 	if sess.metadata != nil {
 		if view, err := sess.metadata.View(sess.hostedThreadID); err == nil {
-			view.Attachment = hostedAttachmentView{State: fmt.Sprint(out["status"]), Provenance: "live_session"}
+			view.Attachment = hostedstore.AttachmentView{State: fmt.Sprint(out["status"]), Provenance: "live_session"}
 			if message, _ := out["error"].(string); message != "" {
 				view.Attachment.Error = message
 			}
@@ -333,7 +334,7 @@ func interruptRaceReason(err error) (string, bool) {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "the turn had already finished", true
 	}
-	var rpcErr *protocol.RPCError
+	var rpcErr *codexwire.RPCError
 	if errors.As(err, &rpcErr) {
 		return rpcErr.Message, true
 	}
@@ -406,9 +407,9 @@ func (sess *Session) HandleTurnOptionsUpdate(w http.ResponseWriter, r *http.Requ
 	}
 	// Each override the request carried is one operator decision — an empty
 	// value included, which records "back to the thread's own" as a clear.
-	var decisions []postureEntry
+	var decisions []hostedstore.PostureEntry
 	record := func(field, value string) {
-		decisions = append(decisions, postureEntry{
+		decisions = append(decisions, hostedstore.PostureEntry{
 			Field: field, Value: value,
 			Source: postureSourceOperator, Evidence: postureEvidenceTurnOptions,
 		})
@@ -462,10 +463,10 @@ func (sess *Session) handleClaudeModelUpdate(w http.ResponseWriter, r *http.Requ
 			httpapi.WriteHTTPError(w, "session transport is still starting", http.StatusConflict)
 			return
 		}
-		decision := postureEntry{Field: postureFieldModel, Value: model, Source: postureSourceOperator, Evidence: postureEvidenceSetModel}
+		decision := hostedstore.PostureEntry{Field: postureFieldModel, Value: model, Source: postureSourceOperator, Evidence: postureEvidenceSetModel}
 		// Persist intent before delivery; the successful provider control reply
 		// below is the causal confirmation rather than a local assignment.
-		sess.recordPosture([]postureEntry{decision}, metadataFreshnessLive)
+		sess.recordPosture([]hostedstore.PostureEntry{decision}, metadataFreshnessLive)
 		snapshot := sess.snapshotProviderCausation(map[string]string{postureFieldModel: model})
 		if err := claude.setModel(r.Context(), model); err != nil {
 			httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)

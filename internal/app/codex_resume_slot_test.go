@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // The daemon's resume slots bound concurrent thread/resume calls at the app
@@ -21,7 +23,7 @@ func TestCodexResumeSlotIsFreeOnceTheReplyArrives(t *testing.T) {
 	ids := make([]string, 0, threads)
 	for i := range threads {
 		response := postResume(t, server, fmt.Sprintf("slot-%d", i))
-		var summary sessionSummary
+		var summary sessions.Summary
 		if err := json.Unmarshal(response.Body.Bytes(), &summary); err != nil || summary.ID == "" {
 			t.Fatalf("resume %d: %s", i, response.Body.String())
 		}

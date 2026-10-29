@@ -3,12 +3,12 @@ package app
 import (
 	"context"
 	"database/sql"
-	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"path/filepath"
 	"testing"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
@@ -72,7 +72,7 @@ func migrateTestControl(t *testing.T, metadata *hostedstore.MetadataStore) {
 // thread's provisional handle is native, which makes native current.
 func resolveTestProvisional(t *testing.T, control *hostedstore.MetadataStore, hostedID, provider, handle, native string) {
 	t.Helper()
-	if err := control.ClaimNativeIDResolving(hostedID, provider, native, false, &nativeResolution{Handle: handle, Native: native}); err != nil {
+	if err := control.ClaimNativeIDResolving(hostedID, provider, native, false, &hostedstore.NativeResolution{Handle: handle, Native: native}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -111,10 +111,10 @@ func fixtureBeginTurn(store *hostedstore.ExecutionStore, hostedID, actionID, has
 	return fixtureAdmitTurn(store, hostedID, actionID, hash)
 }
 
-func recordTestCompletedTurn(store *hostedmodel.CompletedTurnStore, finish coreturns.Finish) (completedTurn, bool, error) {
+func recordTestCompletedTurn(store *hostedmodel.CompletedTurnStore, finish coreturns.Finish) (coreturns.Record, bool, error) {
 	core, err := store.CoreStore(context.Background())
 	if err != nil {
-		return completedTurn{}, false, err
+		return coreturns.Record{}, false, err
 	}
 	return core.Finished(context.Background(), finish)
 }
@@ -128,10 +128,10 @@ func mustCompletedStore(t *testing.T) *hostedmodel.CompletedTurnStore {
 	t.Cleanup(func() { _ = stores.Control.Close() })
 	return stores.Completed
 }
-func fixtureLatestCompleted(store *hostedmodel.CompletedTurnStore, target string) (completedTurn, error) {
+func fixtureLatestCompleted(store *hostedmodel.CompletedTurnStore, target string) (coreturns.Record, error) {
 	core, err := store.CoreStore(context.Background())
 	if err != nil {
-		return completedTurn{}, err
+		return coreturns.Record{}, err
 	}
 	return core.Latest(context.Background(), target)
 }

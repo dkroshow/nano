@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 func newControlAgentExecutionStore(control *MetadataStore, runID string) (*ExecutionStore, error) {
@@ -56,8 +57,8 @@ func containsAll(value string, needles ...string) bool {
 // beginSession idempotently creates one ordinary hosted-thread record. The
 // caller id is only an optional creation alias; the server-owned record id is
 // what every control surface uses after creation.
-func (s *ExecutionStore) beginSession(clientSessionID, requestHash, provider, presentationMode string) (agentSessionRecord, bool, error) {
-	return s.beginSessionWithSubscriptions(clientSessionID, requestHash, provider, presentationMode, agentSessionRecord{}, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.None})
+func (s *ExecutionStore) beginSession(clientSessionID, requestHash, provider, presentationMode string) (threads.SessionRecord, bool, error) {
+	return s.beginSessionWithSubscriptions(clientSessionID, requestHash, provider, presentationMode, threads.SessionRecord{}, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.None})
 }
 
 // beginSessionWithInvoker adds the durable invocation edge used by agent API
@@ -65,22 +66,22 @@ func (s *ExecutionStore) beginSession(clientSessionID, requestHash, provider, pr
 // parent, so it remains valid when Codex invokes Claude or Grok (and vice
 // versa). beginSession remains the zero-edge helper for human-created sessions
 // and existing tests.
-func (s *ExecutionStore) beginSessionWithInvoker(clientSessionID, requestHash, provider, presentationMode string, invoker agentSessionRecord, assignment ...*Assignment) (agentSessionRecord, bool, error) {
+func (s *ExecutionStore) beginSessionWithInvoker(clientSessionID, requestHash, provider, presentationMode string, invoker threads.SessionRecord, assignment ...*Assignment) (threads.SessionRecord, bool, error) {
 	return s.beginSessionWithSubscriptions(clientSessionID, requestHash, provider, presentationMode, invoker, subscriptions.Choices{Inbox: subscriptions.Send, Prompt: subscriptions.None}, assignment...)
 }
 
-func (s *ExecutionStore) beginSessionWithSubscriptions(clientSessionID, requestHash, provider, presentationMode string, invoker agentSessionRecord, choices subscriptions.Choices, assignment ...*Assignment) (agentSessionRecord, bool, error) {
+func (s *ExecutionStore) beginSessionWithSubscriptions(clientSessionID, requestHash, provider, presentationMode string, invoker threads.SessionRecord, choices subscriptions.Choices, assignment ...*Assignment) (threads.SessionRecord, bool, error) {
 	return s.beginSessionWithSubscriptionsAndPlacement(clientSessionID, requestHash, provider, presentationMode, sidebarPlacementInvoker, invoker, choices, assignment...)
 }
 
-func (s *ExecutionStore) beginSessionWithSubscriptionsAndPlacement(clientSessionID, requestHash, provider, presentationMode, sidebarPlacement string, invoker agentSessionRecord, choices subscriptions.Choices, assignment ...*Assignment) (agentSessionRecord, bool, error) {
+func (s *ExecutionStore) beginSessionWithSubscriptionsAndPlacement(clientSessionID, requestHash, provider, presentationMode, sidebarPlacement string, invoker threads.SessionRecord, choices subscriptions.Choices, assignment ...*Assignment) (threads.SessionRecord, bool, error) {
 	return s.BeginNamedSessionWithSubscriptionsAndPlacement(clientSessionID, requestHash, provider, presentationMode, sidebarPlacement, "", invoker, choices, assignment...)
 }
 
 // ensureSession gives UI-created and resumed sessions the same durable
 // execution identity as API-created sessions. It never creates a caller alias
 // and therefore carries no creation-idempotency semantics.
-func (s *ExecutionStore) ensureSession(id, provider, presentationMode string) (agentSessionRecord, error) {
+func (s *ExecutionStore) ensureSession(id, provider, presentationMode string) (threads.SessionRecord, error) {
 	return s.ensureSessionWithIdentity(id, provider, presentationMode, "", "", "")
 }
 
@@ -88,10 +89,10 @@ func (s *ExecutionStore) ensureSession(id, provider, presentationMode string) (a
 // creation. In control mode it creates (or validates) immutable hosted
 // identity and its execution-runtime row in one transaction before any
 // provider transport can be started.
-func (s *ExecutionStore) ensureSessionWithIdentity(id, provider, presentationMode, invokerHosted, invokerNative, invokerProvider string) (agentSessionRecord, error) {
+func (s *ExecutionStore) ensureSessionWithIdentity(id, provider, presentationMode, invokerHosted, invokerNative, invokerProvider string) (threads.SessionRecord, error) {
 	return s.EnsureNamedSessionWithIdentity(id, provider, presentationMode, invokerHosted, invokerNative, invokerProvider, "")
 }
 
-func (s *ExecutionStore) beginTurn(sessionID, actionID, promptHash string) (agentTurnRecord, bool, error) {
+func (s *ExecutionStore) beginTurn(sessionID, actionID, promptHash string) (threads.TurnRecord, bool, error) {
 	return s.BeginTurnAttributed(sessionID, actionID, promptHash, TurnAttribution{})
 }

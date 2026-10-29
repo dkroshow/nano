@@ -23,26 +23,26 @@ type TurnAttribution struct {
 // without leaving a time-of-check/time-of-use gap before creation. A guard
 // must inspect only the supplied snapshot; calling store methods would try to
 // reacquire the mutex.
-type AgentTurnCreationGuard func(existing []agentTurnRecord) error
+type AgentTurnCreationGuard func(existing []threads.TurnRecord) error
 
 // BeginTurnAttributed admits one idempotent operation with its sender evidence.
-func (s *ExecutionStore) BeginTurnAttributed(sessionID, actionID, promptHash string, attribution TurnAttribution) (agentTurnRecord, bool, error) {
+func (s *ExecutionStore) BeginTurnAttributed(sessionID, actionID, promptHash string, attribution TurnAttribution) (threads.TurnRecord, bool, error) {
 	return s.BeginTurnAttributedGuarded(sessionID, actionID, promptHash, attribution, nil)
 }
 
 // BeginTurnAttributedGuarded admits an operation while its supplied guard holds the mutation boundary.
-func (s *ExecutionStore) BeginTurnAttributedGuarded(sessionID, actionID, promptHash string, attribution TurnAttribution, guard AgentTurnCreationGuard) (agentTurnRecord, bool, error) {
+func (s *ExecutionStore) BeginTurnAttributedGuarded(sessionID, actionID, promptHash string, attribution TurnAttribution, guard AgentTurnCreationGuard) (threads.TurnRecord, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sessionRec, ok := s.sessions[sessionID]
 	if !ok {
-		return agentTurnRecord{}, false, fmt.Errorf("unknown hosted thread")
+		return threads.TurnRecord{}, false, fmt.Errorf("unknown hosted thread")
 	}
 	key := agentActionKey(sessionID, actionID)
 	if id := s.byAction[key]; id != "" {
 		rec := s.turns[id]
 		if rec.PromptHash != promptHash {
-			return agentTurnRecord{}, false, ErrAgentTurnIdempotencyConflict
+			return threads.TurnRecord{}, false, ErrAgentTurnIdempotencyConflict
 		}
 		return rec, false, nil
 	}
@@ -51,16 +51,16 @@ func (s *ExecutionStore) BeginTurnAttributedGuarded(sessionID, actionID, promptH
 		err := s.control.db.QueryRow(`SELECT operation_id,prompt_hash FROM hosted_turn_operations WHERE hosted_thread_id=? AND client_action_id=?`, sessionID, actionID).Scan(&existingID, &existingHash)
 		if err == nil {
 			if existingHash != promptHash {
-				return agentTurnRecord{}, false, ErrAgentTurnIdempotencyConflict
+				return threads.TurnRecord{}, false, ErrAgentTurnIdempotencyConflict
 			}
 			s.resetControlCachesLocked()
 			if err := loadControlExecutionRows(s); err != nil {
-				return agentTurnRecord{}, false, err
+				return threads.TurnRecord{}, false, err
 			}
 			return s.turns[existingID], false, nil
 		}
 		if err != sql.ErrNoRows {
-			return agentTurnRecord{}, false, err
+			return threads.TurnRecord{}, false, err
 		}
 	}
 	var tx *sql.Tx
@@ -68,12 +68,12 @@ func (s *ExecutionStore) BeginTurnAttributedGuarded(sessionID, actionID, promptH
 		var err error
 		tx, err = s.control.db.Begin()
 		if err != nil {
-			return agentTurnRecord{}, false, err
+			return threads.TurnRecord{}, false, err
 		}
 		defer tx.Rollback()
 	}
 	if guard != nil {
-		existing := make([]agentTurnRecord, 0)
+		existing := make([]threads.TurnRecord, 0)
 		for _, operation := range s.turns {
 			if operation.HostedThreadID == sessionID {
 				existing = append(existing, operation)
@@ -86,11 +86,11 @@ func (s *ExecutionStore) BeginTurnAttributedGuarded(sessionID, actionID, promptH
 			return existing[i].ID < existing[j].ID
 		})
 		if err := guard(existing); err != nil {
-			return agentTurnRecord{}, false, err
+			return threads.TurnRecord{}, false, err
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	rec := agentTurnRecord{
+	rec := threads.TurnRecord{
 		ID: agentOperationID(sessionID, actionID), HostedThreadID: sessionID, ClientActionID: actionID,
 		TransportActionID: agentTransportActionID(sessionID, actionID), PromptHash: promptHash,
 		Provider: sessionRec.Provider, NanoSessionID: sessionRec.NanoSessionID,
@@ -105,17 +105,17 @@ func (s *ExecutionStore) BeginTurnAttributedGuarded(sessionID, actionID, promptH
 		var assignmentDisposition string
 		err := tx.QueryRow(`SELECT desired_event_id,desired_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, sessionID, AssignmentField).Scan(&assignmentID, &assignmentDisposition)
 		if err != nil && err != sql.ErrNoRows {
-			return agentTurnRecord{}, false, err
+			return threads.TurnRecord{}, false, err
 		}
 		if assignmentID.Valid && assignmentDisposition != metadataDispositionCleared {
 			id := assignmentID.Int64
 			rec.AssignmentEventID = &id
 		}
 		if err := insertTurnOperation(tx, rec); err != nil {
-			return agentTurnRecord{}, false, err
+			return threads.TurnRecord{}, false, err
 		}
 		if err := tx.Commit(); err != nil {
-			return agentTurnRecord{}, false, err
+			return threads.TurnRecord{}, false, err
 		}
 		s.setTurnLocked(rec.ID, &rec)
 		s.turnBaseline[rec.ID] = rec.Revision
@@ -133,14 +133,14 @@ func (s *ExecutionStore) BeginTurnAttributedGuarded(sessionID, actionID, promptH
 				}
 			}
 		}
-		return agentTurnRecord{}, false, err
+		return threads.TurnRecord{}, false, err
 	}
 	return rec, true, nil
 }
 
 // Every turn mutation invalidates only the affected threads. The turn map
 // remains authoritative; rollback reloads rebuild these derived indexes.
-func (s *ExecutionStore) setTurnLocked(id string, rec *agentTurnRecord) {
+func (s *ExecutionStore) setTurnLocked(id string, rec *threads.TurnRecord) {
 	if before, ok := s.turns[id]; ok {
 		if rec == nil || before.HostedThreadID != rec.HostedThreadID {
 			delete(s.turnsByHosted[before.HostedThreadID], id)
@@ -180,16 +180,16 @@ func (s *ExecutionStore) resetTurnIndexesLocked() {
 }
 
 func (s *ExecutionStore) resetControlCachesLocked() {
-	s.sessions, s.turns, s.byAction, s.byClient = map[string]agentSessionRecord{}, map[string]agentTurnRecord{}, map[string]string{}, map[string]string{}
+	s.sessions, s.turns, s.byAction, s.byClient = map[string]threads.SessionRecord{}, map[string]threads.TurnRecord{}, map[string]string{}, map[string]string{}
 	s.deletedSessions, s.deletedTurns, s.sessionBaseline, s.turnBaseline = map[string]bool{}, map[string]bool{}, map[string]int64{}, map[string]int64{}
 	s.pendingTransitions = nil
 	s.resetTurnIndexesLocked()
 }
 
 // Turn reads a cached operation by its durable operation ID.
-func (s *ExecutionStore) Turn(id string) (agentTurnRecord, bool) {
+func (s *ExecutionStore) Turn(id string) (threads.TurnRecord, bool) {
 	if s == nil {
-		return agentTurnRecord{}, false
+		return threads.TurnRecord{}, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -198,13 +198,13 @@ func (s *ExecutionStore) Turn(id string) (agentTurnRecord, bool) {
 }
 
 // TurnsForHosted reads a hosted thread’s operation records.
-func (s *ExecutionStore) TurnsForHosted(hostedID string) []agentTurnRecord {
+func (s *ExecutionStore) TurnsForHosted(hostedID string) []threads.TurnRecord {
 	if s == nil || hostedID == "" {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result := make([]agentTurnRecord, 0)
+	result := make([]threads.TurnRecord, 0)
 	for _, rec := range s.turns {
 		if rec.HostedThreadID == hostedID {
 			result = append(result, rec)
@@ -316,9 +316,9 @@ func (s *ExecutionStore) LineageForHosted(hostedID string) (ancestors, descendan
 }
 
 // TurnForAction finds the operation admitted for a hosted thread and client action.
-func (s *ExecutionStore) TurnForAction(sessionID, actionID string) (agentTurnRecord, bool) {
+func (s *ExecutionStore) TurnForAction(sessionID, actionID string) (threads.TurnRecord, bool) {
 	if s == nil {
-		return agentTurnRecord{}, false
+		return threads.TurnRecord{}, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -338,44 +338,44 @@ const persistedTurnByTransportQuery = `SELECT operation_id,COALESCE(provider_tur
 // found is false only when the committed rows hold no such operation; an
 // unreadable store, or two operations for one action, is an error, never an
 // absence. The read assumes nothing about how the action id was formed.
-func (s *ExecutionStore) PersistedTurnForTransportAction(ctx context.Context, hostedID, transportActionID string) (agentTurnRecord, bool, error) {
+func (s *ExecutionStore) PersistedTurnForTransportAction(ctx context.Context, hostedID, transportActionID string) (threads.TurnRecord, bool, error) {
 	if s == nil || s.control == nil || hostedID == "" || transportActionID == "" {
-		return agentTurnRecord{}, false, ErrOperationReadUnavailable
+		return threads.TurnRecord{}, false, ErrOperationReadUnavailable
 	}
 	rows, err := s.control.db.QueryContext(ctx, persistedTurnByTransportQuery, hostedID, transportActionID)
 	if err != nil {
-		return agentTurnRecord{}, false, err
+		return threads.TurnRecord{}, false, err
 	}
 	defer rows.Close()
-	var found []agentTurnRecord
+	var found []threads.TurnRecord
 	for rows.Next() {
-		rec := agentTurnRecord{HostedThreadID: hostedID, TransportActionID: transportActionID}
+		rec := threads.TurnRecord{HostedThreadID: hostedID, TransportActionID: transportActionID}
 		var errorCode string
 		if err := rows.Scan(&rec.ID, &rec.ProviderTurnID, &rec.Status, &errorCode, &rec.FinalItemID, &rec.Origin, &rec.SenderSubmittedAt); err != nil {
-			return agentTurnRecord{}, false, err
+			return threads.TurnRecord{}, false, err
 		}
 		if errorCode != "" {
-			rec.Error = &agentExecutionError{Code: errorCode}
+			rec.Error = &threads.ExecutionError{Code: errorCode}
 		}
 		found = append(found, rec)
 	}
 	if err := rows.Err(); err != nil {
-		return agentTurnRecord{}, false, err
+		return threads.TurnRecord{}, false, err
 	}
 	switch len(found) {
 	case 0:
-		return agentTurnRecord{}, false, nil
+		return threads.TurnRecord{}, false, nil
 	case 1:
 		return found[0], true, nil
 	default:
-		return agentTurnRecord{}, false, fmt.Errorf("transport action %s has more than one operation", transportActionID)
+		return threads.TurnRecord{}, false, fmt.Errorf("transport action %s has more than one operation", transportActionID)
 	}
 }
 
 // TurnForTransportAction finds an operation by its transport action.
-func (s *ExecutionStore) TurnForTransportAction(actionID string) (agentTurnRecord, bool) {
+func (s *ExecutionStore) TurnForTransportAction(actionID string) (threads.TurnRecord, bool) {
 	if s == nil || actionID == "" {
-		return agentTurnRecord{}, false
+		return threads.TurnRecord{}, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -384,20 +384,20 @@ func (s *ExecutionStore) TurnForTransportAction(actionID string) (agentTurnRecor
 			return rec, true
 		}
 	}
-	return agentTurnRecord{}, false
+	return threads.TurnRecord{}, false
 }
 
 // OpenTurnsForProviderTurn lists the unfinished operations bound to one
 // provider turn. Provider turn ids are scoped by the hosted thread and
 // provider so a resumed or migrated transport cannot make an unrelated
 // operation own the turn. Prompts steered into a running turn share it.
-func (s *ExecutionStore) OpenTurnsForProviderTurn(hostedThreadID, provider, providerTurnID string) []agentTurnRecord {
+func (s *ExecutionStore) OpenTurnsForProviderTurn(hostedThreadID, provider, providerTurnID string) []threads.TurnRecord {
 	if s == nil || hostedThreadID == "" || providerTurnID == "" {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var open []agentTurnRecord
+	var open []threads.TurnRecord
 	for _, rec := range s.turns {
 		if rec.HostedThreadID == hostedThreadID && rec.ProviderTurnID == providerTurnID &&
 			(provider == "" || rec.Provider == provider) && !threads.TurnTerminal(rec.Status) {

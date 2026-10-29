@@ -2,6 +2,8 @@ package sessions
 
 import (
 	"time"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // volatileSummary snapshots attachment runtime fields without reading canonical stores.
@@ -20,7 +22,7 @@ func (sess *Session) volatileSummary(needsAttention bool) (Summary, bool) {
 		Error: sess.spawnError, TurnActive: sess.workActiveLocked(), ThreadStatus: sess.threadStatusLocked(), TurnStartedAtMs: sess.turnStartedAtMs,
 		CompactingSinceMs: sess.compactingSinceMsLocked(), LastTurnEndedAt: sess.lastTurnEndedAt, Waiting: sess.waitingLocked(), MetadataDegraded: sess.metadataDegraded,
 		CreatedAt: sess.createdAt.Format(time.RFC3339),
-		Posture:   sessionPosture{Model: sess.model, Effort: sess.turnEffort, PermissionMode: sess.permissionMode, ServiceTier: sess.turnServiceTier},
+		Posture:   hostedstore.Posture{Model: sess.model, Effort: sess.turnEffort, PermissionMode: sess.permissionMode, ServiceTier: sess.turnServiceTier},
 	}
 	sess.stateMu.Unlock()
 	if summary.Status == StatusExited {

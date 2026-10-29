@@ -14,10 +14,11 @@ import (
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, threads.SessionRecord)) (*server, *hostedstore.ExecutionStore, *session, threads.SessionRecord, threads.SessionRecord, chan string, *fakeAppServer) {
+func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, threads.SessionRecord)) (*server, *hostedstore.ExecutionStore, *sessions.Session, threads.SessionRecord, threads.SessionRecord, chan string, *fakeAppServer) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	mail := newTestAgentMessageStore(t)
@@ -64,12 +65,12 @@ func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, thread
 	fake.OnTurnStart = func(prompt string) { prompts <- prompt }
 	daemon := fake.daemon()
 	s := &server{agentExecutions: store, controlMetadata: control, mail: mail, notices: notices, catalog: fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Claude sender"), queuedTurns: queue, sendAttempts: attempts, turns: turnStore}
-	sess := newSession(sessionConfig{ID: "nano-worker", Provider: "codex", HostedThreadID: worker.ID, CreatedAt: time.Now(), Projection: projection, AgentExecutions: store, QueuedTurns: queue, SendAttempts: attempts, Turns: turnStore, Metadata: control, AppendUnread: notices.Append, NanoStopping: &s.stopping})
+	sess := newSession(sessions.Config{ID: "nano-worker", Provider: "codex", HostedThreadID: worker.ID, CreatedAt: time.Now(), Projection: projection, AgentExecutions: store, QueuedTurns: queue, SendAttempts: attempts, Turns: turnStore, Metadata: control, AppendUnread: notices.Append, NanoStopping: &s.stopping})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("native-worker")
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
@@ -84,7 +85,7 @@ func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, thread
 		}
 		sess.Close()
 	})
-	seedTestSessionRegistry(&s.Registry, map[string]*session{sess.ID(): sess})
+	seedTestSessionRegistry(&s.Registry, map[string]*sessions.Session{sess.ID(): sess})
 	return s, store, sess, sender, worker, prompts, fake
 }
 
@@ -339,7 +340,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	}
 }
 
-func TestLastHumanPromptMovesForwardAcrossTrimmedFractions(t *testing.T) {
+func TestHumanPromptStoreAdvancesAcrossTrimmedFractions(t *testing.T) {
 	s, _, _, _, worker, _, _ := stage0Server(t)
 	earlier := time.Date(2026, 10, 15, 12, 0, 4, 237400000, time.UTC)
 	later := earlier.Add(time.Microsecond)

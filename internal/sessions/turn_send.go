@@ -17,11 +17,11 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
-
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	liveview "github.com/dkroshow/nano/internal/liveview"
+	"github.com/dkroshow/nano/internal/observability"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -53,11 +53,6 @@ var (
 	// refused: nothing is left to end. The person's Discard takes it as done.
 	ErrPromptEnded = errors.New("the prompt has already ended")
 )
-
-// sendAttemptRecord is the schema-20 compatibility shape exposed by the read
-// proxy below. Production delivery writes only through internal/core/prompts.Store;
-// this shape deliberately contains no prompt text.
-type sendAttemptRecord = prompts.SendAttempt
 
 // SendTextHash returns the stable content hash used for prompt idempotency.
 func SendTextHash(text string) string {
@@ -198,7 +193,7 @@ func writeTurnOperationResult(w http.ResponseWriter, r *http.Request, op *turnSe
 	}
 }
 
-func writeExistingAttempt(w http.ResponseWriter, rec sendAttemptRecord, currentRunID string) bool {
+func writeExistingAttempt(w http.ResponseWriter, rec prompts.SendAttempt, currentRunID string) bool {
 	result := turnSendResult{
 		actionID: rec.ClientActionID, confirmed: rec.Confirmed, confirmedAt: rec.ConfirmedAt,
 	}
@@ -251,7 +246,7 @@ func (sess *Session) HandleTurnDeliveryList(w http.ResponseWriter, r *http.Reque
 	if threadID == "" {
 		threadID = sess.ThreadID()
 	}
-	views := make([]promptView, 0)
+	views := make([]prompts.View, 0)
 	if sess.sendAttempts == nil || sess.sendAttempts.TransactionStore() == nil || threadID == "" {
 		httpapi.WriteJSON(w, map[string]any{"operations": views})
 		return
@@ -430,10 +425,8 @@ func writePromptActionRefusal(w http.ResponseWriter, refusal *PromptActionRefuse
 	}})
 }
 
-type promptView = prompts.View
-
-func (sess *Session) promptView(entry prompts.OutboxEntry, attempt prompts.Attempt) promptView {
-	view := promptView{
+func (sess *Session) promptView(entry prompts.OutboxEntry, attempt prompts.Attempt) prompts.View {
+	view := prompts.View{
 		ClientActionID: entry.ActionID, Provider: string(attempt.Provider), NativeThreadID: attempt.NativeThreadID,
 		TextHash: attempt.TextHash, State: string(entry.State), CreatedAt: attempt.CreatedAt, UpdatedAt: attempt.UpdatedAt,
 		ProviderTurnID: attempt.ProviderTurnID, CanonicalMessageID: attempt.CanonicalItemID, IdentityConflict: attempt.IdentityConflict,
@@ -1323,7 +1316,7 @@ func (sess *Session) restoreQueuedTurnBootDiagnostics() {
 		return
 	}
 	for _, parked := range sess.queuedTurns.BootParksFor(sess.provider, sess.ThreadID(), sess.hostedThreadID) {
-		diagnostic := threadDiagnostic{
+		diagnostic := observability.ThreadDiagnostic{
 			Code:     "boot_incomplete_outbox",
 			Message:  "durable queued turn was parked because required fields are missing: " + strings.Join(parked.Missing, ","),
 			Source:   "turn-store-boot",
@@ -1389,7 +1382,7 @@ func (sess *Session) cancelQueuedTurn(w http.ResponseWriter, actionID string) {
 }
 
 // CancelQueuedTurnAction discards an eligible queued prompt and its operation atomically.
-func (sess *Session) CancelQueuedTurnAction(actionID, by string) (queuedTurnRecord, error) {
+func (sess *Session) CancelQueuedTurnAction(actionID, by string) (prompts.QueuedTurn, error) {
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
 	queued, err := CancelQueuedTurnStores(sess.queuedTurns, sess.agentExecutions, actionID, by)
@@ -1422,17 +1415,17 @@ const (
 // in the store, if promptActionRefusal allows its Discard: a queued prompt is
 // canceled, an uncertain or parked one expired. The operation that sent it
 // ends in the same transaction (endDiscardedOperation).
-func CancelQueuedTurnStores(queue Queue, ops Executions, actionID, by string) (queuedTurnRecord, error) {
+func CancelQueuedTurnStores(queue Queue, ops Executions, actionID, by string) (prompts.QueuedTurn, error) {
 	if queue == nil || queue.TransactionStore() == nil {
-		return queuedTurnRecord{}, fmt.Errorf("transactional turns store is unavailable")
+		return prompts.QueuedTurn{}, fmt.Errorf("transactional turns store is unavailable")
 	}
 	ctx := context.Background()
 	record, attempt, err := queue.TransactionStore().Get(ctx, actionID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return queuedTurnRecord{}, ErrQueuedTurnNotFound
+		return prompts.QueuedTurn{}, ErrQueuedTurnNotFound
 	}
 	if err != nil {
-		return queuedTurnRecord{}, err
+		return prompts.QueuedTurn{}, err
 	}
 	if record.Outbox.State == prompts.Expired || record.Outbox.State == prompts.Refused {
 		return prompts.LegacyQueuedTurn(record), ErrPromptEnded
@@ -1441,7 +1434,7 @@ func CancelQueuedTurnStores(queue Queue, ops Executions, actionID, by string) (q
 		return prompts.LegacyQueuedTurn(record), err
 	}
 	if record.Outbox.State == prompts.Queued && attempt.State != prompts.JournalQueued {
-		return queuedTurnRecord{}, ErrQueuedTurnDelivering
+		return prompts.QueuedTurn{}, ErrQueuedTurnDelivering
 	}
 	var ended prompts.Record
 	end := func(tx *sql.Tx) (err error) {
@@ -1456,7 +1449,7 @@ func CancelQueuedTurnStores(queue Queue, ops Executions, actionID, by string) (q
 		return err
 	}
 	if err := endDiscardedOperation(queue, ops, record, by, end); err != nil {
-		return queuedTurnRecord{}, err
+		return prompts.QueuedTurn{}, err
 	}
 	return prompts.LegacyQueuedTurn(ended), nil
 }
@@ -1491,7 +1484,7 @@ func endDiscardedOperation(queue Queue, ops Executions, prior prompts.Record, by
 	if by == discardedByOperator {
 		who = "a person"
 	}
-	ended := &agentExecutionError{Source: by, Code: "queued_turn_canceled", Message: who + " canceled the prompt before provider delivery"}
+	ended := &threadvalues.ExecutionError{Source: by, Code: "queued_turn_canceled", Message: who + " canceled the prompt before provider delivery"}
 	if prior.Outbox.State != prompts.Queued {
 		ended.Code = "prompt_discarded"
 		ended.Message = who + " discarded the prompt; its provider is not known to have taken it, and Nano will not wait for an answer"

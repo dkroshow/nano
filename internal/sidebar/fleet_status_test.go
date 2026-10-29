@@ -102,19 +102,19 @@ func TestEndsWithQuestionStripsTrailingMarkup(t *testing.T) {
 
 func TestFleetCourtMessageAge(t *testing.T) {
 	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	working := fleetCourtMessage{ItemType: "user_message", LastActivity: now.Add(-10 * time.Minute)}
+	working := catalog.FleetCourtMessage{ItemType: "user_message", LastActivity: now.Add(-10 * time.Minute)}
 	if got := working.AgeSeconds(now); got != 600 {
 		t.Fatalf("age = %d", got)
 	}
 	// A clock skewed into the future reads as fresh, never as a negative age.
-	if got := (fleetCourtMessage{LastActivity: now.Add(time.Hour)}).AgeSeconds(now); got != 0 {
+	if got := (catalog.FleetCourtMessage{LastActivity: now.Add(time.Hour)}).AgeSeconds(now); got != 0 {
 		t.Fatalf("future clock age = %d", got)
 	}
 }
 
 func TestInterruptedFleetTurnIsImmediatelyIdle(t *testing.T) {
 	now := time.Date(2026, 8, 4, 22, 20, 0, 0, time.UTC)
-	state := (fleetCourtMessage{
+	state := (catalog.FleetCourtMessage{
 		ItemType: "user_message", LastActivity: now.Add(-time.Second), Interrupted: true,
 	}).State("nth_worker", now)
 	if state.Label != fleetIdle || state.Court != fleetCourtUserOwes || state.BallInCourt != "Idle — turn was interrupted." {

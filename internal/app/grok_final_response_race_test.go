@@ -7,7 +7,7 @@ import (
 // The session sibling checks that the queued outcome and timer invoke the
 // terminal consumer once. This owner retains the first durable terminal when
 // another source reports completion or a late failure.
-func TestGrokRPCOutcomeTerminalAppliesExactlyOnce(t *testing.T) {
+func TestGrokRPCOutcomeTerminalStoreIdempotence(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run")
 	hosted, _, err := fixtureBeginSession(store, "grok-race", "hash", "grok", presentationShared)
 	if err != nil {

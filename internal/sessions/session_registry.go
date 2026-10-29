@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // Registry owns the live-session map and its lock.
@@ -119,7 +120,7 @@ func liveHostedThreadSession(matches []*Session) *Session {
 }
 
 // ResolveLiveHostedThreadRecord resolves an attached identity before calling the hosted record lookup outside the registry lock.
-func (s *Registry) ResolveLiveHostedThreadRecord(ref string, lookup func(string) (agentSessionRecord, bool)) (agentSessionRecord, bool) {
+func (s *Registry) ResolveLiveHostedThreadRecord(ref string, lookup func(string) (threads.SessionRecord, bool)) (threads.SessionRecord, bool) {
 	s.mu.Lock()
 	hostedThreadID := ""
 	for _, sess := range s.sessions {
@@ -135,14 +136,14 @@ func (s *Registry) ResolveLiveHostedThreadRecord(ref string, lookup func(string)
 			}
 			if hostedThreadID != "" && hostedThreadID != sess.hostedThreadID {
 				s.mu.Unlock()
-				return agentSessionRecord{}, false // provider-native reference is ambiguous
+				return threads.SessionRecord{}, false // provider-native reference is ambiguous
 			}
 			hostedThreadID = sess.hostedThreadID
 		}
 	}
 	s.mu.Unlock()
 	if hostedThreadID == "" {
-		return agentSessionRecord{}, false
+		return threads.SessionRecord{}, false
 	}
 	return lookup(hostedThreadID)
 }

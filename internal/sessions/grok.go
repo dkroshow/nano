@@ -15,9 +15,12 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 	wiregrok "github.com/dkroshow/nano/internal/wire/grok"
 )
@@ -412,7 +415,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		loadCtx, loadCancel = context.WithTimeout(ctx, req.BootReattach.loadTimeout)
 	}
 	defer loadCancel()
-	if err := client.CallWithWireLog(loadCtx, method, params, &sessionResult, func(dir protocol.Direction, line []byte) {
+	if err := client.CallWithWireLog(loadCtx, method, params, &sessionResult, func(dir wire.Direction, line []byte) {
 		// Bind ordering to this request's response, even when load omits its id.
 		if dir == protocol.Recv {
 			responseEpoch, responseSequence = sess.evidenceCoordinates()
@@ -468,7 +471,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 	}
 	sess.setProjectionThreadID(threadID)
 	sess.applyPendingName(threadID)
-	sess.rememberDurableAttachment(attachmentRecord{
+	sess.rememberDurableAttachment(hostedstore.Attachment{
 		Provider: "grok", NativeThreadID: threadID, Cwd: req.Cwd, Model: model,
 		AttachedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
@@ -519,7 +522,7 @@ func (sess *Session) grokNeverPrompted(ctx context.Context) bool {
 		}
 	}
 	for after := int64(0); ; {
-		page, err := sess.metadata.EventsAfter(sess.hostedThreadID, after, 200, metadataEventFilter{Source: postureSourceProvider})
+		page, err := sess.metadata.EventsAfter(sess.hostedThreadID, after, 200, hostedstore.MetadataEventFilter{Source: postureSourceProvider})
 		if err != nil || len(page.Events) == 0 {
 			return false
 		}
@@ -687,7 +690,7 @@ func (sess *Session) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {
 	// excludes Grok replay from present-tense lifecycle evidence.
 	sess.setTurnActive(false, "", 0, false)
 	if sess.agentExecutions != nil && sess.hostedThreadID != "" {
-		err := sess.agentExecutions.MarkSessionTurns(sess.hostedThreadID, agentTurnInterrupted, &agentExecutionError{
+		err := sess.agentExecutions.MarkSessionTurns(sess.hostedThreadID, agentTurnInterrupted, &threadvalues.ExecutionError{
 			Source: "transport", Code: "grok_prompt_missing_after_reload",
 			Message: "Grok no longer has the prompt that was unfinished in session replay",
 		})
@@ -697,7 +700,7 @@ func (sess *Session) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {
 	}
 }
 
-func (g *grokSession) recordWire(dir protocol.Direction, line []byte) {
+func (g *grokSession) recordWire(dir wire.Direction, line []byte) {
 	// Grok 1.0.3 multiplexes child traffic on the parent's ACP connection.
 	// Keep it inspectable, but never let another native session mutate parent
 	// conversation, runtime, delivery, or hosted-operation state.
@@ -1113,7 +1116,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 	}
 	if current := g.sess.ThreadID(); current != "" && current != body.SessionID {
 		log.Printf("Grok request %s for unrouted session %q on %q — rejecting", method, body.SessionID, current)
-		return grokInteractionResult(pendingInteraction{Method: method, Params: params}, decisionDecline, nil)
+		return grokInteractionResult(interact.PendingInteraction{Method: method, Params: params}, decisionDecline, nil)
 	}
 	kind := kindToolPermission
 	visibleParams := sanitizeGrokWire(params)
@@ -1150,7 +1153,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 			visibleParams = encoded
 		}
 	}
-	pending := pendingInteraction{
+	pending := interact.PendingInteraction{
 		ID: requestID, Method: method, Kind: kind,
 		ThreadID: body.SessionID, ItemID: threadvalues.FirstNonEmpty(body.ToolCall.ToolCallID, body.ToolCallID),
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -1175,7 +1178,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 	return protocol.Deferred, nil
 }
 
-func grokInteractionResult(p pendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
+func grokInteractionResult(p interact.PendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
 	switch p.Method {
 	case grokExitPlanMethod:
 		return grokPlanDecision(decision, answers)

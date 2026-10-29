@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // waitTurnSendDone waits for a persisted delivery result and any registered
 // delivery work, using the same boundaries available to application callers.
-func waitTurnSendDone(t *testing.T, sess *session, actionID string) {
+func waitTurnSendDone(t *testing.T, sess *sessions.Session, actionID string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {

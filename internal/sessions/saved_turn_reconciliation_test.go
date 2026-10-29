@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/protocol"
 )
 
@@ -26,7 +27,7 @@ func durableLiveWorkTestSession(t *testing.T, turnID string, startedAtMs int64, 
 func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 	checkSavedAttachmentReplacement(t)
 	started := time.Now().Add(-time.Minute)
-	saved := durableTurnEvidence{Turn: liveProjectionTurn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}
+	saved := liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}
 	views := map[*Session]*LiveProjection{}
 	work := func(sess *Session, at time.Time) {
 		views[sess].applyWire(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
@@ -54,7 +55,7 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 			if tc.before != nil {
 				tc.before(sess)
 			}
-			sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
+			sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 				if tc.during != nil {
 					tc.during(sess)
 				}

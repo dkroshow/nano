@@ -2,20 +2,9 @@ package app
 
 import (
 	"github.com/dkroshow/nano/internal/core/prompts"
-	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
-
-type completedTurn = coreturns.Record
-type agentExecutionError = threads.ExecutionError
-type agentTerminalTurn = hostedstore.TerminalTurn
-type agentResultMeta = hostedstore.ResultMeta
-type orchestrationAuditTarget = hostedstore.AuditTarget
-type metadataEvent = hostedstore.MetadataEvent
-type metadataEventPage = hostedstore.MetadataEventPage
-type metadataEventFilter = hostedstore.MetadataEventFilter
-type nativeResolution = hostedstore.NativeResolution
 
 const presentationShared = threads.PresentationShared
 const presentationBackground = threads.PresentationBackground
@@ -43,8 +32,6 @@ const submissionDelivering = string(prompts.Delivering)
 const submissionAccepted = string(prompts.Accepted)
 const submissionUncertain = string(prompts.Uncertain)
 const submissionParked = string(prompts.Parked)
-
-type queuedTurnRecord = prompts.QueuedTurn
 
 const turnOriginHuman = string(prompts.HumanOrigin)
 const turnOriginSystem = string(prompts.SystemOrigin)

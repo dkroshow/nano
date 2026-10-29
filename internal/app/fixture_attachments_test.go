@@ -5,10 +5,7 @@ import (
 	"testing"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
-	fixture "github.com/dkroshow/nano/internal/testsupport"
 )
-
-type attachmentRecorder = fixture.AttachmentRecorder
 
 // newTestStore supplies a real attachment store to app integration tests.
 func newTestStore(t *testing.T) *hostedstore.AttachmentStore {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -32,7 +33,7 @@ func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
 }
 
 func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testing.T) {
-	hosted := agentSessionRecord{ID: "nht_lock_boundary"}
+	hosted := threads.SessionRecord{ID: "nht_lock_boundary"}
 	sess := &Session{id: "nano-lock-boundary",
 		hostedThreadID: hosted.ID,
 		provider:       "codex",
@@ -44,9 +45,9 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 	// Block the downstream lookup and prove the server lock is already free.
 	lookupStarted := make(chan struct{})
 	releaseLookup := make(chan struct{})
-	resolved := make(chan agentSessionRecord, 1)
+	resolved := make(chan threads.SessionRecord, 1)
 	go func() {
-		record, _ := s.ResolveLiveHostedThreadRecord("native-live-only", func(id string) (agentSessionRecord, bool) {
+		record, _ := s.ResolveLiveHostedThreadRecord("native-live-only", func(id string) (threads.SessionRecord, bool) {
 			close(lookupStarted)
 			<-releaseLookup
 			return hosted, id == hosted.ID

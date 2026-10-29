@@ -13,7 +13,12 @@ import (
 	prompts "github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/interact"
+	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	fixture "github.com/dkroshow/nano/internal/testsupport"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
+	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -35,7 +40,7 @@ type resultRecorder struct {
 func (r *resultRecorder) ObserveCandidate(string, string, string, string, string, string) error {
 	return nil
 }
-func (r *resultRecorder) MarkTurnTerminal(_, _, turn, status string, _ *agentExecutionError, _, item string, _ ...agentResultMeta) error {
+func (r *resultRecorder) MarkTurnTerminal(_, _, turn, status string, _ *threads.ExecutionError, _, item string, _ ...hostedstore.ResultMeta) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.terminals = append(r.terminals, resultTerminal{turn, status, item})
@@ -46,18 +51,20 @@ func (r *resultRecorder) snapshot() []resultTerminal {
 	defer r.mu.Unlock()
 	return append([]resultTerminal(nil), r.terminals...)
 }
-func (*resultRecorder) ReadsSavedResults() bool                                           { return true }
-func (*resultRecorder) BindSession(string, string, string, string, string) error          { return nil }
-func (*resultRecorder) UpdateSession(string, string, string, string, string) error        { return nil }
-func (*resultRecorder) MarkSessionTurns(string, string, *agentExecutionError) error       { return nil }
-func (*resultRecorder) MarkWaiting(string, string, bool) error                            { return nil }
-func (*resultRecorder) TurnsForHosted(string) []agentTurnRecord                           { return nil }
-func (*resultRecorder) OpenTurnsForProviderTurn(string, string, string) []agentTurnRecord { return nil }
-func (*resultRecorder) TurnForTransportAction(string) (agentTurnRecord, bool) {
-	return agentTurnRecord{}, false
+func (*resultRecorder) ReadsSavedResults() bool                                        { return true }
+func (*resultRecorder) BindSession(string, string, string, string, string) error       { return nil }
+func (*resultRecorder) UpdateSession(string, string, string, string, string) error     { return nil }
+func (*resultRecorder) MarkSessionTurns(string, string, *threads.ExecutionError) error { return nil }
+func (*resultRecorder) MarkWaiting(string, string, bool) error                         { return nil }
+func (*resultRecorder) TurnsForHosted(string) []threads.TurnRecord                     { return nil }
+func (*resultRecorder) OpenTurnsForProviderTurn(string, string, string) []threads.TurnRecord {
+	return nil
 }
-func (*resultRecorder) PersistedTurnForTransportAction(context.Context, string, string) (agentTurnRecord, bool, error) {
-	return agentTurnRecord{}, false, nil
+func (*resultRecorder) TurnForTransportAction(string) (threads.TurnRecord, bool) {
+	return threads.TurnRecord{}, false
+}
+func (*resultRecorder) PersistedTurnForTransportAction(context.Context, string, string) (threads.TurnRecord, bool, error) {
+	return threads.TurnRecord{}, false, nil
 }
 
 func newResultProjection(provider string, finals map[string]string) *LiveProjection {
@@ -68,13 +75,13 @@ func newResultProjection(provider string, finals map[string]string) *LiveProject
 	return p
 }
 
-func resultBindingFixture(t *testing.T) (*session, *resultRecorder, *coreturns.Store, []resultPrompt, []resultFrame) {
+func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.Store, []resultPrompt, []resultFrame) {
 	t.Helper()
 	sess, store := readyTransactionalSendTestSession(t, nil)
 	sess.provider, sess.hostedThreadID, sess.threadID = "claude", "hosted", "claude-settle"
 	sess.state = map[string]json.RawMessage{}
-	sess.subs = map[chan wireEvent]struct{}{}
-	sess.interactions = map[string]pendingInteraction{}
+	sess.subs = map[chan protocoltypes.Event]struct{}{}
+	sess.interactions = map[string]interact.PendingInteraction{}
 	recorder := &resultRecorder{}
 	sess.agentExecutions = recorder
 	identities := fixture.ClaudeResultPromptIdentities()
@@ -128,11 +135,11 @@ func resultBindingFixture(t *testing.T) (*session, *resultRecorder, *coreturns.S
 // The app sibling verifies saved member proofs and durable operation results.
 // This boundary preserves the captured live-input race and checks which
 // prompt each result names before any saved transcript can correct it.
-func TestClaudeResultBindsToThePromptClaudeAnswered(t *testing.T) {
+func TestClaudeResultIngressBindsToAnsweredPrompt(t *testing.T) {
 	sess, recorder, turns, order, frames := resultBindingFixture(t)
 	until := map[string]int64{"A": 36191, "B": 36196, "C": 36199, "D": 36227, "E": 51041}
 	written := make(chan struct{})
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -208,8 +215,8 @@ func (directResultTransport) sendLine([]byte) error { return nil }
 func (directResultTransport) isReplaying() bool     { return false }
 func (directResultTransport) lastSeq() int64        { return 0 }
 func (directResultTransport) close() error          { return nil }
-func (directResultTransport) durableAttachment(string, string) (attachmentRecord, bool) {
-	return attachmentRecord{}, false
+func (directResultTransport) durableAttachment(string, string) (hostedstore.Attachment, bool) {
+	return hostedstore.Attachment{}, false
 }
 
 func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {

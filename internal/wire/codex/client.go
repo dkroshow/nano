@@ -23,16 +23,13 @@ import (
 	"github.com/dkroshow/nano/internal/wire"
 )
 
-// Direction labels a wire-log entry.
-type Direction = wire.Direction
-
 const (
 	Send = wire.Send
 	Recv = wire.Recv
 )
 
 // WireLogger observes raw JSON-RPC messages in the direction they traveled.
-type WireLogger func(dir Direction, line []byte)
+type WireLogger func(dir wire.Direction, line []byte)
 
 // Message is one decoded JSON-RPC message of any kind. Exactly one of the
 // request/notification/response field sets is populated.

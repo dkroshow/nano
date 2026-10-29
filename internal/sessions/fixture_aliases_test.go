@@ -6,8 +6,6 @@ import (
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
-type claudeTestFrame = shimfixture.Frame
-
 var recvFrame = shimfixture.RecvFrame
 var sendFrame = shimfixture.SendFrame
 var claudeTestSpoolBytes = shimfixture.SpoolBytes

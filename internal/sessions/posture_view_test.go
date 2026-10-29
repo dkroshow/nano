@@ -2,6 +2,8 @@ package sessions
 
 import (
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // A resumed codex session re-seeds its per-turn overrides from the fold, so a
@@ -10,7 +12,7 @@ import (
 // retired into this one seam — while any recorded history makes the log the
 // only truth.
 func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
-	folded := map[string]postureEntry{
+	folded := map[string]hostedstore.PostureEntry{
 		postureFieldModel:       {Field: postureFieldModel, Value: "gpt-5.3-codex", Source: postureSourceOperator},
 		postureFieldEffort:      {Field: postureFieldEffort, Value: "high", Source: postureSourceCreation},
 		postureFieldServiceTier: {Field: postureFieldServiceTier, Value: "priority", Source: postureSourceOperator},
@@ -34,7 +36,7 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 	cleared := &Session{provider: "codex",
 		turnServiceTier: "stale",
 		lifecycleState:  testLifecycleSnapshot("ready", false)}
-	cleared.seedCodexTurnOverrides(map[string]postureEntry{}, "stale-record")
+	cleared.seedCodexTurnOverrides(map[string]hostedstore.PostureEntry{}, "stale-record")
 	if cleared.turnServiceTier != "stale" {
 		t.Fatalf("cleared-history tier = %q, want the record ignored once any history exists", cleared.turnServiceTier)
 	}
@@ -42,9 +44,9 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 
 // The application sibling supplies real canonical folds. This assertion keeps
 // the private stale-cache replacement check with the session that owns it.
-func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
+func TestCanonicalResumeClearsStaleSessionOverrides(t *testing.T) {
 	sess := &Session{turnModel: "stale", turnServiceTier: "stale"}
-	sess.seedCodexCanonicalOverrides(hostedMetadataView{})
+	sess.seedCodexCanonicalOverrides(hostedstore.MetadataView{})
 	if sess.turnModel != "" || sess.turnServiceTier != "" {
 		t.Fatalf("Codex resume = %q/%q, want cleared canonical values", sess.turnModel, sess.turnServiceTier)
 	}

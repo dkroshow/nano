@@ -22,8 +22,9 @@ import (
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
-	"github.com/dkroshow/nano/internal/sessions"
+	sessionstypes "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	threadstypes "github.com/dkroshow/nano/internal/threads"
 )
 
 // List reads must cost work in proportion to the page, not the fleet.
@@ -112,9 +113,9 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessions := map[string]*session{}
+	sessions := map[string]*sessionstypes.Session{}
 	var nameOwner *server
-	live := func(native, cwd, model string, hosted bool, created time.Time) *session {
+	live := func(native, cwd, model string, hosted bool, created time.Time) *sessionstypes.Session {
 		sessID := "sess-" + native
 		hostedID := "nht_missing_record"
 		if hosted {
@@ -128,13 +129,13 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 			}
 			for _, fact := range [][2]string{{"cwd", cwd}, {postureFieldModel, model}} {
 				field, value := fact[0], fact[1]
-				if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: field, Value: value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: record.ID + "-" + field}); err != nil {
+				if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: record.ID, Field: field, Value: value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: record.ID + "-" + field}); err != nil {
 					t.Fatal(err)
 				}
 			}
 			f.hostedBy[native] = record.ID
 		}
-		sess := memorySession(t, sessID, "codex", native, "ready", "/transport/"+native, "transport-model", created, func(cfg *sessionConfig) {
+		sess := memorySession(t, sessID, "codex", native, "ready", "/transport/"+native, "transport-model", created, func(cfg *sessionstypes.Config) {
 			cfg.HostedThreadID = hostedID
 			cfg.Metadata = readFixtureMetadata{metadata}
 			cfg.AgentExecutions = &quietRuntimeExecutions{executions}
@@ -186,7 +187,7 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 		t.Fatal(err)
 	}
 	if err := executions.MarkTurnTerminal("codex", "failed-live", "codex:failed", agentTurnFailed,
-		&agentExecutionError{Source: "provider", Code: "error", Message: "failed"}, "", ""); err != nil {
+		&threadstypes.ExecutionError{Source: "provider", Code: "error", Message: "failed"}, "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -476,7 +477,7 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 		rebooting := hostedstore.Attachment{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
-		f.server.bootAttachments = sessions.NewBootAttachments([]hostedstore.Attachment{rebooting})
+		f.server.bootAttachments = sessionstypes.NewBootAttachments([]hostedstore.Attachment{rebooting})
 		var body map[string]any
 		statements := f.countControlStatements(t, func() {
 			body = f.get(t, fixtureOwners(f.server).hostedViews().HandleSessionsList, "/api/v1/hosted-threads")
@@ -702,4 +703,6 @@ func TestQueuedPromptsAlwaysCarryAHostedThread(t *testing.T) {
 // setup must not overwrite those deliberately contrasting transport values.
 type readFixtureMetadata struct{ *hostedstore.MetadataStore }
 
-func (readFixtureMetadata) AppendEvent(event metadataEvent) (metadataEvent, error) { return event, nil }
+func (readFixtureMetadata) AppendEvent(event hostedstore.MetadataEvent) (hostedstore.MetadataEvent, error) {
+	return event, nil
+}

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -220,11 +221,11 @@ type LiveTextMessage struct {
 	Projection *threadindex.TranscriptProjection `json:"projection,omitempty"`
 	Live       *[]liveTextEntry                  `json:"live,omitempty"`
 	// Saved names the live text this message removes because its rows arrived.
-	Saved  []string        `json:"saved,omitempty"`
-	ID     string          `json:"id,omitempty"`
-	Append string          `json:"append,omitempty"`
-	Error  string          `json:"error,omitempty"`
-	Status *liveTextStatus `json:"status,omitempty"`
+	Saved  []string         `json:"saved,omitempty"`
+	ID     string           `json:"id,omitempty"`
+	Append string           `json:"append,omitempty"`
+	Error  string           `json:"error,omitempty"`
+	Status *liveview.Status `json:"status,omitempty"`
 }
 
 // enhancedRows and enhancedTurns are what an Enhanced pane receives: the

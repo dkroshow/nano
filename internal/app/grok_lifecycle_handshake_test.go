@@ -13,6 +13,8 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	testfixture "github.com/dkroshow/nano/internal/testsupport"
 	grokfixture "github.com/dkroshow/nano/internal/testsupport/grokserver"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -58,7 +60,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 			attempts.BindTransactionStore(promptStore)
 			queue.BindTransactionStore(promptStore)
 			metadata, _ := newTestHostedControl(t)
-			sess := newSession(sessionConfig{ID: "nano-session", Provider: "grok", HostedThreadID: "hosted-thread", CWD: t.TempDir(), Projection: newLiveProjection("grok", "hosted-thread"), Turns: promptStore, QueuedTurns: queue, SendAttempts: attempts, Metadata: metadata})
+			sess := newSession(sessions.Config{ID: "nano-session", Provider: "grok", HostedThreadID: "hosted-thread", CWD: t.TempDir(), Projection: newLiveProjection("grok", "hosted-thread"), Turns: promptStore, QueuedTurns: queue, SendAttempts: attempts, Metadata: metadata})
 			if err := sess.InitializeBinding(1); err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +96,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.created {
-				if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: sess.HostedThreadID(), Field: postureFieldModel, Value: "grok-4.6",
+				if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: sess.HostedThreadID(), Field: postureFieldModel, Value: "grok-4.6",
 					Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Evidence: "grok_session_new_response",
 					NativeThreadID: sess.ThreadID(), Freshness: metadataFreshnessLive, SourceEventKey: "test:session-new"}); err != nil {
 					t.Fatal(err)
@@ -152,7 +154,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 					}
 				}
 			})
-			if err := sess.BeginProviderSpawn(providerRequest{Provider: "grok", Mode: "resume", ThreadID: sess.ThreadID(), Cwd: sess.CWD(), GrokBin: provider.Bin()}, nil, func() {}); err != nil {
+			if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.ThreadID(), Cwd: sess.CWD(), GrokBin: provider.Bin()}, nil, func() {}); err != nil {
 				t.Fatal(err)
 			}
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // NewExecutionStore uses normalized control.sqlite rows.
@@ -13,7 +14,7 @@ func NewExecutionStore(control *MetadataStore, runID string, featureAction func(
 	if control == nil {
 		return nil, fmt.Errorf("control execution store unavailable")
 	}
-	s := &ExecutionStore{runID: runID, sessions: map[string]agentSessionRecord{}, turns: map[string]agentTurnRecord{}, byAction: map[string]string{}, byClient: map[string]string{}, deletedSessions: map[string]bool{}, deletedTurns: map[string]bool{}, sessionBaseline: map[string]int64{}, turnBaseline: map[string]int64{}, changed: make(chan struct{}), changes: newAgentChangeLog(), control: control}
+	s := &ExecutionStore{runID: runID, sessions: map[string]threads.SessionRecord{}, turns: map[string]threads.TurnRecord{}, byAction: map[string]string{}, byClient: map[string]string{}, deletedSessions: map[string]bool{}, deletedTurns: map[string]bool{}, sessionBaseline: map[string]int64{}, turnBaseline: map[string]int64{}, changed: make(chan struct{}), changes: newAgentChangeLog(), control: control}
 	s.resetTurnIndexesLocked()
 	if err := loadControlExecutionRows(s); err != nil {
 		return nil, err
@@ -40,7 +41,7 @@ func NewExecutionStore(control *MetadataStore, runID string, featureAction func(
 	for _, rec := range s.turns {
 		if rec.Status == agentTurnDeliveryPending && rec.RunID != "" && rec.RunID != runID && rec.ProviderTurnID == "" && !featureAction(rec.ClientActionID) {
 			rec.Status = agentTurnDeliveryUnknown
-			rec.Error = &agentExecutionError{Source: "delivery", Code: "nano_restarted", Message: "Nano restarted before provider acceptance was confirmed"}
+			rec.Error = &threads.ExecutionError{Source: "delivery", Code: "nano_restarted", Message: "Nano restarted before provider acceptance was confirmed"}
 			touchAgentTurn(&rec)
 			s.setTurnLocked(rec.ID, &rec)
 			changed = true
@@ -61,7 +62,7 @@ func loadControlExecutionRows(s *ExecutionStore) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var r agentSessionRecord
+		var r threads.SessionRecord
 		var legacyPrompt bool
 		var storedPolicy string
 		if err := rows.Scan(&r.ID, &r.ClientSessionID, &r.RequestHash, &r.Provider, &r.PresentationMode, &r.SidebarPlacement, &r.NanoSessionID, &r.NativeThreadID, &r.InvokerHostedThreadID, &r.InvokerNativeThreadID, &r.InvokerProvider, &legacyPrompt, &storedPolicy, &r.LastHumanPromptAt, &r.Status, &r.Error, &r.RunID, &r.CreatedAt, &r.UpdatedAt, &r.Revision); err != nil {
@@ -83,7 +84,7 @@ func loadControlExecutionRows(s *ExecutionStore) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var r agentTurnRecord
+		var r threads.TurnRecord
 		var source, code, msg, details sql.NullString
 		var assignmentID sql.NullInt64
 		if err := rows.Scan(&r.ID, &r.HostedThreadID, &r.ClientActionID, &r.TransportActionID, &r.PromptHash, &assignmentID, &r.Provider, &r.NanoSessionID, &r.NativeThreadID, &r.ProviderTurnID, &r.Status, &source, &code, &msg, &details, &r.FinalItemID, &r.FinalResponse, &r.FinalResponseTruncated, &r.FinalResponseBytes, &r.CandidateItemID, &r.CandidatePhase, &r.CandidateResponse, &r.CandidateBytes, &r.CandidateTruncated, &r.Origin, &r.SenderHostedThreadID, &r.SenderNativeThreadID, &r.SenderProvider, &r.SenderName, &r.SenderSubmittedAt, &r.RunID, &r.CreatedAt, &r.UpdatedAt, &r.Revision); err != nil {
@@ -94,7 +95,7 @@ func loadControlExecutionRows(s *ExecutionStore) error {
 			r.AssignmentEventID = &id
 		}
 		if source.Valid {
-			r.Error = &agentExecutionError{Source: source.String, Code: code.String, Message: msg.String, Details: json.RawMessage(details.String)}
+			r.Error = &threads.ExecutionError{Source: source.String, Code: code.String, Message: msg.String, Details: json.RawMessage(details.String)}
 		}
 		s.setTurnLocked(r.ID, &r)
 		s.turnBaseline[r.ID] = r.Revision
@@ -102,14 +103,14 @@ func loadControlExecutionRows(s *ExecutionStore) error {
 	return rows.Err()
 }
 
-func setStoredSubscriptions(record *agentSessionRecord, policy string, legacyPrompt bool) {
+func setStoredSubscriptions(record *threads.SessionRecord, policy string, legacyPrompt bool) {
 	choices := subscriptions.FromStored(policy, legacyPrompt)
 	record.SubscriptionInbox = choices.Inbox == subscriptions.Send
 	record.SubscriptionPrompt = choices.Prompt == subscriptions.Send
 }
 
 // StoredSubscriptions reads subscription choices while honoring the legacy stored policy.
-func StoredSubscriptions(record agentSessionRecord) subscriptions.Choices {
+func StoredSubscriptions(record threads.SessionRecord) subscriptions.Choices {
 	choices := subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.None}
 	if record.SubscriptionInbox {
 		choices.Inbox = subscriptions.Send

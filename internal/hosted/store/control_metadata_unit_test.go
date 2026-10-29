@@ -89,7 +89,7 @@ func migrateTestControl(t *testing.T, metadata *MetadataStore) {
 // thread's provisional handle is native, which makes native current.
 func resolveTestProvisional(t *testing.T, control *MetadataStore, hostedID, provider, handle, native string) {
 	t.Helper()
-	if err := control.ClaimNativeIDResolving(hostedID, provider, native, false, &nativeResolution{Handle: handle, Native: native}); err != nil {
+	if err := control.ClaimNativeIDResolving(hostedID, provider, native, false, &NativeResolution{Handle: handle, Native: native}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -110,7 +110,7 @@ func TestControlMetadataRequestedThenConfirmedIsOneCurrentRecord(t *testing.T) {
 	if err := store.EnsureHostedThread("nht_priority", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	requested, err := store.AppendEvent(metadataEvent{
+	requested, err := store.AppendEvent(MetadataEvent{
 		HostedThreadID: "nht_priority", Field: postureFieldServiceTier, Value: "priority",
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation,
 		Freshness: metadataFreshnessLive, SourceEventKey: "creation-priority",
@@ -118,7 +118,7 @@ func TestControlMetadataRequestedThenConfirmedIsOneCurrentRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	confirmed, err := store.AppendEvent(metadataEvent{
+	confirmed, err := store.AppendEvent(MetadataEvent{
 		HostedThreadID: "nht_priority", Field: postureFieldServiceTier, Value: "priority",
 		Disposition: metadataDispositionConfirmed, Source: postureSourceProvider,
 		Freshness: metadataFreshnessLive, SourceEventKey: "provider-priority",
@@ -144,10 +144,10 @@ func TestControlMetadataHistoricalProviderEvidenceCannotConfirmNewRequest(t *tes
 	if err := store.EnsureHostedThread("nht_replay", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_replay", Field: postureFieldModel, Value: "new", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_replay", Field: postureFieldModel, Value: "new", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_replay", Field: postureFieldModel, Value: "old", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessReplayed}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_replay", Field: postureFieldModel, Value: "old", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessReplayed}); err != nil {
 		t.Fatal(err)
 	}
 	var effective sql.NullInt64
@@ -161,7 +161,7 @@ func TestControlMetadataHistoricalProviderEvidenceCannotConfirmNewRequest(t *tes
 
 func TestControlMetadataEventAndCurrentRollbackTogether(t *testing.T) {
 	store := newTestControlMetadata(t)
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "missing", Field: postureFieldModel, Value: "x", Disposition: metadataDispositionRequested, Source: postureSourceCreation}); err == nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "missing", Field: postureFieldModel, Value: "x", Disposition: metadataDispositionRequested, Source: postureSourceCreation}); err == nil {
 		t.Fatal("append for unknown hosted thread succeeded")
 	}
 	var events int
@@ -187,14 +187,14 @@ func TestControlMetadataNativeSuccessionRetiresTheOldClaim(t *testing.T) {
 	if err := store.ClaimNativeID("nht_native", "claude", "native-successor", false); !errors.Is(err, errUnresolvedProvisional) {
 		t.Fatalf("an unresolved provisional handle was retired: %v", err)
 	}
-	pair := nativeResolution{Handle: "cs_provisional", Native: "native-successor"}
+	pair := NativeResolution{Handle: "cs_provisional", Native: "native-successor"}
 	if err := store.ClaimNativeIDResolving("nht_native", "claude", "native-successor", false, &pair); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ClaimNativeIDResolving("nht_native", "claude", "native-successor", false, &pair); err != nil {
 		t.Fatalf("retrying a recorded resolution = %v", err)
 	}
-	other := nativeResolution{Handle: "cs_provisional", Native: "native-other"}
+	other := NativeResolution{Handle: "cs_provisional", Native: "native-other"}
 	if err := store.ClaimNativeIDResolving("nht_native", "claude", "native-other", false, &other); !errors.Is(err, errUnresolvedProvisional) {
 		t.Fatalf("a recorded resolution was replaced: %v", err)
 	}
@@ -227,28 +227,28 @@ func TestControlMetadataFreshnessRequiresGenerationOrExactCausation(t *testing.T
 	if err != nil || generation != 1 {
 		t.Fatalf("binding generation = %d, %v", generation, err)
 	}
-	requested, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "new", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
+	requested, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "new", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "old", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation - 1}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "old", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation - 1}); err != nil {
 		t.Fatal(err)
 	}
 	assertNoEffective(t, store, "nht_generation", postureFieldModel)
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "new", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "new", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 		t.Fatal(err)
 	}
 	assertCurrentValue(t, store, "nht_generation", postureFieldModel, `"new"`, metadataDispositionConfirmed)
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "linked", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation - 1, CausationEventID: &requested.ID}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "linked", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation - 1, CausationEventID: &requested.ID}); err != nil {
 		t.Fatal(err)
 	}
 	assertCurrentValue(t, store, "nht_generation", postureFieldModel, `"linked"`, metadataDispositionConfirmed)
-	other, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_generation", Field: postureFieldEffort, Value: "high", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
+	other, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_generation", Field: postureFieldEffort, Value: "high", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wrong := other.ID
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "wrong", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation - 1, CausationEventID: &wrong}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_generation", Field: postureFieldModel, Value: "wrong", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation - 1, CausationEventID: &wrong}); err != nil {
 		t.Fatal(err)
 	}
 	assertCurrentValue(t, store, "nht_generation", postureFieldModel, `"linked"`, metadataDispositionConfirmed)
@@ -263,11 +263,11 @@ func TestControlMetadataCoalescesObservationsButRetainsOperatorAuditEvents(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_coalesce", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
+	first, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_coalesce", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_coalesce", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
+	second, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_coalesce", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestControlMetadataCoalescesObservationsButRetainsOperatorAuditEvents(t *te
 		t.Fatalf("duplicate observation ids = %d, %d", first.ID, second.ID)
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_coalesce", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+		if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_coalesce", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -296,7 +296,7 @@ func TestControlMetadataRejectsInvalidIdentity(t *testing.T) {
 	if err := store.EnsureHostedThread("nht_invalid", "", presentationShared, "", "", ""); err == nil {
 		t.Fatal("empty provider accepted")
 	}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_missing", Field: postureFieldModel, Value: "x", Disposition: metadataDispositionRequested, Source: postureSourceCreation}); err == nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_missing", Field: postureFieldModel, Value: "x", Disposition: metadataDispositionRequested, Source: postureSourceCreation}); err == nil {
 		t.Fatal("unknown hosted identity accepted")
 	}
 }
@@ -310,7 +310,7 @@ func TestMetadataChangesAreMonotonicAndRecoverableByCurrentRefetch(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = store.AppendEvent(metadataEvent{HostedThreadID: "nht_changes", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
+	_, err = store.AppendEvent(MetadataEvent{HostedThreadID: "nht_changes", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestMetadataChangesAreMonotonicAndRecoverableByCurrentRefetch(t *testing.T)
 		t.Fatalf("changes=%+v view=%+v", changes, view)
 	}
 	// An exact source-key retry is a no-op and emits no revision hint.
-	keyed := metadataEvent{HostedThreadID: "nht_changes", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, SourceEventKey: "change-retry"}
+	keyed := MetadataEvent{HostedThreadID: "nht_changes", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, SourceEventKey: "change-retry"}
 	if _, err := store.AppendEvent(keyed); err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ func TestControlMetadataCurrentOnlyDedupAndIdentityValidation(t *testing.T) {
 	}
 	g, _ := store.BeginTransportBinding("nht_dedup")
 	for _, value := range []string{"a", "b", "a"} {
-		if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_dedup", Field: postureFieldModel, Value: value, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
+		if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_dedup", Field: postureFieldModel, Value: value, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -363,7 +363,7 @@ func TestControlMetadataCurrentOnlyDedupAndIdentityValidation(t *testing.T) {
 	if err := store.ClaimNativeID("nht_dedup", "claude", "native", false); err == nil {
 		t.Fatal("native provider conflict accepted")
 	}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_dedup", Field: "bogus", Value: "x", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err == nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_dedup", Field: "bogus", Value: "x", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err == nil {
 		t.Fatal("unknown field accepted")
 	}
 }
@@ -374,7 +374,7 @@ func TestControlMetadataSourceEventKeyIsIdempotentOnlyForSameEvidence(t *testing
 		t.Fatal(err)
 	}
 	g, _ := store.BeginTransportBinding("nht_key")
-	e := metadataEvent{HostedThreadID: "nht_key", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, SourceEventKey: "provider-event-1"}
+	e := MetadataEvent{HostedThreadID: "nht_key", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, SourceEventKey: "provider-event-1"}
 	first, err := store.AppendEvent(e)
 	if err != nil {
 		t.Fatal(err)
@@ -411,14 +411,14 @@ func TestControlMetadataRejectionKeepsPriorEffectiveAndSettlesDesired(t *testing
 		t.Fatal(err)
 	}
 	g, _ := store.BeginTransportBinding("nht_reject")
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_reject", Field: postureFieldServiceTier, Value: "default", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_reject", Field: postureFieldServiceTier, Value: "default", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
 		t.Fatal(err)
 	}
-	req, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_reject", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
+	req, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_reject", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rejected, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_reject", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRejected, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, CausationEventID: &req.ID})
+	rejected, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_reject", Field: postureFieldServiceTier, Value: "priority", Disposition: metadataDispositionRejected, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, CausationEventID: &req.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,11 +443,11 @@ func TestControlMetadataCausalConfirmationSettlesOriginalDesiredEvent(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	requested, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_confirm", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
+	requested, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_confirm", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
 	if err != nil {
 		t.Fatal(err)
 	}
-	confirmed, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_confirm", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, CausationEventID: &requested.ID})
+	confirmed, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_confirm", Field: postureFieldModel, Value: "sol", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, CausationEventID: &requested.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,11 +470,11 @@ func TestControlMetadataRejectionWithoutEffectiveRetainsFailedRequest(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	requested, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_reject_empty", Field: postureFieldModel, Value: "bad-model", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
+	requested, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_reject_empty", Field: postureFieldModel, Value: "bad-model", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, AttachmentGeneration: g})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rejected, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_reject_empty", Field: postureFieldModel, Value: "bad-model", Disposition: metadataDispositionRejected, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, CausationEventID: &requested.ID})
+	rejected, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_reject_empty", Field: postureFieldModel, Value: "bad-model", Disposition: metadataDispositionRejected, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g, CausationEventID: &requested.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func TestLegacyAttachmentMigrationScrubsRetiredJSONOnlyAfterSuccess(t *testing.T
 			t.Fatalf("successful migration retained retired attachment field %s: %s", field, data)
 		}
 	}
-	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-scrub", HostedThreadID: "nht_scrub", Cwd: "/attempted-return", Model: "attempted-return", TurnServiceTier: "default", Bin: "/codex", Args: []string{"--resume", "native-scrub"}, AttachedAt: "2026-08-10T00:01:00Z"})
+	attachments.Remember(Attachment{Provider: "codex", NativeThreadID: "native-scrub", HostedThreadID: "nht_scrub", Cwd: "/attempted-return", Model: "attempted-return", TurnServiceTier: "default", Bin: "/codex", Args: []string{"--resume", "native-scrub"}, AttachedAt: "2026-08-10T00:01:00Z"})
 	reopened, err := NewAttachmentStore(path)
 	if err != nil {
 		t.Fatal(err)
@@ -544,7 +544,7 @@ func TestLegacyAttachmentMigrationScrubsRetiredJSONOnlyAfterSuccess(t *testing.T
 
 func TestLegacyAttachmentImportResumesWithoutOverwritingStrongerEvidence(t *testing.T) {
 	store := newTestControlMetadata(t)
-	Records := []attachmentRecord{{HostedThreadID: "nht_attachment", Provider: "codex", Cwd: "/work", Model: "attachment-model", TurnServiceTier: "priority", InvokerHostedThreadID: "nht_parent", InvokerNativeThreadID: "parent-native", InvokerProvider: "claude"}, {HostedThreadID: "nht_empty_native", Provider: "claude", Model: "haiku", TurnServiceTier: "priority"}}
+	Records := []Attachment{{HostedThreadID: "nht_attachment", Provider: "codex", Cwd: "/work", Model: "attachment-model", TurnServiceTier: "priority", InvokerHostedThreadID: "nht_parent", InvokerNativeThreadID: "parent-native", InvokerProvider: "claude"}, {HostedThreadID: "nht_empty_native", Provider: "claude", Model: "haiku", TurnServiceTier: "priority"}}
 	if err := store.importLegacyAttachmentsUntil(Records, 1); err == nil {
 		t.Fatal("bounded attachment import unexpectedly completed")
 	}
@@ -580,7 +580,7 @@ func TestLegacyAttachmentImportResumesWithoutOverwritingStrongerEvidence(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conflict.AppendEvent(metadataEvent{HostedThreadID: "nht_attachment", Field: postureFieldServiceTier, Value: "default", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
+	if _, err := conflict.AppendEvent(MetadataEvent{HostedThreadID: "nht_attachment", Field: postureFieldServiceTier, Value: "default", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
 		t.Fatal(err)
 	}
 	if err := conflict.importLegacyAttachments(Records[:1]); err != nil {
@@ -599,7 +599,7 @@ func TestLegacyAttachmentImportTransfersActiveNativeOwnership(t *testing.T) {
 	if err := store.ClaimNativeID("nht_old_owner", "codex", "native-shared", false); err != nil {
 		t.Fatal(err)
 	}
-	Records := []attachmentRecord{{
+	Records := []Attachment{{
 		HostedThreadID: "nht_attachment_owner",
 		Provider:       "codex",
 		NativeThreadID: "native-shared",
@@ -670,7 +670,7 @@ func TestMetadataEventVolumeWarningTracksCommittedEventsOnly(t *testing.T) {
 	}
 	store.eventVolume = map[string]int{"nht_volume\x00" + postureFieldModel: metadataEventWarningThreshold - 1}
 	store.warnedVolume = map[string]bool{}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_volume", Field: postureFieldModel, Value: "x", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_volume", Field: postureFieldModel, Value: "x", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
 	if !store.warnedVolume["nht_volume\x00"+postureFieldModel] {
@@ -688,11 +688,11 @@ func TestMetadataEventVolumeSurvivesRestartAndIgnoresDuplicate(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < metadataEventWarningThreshold-2; i++ {
-		if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_volume_restart", Field: postureFieldModel, Value: fmt.Sprintf("model-%03d", i), Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
+		if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_volume_restart", Field: postureFieldModel, Value: fmt.Sprintf("model-%03d", i), Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	provider := metadataEvent{HostedThreadID: "nht_volume_restart", Field: postureFieldModel, Value: "provider-model", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, SourceEventKey: "volume-restart-provider"}
+	provider := MetadataEvent{HostedThreadID: "nht_volume_restart", Field: postureFieldModel, Value: "provider-model", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, SourceEventKey: "volume-restart-provider"}
 	if event, err := store.AppendEvent(provider); err != nil || !event.Committed {
 		t.Fatalf("provider seed = %+v, %v", event, err)
 	}
@@ -725,7 +725,7 @@ func TestMetadataEventVolumeSurvivesRestartAndIgnoresDuplicate(t *testing.T) {
 	if inventory.TotalEvents != metadataEventWarningThreshold-1 || inventory.DuplicateSuppressions != 1 || len(inventory.PerThread) == 0 || len(inventory.PerField) == 0 || inventory.LargestEventID == 0 {
 		t.Fatalf("restart inventory = %+v", inventory)
 	}
-	if _, err := store.AppendEvent(metadataEvent{HostedThreadID: "nht_volume_restart", Field: postureFieldModel, Value: "operator-after-restart", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := store.AppendEvent(MetadataEvent{HostedThreadID: "nht_volume_restart", Field: postureFieldModel, Value: "operator-after-restart", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
 	if got := store.eventVolume[key]; got != metadataEventWarningThreshold || !store.warnedVolume[key] {
@@ -744,9 +744,9 @@ func TestMetadataReobservationAtNewGenerationAddsNoEvent(t *testing.T) {
 	if err := store.EnsureHostedThread(id, "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	observe := func(generation int64, value, key string, cause *int64) metadataEvent {
+	observe := func(generation int64, value, key string, cause *int64) MetadataEvent {
 		t.Helper()
-		event, err := store.AppendEvent(metadataEvent{HostedThreadID: id, Field: postureFieldModel, Value: value, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, CausationEventID: cause, SourceEventKey: key})
+		event, err := store.AppendEvent(MetadataEvent{HostedThreadID: id, Field: postureFieldModel, Value: value, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, CausationEventID: cause, SourceEventKey: key})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -777,7 +777,7 @@ func TestMetadataReobservationAtNewGenerationAddsNoEvent(t *testing.T) {
 	if changed := observe(1, "gpt-2", "gen1-changed", nil); !changed.Committed {
 		t.Fatal("a changed value was suppressed as a repeat")
 	}
-	requested, err := store.AppendEvent(metadataEvent{HostedThreadID: id, Field: postureFieldModel, Value: "gpt-2", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive})
+	requested, err := store.AppendEvent(MetadataEvent{HostedThreadID: id, Field: postureFieldModel, Value: "gpt-2", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive})
 	if err != nil || !requested.Committed {
 		t.Fatalf("operator request = %+v, %v", requested, err)
 	}

@@ -92,11 +92,6 @@ const (
 	decisionCancel           = "cancel"
 )
 
-// pendingInteraction is one parked server request, as the UI and any external
-// client see it. Params are carried verbatim: the card renders from the wire
-// payload rather than from a nano re-description of it.
-type pendingInteraction = interact.PendingInteraction
-
 // interactionRouting is what one server request says about where it belongs.
 // threadID is empty for connection-level requests, which never become dialogs.
 type interactionRouting struct {
@@ -156,7 +151,7 @@ func (d *CodexDaemon) handleServerRequest(requestID string, method string, param
 		log.Printf("server request %s for unrouted thread %q — declining", method, routing.threadID)
 		return interactionDecisionResult(method, decisionDecline, params, nil)
 	}
-	pending := pendingInteraction{
+	pending := interact.PendingInteraction{
 		ID: requestID, Method: method, Kind: kind,
 		ThreadID: routing.threadID, TurnID: routing.turnID, ItemID: routing.itemID,
 		CreatedAt: time.Now().Format(time.RFC3339Nano), ExpiresAt: routing.expires,
@@ -201,7 +196,7 @@ func connectionLevelResponse(method string) (any, *protocol.RPCError, bool) {
 	return nil, nil, false
 }
 
-func (sess *Session) respondInteraction(ctx context.Context, p pendingInteraction, decision string, answers json.RawMessage) (model.Batch, error) {
+func (sess *Session) respondInteraction(ctx context.Context, p interact.PendingInteraction, decision string, answers json.RawMessage) (model.Batch, error) {
 	if err := sess.ensureProviderCoordinator(); err != nil {
 		return model.Batch{}, err
 	}
@@ -228,7 +223,7 @@ func (sess *Session) respondInteraction(ctx context.Context, p pendingInteractio
 // a perfectly successful turn in which the model is told "The user did not
 // Answer the questions", which is the failure mode this comment exists to
 // prevent someone rediscovering.
-func claudeInteractionResult(p pendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
+func claudeInteractionResult(p interact.PendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
 	switch p.Kind {
 	case kindUserInput:
 		input, questions := claudeToolInput(p.Params)
@@ -587,13 +582,13 @@ const (
 // below reach an OPEN PANE only; without the runtime nudge the compact rail
 // would keep ticking an elapsed timer at a thread that is standing still,
 // which is exactly what D15 forbids.
-func (sess *Session) addPendingInteraction(p pendingInteraction) {
+func (sess *Session) addPendingInteraction(p interact.PendingInteraction) {
 	if err := sess.recordPermissionRequest(p); err != nil {
 		log.Printf("session %s: record permission request %s: %v", sess.id, p.ID, err)
 	}
 	sess.stateMu.Lock()
 	if sess.interactions == nil {
-		sess.interactions = map[string]pendingInteraction{}
+		sess.interactions = map[string]interact.PendingInteraction{}
 	}
 	sess.interactions[p.ID] = p
 	sess.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
@@ -626,7 +621,7 @@ func (sess *Session) statusInteractionEpoch() int64 {
 // to sess.interactions or the live projection. The provider-specific ingress
 // returns its own decline shape immediately; the status dispatcher observes
 // the epoch change and interrupts the classifier turn.
-func (sess *Session) rejectStatusInteraction(p pendingInteraction) bool {
+func (sess *Session) rejectStatusInteraction(p interact.PendingInteraction) bool {
 	sess.stateMu.Lock()
 	if !sess.autoRejectInteractions {
 		sess.stateMu.Unlock()
@@ -646,7 +641,7 @@ func (sess *Session) rejectStatusInteraction(p pendingInteraction) bool {
 // takePendingInteraction claims one pending interaction. The claim is the
 // idempotency point on nano's side: a second answer finds nothing and is told
 // so, which is what makes a second tab's click collapse rather than double-send.
-func (sess *Session) takePendingInteraction(id string) (pendingInteraction, bool) {
+func (sess *Session) takePendingInteraction(id string) (interact.PendingInteraction, bool) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	p, ok := sess.interactions[id]
@@ -665,7 +660,7 @@ func (sess *Session) takePendingInteraction(id string) (pendingInteraction, bool
 // claimPendingInteraction is takePendingInteraction plus the runtime nudge a
 // successful claim owes the catalog: the thread stops waiting and goes back to
 // working, and the rail's timer must resume with it.
-func (sess *Session) claimPendingInteraction(id string) (pendingInteraction, bool) {
+func (sess *Session) claimPendingInteraction(id string) (interact.PendingInteraction, bool) {
 	p, ok := sess.takePendingInteraction(id)
 	if ok {
 		sess.NotifyRuntime()
@@ -681,9 +676,9 @@ func (sess *Session) claimPendingInteraction(id string) (pendingInteraction, boo
 
 // drainPendingInteractions removes and returns everything still parked —
 // teardown's list of requests it must answer before unsubscribing.
-func (sess *Session) drainPendingInteractions() []pendingInteraction {
+func (sess *Session) drainPendingInteractions() []interact.PendingInteraction {
 	sess.stateMu.Lock()
-	out := make([]pendingInteraction, 0, len(sess.interactions))
+	out := make([]interact.PendingInteraction, 0, len(sess.interactions))
 	for _, p := range sess.interactions {
 		out = append(out, p)
 	}
@@ -709,9 +704,9 @@ func (sess *Session) drainPendingInteractions() []pendingInteraction {
 
 // PendingInteractionList is the /state snapshot — the authoritative copy for a
 // tab that opened after the request landed and so cannot find it by replay.
-func (sess *Session) PendingInteractionList() []pendingInteraction {
+func (sess *Session) PendingInteractionList() []interact.PendingInteraction {
 	sess.stateMu.Lock()
-	out := make([]pendingInteraction, 0, len(sess.interactions))
+	out := make([]interact.PendingInteraction, 0, len(sess.interactions))
 	for _, p := range sess.interactions {
 		out = append(out, p)
 	}
@@ -720,7 +715,7 @@ func (sess *Session) PendingInteractionList() []pendingInteraction {
 	return out
 }
 
-func (sess *Session) noteInteractionResolved(p pendingInteraction, decision, outcome string) {
+func (sess *Session) noteInteractionResolved(p interact.PendingInteraction, decision, outcome string) {
 	if err := sess.recordPermissionResolution(p, decision, permissionDecisionSource(decision, outcome), outcome); err != nil {
 		log.Printf("session %s: record permission resolution %s: %v", sess.id, p.ID, err)
 	}
@@ -798,7 +793,7 @@ func (sess *Session) HandleInteraction(w http.ResponseWriter, r *http.Request, r
 	httpapi.WriteJSON(w, map[string]any{"answered": true, "id": requestID, "decision": body.Decision})
 }
 
-func validateInteractionAnswer(provider string, pending pendingInteraction, decision string, answers json.RawMessage) *protocol.RPCError {
+func validateInteractionAnswer(provider string, pending interact.PendingInteraction, decision string, answers json.RawMessage) *protocol.RPCError {
 	var rpcErr *protocol.RPCError
 	switch provider {
 	case "codex":

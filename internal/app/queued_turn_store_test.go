@@ -17,7 +17,7 @@ func TestQueuedTurnStoreBindProviderTurnPersistsAcceptedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, prompts.QueuedTurn{
 		ClientActionID: "action-1", Provider: "codex", NativeThreadID: "native-thread",
 		Text: "hello", TextHash: sendTextHash("hello"), State: submissionDelivering,
 	}); err != nil {
@@ -79,7 +79,7 @@ func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, prompts.QueuedTurn{
 		ClientActionID: "bound", Provider: "codex", NativeThreadID: "native-thread",
 		Text: "hello", TextHash: sendTextHash("hello"), State: submissionDelivering,
 		ProviderTurnID: "turn-1",
@@ -99,7 +99,7 @@ func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
 		t.Fatal("specified other provider must not match")
 	}
 
-	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, prompts.QueuedTurn{
 		ClientActionID: "unthreaded", Provider: "codex", NativeThreadID: "keep-me",
 		Text: "later", TextHash: sendTextHash("later"), State: submissionDelivering,
 	}); err != nil {
@@ -118,7 +118,7 @@ func TestQueuedTurnBindProviderTurnFailureLeavesPreviousState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := QueuePutSubmission(store, queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(store, prompts.QueuedTurn{
 		ClientActionID: "action-fail", Provider: "codex", NativeThreadID: "native-thread",
 		Text: "hello", TextHash: sendTextHash("hello"), State: submissionDelivering,
 	}); err != nil {

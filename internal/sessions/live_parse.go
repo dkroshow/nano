@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/codex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 type codexLiveAdapter struct {
@@ -18,7 +19,7 @@ func newCodexLiveAdapter() *codexLiveAdapter {
 	return &codexLiveAdapter{}
 }
 
-func (a *codexLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *codexLiveAdapter) apply(dir wire.Direction, line []byte, at time.Time) model.Batch {
 	next, batch, err := codex.ParseWire(a.reader, liveParseInput(dir, line, at))
 	if err != nil {
 		return model.Batch{}
@@ -27,13 +28,13 @@ func (a *codexLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Ti
 	return batch
 }
 
-func liveParseInput(dir protocol.Direction, line []byte, at time.Time) model.Input {
+func liveParseInput(dir wire.Direction, line []byte, at time.Time) model.Input {
 	return model.Input{Bytes: line, Source: model.SourceRef{Kind: "wire", Label: "live", Incarnation: "adapter", Direction: string(dir)}, ObservedAt: &at}
 }
 
 // The current browser DTO keeps its native card type and bounded native detail.
 // Text, identity, completion and outcome come from the module's typed item.
-func parsedLiveItem(parsed model.Item, at time.Time) *liveProjectionItem {
+func parsedLiveItem(parsed model.Item, at time.Time) *liveview.Item {
 	id := threadvalues.FirstNonEmpty(parsed.NativeItemID, parsed.ID)
 	types := map[model.ItemType]string{
 		model.ItemUserMessage: "userMessage", model.ItemAgentMessage: "agentMessage", model.ItemReasoning: "reasoning",

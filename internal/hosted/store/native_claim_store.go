@@ -194,7 +194,7 @@ func (s *MetadataStore) InheritMissingDesiredPosture(targetID, sourceID string) 
 			continue
 		}
 		key := fmt.Sprintf("inherit:%s:%s:%s", sourceID, targetID, field)
-		if _, err := s.AppendEvent(metadataEvent{
+		if _, err := s.AppendEvent(MetadataEvent{
 			HostedThreadID: targetID, Field: field, Value: value,
 			Disposition: metadataDispositionRequested, Source: PostureSourceCreation,
 			Freshness: metadataFreshnessLive, SourceEventKey: key,
@@ -219,7 +219,7 @@ func (s *MetadataStore) PersistMissingResumeCwd(hostedID, cwd string) error {
 		return nil
 	}
 	key := fmt.Sprintf("resume-cwd:%s:%s", hostedID, cwd)
-	_, err = s.AppendEvent(metadataEvent{
+	_, err = s.AppendEvent(MetadataEvent{
 		HostedThreadID: hostedID, Field: "cwd", Value: cwd,
 		Disposition: metadataDispositionRequested, Source: PostureSourceCreation,
 		Freshness: metadataFreshnessLive, SourceEventKey: key,

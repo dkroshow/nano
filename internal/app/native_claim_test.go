@@ -7,7 +7,9 @@ import (
 
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -98,7 +100,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 	control, store := newTestHostedControl(t)
 	owner := seedHostedNative(t, store, "claude", revivedNativeID, agentSessionDetached)
 	other := seedHostedNative(t, store, "claude", "cs_other", "ready")
-	sess := configuredFixtureSession(t, sessionConfig{HostedThreadID: other.ID, Provider: "claude", Metadata: control, AgentExecutions: store}, revivedNativeID, "ready", "", false)
+	sess := configuredFixtureSession(t, sessions.Config{HostedThreadID: other.ID, Provider: "claude", Metadata: control, AgentExecutions: store}, revivedNativeID, "ready", "", false)
 	sess.Close()
 	if err := hostedstore.SkipOwnedNativeClaim(store.BindSession(other.ID, "nano-other", revivedNativeID, agentSessionDetached, presentationShared)); err != nil {
 		t.Fatal(err)
@@ -113,7 +115,7 @@ func TestNonOwnerStatusUpdateWhileOwnerDetachedDoesNotMoveClaim(t *testing.T) {
 }
 
 func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *claudeshim.Conn, call claudeshim.Call) {
 		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID,
 			"state": "running", "turnActive": false, "lastSeq": 1,
@@ -124,7 +126,7 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	s, attachments := bootReattachServer(t, shim.WSURL(), "")
 	predecessor := seedHostedNative(t, s.agentExecutions, "claude", claudeResumeThreadID, sessionStatusExited)
 	cwd := t.TempDir()
-	if _, err := s.controlMetadata.AppendEvent(metadataEvent{
+	if _, err := s.controlMetadata.AppendEvent(hostedstore.MetadataEvent{
 		HostedThreadID: predecessor.ID, Field: "cwd", Value: cwd,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 	}); err != nil {
@@ -144,7 +146,7 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	ensureClaudeTestSpool(t, s, "claude", current.ID)
 	openTurnsForBoot(t, s)
 	fixtureOwners(s).attachmentCoordinator().ReattachOnBoot()
-	var sess *session
+	var sess *sessions.Session
 	for _, candidate := range s.SnapshotSessions() {
 		sess = candidate
 	}
@@ -248,7 +250,7 @@ func seedCanonicalResumeOwner(t *testing.T, app *server, provider, nativeID, cwd
 	if _, err := fixtureEnsureSessionWithIdentity(app.agentExecutions, hostedID, provider, presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.controlMetadata.AppendEvent(metadataEvent{
+	if _, err := app.controlMetadata.AppendEvent(hostedstore.MetadataEvent{
 		HostedThreadID: hostedID, Field: "cwd", Value: cwd, SourceEventKey: "fixture-cwd:" + hostedID,
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive,
 	}); err != nil {

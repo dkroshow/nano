@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
@@ -13,7 +14,7 @@ const claudeMissingTranscriptResult = shimfixture.MissingTranscriptResult
 // rejectingNativeClaim records the hosted owner's missing-identity refusal.
 type rejectingNativeClaim struct{ Metadata }
 
-func (rejectingNativeClaim) ClaimNativeIDResolving(string, string, string, bool, *nativeResolution) error {
+func (rejectingNativeClaim) ClaimNativeIDResolving(string, string, string, bool, *hostedstore.NativeResolution) error {
 	return errors.New("hosted identity absent")
 }
 

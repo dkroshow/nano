@@ -140,9 +140,9 @@ func (a ClaudeAnswers) FinishOwed(ctx context.Context, store *coreturns.Store, r
 		}
 		return
 	}
-	var executionErr *agentExecutionError
+	var executionErr *threadvalues.ExecutionError
 	if answer.Outcome != agentTurnCompleted {
-		executionErr = &agentExecutionError{Source: "provider", Code: answer.Outcome, Message: "claude turn " + answer.Outcome}
+		executionErr = &threadvalues.ExecutionError{Source: "provider", Code: answer.Outcome, Message: "claude turn " + answer.Outcome}
 	}
 	owns := false
 	if record.ProviderTurnID != "" {

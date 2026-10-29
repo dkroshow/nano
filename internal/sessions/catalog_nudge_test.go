@@ -3,6 +3,8 @@ package sessions
 import (
 	"testing"
 
+	protocoltypes "github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -43,7 +45,7 @@ func TestWireNudgesCatalogFiresOnTurnEdgesOnly(t *testing.T) {
 	cases := []struct {
 		name     string
 		provider string
-		dir      protocol.Direction
+		dir      wire.Direction
 		line     string
 		want     bool
 	}{
@@ -105,7 +107,7 @@ func TestWireNudgesCatalogFiresOnTurnEdgesOnly(t *testing.T) {
 func TestRecordWireNudgesCatalogOnTurnEdgesOnly(t *testing.T) {
 	var nudges int
 	sess := &Session{provider: "codex",
-		subs:              map[chan wireEvent]struct{}{},
+		subs:              map[chan protocoltypes.Event]struct{}{},
 		catalogRefresh:    func(string) { nudges++ },
 		catalogSourcePath: "/sessions/rollout.jsonl",
 		lifecycleState:    testLifecycleSnapshot("ready", false)}
@@ -125,7 +127,7 @@ func TestRecordWireNudgesCatalogOnTurnEdgesOnly(t *testing.T) {
 func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 	var codexPaths []string
 	codexSession := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		catalogRefresh: func(path string) { codexPaths = append(codexPaths, path) },
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	codexSession.recordWire(protocol.Recv, []byte(codexThreadStartedWire))
@@ -137,7 +139,7 @@ func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 
 	var claudePath string
 	claudeSession := &Session{provider: "claude", threadID: "native-1", cwd: "/tmp/project",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		catalogRefresh: func(path string) { claudePath = path },
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	claudeSession.recordWire(protocol.Send, []byte(claudeUserTurnWire))
@@ -152,7 +154,7 @@ func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 func TestRecordWireNudgesCatalogOnClaudeTurnStart(t *testing.T) {
 	var nudges int
 	sess := &Session{provider: "claude", threadID: "native-1", cwd: "/tmp/project",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		catalogRefresh: func(string) { nudges++ },
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.recordWire(protocol.Recv, []byte(claudeAssistantWire))
@@ -169,7 +171,7 @@ func TestRecordWireNudgesCatalogOnClaudeTurnStart(t *testing.T) {
 // catalog is unavailable (nil callback) records nudging lines without panicking.
 func TestRecordWireWithoutCatalogRefreshIsSafe(t *testing.T) {
 	sess := &Session{provider: "claude",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.recordWire(protocol.Recv, []byte(claudeResultWire))
 	if len(sess.events) != 1 {

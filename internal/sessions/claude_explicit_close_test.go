@@ -4,10 +4,12 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
 func TestClaudeExplicitCloseWaitsBeyondShimGrace(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		call, ok := c.Next()
 		if !ok {
 			return
@@ -25,7 +27,7 @@ func TestClaudeExplicitCloseWaitsBeyondShimGrace(t *testing.T) {
 func TestClaudeExplicitNotFoundBeforeReapIsUncertain(t *testing.T) {
 	started, reap := make(chan struct{}), make(chan struct{})
 	var count atomic.Int32
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		call, ok := c.Next()
 		if !ok {
 			return

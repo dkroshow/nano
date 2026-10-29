@@ -11,14 +11,17 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/config"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/liveview"
+	protocoltypes "github.com/dkroshow/nano/internal/protocol"
+	sessionstypes "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 // The fixture owns the provider process. Once it closes, wait for it instead
 // of starting the installed Codex binary from a background test handshake.
-func (f *fakeAppServer) daemon() *codexDaemon {
+func (f *fakeAppServer) daemon() *sessionstypes.CodexDaemon {
 	d := newCodexDaemon(f.WSURL(), supervisedDaemonLabel)
 	return d
 }
@@ -38,7 +41,7 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 	// Session handshakes run in background. Tear them down before the temporary
 	// control.sqlite cleanup so a late provider reply cannot query a closed DB.
 	t.Cleanup(func() {
-		sessions := make([]*session, 0, len(s.SnapshotSessions()))
+		sessions := make([]*sessionstypes.Session, 0, len(s.SnapshotSessions()))
 		for _, sess := range s.SnapshotSessions() {
 			sessions = append(sessions, sess)
 		}
@@ -60,7 +63,7 @@ func postResume(t *testing.T, s *server, threadID string) *httptest.ResponseReco
 
 // waitForSessionStatus polls the session summary until the background
 // handshake lands on the wanted status (resume spawns are async per Slice R3).
-func waitForSessionStatus(t *testing.T, s *server, sessionID, want string) sessionSummary {
+func waitForSessionStatus(t *testing.T, s *server, sessionID, want string) sessionstypes.Summary {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -74,7 +77,7 @@ func waitForSessionStatus(t *testing.T, s *server, sessionID, want string) sessi
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("session %s never reached status %q", sessionID, want)
-	return sessionSummary{}
+	return sessionstypes.Summary{}
 }
 
 func TestCodexDaemonReconnectsExistingSessionsWithoutAnotherRPC(t *testing.T) {
@@ -84,7 +87,7 @@ func TestCodexDaemonReconnectsExistingSessionsWithoutAnotherRPC(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resume status = %d %s", rec.Code, rec.Body.String())
 	}
-	var spawned sessionSummary
+	var spawned sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &spawned); err != nil {
 		t.Fatalf("decode resume response: %v", err)
 	}
@@ -116,7 +119,7 @@ func TestCodexDaemonReconnectOwnsResumeFailureFromDroppedSocket(t *testing.T) {
 	fake.SetReplyDelay("thread/resume", 2*time.Second)
 	s := newResumeTestServer(t, fake.WSURL())
 	rec := postResume(t, s, "thread-recover-inflight")
-	var spawned sessionSummary
+	var spawned sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &spawned); err != nil {
 		t.Fatalf("decode resume response: %v", err)
 	}
@@ -169,14 +172,14 @@ func TestCodexResumeSendsTheThreadsServiceTier(t *testing.T) {
 	s := newResumeTestServer(t, fake.WSURL())
 	const threadID = "0199a213-abcd-7000-8000-00000000071e"
 	hostedID := seedCanonicalResumeOwner(t, s, "codex", threadID, s.defaults.CWD)
-	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldServiceTier, Value: "default",
+	if _, err := s.controlMetadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: hostedID, Field: postureFieldServiceTier, Value: "default",
 		Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "tier:" + hostedID}); err != nil {
 		t.Fatal(err)
 	}
-	resume := func() sessionSummary {
+	resume := func() sessionstypes.Summary {
 		t.Helper()
 		rec := postResume(t, s, threadID)
-		var spawned sessionSummary
+		var spawned sessionstypes.Summary
 		if err := json.Unmarshal(rec.Body.Bytes(), &spawned); err != nil || rec.Code != http.StatusOK {
 			t.Fatalf("resume = %d %s", rec.Code, rec.Body.String())
 		}
@@ -228,7 +231,7 @@ func TestResumeHappyPathAndCloseDetaches(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +315,7 @@ func TestResumeConflictReturns409Shape(t *testing.T) {
 	if first.Code != http.StatusOK {
 		t.Fatalf("first resume status = %d, body = %s", first.Code, first.Body.String())
 	}
-	var winner sessionSummary
+	var winner sessionstypes.Summary
 	if err := json.Unmarshal(first.Body.Bytes(), &winner); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +356,7 @@ func TestConcurrentDoubleResumeOneWinner(t *testing.T) {
 	}
 	wg.Wait()
 
-	var winner sessionSummary
+	var winner sessionstypes.Summary
 	var loserBody string
 	wins, losses := 0, 0
 	for _, rec := range recs {
@@ -397,7 +400,7 @@ func TestResumeBackgroundFailureExitsAndReleasesClaim(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resume status = %d, body = %s (failure must land on the session, not the POST)", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +432,7 @@ func TestExitedCodexSessionRejectsTurn(t *testing.T) {
 
 	fake.SetResumeError("no rollout found for thread")
 	rec := postResume(t, s, threadID)
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +467,7 @@ func TestResumeReturnsStartingWhileHandshakeInFlight(t *testing.T) {
 	if elapsed >= handshakeDelay/2 {
 		t.Fatalf("resume POST took %v, want well under the %v handshake delay", elapsed, handshakeDelay)
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -537,7 +540,7 @@ func TestResumeStateSnapshotStripsTurns(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -577,7 +580,7 @@ func TestResumeWireReplyOmitsHistoricalTurns(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +589,7 @@ func TestResumeWireReplyOmitsHistoricalTurns(t *testing.T) {
 	if sess == nil {
 		t.Fatal("resumed session missing")
 	}
-	var events []wireEvent
+	var events []protocoltypes.Event
 	waitForClaude(t, "compact resume reply persisted", func() bool {
 		events = claudeWireEvents(sess)
 		for _, event := range events {
@@ -641,12 +644,12 @@ func postStart(t *testing.T, s *server) *httptest.ResponseRecorder {
 	return rec
 }
 
-func decodeSummary(t *testing.T, rec *httptest.ResponseRecorder) sessionSummary {
+func decodeSummary(t *testing.T, rec *httptest.ResponseRecorder) sessionstypes.Summary {
 	t.Helper()
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -774,7 +777,7 @@ func TestCloseDuringResumeHandshakeLeavesNoZombieRouting(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +793,7 @@ func TestCloseDuringResumeHandshakeLeavesNoZombieRouting(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resume after mid-handshake close status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var retry sessionSummary
+	var retry sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &retry); err != nil {
 		t.Fatal(err)
 	}

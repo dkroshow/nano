@@ -17,7 +17,6 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	state "github.com/dkroshow/nano/internal/state/store"
@@ -233,9 +232,9 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if err := control.Close(); err != nil {
 		t.Fatal(err)
 	}
-	queued := queuedTurnRecord{ClientActionID: "action", Provider: "claude", HostedThreadID: "owner", NativeThreadID: "native", Text: "unconfirmed prompt", TextHash: "hash", RequestHash: "hash", State: submissionAccepted, ProviderTurnID: "provider-turn", CreatedAt: "2026-09-09T00:00:00Z"}
-	attempt := sendAttemptRecord{ClientActionID: "action", Provider: "claude", NativeThreadID: "native", TextHash: "hash", Status: sendAttemptAccepted, ProviderTurnID: "provider-turn", CreatedAt: queued.CreatedAt, UpdatedAt: queued.CreatedAt, RunID: "old"}
-	for name, value := range map[string]any{"queued-turns.json": []queuedTurnRecord{queued}, "send-attempts.json": []sendAttemptRecord{attempt}} {
+	queued := prompts.QueuedTurn{ClientActionID: "action", Provider: "claude", HostedThreadID: "owner", NativeThreadID: "native", Text: "unconfirmed prompt", TextHash: "hash", RequestHash: "hash", State: submissionAccepted, ProviderTurnID: "provider-turn", CreatedAt: "2026-09-09T00:00:00Z"}
+	attempt := prompts.SendAttempt{ClientActionID: "action", Provider: "claude", NativeThreadID: "native", TextHash: "hash", Status: sendAttemptAccepted, ProviderTurnID: "provider-turn", CreatedAt: queued.CreatedAt, UpdatedAt: queued.CreatedAt, RunID: "old"}
+	for name, value := range map[string]any{"queued-turns.json": []prompts.QueuedTurn{queued}, "send-attempts.json": []prompts.SendAttempt{attempt}} {
 		body, _ := json.Marshal(value)
 		if err := os.WriteFile(filepath.Join(dir, name), body, 0600); err != nil {
 			t.Fatal(err)
@@ -325,9 +324,9 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	var queueRows []queuedTurnRecord
+	var queueRows []prompts.QueuedTurn
 	for i := 0; i < testsupport.MaxQueuedTurns; i++ {
-		queueRows = append(queueRows, queuedTurnRecord{ClientActionID: fmt.Sprint(i), Provider: "codex", NativeThreadID: "native", Text: "retained text", State: submissionAccepted})
+		queueRows = append(queueRows, prompts.QueuedTurn{ClientActionID: fmt.Sprint(i), Provider: "codex", NativeThreadID: "native", Text: "retained text", State: submissionAccepted})
 	}
 	if err := prompts.SaveQueuedTurns(context.Background(), db, queueRows); err != nil {
 		t.Fatal(err)
@@ -336,17 +335,17 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := QueueEnqueue(queue, queuedTurnRecord{ClientActionID: "overflow", Provider: "codex", NativeThreadID: "native", Text: "new text"}); err == nil {
+	if _, _, err := QueueEnqueue(queue, prompts.QueuedTurn{ClientActionID: "overflow", Provider: "codex", NativeThreadID: "native", Text: "new text"}); err == nil {
 		t.Fatal("queue capacity silently expired retained prompts")
 	}
-	var attempts []sendAttemptRecord
+	var attempts []prompts.SendAttempt
 	for _, native := range []string{"native", "other"} {
 		for i := 0; i < testsupport.MaxLegacySendAttempts+5; i++ {
-			attempts = append(attempts, sendAttemptRecord{ClientActionID: fmt.Sprintf("%s-%03d", native, i), Provider: "codex", NativeThreadID: native, Status: sendAttemptFailed, UpdatedAt: time.Unix(int64(i), 0).UTC().Format(time.RFC3339Nano)})
+			attempts = append(attempts, prompts.SendAttempt{ClientActionID: fmt.Sprintf("%s-%03d", native, i), Provider: "codex", NativeThreadID: native, Status: sendAttemptFailed, UpdatedAt: time.Unix(int64(i), 0).UTC().Format(time.RFC3339Nano)})
 		}
 	}
 	for _, status := range []string{sendAttemptQueued, sendAttemptSending, sendAttemptTimeout, "unknown", "parked"} {
-		attempts = append(attempts, sendAttemptRecord{ClientActionID: status, Provider: "codex", NativeThreadID: "native", Status: status})
+		attempts = append(attempts, prompts.SendAttempt{ClientActionID: status, Provider: "codex", NativeThreadID: "native", Status: status})
 	}
 	if err := prompts.SaveSendAttempts(context.Background(), db, attempts); err != nil {
 		t.Fatal(err)
@@ -358,7 +357,7 @@ func TestThreadRuntimeRetentionPreservesQueuedTextAndUncertainAttempts(t *testin
 	if len(JournalSnapshot(journal)) != len(attempts) {
 		t.Fatal("opening journal silently pruned imported records")
 	}
-	if err := JournalPut(journal, sendAttemptRecord{ClientActionID: "new-queued", Provider: "codex", NativeThreadID: "native", Status: sendAttemptQueued}); err != nil {
+	if err := JournalPut(journal, prompts.SendAttempt{ClientActionID: "new-queued", Provider: "codex", NativeThreadID: "native", Status: sendAttemptQueued}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := prompts.LoadSendAttempts(context.Background(), db)

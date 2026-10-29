@@ -8,6 +8,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestTranscriptRepairPriorityUsesFreshVisibleValidation(t *testing.T) {
@@ -18,8 +19,8 @@ func TestTranscriptRepairPriorityUsesFreshVisibleValidation(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("validation post: %d %s", response.Code, response.Body.String())
 	}
-	server := testServerWithSessions(&server{transcriptValidations: store, Registry: newSessionRegistry()}, map[string]*session{
-		"attached": newFixtureSession(sessionConfig{ID: "attached", Provider: "codex"}, "native-attached"),
+	server := testServerWithSessions(&server{transcriptValidations: store, Registry: newSessionRegistry()}, map[string]*sessions.Session{
+		"attached": newFixtureSession(sessions.Config{ID: "attached", Provider: "codex"}, "native-attached"),
 	})
 	if got := fixtureOwners(server).attachmentCoordinator().TranscriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-open"}); got != 0 {
 		t.Fatalf("open priority=%d", got)

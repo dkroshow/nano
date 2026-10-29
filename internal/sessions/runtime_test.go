@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	protocoltypes "github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -22,7 +24,7 @@ func TestTurnActiveTransition(t *testing.T) {
 	cases := []struct {
 		name       string
 		provider   string
-		dir        protocol.Direction
+		dir        wire.Direction
 		line       string
 		active, ok bool
 		turnID     string
@@ -60,7 +62,7 @@ func TestTurnActiveTransition(t *testing.T) {
 // a turn that already ended.
 func TestSessionTracksTurnID(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.threadID = "thread_a"
 
@@ -83,7 +85,7 @@ func TestSessionTracksTurnID(t *testing.T) {
 // interrupted, not an error the operator has to read.
 func TestHandleInterruptWithoutTurn(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.threadID = "thread_a"
 
@@ -124,7 +126,7 @@ func TestInterruptRaceReason(t *testing.T) {
 // omitted field is left alone while an explicit empty string clears it.
 func TestHandleTurnOptions(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.model = "gpt-5.6-sol"
 	sess.threadID = "native-1"
@@ -173,7 +175,7 @@ func TestHandleTurnOptions(t *testing.T) {
 func TestSessionTurnActiveFromWire(t *testing.T) {
 	var nudges int
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		runtimeNotify:  func() { nudges++ },
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
@@ -205,7 +207,7 @@ func TestSessionTurnActiveFromWire(t *testing.T) {
 // one restart minute). Replay flips the flag; only a live close stamps.
 func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
 	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)
@@ -228,7 +230,7 @@ func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
 }
 
 func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *testing.T) {
-	sess := &session{id: "blocked-summary",
+	sess := &Session{id: "blocked-summary",
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	s := &Registry{sessions: map[string]*Session{sess.id: sess}}
 	sess.stateMu.Lock()
@@ -263,7 +265,7 @@ func TestVolatileSessionSummariesDoesNotHoldServerLockAcrossSessionState(t *test
 // making the sidebar promote and demote the same row for every old turn.
 func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	nudges := 0
-	sess := &session{provider: "claude",
+	sess := &Session{provider: "claude",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("claude"),
 		runtimeNotify:  func() { nudges++ },
@@ -294,7 +296,7 @@ func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 	}
 
 	activeNudges := 0
-	active := &session{provider: "claude",
+	active := &Session{provider: "claude",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("claude"),
 		runtimeNotify:  func() { activeNudges++ },
@@ -312,7 +314,7 @@ func TestClaudeReplayPublishesOnlySettledTurnState(t *testing.T) {
 
 func TestClaudeRestoreDefersGenuineLiveCompletionUntilSettlement(t *testing.T) {
 	nudges := 0
-	sess := &session{provider: "claude",
+	sess := &Session{provider: "claude",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("claude"),
 		runtimeNotify:  func() { nudges++ },

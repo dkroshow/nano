@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // The turn-operations changes feed: an in-memory, loss-tolerant ring of
@@ -128,7 +130,7 @@ func (l *agentChangeLog) slot(seq uint64) int { return int((seq - 1) % uint64(le
 
 // noteTurnTransitionLocked buffers a semantic transition. The buffer is
 // flushed only after the normalized row transaction commits.
-func (s *ExecutionStore) noteTurnTransitionLocked(oldStatus string, rec agentTurnRecord) {
+func (s *ExecutionStore) noteTurnTransitionLocked(oldStatus string, rec threads.TurnRecord) {
 	if s.changes == nil || oldStatus == rec.Status {
 		return
 	}

@@ -24,9 +24,9 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 	})
 
 	cwds := []string{t.TempDir(), t.TempDir(), t.TempDir()}
-	sessions := make([]*session, 40)
+	sessions := make([]*Session, 40)
 	for i := range sessions {
-		sessions[i] = &session{
+		sessions[i] = &Session{
 			id:       NewID(),
 			provider: "codex",
 			cwd:      cwds[i%len(cwds)],
@@ -39,7 +39,7 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, sess := range sessions {
 		wg.Add(1)
-		go func(sess *session) {
+		go func(sess *Session) {
 			defer wg.Done()
 			response := httptest.NewRecorder()
 			sess.HandleSkills(response, httptest.NewRequest("GET", "/skills", nil))

@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-
 	"testing"
 	"time"
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -39,7 +39,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			if err := executions.BindSession(record.ID, "session", "native-hosted", "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "session", Provider: "codex", HostedThreadID: record.ID, CWD: "/work", CreatedAt: now}, "native-hosted", "model")
+			fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "session", Provider: "codex", HostedThreadID: record.ID, CWD: "/work", CreatedAt: now}, "native-hosted", "model")
 			sess := fixture.session
 			switch tc.work {
 			case lifecycle.Accepted:
@@ -65,7 +65,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			s := testServerWithSessions(&server{
 				Registry:        newSessionRegistry(),
 				controlMetadata: metadata, agentExecutions: executions,
-			}, map[string]*session{sess.ID(): sess})
+			}, map[string]*sessions.Session{sess.ID(): sess})
 			wireFleetTestController(t, s, fake)
 			// The feed and catalog share this composed row's lifecycle label;
 			// the pane below independently observes the same session state.
@@ -193,7 +193,7 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 	if response := postTurn(t, busy, context.Background(), "busy-prompt", "working"); response.Code != http.StatusOK {
 		t.Fatalf("busy setup: %d %s", response.Code, response.Body)
 	}
-	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{
 		"busy": busy,
 		"new":  memorySession(t, "new", "codex", "", "starting", "/w/new", "", base.Add(time.Minute)),
 	})
@@ -234,7 +234,7 @@ func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 		courtErr: errors.New("sqlite unavailable"),
 	}
 	base := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
-	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{
 		"new": memorySession(t, "new", "codex", "", "starting", "/w/new", "", base),
 	})
 	wireFleetTestController(t, s, fake)

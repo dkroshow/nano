@@ -7,10 +7,11 @@ import (
 	"github.com/dkroshow/nano/internal/lifecycle"
 	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/grok"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
-func grokWorkEvidence(dir protocol.Direction, line []byte) (active bool, turnID string, startedAtMs int64, ok bool) {
+func grokWorkEvidence(dir wire.Direction, line []byte) (active bool, turnID string, startedAtMs int64, ok bool) {
 	if dir != protocol.Recv {
 		return false, "", 0, false
 	}
@@ -35,7 +36,7 @@ func grokWorkEvidence(dir protocol.Direction, line []byte) (active bool, turnID 
 	}
 	return false, "", 0, false
 }
-func grokLifecycleNudge(dir protocol.Direction, line []byte) bool {
+func grokLifecycleNudge(dir wire.Direction, line []byte) bool {
 	if dir != protocol.Recv {
 		return false
 	}
@@ -90,7 +91,7 @@ func (a grokLifecycleAdapter) Current() (lifecycle.Observation, bool) {
 	return lifecycle.Observation{Event: event, Epoch: a.epoch, Sequence: a.sequence}, true
 }
 
-func observeGrokWork(sess *Session, dir protocol.Direction, line []byte, live bool) {
+func observeGrokWork(sess *Session, dir wire.Direction, line []byte, live bool) {
 	active, turnID, startedAtMs, ok := grokWorkEvidence(dir, line)
 	if !ok || !live {
 		return
@@ -101,7 +102,7 @@ func observeGrokWork(sess *Session, dir protocol.Direction, line []byte, live bo
 	sess.setTurnActive(active, turnID, startedAtMs, true)
 }
 
-func grokRuntimeEvidence(sess *Session, dir protocol.Direction, line []byte, at time.Time) {
+func grokRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {
 	if dir != protocol.Recv {
 		return
 	}

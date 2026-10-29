@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -30,7 +31,7 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 		status := service.IngestStatus()
 		return status.Attachments, status.HeldSources, status.UnresolvedAttachments
 	}
-	sess := newSession(runtimeFixtureConfig(t, sessionConfig{ID: "s1", Provider: "codex", HostedThreadID: "catalog-owner", CWD: "/work"}))
+	sess := newSession(runtimeFixtureConfig(t, sessions.Config{ID: "s1", Provider: "codex", HostedThreadID: "catalog-owner", CWD: "/work"}))
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 	}
 	fake := newFakeAppServer(t)
 	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.ThreadID(), "path": filepath.Join(root, "2026", "10", "03", "rollout-01a0aaaa-0000-7000-8000-000000000001.jsonl")}})
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaude(t, "catalog path held", func() bool { _, held, _ := view(); return held == 1 })
@@ -57,7 +58,7 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 	if attachments, held, _ := view(); attachments != 0 || held != 0 {
 		t.Fatalf("released: attachments %d, held %d", attachments, held)
 	}
-	claude := newSession(sessionConfig{ID: "s2", Provider: "claude", CWD: "/work"})
+	claude := newSession(sessions.Config{ID: "s2", Provider: "claude", CWD: "/work"})
 	if err := claude.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}

@@ -8,10 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
-func scanTestSpool(t *testing.T, prefix string, wanted []int64, frames ...claudeTestFrame) (int64, *claudeSpoolFacts, error) {
+func scanTestSpool(t *testing.T, prefix string, wanted []int64, frames ...claudeshim.Frame) (int64, *claudeSpoolFacts, error) {
 	t.Helper()
 	path := writeClaudeTestSpool(t, t.TempDir(), "spool", frames...)
 	facts := newClaudeSpoolFacts(prefix, 0, wanted)
@@ -24,7 +25,7 @@ func scanTestSpool(t *testing.T, prefix string, wanted []int64, frames ...claude
 
 func TestClaudeReplayFloorFacts(t *testing.T) {
 	const turn = "claude:nht_x:2"
-	idle := []claudeTestFrame{
+	idle := []claudeshim.Frame{
 		recvFrame(1, claudeInitLine),
 		sendFrame(2, testUserPrompt).WithTurn(turn),
 		recvFrame(3, messageStart("a")).WithTurn(turn),
@@ -35,49 +36,49 @@ func TestClaudeReplayFloorFacts(t *testing.T) {
 	cases := []struct {
 		name   string
 		wanted []int64
-		frames []claudeTestFrame
+		frames []claudeshim.Frame
 		want   int64
 	}{
 		{name: "idle spool ending in result replays nothing", frames: idle, want: 6},
-		{name: "accepted prompt without terminal record replays its last message", wanted: []int64{2}, frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "accepted prompt without terminal record replays its last message", wanted: []int64{2}, frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, messageStart("bg")), recvFrame(8, testMessageStop), recvFrame(9, claudeReplayResultLine)), want: 2},
-		{name: "open message replays from its start", frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "open message replays from its start", frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, messageStart("bg")), recvFrame(8, textDelta(0, "partial"))), want: 6},
-		{name: "interrupted message closed by result does not pin the floor", frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "interrupted message closed by result does not pin the floor", frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, messageStart("cut")), recvFrame(8, textDelta(0, "partial")), recvFrame(9, claudeReplayResultLine)), want: 9},
-		{name: "a later message start keeps the earlier open one", frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "a later message start keeps the earlier open one", frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, messageStart("first")), recvFrame(8, messageStart("second"))), want: 6},
-		{name: "unanswered request inside a message replays from that message", frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "unanswered request inside a message replays from that message", frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, messageStart("ask")), recvFrame(8, `{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool"}}`)), want: 6},
-		{name: "unanswered request after a message replays from the request", frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "unanswered request after a message replays from the request", frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, `{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool"}}`), recvFrame(8, `{"type":"system","subtype":"status"}`)), want: 6},
-		{name: "answered request does not pin the floor", frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "answered request does not pin the floor", frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, `{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool"}}`),
 			sendFrame(8, `{"type":"control_response","response":{"subtype":"success","request_id":"r1"}}`)), want: 8},
-		{name: "request retired by its own turn's result does not pin the floor", frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "request retired by its own turn's result does not pin the floor", frames: append(append([]claudeshim.Frame(nil), idle...),
 			recvFrame(7, `{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool"}}`), recvFrame(8, claudeReplayResultLine)), want: 8},
-		{name: "a different turn's result does not retire a request", frames: append(append([]claudeTestFrame(nil), idle[:1]...),
+		{name: "a different turn's result does not retire a request", frames: append(append([]claudeshim.Frame(nil), idle[:1]...),
 			recvFrame(2, `{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool"}}`),
 			sendFrame(3, testUserPrompt).WithTurn("claude:nht_x:3"), recvFrame(4, claudeReplayResultLine).WithTurn("claude:nht_x:3")), want: 1},
 		// A result finishes only the turn it names, so a prompt that a later
 		// prompt's result follows can never be finished by a replay. Holding
 		// the floor for it replayed tens of thousands of frames on every
 		// restart.
-		{name: "prompt answered under a later prompt's turn does not pin the floor", wanted: []int64{2}, frames: []claudeTestFrame{
+		{name: "prompt answered under a later prompt's turn does not pin the floor", wanted: []int64{2}, frames: []claudeshim.Frame{
 			recvFrame(1, claudeInitLine), sendFrame(2, testUserPrompt).WithTurn(turn), sendFrame(3, testUserPrompt).WithTurn("claude:nht_x:3"),
 			recvFrame(4, messageStart("a")).WithTurn("claude:nht_x:3"), recvFrame(5, claudeReplayResultLine).WithTurn("claude:nht_x:3")}, want: 5},
-		{name: "prompt whose turn ended without a result does not pin the floor once a later turn ends", wanted: []int64{2}, frames: []claudeTestFrame{
+		{name: "prompt whose turn ended without a result does not pin the floor once a later turn ends", wanted: []int64{2}, frames: []claudeshim.Frame{
 			recvFrame(1, claudeInitLine), sendFrame(2, testUserPrompt).WithTurn(turn), recvFrame(3, messageStart("cut")).WithTurn(turn),
 			sendFrame(4, testUserPrompt).WithTurn("claude:nht_x:4"), recvFrame(5, messageStart("b")).WithTurn("claude:nht_x:4"),
 			recvFrame(6, testMessageStop).WithTurn("claude:nht_x:4"), recvFrame(7, claudeReplayResultLine).WithTurn("claude:nht_x:4")}, want: 7},
-		{name: "prompt queued before any result still replays from the prompt", wanted: []int64{2}, frames: []claudeTestFrame{
+		{name: "prompt queued before any result still replays from the prompt", wanted: []int64{2}, frames: []claudeshim.Frame{
 			recvFrame(1, claudeInitLine), sendFrame(2, testUserPrompt).WithTurn(turn), sendFrame(3, testUserPrompt).WithTurn("claude:nht_x:3"),
 			recvFrame(4, messageStart("a")).WithTurn("claude:nht_x:3")}, want: 1},
-		{name: "prompt with its own result still replays it though a later turn ended", wanted: []int64{2}, frames: append(append([]claudeTestFrame(nil), idle...),
+		{name: "prompt with its own result still replays it though a later turn ended", wanted: []int64{2}, frames: append(append([]claudeshim.Frame(nil), idle...),
 			sendFrame(7, testUserPrompt).WithTurn("claude:nht_x:7"), recvFrame(8, claudeReplayResultLine).WithTurn("claude:nht_x:7")), want: 2},
 		// The shim gives an untagged legacy result the turn of the prompt
 		// before it, so replay can still finish that prompt with it.
-		{name: "untagged result after a legacy prompt still replays it though a later turn ended", wanted: []int64{2}, frames: []claudeTestFrame{
+		{name: "untagged result after a legacy prompt still replays it though a later turn ended", wanted: []int64{2}, frames: []claudeshim.Frame{
 			recvFrame(1, claudeInitLine), sendFrame(2, testUserPrompt), recvFrame(3, messageStart("a")), recvFrame(4, claudeReplayResultLine),
 			sendFrame(5, testUserPrompt).WithTurn("claude:nht_x:5"), recvFrame(6, claudeReplayResultLine).WithTurn("claude:nht_x:5")}, want: 2},
 	}
@@ -122,9 +123,9 @@ func TestClaudeSpoolFactFreeCapturedLines(t *testing.T) {
 		{"request before result", "recv", `{"request":{"subtype":"can_use_tool"},"request_id":"request","type":"control_request"}`, false, 0, 1},
 		{"result", "recv", `{"session_id":"native","type":"result","subtype":"success","is_error":false,"result":""}`, false, 0, 0},
 	}
-	var frames []claudeTestFrame
+	var frames []claudeshim.Frame
 	for i, tc := range cases {
-		frame := claudeTestFrame{Seq: int64(i + 1), Dir: tc.dir, Line: tc.line, TurnID: turn}
+		frame := claudeshim.Frame{Seq: int64(i + 1), Dir: tc.dir, Line: tc.line, TurnID: turn}
 		frames = append(frames, frame)
 		t.Run(tc.name, func(t *testing.T) {
 			fast, ok := claudeSpoolFactFreeFrame(bytes.TrimSpace(claudeTestSpoolBytes(t, frame)))
@@ -187,7 +188,7 @@ func TestClaudeReplayFloorRejectsUnprovableEvidence(t *testing.T) {
 		// Owner review probes: a gap could hide an open message.
 		{name: "missing prefix", raw: claudeTestSpoolBytes(t, recvFrame(10, textDelta(0, "x")))},
 		{name: "missing message start", raw: claudeTestSpoolBytes(t, recvFrame(1, claudeInitLine), recvFrame(3, textDelta(0, "x")))},
-		{name: "invalid direction", raw: claudeTestSpoolBytes(t, claudeTestFrame{Seq: 1, Dir: "sideways", Line: claudeInitLine})},
+		{name: "invalid direction", raw: claudeTestSpoolBytes(t, claudeshim.Frame{Seq: 1, Dir: "sideways", Line: claudeInitLine})},
 		{name: "missing line", raw: []byte("{\"seq\":1,\"dir\":\"recv\"}\n")},
 		{name: "fact-free frame with a gap", raw: claudeTestSpoolBytes(t, recvFrame(2, `{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`))},
 		{name: "fact-free frame with foreign turn", raw: claudeTestSpoolBytes(t, recvFrame(1, `{"type":"stream_event","event":{"type":"content_block_stop","index":0}}`).WithTurn("claude:other:1"))},
@@ -220,7 +221,7 @@ func TestClaudeReplayFloorSkipsAStoppedChildsLastSystemNotice(t *testing.T) {
 	const notice = `{"type":"system","subtype":"commands_changed"}`
 	for _, tc := range []struct {
 		name  string
-		stray claudeTestFrame
+		stray claudeshim.Frame
 		ok    bool
 	}{
 		{"lower system notice", recvFrame(1, notice), true},
@@ -268,8 +269,8 @@ func TestClaudeReplayFloorIgnoresPartialTrailingWrite(t *testing.T) {
 // reported so it is not resurrected as a dead dialog.
 func TestClaudeReplayFactsReportRetiredRequests(t *testing.T) {
 	facts := newClaudeSpoolFacts("", 0, nil)
-	observe := func(frame claudeTestFrame) []string {
-		retired, err := facts.observe(claudeSpoolFrame{Seq: frame.Seq, Dir: protocol.Direction(frame.Dir), Line: []byte(frame.Line), TurnID: frame.TurnID})
+	observe := func(frame claudeshim.Frame) []string {
+		retired, err := facts.observe(claudeSpoolFrame{Seq: frame.Seq, Dir: wire.Direction(frame.Dir), Line: []byte(frame.Line), TurnID: frame.TurnID})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -300,26 +301,26 @@ func TestClaudeSpoolFactsResolveAProvisionalHandleOnlyFromItsOwnTaggedInit(t *te
 	const other = `{"type":"system","subtype":"init","session_id":"native-2"}`
 	for _, tc := range []struct {
 		name    string
-		frames  []claudeTestFrame
+		frames  []claudeshim.Frame
 		anchors []string
 		want    string
 	}{
-		{"own tagged init", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1")}, nil, "native-1"},
-		{"legacy untagged lines", []claudeTestFrame{sendFrame(1, prompt("a")), recvFrame(2, init)}, nil, ""},
-		{"init tagged with another prompt", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), sendFrame(2, prompt("b")).WithTurn("claude:h:2"), recvFrame(3, init).WithTurn("claude:h:2")}, nil, ""},
-		{"anchor on two send lines", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"), sendFrame(3, prompt("a")).WithTurn("claude:h:3")}, nil, ""},
-		{"tagged send and an untagged duplicate", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"), sendFrame(3, prompt("a"))}, nil, ""},
-		{"subagent init", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, `{"type":"system","subtype":"init","session_id":"native-1","parent_tool_use_id":"toolu_1"}`).WithTurn("claude:h:1")}, nil, ""},
-		{"two natives on one tag", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"), recvFrame(3, other).WithTurn("claude:h:1")}, nil, ""},
-		{"another anchor's tag names two natives", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"),
+		{"own tagged init", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1")}, nil, "native-1"},
+		{"legacy untagged lines", []claudeshim.Frame{sendFrame(1, prompt("a")), recvFrame(2, init)}, nil, ""},
+		{"init tagged with another prompt", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), sendFrame(2, prompt("b")).WithTurn("claude:h:2"), recvFrame(3, init).WithTurn("claude:h:2")}, nil, ""},
+		{"anchor on two send lines", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"), sendFrame(3, prompt("a")).WithTurn("claude:h:3")}, nil, ""},
+		{"tagged send and an untagged duplicate", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"), sendFrame(3, prompt("a"))}, nil, ""},
+		{"subagent init", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, `{"type":"system","subtype":"init","session_id":"native-1","parent_tool_use_id":"toolu_1"}`).WithTurn("claude:h:1")}, nil, ""},
+		{"two natives on one tag", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"), recvFrame(3, other).WithTurn("claude:h:1")}, nil, ""},
+		{"another anchor's tag names two natives", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"),
 			sendFrame(3, prompt("b")).WithTurn("claude:h:3"), recvFrame(4, init).WithTurn("claude:h:3"), recvFrame(5, other).WithTurn("claude:h:3")}, []string{"a", "b"}, ""},
-		{"two anchors prove different natives", []claudeTestFrame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"),
+		{"two anchors prove different natives", []claudeshim.Frame{sendFrame(1, prompt("a")).WithTurn("claude:h:1"), recvFrame(2, init).WithTurn("claude:h:1"),
 			sendFrame(3, prompt("b")).WithTurn("claude:h:3"), recvFrame(4, other).WithTurn("claude:h:3")}, []string{"a", "b"}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			facts := newClaudeSpoolFacts("", 0, nil)
 			for _, frame := range tc.frames {
-				if _, err := facts.observe(claudeSpoolFrame{Seq: frame.Seq, Dir: protocol.Direction(frame.Dir), Line: []byte(frame.Line), TurnID: frame.TurnID}); err != nil {
+				if _, err := facts.observe(claudeSpoolFrame{Seq: frame.Seq, Dir: wire.Direction(frame.Dir), Line: []byte(frame.Line), TurnID: frame.TurnID}); err != nil {
 					t.Fatal(err)
 				}
 			}

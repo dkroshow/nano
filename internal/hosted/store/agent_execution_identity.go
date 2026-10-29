@@ -66,27 +66,27 @@ func mintHostedThreadID() (string, error) {
 }
 
 // BeginNamedSessionWithSubscriptionsAndPlacement atomically admits hosted identity, creation name, subscriptions and placement.
-func (s *ExecutionStore) BeginNamedSessionWithSubscriptionsAndPlacement(clientSessionID, requestHash, provider, presentationMode, sidebarPlacement, creationName string, invoker agentSessionRecord, choices subscriptions.Choices, assignment ...*Assignment) (agentSessionRecord, bool, error) {
+func (s *ExecutionStore) BeginNamedSessionWithSubscriptionsAndPlacement(clientSessionID, requestHash, provider, presentationMode, sidebarPlacement, creationName string, invoker threads.SessionRecord, choices subscriptions.Choices, assignment ...*Assignment) (threads.SessionRecord, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if id := s.byClient[clientSessionID]; clientSessionID != "" && id != "" {
 		current := s.sessions[id]
 		if current.RequestHash != requestHash {
-			return agentSessionRecord{}, false, fmt.Errorf("%w: clientSessionId was already used with different session parameters", ErrClientSessionIdempotencyConflict)
+			return threads.SessionRecord{}, false, fmt.Errorf("%w: clientSessionId was already used with different session parameters", ErrClientSessionIdempotencyConflict)
 		}
 		if creationName != "" && s.control != nil {
 			if err := s.control.recordCreationName(id, creationName); err != nil {
-				return agentSessionRecord{}, false, err
+				return threads.SessionRecord{}, false, err
 			}
 		}
 		return current, false, nil
 	}
 	id, err := mintHostedThreadID()
 	if err != nil {
-		return agentSessionRecord{}, false, err
+		return threads.SessionRecord{}, false, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	rec := agentSessionRecord{
+	rec := threads.SessionRecord{
 		ID: id, ClientSessionID: clientSessionID, RequestHash: requestHash,
 		Provider: provider, PresentationMode: presentationMode, SidebarPlacement: sidebarPlacement,
 		InvokerHostedThreadID: invoker.ID, InvokerNativeThreadID: invoker.NativeThreadID,
@@ -97,50 +97,50 @@ func (s *ExecutionStore) BeginNamedSessionWithSubscriptionsAndPlacement(clientSe
 	}
 	if s.control != nil {
 		if provider == "" || provider == "unknown" {
-			return agentSessionRecord{}, false, fmt.Errorf("hosted thread provider is required")
+			return threads.SessionRecord{}, false, fmt.Errorf("hosted thread provider is required")
 		}
 		mode, err := NormalizePresentationMode(presentationMode)
 		if err != nil {
-			return agentSessionRecord{}, false, err
+			return threads.SessionRecord{}, false, err
 		}
 		rec.PresentationMode = mode
 		placement, err := NormalizeSidebarPlacement(sidebarPlacement)
 		if err != nil {
-			return agentSessionRecord{}, false, err
+			return threads.SessionRecord{}, false, err
 		}
 		rec.SidebarPlacement = placement
 		tx, err := s.control.db.Begin()
 		if err != nil {
-			return agentSessionRecord{}, false, err
+			return threads.SessionRecord{}, false, err
 		}
 		defer tx.Rollback()
 		if _, err = tx.Exec(`INSERT INTO hosted_threads(hosted_thread_id,provider,presentation_mode,sidebar_placement,invoker_hosted_id,invoker_native_id,invoker_provider,notify_invoker_on_terminal,terminal_notification_policy,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, rec.ID, rec.Provider, rec.PresentationMode, rec.SidebarPlacement, nullableText(rec.InvokerHostedThreadID), nullableText(rec.InvokerNativeThreadID), nullableText(rec.InvokerProvider), rec.SubscriptionPrompt, subscriptions.StoredPolicy(choices), 1, now, now); err != nil {
-			return agentSessionRecord{}, false, err
+			return threads.SessionRecord{}, false, err
 		}
 		if _, err = tx.Exec(`INSERT INTO hosted_execution_sessions(hosted_thread_id,client_session_id,request_hash,nano_session_id,status,error,run_id,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?)`, rec.ID, nullableText(rec.ClientSessionID), rec.RequestHash, nil, rec.Status, nil, rec.RunID, rec.CreatedAt, rec.UpdatedAt, rec.Revision); err != nil {
-			return agentSessionRecord{}, false, err
+			return threads.SessionRecord{}, false, err
 		}
 		if err = subscriptions.InsertInitialCursor(tx, rec.ID, now); err != nil {
-			return agentSessionRecord{}, false, err
+			return threads.SessionRecord{}, false, err
 		}
 		assignmentRevision := int64(1)
 		if creationName != "" {
 			validated, validateErr := validateCreationName(creationName)
 			if validateErr != nil {
-				return agentSessionRecord{}, false, validateErr
+				return threads.SessionRecord{}, false, validateErr
 			}
 			if _, _, err = threads.RecordCreationNameTx(context.Background(), tx, rec.ID, validated, "creation_request", now); err != nil {
-				return agentSessionRecord{}, false, err
+				return threads.SessionRecord{}, false, err
 			}
 			assignmentRevision = 2
 		}
 		if len(assignment) > 0 && assignment[0] != nil {
 			if _, assignmentRevision, err = appendInitialOrchestrationAssignmentTx(tx, rec.ID, assignment[0], now); err != nil {
-				return agentSessionRecord{}, false, err
+				return threads.SessionRecord{}, false, err
 			}
 		}
 		if err = tx.Commit(); err != nil {
-			return agentSessionRecord{}, false, err
+			return threads.SessionRecord{}, false, err
 		}
 		s.sessions[id] = rec
 		s.sessionBaseline[id] = rec.Revision
@@ -166,13 +166,13 @@ func (s *ExecutionStore) BeginNamedSessionWithSubscriptionsAndPlacement(clientSe
 		s.byClient[clientSessionID] = id
 	}
 	if err := s.persistAndNotifyLocked(); err != nil {
-		return agentSessionRecord{}, false, err
+		return threads.SessionRecord{}, false, err
 	}
 	return rec, true, nil
 }
 
 // EnsureNamedSessionWithIdentity creates or validates the durable identity needed by session attachment.
-func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentationMode, invokerHosted, invokerNative, invokerProvider, creationName string) (agentSessionRecord, error) {
+func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentationMode, invokerHosted, invokerNative, invokerProvider, creationName string) (threads.SessionRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if id != "" {
@@ -181,7 +181,7 @@ func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentati
 			// mode is mutable (setPresentation) and the canonical record wins,
 			// so a resume carrying the spawn-time mode is not a conflict.
 			if rec.Provider != "" && rec.Provider != "unknown" && provider != "" && rec.Provider != provider {
-				return agentSessionRecord{}, fmt.Errorf("hosted thread %s belongs to provider %s, not %s", id, rec.Provider, provider)
+				return threads.SessionRecord{}, fmt.Errorf("hosted thread %s belongs to provider %s, not %s", id, rec.Provider, provider)
 			}
 			// Explorer and boot resume requests do not repeat lineage. An entirely
 			// omitted invoker tuple means "inherit the canonical identity"; the
@@ -190,11 +190,11 @@ func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentati
 			// match in full.
 			invokerSpecified := invokerHosted != "" || invokerNative != "" || invokerProvider != ""
 			if invokerSpecified && (rec.InvokerHostedThreadID != invokerHosted || rec.InvokerNativeThreadID != invokerNative || rec.InvokerProvider != invokerProvider) {
-				return agentSessionRecord{}, fmt.Errorf("hosted thread %s has a different invoker identity", id)
+				return threads.SessionRecord{}, fmt.Errorf("hosted thread %s has a different invoker identity", id)
 			}
 			if creationName != "" && s.control != nil {
 				if err := s.control.recordCreationName(id, creationName); err != nil {
-					return agentSessionRecord{}, err
+					return threads.SessionRecord{}, err
 				}
 			}
 			return rec, nil
@@ -203,28 +203,28 @@ func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentati
 		var err error
 		id, err = mintHostedThreadID()
 		if err != nil {
-			return agentSessionRecord{}, err
+			return threads.SessionRecord{}, err
 		}
 	}
 	if s.control != nil {
 		if provider == "" || provider == "unknown" {
-			return agentSessionRecord{}, fmt.Errorf("hosted thread provider is required")
+			return threads.SessionRecord{}, fmt.Errorf("hosted thread provider is required")
 		}
 		mode, err := NormalizePresentationMode(presentationMode)
 		if err != nil {
-			return agentSessionRecord{}, err
+			return threads.SessionRecord{}, err
 		}
 		if id == "" {
 			id, err = mintHostedThreadID()
 			if err != nil {
-				return agentSessionRecord{}, err
+				return threads.SessionRecord{}, err
 			}
 		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
-		rec := agentSessionRecord{ID: id, Provider: provider, PresentationMode: mode, SidebarPlacement: sidebarPlacementInvoker, InvokerHostedThreadID: invokerHosted, InvokerNativeThreadID: invokerNative, InvokerProvider: invokerProvider, Status: agentSessionCreating, RunID: s.runID, CreatedAt: now, UpdatedAt: now, Revision: 1}
+		rec := threads.SessionRecord{ID: id, Provider: provider, PresentationMode: mode, SidebarPlacement: sidebarPlacementInvoker, InvokerHostedThreadID: invokerHosted, InvokerNativeThreadID: invokerNative, InvokerProvider: invokerProvider, Status: agentSessionCreating, RunID: s.runID, CreatedAt: now, UpdatedAt: now, Revision: 1}
 		tx, err := s.control.db.Begin()
 		if err != nil {
-			return agentSessionRecord{}, err
+			return threads.SessionRecord{}, err
 		}
 		defer tx.Rollback()
 		var existingProvider, existingNative, existingMode, existingPlacement string
@@ -233,18 +233,18 @@ func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentati
 		existingIdentity := err == nil
 		if err == sql.ErrNoRows {
 			if _, err = tx.Exec(`INSERT INTO hosted_threads(hosted_thread_id,provider,presentation_mode,invoker_hosted_id,invoker_native_id,invoker_provider,notify_invoker_on_terminal,terminal_notification_policy,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,0,'none',1,?,?)`, id, provider, mode, nullableText(invokerHosted), nullableText(invokerNative), nullableText(invokerProvider), now, now); err != nil {
-				return agentSessionRecord{}, err
+				return threads.SessionRecord{}, err
 			}
 		} else {
 			if err != nil {
-				return agentSessionRecord{}, err
+				return threads.SessionRecord{}, err
 			}
 			if existingProvider != provider {
-				return agentSessionRecord{}, fmt.Errorf("hosted thread %s belongs to provider %s, not %s", id, existingProvider, provider)
+				return threads.SessionRecord{}, fmt.Errorf("hosted thread %s belongs to provider %s, not %s", id, existingProvider, provider)
 			}
 			invokerSpecified := invokerHosted != "" || invokerNative != "" || invokerProvider != ""
 			if invokerSpecified && (existingInvokerHosted != invokerHosted || existingInvokerNative != invokerNative || existingInvokerProvider != invokerProvider) {
-				return agentSessionRecord{}, fmt.Errorf("hosted thread %s has a different invoker identity", id)
+				return threads.SessionRecord{}, fmt.Errorf("hosted thread %s has a different invoker identity", id)
 			}
 			rec.NativeThreadID = existingNative
 			rec.PresentationMode = existingMode
@@ -254,27 +254,27 @@ func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentati
 			rec.InvokerProvider = existingInvokerProvider
 		}
 		if _, err = tx.Exec(`INSERT INTO hosted_execution_sessions(hosted_thread_id,client_session_id,request_hash,nano_session_id,status,error,run_id,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(hosted_thread_id) DO NOTHING`, id, nil, "", nil, rec.Status, nil, rec.RunID, rec.CreatedAt, rec.UpdatedAt, rec.Revision); err != nil {
-			return agentSessionRecord{}, err
+			return threads.SessionRecord{}, err
 		}
 		if creationName != "" {
 			validated, validateErr := validateCreationName(creationName)
 			if validateErr != nil {
-				return agentSessionRecord{}, validateErr
+				return threads.SessionRecord{}, validateErr
 			}
 			if _, _, err = threads.RecordCreationNameTx(context.Background(), tx, id, validated, "creation_request", now); err != nil {
-				return agentSessionRecord{}, err
+				return threads.SessionRecord{}, err
 			}
 		}
 		if err = tx.Commit(); err != nil {
-			return agentSessionRecord{}, err
+			return threads.SessionRecord{}, err
 		}
 		if existingIdentity {
 			canonical, ok, err := s.sessionFromCanonicalLocked(id)
 			if err != nil {
-				return agentSessionRecord{}, err
+				return threads.SessionRecord{}, err
 			}
 			if !ok {
-				return agentSessionRecord{}, fmt.Errorf("hosted thread %s disappeared during resume", id)
+				return threads.SessionRecord{}, fmt.Errorf("hosted thread %s disappeared during resume", id)
 			}
 			rec = canonical
 		}
@@ -282,7 +282,7 @@ func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentati
 		s.sessionBaseline[id] = rec.Revision
 		var metadataRevision int64
 		if err := s.control.db.QueryRow(`SELECT revision FROM hosted_threads WHERE hosted_thread_id=?`, id).Scan(&metadataRevision); err != nil {
-			return agentSessionRecord{}, err
+			return threads.SessionRecord{}, err
 		}
 		changedFields := []string{"identity"}
 		if creationName != "" {
@@ -291,7 +291,7 @@ func (s *ExecutionStore) EnsureNamedSessionWithIdentity(id, provider, presentati
 		s.control.publishChange(id, metadataRevision, changedFields...)
 		return rec, nil
 	}
-	return agentSessionRecord{}, fmt.Errorf("hosted thread store unavailable")
+	return threads.SessionRecord{}, fmt.Errorf("hosted thread store unavailable")
 }
 
 // BindSession binds the current runtime attachment to its hosted record.
@@ -304,7 +304,7 @@ func (s *ExecutionStore) BindSession(id, nanoSessionID, nativeThreadID, status, 
 	rec, ok := s.sessions[id]
 	if !ok {
 		now := time.Now().UTC().Format(time.RFC3339Nano)
-		rec = agentSessionRecord{ID: id, Provider: "unknown", PresentationMode: presentationMode, CreatedAt: now, RunID: s.runID}
+		rec = threads.SessionRecord{ID: id, Provider: "unknown", PresentationMode: presentationMode, CreatedAt: now, RunID: s.runID}
 	}
 	if presentationMode == "" {
 		presentationMode = presentationShared
@@ -352,23 +352,23 @@ func (s *ExecutionStore) BindSession(id, nanoSessionID, nativeThreadID, status, 
 // ahead of the committed row. Same-value calls are no-ops end to end (no
 // revision bump, no publish). Returns the updated record, the hosted revision,
 // and whether anything changed.
-func (s *ExecutionStore) SetPresentation(id, mode string) (agentSessionRecord, int64, bool, error) {
+func (s *ExecutionStore) SetPresentation(id, mode string) (threads.SessionRecord, int64, bool, error) {
 	normalized, err := NormalizePresentationMode(mode)
 	if err != nil {
-		return agentSessionRecord{}, 0, false, err
+		return threads.SessionRecord{}, 0, false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.sessions[id]
 	if !ok {
-		return agentSessionRecord{}, 0, false, fmt.Errorf("unknown hosted thread %s", id)
+		return threads.SessionRecord{}, 0, false, fmt.Errorf("unknown hosted thread %s", id)
 	}
 	var revision int64
 	changed := rec.PresentationMode != normalized
 	if s.control != nil {
 		revision, changed, err = s.control.setPresentationMode(id, normalized)
 		if err != nil {
-			return agentSessionRecord{}, 0, false, err
+			return threads.SessionRecord{}, 0, false, err
 		}
 	}
 	if rec.PresentationMode != normalized {
@@ -379,16 +379,16 @@ func (s *ExecutionStore) SetPresentation(id, mode string) (agentSessionRecord, i
 }
 
 // Canonical columns own subscription choices; this cache follows their commit.
-func (s *ExecutionStore) SetSubscriptions(id string, choices subscriptions.Choices) (agentSessionRecord, int64, bool, error) {
+func (s *ExecutionStore) SetSubscriptions(id string, choices subscriptions.Choices) (threads.SessionRecord, int64, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.sessions[id]
 	if !ok {
-		return agentSessionRecord{}, 0, false, fmt.Errorf("unknown hosted thread %s", id)
+		return threads.SessionRecord{}, 0, false, fmt.Errorf("unknown hosted thread %s", id)
 	}
 	revision, changed, err := s.control.setSubscriptions(id, choices)
 	if err != nil {
-		return agentSessionRecord{}, 0, false, err
+		return threads.SessionRecord{}, 0, false, err
 	}
 	setStoredSubscriptions(&rec, subscriptions.StoredPolicy(choices), choices.Prompt == subscriptions.Send)
 	s.sessions[id] = rec
@@ -396,23 +396,23 @@ func (s *ExecutionStore) SetSubscriptions(id string, choices subscriptions.Choic
 }
 
 // SetSidebarPlacement persists a hosted thread’s current sidebar placement.
-func (s *ExecutionStore) SetSidebarPlacement(id, placement string) (agentSessionRecord, int64, bool, error) {
+func (s *ExecutionStore) SetSidebarPlacement(id, placement string) (threads.SessionRecord, int64, bool, error) {
 	normalized, err := NormalizeSidebarPlacement(placement)
 	if err != nil {
-		return agentSessionRecord{}, 0, false, err
+		return threads.SessionRecord{}, 0, false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.sessions[id]
 	if !ok {
-		return agentSessionRecord{}, 0, false, fmt.Errorf("unknown hosted thread %s", id)
+		return threads.SessionRecord{}, 0, false, fmt.Errorf("unknown hosted thread %s", id)
 	}
 	var revision int64
 	changed := rec.SidebarPlacement != normalized
 	if s.control != nil {
 		revision, changed, err = s.control.setSidebarPlacement(id, normalized)
 		if err != nil {
-			return agentSessionRecord{}, 0, false, err
+			return threads.SessionRecord{}, 0, false, err
 		}
 	}
 	if rec.SidebarPlacement != normalized {
@@ -543,9 +543,9 @@ func (s *ExecutionStore) RemoveSession(id string) error {
 }
 
 // Session reads a cached hosted execution record by its durable ID.
-func (s *ExecutionStore) Session(id string) (agentSessionRecord, bool) {
+func (s *ExecutionStore) Session(id string) (threads.SessionRecord, bool) {
 	if s == nil {
-		return agentSessionRecord{}, false
+		return threads.SessionRecord{}, false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -554,9 +554,9 @@ func (s *ExecutionStore) Session(id string) (agentSessionRecord, bool) {
 }
 
 // ResolveSession resolves a hosted execution ID or its client creation alias.
-func (s *ExecutionStore) ResolveSession(ref string) (agentSessionRecord, bool) {
+func (s *ExecutionStore) ResolveSession(ref string) (threads.SessionRecord, bool) {
 	if s == nil {
-		return agentSessionRecord{}, false
+		return threads.SessionRecord{}, false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -567,7 +567,7 @@ func (s *ExecutionStore) ResolveSession(ref string) (agentSessionRecord, bool) {
 		rec, ok := s.sessions[id]
 		return rec, ok
 	}
-	var matched agentSessionRecord
+	var matched threads.SessionRecord
 	for _, rec := range s.sessions {
 		if rec.NativeThreadID != ref {
 			continue
@@ -588,7 +588,7 @@ func (s *ExecutionStore) ResolveSession(ref string) (agentSessionRecord, bool) {
 		if rec.Status == StatusExited && matched.Status != StatusExited {
 			continue
 		}
-		return agentSessionRecord{}, false
+		return threads.SessionRecord{}, false
 	}
 	return matched, matched.ID != ""
 }
@@ -596,15 +596,15 @@ func (s *ExecutionStore) ResolveSession(ref string) (agentSessionRecord, bool) {
 // SessionForNative returns the exact current owner of a catalog identity.
 // Retired history remains available through sessionsForNativeHistory, but cannot
 // become current routing authority when the active claim is absent or invalid.
-func (s *ExecutionStore) SessionForNative(provider, nativeThreadID string) (agentSessionRecord, bool) {
+func (s *ExecutionStore) SessionForNative(provider, nativeThreadID string) (threads.SessionRecord, bool) {
 	if s == nil || s.control == nil || provider == "" || nativeThreadID == "" {
-		return agentSessionRecord{}, false
+		return threads.SessionRecord{}, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	hostedID, err := s.control.ActiveNativeOwner(provider, nativeThreadID)
 	if err != nil || hostedID == "" {
-		return agentSessionRecord{}, false
+		return threads.SessionRecord{}, false
 	}
 	record, ok, err := s.sessionFromCanonicalLocked(hostedID)
 	return record, ok && err == nil
@@ -615,7 +615,7 @@ func (s *ExecutionStore) SessionForNative(provider, nativeThreadID string) (agen
 // retired rows deliberately stay visible here because a deep link may name an
 // older native identity. Callers must reject more than one result rather than
 // guessing from timestamps.
-func (s *ExecutionStore) SessionsForNativeHistory(provider, nativeThreadID string) ([]agentSessionRecord, error) {
+func (s *ExecutionStore) SessionsForNativeHistory(provider, nativeThreadID string) ([]threads.SessionRecord, error) {
 	if s == nil || provider == "" || nativeThreadID == "" {
 		return nil, nil
 	}
@@ -630,9 +630,9 @@ func (s *ExecutionStore) SessionsForNativeHistory(provider, nativeThreadID strin
 			return nil, err
 		}
 		defer rows.Close()
-		result := make([]agentSessionRecord, 0)
+		result := make([]threads.SessionRecord, 0)
 		for rows.Next() {
-			var record agentSessionRecord
+			var record threads.SessionRecord
 			var legacyPrompt bool
 			var storedPolicy string
 			if err := rows.Scan(&record.ID, &record.ClientSessionID, &record.RequestHash, &record.Provider, &record.PresentationMode, &record.SidebarPlacement, &record.NanoSessionID, &record.NativeThreadID, &record.InvokerHostedThreadID, &record.InvokerNativeThreadID, &record.InvokerProvider, &legacyPrompt, &storedPolicy, &record.Status, &record.Error, &record.RunID, &record.CreatedAt, &record.UpdatedAt, &record.Revision); err != nil {
@@ -646,7 +646,7 @@ func (s *ExecutionStore) SessionsForNativeHistory(provider, nativeThreadID strin
 		}
 		return result, nil
 	}
-	result := make([]agentSessionRecord, 0)
+	result := make([]threads.SessionRecord, 0)
 	for _, rec := range s.sessions {
 		if rec.NativeThreadID == nativeThreadID && rec.Provider == provider {
 			result = append(result, rec)
@@ -756,42 +756,42 @@ func (s *ExecutionStore) NativeIDsForHosted(hostedID string) ([]string, error) {
 // SessionFromCanonical returns one exact hosted record from control.sqlite.
 // Unlike session, this remains correct when the in-memory registry contains
 // only the currently attached subset of durable hosted history.
-func (s *ExecutionStore) SessionFromCanonical(hostedID string) (agentSessionRecord, bool, error) {
+func (s *ExecutionStore) SessionFromCanonical(hostedID string) (threads.SessionRecord, bool, error) {
 	if s == nil || hostedID == "" {
-		return agentSessionRecord{}, false, nil
+		return threads.SessionRecord{}, false, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.sessionFromCanonicalLocked(hostedID)
 }
 
-func (s *ExecutionStore) sessionFromCanonicalLocked(hostedID string) (agentSessionRecord, bool, error) {
+func (s *ExecutionStore) sessionFromCanonicalLocked(hostedID string) (threads.SessionRecord, bool, error) {
 	if s.control == nil {
 		record, ok := s.sessions[hostedID]
 		return record, ok, nil
 	}
-	var record agentSessionRecord
+	var record threads.SessionRecord
 	var legacyPrompt bool
 	var storedPolicy string
 	err := s.control.db.QueryRow(`SELECT h.hosted_thread_id,COALESCE(e.client_session_id,''),COALESCE(e.request_hash,''),h.provider,h.presentation_mode,h.sidebar_placement,COALESCE(e.nano_session_id,''),COALESCE(h.current_native_id,''),COALESCE(h.invoker_hosted_id,''),COALESCE(h.invoker_native_id,''),COALESCE(h.invoker_provider,''),h.notify_invoker_on_terminal,h.terminal_notification_policy,COALESCE(e.status,'detached'),COALESCE(e.error,''),COALESCE(e.run_id,''),COALESCE(e.created_at,h.created_at),COALESCE(e.updated_at,h.updated_at),COALESCE(e.revision,h.revision) FROM hosted_threads h LEFT JOIN hosted_execution_sessions e ON e.hosted_thread_id=h.hosted_thread_id WHERE h.hosted_thread_id=?`, hostedID).Scan(&record.ID, &record.ClientSessionID, &record.RequestHash, &record.Provider, &record.PresentationMode, &record.SidebarPlacement, &record.NanoSessionID, &record.NativeThreadID, &record.InvokerHostedThreadID, &record.InvokerNativeThreadID, &record.InvokerProvider, &legacyPrompt, &storedPolicy, &record.Status, &record.Error, &record.RunID, &record.CreatedAt, &record.UpdatedAt, &record.Revision)
 	if err == sql.ErrNoRows {
-		return agentSessionRecord{}, false, nil
+		return threads.SessionRecord{}, false, nil
 	}
 	if err != nil {
-		return agentSessionRecord{}, false, err
+		return threads.SessionRecord{}, false, err
 	}
 	setStoredSubscriptions(&record, storedPolicy, legacyPrompt)
 	return record, true, nil
 }
 
 // ListSessions returns cached hosted execution records in creation order.
-func (s *ExecutionStore) ListSessions() []agentSessionRecord {
+func (s *ExecutionStore) ListSessions() []threads.SessionRecord {
 	if s == nil {
-		return []agentSessionRecord{}
+		return []threads.SessionRecord{}
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	rows := make([]agentSessionRecord, 0, len(s.sessions))
+	rows := make([]threads.SessionRecord, 0, len(s.sessions))
 	for _, rec := range s.sessions {
 		rows = append(rows, rec)
 	}

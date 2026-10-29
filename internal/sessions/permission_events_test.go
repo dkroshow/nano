@@ -2,20 +2,22 @@ package sessions
 
 import (
 	"testing"
+
+	"github.com/dkroshow/nano/internal/interact"
 )
 
 func TestPermissionInteractionClassification(t *testing.T) {
 	tests := []struct {
 		name string
-		p    pendingInteraction
+		p    interact.PendingInteraction
 		want bool
 	}{
-		{"codex command", pendingInteraction{Kind: kindCommandApproval}, true},
-		{"codex file", pendingInteraction{Kind: kindFileChangeApproval}, true},
-		{"claude tool", pendingInteraction{Kind: kindToolPermission}, true},
-		{"grok permission", pendingInteraction{Method: grokPermissionMethod}, true},
-		{"grok question", pendingInteraction{Method: grokAskQuestionMethod, Kind: kindToolPermission}, false},
-		{"user input", pendingInteraction{Kind: kindUserInput}, false},
+		{"codex command", interact.PendingInteraction{Kind: kindCommandApproval}, true},
+		{"codex file", interact.PendingInteraction{Kind: kindFileChangeApproval}, true},
+		{"claude tool", interact.PendingInteraction{Kind: kindToolPermission}, true},
+		{"grok permission", interact.PendingInteraction{Method: grokPermissionMethod}, true},
+		{"grok question", interact.PendingInteraction{Method: grokAskQuestionMethod, Kind: kindToolPermission}, false},
+		{"user input", interact.PendingInteraction{Kind: kindUserInput}, false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

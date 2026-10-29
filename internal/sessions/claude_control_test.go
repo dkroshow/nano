@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -19,7 +22,7 @@ func TestClaudeQuestionAnswersKeyByQuestionText(t *testing.T) {
 		{"question":"Tabs or spaces?","header":"Indent","options":[{"label":"Tabs"},{"label":"Spaces"}]},
 		{"question":"Which files?","multiSelect":true,"options":[{"label":"a.go"},{"label":"b.go"}]}
 	]}}`)
-	p := pendingInteraction{ID: "r1", Kind: kindUserInput, Method: claudeSubtypeCanUseTool, Params: params}
+	p := interact.PendingInteraction{ID: "r1", Kind: kindUserInput, Method: claudeSubtypeCanUseTool, Params: params}
 	answers := json.RawMessage(`{"Tabs or spaces?":["Spaces"],"Which files?":["a.go","b.go"]}`)
 
 	result, rpcErr := claudeInteractionResult(p, decisionAccept, answers)
@@ -66,7 +69,7 @@ func TestClaudeQuestionAnswersKeyByQuestionText(t *testing.T) {
 // refusal shape rather than an empty allow.
 func TestClaudeToolPermissionDecisions(t *testing.T) {
 	params := json.RawMessage(`{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf /"}}`)
-	p := pendingInteraction{ID: "r1", Kind: kindToolPermission, Method: claudeSubtypeCanUseTool, Params: params}
+	p := interact.PendingInteraction{ID: "r1", Kind: kindToolPermission, Method: claudeSubtypeCanUseTool, Params: params}
 
 	allow, _ := claudeInteractionResult(p, decisionAccept, nil)
 	body, _ := json.Marshal(allow)
@@ -84,10 +87,10 @@ func TestClaudeToolPermissionDecisions(t *testing.T) {
 // with `payload`, so a test can exercise the whole request/response correlation
 // without a real claude binary. Frames arrive back the way the daemon delivers
 // them: as recv `session/line` notifications.
-func controlResponder(t *testing.T, payload func(subtype string) any) *fakeShim {
+func controlResponder(t *testing.T, payload func(subtype string) any) *claudeshim.Server {
 	t.Helper()
 	var seq int64
-	return newFakeShim(t, func(c *shimConn) {
+	return newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -131,7 +134,7 @@ func controlResponder(t *testing.T, payload func(subtype string) any) *fakeShim 
 	})
 }
 
-func startControlSession(t *testing.T, shim *fakeShim) (*session, *claudeSession) {
+func startControlSession(t *testing.T, shim *claudeshim.Server) (*Session, *claudeSession) {
 	t.Helper()
 	sess, _ := claudeTestSession(t)
 	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
@@ -142,7 +145,7 @@ func startControlSession(t *testing.T, shim *fakeShim) (*session, *claudeSession
 	return sess, claude
 }
 
-func controlFramesOf(shim *fakeShim, subtype string) []string {
+func controlFramesOf(shim *claudeshim.Server, subtype string) []string {
 	var out []string
 	for _, line := range shim.InputLines() {
 		if strings.Contains(line, `"type":"control_request"`) && strings.Contains(line, `"subtype":"`+subtype+`"`) {
@@ -211,7 +214,7 @@ func TestClaudeInterruptIsGatedOnTurnState(t *testing.T) {
 func TestClaudeInteractionResponseUsesProviderAdapter(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{} })
 	sess, _ := startControlSession(t, shim)
-	sess.addPendingInteraction(pendingInteraction{
+	sess.addPendingInteraction(interact.PendingInteraction{
 		ID: "permission-1", Kind: kindToolPermission, ThreadID: sess.ThreadID(),
 		Params: json.RawMessage(`{"input":{"command":"pwd"}}`), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
@@ -226,7 +229,7 @@ func TestClaudeInteractionResponseUsesProviderAdapter(t *testing.T) {
 	}
 }
 
-func claudeWireHas(sess *session, needle string) bool {
+func claudeWireHas(sess *Session, needle string) bool {
 	for _, evt := range claudeWireEvents(sess) {
 		if strings.Contains(string(evt.Msg), needle) {
 			return true
@@ -253,7 +256,7 @@ func TestReattachRecoversOnlyUnansweredControlRequests(t *testing.T) {
 	const answerLine = `{"type":"control_response","response":{"subtype":"success","request_id":"old-answered","response":{"behavior":"allow"}}}`
 	const orphan = `{"type":"control_request","request_id":"old-orphan","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{"question":"Go on?"}]}}}`
 
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -293,7 +296,7 @@ func TestReattachRecoversOnlyUnansweredControlRequests(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{Bin: "claude"}, attachmentRecord{})
+	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{Bin: "claude"}, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -378,7 +381,7 @@ func TestStartedSessionParksInboundRequests(t *testing.T) {
 	const ask = `{"type":"control_request","request_id":"live-1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{"question":"Go on?"}]}}}`
 
 	var pushed bool
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return

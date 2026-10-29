@@ -7,16 +7,17 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	grokfixture "github.com/dkroshow/nano/internal/testsupport/grokserver"
 )
 
 // providerRuntimeFixture drives attachment state through the captured provider protocols.
 type providerRuntimeFixture struct {
-	session      *session
+	session      *sessions.Session
 	projection   *sessions.LiveProjection
 	codex        *fakeAppServer
-	daemon       *codexDaemon
-	claude       *shimConn
+	daemon       *sessions.CodexDaemon
+	claude       *claudeshim.Conn
 	grok         *grokfixture.Conn
 	seq          int64
 	send         func(context.Context, string) (json.RawMessage, error)
@@ -24,7 +25,7 @@ type providerRuntimeFixture struct {
 	resumeResult map[string]any
 }
 
-func newProviderRuntimeFixture(t *testing.T, cfg sessionConfig, native, model string, prepare ...func(*providerRuntimeFixture)) *providerRuntimeFixture {
+func newProviderRuntimeFixture(t *testing.T, cfg sessions.Config, native, model string, prepare ...func(*providerRuntimeFixture)) *providerRuntimeFixture {
 	t.Helper()
 	if cfg.HostedThreadID == "" {
 		cfg.HostedThreadID = "fixture-" + cfg.ID
@@ -40,7 +41,7 @@ func newProviderRuntimeFixture(t *testing.T, cfg sessionConfig, native, model st
 	return connectProviderRuntimeFixture(t, sess, cfg.Projection, native, model, prepare...)
 }
 
-func connectProviderRuntimeFixture(t *testing.T, sess *session, view *sessions.LiveProjection, native, model string, prepare ...func(*providerRuntimeFixture)) *providerRuntimeFixture {
+func connectProviderRuntimeFixture(t *testing.T, sess *sessions.Session, view *sessions.LiveProjection, native, model string, prepare ...func(*providerRuntimeFixture)) *providerRuntimeFixture {
 	t.Helper()
 	f := &providerRuntimeFixture{session: sess}
 	f.projection = view
@@ -66,12 +67,12 @@ func connectProviderRuntimeFixture(t *testing.T, sess *session, view *sessions.L
 		} else {
 			f.codex.SetResumeResult(map[string]any{"thread": map[string]any{"id": native}, "model": model})
 		}
-		if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: native}, f.daemon, func() {}); err != nil {
+		if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: native}, f.daemon, func() {}); err != nil {
 			t.Fatal(err)
 		}
 	case "claude":
-		connected := make(chan *shimConn, 1)
-		shim := newFakeShim(t, func(c *shimConn) {
+		connected := make(chan *claudeshim.Conn, 1)
+		shim := newFakeShim(t, func(c *claudeshim.Conn) {
 			start, ok := c.Next()
 			if !ok {
 				return
@@ -130,7 +131,7 @@ func connectProviderRuntimeFixture(t *testing.T, sess *session, view *sessions.L
 				}
 			}
 		})
-		if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: sess.CWD()}, nil, func() {}); err != nil {
+		if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: sess.CWD()}, nil, func() {}); err != nil {
 			t.Fatal(err)
 		}
 		select {
@@ -184,7 +185,7 @@ func connectProviderRuntimeFixture(t *testing.T, sess *session, view *sessions.L
 				}
 			}
 		})
-		if err := sess.BeginProviderSpawn(providerRequest{Provider: "grok", Mode: "resume", ThreadID: native, Cwd: t.TempDir(), GrokBin: provider.Bin(), GrokLeaderSocket: "fixture-only"}, nil, func() {}); err != nil {
+		if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: native, Cwd: t.TempDir(), GrokBin: provider.Bin(), GrokLeaderSocket: "fixture-only"}, nil, func() {}); err != nil {
 			t.Fatal(err)
 		}
 		// This is a child-process setup wait, not a product timing assertion.
@@ -232,7 +233,7 @@ func (f *providerRuntimeFixture) emitDirectionAt(t *testing.T, dir string, line 
 	}
 }
 
-func runtimeFixtureConfig(t *testing.T, cfg sessionConfig) sessionConfig {
+func runtimeFixtureConfig(t *testing.T, cfg sessions.Config) sessions.Config {
 	t.Helper()
 	if cfg.Turns == nil {
 		queue := mustQueuedTurnStore(t)
@@ -250,7 +251,7 @@ func runtimeFixtureConfig(t *testing.T, cfg sessionConfig) sessionConfig {
 	return cfg
 }
 
-func configuredFixtureSession(t *testing.T, cfg sessionConfig, native, status, model string, active ...bool) *session {
+func configuredFixtureSession(t *testing.T, cfg sessions.Config, native, status, model string, active ...bool) *sessions.Session {
 	t.Helper()
 	if status == "ready" {
 		f := newProviderRuntimeFixture(t, cfg, native, model)

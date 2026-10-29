@@ -3,17 +3,21 @@ package sessions
 import (
 	"encoding/json"
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/liveview"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // The app sibling checks the real saved-result store. These producer cases
 // retain the receiver's projection fallback and Claude result-to-turn binding.
-func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) {
+func TestSessionProjectionPreservesOperationFinalIdentity(t *testing.T) {
 	for _, provider := range []string{"codex", "claude"} {
 		t.Run(provider+"/projection", func(t *testing.T) {
 			recorder := &projectionTerminalRecorder{}
 			projection := newResultProjection(provider, map[string]string{"provider-turn": "final-item"})
 			projection.setClaudeResultTurnID("provider-turn")
-			projection.seedResumeTurns("native-thread", []*liveProjectionTurn{{ID: "provider-turn", Status: agentTurnCompleted, FinalItemID: "final-item"}})
+			projection.seedResumeTurns("native-thread", []*liveview.Turn{{ID: "provider-turn", Status: agentTurnCompleted, FinalItemID: "final-item"}})
 			sess := New(Config{ID: "projection-result", Provider: provider, HostedThreadID: "hosted", Projection: projection, AgentExecutions: recorder})
 			sess.ReserveNativeID("native-thread")
 			if provider == "codex" {
@@ -43,7 +47,7 @@ type projectionTerminalRecorder struct {
 }
 
 func (*projectionTerminalRecorder) ReadsSavedResults() bool { return true }
-func (r *projectionTerminalRecorder) MarkTurnTerminal(provider, native, turn, status string, _ *agentExecutionError, response, item string, _ ...agentResultMeta) error {
+func (r *projectionTerminalRecorder) MarkTurnTerminal(provider, native, turn, status string, _ *threads.ExecutionError, response, item string, _ ...hostedstore.ResultMeta) error {
 	r.calls = append(r.calls, projectionTerminal{provider, native, turn, status, response, item})
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -36,7 +37,7 @@ func (c *repairCatalog) AwaitAttachedCurrent(_ string, fresh bool, _ func() bool
 	return c.wait(cancel)
 }
 
-func repairSession(t *testing.T, catalog *repairCatalog) *session {
+func repairSession(t *testing.T, catalog *repairCatalog) *sessions.Session {
 	t.Helper()
 	dir := t.TempDir()
 	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queue.json"))
@@ -49,19 +50,19 @@ func repairSession(t *testing.T, catalog *repairCatalog) *session {
 	}
 	store := mustBindTransactionalTurnStore(t, queue, attempts)
 	fake := newFakeAppServer(t)
-	sess := resumeCodexFixture(t, sessionConfig{ID: "repair-session", Provider: "codex", HostedThreadID: "hosted",
+	sess := resumeCodexFixture(t, sessions.Config{ID: "repair-session", Provider: "codex", HostedThreadID: "hosted",
 		Projection: newLiveProjection("codex", "hosted"), QueuedTurns: queue, SendAttempts: attempts, Turns: store}, "thread", fake)
 	sess.ConfigureRegistration(nil, nil, false, catalog)
 	catalog.provider = fake
 	return sess
 }
 
-func postRepair(t *testing.T, s *server, sess *session, action string) (int, transcriptRepairResponse) {
+func postRepair(t *testing.T, s *server, sess *sessions.Session, action string) (int, sessions.TranscriptRepairResponse) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	sess.HandleTranscriptRepair(recorder, httptest.NewRequest(http.MethodPost, "/api/sessions/"+sess.ID()+"/transcript-repair",
 		bytes.NewBufferString(`{"clientActionId":"`+action+`"}`)))
-	var response transcriptRepairResponse
+	var response sessions.TranscriptRepairResponse
 	if recorder.Code == http.StatusOK {
 		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 			t.Fatal(err)
@@ -80,25 +81,25 @@ func postRepair(t *testing.T, s *server, sess *session, action string) (int, tra
 func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		wait   func(*session) func(<-chan struct{}) bool
-		setup  func(*testing.T, *session, *repairCatalog)
+		wait   func(*sessions.Session) func(<-chan struct{}) bool
+		setup  func(*testing.T, *sessions.Session, *repairCatalog)
 		status string
 	}{
-		{"caught up and settled", func(*session) func(<-chan struct{}) bool {
+		{"caught up and settled", func(*sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool { return true }
 		}, nil, "repaired"},
-		{"file not proven current", func(*session) func(<-chan struct{}) bool {
+		{"file not proven current", func(*sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool { return false }
 		}, nil, "saved_copy_not_ready"},
-		{"saved read fails", func(*session) func(<-chan struct{}) bool {
+		{"saved read fails", func(*sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool { return true }
-		}, func(t *testing.T, sess *session, _ *repairCatalog) {
+		}, func(t *testing.T, sess *sessions.Session, _ *repairCatalog) {
 			seedAcceptedTransactionalTurn(t, sess.PromptStore(), "hosted", model.ProviderCodex, "thread", "delivered", "turn-1", "delivered prompt")
 			sess.ConfigureSavedReaders(nil, func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) {
 				return nil, errors.New("synthetic saved read failure")
 			}, nil, nil, nil)
 		}, "saved_copy_not_ready"},
-		{"attachment replaced during the catch-up", func(sess *session) func(<-chan struct{}) bool {
+		{"attachment replaced during the catch-up", func(sess *sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool {
 				if err := sess.InitializeBinding(4); err != nil {
 					panic(err)
@@ -106,7 +107,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 				return true
 			}
 		}, nil, "stale_attachment"},
-		{"attachment replaced during a failed catch-up", func(sess *session) func(<-chan struct{}) bool {
+		{"attachment replaced during a failed catch-up", func(sess *sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool {
 				if err := sess.InitializeBinding(4); err != nil {
 					panic(err)
@@ -114,9 +115,9 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 				return false
 			}
 		}, nil, "stale_attachment"},
-		{"attachment replaced during a failed settlement", func(*session) func(<-chan struct{}) bool {
+		{"attachment replaced during a failed settlement", func(*sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool { return true }
-		}, func(t *testing.T, sess *session, _ *repairCatalog) {
+		}, func(t *testing.T, sess *sessions.Session, _ *repairCatalog) {
 			seedAcceptedTransactionalTurn(t, sess.PromptStore(), "hosted", model.ProviderCodex, "thread", "delivered", "turn-1", "delivered prompt")
 			sess.ConfigureSavedReaders(nil, func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) {
 				if err := sess.InitializeBinding(4); err != nil {
@@ -125,9 +126,9 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 				return nil, errors.New("synthetic saved read failure")
 			}, nil, nil, nil)
 		}, "stale_attachment"},
-		{"a question is pending", func(*session) func(<-chan struct{}) bool {
+		{"a question is pending", func(*sessions.Session) func(<-chan struct{}) bool {
 			return func(<-chan struct{}) bool { return true }
-		}, func(t *testing.T, sess *session, catalog *repairCatalog) {
+		}, func(t *testing.T, sess *sessions.Session, catalog *repairCatalog) {
 			fake := catalog.provider
 			fake.EmitThreadNotification("thread", map[string]any{"method": "turn/started", "params": map[string]any{"threadId": "thread", "turn": map[string]any{"id": "turn-1", "status": "inProgress"}}})
 			waitReconnectCondition(t, func() bool { return sess.Summary().TurnActive })

@@ -10,6 +10,7 @@ import (
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	fixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
@@ -53,7 +54,7 @@ func (h *replayOwnerHarness) resume(t *testing.T) error {
 			sess.core.Close()
 		}
 	})
-	c, err := resumeClaudeSession(sess, ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: "native-1", Cwd: b.CWD(), ClaudeBin: "/fake/claude", ClaudeShimWS: h.shim.WSURL(), ClaudeShimSpools: h.dir, ClaudeAnchor: attachmentRecord{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: b.HostedThreadID(), ShimSessionID: "shim-1"}})
+	c, err := resumeClaudeSession(sess, ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: "native-1", Cwd: b.CWD(), ClaudeBin: "/fake/claude", ClaudeShimWS: h.shim.WSURL(), ClaudeShimSpools: h.dir, ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: b.HostedThreadID(), ShimSessionID: "shim-1"}})
 	if c != nil {
 		t.Cleanup(func() { _ = c.Close() })
 	}
@@ -143,7 +144,7 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 
 // The projection consumer blocks after the frame is admitted. The old frame
 // must emit no terminal write after abandonment, and no retry can overtake it.
-func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
+func TestClaudeReplayDrainFencesSessionRetryAndCompletion(t *testing.T) {
 	h := newReplayOwnerHarness(t)
 	turn, _ := h.seed(t, "admitted-action", 40)
 	recorder := &resultRecorder{}
@@ -211,7 +212,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 
 // The app sibling verifies actual saved final IDs/usage behind a backlog.
 // This test retains its shorter progress window at the scheduling owner.
-func TestClaudeReconnectRecordsOfflineCompletionBehindBackgroundBacklog(t *testing.T) {
+func TestClaudeReplayBackgroundBacklogKeepsProgressWindowAlive(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	if err := sess.ensureCoreSession(); err != nil {
 		t.Fatal(err)

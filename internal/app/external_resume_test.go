@@ -16,7 +16,9 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -152,7 +154,7 @@ func TestExternalCodexResumeRegistersOnceAndPreservesHistoryIdentity(t *testing.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var summary sessionSummary
+	var summary sessions.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &summary); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +223,7 @@ func TestConcurrentExternalResumeCreatesOneRegistrationAndOneAttachment(t *testi
 	}
 	wg.Wait()
 	wins, conflicts := 0, 0
-	var winner sessionSummary
+	var winner sessions.Summary
 	for _, rec := range recs {
 		switch rec.Code {
 		case http.StatusOK:
@@ -255,7 +257,7 @@ func TestExternalResumeProviderFailureKeepsOneRetryableIdentity(t *testing.T) {
 	if first.Code != http.StatusOK {
 		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
 	}
-	var failed sessionSummary
+	var failed sessions.Summary
 	if err := json.Unmarshal(first.Body.Bytes(), &failed); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +270,7 @@ func TestExternalResumeProviderFailureKeepsOneRetryableIdentity(t *testing.T) {
 	if second.Code != http.StatusOK {
 		t.Fatalf("retry status=%d body=%s", second.Code, second.Body.String())
 	}
-	var retried sessionSummary
+	var retried sessions.Summary
 	if err := json.Unmarshal(second.Body.Bytes(), &retried); err != nil {
 		t.Fatal(err)
 	}
@@ -292,14 +294,14 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 		s.attachmentsControl.Catalog = catalog.index.Service
 	}
 
-	firstArgs := fixturePreviewArgs(t, s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	firstArgs := fixturePreviewArgs(t, s, hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if joined := strings.Join(firstArgs, " "); strings.Contains(joined, "--allowed-tools") {
 		t.Fatalf("first external Resume introduced an allowlist: %q", joined)
 	}
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	waitForSessionStatus(t, s, first.ID, sessionStatusExited)
 
-	retryArgs := fixturePreviewArgs(t, s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	retryArgs := fixturePreviewArgs(t, s, hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if joined := strings.Join(retryArgs, " "); strings.Contains(joined, "--allowed-tools") {
 		t.Fatalf("retry introduced server default tools absent from the original provider posture: %q", joined)
 	}
@@ -312,7 +314,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 
 func TestConcurrentExternalClaudeResumePreclaimsBeforeReturn(t *testing.T) {
 	releaseAttach := make(chan struct{})
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {
@@ -346,7 +348,7 @@ func TestConcurrentExternalClaudeResumePreclaimsBeforeReturn(t *testing.T) {
 	close(releaseAttach)
 
 	wins, conflicts := 0, 0
-	var winner sessionSummary
+	var winner sessions.Summary
 	for _, rec := range recorders {
 		switch rec.Code {
 		case http.StatusOK:
@@ -406,7 +408,7 @@ while :; do sleep 1; done
 }
 
 func TestExternalClaudeResumeFailsWithoutExclusiveShimAttachment(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {
@@ -442,7 +444,7 @@ func TestExternalClaudeResumeFailsWithoutExclusiveShimAttachment(t *testing.T) {
 func TestExternalClaudeResumeUsesExclusiveShimAttachment(t *testing.T) {
 	// The newly minted hosted id has no spool file yet, which only a shim
 	// session that has recorded nothing (lastSeq 0) positively explains.
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *claudeshim.Conn, call claudeshim.Call) {
 		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-external", "nativeSessionId": "native-1",
 			"state": "running", "lastSeq": 0,

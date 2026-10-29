@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	liveview "github.com/dkroshow/nano/internal/liveview"
-	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // PublishProjectionRuntime publishes the current attachment runtime into the live projection.
@@ -18,7 +19,7 @@ func (sess *Session) PublishProjectionRuntime() {
 		return
 	}
 	sess.stateMu.Lock()
-	runtime := liveProjectionRuntime{
+	runtime := liveview.Runtime{
 		SessionStatus:     sess.connectionStatusLocked(),
 		ThreadStatus:      sess.threadStatusLocked(),
 		TurnActive:        sess.workActiveLocked(),
@@ -38,7 +39,7 @@ func (sess *Session) PublishProjectionRuntime() {
 	sess.projection.updateRuntime(runtime)
 }
 
-func (sess *Session) applyLiveRuntimeWire(dir protocol.Direction, line []byte, at time.Time) {
+func (sess *Session) applyLiveRuntimeWire(dir wire.Direction, line []byte, at time.Time) {
 	if sess.projection == nil {
 		return
 	}
@@ -65,7 +66,7 @@ func (sess *Session) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage
 	}
 	sess.stateMu.Lock()
 	if sess.turnTokenUsage == nil {
-		sess.turnTokenUsage = make(map[string]*tokenUsage)
+		sess.turnTokenUsage = make(map[string]*interact.TokenUsage)
 	}
 	sess.turnTokenUsage[turnID] = usage
 	if len(sess.turnTokenUsage) > liveProjectionStateTurnCap {
@@ -79,7 +80,7 @@ func (sess *Session) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage
 	sess.stateMu.Unlock()
 }
 
-func (sess *Session) completedTokenUsage(turnID string) *tokenUsage {
+func (sess *Session) completedTokenUsage(turnID string) *interact.TokenUsage {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return sess.turnTokenUsage[turnID]
@@ -170,7 +171,7 @@ func (sess *Session) HandleConversation(w http.ResponseWriter, r *http.Request) 
 }
 
 // HandleConversationView serves a paginated conversation view with the supplied default mode.
-func (sess *Session) HandleConversationView(w http.ResponseWriter, r *http.Request, defaultView conversationView) {
+func (sess *Session) HandleConversationView(w http.ResponseWriter, r *http.Request, defaultView liveview.View) {
 	view, err := parseConversationView(r, defaultView)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
@@ -195,7 +196,7 @@ func (sess *Session) HandleConversationEvents(w http.ResponseWriter, r *http.Req
 }
 
 // HandleConversationEventsView streams changes to a conversation view with the supplied default mode.
-func (sess *Session) HandleConversationEventsView(w http.ResponseWriter, r *http.Request, defaultView conversationView) {
+func (sess *Session) HandleConversationEventsView(w http.ResponseWriter, r *http.Request, defaultView liveview.View) {
 	view, err := parseConversationView(r, defaultView)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
 // A fresh claude start hands the session back before its transport is up, the
@@ -33,9 +35,9 @@ const startingShimID = "cs_starting1"
 // child, which sends no init before Nano has adopted its provisional identity,
 // it sends the init line only after `speak` closes (provisionallyAdopted).
 // Everything after that (input, close) is answered normally and recorded.
-func startingShim(t *testing.T, hold, speak <-chan struct{}) *fakeShim {
+func startingShim(t *testing.T, hold, speak <-chan struct{}) *claudeshim.Server {
 	t.Helper()
-	return newFakeShim(t, func(c *shimConn) {
+	return newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -51,7 +53,7 @@ func startingShim(t *testing.T, hold, speak <-chan struct{}) *fakeShim {
 // provisionallyAdopted waits until the session's shim id is its recorded
 // provisional identity, then lets the shim send the init that resolves it.
 // Sent sooner, the init can race the adoption and find no handle to resolve.
-func provisionallyAdopted(t *testing.T, sess *session, speak chan struct{}) {
+func provisionallyAdopted(t *testing.T, sess *sessions.Session, speak chan struct{}) {
 	t.Helper()
 	waitForClaude(t, "the shim id to be the recorded provisional identity", func() bool {
 		view := sess.Summary().Metadata
@@ -103,7 +105,7 @@ func TestClaudeStartReturnsStartingWhileTransportComesUp(t *testing.T) {
 func TestClaudeStartTransportFailureLandsOnTheSession(t *testing.T) {
 	// The shim refuses, and the direct-child fallback runs a binary that is not
 	// there: both rungs of the start path fail.
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return

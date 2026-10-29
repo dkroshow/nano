@@ -4,9 +4,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/transcriptparse/grok"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 type grokLiveAdapter struct {
@@ -17,7 +18,7 @@ func newGrokLiveAdapter() *grokLiveAdapter {
 	return &grokLiveAdapter{}
 }
 
-func (a *grokLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *grokLiveAdapter) apply(dir wire.Direction, line []byte, at time.Time) model.Batch {
 	next, batch, err := grok.ParseWire(a.reader, liveParseInput(dir, line, at))
 	if err != nil {
 		return model.Batch{}
@@ -26,7 +27,7 @@ func (a *grokLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Tim
 	return batch
 }
 
-func parsedGrokLiveItem(parsed model.Item, at time.Time) *liveProjectionItem {
+func parsedGrokLiveItem(parsed model.Item, at time.Time) *liveview.Item {
 	item := parsedLiveItem(parsed, at)
 	if parsed.Type == model.ItemUserMessage {
 		item.Done = true

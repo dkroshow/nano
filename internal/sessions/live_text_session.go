@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -39,7 +40,7 @@ func (l *LiveTextLoop) requestPane(r *http.Request) (*LiveTextStream, error) {
 }
 
 // rowsPane creates a saved-row pane for a conversation view.
-func (l *LiveTextLoop) rowsPane(view conversationView) *LiveTextStream {
+func (l *LiveTextLoop) rowsPane(view liveview.View) *LiveTextStream {
 	query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 1}
 	if view == conversationViewFull {
 		query.View, query.HiddenSpecified = threadindex.DevThreadTranscriptView, true
@@ -55,14 +56,14 @@ func (l *LiveTextLoop) writeBackendError(w http.ResponseWriter, err error) {
 }
 
 // ConversationItems reads a bounded page of conversation items.
-func (l *LiveTextLoop) conversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
+func (l *LiveTextLoop) conversationItems(ctx context.Context, view liveview.View, before string, limit int) ([]liveview.Item, *liveview.Page, string, error) {
 	catalog, ok := l.sources.Catalog, l.sources.Catalog != nil
 	if !ok {
 		return nil, nil, "", errors.New("catalog unavailable")
 	}
 	threadID, err := l.catalogThreadID()
 	if errors.Is(err, errLiveTextNotIndexed) {
-		return []liveProjectionItem{}, &liveProjectionPage{}, "", nil
+		return []liveview.Item{}, &liveview.Page{}, "", nil
 	}
 	if err != nil {
 		return nil, nil, "", err
@@ -73,15 +74,15 @@ func (l *LiveTextLoop) conversationItems(ctx context.Context, view conversationV
 	}
 	response, err := catalog.LoadTranscript(ctx, threadID, query)
 	if errors.Is(err, threadindex.ErrCatalogThreadNotFound) {
-		return []liveProjectionItem{}, &liveProjectionPage{}, "", nil
+		return []liveview.Item{}, &liveview.Page{}, "", nil
 	}
 	if err != nil {
 		return nil, nil, "", err
 	}
-	items := make([]liveProjectionItem, 0, len(response.Items))
+	items := make([]liveview.Item, 0, len(response.Items))
 	for _, row := range response.Items {
 		items = append(items, savedConversationItem(row))
 	}
-	page := &liveProjectionPage{HasMoreBefore: response.Page.HasMoreBefore, NextBeforeCursor: response.Page.NextBeforeCursor, Source: "file"}
+	page := &liveview.Page{HasMoreBefore: response.Page.HasMoreBefore, NextBeforeCursor: response.Page.NextBeforeCursor, Source: "file"}
 	return items, page, response.Projection.Key, nil
 }

@@ -55,7 +55,7 @@ func TestCatalogCommitCompletesAnOperationWhoseAnswerOutlastedItsWait(t *testing
 			first.mu.Lock()
 			rec := first.turns[op.ID]
 			rec.Status, rec.ProviderTurnID, rec.FinalItemID = agentTurnFailed, "turn-1", "final-answer"
-			rec.Error = &agentExecutionError{Source: "saved", Code: "result_not_saved", Message: "not saved"}
+			rec.Error = &threadvalues.ExecutionError{Source: "saved", Code: "result_not_saved", Message: "not saved"}
 			rec.Revision++
 			first.setTurnLocked(op.ID, &rec)
 			err = first.persistAndNotifyLocked()
@@ -75,7 +75,7 @@ WHEN NEW.status = 'completed' BEGIN SELECT RAISE(ABORT, 'disk unavailable'); END
 			}
 			var reads atomic.Int32
 			inRead, release := make(chan struct{}), make(chan struct{})
-			store.UseSavedResults(func(context.Context, agentTurnRecord) (string, string, error) {
+			store.UseSavedResults(func(context.Context, threadvalues.TurnRecord) (string, string, error) {
 				n := reads.Add(1)
 				if test.during && n == 1 {
 					close(inRead)
@@ -179,7 +179,7 @@ WHEN NEW.status IN ('completed', 'failed') BEGIN SELECT RAISE(ABORT, 'disk unava
 				}
 			}
 			var reads atomic.Int32
-			store.UseSavedResults(func(ctx context.Context, _ agentTurnRecord) (string, string, error) {
+			store.UseSavedResults(func(ctx context.Context, _ threadvalues.TurnRecord) (string, string, error) {
 				recovered := test.recovers && time.Now().After(deadline.Add(savedResultLastRead))
 				if !recovered && (reads.Add(1) > 1 || test.slow) {
 					<-ctx.Done() // the catalog answers nothing in time

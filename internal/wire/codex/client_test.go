@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // fakeTransport is a two-channel stand-in for a websocket or a child's stdio.
@@ -244,7 +246,7 @@ func TestDeferredServerRequest(t *testing.T) {
 	tr := newFakeTransport()
 	client := newClient(tr)
 	var logged []string
-	client.WireLog = func(dir Direction, line []byte) { logged = append(logged, string(dir)+" "+string(line)) }
+	client.WireLog = func(dir wire.Direction, line []byte) { logged = append(logged, string(dir)+" "+string(line)) }
 	client.OnServerRequest = func(requestID, method string, params json.RawMessage) (any, *RPCError) {
 		if method == "item/commandExecution/requestApproval" {
 			return Deferred, nil

@@ -11,6 +11,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // gatedLiveAdapter pauses the real parser at the ordered projection boundary.
@@ -22,7 +23,7 @@ type gatedLiveAdapter struct {
 	once             sync.Once
 }
 
-func (a *gatedLiveAdapter) apply(dir protocol.Direction, line []byte, at time.Time) model.Batch {
+func (a *gatedLiveAdapter) apply(dir wire.Direction, line []byte, at time.Time) model.Batch {
 	if a.match == nil || a.match(line) {
 		a.once.Do(func() { close(a.entered); <-a.release })
 	}
@@ -83,8 +84,8 @@ func awaitProviderFrameWithin(t *testing.T, f *providerRuntimeFixture, line []by
 	})
 }
 
-func receivedProviderFrames(sess *session) []wireEvent {
-	var frames []wireEvent
+func receivedProviderFrames(sess *Session) []protocol.Event {
+	var frames []protocol.Event
 	for _, event := range liveWirePageEvents(sess) {
 		var body struct {
 			Method string `json:"method"`
@@ -97,11 +98,11 @@ func receivedProviderFrames(sess *session) []wireEvent {
 	return frames
 }
 
-func liveWirePageEvents(sess *session) []wireEvent {
+func liveWirePageEvents(sess *Session) []protocol.Event {
 	recorder := httptest.NewRecorder()
 	sess.HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
 	var page struct {
-		Events []wireEvent `json:"events"`
+		Events []protocol.Event `json:"events"`
 	}
 	if recorder.Code != http.StatusOK {
 		panic(recorder.Body.String())

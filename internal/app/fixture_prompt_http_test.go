@@ -1,9 +1,9 @@
 package app
 
-import fixture "github.com/dkroshow/nano/internal/testsupport"
+import (
+	fixture "github.com/dkroshow/nano/internal/testsupport"
+)
 
 var postTurn = fixture.PostTurn
 var readPrompt = fixture.ReadPrompt
 var mustJSON = fixture.JSONString
-
-type promptView = fixturePromptView

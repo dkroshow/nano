@@ -30,7 +30,7 @@ type savedResultJob struct {
 }
 
 // UseSavedResults connects operation completion to the saved transcript.
-func (s *ExecutionStore) UseSavedResults(read func(context.Context, agentTurnRecord) (string, string, error), finished func(string)) {
+func (s *ExecutionStore) UseSavedResults(read func(context.Context, threadvalues.TurnRecord) (string, string, error), finished func(string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.savedResultRead = read
@@ -125,7 +125,7 @@ func (s *ExecutionStore) readSavedResultLocked(id string) {
 // readLateSavedResult reads a not-saved operation's answer once, and again a
 // second later while a busy or changing catalog cuts the read short: only a
 // read that completed without the answer waits for the next commit.
-func (s *ExecutionStore) readLateSavedResult(id string, rec agentTurnRecord, job *savedResultJob, read func(context.Context, agentTurnRecord) (string, string, error)) {
+func (s *ExecutionStore) readLateSavedResult(id string, rec threadvalues.TurnRecord, job *savedResultJob, read func(context.Context, threadvalues.TurnRecord) (string, string, error)) {
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), savedResultLastRead)
 		text, itemID, err := read(ctx, rec)
@@ -161,7 +161,7 @@ func (s *ExecutionStore) readLateSavedResult(id string, rec agentTurnRecord, job
 // answer is its own saved turn's (claudeAnswers), whatever final the live
 // result named: results were once bound to the wrong prompt. Another
 // provider's must match the live final when there is one.
-func savedAnswerFinishes(rec agentTurnRecord, itemID string) bool {
+func savedAnswerFinishes(rec threadvalues.TurnRecord, itemID string) bool {
 	return itemID != "" && (rec.Provider == string(model.ProviderClaude) || rec.FinalItemID == "" || itemID == rec.FinalItemID)
 }
 
@@ -174,7 +174,7 @@ func savedAnswerAbsent(err error) bool {
 // runSavedResult reads one pending operation's saved answer until it is found
 // or its original deadline passes, then makes one last, briefly bounded read.
 // Only pending results poll, once a second for at most their two minutes.
-func (s *ExecutionStore) runSavedResult(id string, rec agentTurnRecord, read func(context.Context, agentTurnRecord) (string, string, error)) {
+func (s *ExecutionStore) runSavedResult(id string, rec threadvalues.TurnRecord, read func(context.Context, threadvalues.TurnRecord) (string, string, error)) {
 	started, _ := time.Parse(time.RFC3339Nano, rec.UpdatedAt)
 	deadline := started.Add(savedOperationResultWait)
 	tick := time.NewTicker(time.Second)
@@ -206,7 +206,7 @@ func (s *ExecutionStore) runSavedResult(id string, rec agentTurnRecord, read fun
 
 // commitSavedResult records a decided outcome, retrying only the write while
 // the store refuses it: it never reads again, so a found answer is kept.
-func (s *ExecutionStore) commitSavedResult(id string, rec agentTurnRecord, found bool, text, itemID string) {
+func (s *ExecutionStore) commitSavedResult(id string, rec threadvalues.TurnRecord, found bool, text, itemID string) {
 	for failures := 0; ; failures++ {
 		err := s.finishSavedResult(id, rec, found, text, itemID)
 		if err == nil {
@@ -223,7 +223,7 @@ func (s *ExecutionStore) commitSavedResult(id string, rec agentTurnRecord, found
 // result_not_saved failure. It fails only when the store refuses the commit;
 // an operation that no longer waits for this result needs nothing. A
 // committed failure keeps its job, so later applies read the answer again.
-func (s *ExecutionStore) finishSavedResult(id string, rec agentTurnRecord, found bool, text, itemID string) error {
+func (s *ExecutionStore) finishSavedResult(id string, rec threadvalues.TurnRecord, found bool, text, itemID string) error {
 	s.mu.Lock()
 	current, ok := s.turns[id]
 	if !ok || current.Status != agentTurnAwaitingSaved && !(found && threadvalues.AnswerNotSaved(current)) {
@@ -231,17 +231,17 @@ func (s *ExecutionStore) finishSavedResult(id string, rec agentTurnRecord, found
 		s.mu.Unlock()
 		return nil
 	}
-	status, errResult := agentTurnCompleted, (*agentExecutionError)(nil)
+	status, errResult := agentTurnCompleted, (*threadvalues.ExecutionError)(nil)
 	switch {
 	// A changed attachment cannot supply a result for the previous native thread.
 	case current.NativeThreadID != rec.NativeThreadID || current.ProviderTurnID != rec.ProviderTurnID || current.FinalItemID != rec.FinalItemID:
 		text, itemID, status = "", rec.FinalItemID, agentTurnFailed
-		errResult = &agentExecutionError{Source: "saved", Code: "result_not_saved", Message: "The result identity changed before its saved answer was found."}
+		errResult = &threadvalues.ExecutionError{Source: "saved", Code: "result_not_saved", Message: "The result identity changed before its saved answer was found."}
 	case !found:
 		text, itemID, status = "", rec.FinalItemID, agentTurnFailed
-		errResult = &agentExecutionError{Source: "saved", Code: "result_not_saved", Message: "The final answer was not saved or indexed within 2 minutes."}
+		errResult = &threadvalues.ExecutionError{Source: "saved", Code: "result_not_saved", Message: "The final answer was not saved or indexed within 2 minutes."}
 	}
-	if !s.applyResolvedTurnFinishLocked(id, status, errResult, text, itemID, agentResultMeta{}) {
+	if !s.applyResolvedTurnFinishLocked(id, status, errResult, text, itemID, ResultMeta{}) {
 		delete(s.savedResultJobs, id)
 		s.mu.Unlock()
 		return nil

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/sessions"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
@@ -29,7 +30,7 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queued := queuedTurnRecord{
+	queued := prompts.QueuedTurn{
 		ClientActionID: stage5BadQueuedAction,
 		Provider:       "codex",
 		HostedThreadID: "nht_fixture_owner",
@@ -40,7 +41,7 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 		Origin:         turnOriginAgent,
 		CreatedAt:      "2026-09-12T10:59:27.597011Z",
 	}
-	attempt := sendAttemptRecord{
+	attempt := prompts.SendAttempt{
 		ClientActionID: stage5BadQueuedAction,
 		Provider:       queued.Provider,
 		NativeThreadID: queued.NativeThreadID,
@@ -90,7 +91,7 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 	}
 
 	projection := newLiveProjection(queued.Provider, queued.HostedThreadID, "nano-fixture")
-	newProviderRuntimeFixture(t, sessionConfig{ID: "nano-fixture", Provider: queued.Provider, HostedThreadID: queued.HostedThreadID, Projection: projection, QueuedTurns: stores.Queue, SendAttempts: stores.Attempts, Turns: stores.Turns}, queued.NativeThreadID, "")
+	newProviderRuntimeFixture(t, sessions.Config{ID: "nano-fixture", Provider: queued.Provider, HostedThreadID: queued.HostedThreadID, Projection: projection, QueuedTurns: stores.Queue, SendAttempts: stores.Attempts, Turns: stores.Turns}, queued.NativeThreadID, "")
 	diagnostics := projection.ThreadDiagnosticsSnapshot()
 	if len(diagnostics) != 1 || diagnostics[0].Code != "boot_incomplete_outbox" ||
 		diagnostics[0].Source != "turn-store-boot" || diagnostics[0].ActionID != stage5BadQueuedAction ||

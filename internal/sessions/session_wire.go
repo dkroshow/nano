@@ -10,6 +10,7 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // wireBufferCap bounds the raw events a session keeps in memory: the tail the
@@ -18,8 +19,6 @@ import (
 // of the live heap, for a panel that is rarely open.
 const wireBufferCap = 500
 
-type wireEvent = protocol.Event
-
 type queuedCodexDelta struct {
 	method   string
 	threadID string
@@ -27,7 +26,7 @@ type queuedCodexDelta struct {
 	itemID   string
 	delta    string
 	at       time.Time
-	event    wireEvent
+	event    protocol.Event
 	wireSeq  []int64
 }
 
@@ -155,14 +154,14 @@ func (sess *Session) releaseCatalogSource() {
 	}
 }
 
-func (sess *Session) recordWire(dir protocol.Direction, line []byte) {
+func (sess *Session) recordWire(dir wire.Direction, line []byte) {
 	sess.recordWireLive(dir, line, true)
 }
 
 // recordWireLive controls whether arrival time may stand as a turn's start
 // anchor. Claude re-attach calls recordWireAt directly so it can also mark
 // a frame as replayed.
-func (sess *Session) recordWireLive(dir protocol.Direction, line []byte, live bool, wireSeq ...int64) {
+func (sess *Session) recordWireLive(dir wire.Direction, line []byte, live bool, wireSeq ...int64) {
 	sess.recordWireAt(dir, line, live, false, time.Time{}, wireSeq...)
 }
 
@@ -170,11 +169,11 @@ func (sess *Session) recordWireLive(dir protocol.Direction, line []byte, live bo
 // Session multiplexed onto this attachment. It intentionally does not invoke
 // any parent semantic consumer (projection, runtime, send confirmation, or
 // hosted-operation observation).
-func (sess *Session) recordWireRaw(dir protocol.Direction, line []byte) {
+func (sess *Session) recordWireRaw(dir wire.Direction, line []byte) {
 	at := time.Now()
 	// A multiplexed child without its own attachment is not watched: its raw
 	// traffic hints nothing, and only an explicit child attachment opts in.
-	sess.publishWireEvent(wireEvent{
+	sess.publishWireEvent(protocol.Event{
 		TS: at.Format(time.RFC3339Nano), Dir: string(dir),
 		Msg: json.RawMessage(append([]byte(nil), line...)),
 	}, true)
@@ -193,7 +192,7 @@ func (sess *Session) recordWireRaw(dir protocol.Direction, line []byte) {
 // line and now sends it back with the replay, so a replayed line is dated when
 // it happened. A zero `at` means "now" — every genuinely live path, and any
 // line from a shim too old to send one.
-func (sess *Session) recordWireAt(dir protocol.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
+func (sess *Session) recordWireAt(dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
 	sess.recordWireWith(nil, nil, dir, line, live, replay, at, wireSeq...)
 }
 
@@ -203,11 +202,11 @@ func (sess *Session) recordWireAt(dir protocol.Direction, line []byte, live, rep
 // prepare runs once the frame is admitted. Replayed send lines take the
 // Session loop too, so they land in spool order among the received frames
 // queued ahead of them.
-func (sess *Session) recordWireWith(gate func() error, prepare func(), dir protocol.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
+func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
 	if at.IsZero() {
 		at = time.Now()
 	}
-	evt := wireEvent{
+	evt := protocol.Event{
 		TS:  at.Format(time.RFC3339Nano),
 		Dir: string(dir),
 		Msg: json.RawMessage(append([]byte(nil), line...)),
@@ -293,7 +292,7 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir proto
 	sess.publishWireEvent(evt, true)
 }
 
-func (sess *Session) adapterTurnEvent(dir protocol.Direction, line []byte, live bool, at time.Time) (coresession.AdapterEvent, *coreturns.Finish) {
+func (sess *Session) adapterTurnEvent(dir wire.Direction, line []byte, live bool, at time.Time) (coresession.AdapterEvent, *coreturns.Finish) {
 	if !live || dir != protocol.Recv {
 		return coresession.AdapterEvent{}, nil
 	}
@@ -342,7 +341,7 @@ func (sess *Session) adapterTurnEvent(dir protocol.Direction, line []byte, live 
 //
 // gate, when set, is rechecked before the durable agent-operation update, so a
 // frame admitted before its attach was abandoned cannot complete an operation.
-func (sess *Session) applyWireSemantic(gate func() error, dir protocol.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
+func (sess *Session) applyWireSemantic(gate func() error, dir wire.Direction, line []byte, live, replay bool, at time.Time, wireSeq ...int64) {
 	// Normalize before publishing the raw line. Every browser therefore sees
 	// the same projection order, and a slow/raw-feed tab cannot affect the
 	// transcript reducer.
@@ -374,7 +373,7 @@ func (sess *Session) applyWireSemantic(gate func() error, dir protocol.Direction
 	sess.observeAgentExecutionWire(dir, line)
 }
 
-func (sess *Session) publishWireEvent(evt wireEvent, writeSpool bool) {
+func (sess *Session) publishWireEvent(evt protocol.Event, writeSpool bool) {
 	sess.mu.Lock()
 	sess.seq++
 	evt.Seq = sess.seq
@@ -382,7 +381,7 @@ func (sess *Session) publishWireEvent(evt wireEvent, writeSpool bool) {
 	if len(sess.events) > wireBufferCap {
 		sess.events = sess.events[len(sess.events)-wireBufferCap:]
 	}
-	subs := make([]chan wireEvent, 0, len(sess.subs))
+	subs := make([]chan protocol.Event, 0, len(sess.subs))
 	for ch := range sess.subs {
 		subs = append(subs, ch)
 	}
@@ -410,12 +409,12 @@ func (sess *Session) publishWireEvent(evt wireEvent, writeSpool bool) {
 // nanoNotification builds a synthetic JSON-RPC notification for events nano
 // itself originates (spool failures, instruction-file edits) so they render
 // in the Event Feed like any other wire notification.
-func nanoNotification(method string, params map[string]any) (wireEvent, bool) {
+func nanoNotification(method string, params map[string]any) (protocol.Event, bool) {
 	line, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 	if err != nil {
-		return wireEvent{}, false
+		return protocol.Event{}, false
 	}
-	return wireEvent{
+	return protocol.Event{
 		TS:  time.Now().Format(time.RFC3339Nano),
 		Dir: string(protocol.Recv),
 		Msg: json.RawMessage(line),

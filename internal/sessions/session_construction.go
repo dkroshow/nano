@@ -9,8 +9,11 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/setup"
 )
 
@@ -37,11 +40,11 @@ type Config struct {
 	NameThread            func(provider, nativeThreadID, name string)
 	PublishCreationName   func(provider, nativeThreadID, name string)
 	CreationName          func() string
-	MetadataName          func(provider, nativeThreadID string) (hostedMetadataName, bool)
+	MetadataName          func(provider, nativeThreadID string) (hostedstore.MetadataName, bool)
 	Skills                *setup.SkillsListCache
 	CatalogRefresh        func(string)
 	RuntimeNotify         func()
-	RememberAttachment    func(rec attachmentRecord)
+	RememberAttachment    func(rec hostedstore.Attachment)
 	ForgetAttachment      func(provider, nativeThreadID string)
 	UpdateTurnAnchor      func(provider, nativeThreadID string, startedAtMs, anchorSeq int64)
 	UpdateShimSession     func(provider, nativeThreadID, shimSessionID string)
@@ -72,7 +75,7 @@ func New(cfg Config) *Session {
 		permissionMode:        cfg.PermissionMode,
 		createdAt:             cfg.CreatedAt,
 		spawnMode:             cfg.SpawnMode,
-		subs:                  map[chan wireEvent]struct{}{},
+		subs:                  map[chan protocol.Event]struct{}{},
 		state:                 map[string]json.RawMessage{},
 		reasoningSummary:      cfg.ReasoningSummary,
 		projection:            cfg.Projection,
@@ -121,7 +124,7 @@ func (sess *Session) InitializeBinding(generation int64) error {
 }
 
 // ConfigureSavedReaders connects the catalog reads before registration.
-func (sess *Session) ConfigureSavedReaders(turn func(context.Context, string) (durableTurnEvidence, bool), prompts SavedPromptReader, nativePrompts savedPromptNativeReader, final savedTurnFinalReader, sweep func(string)) {
+func (sess *Session) ConfigureSavedReaders(turn func(context.Context, string) (liveview.DurableTurnEvidence, bool), prompts SavedPromptReader, nativePrompts savedPromptNativeReader, final savedTurnFinalReader, sweep func(string)) {
 	sess.savedTurn = turn
 	sess.savedPrompts = prompts
 	sess.savedPromptsIn = nativePrompts

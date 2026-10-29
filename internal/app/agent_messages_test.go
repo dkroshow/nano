@@ -15,6 +15,7 @@ import (
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -520,7 +521,7 @@ func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
 
 func TestPromptUsesNoticeSnapshotWithoutReadingMailStore(t *testing.T) {
 	s, store, _, sender, recipient, prompts, _ := stage0Server(t)
-	s.RegisterSession(newFixtureSession(sessionConfig{ID: "nano-sender", HostedThreadID: sender.ID, Provider: sender.Provider, DisplayName: "Claude sender"}, sender.NativeThreadID))
+	s.RegisterSession(newFixtureSession(sessions.Config{ID: "nano-sender", HostedThreadID: sender.ID, Provider: sender.Provider, DisplayName: "Claude sender"}, sender.NativeThreadID))
 	_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "notice-snapshot", "Mail", "Unread", nil)
 	if err := s.mail.Close(); err != nil {
 		t.Fatal(err)

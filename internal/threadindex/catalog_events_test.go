@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
 )
 
@@ -23,9 +24,9 @@ func TestCatalogHubNonBlockingFanOut(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		hub.Notify(catalogChange{Version: 1, ThreadIDs: []string{"nth_a"}})
-		hub.Notify(catalogChange{Version: 2, ThreadIDs: []string{"nth_b"}}) // slow's buffer is full — must not block
-		hub.Notify(catalogChange{Version: 3, ThreadIDs: []string{"nth_c"}})
+		hub.Notify(catalog.Change{Version: 1, ThreadIDs: []string{"nth_a"}})
+		hub.Notify(catalog.Change{Version: 2, ThreadIDs: []string{"nth_b"}}) // slow's buffer is full — must not block
+		hub.Notify(catalog.Change{Version: 3, ThreadIDs: []string{"nth_c"}})
 		close(done)
 	}()
 	select {
@@ -46,7 +47,7 @@ func TestCatalogHubNonBlockingFanOut(t *testing.T) {
 	// A disconnected subscriber is inert: unsubscribe then notify must not panic.
 	hub.Unsubscribe(fast)
 	hub.Unsubscribe(fast) // idempotent, no double-close
-	hub.Notify(catalogChange{Version: 4, Refresh: true})
+	hub.Notify(catalog.Change{Version: 4, Refresh: true})
 	if got := <-slow; got.Version != 4 || !got.Refresh {
 		t.Fatalf("remaining subscriber = %#v, want full refresh at 4", got)
 	}
@@ -238,7 +239,7 @@ func TestCatalogEventFollowsTheTranscriptRowsItAnnounces(t *testing.T) {
 
 // awaitTranscriptCommits takes the events a scan's transcript commits send
 // after its own: each names its thread again at the scan's version.
-func awaitTranscriptCommits(t *testing.T, events <-chan catalogChange, version uint64) {
+func awaitTranscriptCommits(t *testing.T, events <-chan catalog.Change, version uint64) {
 	t.Helper()
 	for {
 		select {
@@ -252,7 +253,7 @@ func awaitTranscriptCommits(t *testing.T, events <-chan catalogChange, version u
 	}
 }
 
-func awaitCatalogChange(t *testing.T, events <-chan catalogChange) catalogChange {
+func awaitCatalogChange(t *testing.T, events <-chan catalog.Change) catalog.Change {
 	t.Helper()
 	select {
 	case change, ok := <-events:
@@ -262,6 +263,6 @@ func awaitCatalogChange(t *testing.T, events <-chan catalogChange) catalogChange
 		return change
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for a pushed catalog version")
-		return catalogChange{}
+		return catalog.Change{}
 	}
 }

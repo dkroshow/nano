@@ -23,6 +23,7 @@ import (
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -40,12 +41,12 @@ type liveTextHarness struct {
 	*liveTextViewer
 	t          *testing.T
 	srv        *server
-	sess       *session
+	sess       *sessions.Session
 	projection *sessions.LiveProjection
 	runtime    *providerRuntimeFixture
 	turn       string
-	queue      sessionQueue
-	journal    sessionJournal
+	queue      sessions.Queue
+	journal    sessions.Journal
 	metadata   *hostedstore.MetadataStore
 	service    *sidebar.CatalogSource
 	store      *history.Store
@@ -89,7 +90,7 @@ func newLiveTextHarnessFor(t *testing.T, provider string, query threadindex.Tran
 	return newLiveTextHarnessForThread(t, provider, query, grokFixtureThread)
 }
 
-func newLiveTextHarnessForThread(t *testing.T, provider string, query threadindex.TranscriptQuery, grokThread string, configure ...func(*sessionConfig)) *liveTextHarness {
+func newLiveTextHarnessForThread(t *testing.T, provider string, query threadindex.TranscriptQuery, grokThread string, configure ...func(*sessions.Config)) *liveTextHarness {
 	t.Helper()
 	root := t.TempDir()
 	file := filepath.Join(root, "-disposable", liveTextFixtureSession+".jsonl")
@@ -136,7 +137,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	}
 	cfg.Projection = srv.newSessionProjection(provider, cfg.HostedThreadID)
 	h.metadata, _ = cfg.Metadata.(*hostedstore.MetadataStore)
-	cfg.Metadata = journalReadMetadata{sessionMetadata: cfg.Metadata, db: cfg.QueuedTurns.Database()}
+	cfg.Metadata = journalReadMetadata{Metadata: cfg.Metadata, db: cfg.QueuedTurns.Database()}
 	sess := newSession(cfg)
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
@@ -556,7 +557,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			h := newLiveTextHarnessForThread(t, "claude", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = store })
+			h := newLiveTextHarnessForThread(t, "claude", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessions.Config) { cfg.AgentExecutions = store })
 			if _, err := fixtureEnsureSession(store, h.sess.HostedThreadID(), "claude", presentationShared); err != nil {
 				t.Fatal(err)
 			}
@@ -598,7 +599,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			// no cached operations, requiring the scoped committed lookup.
 			liveTextOf(h.sess).unsubscribe(h.pane)
 			store = emptyReader
-			fresh := newFixtureSession(sessionConfig{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
+			fresh := newFixtureSession(sessions.Config{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
 			h.srv.startLiveText(fresh)
 			stream := httptest.NewServer(http.HandlerFunc(fresh.HandleLiveStream))
 			defer stream.Close()
@@ -714,7 +715,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				hosted, native := sess.HostedThreadID(), sess.ThreadID()
 				var interrupts atomic.Int32
 
-				seedTestSessionRegistry(&h.srv.Registry, map[string]*session{sess.ID(): sess})
+				seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{sess.ID(): sess})
 				sess.ConfigureSavedReaders(nil, h.srv.savedPromptsFor(sess), nil, nil, nil)
 				var settledCommits atomic.Int32
 				h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
@@ -933,7 +934,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	ctx := context.Background()
 	executions := newTestAgentExecutionStore(t, "run")
-	h := newLiveTextHarnessForThread(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) { cfg.AgentExecutions = executions })
+	h := newLiveTextHarnessForThread(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessions.Config) { cfg.AgentExecutions = executions })
 	sess := h.sess // a Discard ends any operation the prompt carries
 	hosted, native := sess.HostedThreadID(), sess.ThreadID()
 	const text = "no, budget requests go to me"
@@ -973,12 +974,12 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 
 // deliveryJournal reads the thread's delivery journal as a reloading browser
 // does, by action id.
-func (h *liveTextHarness) deliveryJournal() map[string]promptView {
+func (h *liveTextHarness) deliveryJournal() map[string]prompts.View {
 	h.t.Helper()
 	rec := httptest.NewRecorder()
 	h.sess.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
 	var body struct {
-		Operations []promptView `json:"operations"`
+		Operations []prompts.View `json:"operations"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		h.t.Fatalf("journal = %d %s: %v", rec.Code, rec.Body.String(), err)
@@ -996,7 +997,7 @@ func (h *liveTextHarness) deliveryJournal() map[string]promptView {
 			}
 		}
 	}
-	rows := map[string]promptView{}
+	rows := map[string]prompts.View{}
 	for _, row := range body.Operations {
 		rows[row.ClientActionID] = row
 	}
@@ -1143,12 +1144,12 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	// file, history store and transactional delivery journal. Do not close a
 	// provider child: the restarted Nano attaches to the surviving shim.
 	liveTextOf(h.sess).unsubscribe(h.pane)
-	spool := []claudeTestFrame{recvFrame(1, string(wire[0])), sendFrame(2, string(saved[0])).WithTurn(turn)}
+	spool := []claudeshim.Frame{recvFrame(1, string(wire[0])), sendFrame(2, string(saved[0])).WithTurn(turn)}
 	for index, line := range wire[1:15] {
 		spool = append(spool, recvFrame(int64(index+3), string(line)).WithTurn(turn))
 	}
-	attached := make(chan *shimConn, 1)
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	attached := make(chan *claudeshim.Conn, 1)
+	shim := newFakeShim(t, resumeScript(func(c *claudeshim.Conn, call claudeshim.Call) {
 		c.Reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": native, "state": "running", "turnActive": true, "lastSeq": 16})
 		var request struct {
 			FromSeq int64 `json:"fromSeq"`
@@ -1245,7 +1246,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 // journalReadMetadata keeps the harness's metadata owner while reading prompts
 // from its separately seeded canonical prompt database.
 type journalReadMetadata struct {
-	sessionMetadata
+	sessions.Metadata
 	db *sql.DB
 }
 

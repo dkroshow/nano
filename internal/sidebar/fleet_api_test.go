@@ -22,7 +22,7 @@ func fleetWatcherFixture() (*Controller, *fleetWatcher) {
 }
 
 // courtRows are materialized rows whose saved-file courts the test controls.
-func courtRows(courts map[string]fleetCourtMessage) []Thread {
+func courtRows(courts map[string]catalog.FleetCourtMessage) []Thread {
 	rows := make([]Thread, 0, len(courts))
 	for id, court := range courts {
 		rows = append(rows, Thread{Thread: threadindex.Thread{ID: id, Provider: "codex", NativeID: "native-" + id, Kind: "main"}, Court: court})
@@ -54,7 +54,7 @@ func fleetChanges(t *testing.T, s *Controller, since string) fleetChangesRespons
 func TestFleetChangesReportTheWorkingBoundAtTheNextResync(t *testing.T) {
 	start := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	s, watcher := fleetWatcherFixture()
-	rows := courtRows(map[string]fleetCourtMessage{
+	rows := courtRows(map[string]catalog.FleetCourtMessage{
 		"nth_one": {ItemType: "user_message", Head: "go", Tail: "go", LastActivity: start},
 	})
 
@@ -77,12 +77,12 @@ func TestFleetChangesReportTheWorkingBoundAtTheNextResync(t *testing.T) {
 func TestFleetChangesFollowANewSavedMessage(t *testing.T) {
 	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	s, watcher := fleetWatcherFixture()
-	watcher.resync(courtRows(map[string]fleetCourtMessage{
+	watcher.resync(courtRows(map[string]catalog.FleetCourtMessage{
 		"nth_one": {ItemType: "agent_message", Head: "Done.", Tail: "Done.", LastActivity: now},
 	}), now)
 	bookmark := fleetChanges(t, s, "").Bookmark
 
-	watcher.resync(courtRows(map[string]fleetCourtMessage{
+	watcher.resync(courtRows(map[string]catalog.FleetCourtMessage{
 		"nth_one": {ItemType: "agent_message", Head: "Done.", Tail: "Want me to deploy?", LastActivity: now.Add(time.Minute)},
 	}), now.Add(2*time.Minute))
 	answered := fleetChanges(t, s, bookmark)
@@ -198,7 +198,7 @@ func TestFleetChangeLogBookmarkContract(t *testing.T) {
 func TestFleetTransitionsMirrorOntoTheCatalogStream(t *testing.T) {
 	start := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	_, watcher := fleetWatcherFixture()
-	watcher.resync(courtRows(map[string]fleetCourtMessage{
+	watcher.resync(courtRows(map[string]catalog.FleetCourtMessage{
 		"nth_one": {ItemType: "user_message", Head: "go", Tail: "go", LastActivity: start},
 	}), start)
 	subscriber := watcher.hub.subscribe()

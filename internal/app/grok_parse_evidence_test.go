@@ -3,13 +3,15 @@ package app
 import (
 	"fmt"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestGrokOperationalModuleCannotPromoteUnknownReplayToResponse(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run")
 	hosted, _, _ := fixtureBeginSession(store, "caller", "hash", "grok", presentationShared)
 	_ = store.BindSession(hosted.ID, "nano", "native", "ready", presentationShared)
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano", Provider: "grok", HostedThreadID: hosted.ID, AgentExecutions: store, Projection: newLiveProjection("grok")}, "native", "")
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "nano", Provider: "grok", HostedThreadID: hosted.ID, AgentExecutions: store, Projection: newLiveProjection("grok")}, "native", "")
 	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action", "hash")
 	_ = store.MarkTurnDelivery(op.ID, "prompt", agentTurnRunning, nil)
 	for _, message := range []struct {

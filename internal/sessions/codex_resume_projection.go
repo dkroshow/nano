@@ -3,6 +3,7 @@ package sessions
 import (
 	"encoding/json"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/codex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -45,9 +46,9 @@ func seedCodexResume(p *LiveProjection, resp *codexResumeResponse) {
 	}
 	selected := turns[start:]
 	parsedItems := resp.items(start)
-	seedTurns := make([]*liveProjectionTurn, 0, len(selected))
+	seedTurns := make([]*liveview.Turn, 0, len(selected))
 	for _, turn := range selected {
-		projectedTurn := &liveProjectionTurn{
+		projectedTurn := &liveview.Turn{
 			ID:            turn.ID,
 			Status:        normalizeCodexResumeTurnStatus(turn.Status),
 			StartedAtMs:   codexTimestampMS(turn.StartedAt),

@@ -8,40 +8,14 @@ import (
 	threadsmodel "github.com/dkroshow/nano/internal/threads"
 )
 
-type agentExecutionError = threadsmodel.ExecutionError
-type agentResultMeta = hostedstore.ResultMeta
-type agentResumedTurnMatch = hostedstore.ResumedTurnMatch
-type agentSessionRecord = threadsmodel.SessionRecord
-type agentTerminalTurn = hostedstore.TerminalTurn
-type agentTurnRecord = threadsmodel.TurnRecord
-type attachmentRecord = hostedstore.Attachment
-type conversationView = liveviewmodel.View
-type durableTurnEvidence = liveviewmodel.DurableTurnEvidence
-type hostedAttachmentView = hostedstore.AttachmentView
-type hostedMetadataName = hostedstore.MetadataName
-type hostedMetadataView = hostedstore.MetadataView
-type liveProjectionItem = liveviewmodel.Item
-type liveProjectionPage = liveviewmodel.Page
-type liveProjectionRuntime = liveviewmodel.Runtime
-type liveProjectionSnapshot = liveviewmodel.Snapshot
-type liveProjectionTurn = liveviewmodel.Turn
-type liveProjectionUpdate = liveviewmodel.Update
-type liveTextStatus = liveviewmodel.Status
-type metadataEvent = hostedstore.MetadataEvent
-type metadataEventFilter = hostedstore.MetadataEventFilter
-type metadataEventPage = hostedstore.MetadataEventPage
-type nativeResolution = hostedstore.NativeResolution
-type queuedTurnRecord = promptsmodel.QueuedTurn
-type threadDiagnostic = observabilitymodel.ThreadDiagnostic
-
 const agentTurnCompleted = threadsmodel.AgentTurnCompleted
 const agentTurnDeliveryUnknown = threadsmodel.AgentTurnDeliveryUnknown
 const agentTurnFailed = threadsmodel.AgentTurnFailed
 const agentTurnInterrupted = threadsmodel.AgentTurnInterrupted
 const agentTurnRunning = threadsmodel.AgentTurnRunning
 const conversationPageMaxRows = liveviewmodel.PageMaxRows
-const conversationViewFull conversationView = liveviewmodel.Full
-const conversationViewMessages conversationView = liveviewmodel.Messages
+const conversationViewFull liveviewmodel.View = liveviewmodel.Full
+const conversationViewMessages liveviewmodel.View = liveviewmodel.Messages
 const liveProjectionStateTurnCap = liveviewmodel.StateTurnCap
 const liveProjectionTurnTail = liveviewmodel.TurnTail
 const liveProjectionVersion = liveviewmodel.Version

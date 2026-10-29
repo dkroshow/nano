@@ -62,7 +62,7 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 			sess.agentExecutions = executions
 			t.Cleanup(sess.Close)
 
-			if err := sess.BeginProviderSpawn(providerRequest{Provider: "grok", Mode: "resume", ThreadID: sess.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {
+			if err := sess.BeginProviderSpawn(ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -153,7 +153,7 @@ func waitForGrokAttempts(t *testing.T, stateDir string, want int) {
 	t.Fatalf("Grok ACP attempts never reached %d", want)
 }
 
-func waitForGrokStatus(t *testing.T, sess *session, want string) {
+func waitForGrokStatus(t *testing.T, sess *Session, want string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

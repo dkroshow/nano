@@ -27,7 +27,7 @@ type claudeHandoff struct {
 	catalog    *gateCatalog
 	path       string
 	threadID   string
-	session    *session
+	session    *sessions.Session
 	projection *sessions.LiveProjection
 	at         time.Time
 	sequence   uint64
@@ -51,10 +51,10 @@ func newClaudeHandoff(t *testing.T) *claudeHandoff {
 	h.threadID = h.catalog.threadID(t, handoffNative, 2)
 
 	h.projection = newLiveProjection("claude", "hosted-handoff")
-	h.runtime = newProviderRuntimeFixture(t, sessionConfig{ID: "session-handoff", Provider: "claude", HostedThreadID: "hosted-handoff", Projection: h.projection}, handoffNative, "")
+	h.runtime = newProviderRuntimeFixture(t, sessions.Config{ID: "session-handoff", Provider: "claude", HostedThreadID: "hosted-handoff", Projection: h.projection}, handoffNative, "")
 	h.session = h.runtime.session
 	server := h.catalog.server
-	seedTestSessionRegistry(&server.Registry, map[string]*session{h.session.ID(): h.session})
+	seedTestSessionRegistry(&server.Registry, map[string]*sessions.Session{h.session.ID(): h.session})
 	h.session.ConfigureSavedReaders(func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return server.hostedCatalog().SavedTurnEvidence(ctx, h.session.Provider(), h.session.ThreadID(), turnID)
 	}, nil, nil, nil, nil)

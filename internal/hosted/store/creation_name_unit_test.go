@@ -7,6 +7,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 func TestHostedCreationPersistsNameBeforeAnyNativeBind(t *testing.T) {
@@ -21,7 +22,7 @@ func TestHostedCreationPersistsNameBeforeAnyNativeBind(t *testing.T) {
 	}
 	hosted, created, err := executions.BeginNamedSessionWithSubscriptionsAndPlacement(
 		"creation-name-client", "request-hash", "codex", presentationShared, sidebarPlacementInvoker,
-		"created before bind", agentSessionRecord{}, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.None},
+		"created before bind", threads.SessionRecord{}, subscriptions.Choices{Inbox: subscriptions.None, Prompt: subscriptions.None},
 	)
 	if err != nil || !created || hosted.NativeThreadID != "" {
 		t.Fatalf("create = %+v, created=%v, err=%v", hosted, created, err)

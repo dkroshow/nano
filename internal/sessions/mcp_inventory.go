@@ -28,16 +28,11 @@ const mcpInventoryTimeout = 30 * time.Second
 // (verified against the real daemon: 0.84s/215 KB vs 1.4s/235 KB for `full`).
 const mcpInventoryDetail = "toolsAndAuthOnly"
 
-// mcpInventory is the projected registry: server names plus their tool names.
-// Deliberately not the raw response — codex_apps alone ships 244 KB of tool
-// schemas that nothing reads.
-type mcpInventory = inspection.MCPInventory
-
 // mcpServers returns the cached registry, fetching it from app-server on a
 // miss. The app-server call deliberately runs without the cache lock held: it
 // can take seconds, and an invalidation arriving from the wire in the meantime
 // must not block behind it.
-func (sess *Session) mcpServers(ctx context.Context) (*mcpInventory, error) {
+func (sess *Session) mcpServers(ctx context.Context) (*inspection.MCPInventory, error) {
 	cached, generation := sess.mcp.Cached()
 	if cached != nil {
 		return cached, nil

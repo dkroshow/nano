@@ -14,6 +14,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -25,7 +26,7 @@ import (
 // the final id from the live frames: a subagent's answer and commentary after
 // the final answer must not stand for the parent's, or the saved lookup
 // refuses the parent's own saved answer.
-func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) {
+func TestOperationHTTPUsesSavedFinalInsteadOfWireText(t *testing.T) {
 	for _, test := range []struct{ provider, path, item string }{
 		{"codex", "wire", "new-answer"}, {"codex", "joined", "new-answer"}, {"codex", "resume", "new-answer"},
 		{"claude", "wire", "new-message:0"}, {"grok", "wire", "new-agent-event"},
@@ -47,16 +48,16 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			switch test.path {
 			case "wire":
 				if test.provider == "codex" {
-					sess := h.attach("codex", nil, func(cfg *sessionConfig) { cfg.AgentExecutions = store })
+					sess := h.attach("codex", nil, func(cfg *sessions.Config) { cfg.AgentExecutions = store })
 					frame, _ := json.Marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": h.fixture.native, "turn": map[string]any{"id": turn, "status": "completed"}}})
 					h.runtimes[sess].emitAndWait(t, frame)
 				} else {
 					err = store.MarkTurnTerminal(test.provider, h.fixture.native, turn, agentTurnCompleted, nil, "", "")
 				}
 			case "joined":
-				err = store.FinishJoinedTurn(op.ID, turn, agentTurnCompleted, nil, "incomplete owner", item, agentResultMeta{})
+				err = store.FinishJoinedTurn(op.ID, turn, agentTurnCompleted, nil, "incomplete owner", item, hostedstore.ResultMeta{})
 			case "resume":
-				marks := []agentTerminalTurn{{ProviderTurnID: turn, Status: agentTurnCompleted, Response: "resume prefix", ItemID: item}}
+				marks := []hostedstore.TerminalTurn{{ProviderTurnID: turn, Status: agentTurnCompleted, Response: "resume prefix", ItemID: item}}
 				matches := store.ResumedTurnMatches(op.HostedThreadID, "codex", h.fixture.native, marks)
 				_, err = store.MarkResumedTurnsTerminal(op.HostedThreadID, "codex", h.fixture.native, marks, matches)
 			}

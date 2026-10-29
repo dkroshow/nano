@@ -8,6 +8,7 @@ import (
 	"time"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -45,7 +46,7 @@ func TestNativeRecoveryRetiredAliasKeepsHistoricalRouteWhileReplacementLive(t *t
 	if _, err := store.Control().CanonicalDatabase().Exec(`INSERT INTO hosted_native_recoveries(hosted_thread_id,old_native_id,new_native_id,state,record_json,client_recovery_id) VALUES(?,?,?,'activated','{}','reader-test')`, record.ID, threadReferenceUUID, replacement); err != nil {
 		t.Fatal(err)
 	}
-	s.RegisterSession(configuredFixtureSession(t, sessionConfig{ID: sessionID, HostedThreadID: record.ID, Provider: "codex", AgentExecutions: store, Metadata: store.Control(), CreatedAt: time.Now()}, replacement, "ready", ""))
+	s.RegisterSession(configuredFixtureSession(t, sessions.Config{ID: sessionID, HostedThreadID: record.ID, Provider: "codex", AgentExecutions: store, Metadata: store.Control(), CreatedAt: time.Now()}, replacement, "ready", ""))
 	status, body := resolveReference(t, s, threadReferenceUUID)
 	if status != http.StatusOK || body.State != "resolved" || body.Target == nil || body.Target.Route != "historical" || body.Target.NativeThreadID != threadReferenceUUID || body.Target.HostedThreadID != record.ID {
 		t.Fatalf("retired native must retain historical route while replacement is live: HTTP=%d response=%+v target=%+v", status, body, body.Target)
@@ -102,7 +103,7 @@ func TestThreadReferenceNativeLiveHostedContinuation(t *testing.T) {
 	s, store := newThreadReferenceServer(t, nil)
 	s.agentExecutions, _ = newControlAgentExecutionStore(store.Control(), "empty-reader")
 	record := createReferenceHostedRecord(t, store, threadReferenceUUID)
-	s.RegisterSession(configuredFixtureSession(t, sessionConfig{ID: "live-session", Provider: "codex", HostedThreadID: record.ID, CreatedAt: time.Now()}, threadReferenceUUID, "ready", ""))
+	s.RegisterSession(configuredFixtureSession(t, sessions.Config{ID: "live-session", Provider: "codex", HostedThreadID: record.ID, CreatedAt: time.Now()}, threadReferenceUUID, "ready", ""))
 
 	status, body := resolveReference(t, s, threadReferenceUUID)
 	if status != http.StatusOK || body.State != "resolved" || body.Target == nil {

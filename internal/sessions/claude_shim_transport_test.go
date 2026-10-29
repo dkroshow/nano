@@ -16,6 +16,10 @@ import (
 	"time"
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/testsupport"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
 // Failure caught: the shim decodes a session's whole spool before it answers
@@ -34,22 +38,22 @@ func TestClaudeShimAttachTimeoutFollowsTheSpoolAndStaysBounded(t *testing.T) {
 	}
 }
 
-func claudeWireEvents(sess *session) []wireEvent {
+func claudeWireEvents(sess *Session) []protocol.Event {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	return append([]wireEvent(nil), sess.events...)
+	return append([]protocol.Event(nil), sess.events...)
 }
 
 // waitForClaudeThreadID waits for the native id the child announces on its
 // system.init. A claude session now goes "ready" as soon as its transport is up
 // (docs/decisions/claude-ready-on-transport.md), so status is no longer a proxy
 // for "the handshake landed" — the identity is what these assertions are about.
-func waitForClaudeThreadID(t *testing.T, sess *session, want string) {
+func waitForClaudeThreadID(t *testing.T, sess *Session, want string) {
 	t.Helper()
 	waitForClaude(t, "native thread id "+want, func() bool { return sess.Summary().ThreadID == want })
 }
 
-func waitForClaudeStatus(t *testing.T, sess *session, want string) {
+func waitForClaudeStatus(t *testing.T, sess *Session, want string) {
 	t.Helper()
 	waitForClaude(t, "session status "+want, func() bool { return sess.Summary().Status == want })
 }
@@ -65,7 +69,7 @@ func claudeShimSpawnRequest(sess *Session, shimURL string) ProviderRequest {
 // produces it. A child that is up and streaming is a session the operator can
 // type into, and that is what "ready" has to mean.
 func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -95,7 +99,7 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 		t.Fatalf("summary = %+v, want the shim handle as provisional identity", sum)
 	}
 	recs := attachments.All()
-	want := attachmentRecord{
+	want := hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "shim-1", HostedThreadID: sess.HostedThreadID(),
 		Bin: "/fake/claude", Args: claudeArgs(req), ShimSessionID: "shim-1",
 		PendingName: "overnight run",
@@ -112,7 +116,7 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 // holds no init line — the shim started the child, nothing has been typed yet —
 // must not leave a perfectly live session stuck at "starting".
 func TestClaudeAttachIsReadyWithoutAReplayedInit(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -126,7 +130,7 @@ func TestClaudeAttachIsReadyWithoutAReplayedInit(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, attachmentRecord{})
+	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -142,7 +146,7 @@ func TestClaudeAttachIsReadyWithoutAReplayedInit(t *testing.T) {
 // because this transport's child outlives nano, remembers the attachment with
 // the posture a `--resume` fallback would need.
 func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -195,7 +199,7 @@ func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
 
 	// The init retires the provisional record (the shim handle that stood in
 	// for the native id), leaving exactly the real one.
-	want := attachmentRecord{
+	want := hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: sess.HostedThreadID(),
 		Bin: "/fake/claude", Args: claudeArgs(req),
 		ShimSessionID: "cs_shim1",
@@ -212,7 +216,7 @@ func TestClaudeShimStartRecordsWireAndRemembersAttachment(t *testing.T) {
 // SendTurn goes out as session/input and is recorded exactly once: the shim
 // spools the send line but never echoes it live, so there is no duplicate.
 func TestClaudeShimSendTurnRecordsSendOnce(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -248,7 +252,7 @@ func TestClaudeShimSendTurnRecordsSendOnce(t *testing.T) {
 }
 
 func TestClaudeShimSendTurnPreservesSubmissionEventUUID(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -287,17 +291,17 @@ func TestClaudeShimSendTurnPreservesSubmissionEventUUID(t *testing.T) {
 func TestClaudeShimChildDeathMarksSessionExited(t *testing.T) {
 	cases := []struct {
 		name string
-		end  func(c *shimConn)
+		end  func(c *claudeshim.Conn)
 	}{
-		{"exited notification", func(c *shimConn) {
+		{"exited notification", func(c *claudeshim.Conn) {
 			c.Notify(shimMethodExited, map[string]any{"shimSessionId": "shim-1", "exitCode": 0})
 			c.AnswerRest()
 		}},
-		{"connection drop", func(c *shimConn) {}}, // returning closes the conn
+		{"connection drop", func(c *claudeshim.Conn) {}}, // returning closes the conn
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			shim := newFakeShim(t, func(c *shimConn) {
+			shim := newFakeShim(t, func(c *claudeshim.Conn) {
 				start, ok := c.Next()
 				if !ok {
 					return
@@ -331,7 +335,7 @@ func TestClaudeShimUnreachableFallsBackToDirectChild(t *testing.T) {
 	deadURL := "ws" + strings.TrimPrefix(dead.URL, "http")
 	dead.Close()
 
-	logs := &syncBuffer{}
+	logs := &testsupport.LogBuffer{}
 	log.SetOutput(logs)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 
@@ -396,7 +400,7 @@ func TestAttachClaudeSessionReplaysThenFollowsLive(t *testing.T) {
 	const resultLine = `{"type":"result","subtype":"success"}`
 	const liveLine = `{"type":"assistant","message":{"role":"assistant"}}`
 
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -416,7 +420,7 @@ func TestAttachClaudeSessionReplaysThenFollowsLive(t *testing.T) {
 
 	sess, _ := claudeTestSession(t)
 	posture := claudeSpawnPosture{Bin: "/fake/claude", Args: []string{"-p"}}
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, posture, attachmentRecord{})
+	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, posture, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -461,7 +465,7 @@ func TestAttachClaudeSessionReplaysThenFollowsLive(t *testing.T) {
 
 func TestClaudeShimTransportCarriesAcceptedItemAndResultTurnID(t *testing.T) {
 	const turnID = "claude:nht_claude_test:7"
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		start, ok := c.Next()
 		if !ok {
 			return
@@ -545,7 +549,7 @@ func TestClaudeShimTransportCarriesAcceptedItemAndResultTurnID(t *testing.T) {
 // Attaching to a session whose child already died replays first, then ends
 // exited — the shim's exited notification follows replayDone.
 func TestAttachClaudeSessionExitedStateEndsExited(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -561,7 +565,7 @@ func TestAttachClaudeSessionExitedStateEndsExited(t *testing.T) {
 	})
 
 	sess, _ := claudeTestSession(t)
-	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, attachmentRecord{})
+	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
 	}
@@ -588,7 +592,7 @@ func TestClaudeAttachWaitsForReplayProcessing(t *testing.T) {
 			unblock := func() { releaseOnce.Do(func() { close(release) }) }
 			defer unblock()
 			replaySent := make(chan struct{})
-			shim := newFakeShim(t, func(c *shimConn) {
+			shim := newFakeShim(t, func(c *claudeshim.Conn) {
 				attach, ok := c.Next()
 				if !ok {
 					return
@@ -619,7 +623,7 @@ func TestClaudeAttachWaitsForReplayProcessing(t *testing.T) {
 			}
 			attached := make(chan result, 1)
 			go func() {
-				c, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, attachmentRecord{})
+				c, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 				attached <- result{c, err}
 			}()
 			select {
@@ -666,7 +670,7 @@ func TestClaudeAttachWaitsForReplayProcessing(t *testing.T) {
 
 func TestClaudeAttachRejectsReplayWhenProcessingLoopClosed(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -682,7 +686,7 @@ func TestClaudeAttachRejectsReplayWhenProcessingLoopClosed(t *testing.T) {
 		c.Notify(shimMethodReplayDone, map[string]any{"shimSessionId": "shim-1", "lastSeq": 1})
 		c.AnswerRest()
 	})
-	c, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, attachmentRecord{})
+	c, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 	if c != nil {
 		defer c.Close()
 	}
@@ -705,7 +709,7 @@ func TestAttachClaudeSessionTypedErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			shim := newFakeShim(t, func(c *shimConn) {
+			shim := newFakeShim(t, func(c *claudeshim.Conn) {
 				attach, ok := c.Next()
 				if !ok {
 					return
@@ -714,7 +718,7 @@ func TestAttachClaudeSessionTypedErrors(t *testing.T) {
 				c.AnswerRest()
 			})
 			sess, _ := claudeTestSession(t)
-			claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, attachmentRecord{})
+			claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("attachClaudeSession err = %v, want %v", err, tc.want)
 			}
@@ -734,7 +738,7 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 	const largeReplayTimeout = 30 * time.Second
 	writeResult := make(chan int, 1)
 	padding := strings.Repeat("x", 8*1024)
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -779,7 +783,7 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 		err    error
 	}, 1)
 	go func() {
-		claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, attachmentRecord{})
+		claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 		attached <- struct {
 			claude *claudeSession
 			err    error
@@ -923,7 +927,7 @@ func TestClaudeShimNotificationIngestionDoesNotBlockOnProjection(t *testing.T) {
 // soon as the attach becomes ready.
 func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	replaySent := make(chan struct{})
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		attach, ok := c.Next()
 		if !ok {
 			return
@@ -953,7 +957,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 		err    error
 	}, 1)
 	go func() {
-		claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, attachmentRecord{})
+		claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, hostedstore.Attachment{})
 		attached <- struct {
 			claude *claudeSession
 			err    error

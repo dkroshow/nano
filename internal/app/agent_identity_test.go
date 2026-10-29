@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // End to end through spawnSession: a New Window (UI-path) claude start reaches
@@ -21,7 +22,7 @@ func TestClaudeStartSpawnCarriesIdentity(t *testing.T) {
 	migrateTestControl(t, s.controlMetadata)
 	s.defaults.APIOrigin = "http://127.0.0.1:7999"
 
-	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Cwd: t.TempDir()}})
+	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "claude", Cwd: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("start spawn: %v", err)
 	}

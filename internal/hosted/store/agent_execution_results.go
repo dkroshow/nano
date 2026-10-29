@@ -9,23 +9,19 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-type agentTerminalTurn = TerminalTurn
-
-type agentResumedTurnMatch = ResumedTurnMatch
-
 // ResumedTurnMatches scans the fleet once before prompt-store reads, which
 // must happen outside the execution lock. Only the reply's turns are indexed.
-func (s *ExecutionStore) ResumedTurnMatches(hostedThreadID, provider, nativeThreadID string, turns []agentTerminalTurn) []agentResumedTurnMatch {
-	out := make([]agentResumedTurnMatch, len(turns))
+func (s *ExecutionStore) ResumedTurnMatches(hostedThreadID, provider, nativeThreadID string, turns []TerminalTurn) []ResumedTurnMatch {
+	out := make([]ResumedTurnMatch, len(turns))
 	if s == nil || len(turns) == 0 {
 		return out
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	matches := make(map[string]*agentResumedTurnMatch, len(turns))
+	matches := make(map[string]*ResumedTurnMatch, len(turns))
 	for _, turn := range turns {
 		if turn.ProviderTurnID != "" {
-			matches[turn.ProviderTurnID] = &agentResumedTurnMatch{}
+			matches[turn.ProviderTurnID] = &ResumedTurnMatch{}
 		}
 	}
 	for id, rec := range s.turns {
@@ -56,7 +52,7 @@ func (s *ExecutionStore) ResumedTurnMatches(hostedThreadID, provider, nativeThre
 // MarkResumedTurnsTerminal applies reply order without another fleet scan.
 // Records may finish or change binding during the unlocked prompt reads, so
 // each indexed operation is checked again before it supplies or takes a mark.
-func (s *ExecutionStore) MarkResumedTurnsTerminal(hostedThreadID, provider, nativeThreadID string, turns []agentTerminalTurn, matches []agentResumedTurnMatch) ([]bool, error) {
+func (s *ExecutionStore) MarkResumedTurnsTerminal(hostedThreadID, provider, nativeThreadID string, turns []TerminalTurn, matches []ResumedTurnMatch) ([]bool, error) {
 	endedWhileDown := make([]bool, len(turns))
 	if s == nil || len(turns) == 0 {
 		return endedWhileDown, nil
@@ -107,7 +103,7 @@ func (s *ExecutionStore) refreshAttentionLocked(hostedID string) {
 	if !s.attentionDirty[hostedID] {
 		return
 	}
-	latest, latestAt := agentTurnRecord{}, time.Time{}
+	latest, latestAt := threads.TurnRecord{}, time.Time{}
 	for id := range s.turnsByHosted[hostedID] {
 		rec := s.turns[id]
 		// Compared as times: RFC3339Nano trims trailing zeros, so as text
@@ -157,7 +153,7 @@ func (s *ExecutionStore) SessionNeedsAttention(hostedID string) bool {
 }
 
 // MarkTurnDelivery records a provider delivery outcome.
-func (s *ExecutionStore) MarkTurnDelivery(operationID, providerTurnID, status string, executionErr *agentExecutionError) error {
+func (s *ExecutionStore) MarkTurnDelivery(operationID, providerTurnID, status string, executionErr *threads.ExecutionError) error {
 	if s == nil || operationID == "" {
 		return nil
 	}
@@ -168,7 +164,7 @@ func (s *ExecutionStore) MarkTurnDelivery(operationID, providerTurnID, status st
 // caller owes with it, in the same transaction on the threads database: both
 // commit, or neither does. with runs even when the operation keeps its
 // outcome.
-func (s *ExecutionStore) MarkTurnDeliveryWith(operationID, providerTurnID, status string, executionErr *agentExecutionError, with func(*sql.Tx) error) error {
+func (s *ExecutionStore) MarkTurnDeliveryWith(operationID, providerTurnID, status string, executionErr *threads.ExecutionError, with func(*sql.Tx) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.turns[operationID]
@@ -224,10 +220,8 @@ func (s *ExecutionStore) observeCandidateLocked(id, itemID, phase, response stri
 	return true
 }
 
-type agentResultMeta = ResultMeta
-
 // MarkTurnTerminal records terminal provider evidence for matching operations.
-func (s *ExecutionStore) MarkTurnTerminal(provider, nativeThreadID, providerTurnID, status string, executionErr *agentExecutionError, response, itemID string, resultMeta ...agentResultMeta) error {
+func (s *ExecutionStore) MarkTurnTerminal(provider, nativeThreadID, providerTurnID, status string, executionErr *threads.ExecutionError, response, itemID string, resultMeta ...ResultMeta) error {
 	if s == nil || providerTurnID == "" {
 		return nil
 	}
@@ -252,12 +246,12 @@ func (s *ExecutionStore) MarkTurnTerminal(provider, nativeThreadID, providerTurn
 	return s.persistAndNotifyLocked()
 }
 
-func (s *ExecutionStore) markTurnTerminalLocked(id, status string, executionErr *agentExecutionError, response, itemID string, resultMeta ...agentResultMeta) bool {
+func (s *ExecutionStore) markTurnTerminalLocked(id, status string, executionErr *threads.ExecutionError, response, itemID string, resultMeta ...ResultMeta) bool {
 	rec, found := s.turns[id]
 	if !found || threads.TurnTerminal(rec.Status) {
 		return false
 	}
-	meta := agentResultMeta{}
+	meta := ResultMeta{}
 	if len(resultMeta) > 0 {
 		meta = resultMeta[0]
 	}
@@ -267,7 +261,7 @@ func (s *ExecutionStore) markTurnTerminalLocked(id, status string, executionErr 
 		if itemID == "" {
 			itemID = rec.CandidateItemID
 		}
-		meta = agentResultMeta{Bytes: rec.CandidateBytes, Truncated: rec.CandidateTruncated}
+		meta = ResultMeta{Bytes: rec.CandidateBytes, Truncated: rec.CandidateTruncated}
 	}
 	return s.applyTurnFinishLocked(id, status, executionErr, response, itemID, meta)
 }
@@ -275,7 +269,7 @@ func (s *ExecutionStore) markTurnTerminalLocked(id, status string, executionErr 
 // FinishJoinedTurn finishes an operation whose own prompt the saved
 // transcript proved part of a provider turn, with the turn's recorded outcome
 // and the one final answer resolved for that turn, exactly as given.
-func (s *ExecutionStore) FinishJoinedTurn(operationID, providerTurnID, outcome string, executionErr *agentExecutionError, response, itemID string, meta agentResultMeta) error {
+func (s *ExecutionStore) FinishJoinedTurn(operationID, providerTurnID, outcome string, executionErr *threads.ExecutionError, response, itemID string, meta ResultMeta) error {
 	if s == nil {
 		return nil
 	}
@@ -289,7 +283,7 @@ func (s *ExecutionStore) FinishJoinedTurn(operationID, providerTurnID, outcome s
 
 // FinishResolvedTurn finishes an operation with an answer already read from
 // its own saved turn, so no saved-result wait follows.
-func (s *ExecutionStore) FinishResolvedTurn(operationID, providerTurnID, outcome string, executionErr *agentExecutionError, response, itemID string) error {
+func (s *ExecutionStore) FinishResolvedTurn(operationID, providerTurnID, outcome string, executionErr *threads.ExecutionError, response, itemID string) error {
 	if s == nil {
 		return nil
 	}
@@ -298,27 +292,27 @@ func (s *ExecutionStore) FinishResolvedTurn(operationID, providerTurnID, outcome
 	if rec, ok := s.turns[operationID]; !ok || rec.ProviderTurnID != providerTurnID {
 		return nil
 	}
-	if !s.applyResolvedTurnFinishLocked(operationID, outcome, executionErr, response, itemID, agentResultMeta{}) {
+	if !s.applyResolvedTurnFinishLocked(operationID, outcome, executionErr, response, itemID, ResultMeta{}) {
 		return nil
 	}
 	return s.persistAndNotifyLocked()
 }
 
-func (s *ExecutionStore) finishTurnLocked(id, status string, executionErr *agentExecutionError, response, itemID string, meta agentResultMeta) error {
+func (s *ExecutionStore) finishTurnLocked(id, status string, executionErr *threads.ExecutionError, response, itemID string, meta ResultMeta) error {
 	if !s.applyTurnFinishLocked(id, status, executionErr, response, itemID, meta) {
 		return nil
 	}
 	return s.persistAndNotifyLocked()
 }
 
-func (s *ExecutionStore) applyTurnFinishLocked(id, status string, executionErr *agentExecutionError, response, itemID string, meta agentResultMeta) bool {
+func (s *ExecutionStore) applyTurnFinishLocked(id, status string, executionErr *threads.ExecutionError, response, itemID string, meta ResultMeta) bool {
 	if s.savedResultRead != nil && threads.NormalizeTerminalStatus(status) == agentTurnCompleted {
 		return s.awaitSavedResultLocked(id, itemID)
 	}
 	return s.applyResolvedTurnFinishLocked(id, status, executionErr, response, itemID, meta)
 }
 
-func (s *ExecutionStore) applyResolvedTurnFinishLocked(id, status string, executionErr *agentExecutionError, response, itemID string, meta agentResultMeta) bool {
+func (s *ExecutionStore) applyResolvedTurnFinishLocked(id, status string, executionErr *threads.ExecutionError, response, itemID string, meta ResultMeta) bool {
 	rec, found := s.turns[id]
 	if !found || threads.TurnTerminal(rec.Status) && !(threads.AnswerNotSaved(rec) && status == agentTurnCompleted) {
 		return false
@@ -380,7 +374,7 @@ func (s *ExecutionStore) MarkWaiting(sessionID, providerTurnID string, waiting b
 }
 
 // MarkSessionTurns sets the outcome of the session’s open operations.
-func (s *ExecutionStore) MarkSessionTurns(sessionID, status string, executionErr *agentExecutionError) error {
+func (s *ExecutionStore) MarkSessionTurns(sessionID, status string, executionErr *threads.ExecutionError) error {
 	if s == nil || sessionID == "" {
 		return nil
 	}
@@ -413,9 +407,9 @@ func (s *ExecutionStore) MarkSessionTurns(sessionID, status string, executionErr
 // among the operations bound to that turn in that native thread: one already
 // finished with it, or one that observed it on the wire. Unlike boundToTurn,
 // a record without a native thread never supplies another member's answer.
-func (s *ExecutionStore) SharedTurnResult(hostedThreadID, provider, nativeThreadID, providerTurnID, finalItemID string) (string, agentResultMeta, bool) {
+func (s *ExecutionStore) SharedTurnResult(hostedThreadID, provider, nativeThreadID, providerTurnID, finalItemID string) (string, ResultMeta, bool) {
 	if s == nil || finalItemID == "" || nativeThreadID == "" {
-		return "", agentResultMeta{}, false
+		return "", ResultMeta{}, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -424,13 +418,13 @@ func (s *ExecutionStore) SharedTurnResult(hostedThreadID, provider, nativeThread
 			continue
 		}
 		if rec.Status == agentTurnCompleted && rec.FinalItemID == finalItemID {
-			return rec.FinalResponse, agentResultMeta{Bytes: rec.FinalResponseBytes, Truncated: rec.FinalResponseTruncated}, true
+			return rec.FinalResponse, ResultMeta{Bytes: rec.FinalResponseBytes, Truncated: rec.FinalResponseTruncated}, true
 		}
 		if rec.CandidateItemID == finalItemID {
-			return rec.CandidateResponse, agentResultMeta{Bytes: rec.CandidateBytes, Truncated: rec.CandidateTruncated}, true
+			return rec.CandidateResponse, ResultMeta{Bytes: rec.CandidateBytes, Truncated: rec.CandidateTruncated}, true
 		}
 	}
-	return "", agentResultMeta{}, false
+	return "", ResultMeta{}, false
 }
 
 // operationForTurnLocked finds the one operation a provider turn belongs to.
@@ -450,13 +444,13 @@ func (s *ExecutionStore) operationForTurnLocked(provider, nativeThreadID, provid
 	return found
 }
 
-func boundToTurn(rec agentTurnRecord, provider, nativeThreadID, providerTurnID string) bool {
+func boundToTurn(rec threads.TurnRecord, provider, nativeThreadID, providerTurnID string) bool {
 	return rec.Provider == provider && rec.ProviderTurnID == providerTurnID &&
 		(nativeThreadID == "" || rec.NativeThreadID == "" || rec.NativeThreadID == nativeThreadID)
 }
 
 // WaitTurn waits for an operation revision or the caller’s deadline.
-func (s *ExecutionStore) WaitTurn(ctx context.Context, id string, afterRevision int64, wait time.Duration) (agentTurnRecord, bool) {
+func (s *ExecutionStore) WaitTurn(ctx context.Context, id string, afterRevision int64, wait time.Duration) (threads.TurnRecord, bool) {
 	deadline := time.NewTimer(wait)
 	if wait <= 0 {
 		deadline.Stop()

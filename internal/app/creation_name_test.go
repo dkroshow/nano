@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -35,7 +36,7 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 		t.Fatal(err)
 	}
 	server := &server{catalog: catalog, controlMetadata: control}
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "creation-name", Provider: "claude", HostedThreadID: hosted.ID, CreationName: func() string {
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "creation-name", Provider: "claude", HostedThreadID: hosted.ID, CreationName: func() string {
 		name, _ := control.CreationName(hosted.ID)
 		return name
 	}, NameThread: func(provider, native, name string) {

@@ -11,8 +11,8 @@ type RecordReference struct{ HostedThreadID, Provider, NativeThreadID string }
 // control-store read. The ordinary point helper is ideal for one detail row,
 // but calling it for every graph node turns a cold sidebar read into more than
 // a thousand serialized SQLite queries.
-func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]agentSessionRecord, []bool) {
-	records := make([]agentSessionRecord, len(refs))
+func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]threadvalues.SessionRecord, []bool) {
+	records := make([]threadvalues.SessionRecord, len(refs))
 	found := make([]bool, len(refs))
 	if store == nil || len(refs) == 0 {
 		return records, found
@@ -20,7 +20,7 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]age
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	requested := map[attachmentKey]bool{}
+	requested := map[AttachmentKey]bool{}
 	for i, thread := range refs {
 		if thread.HostedThreadID != "" {
 			if record, ok := store.sessions[thread.HostedThreadID]; ok {
@@ -29,11 +29,11 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]age
 			continue
 		}
 		if thread.Provider != "" && thread.NativeThreadID != "" {
-			requested[attachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeThreadID}] = true
+			requested[AttachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeThreadID}] = true
 		}
 	}
 
-	claims := map[attachmentKey]string{}
+	claims := map[AttachmentKey]string{}
 	if store.control != nil && len(requested) > 0 {
 		rows, err := store.control.db.Query(`SELECT provider,native_thread_id,hosted_thread_id
 			FROM hosted_thread_native_ids WHERE retired_at IS NULL`)
@@ -46,7 +46,7 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]age
 				rows.Close()
 				return records, found
 			}
-			key := attachmentKey{Provider: provider, NativeThreadID: nativeID}
+			key := AttachmentKey{Provider: provider, NativeThreadID: nativeID}
 			if requested[key] {
 				claims[key] = hostedID
 			}
@@ -58,9 +58,9 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]age
 		rows.Close()
 	}
 
-	fallback := map[attachmentKey]agentSessionRecord{}
+	fallback := map[AttachmentKey]threadvalues.SessionRecord{}
 	for _, record := range store.sessions {
-		key := attachmentKey{Provider: record.Provider, NativeThreadID: record.NativeThreadID}
+		key := AttachmentKey{Provider: record.Provider, NativeThreadID: record.NativeThreadID}
 		if !requested[key] {
 			continue
 		}
@@ -80,7 +80,7 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]age
 		if found[i] || thread.Provider == "" || thread.NativeThreadID == "" {
 			continue
 		}
-		key := attachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeThreadID}
+		key := AttachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeThreadID}
 		if hostedID, claimed := claims[key]; claimed {
 			records[i], found[i] = store.sessions[hostedID]
 			if records[i].ID == "" {

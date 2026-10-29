@@ -22,7 +22,9 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	sessionstypes "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport"
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -95,7 +97,7 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.Att
 		turns:           turnStore,
 	}
 	t.Cleanup(func() {
-		sessions := make([]*session, 0, len(s.SnapshotSessions()))
+		sessions := make([]*sessionstypes.Session, 0, len(s.SnapshotSessions()))
 		for _, sess := range s.SnapshotSessions() {
 			sessions = append(sessions, sess)
 		}
@@ -194,12 +196,12 @@ func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID str
 		fixtureModel = "sonnet"
 	}
 	fixturePermission := fixtureArgumentValue(record.Args, "--permission-mode")
-	for _, field := range []postureFieldValue{{Field: "cwd", Value: fixtureCwd}, {Field: postureFieldModel, Value: fixtureModel}, {Field: postureFieldPermissionMode, Value: fixturePermission}} {
+	for _, field := range []hostedstore.FieldValue{{Field: "cwd", Value: fixtureCwd}, {Field: postureFieldModel, Value: fixtureModel}, {Field: postureFieldPermissionMode, Value: fixturePermission}} {
 		if field.Value == "" {
 			continue
 		}
 		key := fmt.Sprintf("fixture:%s:%d:%s:%s", hostedID, generation, field.Field, field.Value)
-		if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: field.Field, Value: field.Value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
+		if _, err := s.controlMetadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: hostedID, Field: field.Field, Value: field.Value, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation, SourceEventKey: key}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -209,12 +211,12 @@ func resumeBody(threadID string) string {
 	return `{"provider":"claude","mode":"resume","threadId":"` + threadID + `"}`
 }
 
-func spawnedSummary(t *testing.T, rec *httptest.ResponseRecorder) sessionSummary {
+func spawnedSummary(t *testing.T, rec *httptest.ResponseRecorder) sessionstypes.Summary {
 	t.Helper()
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resume status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessionstypes.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +228,7 @@ func spawnedSummary(t *testing.T, rec *httptest.ResponseRecorder) sessionSummary
 // (docs/decisions/claude-ready-on-transport.md), so status no longer marks the
 // handshake — a `--resume` successor's identity is the thing to wait on, and
 // waiting on it also proves the child was actually spawned.
-func waitForResumedThreadID(t *testing.T, s *server, sessionID, want string) sessionSummary {
+func waitForResumedThreadID(t *testing.T, s *server, sessionID, want string) sessionstypes.Summary {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -240,11 +242,11 @@ func waitForResumedThreadID(t *testing.T, s *server, sessionID, want string) ses
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("session %s never announced native id %q", sessionID, want)
-	return sessionSummary{}
+	return sessionstypes.Summary{}
 }
 
 // startArgs returns the argv of the shim's single session/start call.
-func startArgs(t *testing.T, shim *fakeShim) (bin string, args []string, cwd string) {
+func startArgs(t *testing.T, shim *shimfixture.Server) (bin string, args []string, cwd string) {
 	t.Helper()
 	starts := shim.CallsOf(shimMethodStart)
 	if len(starts) != 1 {
@@ -275,7 +277,7 @@ func seedHistoricalHostedClaudeWithoutAttachment(t *testing.T, s *server) string
 	if err := s.agentExecutions.BindSession(hostedID, "old-nano", claudeResumeThreadID, sessionStatusExited, presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	for _, event := range []metadataEvent{
+	for _, event := range []hostedstore.MetadataEvent{
 		{HostedThreadID: hostedID, Field: "cwd", Value: t.TempDir(), Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-no-attachment:cwd"},
 		{HostedThreadID: hostedID, Field: postureFieldModel, Value: "claude-fable-5", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-no-attachment:model"},
 		{HostedThreadID: hostedID, Field: postureFieldEffort, Value: "high", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-no-attachment:effort"},
@@ -342,7 +344,7 @@ func TestClaudeHistoricalHostedResumePreviewRebuildsTransportBaseline(t *testing
 func TestClaudeHistoricalHostedResumeCompletesNewPrompt(t *testing.T) {
 	const prompt = "continue the historical thread"
 	const answer = "historical resume works"
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *shimfixture.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {
@@ -404,8 +406,8 @@ func TestClaudeHistoricalHostedResumeCompletesNewPrompt(t *testing.T) {
 
 // resumeScript answers the whole resume conversation: attach as the test
 // dictates, then session/start for the fallback rung.
-func resumeScript(attach func(c *shimConn, call shimCall)) func(*shimConn) {
-	return func(c *shimConn) {
+func resumeScript(attach func(c *shimfixture.Conn, call shimfixture.Call)) func(*shimfixture.Conn) {
+	return func(c *shimfixture.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {
@@ -431,9 +433,9 @@ func resumeScript(attach func(c *shimConn, call shimCall)) func(*shimConn) {
 // detached with nothing spawned. Boundary: the resume ladder against a shim
 // that never answers session/attach, or drops the connection on it.
 func TestClaudeResumeStaysDetachedWhenShimAttachFailsUnproven(t *testing.T) {
-	for name, attach := range map[string]func(*shimConn, shimCall){
-		"timeout":            func(*shimConn, shimCall) {},
-		"dropped connection": func(c *shimConn, _ shimCall) { _ = c.Conn.Close() },
+	for name, attach := range map[string]func(*shimfixture.Conn, shimfixture.Call){
+		"timeout":            func(*shimfixture.Conn, shimfixture.Call) {},
+		"dropped connection": func(c *shimfixture.Conn, _ shimfixture.Call) { _ = c.Conn.Close() },
 	} {
 		t.Run(name, func(t *testing.T) {
 			shim := newFakeShim(t, resumeScript(attach))
@@ -458,7 +460,7 @@ func TestClaudeResumeStaysDetachedWhenShimAttachFailsUnproven(t *testing.T) {
 // same native id, identity re-derived from the replayed init — and the record
 // is refreshed rather than retired.
 func TestClaudeResumeAttachesLiveShimSession(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID,
 			"state": "running", "lastSeq": 1,
@@ -518,7 +520,7 @@ func TestClaudeResumeAttachesLiveShimSession(t *testing.T) {
 // `--resume` pair stripped, in canonical cwd — and the superseded record is
 // retired once the successor's init lands.
 func TestClaudeResumeFallsBackToResumeFlagOnSessionNotFound(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
@@ -564,7 +566,7 @@ func TestClaudeResumeFallsBackToResumeFlagOnSessionNotFound(t *testing.T) {
 // attaches by it, keeps the provisional identity (an empty spool replays no
 // init), and leaves the record for the real init to retire later.
 func TestClaudeResumeProvisionalAttachesByShimHandle(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-7", "nativeSessionId": "",
 			"state": "running", "lastSeq": 0,
@@ -608,7 +610,7 @@ func TestClaudeResumeProvisionalAttachesByShimHandle(t *testing.T) {
 // that could only fail — and the record is retired: an empty conversation lost
 // is nothing lost, while keeping it would offer a resume that can never work.
 func TestClaudeResumeProvisionalGoneRetiresTheRecord(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
@@ -650,7 +652,7 @@ func TestClaudeResumeProvisionalGoneKeepsARecordWhosePromptMayHaveBeenDelivered(
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+			shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 				c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 			}))
 			s, store := claudeResumeServer(t, shim.WSURL())
@@ -720,7 +722,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 			var attachStore *hostedstore.AttachmentStore
 			var nativeAtAttach hostedstore.Attachment
 			var sentLine string // the spool's first frame, which a live child replays
-			shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+			shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 				var params struct {
 					ShimSessionID   string `json:"shimSessionId"`
 					NativeSessionID string `json:"nativeSessionId"`
@@ -781,7 +783,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 				}
 			}
 			if tc.committed {
-				if err := control.ClaimNativeIDResolving(hostedID, "claude", "native-real", false, &nativeResolution{Handle: handle, Native: "native-real"}); err != nil {
+				if err := control.ClaimNativeIDResolving(hostedID, "claude", "native-real", false, &hostedstore.NativeResolution{Handle: handle, Native: "native-real"}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -909,7 +911,7 @@ func TestClaudeResumeFallsBackToDirectChildWhenShimUnreachable(t *testing.T) {
 	deadURL := "ws" + strings.TrimPrefix(dead.URL, "http")
 	dead.Close()
 
-	logs := &syncBuffer{}
+	logs := &testsupport.LogBuffer{}
 	t.Cleanup(func() {
 		if t.Failed() {
 			t.Logf("direct fallback logs: %s", logs.String())
@@ -943,7 +945,7 @@ func TestClaudeResumeFallsBackToDirectChildWhenShimUnreachable(t *testing.T) {
 // Two resumes of one thread: the second is the 409, naming the session
 // to jump to, and never reaches the shim.
 func TestClaudeResumeSecondAttachIs409(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID,
 			"state": "running", "lastSeq": 1,
@@ -979,7 +981,7 @@ func TestClaudeResumeSecondAttachIs409(t *testing.T) {
 // that window — the session claims the thread it is resuming before any wire
 // traffic, exactly as codex pre-claims its routing slot.
 func TestClaudeSecondResumeOnRespawnRungIs409(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *shimfixture.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {
@@ -1029,7 +1031,7 @@ func TestClaudeSecondResumeOnRespawnRungIs409(t *testing.T) {
 // holding the thread id it seeded at spawn; matching that corpse would turn
 // every later Resume click into a jump to the dead session instead of a retry.
 func TestClaudeFailedResumeDoesNotBlockTheRetry(t *testing.T) {
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *shimfixture.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {
@@ -1074,7 +1076,7 @@ func TestClaudeFailedResumeDoesNotBlockTheRetry(t *testing.T) {
 // away. (Its companion, TestClaudeResumeRefusesMissingWorkingDirectory, holds
 // the respawn rung to the readable refusal.)
 func TestClaudeResumeAttachRungIgnoresMissingWorkingDirectory(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID,
 			"state": "running", "lastSeq": 1,
@@ -1100,8 +1102,8 @@ func TestClaudeResumeAttachRungIgnoresMissingWorkingDirectory(t *testing.T) {
 // record from the live transport on every attach and cannot know what
 // conversation the session continued, so a whole-record write would erase
 // continuedFrom — silently, and only on the threads that had been resumed.
-func TestClaudeReattachKeepsContinuedFrom(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+func TestClaudeReattachPreservesStoredLineage(t *testing.T) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
@@ -1131,7 +1133,7 @@ func TestClaudeReattachKeepsContinuedFrom(t *testing.T) {
 // the one rung with no fallback: it surfaces as a plain error, never as a 409
 // pointing at a session id this nano does not have.
 func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.ReplyError(call, shimCodeSessionAttached, "session_attached")
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
@@ -1153,14 +1155,14 @@ func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
 // child is spawned, naming the path — the child would otherwise die looking for
 // a transcript under a path derived from it.
 func TestClaudeResumeRefusesMissingWorkingDirectory(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *shimfixture.Conn, call shimfixture.Call) {
 		c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 	}))
 	s, _ := claudeResumeServer(t, shim.WSURL())
 	gone := filepath.Join(t.TempDir(), "deleted-project")
 	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, gone)
 
-	_, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
+	_, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: sessionstypes.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
 	if err == nil {
 		t.Fatal("resume into a missing directory succeeded")
 	}
@@ -1184,7 +1186,7 @@ func TestClaudeResumeMissingTranscriptIsAReadableError(t *testing.T) {
 	// The shim loses the session, and the `--resume` child it then spawns
 	// answers with the failure line instead of an init — the whole ladder
 	// running out, as it does when the native JSONL is gone.
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *shimfixture.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {

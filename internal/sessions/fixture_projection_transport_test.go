@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
 func waitForCatalogWithin(t *testing.T, wait time.Duration, test func() bool) {
@@ -20,7 +22,7 @@ func waitForCatalogWithin(t *testing.T, wait time.Duration, test func() bool) {
 }
 
 // emitClaudeInit waits for a following wire frame so the init's name publication has finished.
-func emitClaudeInit(t *testing.T, sess *session, conn *shimConn, seq int64, native, model string) {
+func emitClaudeInit(t *testing.T, sess *Session, conn *claudeshim.Conn, seq int64, native, model string) {
 	t.Helper()
 	line, _ := json.Marshal(map[string]any{"type": "system", "subtype": "init", "session_id": native, "model": model})
 	conn.Line(seq, "recv", string(line))

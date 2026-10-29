@@ -11,10 +11,10 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 )
 
-func recordTestCompletedTurn(store *CompletedTurnStore, finish coreturns.Finish) (completedTurn, bool, error) {
+func recordTestCompletedTurn(store *CompletedTurnStore, finish coreturns.Finish) (coreturns.Record, bool, error) {
 	core, err := store.CoreStore(context.Background())
 	if err != nil {
-		return completedTurn{}, false, err
+		return coreturns.Record{}, false, err
 	}
 	return core.Finished(context.Background(), finish)
 }
@@ -165,10 +165,10 @@ func TestCompletedTurnStoreOrdersAndDeduplicates(t *testing.T) {
 	}
 }
 
-func (s *CompletedTurnStore) latest(target string) (completedTurn, error) {
+func (s *CompletedTurnStore) latest(target string) (coreturns.Record, error) {
 	store, err := s.CoreStore(context.Background())
 	if err != nil {
-		return completedTurn{}, err
+		return coreturns.Record{}, err
 	}
 	return store.Latest(context.Background(), target)
 }

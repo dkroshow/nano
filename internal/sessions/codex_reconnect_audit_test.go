@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/core/prompts"
+	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
-func reconnectTestSession(t *testing.T, daemon *codexDaemon, threadID string) *session {
+func reconnectTestSession(t *testing.T, daemon *CodexDaemon, threadID string) *Session {
 	t.Helper()
 	dir := t.TempDir()
 	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queue.json"))
@@ -28,14 +30,14 @@ func reconnectTestSession(t *testing.T, daemon *codexDaemon, threadID string) *s
 	return reconnectTestSessionWithStores(t, daemon, threadID, queue, attempts)
 }
 
-func reconnectTestSessionWithStores(t *testing.T, daemon *codexDaemon, threadID string, queue *queuedTurnStore, attempts *sendAttemptStore) *session {
+func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID string, queue *prompts.LegacyQueue, attempts *prompts.LegacyJournal) *Session {
 	t.Helper()
-	sess := &session{id: threadID,
+	sess := &Session{id: threadID,
 		provider:       "codex",
 		threadID:       threadID,
 		hostedThreadID: "hosted-" + threadID,
 		state:          map[string]json.RawMessage{},
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		projection:     newDeliveryTestProjection("codex"),
 		sendOps:        map[string]*turnSendOperation{},
 		turns:          queue.TransactionStore(),
@@ -57,7 +59,7 @@ func reconnectTestSessionWithStores(t *testing.T, daemon *codexDaemon, threadID 
 	return sess
 }
 
-func reconnectTestFleet(t *testing.T, daemon *codexDaemon, prefix string, count int) []*session {
+func reconnectTestFleet(t *testing.T, daemon *CodexDaemon, prefix string, count int) []*Session {
 	t.Helper()
 	// A production fleet shares one canonical turn database and its stores.
 	db, path, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "fleet.json"))
@@ -73,7 +75,7 @@ func reconnectTestFleet(t *testing.T, daemon *codexDaemon, prefix string, count 
 		t.Fatal(err)
 	}
 	mustBindTransactionalTurnStore(t, queue, attempts)
-	sessions := make([]*session, count)
+	sessions := make([]*Session, count)
 	for index := range sessions {
 		sessions[index] = reconnectTestSessionWithStores(t, daemon, fmt.Sprintf("%s-%03d", prefix, index), queue, attempts)
 	}
@@ -173,7 +175,7 @@ func TestReconnectAuditNativeMissingRequiresExactEvidence(t *testing.T) {
 			case "not-fallback":
 				sess.codexZeroTurnResume = false
 			case "accepted-history":
-				if err := JournalPut(sess.sendAttempts.(*sendAttemptStore), sendAttemptRecord{ClientActionID: "past", Provider: "codex", NativeThreadID: sess.ThreadID(), Status: sendAttemptAccepted}); err != nil {
+				if err := JournalPut(sess.sendAttempts.(*prompts.LegacyJournal), prompts.SendAttempt{ClientActionID: "past", Provider: "codex", NativeThreadID: sess.ThreadID(), Status: sendAttemptAccepted}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -248,13 +250,13 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = QueuePutSubmission(queue, queuedTurnRecord{ClientActionID: "journal-action", Provider: "codex",
+			_, _, err = QueuePutSubmission(queue, prompts.QueuedTurn{ClientActionID: "journal-action", Provider: "codex",
 				NativeThreadID: sess.ThreadID(), HostedThreadID: sess.HostedThreadID(), Text: "retained prompt",
 				TextHash: sendTextHash("retained prompt"), RequestHash: sendTextHash("retained prompt"), State: submissionQueued})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := JournalPut(attempts, sendAttemptRecord{ClientActionID: "journal-action", Provider: "codex", NativeThreadID: sess.ThreadID(),
+			if err := JournalPut(attempts, prompts.SendAttempt{ClientActionID: "journal-action", Provider: "codex", NativeThreadID: sess.ThreadID(),
 				TextHash: sendTextHash("retained prompt"), Status: status}); err != nil {
 				t.Fatal(err)
 			}
@@ -269,7 +271,7 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 			sess.turns = mustBindTransactionalTurnStore(t, sess.queuedTurns, sess.sendAttempts)
 			fake.SetReplyDelay("thread/resume", 100*time.Millisecond)
 			sess.setStatus("starting")
-			if err := startCodexSession(sess, daemon, providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID(), BootReattach: &bootProviderControl{}}); err != nil {
+			if err := startCodexSession(sess, daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID(), BootReattach: &BootControl{}}); err != nil {
 				t.Fatal(err)
 			}
 			waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 1 })

@@ -45,8 +45,8 @@ func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 	status := sess.projection.status()
 	writeStatus := func() bool {
 		raw, err := json.Marshal(struct {
-			Type   string          `json:"type"`
-			Status *liveTextStatus `json:"status,omitempty"`
+			Type   string           `json:"type"`
+			Status *liveview.Status `json:"status,omitempty"`
 		}{Type: "status", Status: &status})
 		return err == nil && write(raw)
 	}
@@ -100,7 +100,7 @@ func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 
 // fileConversationItems reads a file-only thread's saved rows for agents, in
 // the conversation item shape. Live text never appears here.
-func (sess *Session) fileConversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
+func (sess *Session) fileConversationItems(ctx context.Context, view liveview.View, before string, limit int) ([]liveview.Item, *liveview.Page, string, error) {
 	return sess.liveText.conversationItems(ctx, view, before, limit)
 }
 
@@ -108,14 +108,14 @@ func (sess *Session) fileConversationItems(ctx context.Context, view conversatio
 // rows plus the live status and pending questions. Status keeps the live
 // Projection's epoch and revision, the one cursor every status reader uses,
 // so an older answer never replaces a newer status.
-func (sess *Session) fileConversationSnapshot(ctx context.Context, view conversationView, before string, limit int) (liveProjectionSnapshot, error) {
+func (sess *Session) fileConversationSnapshot(ctx context.Context, view liveview.View, before string, limit int) (liveview.Snapshot, error) {
 	items, page, _, err := sess.fileConversationItems(ctx, view, before, limit)
 	if err != nil {
-		return liveProjectionSnapshot{}, err
+		return liveview.Snapshot{}, err
 	}
 	status := sess.projection.status()
-	return liveProjectionSnapshot{Version: liveProjectionVersion, Provider: sess.provider, NativeThreadID: sess.ThreadID(),
-		Epoch: status.Epoch, Revision: status.Revision, Items: items, Turns: []liveProjectionTurn{},
+	return liveview.Snapshot{Version: liveProjectionVersion, Provider: sess.provider, NativeThreadID: sess.ThreadID(),
+		Epoch: status.Epoch, Revision: status.Revision, Items: items, Turns: []liveview.Turn{},
 		Runtime: status.Runtime, Interactions: status.Interactions, Page: page}, nil
 }
 
@@ -124,7 +124,7 @@ func (sess *Session) fileConversationSnapshot(ctx context.Context, view conversa
 // rows.changed hint whenever the thread's saved rows change. It subscribes
 // before reading its snapshot, so no status change falls between them, and
 // ends when the status epoch changes, so the caller reconnects to a new one.
-func (sess *Session) handleFileConversationEvents(w http.ResponseWriter, r *http.Request, view conversationView) {
+func (sess *Session) handleFileConversationEvents(w http.ResponseWriter, r *http.Request, view liveview.View) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		httpapi.WriteHTTPError(w, "streaming unsupported", http.StatusInternalServerError)
@@ -150,7 +150,7 @@ func (sess *Session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		_, err = fmt.Fprintf(w, "data: %s\n\n", raw)
 		return err == nil
 	}
-	if !write(liveProjectionUpdate{Version: liveProjectionVersion, Op: projectionSnapshot, Epoch: snapshot.Epoch, Snapshot: &snapshot}) {
+	if !write(liveview.Update{Version: liveProjectionVersion, Op: projectionSnapshot, Epoch: snapshot.Epoch, Snapshot: &snapshot}) {
 		return
 	}
 	flusher.Flush()
@@ -198,8 +198,8 @@ func (sess *Session) handleFileConversationEvents(w http.ResponseWriter, r *http
 	}
 }
 
-func parseConversationView(r *http.Request, defaultView conversationView) (conversationView, error) {
-	view := conversationView(strings.TrimSpace(r.URL.Query().Get("view")))
+func parseConversationView(r *http.Request, defaultView liveview.View) (liveview.View, error) {
+	view := liveview.View(strings.TrimSpace(r.URL.Query().Get("view")))
 	if view == "" {
 		view = defaultView
 	}

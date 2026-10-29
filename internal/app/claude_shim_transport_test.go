@@ -10,18 +10,21 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/testsupport"
 )
 
 // claudeTestSession makes a session wired like a spawned one minus the spool:
 // wire events land in memory, attachment writes are captured.
-func claudeTestSessionConfig(t *testing.T) (sessionConfig, int64, *attachmentRecorder) {
+func claudeTestSessionConfig(t *testing.T) (sessions.Config, int64, *testsupport.AttachmentRecorder) {
 	t.Helper()
 	return providerSessionConfig(t, "claude")
 }
 
-func providerSessionConfig(t *testing.T, provider string) (sessionConfig, int64, *attachmentRecorder) {
+func providerSessionConfig(t *testing.T, provider string) (sessions.Config, int64, *testsupport.AttachmentRecorder) {
 	t.Helper()
-	recorder := &attachmentRecorder{}
+	recorder := &testsupport.AttachmentRecorder{}
 	metadata := newTestControlMetadata(t)
 	migrateTestControl(t, metadata)
 	const hostedID = "nht_claude_test"
@@ -46,7 +49,7 @@ func providerSessionConfig(t *testing.T, provider string) (sessionConfig, int64,
 	}
 	queue.BindTransactionStore(turnStore)
 	attempts.BindTransactionStore(turnStore)
-	cfg := sessionConfig{
+	cfg := sessions.Config{
 		ID: "sess-1", Provider: provider, HostedThreadID: hostedID,
 		CWD: t.TempDir(), CreatedAt: time.Now(), ProcessStarted: processStarted,
 		RememberAttachment: recorder.Remember, ForgetAttachment: recorder.Forget,
@@ -55,7 +58,7 @@ func providerSessionConfig(t *testing.T, provider string) (sessionConfig, int64,
 	return cfg, generation, recorder
 }
 
-func claudeTestSession(t *testing.T) (*session, *attachmentRecorder) {
+func claudeTestSession(t *testing.T) (*sessions.Session, *testsupport.AttachmentRecorder) {
 	cfg, generation, recorder := claudeTestSessionConfig(t)
 	sess := newSession(cfg)
 	if err := sess.InitializeBinding(generation); err != nil {
@@ -64,11 +67,11 @@ func claudeTestSession(t *testing.T) (*session, *attachmentRecorder) {
 	return sess, recorder
 }
 
-func claudeWireEvents(sess *session) []wireEvent {
+func claudeWireEvents(sess *sessions.Session) []protocol.Event {
 	recorder := httptest.NewRecorder()
 	sess.HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
 	var page struct {
-		Events []wireEvent `json:"events"`
+		Events []protocol.Event `json:"events"`
 	}
 	if recorder.Code != http.StatusOK {
 		panic(recorder.Body.String())
@@ -79,7 +82,7 @@ func claudeWireEvents(sess *session) []wireEvent {
 	return page.Events
 }
 
-func waitForClaudeStatus(t *testing.T, sess *session, want string) {
+func waitForClaudeStatus(t *testing.T, sess *sessions.Session, want string) {
 	t.Helper()
 	waitForClaude(t, "session status "+want, func() bool { return sess.Summary().Status == want })
 }
@@ -88,13 +91,13 @@ func waitForClaudeStatus(t *testing.T, sess *session, want string) {
 // system.init. A claude session now goes "ready" as soon as its transport is up
 // (docs/decisions/claude-ready-on-transport.md), so status is no longer a proxy
 // for "the handshake landed" — the identity is what these assertions are about.
-func waitForClaudeThreadID(t *testing.T, sess *session, want string) {
+func waitForClaudeThreadID(t *testing.T, sess *sessions.Session, want string) {
 	t.Helper()
 	waitForClaude(t, "native thread id "+want, func() bool { return sess.Summary().ThreadID == want })
 }
 
-func claudeShimSpawnRequest(sess *session, shimURL string) hostedmodel.SpawnRequest {
-	return hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude",
+func claudeShimSpawnRequest(sess *sessions.Session, shimURL string) hostedmodel.SpawnRequest {
+	return hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "claude",
 		Cwd:          sess.CWD(),
 		Model:        "sonnet",
 		ClaudeBin:    "/fake/claude",

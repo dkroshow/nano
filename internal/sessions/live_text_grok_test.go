@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -28,7 +29,7 @@ for line in sys.stdin:
 	}
 	c := protocol.NewClientCmd(exec.Command("python3", script))
 	sent := make(chan []byte, 1)
-	c.WireLog = func(d protocol.Direction, line []byte) {
+	c.WireLog = func(d wire.Direction, line []byte) {
 		if d == protocol.Send {
 			sent <- append([]byte(nil), line...)
 		}

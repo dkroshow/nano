@@ -37,7 +37,7 @@ func TestCompletedProviderUserMessageDoesNotSettleThePrompt(t *testing.T) {
 	turnStore := mustBindTransactionalTurnStore(t, queue, store)
 	seedAcceptedTransactionalTurn(t, turnStore, "hosted-thread", model.ProviderCodex, "native-thread", "action-wire-confirm", "turn-1", "ship it now")
 	projection := newLiveProjection("codex", "hosted-thread")
-	f := newProviderRuntimeFixture(t, sessionConfig{ID: "session-wire-confirm", Provider: "codex", HostedThreadID: "hosted-thread", Projection: projection, Turns: turnStore, QueuedTurns: queue, SendAttempts: store}, "native-thread", "")
+	f := newProviderRuntimeFixture(t, sessions.Config{ID: "session-wire-confirm", Provider: "codex", HostedThreadID: "hosted-thread", Projection: projection, Turns: turnStore, QueuedTurns: queue, SendAttempts: store}, "native-thread", "")
 
 	started := []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"provider-user-1","type":"userMessage","content":[{"type":"text","text":"ship it now"}]}}}`)
 	completed := []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"provider-user-1","type":"userMessage","content":[{"type":"text","text":"ship it now"}]}}}`)
@@ -63,7 +63,7 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: turnID, Status: "completed", CompletedAtMs: started + 1}}, turnID == "turn-1"
 	}, nil, nil, nil, nil)
-	s := testServerWithSessions(&server{catalog: newCatalogStoreFixture(t).source, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
+	s := testServerWithSessions(&server{catalog: newCatalogStoreFixture(t).source, Registry: newSessionRegistry()}, map[string]*sessions.Session{sess.ID(): sess})
 	fixtureOwners(
 
 		// Transcript notifications use the catalog's nth_ identity, while hosted
@@ -118,7 +118,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	for index := 0; index < attachedSessions; index++ {
 		id := fmt.Sprintf("session-%d", index)
 		nativeID := fmt.Sprintf("native-%d", index)
-		cfg := sessionConfig{ID: id, Provider: "codex", Projection: newLiveProjection("codex")}
+		cfg := sessions.Config{ID: id, Provider: "codex", Projection: newLiveProjection("codex")}
 		if id == "session-99" {
 			cfg.HostedThreadID = hosted.ID
 			cfg.PresentationMode = presentationBackground
@@ -282,7 +282,7 @@ func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 		Turns:    []threadindex.TranscriptTurn{{ID: "turn-0", FinalItemID: "durable-0"}},
 		Page:     threadindex.TranscriptPageInfo{StartSeq: 1, EndSeq: 1},
 	}}}
-	sess := newFixtureSession(sessionConfig{Provider: "codex", Projection: p}, nativeThreadID)
+	sess := newFixtureSession(sessions.Config{Provider: "codex", Projection: p}, nativeThreadID)
 	recorder := httptest.NewRecorder()
 	threadindex.NewHandlers(fake).HandleConversationHistory(recorder,
 		httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session/conversation/history", nil), sess.ThreadID())
@@ -323,16 +323,16 @@ func durableHousekeepingWindow(count int) []liveview.Item {
 
 // reconcileWithSavedTurn runs turn repair against one saved turn, which the
 // read returns only for its own exact id.
-func reconcileWithSavedTurn(sess *session, saved liveview.DurableTurnEvidence) {
+func reconcileWithSavedTurn(sess *sessions.Session, saved liveview.DurableTurnEvidence) {
 	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return saved, turnID == saved.Turn.ID
 	}, nil, nil, nil, nil)
 	sess.ReconcileDurableTurn(context.Background())
 }
 
-func durableTurnTestSession(t *testing.T, turnID string, startedAtMs int64, drop ...bool) (*session, *sessions.LiveProjection) {
+func durableTurnTestSession(t *testing.T, turnID string, startedAtMs int64, drop ...bool) (*sessions.Session, *sessions.LiveProjection) {
 	p := newLiveProjectionWithDeltaSetting("codex", len(drop) > 0 && drop[0])
-	f := newProviderRuntimeFixture(t, sessionConfig{ID: "session-1", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "", func(f *providerRuntimeFixture) {
+	f := newProviderRuntimeFixture(t, sessions.Config{ID: "session-1", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "", func(f *providerRuntimeFixture) {
 		f.resumeResult = map[string]any{"thread": map[string]any{"id": "native-thread", "turns": []any{map[string]any{"id": turnID, "status": "inProgress", "startedAt": startedAtMs / 1000}}}}
 	})
 	return f.session, p

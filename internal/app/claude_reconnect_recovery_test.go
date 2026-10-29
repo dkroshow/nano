@@ -14,13 +14,11 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/sessions"
 	replayfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
-
-type SpoolBuilder = replayfixture.SpoolBuilder
-type SpoolShim = replayfixture.SpoolShim
 
 var NewSpoolShim = replayfixture.NewSpoolShim
 
@@ -70,7 +68,7 @@ func waitForCompletedTurn(t *testing.T, s *server, hosted, TurnID string) coretu
 	return record
 }
 
-func sessionForNative(t *testing.T, s *server) *session {
+func sessionForNative(t *testing.T, s *server) *sessions.Session {
 	t.Helper()
 	sess := s.SessionForThread("claude", claudeResumeThreadID)
 	if sess == nil {
@@ -83,10 +81,10 @@ func sessionForNative(t *testing.T, s *server) *session {
 // anchor names the old prompt, and thousands of background frames followed.
 // Saved history already holds all of it, so nothing replays.
 func TestClaudeReconnectIdleStaleAnchorReplaysNothing(t *testing.T) {
-	var shim *SpoolShim
+	var shim *replayfixture.SpoolShim
 	shim = NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), true)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	turn := b.Prompt("done-action")
 	b.Message(turn, "done", "answer")
@@ -136,10 +134,10 @@ func claudeBacklogFrames(t *testing.T) int {
 // A prompt finished while Nano was away and background turns kept running
 // after it. Replay starts at the prompt's last message, so its one completion
 // lands with its final message and its own result's usage.
-func TestClaudeReconnectRecordsOfflineCompletionBehindBackgroundBacklog(t *testing.T) {
+func TestClaudeReconnectSavedCompletionBehindBacklog(t *testing.T) {
 	shim := NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), false)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	turn := b.Prompt("offline-action")
 	b.Message(turn, "tool", "working")
@@ -185,7 +183,7 @@ func TestClaudeReconnectMidMessageKeepsNativeBlockIdentity(t *testing.T) {
 		t.Run(fmt.Sprintf("prompted=%v", prompted), func(t *testing.T) {
 			shim := NewSpoolShim(t, nil)
 			s, hosted := reconnectServer(t, shim.WSURL(), false)
-			b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+			b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 			b.Add("recv", "", claudeInitLine)
 			turn := ""
 			if prompted {
@@ -219,7 +217,7 @@ func TestClaudeReconnectMidMessageKeepsNativeBlockIdentity(t *testing.T) {
 func TestClaudeReconnectInterruptedMessageDoesNotPinFloor(t *testing.T) {
 	shim := NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), false)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	b.OpenMessage("", "cut", "partial")
 	b.Result("")
@@ -239,7 +237,7 @@ func TestClaudeReconnectInterruptedMessageDoesNotPinFloor(t *testing.T) {
 func TestClaudeReconnectRecoversPendingPermissionOnce(t *testing.T) {
 	shim := NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), false)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	turn := b.Prompt("ask-action")
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "ask-action", turn, "prompt")
@@ -284,14 +282,14 @@ func TestClaudeReconnectRecoversPendingPermissionOnce(t *testing.T) {
 func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) {
 	cases := []struct {
 		name     string
-		spool    func(t *testing.T, s *server, hosted string, b *SpoolBuilder)
+		spool    func(t *testing.T, s *server, hosted string, b *replayfixture.SpoolBuilder)
 		accepted bool
 		LastSeq  int64
 		ok       bool
 	}{
 		{name: "missing spool with an unfinished accepted prompt", accepted: true, LastSeq: 3},
 		{name: "missing spool and a shim holding lines", LastSeq: 5},
-		{name: "malformed spool", accepted: true, LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *SpoolBuilder) {
+		{name: "malformed spool", accepted: true, LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *replayfixture.SpoolBuilder) {
 			path := writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames[:1]...)
 			file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 			if err != nil {
@@ -300,8 +298,8 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			_, _ = file.WriteString("{torn\n")
 			file.Close()
 		}},
-		{name: "spool of another conversation", LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *SpoolBuilder) {
-			Frames := append([]claudeTestFrame(nil), b.Frames...)
+		{name: "spool of another conversation", LastSeq: 3, spool: func(t *testing.T, s *server, hosted string, b *replayfixture.SpoolBuilder) {
+			Frames := append([]replayfixture.Frame(nil), b.Frames...)
 			Frames[0].Line = claudeSuccessorInitLine
 			writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, Frames...)
 		}},
@@ -314,7 +312,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			if err := os.Remove(filepath.Join(s.defaults.ClaudeShimSpools, hosted+".jsonl")); err != nil {
 				t.Fatal(err)
 			}
-			b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+			b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 			b.Add("recv", "", claudeInitLine)
 			turn := b.Prompt("unresolved-action")
 			b.OpenMessage(turn, "live", "streaming")
@@ -354,7 +352,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
 	shim := NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), false)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	b.Message("", "old", "old work")
 	b.Result("")
@@ -367,7 +365,7 @@ func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	shim.Frames = append(append([]claudeTestFrame(nil), b.Frames[:scanned+1]...), b.Frames[scanned:]...)
+	shim.Frames = append(append([]replayfixture.Frame(nil), b.Frames[:scanned+1]...), b.Frames[scanned:]...)
 
 	if response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID)); response.Code != http.StatusOK {
 		t.Fatalf("resume = %d %s", response.Code, response.Body.String())
@@ -392,7 +390,7 @@ func TestClaudeReconnectReplaysLinesAppendedAfterScan(t *testing.T) {
 func TestClaudeReconnectDoesNotResurrectRequestRetiredByItsResult(t *testing.T) {
 	shim := NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), false)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	turn := b.Prompt("retired-action")
 	seedAcceptedTransactionalTurn(t, s.turns, hosted, model.ProviderClaude, claudeResumeThreadID, "retired-action", turn, "prompt")
@@ -418,7 +416,7 @@ func TestClaudeReconnectDoesNotResurrectRequestRetiredByItsResult(t *testing.T) 
 // this attachment. A replay that never finishes ingesting must not reach the
 // `--resume` rung, which would start a second writer.
 func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *replayfixture.Conn, call replayfixture.Call) {
 		c.Reply(call, map[string]any{"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID, "state": "running", "lastSeq": 1})
 		c.Line(1, "recv", claudeInitLine)
 	}))
@@ -441,12 +439,12 @@ func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
 func TestClaudeReconnectRejectsReplayGap(t *testing.T) {
 	shim := NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), false)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	b.Message("", "a", "text")
 	b.Result("")
 	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, hosted, b.Frames[:2]...)
-	shim.Frames = append(append([]claudeTestFrame(nil), b.Frames[:2]...), b.Frames[3:]...)
+	shim.Frames = append(append([]replayfixture.Frame(nil), b.Frames[:2]...), b.Frames[3:]...)
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude recovery evidence is missing or unprovable") {
 		t.Fatalf("resume = %d %s, want a recovery-evidence failure", response.Code, response.Body.String())
@@ -463,10 +461,10 @@ func TestClaudeReconnectRejectsReplayGap(t *testing.T) {
 // neither publishes nor records a completion. The retry after the drain
 // acknowledges attaches and records the completion exactly once.
 
-func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
+func TestClaudeReconnectHTTPRetryWaitsForAbandonedDrain(t *testing.T) {
 	shim := NewSpoolShim(t, nil)
 	s, hosted := reconnectServer(t, shim.WSURL(), false)
-	b := &SpoolBuilder{Key: hosted, EventID: submissionEventID}
+	b := &replayfixture.SpoolBuilder{Key: hosted, EventID: submissionEventID}
 	b.Add("recv", "", claudeInitLine)
 	turn := b.Prompt("admitted-action")
 	b.Message(turn, "final", "answer")

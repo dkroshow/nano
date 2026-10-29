@@ -40,7 +40,7 @@ func (w *firstStatusWriter) Write(data []byte) (int, error) {
 	}
 	return n, err
 }
-func liveStatusForTest(t *testing.T, sess *session) liveTextStatus {
+func liveStatusForTest(t *testing.T, sess *sessions.Session) liveview.Status {
 	t.Helper()
 	if sess.LiveTextService() == nil {
 		sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, sess))
@@ -52,8 +52,8 @@ func liveStatusForTest(t *testing.T, sess *session) liveTextStatus {
 	for _, line := range bytes.Split(w.Body.Bytes(), []byte("\n")) {
 		if raw, ok := bytes.CutPrefix(line, []byte("data: ")); ok {
 			var message struct {
-				Type   string         `json:"type"`
-				Status liveTextStatus `json:"status"`
+				Type   string          `json:"type"`
+				Status liveview.Status `json:"status"`
 			}
 			if json.Unmarshal(raw, &message) == nil && message.Type == "status" {
 				return message.Status
@@ -61,7 +61,7 @@ func liveStatusForTest(t *testing.T, sess *session) liveTextStatus {
 		}
 	}
 	t.Fatal("live stream returned no initial status", w.Body.String())
-	return liveTextStatus{}
+	return liveview.Status{}
 }
 
 // projectionStream observes the same ordered turn and runtime events as a
@@ -126,7 +126,7 @@ func (w *projectionStream) Snapshot() liveview.Snapshot {
 	s.Turns = append([]liveview.Turn(nil), s.Turns...)
 	return s
 }
-func observeProjection(t *testing.T, sess *session) *projectionStream {
+func observeProjection(t *testing.T, sess *sessions.Session) *projectionStream {
 	t.Helper()
 	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
 	if err != nil {

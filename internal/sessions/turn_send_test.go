@@ -17,12 +17,13 @@ import (
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
-func observeTestTurnCompletion(t *testing.T, sess *session, turnID string) {
+func observeTestTurnCompletion(t *testing.T, sess *Session, turnID string) {
 	t.Helper()
 	finish := coreturns.Finish{HostedThreadID: sess.HostedThreadID(), Provider: sess.Provider(), NativeThreadID: sess.ThreadID(), TurnID: turnID, Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter"}
 	if err := sess.core.Observe(context.Background(), coresession.AdapterEvent{ProviderTurnID: turnID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}); err != nil {
@@ -30,7 +31,7 @@ func observeTestTurnCompletion(t *testing.T, sess *session, turnID string) {
 	}
 }
 
-func waitTurnSendDone(t *testing.T, sess *session, actionID string) {
+func waitTurnSendDone(t *testing.T, sess *Session, actionID string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
@@ -49,7 +50,7 @@ func waitTurnSendDone(t *testing.T, sess *session, actionID string) {
 	t.Fatalf("send operation %s did not finish", actionID)
 }
 
-func readySendTestSession(t *testing.T, store *sendAttemptStore, sender func(context.Context, string) (json.RawMessage, error)) *session {
+func readySendTestSession(t *testing.T, store *turns.LegacyJournal, sender func(context.Context, string) (json.RawMessage, error)) *Session {
 	t.Helper()
 	turnStore, err := turns.OpenStore(context.Background(), store.Database())
 	if err != nil {
@@ -65,14 +66,14 @@ func readySendTestSession(t *testing.T, store *sendAttemptStore, sender func(con
 	store.BindTransactionStore(turnStore)
 	queue.BindTransactionStore(turnStore)
 	projection := newDeliveryTestProjection("codex")
-	return &session{id: "nano-session",
+	return &Session{id: "nano-session",
 		provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
 		projection: projection, turns: turnStore, sendAttempts: store, queuedTurns: queue,
 		sendOps: map[string]*turnSendOperation{}, turnSender: sender,
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 }
 
-func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context, string) (json.RawMessage, error)) (*session, *turns.Store) {
+func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context, string) (json.RawMessage, error)) (*Session, *turns.Store) {
 	t.Helper()
 	db, path, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "turns.json"))
 	if err != nil {
@@ -89,7 +90,7 @@ func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context
 	}
 	projection := newDeliveryTestProjection("codex")
 
-	sess := &session{
+	sess := &Session{
 		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
 		projection: projection, turns: store, sendAttempts: attempts, queuedTurns: queue,
 		sendOps: map[string]*turnSendOperation{}, turnSender: sender,
@@ -242,14 +243,14 @@ func TestClaudeGenericConfirmationAndScrubFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := "synthetic Claude submission"
-	if _, _, err := QueuePutSubmission(queue, queuedTurnRecord{
+	if _, _, err := QueuePutSubmission(queue, turns.QueuedTurn{
 		ClientActionID: "claude-guard", Provider: "claude", HostedThreadID: "hosted-guard",
 		NativeThreadID: "native-guard", ProviderTurnID: "claude:3", State: submissionAccepted,
 		Text: text, TextHash: sendTextHash(text),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := JournalPut(attempts, sendAttemptRecord{
+	if err := JournalPut(attempts, turns.SendAttempt{
 		ClientActionID: "claude-guard", Provider: "claude", NativeThreadID: "native-guard",
 		ProviderTurnID: "claude:3", Status: sendAttemptAccepted, TextHash: sendTextHash(text),
 	}); err != nil {
@@ -346,7 +347,7 @@ func TestDuplicateQueuedActionIsStoredOnce(t *testing.T) {
 			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 		}
 	}
-	if records := QueueSnapshot(sess.queuedTurns.(*queuedTurnStore)); len(records) != 1 || records[0].ClientActionID != "same-queued-action" {
+	if records := QueueSnapshot(sess.queuedTurns.(*turns.LegacyQueue)); len(records) != 1 || records[0].ClientActionID != "same-queued-action" {
 		t.Fatalf("queue records = %#v, want one action", records)
 	}
 }
@@ -452,19 +453,19 @@ func TestQueuedTurnCanBeCanceledBeforeDelivery(t *testing.T) {
 func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 	const text = "no, budget requests go to me"
 	ctx := context.Background()
-	submit := func(t *testing.T, sess *session) {
+	submit := func(t *testing.T, sess *Session) {
 		if _, _, err := sess.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: "hosted-thread", Provider: model.ProviderCodex, NativeThreadID: "native-thread", ActionID: "prompt",
 			ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: turns.HumanOrigin}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	deliver := func(t *testing.T, sess *session) {
+	deliver := func(t *testing.T, sess *Session) {
 		if rec := postTurn(t, sess, ctx, "prompt", text); rec.Code != http.StatusOK {
 			t.Fatalf("send status = %d, body = %s", rec.Code, rec.Body.String())
 		}
 		waitTurnSendDone(t, sess, "prompt")
 	}
-	claim := func(t *testing.T, sess *session) turns.Record {
+	claim := func(t *testing.T, sess *Session) turns.Record {
 		if err := sess.ensureDeliveryCoordinator(); err != nil {
 			t.Fatal(err)
 		}
@@ -474,7 +475,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 		}
 		return record
 	}
-	act := func(t *testing.T, sess *session, action string) *httptest.ResponseRecorder {
+	act := func(t *testing.T, sess *Session, action string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		if action == promptDiscard {
 			sess.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/nano-session/turn-delivery/prompt", nil), "prompt")
@@ -487,25 +488,25 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 	// refused (409 with a reason), absent (Resend of a prompt Nano never had).
 	for _, test := range []struct {
 		name    string
-		setup   func(t *testing.T, sess *session) // leaves action "prompt" in its state
+		setup   func(t *testing.T, sess *Session) // leaves action "prompt" in its state
 		state   turns.DeliveryState               // its state before the action; "" for none
 		discard string
 		resend  string
 		ended   turns.DeliveryState // its state after an allowed or ended Discard
 	}{
 		{name: "queued", state: turns.Queued, discard: "allowed", resend: "refused", ended: turns.Refused, setup: submit},
-		{name: "delivering", state: turns.Delivering, discard: "refused", resend: "refused", setup: func(t *testing.T, sess *session) {
+		{name: "delivering", state: turns.Delivering, discard: "refused", resend: "refused", setup: func(t *testing.T, sess *Session) {
 			submit(t, sess)
 			claim(t, sess)
 		}},
 		{name: "accepted, not yet saved", state: turns.Accepted, discard: "refused", resend: "refused", setup: deliver},
-		{name: "saved", state: turns.Confirmed, discard: "refused", resend: "refused", setup: func(t *testing.T, sess *session) {
+		{name: "saved", state: turns.Confirmed, discard: "refused", resend: "refused", setup: func(t *testing.T, sess *Session) {
 			deliver(t, sess)
 			if _, settled, err := sess.PromptStore().Settle(ctx, "prompt"); err != nil || !settled {
 				t.Fatalf("settle = %v, %v", settled, err)
 			}
 		}},
-		{name: "uncertain after the delivery deadline", state: turns.Uncertain, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *session) {
+		{name: "uncertain after the delivery deadline", state: turns.Uncertain, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			submit(t, sess)
 			record := claim(t, sess)
 			answer := sess.turnSender
@@ -515,7 +516,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 			defer cancel()
 			_, _ = sess.core.Deliver(deadline, record, sess.deliveryScope(), sess.deliverySettings(), false)
 		}},
-		{name: "held after a Stop", state: turns.Uncertain, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *session) {
+		{name: "held after a Stop", state: turns.Uncertain, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			deliver(t, sess)
 			record, _, err := sess.PromptStore().Get(ctx, "prompt")
 			if err != nil {
@@ -526,7 +527,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 			}
 			sess.setTurnActive(false, "", 0, true) // the Stop ended the turn
 		}},
-		{name: "parked", state: turns.Parked, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *session) {
+		{name: "parked", state: turns.Parked, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			submit(t, sess)
 			if _, claimed, err := sess.PromptStore().Claim(ctx, turns.ClaimRequest{HostedThreadID: "hosted-thread", Token: "park", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 				t.Fatalf("claim = %v, %v", claimed, err)
@@ -535,7 +536,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 				t.Fatal(err)
 			}
 		}},
-		{name: "discarded before", state: turns.Expired, discard: "ended", resend: "refused", ended: turns.Expired, setup: func(t *testing.T, sess *session) {
+		{name: "discarded before", state: turns.Expired, discard: "ended", resend: "refused", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			deliver(t, sess)
 			record, _, err := sess.PromptStore().Get(ctx, "prompt")
 			if err != nil {
@@ -548,7 +549,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 				t.Fatalf("first discard = %d %s", rec.Code, rec.Body.String())
 			}
 		}},
-		{name: "not yet reached Nano", discard: "ended", resend: "absent", setup: func(*testing.T, *session) {}},
+		{name: "not yet reached Nano", discard: "ended", resend: "absent", setup: func(*testing.T, *Session) {}},
 	} {
 		for _, action := range []string{promptDiscard, promptResend} {
 			t.Run(test.name+"/"+action, func(t *testing.T) {
@@ -924,7 +925,7 @@ func TestTurnSendReportsPriorRunInFlightAsUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := JournalPut(firstStore, sendAttemptRecord{
+	if err := JournalPut(firstStore, turns.SendAttempt{
 		ClientActionID: "action-4", Provider: "codex", NativeThreadID: "native-thread",
 		TextHash: sendTextHash("uncertain"), Status: sendAttemptSending,
 	}); err != nil {
@@ -958,14 +959,14 @@ func TestTurnSendAcceptedActionBypassesReadinessGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := JournalPut(store, sendAttemptRecord{
+	if err := JournalPut(store, turns.SendAttempt{
 		ClientActionID: "accepted-while-starting", Provider: "codex", NativeThreadID: "native-thread",
 		TextHash: sendTextHash("already accepted"), Status: sendAttemptAccepted,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	var calls atomic.Int32
-	sess := &session{id: "nano-session",
+	sess := &Session{id: "nano-session",
 		provider:     "codex",
 		threadID:     "native-thread",
 		sendAttempts: store,
@@ -993,7 +994,7 @@ func TestTurnDeliveryUnknownIsExplicitAndThreadListIsAvailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := JournalPut(store, sendAttemptRecord{
+	if err := JournalPut(store, turns.SendAttempt{
 		ClientActionID: "legacy-action", Provider: "codex", NativeThreadID: "native-thread",
 		TextHash: sendTextHash("legacy"), Status: sendAttemptSending,
 	}); err != nil {
@@ -1061,7 +1062,7 @@ func TestTurnDeliveryExposesAcceptedPromptAndStillDedupes(t *testing.T) {
 	list := httptest.NewRecorder()
 	sess.HandleTurnDeliveryList(list, httptest.NewRequest(http.MethodGet, "/api/sessions/nano-session/turn-delivery?thread=native-thread", nil))
 	var listed struct {
-		Operations []promptView `json:"operations"`
+		Operations []turns.View `json:"operations"`
 	}
 	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
 		t.Fatalf("thread list body = %s: %v", list.Body.String(), err)
@@ -1091,7 +1092,7 @@ func TestSendAttemptConfirmationSurvivesLaterStatusWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := sendAttemptRecord{
+	rec := turns.SendAttempt{
 		ClientActionID: "action-race", Provider: "codex", NativeThreadID: "native-thread",
 		TextHash: sendTextHash("racing"), Status: sendAttemptSending,
 	}
@@ -1268,7 +1269,7 @@ func TestQueuedPromptJoinsTheTurnItsThreadReturnsTo(t *testing.T) {
 			if path == "reconnected" {
 				sess.setStatus("reconnecting")
 			} else {
-				sess.addPendingInteraction(pendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.ThreadID()})
+				sess.addPendingInteraction(interact.PendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.ThreadID()})
 			}
 			if err := sess.ensureCoreSession(); err != nil {
 				t.Fatal(err)

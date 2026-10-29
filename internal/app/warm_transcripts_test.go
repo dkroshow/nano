@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -111,7 +112,7 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 	h.save(saved[:reply])
 	h.expect("first rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	ref := h.sess.HostedThreadID()
-	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{h.sess.ID(): h.sess})
 
 	reads := h.catalogReads.Load()
 	warm := openWarm(t, h.srv, []string{ref}, nil)
@@ -179,7 +180,7 @@ func TestWarmStreamMarkerGetsOnlyTheMissingRows(t *testing.T) {
 	h.save(saved[:reply])
 	h.expect("first rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	ref := h.sess.HostedThreadID()
-	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{h.sess.ID(): h.sess})
 
 	first := openWarm(t, h.srv, []string{ref}, nil)
 	first.next("set")
@@ -244,7 +245,7 @@ func TestWarmStreamRetriesAFailedThreadWhenItsWaitRunsOut(t *testing.T) {
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	liveTextOf(h.sess).unsubscribe(h.pane)
 	h.failRead.Store(true)
-	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{h.sess.ID(): h.sess})
 
 	warm := openWarm(t, h.srv, []string{h.sess.HostedThreadID()}, nil)
 	warm.next("set")
@@ -271,7 +272,7 @@ func TestWarmStreamIndexingThreadsDoNotBlockTheRest(t *testing.T) {
 	h.srv.Registry = newSessionRegistry()
 	refs := []string{}
 	for i := range warmJoining {
-		pending := newLiveTextHarnessForThread(t, "claude", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessionConfig) {
+		pending := newLiveTextHarnessForThread(t, "claude", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessions.Config) {
 			cfg.HostedThreadID = fmt.Sprintf("nht_indexing_%d", i)
 			cfg.ID = fmt.Sprintf("indexing_%d", i)
 		})
@@ -306,7 +307,7 @@ func TestWarmStreamRetriesARefusedThreadWithATail(t *testing.T) {
 	h.save(saved)
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	ref := h.sess.HostedThreadID()
-	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{h.sess.ID(): h.sess})
 	h.srv.sidebar = sidebar.New(sidebar.Sources{Catalog: h.service.Service, Registry: &h.srv.Registry, Stars: openTestThreadStars(t)})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -324,7 +325,7 @@ func TestWarmStreamRetriesARefusedThreadWithATail(t *testing.T) {
 		t.Fatalf("got %+v, want an error", got)
 	}
 	warm.next("set")
-	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess}) // it is back
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{h.sess.ID(): h.sess}) // it is back
 	// An operator star change is a real sidebar delta that wakes the stream.
 	rec := httptest.NewRecorder()
 	h.srv.sidebar.HandleThreadStarred(rec, httptest.NewRequest(http.MethodPut, "/star", strings.NewReader(`{"starred":true}`)), h.sess.ThreadID())
@@ -348,7 +349,7 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 	h.save(fixtureLines(t, "claude-turn.saved.jsonl"))
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) >= 2 })
 	ref := h.sess.HostedThreadID()
-	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
+	seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{h.sess.ID(): h.sess})
 	page := h.page(warmPaneQuery())
 
 	// A narrow window: the newest reply alone wraps past five lines.

@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -212,7 +213,7 @@ type fleetWatcher struct {
 }
 
 type fleetCourtRead struct {
-	court fleetCourtMessage
+	court catalog.FleetCourtMessage
 	label string
 }
 

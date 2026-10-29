@@ -9,6 +9,7 @@ import (
 	"time"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/interact"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -17,9 +18,7 @@ const (
 	permissionEventResolved  = hostedstore.PermissionEventResolved
 )
 
-type permissionEvent = hostedstore.PermissionEvent
-
-func isPermissionInteraction(p pendingInteraction) bool {
+func isPermissionInteraction(p interact.PendingInteraction) bool {
 	if p.Method == grokPermissionMethod {
 		return true
 	}
@@ -34,7 +33,7 @@ func isPermissionInteraction(p pendingInteraction) bool {
 	}
 }
 
-func permissionRequestDetails(p pendingInteraction) (toolName, summary, digest string) {
+func permissionRequestDetails(p interact.PendingInteraction) (toolName, summary, digest string) {
 	var value any
 	_ = json.Unmarshal(p.Params, &value)
 	toolName = firstJSONText(value, "tool_name", "toolName")
@@ -117,9 +116,9 @@ func (sess *Session) permissionModeForEvent() string {
 	return sess.permissionMode
 }
 
-func (sess *Session) permissionEvent(p pendingInteraction, eventKind, decision, source, outcome string) permissionEvent {
+func (sess *Session) permissionEvent(p interact.PendingInteraction, eventKind, decision, source, outcome string) hostedstore.PermissionEvent {
 	toolName, summary, digest := permissionRequestDetails(p)
-	return permissionEvent{
+	return hostedstore.PermissionEvent{
 		HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, sess.ThreadID()),
 		NanoSessionID: sess.id, AttachmentGeneration: sess.attachmentGeneration,
 		ProviderRequestID: p.ID, TurnID: p.TurnID, ItemID: p.ItemID, Method: p.Method,
@@ -130,14 +129,14 @@ func (sess *Session) permissionEvent(p pendingInteraction, eventKind, decision, 
 	}
 }
 
-func (sess *Session) recordPermissionRequest(p pendingInteraction) error {
+func (sess *Session) recordPermissionRequest(p interact.PendingInteraction) error {
 	if !isPermissionInteraction(p) || sess.metadata == nil || sess.hostedThreadID == "" || sess.id == "" {
 		return nil
 	}
 	return sess.metadata.AppendPermissionEvent(sess.permissionEvent(p, permissionEventRequested, "", "", "requested"))
 }
 
-func (sess *Session) recordPermissionResolution(p pendingInteraction, decision, source, outcome string) error {
+func (sess *Session) recordPermissionResolution(p interact.PendingInteraction, decision, source, outcome string) error {
 	if !isPermissionInteraction(p) || sess.metadata == nil || sess.hostedThreadID == "" || sess.id == "" {
 		return nil
 	}

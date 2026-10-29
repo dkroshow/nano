@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -83,7 +84,7 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 	}
 	version := s.version
 	s.mu.RUnlock()
-	completed.Fleet = &fleetState{ThreadID: completed.ID, Label: fleetIdle, Watched: true}
+	completed.Fleet = &catalog.FleetState{ThreadID: completed.ID, Label: fleetIdle, Watched: true}
 	s.applyCatalogRows([]Thread{completed}, version+1)
 	select {
 	case delta := <-events:
@@ -150,7 +151,7 @@ func TestSidebarActiveSelectsHostedStarredAndRequiredAncestors(t *testing.T) {
 }
 
 func TestSidebarManualCloseOverridesWatchedFleetUntilTreeDisappears(t *testing.T) {
-	watched := &fleetState{Label: fleetWorking, Watched: true}
+	watched := &catalog.FleetState{Label: fleetWorking, Watched: true}
 	closed := Thread{
 		HostedThreadID: "hosted-closed", HostedStatus: sessions.StatusExited,
 		Fleet: watched,

@@ -38,27 +38,16 @@ const (
 const metadataEventWarningThreshold = 256
 const metadataEventInventoryLimit = 8
 
-type metadataEvent = MetadataEvent
-
 func metadataConfirmedFact(field string) bool {
 	return field == AssignmentField || field == threads.CreationNameField
 }
 
-type metadataEventPage = MetadataEventPage
-
-// metadataEventView is the deliberately small public evidence contract.  The
-// internal retry key is not exported: it is repository implementation detail,
-// not evidence a client should retain or treat as user-visible identity.
-type metadataEventView = MetadataEventView
-
-type metadataEventFilter = MetadataEventFilter
-
 // EventsAfter exposes immutable evidence with a bounded event-id cursor. It
 // intentionally has no JSON posture fallback: callers refetch current state
 // when their revision/change cursor is behind.
-func (s *MetadataStore) EventsAfter(hostedID string, after int64, limit int, filter metadataEventFilter) (metadataEventPage, error) {
+func (s *MetadataStore) EventsAfter(hostedID string, after int64, limit int, filter MetadataEventFilter) (MetadataEventPage, error) {
 	if s == nil {
-		return metadataEventPage{}, fmt.Errorf("canonical metadata unavailable")
+		return MetadataEventPage{}, fmt.Errorf("canonical metadata unavailable")
 	}
 	if limit <= 0 || limit > 200 {
 		limit = 100
@@ -74,14 +63,14 @@ func (s *MetadataStore) EventsAfter(hostedID string, after int64, limit int, fil
 	query := `SELECT event_id,hosted_thread_id,field,value_json,disposition,source,COALESCE(evidence,''),COALESCE(native_thread_id,''),COALESCE(nano_session_id,''),attachment_generation,evidence_freshness,causation_event_id,observed_at,committed_at FROM thread_metadata_events WHERE ` + strings.Join(where, " AND ") + ` ORDER BY event_id LIMIT ?`
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return metadataEventPage{}, err
+		return MetadataEventPage{}, err
 	}
 	defer rows.Close()
-	page := metadataEventPage{Events: []metadataEventView{}}
+	page := MetadataEventPage{Events: []MetadataEventView{}}
 	for rows.Next() {
 		var raw string
 		var causation sql.NullInt64
-		var event metadataEventView
+		var event MetadataEventView
 		if err := rows.Scan(&event.ID, &event.HostedThreadID, &event.Field, &raw, &event.Disposition, &event.Source, &event.Evidence, &event.NativeThreadID, &event.NanoSessionID, &event.AttachmentGeneration, &event.Freshness, &causation, &event.ObservedAt, &event.CommittedAt); err != nil {
 			return page, err
 		}
@@ -318,14 +307,7 @@ func (s *MetadataStore) ChangesAfter(hostedID string, revision int64) []metadata
 	return out
 }
 
-type metadataCurrentView = MetadataCurrent
-
-type hostedMetadataView = MetadataView
-type hostedAttachmentView = AttachmentView
-type hostedMetadataName = MetadataName
-type hostedNativeIDView = NativeIDView
-
-func validateMetadataEvent(event metadataEvent) error {
+func validateMetadataEvent(event MetadataEvent) error {
 	if event.Field != PostureFieldModel && event.Field != PostureFieldEffort && event.Field != PostureFieldPermissionMode && event.Field != PostureFieldServiceTier && event.Field != "cwd" && event.Field != AssignmentField && event.Field != threads.CreationNameField {
 		return fmt.Errorf("unsupported metadata field %q", event.Field)
 	}
@@ -580,13 +562,6 @@ func (s *MetadataStore) BeginTransportBinding(hostedID string) (int64, error) {
 	return binding.Generation, nil
 }
 
-// claimNativeID records the currently active provider identity while retaining
-// every predecessor for audit. The partial unique index rejects two active
-// hosted records claiming the same provider/native identity.
-// nativeResolution is one provisional handle's exact native: the session its
-// own child announced (its root init, live or in the spool).
-type nativeResolution = NativeResolution
-
 // errUnresolvedProvisional refuses a claim that would retire a provisional
 // handle without its exact resolution: prompts accepted under that handle are
 // reachable only through it.
@@ -617,7 +592,7 @@ func (s *MetadataStore) ClaimNativeID(hostedID, provider, nativeID string, provi
 // same transaction; a resolution never changes. A claim of the native already
 // current with a resolution succeeds only when that resolution is already
 // recorded, so a retry after a commit whose report failed is idempotent.
-func (s *MetadataStore) ClaimNativeIDResolving(hostedID, provider, nativeID string, provisional bool, pair *nativeResolution) error {
+func (s *MetadataStore) ClaimNativeIDResolving(hostedID, provider, nativeID string, provisional bool, pair *NativeResolution) error {
 	if s == nil || hostedID == "" || provider == "" || nativeID == "" {
 		return fmt.Errorf("hosted id, provider, and native id are required")
 	}
@@ -714,7 +689,7 @@ func (s *MetadataStore) ClaimNativeIDResolving(hostedID, provider, nativeID stri
 // row. Requested/cleared update desired; fresh confirmed/rejected evidence
 // updates effective. Historical/replayed provider evidence only establishes an
 // observed baseline when effective is still unknown.
-func (s *MetadataStore) AppendEvent(event metadataEvent) (metadataEvent, error) {
+func (s *MetadataStore) AppendEvent(event MetadataEvent) (MetadataEvent, error) {
 	// Callers may reuse a prior return value for a retry. Commit status belongs
 	// to this invocation, never to the immutable event row it happened to name.
 	event.Committed = false
@@ -751,7 +726,7 @@ func (s *MetadataStore) AppendEvent(event metadataEvent) (metadataEvent, error) 
 		return event, fmt.Errorf("hosted thread %s has invalid provider", event.HostedThreadID)
 	}
 	if event.SourceEventKey != "" {
-		var prior metadataEvent
+		var prior MetadataEvent
 		var priorValue string
 		var priorCausation sql.NullInt64
 		err := tx.QueryRow(`SELECT event_id,hosted_thread_id,field,value_json,disposition,source,COALESCE(evidence,''),COALESCE(native_thread_id,''),COALESCE(nano_session_id,''),attachment_generation,evidence_freshness,causation_event_id FROM thread_metadata_events WHERE source_event_key=?`, event.SourceEventKey).Scan(&prior.ID, &prior.HostedThreadID, &prior.Field, &priorValue, &prior.Disposition, &prior.Source, &prior.Evidence, &prior.NativeThreadID, &prior.NanoSessionID, &prior.AttachmentGeneration, &prior.Freshness, &priorCausation)
@@ -917,7 +892,7 @@ func nonnullDisposition(v sql.NullString) string {
 // replayed intent remains audit/resume state, but yields to an effective
 // observation when one exists. With no effective observation it remains the
 // best available historical baseline. Empty values are meaningful clears.
-func projectMetadataDisplay(entry *metadataCurrentView, desiredFreshness, effectiveFreshness string) {
+func projectMetadataDisplay(entry *MetadataCurrent, desiredFreshness, effectiveFreshness string) {
 	entry.DisplayDisposition = metadataDispositionUnknown
 	entry.DisplayValue = nil
 	entry.DisplaySource = ""
@@ -957,18 +932,18 @@ func (s *MetadataStore) Posture(hostedID string) Posture {
 // View reads one thread's committed metadata from the read pool. It is a
 // standalone read, never part of a write transaction, so it need not queue for
 // the one writer connection behind durable writes and other reads.
-func (s *MetadataStore) View(hostedID string) (hostedMetadataView, error) {
+func (s *MetadataStore) View(hostedID string) (MetadataView, error) {
 	return s.viewFrom(s.ReadPool(), hostedID)
 }
 
-func (s *MetadataStore) viewFrom(db *sql.DB, hostedID string) (hostedMetadataView, error) {
+func (s *MetadataStore) viewFrom(db *sql.DB, hostedID string) (MetadataView, error) {
 	views, err := s.ViewsFrom(db, []string{hostedID})
 	if err != nil {
-		return hostedMetadataView{}, err
+		return MetadataView{}, err
 	}
 	view, ok := views[hostedID]
 	if !ok {
-		return hostedMetadataView{}, sql.ErrNoRows
+		return MetadataView{}, sql.ErrNoRows
 	}
 	return view, nil
 }
@@ -976,11 +951,11 @@ func (s *MetadataStore) viewFrom(db *sql.DB, hostedID string) (hostedMetadataVie
 // ViewsFrom reads the canonical views of many hosted threads: three reads per
 // metadataReadChunk ids, never one set per thread. An id with no hosted
 // record is absent.
-func (s *MetadataStore) ViewsFrom(db *sql.DB, hostedIDs []string) (map[string]hostedMetadataView, error) {
+func (s *MetadataStore) ViewsFrom(db *sql.DB, hostedIDs []string) (map[string]MetadataView, error) {
 	if s == nil {
 		return nil, fmt.Errorf("canonical metadata unavailable")
 	}
-	views := make(map[string]hostedMetadataView, len(hostedIDs))
+	views := make(map[string]MetadataView, len(hostedIDs))
 	for start := 0; start < len(hostedIDs); start += metadataReadChunk {
 		chunk := hostedIDs[start:min(start+metadataReadChunk, len(hostedIDs))]
 		in, args := "(?"+strings.Repeat(",?", len(chunk)-1)+")", make([]any, len(chunk))
@@ -992,7 +967,7 @@ func (s *MetadataStore) ViewsFrom(db *sql.DB, hostedIDs []string) (map[string]ho
 			return nil, err
 		}
 		for threads.Next() {
-			v := hostedMetadataView{Fields: map[string]metadataCurrentView{}}
+			v := MetadataView{Fields: map[string]MetadataCurrent{}}
 			var legacyPrompt bool
 			var storedPolicy string
 			if err := threads.Scan(&v.HostedThreadID, &v.Revision, &v.Provider, &v.NativeThreadID, &v.AttachmentGeneration, &v.PresentationMode, &v.SidebarPlacement, &v.InvokerHostedThreadID, &v.InvokerNativeThreadID, &v.InvokerProvider, &legacyPrompt, &storedPolicy, &v.CreatedAt, &v.UpdatedAt); err != nil {
@@ -1011,7 +986,7 @@ func (s *MetadataStore) ViewsFrom(db *sql.DB, hostedIDs []string) (map[string]ho
 		}
 		for history.Next() {
 			var hostedID string
-			var item hostedNativeIDView
+			var item NativeIDView
 			if err := history.Scan(&hostedID, &item.Provider, &item.NativeThreadID, &item.Provisional, &item.RetiredAt, &item.FirstSeenAt, &item.LastSeenAt); err != nil {
 				history.Close()
 				return nil, err
@@ -1042,7 +1017,7 @@ func (s *MetadataStore) ViewsFrom(db *sql.DB, hostedIDs []string) (map[string]ho
 				rows.Close()
 				return nil, err
 			}
-			entry := metadataCurrentView{DesiredDisposition: nonnullDisposition(dDisp), DesiredSource: dSource.String, EffectiveDisposition: nonnullDisposition(eDisp), EffectiveSource: eSource.String, UpdatedAt: updated.String}
+			entry := MetadataCurrent{DesiredDisposition: nonnullDisposition(dDisp), DesiredSource: dSource.String, EffectiveDisposition: nonnullDisposition(eDisp), EffectiveSource: eSource.String, UpdatedAt: updated.String}
 			if dVal.Valid {
 				entry.DesiredValue = json.RawMessage(dVal.String)
 			}
@@ -1089,7 +1064,7 @@ func (s *MetadataStore) Destroy(hostedID string) error {
 // importLegacyAttachments imports attachment-only facts as historical
 // observations. They establish a baseline only where stronger current
 // provider/desired evidence does not already exist.
-func (s *MetadataStore) importLegacyAttachments(records []attachmentRecord) error {
+func (s *MetadataStore) importLegacyAttachments(records []Attachment) error {
 	return s.importLegacyAttachmentsUntil(records, -1)
 }
 
@@ -1113,14 +1088,14 @@ func ImportAndScrubLegacyAttachments(control *MetadataStore, attachments *Attach
 // legacy attachment can legitimately be newer than the canonical baseline.
 // Retiring the old claim and activating the attachment owner in one
 // transaction preserves the same single-owner invariant throughout startup.
-func (s *MetadataStore) reconcileLegacyAttachmentClaims(records []attachmentRecord) error {
+func (s *MetadataStore) reconcileLegacyAttachmentClaims(records []Attachment) error {
 	if s == nil {
 		return fmt.Errorf("canonical metadata store unavailable")
 	}
 	type claimGroup struct {
 		provider string
 		nativeID string
-		records  []attachmentRecord
+		records  []Attachment
 	}
 	groups := make(map[string]*claimGroup)
 	for _, record := range records {
@@ -1170,8 +1145,8 @@ func (s *MetadataStore) reconcileLegacyAttachmentClaims(records []attachmentReco
 	return tx.Commit()
 }
 
-func chooseLegacyAttachmentClaim(records []attachmentRecord) attachmentRecord {
-	ordered := append([]attachmentRecord(nil), records...)
+func chooseLegacyAttachmentClaim(records []Attachment) Attachment {
+	ordered := append([]Attachment(nil), records...)
 	sort.Slice(ordered, func(i, j int) bool {
 		a, b := legacyAttachmentClaimTime(ordered[i]), legacyAttachmentClaimTime(ordered[j])
 		if a != b {
@@ -1182,7 +1157,7 @@ func chooseLegacyAttachmentClaim(records []attachmentRecord) attachmentRecord {
 	return ordered[0]
 }
 
-func legacyAttachmentClaimTime(record attachmentRecord) string {
+func legacyAttachmentClaimTime(record Attachment) string {
 	if observedAt, err := time.Parse(time.RFC3339Nano, record.AttachedAt); err == nil {
 		return observedAt.UTC().Format(time.RFC3339Nano)
 	}
@@ -1192,7 +1167,7 @@ func legacyAttachmentClaimTime(record attachmentRecord) string {
 // importLegacyAttachmentsUntil is the bounded/restartable attachment bridge.
 // limit counts imported facts, not input rows, so an interruption never marks
 // completion before every independently idempotent fact has committed.
-func (s *MetadataStore) importLegacyAttachmentsUntil(records []attachmentRecord, limit int) error {
+func (s *MetadataStore) importLegacyAttachmentsUntil(records []Attachment, limit int) error {
 	if s == nil {
 		return fmt.Errorf("canonical metadata store unavailable")
 	}
@@ -1231,7 +1206,7 @@ func (s *MetadataStore) importLegacyAttachmentsUntil(records []attachmentRecord,
 				continue
 			}
 			keyMaterial := r.HostedThreadID + "\x00" + r.Provider + "\x00" + r.NativeThreadID + "\x00" + fact.Field + "\x00" + fact.Value
-			entry := metadataEvent{HostedThreadID: r.HostedThreadID, Field: fact.Field, Value: fact.Value, Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Evidence: "legacy_attachment_baseline", NativeThreadID: r.NativeThreadID, Freshness: metadataFreshnessHistorical, SourceEventKey: "legacy-attachment:" + AgentHash([]byte(keyMaterial))}
+			entry := MetadataEvent{HostedThreadID: r.HostedThreadID, Field: fact.Field, Value: fact.Value, Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Evidence: "legacy_attachment_baseline", NativeThreadID: r.NativeThreadID, Freshness: metadataFreshnessHistorical, SourceEventKey: "legacy-attachment:" + AgentHash([]byte(keyMaterial))}
 			if _, err := s.AppendEvent(entry); err != nil {
 				return err
 			}

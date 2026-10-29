@@ -17,6 +17,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/liveview"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -219,7 +220,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				delay = 3 * time.Second // time for the file to be written and indexed
 			}
 			w.fake.SetReplyDelay("thread/resume", delay)
-			var sess *session
+			var sess *sessions.Session
 			release := func() {}
 			sentBefore := []string{}
 			resumes := 0 // resume requests before the gap's own

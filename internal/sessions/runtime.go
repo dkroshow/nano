@@ -9,6 +9,8 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/threads"
+	"github.com/dkroshow/nano/internal/wire"
+	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 // Turn lifecycle wire vocabulary, verified against
@@ -106,7 +108,7 @@ func providerEventIDFromStart(result json.RawMessage) string {
 	return body.Event.ID
 }
 
-func deliveryExecutionError(err error) *agentExecutionError {
+func deliveryExecutionError(err error) *threads.ExecutionError {
 	if err == nil {
 		return nil
 	}
@@ -114,15 +116,15 @@ func deliveryExecutionError(err error) *agentExecutionError {
 	if errors.Is(err, context.DeadlineExceeded) {
 		code = "delivery_timeout"
 	} else {
-		var rpcErr *protocol.RPCError
+		var rpcErr *codexwire.RPCError
 		if errors.As(err, &rpcErr) {
 			code = "delivery_refused"
 		}
 	}
-	return &agentExecutionError{Source: "delivery", Code: code, Message: err.Error()}
+	return &threads.ExecutionError{Source: "delivery", Code: code, Message: err.Error()}
 }
 
-func wireNudgesProjectionMeta(provider string, dir protocol.Direction, line []byte) bool {
+func wireNudgesProjectionMeta(provider string, dir wire.Direction, line []byte) bool {
 	if dir != protocol.Recv {
 		return false
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -409,7 +410,7 @@ func (l *LiveTextLoop) promptsSavedIn(rows []threadindex.TranscriptItem) ([]stri
 	return ids, nil
 }
 
-func savedConversationItem(row threadindex.TranscriptItem) liveProjectionItem {
+func savedConversationItem(row threadindex.TranscriptItem) liveview.Item {
 	itemType := row.Type
 	switch row.Type {
 	case "user_message":
@@ -421,7 +422,7 @@ func savedConversationItem(row threadindex.TranscriptItem) liveProjectionItem {
 	if row.CreatedAt != nil {
 		createdAt = *row.CreatedAt
 	}
-	return liveProjectionItem{ID: row.ID, DurableItemID: row.ID, NativeItemID: row.NativeItemID, ProjectedSeq: row.ProjectedSeq,
+	return liveview.Item{ID: row.ID, DurableItemID: row.ID, NativeItemID: row.NativeItemID, ProjectedSeq: row.ProjectedSeq,
 		TurnID: row.TurnID, Type: itemType, Category: row.Category, Role: row.Role, Phase: row.Phase, Text: row.Text,
 		Status: threadvalues.FirstNonEmpty(row.Status, "completed"), Done: true, CreatedAt: createdAt, ToolName: row.ToolName, CallID: row.CallID,
 		ContentRef: row.ContentRef, ContentTruncated: row.ContentTruncated, OriginalBytes: int(row.OriginalBytes)}

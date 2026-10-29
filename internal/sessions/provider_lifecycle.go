@@ -5,17 +5,17 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/lifecycle"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // Provider parsing stays beside each transport. These are evidence readers,
 // not start/submit/interrupt methods; stage 5 owns those operations.
 type providerLifecycleRules struct {
 	capabilities   lifecycle.Capabilities
-	turn           func(protocol.Direction, []byte) (bool, string, int64, bool)
-	nudge          func(protocol.Direction, []byte) bool
-	observe        func(*Session, protocol.Direction, []byte, bool)
-	runtime        func(*Session, protocol.Direction, []byte, time.Time)
+	turn           func(wire.Direction, []byte) (bool, string, int64, bool)
+	nudge          func(wire.Direction, []byte) bool
+	observe        func(*Session, wire.Direction, []byte, bool)
+	runtime        func(*Session, wire.Direction, []byte, time.Time)
 	accepted       func(*Session)
 	release        func(*Session)
 	ingressBlocked func(*Session) bool
@@ -36,21 +36,21 @@ func ProviderLifecycleCapabilities(provider string) lifecycle.Capabilities {
 	return lifecycleProviders[provider].capabilities
 }
 
-func turnActiveTransition(provider string, dir protocol.Direction, line []byte) (bool, string, int64, bool) {
+func turnActiveTransition(provider string, dir wire.Direction, line []byte) (bool, string, int64, bool) {
 	if decode := lifecycleProviders[provider].turn; decode != nil {
 		return decode(dir, line)
 	}
 	return false, "", 0, false
 }
 
-func wireNudgesCatalog(provider string, dir protocol.Direction, line []byte) bool {
+func wireNudgesCatalog(provider string, dir wire.Direction, line []byte) bool {
 	if nudge := lifecycleProviders[provider].nudge; nudge != nil {
 		return nudge(dir, line)
 	}
 	return false
 }
 
-func (sess *Session) observeProviderWork(dir protocol.Direction, line []byte, live bool) {
+func (sess *Session) observeProviderWork(dir wire.Direction, line []byte, live bool) {
 	if observe := lifecycleProviders[sess.provider].observe; observe != nil {
 		observe(sess, dir, line, live)
 	}

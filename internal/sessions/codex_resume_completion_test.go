@@ -13,6 +13,7 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/testsupport"
 )
 
 type resumeCompletionClient struct {
@@ -42,7 +43,7 @@ func (c *resumeCompletionClient) SubmitPrompt(context.Context, interact.SubmitPr
 // The app sibling exercises live completion followed by a real reconnect.
 // Force the narrower race here: resume re-records a turn already committed by
 // the live path, without refusing it or delivering its subscription twice.
-func TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce(t *testing.T) {
+func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	ctx := context.Background()
 	sess, _ := readyTransactionalSendTestSession(t, nil)
 	t.Cleanup(sess.Close)
@@ -78,7 +79,7 @@ func TestCodexTurnCompletedLiveAndSeenAgainOnResumeIsDeliveredOnce(t *testing.T)
 		t.Fatalf("live completion: feed=%+v err=%v deliveries=%d", live, err, len(client.messages))
 	}
 
-	var logs syncBuffer
+	var logs testsupport.LogBuffer
 	priorLog := log.Writer()
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(priorLog) })

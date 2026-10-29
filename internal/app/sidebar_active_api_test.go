@@ -14,6 +14,7 @@ import (
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -155,7 +156,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 	}
 	if _, err := fixtureAppendOrchestrationAssignment(executions, childHosted.ID, "rel-1", &hostedstore.Assignment{
 		AssignmentRole: "auditor", Focus: "Audit parent", RelatedHostedThreadID: parentHosted.ID,
-		AuditTargets: []orchestrationAuditTarget{
+		AuditTargets: []hostedstore.AuditTarget{
 			{HostedThreadID: parentHosted.ID},
 			{HostedThreadID: "nht_missing"},
 		},
@@ -165,11 +166,11 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 
 	svc := newStoredCatalog(t, store)
 	attached := memorySession(t, "sess-attached", "codex", "attached-recent", "ready", "/w/att", "gpt-5.6-sol", now)
-	parentLive := memorySession(t, "sess-parent", "codex", "related-parent", "ready", "/w/related-parent", "gpt-5.6-sol", now, func(cfg *sessionConfig) { cfg.HostedThreadID = parentHosted.ID })
+	parentLive := memorySession(t, "sess-parent", "codex", "related-parent", "ready", "/w/related-parent", "gpt-5.6-sol", now, func(cfg *sessions.Config) { cfg.HostedThreadID = parentHosted.ID })
 	if response := postTurn(t, parentLive, context.Background(), "parent-work", "working"); response.Code != http.StatusOK {
 		t.Fatalf("parent working setup: %d %s", response.Code, response.Body)
 	}
-	childLive := memorySession(t, "sess-child", "codex", "related-child", "ready", "/w/related-child", "gpt-5.6-sol", now, func(cfg *sessionConfig) {
+	childLive := memorySession(t, "sess-child", "codex", "related-child", "ready", "/w/related-child", "gpt-5.6-sol", now, func(cfg *sessions.Config) {
 		cfg.HostedThreadID = childHosted.ID
 		cfg.InvokerHostedThreadID = parentHosted.ID
 	})
@@ -182,7 +183,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 		controlMetadata: metadata, agentExecutions: executions,
 		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: featuremail.NewHub(),
 		mail: newTestAgentMessageStore(t),
-	}, map[string]*session{
+	}, map[string]*sessions.Session{
 		"sess-attached": attached, "sess-parent": parentLive, "sess-child": childLive,
 	})
 	ctx, cancel := context.WithCancel(context.Background())

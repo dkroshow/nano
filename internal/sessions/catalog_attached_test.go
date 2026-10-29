@@ -2,13 +2,15 @@ package sessions
 
 import (
 	"testing"
+
+	"github.com/dkroshow/nano/internal/testsupport"
 )
 
 // Failure caught: a late identity event on a closed attachment
 // re-established a watch, or a close racing the bind left one behind.
 // Boundary: the session's bind on native identity.
 func TestSessionCatalogBindNeverOutlivesClose(t *testing.T) {
-	sources := &recordingSources{}
+	sources := &testsupport.Sources{}
 	sess := &Session{id: "s1", provider: "claude", cwd: "/work", catalogSources: sources}
 	sess.setProjectionThreadID("native-1")
 	if len(sources.Binds) != 1 || sources.Binds[0] != "claude/native-1@/work|" {

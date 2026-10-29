@@ -58,7 +58,7 @@ func BenchmarkCodexResumeConsumers(b *testing.B) {
 		}
 		sess.ReserveNativeID("native")
 		b.StartTimer()
-		if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: "native"}, daemon, func() {}); err != nil {
+		if err := sess.BeginProviderSpawn(ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native"}, daemon, func() {}); err != nil {
 			b.Fatal(err)
 		}
 		deadline := time.NewTimer(10 * time.Second)

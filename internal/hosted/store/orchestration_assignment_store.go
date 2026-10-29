@@ -166,10 +166,10 @@ func appendInitialOrchestrationAssignmentTx(tx *sql.Tx, hostedID string, assignm
 }
 
 // AppendOrchestrationAssignment idempotently records an assignment change as canonical metadata.
-func (s *MetadataStore) AppendOrchestrationAssignment(hostedID, actionID string, assignment *Assignment) (metadataEvent, error) {
+func (s *MetadataStore) AppendOrchestrationAssignment(hostedID, actionID string, assignment *Assignment) (MetadataEvent, error) {
 	disposition := metadataDispositionConfirmed
 	if assignment == nil {
 		disposition = metadataDispositionCleared
 	}
-	return s.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: AssignmentField, Value: assignmentEventValue(assignment), Disposition: disposition, Source: PostureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + hostedID + ":" + actionID, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
+	return s.AppendEvent(MetadataEvent{HostedThreadID: hostedID, Field: AssignmentField, Value: assignmentEventValue(assignment), Disposition: disposition, Source: PostureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + hostedID + ":" + actionID, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
 }

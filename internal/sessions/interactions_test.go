@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/protocol"
 )
 
 // TestConnectionLevelRequestsAreNotDecisions is the bug this slice exists to
@@ -157,9 +160,9 @@ func TestRouteInteractionLegacyPair(t *testing.T) {
 // double-responding.
 func TestPendingInteractionsAreServerOwned(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocol.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	p := pendingInteraction{ID: "7", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "2026-07-30T10:00:00Z"}
+	p := interact.PendingInteraction{ID: "7", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "2026-07-30T10:00:00Z"}
 	sess.addPendingInteraction(p)
 
 	if list := sess.PendingInteractionList(); len(list) != 1 || list[0].ID != "7" {
@@ -194,7 +197,7 @@ func TestPendingInteractionsAreServerOwned(t *testing.T) {
 // a 409 the card collapses on, not an error the operator has to read.
 func TestHandleInteractionAlreadyResolved(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocol.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/x/interactions/7", strings.NewReader(`{"decision":"accept"}`))
@@ -208,9 +211,9 @@ func TestHandleInteractionAlreadyResolved(t *testing.T) {
 // dialog — losing it would leave the turn parked with no card to answer it.
 func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocol.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.addPendingInteraction(pendingInteraction{
+	sess.addPendingInteraction(interact.PendingInteraction{
 		ID: "7", Method: methodRequestUserInput, Kind: kindUserInput,
 		Params: json.RawMessage(`{"questions":[{"id":"q1"}]}`), CreatedAt: "2026-07-30T10:00:00Z",
 	})
@@ -233,11 +236,11 @@ func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
 func TestServerRequestResolvedCollapses(t *testing.T) {
 	daemon := NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true })
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocol.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.threadID = "thread_a"
 	daemon.sessions["thread_a"] = sess
-	sess.addPendingInteraction(pendingInteraction{
+	sess.addPendingInteraction(interact.PendingInteraction{
 		ID: "4", Method: methodRequestUserInput, Kind: kindUserInput, ThreadID: "thread_a",
 		CreatedAt: "2026-07-30T10:00:00Z",
 	})
@@ -258,11 +261,11 @@ func TestServerRequestResolvedCollapses(t *testing.T) {
 // with nobody able to reach it.
 func TestCloseInteractionsAnswersEverythingParked(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocol.Event]struct{}{},
 		codex:          NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true }),
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.addPendingInteraction(pendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "a"})
-	sess.addPendingInteraction(pendingInteraction{ID: "2", Method: methodRequestUserInput, Kind: kindUserInput, CreatedAt: "b"})
+	sess.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "a"})
+	sess.addPendingInteraction(interact.PendingInteraction{ID: "2", Method: methodRequestUserInput, Kind: kindUserInput, CreatedAt: "b"})
 
 	sess.closeInteractions()
 

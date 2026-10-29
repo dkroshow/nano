@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -23,7 +24,7 @@ import (
 type grokHTTPViewer struct {
 	t               *testing.T
 	messages        chan LiveTextMessage
-	status          *liveTextStatus
+	status          *liveview.Status
 	view            *livePaneView
 	replies         map[string]string // stable live id -> scrubbed saved segment text
 	allowEarlySaved bool              // the documented early-notice seam, in its one regression case
@@ -272,7 +273,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				rec := httptest.NewRecorder()
 				h.sess.HandleTurnDeliveryList(rec, httptest.NewRequest("GET", "/turn-delivery?thread="+grokFixtureThread, nil))
 				var delivery struct {
-					Operations []promptView `json:"operations"`
+					Operations []prompts.View `json:"operations"`
 				}
 				if err := json.Unmarshal(rec.Body.Bytes(), &delivery); err != nil {
 					t.Fatal(err)
@@ -544,7 +545,7 @@ func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
 	h := newLiveTextHarnessFor(t, "grok", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	h.save(fixtureLines(t, "grok-turns.saved.jsonl")[:1])
 	waitGrokRows(t, h, 1)
-	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-http"})
+	h.projection.updateRuntime(liveview.Runtime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-http"})
 	v := openGrokHTTP(t, h)
 	if len(v.view.rows) != 1 || v.view.rows[0].Text != "Neutral prompt 1." {
 		t.Fatalf("saved HTTP rows = %#v", v.view.rows)
@@ -557,11 +558,11 @@ func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
 	if len(v.view.rows) != 1 {
 		t.Fatalf("saved HTTP rows after live text = %#v", v.view.rows)
 	}
-	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
+	h.projection.updateRuntime(liveview.Runtime{SessionStatus: "ready"})
 	v.expect("stopped status", func(m LiveTextMessage) bool { return m.Status != nil && !m.Status.Runtime.TurnActive })
 	rec := httptest.NewRecorder()
 	h.sess.HandleConversationView(rec, httptest.NewRequest(http.MethodGet, "/conversation?view=messages", nil), conversationViewMessages)
-	var snapshot liveProjectionSnapshot
+	var snapshot liveview.Snapshot
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &snapshot) != nil ||
 		len(snapshot.Items) != 1 || snapshot.Items[0].Text != "Neutral prompt 1." || snapshot.Runtime.TurnActive {
 		t.Fatalf("saved agent HTTP snapshot = %d %s", rec.Code, rec.Body.String())

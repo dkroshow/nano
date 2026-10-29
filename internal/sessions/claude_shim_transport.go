@@ -22,7 +22,9 @@ import (
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/wire"
 	wireclaude "github.com/dkroshow/nano/internal/wire/claude"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -146,7 +148,7 @@ type claudeShimTransport struct {
 	replayIngestedOnce   sync.Once
 
 	eventMu       sync.RWMutex
-	turnEventSink func(claudeShimEvent)
+	turnEventSink func(wireclaude.Event)
 }
 
 type shimNotification struct {
@@ -154,18 +156,11 @@ type shimNotification struct {
 	params json.RawMessage
 }
 
-type claudeShimEventKind = wireclaude.EventKind
-
 const (
 	claudeShimAccepted = wireclaude.EventAccepted
 	claudeShimItem     = wireclaude.EventItem
 	claudeShimResult   = wireclaude.EventResult
 )
-
-// claudeShimEvent is the transport-to-projection seam for provider-owned turn
-// identity. SH1 populates it; C2 may consume it without reconstructing an
-// ordinal from Nano state.
-type claudeShimEvent = wireclaude.Event
 
 // startClaudeShimSession dials the shim and has it spawn the child. The
 // starting connection becomes the session's attached client by construction.
@@ -210,7 +205,7 @@ func startClaudeShimSession(owner *claudeSession, shimURL string, posture claude
 // Returns errShimSessionAttached (another nano holds it) or
 // errShimSessionNotFound (the shim never knew it, or lost it with its own
 // restart) for callers to dispatch on.
-func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan claudeReplayPlan, posture claudeSpawnPosture, stored attachmentRecord) (*claudeSession, error) {
+func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan claudeReplayPlan, posture claudeSpawnPosture, stored hostedstore.Attachment) (*claudeSession, error) {
 	fromSeq := plan.FromSeq
 	sess.beginTurnRestore()
 	restoreSettled := false
@@ -591,7 +586,7 @@ func (t *claudeShimTransport) sendLineContext(ctx context.Context, line []byte) 
 		return fmt.Errorf("%s: %w", shimMethodInput, err)
 	}
 	if kind, ok := claudeShimEventKindFor(protocol.Send, line); ok {
-		t.emitTurnEvent(claudeShimEvent{
+		t.emitTurnEvent(wireclaude.Event{
 			Kind: kind, ProviderTurnID: accepted.TurnID,
 			Direction: protocol.Send, Line: append([]byte(nil), line...),
 		})
@@ -600,13 +595,13 @@ func (t *claudeShimTransport) sendLineContext(ctx context.Context, line []byte) 
 }
 
 // SetTurnEventSink connects ordered transport evidence to the session event sink.
-func (t *claudeShimTransport) SetTurnEventSink(sink func(claudeShimEvent)) {
+func (t *claudeShimTransport) SetTurnEventSink(sink func(wireclaude.Event)) {
 	t.eventMu.Lock()
 	t.turnEventSink = sink
 	t.eventMu.Unlock()
 }
 
-func (t *claudeShimTransport) emitTurnEvent(event claudeShimEvent) {
+func (t *claudeShimTransport) emitTurnEvent(event wireclaude.Event) {
 	// A result names its own prompt (claudeAnsweredTurn), tagged or not.
 	if event.ProviderTurnID == "" && event.Kind != claudeShimResult {
 		return
@@ -619,17 +614,17 @@ func (t *claudeShimTransport) emitTurnEvent(event claudeShimEvent) {
 	}
 }
 
-func (sess *Session) observeClaudeShimEvent(event claudeShimEvent) {
+func (sess *Session) observeClaudeShimEvent(event wireclaude.Event) {
 	sess.observeClaudeShimEventGated(event, nil)
 }
 
 // observeTurnEvent is this connection's turn-event sink: its events share the
 // connection's abandonment gate.
-func (t *claudeShimTransport) observeTurnEvent(event claudeShimEvent) {
+func (t *claudeShimTransport) observeTurnEvent(event wireclaude.Event) {
 	t.owner.sess.observeClaudeShimEventGated(event, t.queuedWorkAllowed)
 }
 
-func (sess *Session) observeClaudeShimEventGated(event claudeShimEvent, gate func() error) {
+func (sess *Session) observeClaudeShimEventGated(event wireclaude.Event, gate func() error) {
 	if sess == nil || event.ProviderTurnID == "" && event.Kind != claudeShimResult {
 		return
 	}
@@ -727,7 +722,7 @@ func (sess *Session) claudeAnsweredTurn(line []byte) (turnID string, named bool)
 	return records[0].ProviderTurnID, true
 }
 
-func claudeShimEventKindFor(dir protocol.Direction, line []byte) (claudeShimEventKind, bool) {
+func claudeShimEventKindFor(dir wire.Direction, line []byte) (wireclaude.EventKind, bool) {
 	return wireclaude.EventKindFor(dir, line)
 }
 
@@ -768,8 +763,8 @@ func (t *claudeShimTransport) abandon() {
 	t.client.Close()
 }
 
-func (t *claudeShimTransport) durableAttachment(nativeThreadID, model string) (attachmentRecord, bool) {
-	return attachmentRecord{
+func (t *claudeShimTransport) durableAttachment(nativeThreadID, model string) (hostedstore.Attachment, bool) {
+	return hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: nativeThreadID,
 		Cwd:            t.owner.sess.cwd,
@@ -853,7 +848,7 @@ func (t *claudeShimTransport) handleNotification(method string, params json.RawM
 			}
 		}
 		kind, hasTurnEvent := claudeShimEventKindFor(line.Direction, line.Bytes)
-		turnEvent := claudeShimEvent{
+		turnEvent := wireclaude.Event{
 			Kind: kind, ProviderTurnID: line.ProviderTurnID, Seq: line.Seq, At: line.At,
 			Direction: line.Direction, Line: line.Bytes,
 		}

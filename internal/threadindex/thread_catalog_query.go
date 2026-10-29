@@ -585,7 +585,7 @@ func (s *Service) IndexStatus(ctx context.Context) (IndexStatus, error) {
 // goroutine, so a simple monotonic guard suppresses the redundant re-emits that
 // unchanged reconciliations would otherwise produce.
 func (s *Service) publishCatalogVersion(version uint64) {
-	s.publishCatalogChange(catalogChange{Version: version, Refresh: true})
+	s.publishCatalogChange(catalog.Change{Version: version, Refresh: true})
 }
 
 // CatalogVersion converts an unsigned catalog revision to the API’s bounded signed representation.

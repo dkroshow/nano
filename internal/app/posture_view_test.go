@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-
 	"reflect"
 	"strings"
 	"testing"
 
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -31,11 +32,11 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := newSession(sessionConfig{ID: "posture-view", Provider: "claude", HostedThreadID: "nht_view", Metadata: store})
+	sess := newSession(sessions.Config{ID: "posture-view", Provider: "claude", HostedThreadID: "nht_view", Metadata: store})
 	if err := sess.InitializeBinding(g); err != nil {
 		t.Fatal(err)
 	}
-	for _, entry := range []metadataEvent{
+	for _, entry := range []hostedstore.MetadataEvent{
 		{Field: postureFieldModel, Value: "sonnet", Source: postureSourceCreation, Evidence: postureEvidenceSpawnRequest},
 		{Field: postureFieldEffort, Value: "xhigh", Source: postureSourceCreation, Evidence: postureEvidenceSpawnRequest},
 		{Field: postureFieldPermissionMode, Value: "acceptEdits", Source: postureSourceCreation, Evidence: postureEvidenceSpawnRequest},
@@ -50,7 +51,7 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 		}
 	}
 
-	want := sessionPosture{Model: "haiku", Effort: "xhigh", PermissionMode: "acceptEdits"}
+	want := hostedstore.Posture{Model: "haiku", Effort: "xhigh", PermissionMode: "acceptEdits"}
 	if got := sess.Summary().Posture; got != want {
 		t.Fatalf("summary posture = %+v, want %+v", got, want)
 	}
@@ -58,7 +59,7 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	w := httptest.NewRecorder()
 	sess.HandleState(w, httptest.NewRequest(http.MethodGet, "/api/sessions/x/state", nil))
 	var state struct {
-		Posture sessionPosture `json:"posture"`
+		Posture hostedstore.Posture `json:"posture"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 		t.Fatalf("decode state: %v", err)
@@ -69,7 +70,7 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 
 	// A thread with no recorded decisions serves live session evidence — the
 	// legacy-session fallback.
-	legacy := newProviderRuntimeFixture(t, sessionConfig{ID: "legacy-model", Provider: "claude", HostedThreadID: "nht_legacy"}, "legacy-native", "claude-opus-5").session
+	legacy := newProviderRuntimeFixture(t, sessions.Config{ID: "legacy-model", Provider: "claude", HostedThreadID: "nht_legacy"}, "legacy-native", "claude-opus-5").session
 	if got := legacy.Summary().Posture.Model; got != "" {
 		t.Fatalf("unavailable metadata fabricated model = %q", got)
 	}
@@ -79,9 +80,9 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 // effort/priority/permission cells that were hardcoded unknown — and shows
 // the creation-request model before the provider handshake reports one.
 func TestMemoryThreadRowServesPostureCells(t *testing.T) {
-	sum := sessionSummary{
+	sum := sessions.Summary{
 		ID: "sess-1", Provider: "claude", Cwd: "/w",
-		Posture: sessionPosture{Model: "opus", Effort: "high", PermissionMode: "plan", ServiceTier: "priority"},
+		Posture: hostedstore.Posture{Model: "opus", Effort: "high", PermissionMode: "plan", ServiceTier: "priority"},
 	}
 	row := sidebar.MemoryThreadRow(sum)
 	cells := map[string]threadindex.Value{
@@ -98,13 +99,13 @@ func TestMemoryThreadRowServesPostureCells(t *testing.T) {
 		}
 	}
 
-	unknown := sidebar.MemoryThreadRow(sessionSummary{ID: "sess-2", Provider: "claude"})
+	unknown := sidebar.MemoryThreadRow(sessions.Summary{ID: "sess-2", Provider: "claude"})
 	if unknown.Metadata.Effort.State != "unknown" {
 		t.Fatalf("empty posture effort cell = %+v, want honest unknown", unknown.Metadata.Effort)
 	}
 }
 
-func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
+func TestCanonicalResumeIntentReachesHTTPAndSpawnOptions(t *testing.T) {
 	cases := []struct {
 		name, desired, settlement, effective, want string
 	}{
@@ -121,23 +122,23 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 			if err := metadata.EnsureHostedThread(hostedID, "claude", presentationShared, "", "", ""); err != nil {
 				t.Fatal(err)
 			}
-			var desired metadataEvent
+			var desired hostedstore.MetadataEvent
 			var err error
 			if test.settlement == metadataDispositionCleared {
-				desired, err = metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: "", Disposition: metadataDispositionCleared, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":cleared"})
+				desired, err = metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: "", Disposition: metadataDispositionCleared, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":cleared"})
 			} else if test.desired != "" {
-				desired, err = metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":requested"})
+				desired, err = metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: metadataDispositionRequested, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":requested"})
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			if test.settlement == metadataDispositionConfirmed || test.settlement == metadataDispositionRejected {
-				if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: test.settlement, Source: postureSourceProvider, Freshness: metadataFreshnessLive, CausationEventID: &desired.ID, SourceEventKey: test.name + ":settlement"}); err != nil {
+				if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.desired, Disposition: test.settlement, Source: postureSourceProvider, Freshness: metadataFreshnessLive, CausationEventID: &desired.ID, SourceEventKey: test.name + ":settlement"}); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if test.effective != "" && (test.settlement != metadataDispositionConfirmed || test.effective != test.desired) {
-				if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.effective, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":effective"}); err != nil {
+				if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: hostedID, Field: postureFieldModel, Value: test.effective, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, SourceEventKey: test.name + ":effective"}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -146,7 +147,7 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 				t.Fatal(err)
 			}
 			view.Fields[postureFieldServiceTier] = view.Fields[postureFieldModel]
-			fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "canonical-resume", Provider: "codex", HostedThreadID: hostedID, Metadata: fixedMetadataView{sessionMetadata: metadata, view: view}}, "canonical-native", "")
+			fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "canonical-resume", Provider: "codex", HostedThreadID: hostedID, Metadata: fixedMetadataView{Metadata: metadata, view: view}}, "canonical-native", "")
 			read := httptest.NewRecorder()
 			fixture.session.HandleTurnOptionsRead(read, httptest.NewRequest(http.MethodGet, "/turn-options", nil))
 			var options struct {
@@ -160,11 +161,11 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 				t.Fatalf("Codex resume = %q/%q, want %q", options.Model, options.ServiceTier, test.want)
 			}
 			cwd := t.TempDir()
-			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hostedID, Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
+			if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: hostedID, Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
 				t.Fatal(err)
 			}
 			owner := &server{controlMetadata: metadata}
-			req := hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
+			req := hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
 			if err := metadata.ClaimNativeID(hostedID, "claude", "canonical-native", false); err != nil {
 				t.Fatal(err)
 			}
@@ -187,7 +188,7 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 // A resumed thread picks its durable name back up at spawn, so the boot/click
 // summary carries it without waiting for the catalog overlay.
 func TestResumeHydratesDurableName(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *claudeshim.Conn, call claudeshim.Call) {
 		c.Reply(call, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": claudeResumeThreadID,
 			"state": "running", "lastSeq": 1,
@@ -209,7 +210,7 @@ func TestResumeHydratesDurableName(t *testing.T) {
 // shim lost the child survives the respawn — the exact scar the plan's
 // "live set_model is never persisted" finding describes.
 func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
-	shim := newFakeShim(t, resumeScript(func(c *shimConn, call shimCall) {
+	shim := newFakeShim(t, resumeScript(func(c *claudeshim.Conn, call claudeshim.Call) {
 		c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
@@ -222,13 +223,13 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 	if err := s.controlMetadata.ClaimNativeID("nht_overlay", "claude", claudeResumeThreadID, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: "cwd", Value: rec.Cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:cwd"}); err != nil {
+	if _, err := s.controlMetadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: "nht_overlay", Field: "cwd", Value: rec.Cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:cwd"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldPermissionMode, Value: "bypassPermissions", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:permission"}); err != nil {
+	if _, err := s.controlMetadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldPermissionMode, Value: "bypassPermissions", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, SourceEventKey: "fixture:nht_overlay:permission"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.controlMetadata.AppendEvent(metadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldModel, Value: "haiku", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Evidence: postureEvidenceSetModel, Freshness: metadataFreshnessLive}); err != nil {
+	if _, err := s.controlMetadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: "nht_overlay", Field: postureFieldModel, Value: "haiku", Disposition: metadataDispositionRequested, Source: postureSourceOperator, Evidence: postureEvidenceSetModel, Freshness: metadataFreshnessLive}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -255,7 +256,7 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 // fixedMetadataView supplies the same canonical view to a second provider's consumer.
 // The real store still owns persistence and event validation.
 type fixedMetadataView struct {
-	sessionMetadata
+	sessions.Metadata
 	view hostedstore.MetadataView
 }
 

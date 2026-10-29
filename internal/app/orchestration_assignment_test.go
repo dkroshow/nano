@@ -13,6 +13,7 @@ import (
 
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
@@ -173,7 +174,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if err != nil || op3.AssignmentEventID != nil {
 		t.Fatalf("cleared operation = %#v, %v", op3, err)
 	}
-	page, err := control.EventsAfter(worker.ID, 0, 20, metadataEventFilter{Field: "orchestrationAssignment"})
+	page, err := control.EventsAfter(worker.ID, 0, 20, hostedstore.MetadataEventFilter{Field: "orchestrationAssignment"})
 	if err != nil || len(page.Events) != 4 {
 		t.Fatalf("assignment history = %#v, %v", page, err)
 	}
@@ -214,15 +215,15 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnStore := mustBindTransactionalTurnStore(t, queue, attempts)
-	var sess *session
-	runtimeFixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-worker", Provider: "codex", HostedThreadID: worker.ID, CreatedAt: time.Now(), Projection: newLiveProjection("codex", worker.ID), AgentExecutions: store, Turns: turnStore, QueuedTurns: queue, SendAttempts: attempts}, "native-worker", "", func(f *providerRuntimeFixture) {
+	var sess *sessions.Session
+	runtimeFixture := newProviderRuntimeFixture(t, sessions.Config{ID: "nano-worker", Provider: "codex", HostedThreadID: worker.ID, CreatedAt: time.Now(), Projection: newLiveProjection("codex", worker.ID), AgentExecutions: store, Turns: turnStore, QueuedTurns: queue, SendAttempts: attempts}, "native-worker", "", func(f *providerRuntimeFixture) {
 		f.send = func(_ context.Context, prompt string) (json.RawMessage, error) {
 			prompts <- prompt
 			return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 		}
 	})
 	sess = runtimeFixture.session
-	s := testServerWithSessions(&server{agentExecutions: store, controlMetadata: control, catalog: fixtureNamedCatalog(t, "codex", "native-worker", "Worker sender"), Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
+	s := testServerWithSessions(&server{agentExecutions: store, controlMetadata: control, catalog: fixtureNamedCatalog(t, "codex", "native-worker", "Worker sender"), Registry: newSessionRegistry()}, map[string]*sessions.Session{sess.ID(): sess})
 	const prompt = "  Exact caller prompt: do not alter it.  "
 	rec := httptest.NewRecorder()
 	fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)

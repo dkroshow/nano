@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	filemodel "github.com/dkroshow/nano/internal/files"
+	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/setup"
 )
 
@@ -129,7 +130,7 @@ func newTestCodexSession(t *testing.T, cwd string, sources []string) *Session {
 	return &Session{id: "test",
 		provider:       "codex",
 		cwd:            cwd,
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocol.Event]struct{}{},
 		state:          map[string]json.RawMessage{"thread": raw},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 }

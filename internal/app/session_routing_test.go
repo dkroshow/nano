@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // These tests protect session routing from metadata-read contention and from
@@ -25,7 +27,7 @@ func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sess := configuredFixtureSession(t, sessionConfig{ID: "sess-fast", Provider: "codex", HostedThreadID: "nht_fast", Metadata: metadata}, "", "ready", "")
+	sess := configuredFixtureSession(t, sessions.Config{ID: "sess-fast", Provider: "codex", HostedThreadID: "nht_fast", Metadata: metadata}, "", "ready", "")
 
 	rows, err := metadata.ReadPool().Query(`SELECT hosted_thread_id FROM hosted_threads`)
 	if err != nil {
@@ -69,7 +71,7 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sess := configuredFixtureSession(t, sessionConfig{ID: "sess-fast-route", Provider: "codex", HostedThreadID: "nht_fast_route", Metadata: metadata}, "", "ready", "")
+	sess := configuredFixtureSession(t, sessions.Config{ID: "sess-fast-route", Provider: "codex", HostedThreadID: "nht_fast_route", Metadata: metadata}, "", "ready", "")
 
 	readDB := metadata.ReadPool()
 	waitsBefore := readDB.Stats().WaitCount
@@ -96,7 +98,7 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 	s := testServerWithSessions(&server{
 		Registry:        newSessionRegistry(),
 		controlMetadata: metadata,
-	}, map[string]*session{sess.ID(): sess})
+	}, map[string]*sessions.Session{sess.ID(): sess})
 	registryDone := make(chan struct{})
 	go func() {
 		s.sidebarOwner().SessionsHandler(s.defaults)(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
@@ -143,7 +145,7 @@ func TestUltrafastTurnOptionsValidateModelAndPreserveIntent(t *testing.T) {
 	if err := store.EnsureHostedThread("nht_speed_controls", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "speed-controls", Provider: "codex", HostedThreadID: "nht_speed_controls", Metadata: store}, "native", "gpt-6-astra")
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "speed-controls", Provider: "codex", HostedThreadID: "nht_speed_controls", Metadata: store}, "native", "gpt-6-astra")
 	sess, fake := fixture.session, fixture.codex
 	fake.Mu.Lock()
 	fake.ModelList = map[string]any{"data": []any{

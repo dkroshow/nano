@@ -17,6 +17,7 @@ import (
 	"github.com/dkroshow/nano/internal/config"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -667,7 +668,7 @@ func (d *CodexDaemon) unsubscribeThread(sess *Session, threadID string) {
 	}
 }
 
-func (d *CodexDaemon) routeConnectionWire(dir protocol.Direction, line []byte) {
+func (d *CodexDaemon) routeConnectionWire(dir wire.Direction, line []byte) {
 	var msg protocol.Message
 	if err := json.Unmarshal(line, &msg); err != nil {
 		return
@@ -873,7 +874,7 @@ func (d *CodexDaemon) interruptTurn(ctx context.Context, sess *Session, threadID
 // seedCodexTurnOverrides is retained only for legacy rollback-parser tests.
 // Production resume always calls seedCodexCanonicalOverrides below, which is
 // keyed by the hosted identity in control.sqlite.
-func (sess *Session) seedCodexTurnOverrides(folded map[string]postureEntry, legacyServiceTier string) {
+func (sess *Session) seedCodexTurnOverrides(folded map[string]hostedstore.PostureEntry, legacyServiceTier string) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	if folded == nil {
@@ -962,7 +963,7 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 	return nil
 }
 
-func (sess *Session) seedCodexCanonicalOverrides(view hostedMetadataView) {
+func (sess *Session) seedCodexCanonicalOverrides(view hostedstore.MetadataView) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	// A cleared/unknown canonical value must not leave a stale in-memory
@@ -1168,7 +1169,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	var decoded *codexResumeResponse
 	wireLog := protocol.WireLogger(sess.recordWire)
 	if method == "thread/resume" {
-		wireLog = func(dir protocol.Direction, line []byte) {
+		wireLog = func(dir wire.Direction, line []byte) {
 			if response := sess.recordResumeWire(dir, line); response != nil {
 				decoded = response
 			}
@@ -1176,7 +1177,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	}
 	var responseEpoch, responseSequence uint64
 	recordWire := wireLog
-	wireLog = func(dir protocol.Direction, line []byte) {
+	wireLog = func(dir wire.Direction, line []byte) {
 		if dir == protocol.Recv {
 			var message protocol.Message
 			if json.Unmarshal(line, &message) == nil && message.IsResponse() {
@@ -1321,7 +1322,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	// thread returns as re-attachable (attachments.go). Covers start and resume
 	// alike — both reach ready here.
 	if sess.rememberAttachment != nil {
-		sess.rememberDurableAttachment(attachmentRecord{
+		sess.rememberDurableAttachment(hostedstore.Attachment{
 			Provider:       "codex",
 			NativeThreadID: thread.Thread.ID,
 			Cwd:            sess.cwd,
@@ -1361,7 +1362,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 // used by any Nano view: the conversation has already loaded from the durable
 // transcript. Remove them before the wire event reaches the spool, SSE, or
 // browser, and leave an explicit marker in the raw Event Feed payload.
-func (sess *Session) recordResumeWire(dir protocol.Direction, line []byte) *codexResumeResponse {
+func (sess *Session) recordResumeWire(dir wire.Direction, line []byte) *codexResumeResponse {
 	if dir != protocol.Recv {
 		sess.recordWire(dir, line)
 		return nil

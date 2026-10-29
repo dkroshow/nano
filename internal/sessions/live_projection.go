@@ -12,9 +12,11 @@ import (
 
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/liveview"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 const (
@@ -42,7 +44,7 @@ type liveTurnWork struct {
 }
 
 type liveAdapter interface {
-	apply(protocol.Direction, []byte, time.Time) model.Batch
+	apply(wire.Direction, []byte, time.Time) model.Batch
 }
 
 // LiveProjection owns the ordered live turn, runtime and interaction view.
@@ -60,7 +62,7 @@ type LiveProjection struct {
 	// by a send acknowledgement, which can land in between.
 	claudeResultTurnID string
 	adapter            liveAdapter
-	turns              map[string]*liveProjectionTurn
+	turns              map[string]*liveview.Turn
 	turnOrder          []string
 	// turnWork holds what each recent turn's completion needs now that no
 	// rows are kept: its final answer's id and its latest live work. One
@@ -73,14 +75,14 @@ type LiveProjection struct {
 	// turn the frames were tagged with: once a prompt is written mid-turn,
 	// the rest of the running execution's frames carry that prompt's tag.
 	claudeRun        liveTurnWork
-	runtime          liveProjectionRuntime
+	runtime          liveview.Runtime
 	interactions     map[string]interactmodel.PendingInteraction
 	interactionOrder []string
-	subs             map[chan liveProjectionUpdate]struct{}
+	subs             map[chan liveview.Update]struct{}
 	// diagnostics is the thread's bounded list of delivery and session
 	// facts (thread_diagnostics.go).
 	diagnosticsMu sync.Mutex
-	diagnostics   []threadDiagnostic
+	diagnostics   []observability.ThreadDiagnostic
 	// dropLiveTextDeltas skips Codex agent-message text deltas
 	// (NANO_LIVE_TEXT_DELTAS=off); item/completed carries the full text, and a
 	// message whose item/completed never arrives shows no live partial text.
@@ -135,9 +137,9 @@ func NewLiveProjection(provider, hostedThreadID string, dropLiveTextDeltas bool)
 	}
 	projection := &LiveProjection{
 		provider: provider, epoch: epoch, adapter: adapter,
-		turns: map[string]*liveProjectionTurn{}, turnWork: map[string]*liveTurnWork{},
-		interactions: map[string]interactmodel.PendingInteraction{}, subs: map[chan liveProjectionUpdate]struct{}{},
-		runtime: liveProjectionRuntime{ThreadStatus: "unknown"},
+		turns: map[string]*liveview.Turn{}, turnWork: map[string]*liveTurnWork{},
+		interactions: map[string]interactmodel.PendingInteraction{}, subs: map[chan liveview.Update]struct{}{},
+		runtime: liveview.Runtime{ThreadStatus: "unknown"},
 	}
 	projection.hostedThreadID = hostedThreadID
 	projection.dropLiveTextDeltas = dropLiveTextDeltas
@@ -226,16 +228,16 @@ func (p *LiveProjection) ensureClaudeActiveTurn(startedAtMs int64) string {
 	if id == "" {
 		return ""
 	}
-	turn := &liveProjectionTurn{ID: id, Status: "in_progress", StartedAtMs: startedAtMs}
+	turn := &liveview.Turn{ID: id, Status: "in_progress", StartedAtMs: startedAtMs}
 	p.upsertTurnLocked(turn)
-	p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: cloneTurn(turn)})
+	p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: cloneTurn(turn)})
 	return id
 }
 
 // applyWireLive keeps replay provenance separate from live browser emission.
 // Only the Claude shim's re-attach spool sets replay; other non-live
 // observations remain ordinary.
-func (p *LiveProjection) applyWireLive(dir protocol.Direction, line []byte, at time.Time, live, replay bool, _ ...int64) {
+func (p *LiveProjection) applyWireLive(dir wire.Direction, line []byte, at time.Time, live, replay bool, _ ...int64) {
 	if p.dropLiveTextDeltas && p.provider == "codex" && dir == protocol.Recv {
 		if turn, hidden := codexAgentTextDelta(line); hidden {
 			// Hidden text is still the turn's live work.
@@ -288,9 +290,9 @@ func (p *LiveProjection) applyWireLive(dir protocol.Direction, line []byte, at t
 		p.claudeRun = liveTurnWork{}
 	}
 	if claudeTurnOpened && p.claudeTurnID != "" && (dir == protocol.Send || !p.latestTurnInProgressLocked()) {
-		turn := &liveProjectionTurn{ID: p.claudeTurnID, Status: "in_progress", StartedAtMs: at.UnixMilli()}
+		turn := &liveview.Turn{ID: p.claudeTurnID, Status: "in_progress", StartedAtMs: at.UnixMilli()}
 		p.upsertTurnLocked(turn)
-		p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: cloneTurn(turn)})
+		p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: cloneTurn(turn)})
 	}
 	if claudeTurnClosed && providerTurnID != "" {
 		id := providerTurnID
@@ -309,7 +311,7 @@ func (p *LiveProjection) applyWireLive(dir protocol.Direction, line []byte, at t
 			}
 			p.upsertTurnLocked(turn)
 			p.trimTurnsLocked()
-			p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: cloneTurn(turn)})
+			p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: cloneTurn(turn)})
 		}
 	}
 	p.mu.Unlock()
@@ -420,7 +422,7 @@ func (p *LiveProjection) trimTurnsLocked() {
 	p.turnOrder = turns
 }
 
-func (p *LiveProjection) upsertTurnLocked(turn *liveProjectionTurn) {
+func (p *LiveProjection) upsertTurnLocked(turn *liveview.Turn) {
 	if turn == nil || turn.ID == "" {
 		return
 	}
@@ -436,7 +438,7 @@ func (p *LiveProjection) upsertTurnLocked(turn *liveProjectionTurn) {
 }
 
 // updateRuntime publishes the attachment’s runtime view.
-func (p *LiveProjection) updateRuntime(runtime liveProjectionRuntime) {
+func (p *LiveProjection) updateRuntime(runtime liveview.Runtime) {
 	runtime = liveview.CloneRuntime(runtime)
 	p.mu.Lock()
 	if liveview.RuntimeEqual(p.runtime, runtime) {
@@ -448,7 +450,7 @@ func (p *LiveProjection) updateRuntime(runtime liveProjectionRuntime) {
 	if turn.ID != "" {
 		p.upsertTurnLocked(turn)
 	}
-	p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: turn, Runtime: &runtime})
+	p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: turn, Runtime: &runtime})
 	p.mu.Unlock()
 }
 
@@ -461,7 +463,7 @@ func (p *LiveProjection) updateTokenUsage(raw json.RawMessage) {
 		return
 	}
 	p.runtime.TokenUsage = append(json.RawMessage(nil), raw...)
-	p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: p.runtimeTurnLocked(), Runtime: cloneRuntimePtr(p.runtime)})
+	p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: p.runtimeTurnLocked(), Runtime: cloneRuntimePtr(p.runtime)})
 	p.mu.Unlock()
 }
 
@@ -474,14 +476,14 @@ func (p *LiveProjection) updateError(message string) {
 		return
 	}
 	p.runtime.LastError = message
-	p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: p.runtimeTurnLocked(), Runtime: cloneRuntimePtr(p.runtime)})
+	p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: p.runtimeTurnLocked(), Runtime: cloneRuntimePtr(p.runtime)})
 	p.mu.Unlock()
 }
 
 // nudgeMetaRefresh publishes a view metadata refresh.
 func (p *LiveProjection) nudgeMetaRefresh() {
 	p.mu.Lock()
-	p.appendLocked(liveProjectionUpdate{Op: projectionMetaRefresh})
+	p.appendLocked(liveview.Update{Op: projectionMetaRefresh})
 	p.mu.Unlock()
 }
 
@@ -513,7 +515,7 @@ func (p *LiveProjection) updateCompletedTurnLocked(turnID, status string, durati
 	}
 	turn := cloneTurn(p.turns[turnID])
 	if turn == nil {
-		turn = &liveProjectionTurn{ID: turnID}
+		turn = &liveview.Turn{ID: turnID}
 	}
 	turn.Status = status
 	if status == "completed" {
@@ -531,7 +533,7 @@ func (p *LiveProjection) updateCompletedTurnLocked(turnID, status string, durati
 	}
 	p.upsertTurnLocked(turn)
 	p.trimTurnsLocked()
-	p.appendLocked(liveProjectionUpdate{Op: projectionTurnUpsert, Turn: turn, Runtime: cloneRuntimePtr(p.runtime)})
+	p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: turn, Runtime: cloneRuntimePtr(p.runtime)})
 }
 
 // latestTerminalTurnID reads the newest terminal turn identity.
@@ -564,10 +566,10 @@ func (p *LiveProjection) finalAnswerIDLocked(turnID string) string {
 }
 
 // turnList copies the projection's turns, oldest first.
-func (p *LiveProjection) turnList() []liveProjectionTurn {
+func (p *LiveProjection) turnList() []liveview.Turn {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	turns := make([]liveProjectionTurn, 0, len(p.turnOrder))
+	turns := make([]liveview.Turn, 0, len(p.turnOrder))
 	for _, id := range p.turnOrder {
 		if turn := p.turns[id]; turn != nil {
 			turns = append(turns, *cloneTurn(turn))
@@ -576,7 +578,7 @@ func (p *LiveProjection) turnList() []liveProjectionTurn {
 	return turns
 }
 
-func cloneRuntimePtr(runtime liveProjectionRuntime) *liveProjectionRuntime {
+func cloneRuntimePtr(runtime liveview.Runtime) *liveview.Runtime {
 	out := liveview.CloneRuntime(runtime)
 	return &out
 }
@@ -594,7 +596,7 @@ func (p *LiveProjection) upsertInteraction(interaction interactmodel.PendingInte
 		p.interactionOrder = p.interactionOrder[1:]
 		delete(p.interactions, oldest)
 	}
-	p.appendLocked(liveProjectionUpdate{Op: projectionInteraction, Interaction: &interaction})
+	p.appendLocked(liveview.Update{Op: projectionInteraction, Interaction: &interaction})
 	p.mu.Unlock()
 }
 
@@ -615,7 +617,7 @@ func (p *LiveProjection) removeInteraction(id string) {
 			break
 		}
 	}
-	p.appendLocked(liveProjectionUpdate{Op: projectionInteractionRemove, RequestID: id})
+	p.appendLocked(liveview.Update{Op: projectionInteractionRemove, RequestID: id})
 	p.mu.Unlock()
 }
 
@@ -632,23 +634,23 @@ func (p *LiveProjection) interactionsLocked() []interactmodel.PendingInteraction
 
 // status is the thread's runtime and pending questions at the current
 // revision, without rows: what a file-only pane's stream carries.
-func (p *LiveProjection) status() liveTextStatus {
+func (p *LiveProjection) status() liveview.Status {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return liveTextStatus{Epoch: p.epoch, Revision: p.revision, Runtime: liveview.CloneRuntime(p.runtime), Interactions: p.interactionsLocked()}
+	return liveview.Status{Epoch: p.epoch, Revision: p.revision, Runtime: liveview.CloneRuntime(p.runtime), Interactions: p.interactionsLocked()}
 }
 
 // retainedTurnEvidence is a retained turn, the time of its newest start, end
 // or live work, and its work counter.
-func (p *LiveProjection) retainedTurnEvidence(turnID string) (liveProjectionTurn, int64, uint64, bool) {
+func (p *LiveProjection) retainedTurnEvidence(turnID string) (liveview.Turn, int64, uint64, bool) {
 	if p == nil || turnID == "" {
-		return liveProjectionTurn{}, 0, 0, false
+		return liveview.Turn{}, 0, 0, false
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	turn := cloneTurn(p.turns[turnID])
 	if turn == nil {
-		return liveProjectionTurn{}, 0, 0, false
+		return liveview.Turn{}, 0, 0, false
 	}
 	latest, version := max(turn.StartedAtMs, turn.CompletedAtMs), uint64(0)
 	if work := p.turnWork[turnID]; work != nil {
@@ -657,14 +659,14 @@ func (p *LiveProjection) retainedTurnEvidence(turnID string) (liveProjectionTurn
 	return *turn, latest, version, true
 }
 
-func (p *LiveProjection) runtimeTurnLocked() *liveProjectionTurn {
-	return &liveProjectionTurn{
+func (p *LiveProjection) runtimeTurnLocked() *liveview.Turn {
+	return &liveview.Turn{
 		ID: p.runtime.TurnID, Status: map[bool]string{true: "in_progress", false: "completed"}[p.runtime.TurnActive],
 		StartedAtMs: p.runtime.TurnStartedAtMs,
 	}
 }
 
-func (p *LiveProjection) appendLocked(update liveProjectionUpdate) {
+func (p *LiveProjection) appendLocked(update liveview.Update) {
 	p.revision++
 	update.Version = liveProjectionVersion
 	update.Epoch = p.epoch
@@ -686,10 +688,10 @@ func (p *LiveProjection) appendLocked(update liveProjectionUpdate) {
 // subscribe registers a subscriber for every later update. A caller reads
 // the state it sends first only after subscribing, so no update falls
 // between them.
-func (p *LiveProjection) subscribe() (ch chan liveProjectionUpdate, cancel func()) {
+func (p *LiveProjection) subscribe() (ch chan liveview.Update, cancel func()) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	ch = make(chan liveProjectionUpdate, 256)
+	ch = make(chan liveview.Update, 256)
 	p.subs[ch] = struct{}{}
 	return ch, func() {
 		p.mu.Lock()
@@ -698,11 +700,11 @@ func (p *LiveProjection) subscribe() (ch chan liveProjectionUpdate, cancel func(
 	}
 }
 
-func newLiveItem(id, typeName string, at time.Time) *liveProjectionItem {
+func newLiveItem(id, typeName string, at time.Time) *liveview.Item {
 	if typeName == "" {
 		typeName = "unknown"
 	}
-	item := &liveProjectionItem{
+	item := &liveview.Item{
 		ID: id, Type: typeName,
 		Category: liveCategory(typeName), Role: liveRole(typeName),
 		Status: "in_progress", CreatedAt: at.UTC().Format(time.RFC3339Nano),
@@ -746,7 +748,7 @@ var liveItemPayloadKeys = []string{
 	"detail", "toolUseId", "phase", "status",
 }
 
-func cloneLiveItem(item *liveProjectionItem) *liveProjectionItem {
+func cloneLiveItem(item *liveview.Item) *liveview.Item {
 	if item == nil {
 		return nil
 	}
@@ -760,7 +762,7 @@ func cloneLiveItem(item *liveProjectionItem) *liveProjectionItem {
 	return &out
 }
 
-func cloneTurn(turn *liveProjectionTurn) *liveProjectionTurn {
+func cloneTurn(turn *liveview.Turn) *liveview.Turn {
 	if turn == nil {
 		return nil
 	}
@@ -772,7 +774,7 @@ func cloneTurn(turn *liveProjectionTurn) *liveProjectionTurn {
 	return &out
 }
 
-func cloneUpdate(update liveProjectionUpdate) liveProjectionUpdate {
+func cloneUpdate(update liveview.Update) liveview.Update {
 	out := update
 	out.Turn = cloneTurn(update.Turn)
 	if update.Runtime != nil {
@@ -784,11 +786,11 @@ func cloneUpdate(update liveProjectionUpdate) liveProjectionUpdate {
 	}
 	if update.Snapshot != nil {
 		snapshot := *update.Snapshot
-		snapshot.Items = append([]liveProjectionItem(nil), update.Snapshot.Items...)
+		snapshot.Items = append([]liveview.Item(nil), update.Snapshot.Items...)
 		for i := range snapshot.Items {
 			snapshot.Items[i] = *cloneLiveItem(&snapshot.Items[i])
 		}
-		snapshot.Turns = append([]liveProjectionTurn(nil), update.Snapshot.Turns...)
+		snapshot.Turns = append([]liveview.Turn(nil), update.Snapshot.Turns...)
 		snapshot.Interactions = append([]interactmodel.PendingInteraction(nil), update.Snapshot.Interactions...)
 		out.Snapshot = &snapshot
 	}

@@ -12,6 +12,7 @@ import (
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -40,7 +41,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					}
 				})
 				s.catalog = nil
-				liveConfig := sessionConfig{ID: "nano-sender", HostedThreadID: sender.ID, Provider: sender.Provider, DisplayName: "Source sender", CreatedAt: time.Now()}
+				liveConfig := sessions.Config{ID: "nano-sender", HostedThreadID: sender.ID, Provider: sender.Provider, DisplayName: "Source sender", CreatedAt: time.Now()}
 				live := newFixtureSession(liveConfig, sender.NativeThreadID)
 				s.RegisterSession(live)
 				wantName, wantResolvedName, wantCode := "Source sender", "Source sender", ""

@@ -206,7 +206,7 @@ type Service struct {
 
 	// hub fans catalog_version bumps out to SSE subscribers. publishMu guards the
 	// last version handed to the hub so a repeated or lower bump never re-emits.
-	hub              *catalogHub
+	hub              *catalog.Hub
 	publishMu        sync.Mutex
 	publishedVersion uint64
 
@@ -504,10 +504,10 @@ type dirtySource struct {
 }
 
 func (s *Service) publishCatalogThreads(version uint64, threadIDs []string) {
-	s.publishCatalogChange(catalogChange{Version: version, ThreadIDs: threadIDs})
+	s.publishCatalogChange(catalog.Change{Version: version, ThreadIDs: threadIDs})
 }
 
-func (s *Service) publishCatalogChange(change catalogChange) {
+func (s *Service) publishCatalogChange(change catalog.Change) {
 	version := change.Version
 	if version == 0 {
 		return
@@ -528,7 +528,7 @@ func (s *Service) publishCatalogChange(change catalogChange) {
 
 // SubscribeCatalog registers an SSE subscriber and returns its version channel
 // plus the unsubscribe to run on disconnect.
-func (s *Service) SubscribeCatalog() (<-chan catalogChange, func()) {
+func (s *Service) SubscribeCatalog() (<-chan catalog.Change, func()) {
 	ch := s.hub.Subscribe()
 	return ch, func() { s.hub.Unsubscribe(ch) }
 }

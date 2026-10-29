@@ -19,35 +19,29 @@ const (
 	postureEvidenceResumeOverlay = hostedstore.PostureEvidenceResumeOverlay
 )
 
-// postureEntry is one canonical posture decision written to control.sqlite.
-// Empty Value means the decision cleared the field.
-type postureEntry = hostedstore.PostureEntry
-
-type postureFieldValue = hostedstore.FieldValue
-
-func postureEntriesFor(source, evidence string, fields ...postureFieldValue) []postureEntry {
-	entries := make([]postureEntry, 0, len(fields))
+func postureEntriesFor(source, evidence string, fields ...hostedstore.FieldValue) []hostedstore.PostureEntry {
+	entries := make([]hostedstore.PostureEntry, 0, len(fields))
 	for _, field := range fields {
 		if field.Value == "" {
 			continue
 		}
-		entries = append(entries, postureEntry{
+		entries = append(entries, hostedstore.PostureEntry{
 			Field: field.Field, Value: field.Value, Source: source, Evidence: evidence,
 		})
 	}
 	return entries
 }
 
-func creationPostureEntries(req ProviderRequest) []postureEntry {
+func creationPostureEntries(req ProviderRequest) []hostedstore.PostureEntry {
 	permission := req.PermissionMode
 	if req.Provider == "codex" {
 		permission = req.Approval
 	}
 	return postureEntriesFor(postureSourceCreation, postureEvidenceSpawnRequest,
-		postureFieldValue{Field: postureFieldModel, Value: req.Model},
-		postureFieldValue{Field: postureFieldEffort, Value: req.Effort},
-		postureFieldValue{Field: postureFieldPermissionMode, Value: permission},
-		postureFieldValue{Field: postureFieldServiceTier, Value: req.ServiceTier},
-		postureFieldValue{Field: "cwd", Value: req.Cwd},
+		hostedstore.FieldValue{Field: postureFieldModel, Value: req.Model},
+		hostedstore.FieldValue{Field: postureFieldEffort, Value: req.Effort},
+		hostedstore.FieldValue{Field: postureFieldPermissionMode, Value: permission},
+		hostedstore.FieldValue{Field: postureFieldServiceTier, Value: req.ServiceTier},
+		hostedstore.FieldValue{Field: "cwd", Value: req.Cwd},
 	)
 }

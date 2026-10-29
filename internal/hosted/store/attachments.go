@@ -23,9 +23,6 @@ import (
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
-type attachmentRecord = Attachment
-type attachmentKey = AttachmentKey
-
 // AttachmentStore persists attachments to a JSON file beside the history DB.
 // All exported operations are safe for concurrent use and persist the whole
 // file atomically; the record count is bounded by open sessions, so rewriting
@@ -33,12 +30,12 @@ type attachmentKey = AttachmentKey
 type AttachmentStore struct {
 	path  string
 	mu    sync.Mutex
-	byKey map[attachmentKey]attachmentRecord
+	byKey map[AttachmentKey]Attachment
 }
 
 // NewAttachmentStore loads durable attachments from path.
 func NewAttachmentStore(path string) (*AttachmentStore, error) {
-	s := &AttachmentStore{path: path, byKey: map[attachmentKey]attachmentRecord{}}
+	s := &AttachmentStore{path: path, byKey: map[AttachmentKey]Attachment{}}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
@@ -53,7 +50,7 @@ func (s *AttachmentStore) load() error {
 		}
 		return err
 	}
-	var records []attachmentRecord
+	var records []Attachment
 	if err := json.Unmarshal(data, &records); err != nil {
 		return fmt.Errorf("parse attachments file %s: %w", s.path, err)
 	}
@@ -78,7 +75,7 @@ func (s *AttachmentStore) load() error {
 // re-attach — silently, and (for the anchor) at exactly the moment a re-attach
 // replay is about to need it, since the replayed init line lands before the
 // replay has finished.
-func (s *AttachmentStore) Remember(r attachmentRecord) {
+func (s *AttachmentStore) Remember(r Attachment) {
 	if r.NativeThreadID == "" {
 		return
 	}
@@ -121,7 +118,7 @@ func (s *AttachmentStore) scrubRetiredMetadata() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	updated := make(map[attachmentKey]attachmentRecord, len(s.byKey))
+	updated := make(map[AttachmentKey]Attachment, len(s.byKey))
 	changed := false
 	for key, record := range s.byKey {
 		if record.Cwd != "" || record.Model != "" || record.TurnServiceTier != "" {
@@ -148,7 +145,7 @@ func (s *AttachmentStore) scrubRetiredMetadata() error {
 // with nano, so an anchor for it would offer a recovery that cannot happen.
 // Passing 0/0 clears the anchor, which is what a turn ending means.
 func (s *AttachmentStore) SetTurnAnchor(provider, nativeThreadID string, startedAtMs, anchorSeq int64) {
-	key := attachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
+	key := AttachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
 	s.mu.Lock()
 	rec, ok := s.byKey[key]
 	unchanged := ok && rec.TurnStartedAtMs == startedAtMs && rec.TurnAnchorSeq == anchorSeq
@@ -170,7 +167,7 @@ func (s *AttachmentStore) SetTurnAnchor(provider, nativeThreadID string, started
 // key to write. Like setTurnAnchor, it never creates a record: only a durable
 // provisional attachment stages a name at all.
 func (s *AttachmentStore) SetPendingName(provider, nativeThreadID, name string) {
-	key := attachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
+	key := AttachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
 	s.mu.Lock()
 	rec, ok := s.byKey[key]
 	var err error
@@ -192,7 +189,7 @@ func (s *AttachmentStore) SetPendingName(provider, nativeThreadID, name string) 
 // must re-attach to it rather than spawn yet another `--resume` child and
 // orphan this one. Like setTurnAnchor, it never creates a record.
 func (s *AttachmentStore) SetShimSession(provider, nativeThreadID, shimSessionID string) {
-	key := attachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
+	key := AttachmentKey{Provider: provider, NativeThreadID: nativeThreadID}
 	s.mu.Lock()
 	rec, ok := s.byKey[key]
 	var err error
@@ -211,21 +208,21 @@ func (s *AttachmentStore) SetShimSession(provider, nativeThreadID, shimSessionID
 // evidence source: it is what says where a detached thread lived (cwd) and with
 // what posture (bin/args), neither of which may be guessed from New Window
 // defaults.
-func (s *AttachmentStore) Get(provider, nativeThreadID string) (attachmentRecord, bool) {
+func (s *AttachmentStore) Get(provider, nativeThreadID string) (Attachment, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rec, ok := s.byKey[attachmentKey{Provider: provider, NativeThreadID: nativeThreadID}]
+	rec, ok := s.byKey[AttachmentKey{Provider: provider, NativeThreadID: nativeThreadID}]
 	return rec, ok
 }
 
 // Records returns all stored attachments.
-func (s *AttachmentStore) Records() []attachmentRecord {
+func (s *AttachmentStore) Records() []Attachment {
 	if s == nil {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]attachmentRecord, 0, len(s.byKey))
+	out := make([]Attachment, 0, len(s.byKey))
 	for _, rec := range s.byKey {
 		out = append(out, rec)
 	}
@@ -237,13 +234,13 @@ func (s *AttachmentStore) Records() []attachmentRecord {
 // remove-on-explicit-close half of the rule. A miss is a no-op that touches no
 // disk.
 func (s *AttachmentStore) Forget(provider, nativeThreadID string) {
-	s.forgetWhere(nativeThreadID, func(k attachmentKey) bool {
+	s.forgetWhere(nativeThreadID, func(k AttachmentKey) bool {
 		return k.Provider == provider && k.NativeThreadID == nativeThreadID
 	})
 }
 
 // ForgetClosed removes only the process generation we actually stopped.
-func (s *AttachmentStore) ForgetClosed(expected attachmentRecord) error {
+func (s *AttachmentStore) ForgetClosed(expected Attachment) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, ok := s.byKey[expected.Key()]
@@ -265,14 +262,14 @@ func (s *AttachmentStore) ForgetClosed(expected attachmentRecord) error {
 // dismiss path, whose route is keyed by native id alone. Native ids are UUIDs,
 // so there is no realistic cross-provider collision this could over-delete.
 func (s *AttachmentStore) forgetEveryProvider(nativeThreadID string) {
-	s.forgetWhere(nativeThreadID, func(k attachmentKey) bool {
+	s.forgetWhere(nativeThreadID, func(k AttachmentKey) bool {
 		return k.NativeThreadID == nativeThreadID
 	})
 }
 
 // forgetWhere drops every matching record in one persist; label names the id
 // in the failure log. Removing nothing touches no disk.
-func (s *AttachmentStore) forgetWhere(label string, match func(attachmentKey) bool) {
+func (s *AttachmentStore) forgetWhere(label string, match func(AttachmentKey) bool) {
 	s.mu.Lock()
 	removed := 0
 	for k := range s.byKey {
@@ -295,10 +292,10 @@ func (s *AttachmentStore) forgetWhere(label string, match func(attachmentKey) bo
 // live, newest first. live is keyed like the store — attached sessions by
 // (provider, native thread id); those are attached, not detached, and must not
 // appear as ghosts.
-func (s *AttachmentStore) DetachedExcept(live map[attachmentKey]bool) []attachmentRecord {
+func (s *AttachmentStore) DetachedExcept(live map[AttachmentKey]bool) []Attachment {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]attachmentRecord, 0, len(s.byKey))
+	out := make([]Attachment, 0, len(s.byKey))
 	for k, r := range s.byKey {
 		if !live[k] {
 			out = append(out, r)
@@ -309,7 +306,7 @@ func (s *AttachmentStore) DetachedExcept(live map[attachmentKey]bool) []attachme
 }
 
 func (s *AttachmentStore) persistLocked() error {
-	records := make([]attachmentRecord, 0, len(s.byKey))
+	records := make([]Attachment, 0, len(s.byKey))
 	for _, r := range s.byKey {
 		records = append(records, r)
 	}

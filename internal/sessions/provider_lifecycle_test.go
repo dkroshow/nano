@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -14,7 +15,7 @@ import (
 
 func TestSessionLifecycleWaitingBlocksSendAndDisconnectedWork(t *testing.T) {
 	sess := lifecycleTestSession("ready", true, "current")
-	sess.addPendingInteraction(pendingInteraction{ID: "permission", TurnID: "current"})
+	sess.addPendingInteraction(interact.PendingInteraction{ID: "permission", TurnID: "current"})
 	if sum := sess.Summary(); !sum.Waiting {
 		t.Fatal("waiting interaction missing")
 	}
@@ -175,7 +176,7 @@ func TestProviderRestartWaitingSettlesWithReadiness(t *testing.T) {
 			sess.provider = provider
 			sess.beginTurnRestore()
 			epoch, sequence := sess.evidenceCoordinates()
-			sess.addPendingInteraction(pendingInteraction{ID: "request", TurnID: "current"})
+			sess.addPendingInteraction(interact.PendingInteraction{ID: "request", TurnID: "current"})
 			if sum := sess.Summary(); sum.Waiting || sum.TurnActive {
 				t.Fatal("pending replay became current before readiness")
 			}
@@ -245,7 +246,7 @@ func TestProviderRestartCloseAndResumeUseDurableEpoch(t *testing.T) {
 			if _, err := db.Exec(`INSERT INTO hosted_threads(hosted_thread_id,provider,presentation_mode,revision,created_at,updated_at) VALUES(?,?,?,1,?,?)`, "owner", provider, "shared", time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 				t.Fatal(err)
 			}
-			newAttachment := func() *session {
+			newAttachment := func() *Session {
 				binding, err := threads.BeginTransportBinding(context.Background(), db, "owner")
 				generation := binding.Generation
 				if err != nil {

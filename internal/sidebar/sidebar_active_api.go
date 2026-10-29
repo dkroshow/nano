@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
@@ -282,8 +283,8 @@ func (s *Controller) graphRowsToThreads(rows []history.SidebarGraphRow, now time
 	return out
 }
 
-func fleetCourtFromHistory(record history.FleetCourtMessage) fleetCourtMessage {
-	court := fleetCourtMessage{ItemType: string(record.ItemType), Head: record.Head, Tail: record.Tail, Interrupted: record.Interrupted}
+func fleetCourtFromHistory(record history.FleetCourtMessage) catalog.FleetCourtMessage {
+	court := catalog.FleetCourtMessage{ItemType: string(record.ItemType), Head: record.Head, Tail: record.Tail, Interrupted: record.Interrupted}
 	if record.LastActivity != nil {
 		court.LastActivity = *record.LastActivity
 	}

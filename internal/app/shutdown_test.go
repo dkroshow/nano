@@ -13,16 +13,17 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // stoppingServer holds one ready session whose provider answers only when
 // the test releases it.
-func stoppingServer(t *testing.T) (*server, *session, *prompts.Store, chan struct{}, *atomic.Int32) {
+func stoppingServer(t *testing.T) (*server, *sessions.Session, *prompts.Store, chan struct{}, *atomic.Int32) {
 	t.Helper()
 	release := make(chan struct{})
 	var sends atomic.Int32
 	s := &server{}
-	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "nano-session", Provider: "codex", HostedThreadID: "hosted-thread", NanoStopping: &s.stopping})
+	cfg := runtimeFixtureConfig(t, sessions.Config{ID: "nano-session", Provider: "codex", HostedThreadID: "hosted-thread", NanoStopping: &s.stopping})
 	s.turns, s.queuedTurns, s.sendAttempts = cfg.Turns, cfg.QueuedTurns.(*prompts.LegacyQueue), cfg.SendAttempts.(*prompts.LegacyJournal)
 	fixture := newProviderRuntimeFixture(t, cfg, "native-thread", "", func(f *providerRuntimeFixture) {
 		f.send = func(context.Context, string) (json.RawMessage, error) {
@@ -32,11 +33,11 @@ func stoppingServer(t *testing.T) (*server, *session, *prompts.Store, chan struc
 		}
 	})
 	sess, store := fixture.session, cfg.Turns
-	seedTestSessionRegistry(&s.Registry, map[string]*session{sess.ID(): sess})
+	seedTestSessionRegistry(&s.Registry, map[string]*sessions.Session{sess.ID(): sess})
 	return s, sess, store, release, &sends
 }
 
-func startDelivery(t *testing.T, sess *session, sends *atomic.Int32, actionID string) {
+func startDelivery(t *testing.T, sess *sessions.Session, sends *atomic.Int32, actionID string) {
 	t.Helper()
 	go postTurn(t, sess, context.Background(), actionID, "in flight at the stop")
 	deadline := time.Now().Add(5 * time.Second)
@@ -121,7 +122,7 @@ func TestStoppingNanoQueuesInternalSendsForTheNextProcess(t *testing.T) {
 		t.Fatalf("stored %+v (%v), provider calls %d; want queued and undelivered", record.Outbox, err, sends.Load())
 	}
 
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "next-process", Provider: "codex", HostedThreadID: "hosted-thread", Turns: store, SendAttempts: s.sendAttempts, QueuedTurns: s.queuedTurns}, "native-thread", "", func(f *providerRuntimeFixture) {
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "next-process", Provider: "codex", HostedThreadID: "hosted-thread", Turns: store, SendAttempts: s.sendAttempts, QueuedTurns: s.queuedTurns}, "native-thread", "", func(f *providerRuntimeFixture) {
 		f.send = func(context.Context, string) (json.RawMessage, error) {
 			sends.Add(1)
 			return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil

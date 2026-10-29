@@ -3,11 +3,13 @@ package sessions
 import (
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/testsupport"
 )
 
-func claudeTestSession(t *testing.T) (*Session, *attachmentRecorder) {
+func claudeTestSession(t *testing.T) (*Session, *testsupport.AttachmentRecorder) {
 	t.Helper()
-	recorder := &attachmentRecorder{}
+	recorder := &testsupport.AttachmentRecorder{}
 	queue := mustQueuedTurnStore(t)
 	attempts, err := newSendAttemptStore(queue.Database(), queue.Path(), "claude-test", testPromptStore(t, queue.Database()))
 	if err != nil {

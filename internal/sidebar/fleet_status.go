@@ -15,14 +15,11 @@ const (
 	fleetUserMessageType = catalog.FleetUserMessageType
 )
 
-type fleetState = catalog.FleetState
-type fleetCourtMessage = catalog.FleetCourtMessage
-
 // threadFleetState is the one place a thread's turn state is decided. A thread
 // Nano holds takes its session's lifecycle label; only a thread Nano does not
 // hold falls back to its saved file, where an unanswered prompt is working for
 // at most catalog.WorkingSilenceBound.
-func threadFleetState(thread Thread, court fleetCourtMessage, now time.Time) *fleetState {
+func threadFleetState(thread Thread, court catalog.FleetCourtMessage, now time.Time) *catalog.FleetState {
 	if nanoHolds(thread) {
 		return liveFleetState(thread)
 	}
@@ -38,7 +35,7 @@ func nanoHolds(thread Thread) bool {
 
 // liveFleetState copies the label the session published on its runtime
 // overlay, the same value the pane reads.
-func liveFleetState(thread Thread) *fleetState {
+func liveFleetState(thread Thread) *catalog.FleetState {
 	label := fleetIdle
 	if thread.Runtime != nil && thread.Runtime.Attached {
 		label = thread.Runtime.ThreadStatus

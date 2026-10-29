@@ -7,7 +7,7 @@ import (
 
 // The app sibling checks persistence across a store reload. This boundary
 // catches the same timestamp ordering failure in the live attachment.
-func TestLastHumanPromptMovesForwardAcrossTrimmedFractions(t *testing.T) {
+func TestHumanPromptSessionAdvancesAcrossTrimmedFractions(t *testing.T) {
 	sess := New(Config{})
 	earlier := time.Date(2026, 10, 15, 12, 0, 4, 237400000, time.UTC)
 	later := earlier.Add(time.Microsecond)

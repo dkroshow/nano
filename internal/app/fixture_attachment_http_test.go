@@ -10,10 +10,11 @@ import (
 
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-func fixtureSpawn(s *server, request hostedmodel.SpawnRequest) (*session, error) {
+func fixtureSpawn(s *server, request hostedmodel.SpawnRequest) (*sessions.Session, error) {
 	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
@@ -23,7 +24,7 @@ func fixtureSpawn(s *server, request hostedmodel.SpawnRequest) (*session, error)
 	if response.Code != http.StatusOK {
 		return nil, fmt.Errorf("spawn HTTP %d: %s", response.Code, response.Body.String())
 	}
-	var summary sessionSummary
+	var summary sessions.Summary
 	if err := json.Unmarshal(response.Body.Bytes(), &summary); err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
 // Exercise the callers too: an attach-level error alone does not prove that
@@ -16,7 +17,7 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			var s *server
 			var failOnce sync.Once
-			shim := newFakeShim(t, func(c *shimConn) {
+			shim := newFakeShim(t, func(c *claudeshim.Conn) {
 				for {
 					call, ok := c.Next()
 					if !ok {
@@ -80,7 +81,7 @@ func TestClaudeResumeReplayProcessingTimeoutNeverStartsReplacement(t *testing.T)
 	var once, unblockOnce sync.Once
 	unblock := func() { unblockOnce.Do(func() { close(release) }) }
 	defer unblock()
-	shim := newFakeShim(t, func(c *shimConn) {
+	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		for {
 			call, ok := c.Next()
 			if !ok {

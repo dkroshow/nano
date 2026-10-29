@@ -7,10 +7,6 @@ import (
 	turns "github.com/dkroshow/nano/internal/core/turns"
 )
 
-// completedTurn is a consumer-independent durable source fact. Consumers keep
-// their own cursors; this row deliberately contains no delivery state.
-type completedTurn = turns.Record
-
 // CompletedTurnSource adapts the canonical completed-turn store to the hosted feed.
 type CompletedTurnSource struct{ store *CompletedTurnStore }
 
@@ -34,7 +30,7 @@ func (s *CompletedTurnSource) Open(target string) bool {
 }
 
 // after reads completed turns after the supplied cursor.
-func (s *CompletedTurnSource) after(target, cursor string, limit int) ([]completedTurn, error) {
+func (s *CompletedTurnSource) after(target, cursor string, limit int) ([]turns.Record, error) {
 	if s == nil || s.store == nil {
 		return nil, errors.New("completed-turn source unavailable")
 	}

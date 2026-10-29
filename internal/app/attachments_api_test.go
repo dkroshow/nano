@@ -9,6 +9,7 @@ import (
 	"time"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func serverWithAttachments(t *testing.T) (*server, *hostedstore.AttachmentStore) {
@@ -25,8 +26,8 @@ func serverWithAttachments(t *testing.T) (*server, *hostedstore.AttachmentStore)
 
 // liveSession makes a minimal ready session bound to a native thread id, enough
 // for handleSessionsList and the DELETE path (no provider/ spool to tear down).
-func liveSession(t *testing.T, id, threadID string) *session {
-	return configuredFixtureSession(t, sessionConfig{ID: id, Provider: "codex", CreatedAt: time.Now()}, threadID, "ready", "")
+func liveSession(t *testing.T, id, threadID string) *sessions.Session {
+	return configuredFixtureSession(t, sessions.Config{ID: id, Provider: "codex", CreatedAt: time.Now()}, threadID, "ready", "")
 }
 
 // GET /api/sessions surfaces detached attachments, and a thread with a live
@@ -43,7 +44,7 @@ func TestSessionsGETSurfacesDetached(t *testing.T) {
 	s.sidebarOwner().SessionsHandler(s.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
-		Sessions []sessionSummary         `json:"sessions"`
+		Sessions []sessions.Summary       `json:"sessions"`
 		Detached []hostedstore.Attachment `json:"detached"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -70,7 +71,7 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 	s.sidebarOwner().SessionsHandler(s.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
 
 	var body struct {
-		Sessions []sessionSummary         `json:"sessions"`
+		Sessions []sessions.Summary       `json:"sessions"`
 		Detached []hostedstore.Attachment `json:"detached"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {

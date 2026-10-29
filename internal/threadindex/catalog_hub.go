@@ -1,12 +1,11 @@
 package threadindex
 
-import "github.com/dkroshow/nano/internal/catalog"
+import (
+	"github.com/dkroshow/nano/internal/catalog"
+)
 
-type catalogChange = catalog.Change
-type catalogHub = catalog.Hub
+func newCatalogHub() *catalog.Hub { return catalog.NewHub() }
 
-func newCatalogHub() *catalogHub { return catalog.NewHub() }
-
-func mergeCatalogChanges(left, right catalogChange) catalogChange {
+func mergeCatalogChanges(left, right catalog.Change) catalog.Change {
 	return catalog.MergeChanges(left, right)
 }

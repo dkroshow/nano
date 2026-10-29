@@ -11,6 +11,7 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -38,7 +39,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := newSession(sessionConfig{ID: "missing-zero", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store, Turns: prompts, QueuedTurns: queue, SendAttempts: attempts, Projection: newLiveProjection("codex", hosted.ID)})
+	sess := newSession(sessions.Config{ID: "missing-zero", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store, Turns: prompts, QueuedTurns: queue, SendAttempts: attempts, Projection: newLiveProjection("codex", hosted.ID)})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if err := store.BindSession(hosted.ID, sess.ID(), sess.ThreadID(), "starting", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
-	request := providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID(), BootReattach: newBootProviderControl(0), CodexZeroTurnResume: true}
+	request := sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID(), BootReattach: newBootProviderControl(0), CodexZeroTurnResume: true}
 	if err := sess.BeginProviderSpawn(request, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	if settled.Status != agentTurnFailed || settled.ProviderTurnID != "" {
 		t.Fatalf("operation=%+v", settled)
 	}
-	srv := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{sess.ID(): sess})
+	srv := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*sessions.Session{sess.ID(): sess})
 	for repeat := 0; repeat < 2; repeat++ {
 		if state := fixtureOwners(srv).hostedViews().AvailabilityFor(hosted.ID, time.Now()).State; state == availabilityAvailable {
 			t.Fatal("reconnecting thread was available to feature clients")
@@ -97,7 +98,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	promptsAfter := mustBindTransactionalTurnStore(t, queueAfter, attemptsAfter)
-	reopened := newSession(sessionConfig{ID: "reopened-zero", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store, Turns: promptsAfter, QueuedTurns: queueAfter, SendAttempts: attemptsAfter, Projection: newLiveProjection("codex", hosted.ID)})
+	reopened := newSession(sessions.Config{ID: "reopened-zero", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store, Turns: promptsAfter, QueuedTurns: queueAfter, SendAttempts: attemptsAfter, Projection: newLiveProjection("codex", hosted.ID)})
 	if err := reopened.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +133,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "deleted-rollout", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store, Projection: newLiveProjection("codex", hosted.ID)})
+	cfg := runtimeFixtureConfig(t, sessions.Config{ID: "deleted-rollout", Provider: "codex", HostedThreadID: hosted.ID, AgentExecutions: store, Projection: newLiveProjection("codex", hosted.ID)})
 	sess := newSession(cfg)
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
@@ -140,7 +141,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	sess.ReserveNativeID("deleted-rollout")
 	t.Cleanup(sess.Close)
 	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.ThreadID()}})
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, daemon, func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
@@ -182,7 +183,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 	if response := postTurn(t, sess, context.Background(), "new", "do not queue"); response.Code != http.StatusConflict {
 		t.Fatalf("terminal admission: %d", response.Code)
 	}
-	server := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{sess.ID(): sess})
+	server := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*sessions.Session{sess.ID(): sess})
 	view := fixtureOwners(server).hostedViews().AvailabilityFor(hosted.ID, time.Now())
 	if view.State != availabilityUnreachable || len(view.Reasons) != 1 || view.Reasons[0] != "reconnect_failed" {
 		t.Fatalf("availability: %+v", view)

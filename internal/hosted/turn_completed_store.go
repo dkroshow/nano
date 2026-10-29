@@ -18,7 +18,7 @@ type CompletedTurnStore struct {
 // NewCompletedTurnStore opens completed-turn views on the canonical database.
 func NewCompletedTurnStore(db *sql.DB) *CompletedTurnStore { return &CompletedTurnStore{db: db} }
 
-func (s *CompletedTurnStore) after(target, bookmark string, limit int) ([]completedTurn, error) {
+func (s *CompletedTurnStore) after(target, bookmark string, limit int) ([]turns.Record, error) {
 	store, err := s.CoreStore(context.Background())
 	if err != nil {
 		return nil, err

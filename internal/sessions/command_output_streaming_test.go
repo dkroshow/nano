@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -282,7 +283,7 @@ func commandOutputCompletedFrame(t *testing.T, output string) []byte {
 	return raw
 }
 
-func readReceivedSpoolFrames(t *testing.T, dir string) []wireEvent {
+func readReceivedSpoolFrames(t *testing.T, dir string) []protocol.Event {
 	t.Helper()
 	files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 	if err != nil || len(files) != 1 {
@@ -292,12 +293,12 @@ func readReceivedSpoolFrames(t *testing.T, dir string) []wireEvent {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var events []wireEvent
+	var events []protocol.Event
 	for _, line := range bytes.Split(raw, []byte("\n")) {
 		if len(line) == 0 {
 			continue
 		}
-		var event wireEvent
+		var event protocol.Event
 		if err := json.Unmarshal(line, &event); err != nil {
 			t.Fatal(err)
 		}

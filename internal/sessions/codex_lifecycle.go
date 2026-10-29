@@ -12,10 +12,11 @@ import (
 	"github.com/dkroshow/nano/internal/lifecycle"
 	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
-func codexWorkEvidence(dir protocol.Direction, line []byte) (active bool, turnID string, startedAtMs int64, ok bool) {
+func codexWorkEvidence(dir wire.Direction, line []byte) (active bool, turnID string, startedAtMs int64, ok bool) {
 	if dir != protocol.Recv {
 		return false, "", 0, false
 	}
@@ -32,7 +33,7 @@ func codexWorkEvidence(dir protocol.Direction, line []byte) (active bool, turnID
 	}
 	return false, "", 0, false
 }
-func codexLifecycleNudge(dir protocol.Direction, line []byte) bool {
+func codexLifecycleNudge(dir wire.Direction, line []byte) bool {
 	if dir != protocol.Recv {
 		return false
 	}
@@ -80,7 +81,7 @@ func (a codexLifecycleAdapter) Current() (lifecycle.Observation, bool) {
 	return lifecycle.Observation{Event: event, Epoch: a.epoch, Sequence: a.sequence}, true
 }
 
-func observeCodexWork(sess *Session, dir protocol.Direction, line []byte, live bool) {
+func observeCodexWork(sess *Session, dir wire.Direction, line []byte, live bool) {
 	if live && dir == protocol.Recv {
 		sess.observeCodexTurnInput(line)
 	}
@@ -105,7 +106,7 @@ func observeCodexWork(sess *Session, dir protocol.Direction, line []byte, live b
 	sess.setTurnActive(active, turnID, startedAtMs, true)
 }
 
-func codexRuntimeEvidence(sess *Session, dir protocol.Direction, line []byte, at time.Time) {
+func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {
 	if dir != protocol.Recv {
 		return
 	}

@@ -18,7 +18,7 @@ func TestAsyncTurnStoreFailureReachesTheThreadDiagnostics(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(previousOutput) })
 
 	p := newLiveProjection("codex", "hosted-thread")
-	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "async-diagnostics", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p})
+	cfg := runtimeFixtureConfig(t, sessions.Config{ID: "async-diagnostics", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p})
 	f := newProviderRuntimeFixture(t, cfg, "native-thread", "")
 	if err := cfg.QueuedTurns.Database().Close(); err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestLiveTextDeltasEnvironmentSwitch(t *testing.T) {
 	}
 	s := &server{dropLiveTextDeltas: config.LiveTextDeltasDisabled()}
 	p := s.newSessionProjection("codex", "hosted")
-	runtime := newProviderRuntimeFixture(t, sessionConfig{ID: "delta-switch", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "")
+	runtime := newProviderRuntimeFixture(t, sessions.Config{ID: "delta-switch", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "")
 	runtime.session.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, runtime.session))
 	for _, line := range []string{
 		`{"method":"turn/started","params":{"threadId":"native-thread","turn":{"id":"turn-1"}}}`,

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // ID returns the identity of this runtime attachment.
@@ -25,9 +26,9 @@ func (sess *Session) LiveTurnActive() bool {
 }
 
 // PersistedOperation reads the hosted operation for one transport action.
-func (sess *Session) PersistedOperation(ctx context.Context, actionID string) (agentTurnRecord, bool, error) {
+func (sess *Session) PersistedOperation(ctx context.Context, actionID string) (threads.TurnRecord, bool, error) {
 	if sess.agentExecutions == nil {
-		return agentTurnRecord{}, false, nil
+		return threads.TurnRecord{}, false, nil
 	}
 	return sess.agentExecutions.PersistedTurnForTransportAction(ctx, sess.hostedThreadID, actionID)
 }

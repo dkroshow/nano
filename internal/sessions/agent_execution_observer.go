@@ -13,6 +13,7 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	liveview "github.com/dkroshow/nano/internal/liveview"
 	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
@@ -20,6 +21,7 @@ import (
 	"github.com/dkroshow/nano/internal/transcriptparse/codex"
 	"github.com/dkroshow/nano/internal/transcriptparse/grok"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -55,7 +57,7 @@ func (sess *Session) recordAgentTurnDelivery(transportActionID string, result js
 	}
 }
 
-func (sess *Session) observeAgentExecutionWire(dir protocol.Direction, line []byte) {
+func (sess *Session) observeAgentExecutionWire(dir wire.Direction, line []byte) {
 	if sess.agentExecutions == nil || sess.hostedThreadID == "" || dir != protocol.Recv {
 		return
 	}
@@ -101,7 +103,7 @@ func (sess *Session) observeAgentExecutionWire(dir protocol.Direction, line []by
 		}
 		turnID = wirevalue.String(turn["id"])
 		status := wirevalue.String(turn["status"])
-		var executionErr *agentExecutionError
+		var executionErr *threadvalues.ExecutionError
 		if status != agentTurnCompleted {
 			executionErr = codexExecutionError(turn["error"], status)
 		}
@@ -179,9 +181,9 @@ func (sess *Session) observeGrokAgentWire(line []byte) {
 }
 
 func (sess *Session) observeGrokAgentTerminal(sessionID, promptID, status, code string, detail json.RawMessage) {
-	var executionErr *agentExecutionError
+	var executionErr *threadvalues.ExecutionError
 	if status == agentTurnFailed {
-		executionErr = &agentExecutionError{
+		executionErr = &threadvalues.ExecutionError{
 			Source: "provider", Code: code, Message: "Grok turn failed", Details: detail,
 		}
 	}
@@ -191,7 +193,7 @@ func (sess *Session) observeGrokAgentTerminal(sessionID, promptID, status, code 
 	}
 	if sess.agentExecutions != nil {
 		if err := sess.agentExecutions.MarkTurnTerminal(
-			"grok", sessionID, promptID, status, executionErr, "", itemID, agentResultMeta{},
+			"grok", sessionID, promptID, status, executionErr, "", itemID, hostedstore.ResultMeta{},
 		); err != nil {
 			log.Printf("record Grok terminal turn %s: %v", promptID, err)
 		}
@@ -210,10 +212,10 @@ func (sess *Session) observeClaudeAgentResult(line []byte) {
 	// transport; a result naming none completes no operation.
 	turnID := sess.projection.claudeResultTurn()
 	status, detail := ClaudeProjectionTerminal(line)
-	var executionErr *agentExecutionError
+	var executionErr *threadvalues.ExecutionError
 	if status == agentTurnFailed {
 		messageText := threadvalues.FirstNonEmpty(wirevalue.String(message["result"]), wirevalue.String(message["subtype"]), "Claude turn failed")
-		executionErr = &agentExecutionError{Source: "provider", Code: wirevalue.String(message["terminal_reason"]), Message: messageText, Details: detail}
+		executionErr = &threadvalues.ExecutionError{Source: "provider", Code: wirevalue.String(message["terminal_reason"]), Message: messageText, Details: detail}
 	}
 	response := ""
 	if status == agentTurnCompleted {
@@ -230,7 +232,7 @@ func (sess *Session) observeClaudeAgentResult(line []byte) {
 		if err := sess.agentExecutions.ObserveCandidate("claude", sess.ThreadID(), turnID, itemID, "final_answer", response); err != nil {
 			log.Printf("record Claude agent answer for turn %s: %v", turnID, err)
 		}
-	} else if err := sess.agentExecutions.MarkTurnTerminal("claude", sess.ThreadID(), turnID, status, executionErr, response, itemID, agentResultMeta{}); err != nil {
+	} else if err := sess.agentExecutions.MarkTurnTerminal("claude", sess.ThreadID(), turnID, status, executionErr, response, itemID, hostedstore.ResultMeta{}); err != nil {
 		log.Printf("record Claude agent terminal turn %s: %v", turnID, err)
 	}
 	if status != agentTurnCompleted {
@@ -238,13 +240,13 @@ func (sess *Session) observeClaudeAgentResult(line []byte) {
 	}
 }
 
-func codexExecutionError(raw json.RawMessage, status string) *agentExecutionError {
+func codexExecutionError(raw json.RawMessage, status string) *threadvalues.ExecutionError {
 	message := "Codex turn " + status
 	var detail map[string]json.RawMessage
 	if json.Unmarshal(raw, &detail) == nil {
 		message = threadvalues.FirstNonEmpty(wirevalue.String(detail["message"]), message)
 	}
-	return &agentExecutionError{
+	return &threadvalues.ExecutionError{
 		Source: "provider", Code: status, Message: message,
 		Details: append(json.RawMessage(nil), raw...),
 	}
@@ -397,7 +399,7 @@ func SavedRowsOf(rows []history.SavedUserRow) []transcript.SavedRow {
 // its own saved row too. A lookup error keeps the operation open rather than
 // finishing it unproven. A resume supplies its indexed open operations so
 // the same rule needs no additional execution-store scan.
-func (sess *Session) finishesOnSavedProof(provider, turnID string, openOperations ...[]agentTurnRecord) bool {
+func (sess *Session) finishesOnSavedProof(provider, turnID string, openOperations ...[]threadvalues.TurnRecord) bool {
 	// The bounded result reader checks each prompt's saved proof itself.
 	// Start its deadline on provider completion even if no file row arrives.
 	if sess.agentExecutions != nil {
@@ -415,7 +417,7 @@ func (sess *Session) finishesOnSavedProof(provider, turnID string, openOperation
 	case provider != string(model.ProviderClaude):
 		return false
 	}
-	var open []agentTurnRecord
+	var open []threadvalues.TurnRecord
 	if len(openOperations) == 0 {
 		if sess.agentExecutions != nil {
 			open = sess.agentExecutions.OpenTurnsForProviderTurn(sess.hostedThreadID, provider, turnID)
@@ -456,15 +458,15 @@ func (sess *Session) finishJoinedAgentTurns(ctx context.Context, turnID string) 
 	if err != nil || turn.Outcome == "" {
 		return
 	}
-	var executionErr *agentExecutionError
+	var executionErr *threadvalues.ExecutionError
 	if turn.Outcome != agentTurnCompleted {
-		executionErr = &agentExecutionError{Source: "provider", Code: turn.Outcome, Message: sess.provider + " turn " + turn.Outcome}
+		executionErr = &threadvalues.ExecutionError{Source: "provider", Code: turn.Outcome, Message: sess.provider + " turn " + turn.Outcome}
 	}
 	// Every member gets the turn's one final answer, named by the recorded
 	// final message id: a member of this native thread and turn that
 	// finished with it or observed it. One that did not complete keeps no
 	// answer.
-	response, itemID, meta := "", "", agentResultMeta{}
+	response, itemID, meta := "", "", hostedstore.ResultMeta{}
 	if turn.Outcome == agentTurnCompleted && turn.FinalMessageID != "" {
 		response, meta, _ = sess.agentExecutions.SharedTurnResult(sess.hostedThreadID, sess.provider, sess.ThreadID(), turnID, turn.FinalMessageID)
 		itemID = turn.FinalMessageID
@@ -493,16 +495,16 @@ func (sess *Session) reconcileAgentOperations() {
 		if turn.ID == "" || !CodexResumeTurnTerminal(turn.Status) {
 			continue
 		}
-		var executionErr *agentExecutionError
+		var executionErr *threadvalues.ExecutionError
 		if turn.Status != agentTurnCompleted {
-			executionErr = &agentExecutionError{Source: "provider", Code: turn.Status, Message: sess.provider + " turn " + turn.Status, Details: turn.Error}
+			executionErr = &threadvalues.ExecutionError{Source: "provider", Code: turn.Status, Message: sess.provider + " turn " + turn.Status, Details: turn.Error}
 		}
 		if sess.finishesOnSavedProof(sess.provider, turn.ID) {
 			continue
 		}
 		_ = sess.agentExecutions.MarkTurnTerminal(
 			sess.provider, sess.ThreadID(), turn.ID, turn.Status, executionErr,
-			"", turn.FinalItemID, agentResultMeta{},
+			"", turn.FinalItemID, hostedstore.ResultMeta{},
 		)
 	}
 }
@@ -522,12 +524,12 @@ func (sess *Session) observeCodexResume(resp *codexResumeResponse) {
 	threadID := codexObjectString(resp.thread, "id")
 	var terminalTurns []codexResumeProjectionTurn
 	var positions []int
-	var marks []agentTerminalTurn
+	var marks []hostedstore.TerminalTurn
 	for position, turn := range turns {
 		if turn.Status != agentTurnCompleted && !CodexResumeTurnTerminal(turn.Status) {
 			continue
 		}
-		mark := agentTerminalTurn{ProviderTurnID: turn.ID, Status: turn.Status}
+		mark := hostedstore.TerminalTurn{ProviderTurnID: turn.ID, Status: turn.Status}
 		if turn.Status != agentTurnCompleted {
 			mark.Error = codexExecutionError(turn.Error, turn.Status)
 		}
@@ -540,7 +542,7 @@ func (sess *Session) observeCodexResume(resp *codexResumeResponse) {
 	// reply's items are parsed from the earliest such turn, and not at all
 	// without one: parsing every turn of every resumed thread was the largest
 	// CPU cost of a boot.
-	if first := slices.IndexFunc(matches, func(m agentResumedTurnMatch) bool { return m.Live }); first >= 0 {
+	if first := slices.IndexFunc(matches, func(m hostedstore.ResumedTurnMatch) bool { return m.Live }); first >= 0 {
 		parsedItems := resp.items(positions[first])
 		for i, turn := range terminalTurns[first:] {
 			if parsed, found := parsedItems[[2]string{turn.ID, codexResumeFinalItemID(turn)}]; found && parsed.Type == model.ItemAgentMessage && turn.Status == agentTurnCompleted {

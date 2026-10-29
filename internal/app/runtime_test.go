@@ -19,6 +19,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/catalog"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -27,7 +28,7 @@ import (
 // The first provider execution line must open a fresh runtime/projection turn,
 // and the ordinary result line remains the single terminal authority.
 func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing.T) {
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "notification", Provider: "claude"}, "notification-native", "claude-test")
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "notification", Provider: "claude"}, "notification-native", "claude-test")
 	sess := fixture.session
 	observer := observeProjection(t, sess)
 	fixture.emitAt(t, []byte(`{"type":"stream_event","event":{"type":"message_start","message":{"id":"notification-turn"}}}`), time.Time{}, "claude:notification:1")
@@ -60,7 +61,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 		thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"}},
 	}
 	s := &server{catalog: (fake).source(t), Registry: newSessionRegistry()}
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "native-live", "model")
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "s1", Provider: "codex"}, "native-live", "model")
 	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"inProgress"}}}`))
 	waitReconnectCondition(t, func() bool { return fixture.session.Summary().TurnActive })
 	s.RegisterSession(fixture.session)
@@ -155,10 +156,10 @@ func TestRuntimeForThreeStates(t *testing.T) {
 	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
 	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "claude-exited", Cwd: "/c", AttachedAt: "2026-07-27T12:00:00Z"})
 
-	active := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "codex-live", "model")
+	active := newProviderRuntimeFixture(t, sessions.Config{ID: "s1", Provider: "codex"}, "codex-live", "model")
 	active.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"codex-live","turn":{"id":"turn-1","status":"inProgress","startedAt":1787600000}}}`))
 	waitReconnectCondition(t, func() bool { return active.session.Summary().TurnActive })
-	s := testServerWithSessions(&server{attachments: attachments, Registry: newSessionRegistry()}, map[string]*session{
+	s := testServerWithSessions(&server{attachments: attachments, Registry: newSessionRegistry()}, map[string]*sessions.Session{
 		"s1": active.session,
 		"s2": memorySession(t, "s2", "claude", "claude-live", "starting", "", "", time.Time{}),
 		"s3": memorySession(t, "s3", "claude", "claude-exited", "exited", "", "", time.Time{}),
@@ -278,7 +279,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resume status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	var sum sessionSummary
+	var sum sessions.Summary
 	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +488,7 @@ func readSSEEvent(t *testing.T, reader *bufio.Reader) (event, data string) {
 // carries that session's list row instead of asking every browser to re-read
 // every session.
 func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
-	pending := newFixtureSession(runtimeFixtureConfig(t, sessionConfig{ID: "pending", Provider: "codex", HostedThreadID: "fixture-pending"}), "")
+	pending := newFixtureSession(runtimeFixtureConfig(t, sessions.Config{ID: "pending", Provider: "codex", HostedThreadID: "fixture-pending"}), "")
 	if err := pending.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +507,7 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 	}
 	fake := newFakeAppServer(t)
 	fake.SetStartResult(map[string]any{"thread": map[string]any{"id": "temporary-native"}})
-	if err := pending.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
+	if err := pending.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pending.Close)
@@ -521,16 +522,16 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 // its error (failSpawn's contract). Carried as a removal, the page dropped the
 // row and detached its tab, losing the only place the error shows.
 func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
-	pending := newFixtureSession(runtimeFixtureConfig(t, sessionConfig{ID: "pending", Provider: "codex", HostedThreadID: "fixture-pending"}), "")
+	pending := newFixtureSession(runtimeFixtureConfig(t, sessions.Config{ID: "pending", Provider: "codex", HostedThreadID: "fixture-pending"}), "")
 	if err := pending.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
-	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"pending": pending})
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{"pending": pending})
 	runtimeSnapshotForTest(t, s) // the first snapshot only records the baseline
 
 	fake := newFakeAppServer(t)
 	fake.SetStartError("handshake failed")
-	if err := pending.BeginProviderSpawn(providerRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
+	if err := pending.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pending.Close)
@@ -611,10 +612,10 @@ func TestRuntimeSnapshotWaitsForTheExecutionStoreOnce(t *testing.T) {
 // names a thread Nano released with no overlay.
 func TestRuntimeDeltaCarriesOnlyChangedRows(t *testing.T) {
 	now := time.Now()
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "sess-a", Provider: "codex", CWD: "/w/a", CreatedAt: now}, "thread-a", "gpt-5.6-sol")
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "sess-a", Provider: "codex", CWD: "/w/a", CreatedAt: now}, "thread-a", "gpt-5.6-sol")
 	a := fixture.session
 	b := memorySession(t, "sess-b", "codex", "thread-b", "ready", "/w/b", "gpt-5.6-sol", now)
-	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"sess-a": a, "sess-b": b})
+	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{"sess-a": a, "sess-b": b})
 	if first := runtimeSnapshotForTest(t, s); len(first.Rows) != 2 {
 		t.Fatalf("first delta rows = %d, want every held thread", len(first.Rows))
 	}

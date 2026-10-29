@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/interact"
+	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -253,7 +255,7 @@ func TestGrokWireIngressRejectsMultiplexedChildSession(t *testing.T) {
 }
 
 func TestGrokInteractionSelectsNativeOptions(t *testing.T) {
-	pending := pendingInteraction{Params: json.RawMessage(`{"options":[{"optionId":"always","kind":"allow_always"},{"optionId":"yes","kind":"allow_once"},{"optionId":"no","kind":"reject_once"}]}`)}
+	pending := interact.PendingInteraction{Params: json.RawMessage(`{"options":[{"optionId":"always","kind":"allow_always"},{"optionId":"yes","kind":"allow_once"},{"optionId":"no","kind":"reject_once"}]}`)}
 	accepted, rpcErr := grokInteractionResult(pending, decisionAccept, nil)
 	if rpcErr != nil || grokSelectedOption(accepted) != "yes" {
 		t.Fatalf("accept = %#v, %v", accepted, rpcErr)
@@ -277,8 +279,8 @@ func TestGrokPermissionRequestUsesExistingInteractionShape(t *testing.T) {
 	sess := &Session{id: "nano",
 		provider:       "grok",
 		threadID:       "s1",
-		interactions:   map[string]pendingInteraction{},
-		subs:           map[chan wireEvent]struct{}{},
+		interactions:   map[string]interact.PendingInteraction{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","hostname":"private-host","toolCall":{"toolCallId":"call-1","title":"Run tests",` +
@@ -311,8 +313,8 @@ func TestGrokExitPlanRequestParksPlanApproval(t *testing.T) {
 	sess := &Session{id: "nano",
 		provider:       "grok",
 		threadID:       "s1",
-		interactions:   map[string]pendingInteraction{},
-		subs:           map[chan wireEvent]struct{}{},
+		interactions:   map[string]interact.PendingInteraction{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","toolCallId":"call-9","planContent":"# The plan\n"}`)
@@ -341,8 +343,8 @@ func TestGrokAskQuestionRequestParksAsUserInput(t *testing.T) {
 	sess := &Session{id: "nano",
 		provider:       "grok",
 		threadID:       "s1",
-		interactions:   map[string]pendingInteraction{},
-		subs:           map[chan wireEvent]struct{}{},
+		interactions:   map[string]interact.PendingInteraction{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","toolCallId":"call-3",` +
@@ -365,7 +367,7 @@ func TestGrokAskQuestionRequestParksAsUserInput(t *testing.T) {
 // "approved"/"abandoned" are the only outcomes exit_plan_mode recognises, and
 // anything else — including a malformed body — silently reads as "revise".
 func TestGrokPlanDecisionSpeaksVerifiedOutcomes(t *testing.T) {
-	pending := pendingInteraction{Method: grokExitPlanMethod}
+	pending := interact.PendingInteraction{Method: grokExitPlanMethod}
 	accepted, rpcErr := grokInteractionResult(pending, decisionAccept, nil)
 	if rpcErr != nil || !reflect.DeepEqual(accepted, map[string]any{"outcome": "approved"}) {
 		t.Fatalf("accept = %#v, %v", accepted, rpcErr)
@@ -385,7 +387,7 @@ func TestGrokPlanDecisionSpeaksVerifiedOutcomes(t *testing.T) {
 }
 
 func TestGrokQuestionDecisionKeysAnswersByQuestionText(t *testing.T) {
-	pending := pendingInteraction{Method: grokAskQuestionMethod}
+	pending := interact.PendingInteraction{Method: grokAskQuestionMethod}
 	accepted, rpcErr := grokInteractionResult(pending, decisionAccept, json.RawMessage(`{"Pick A or B":["A"]}`))
 	if rpcErr != nil {
 		t.Fatalf("accept err = %v", rpcErr)
@@ -435,8 +437,8 @@ func TestGrokUnroutedPermissionFailsClosedWithoutParking(t *testing.T) {
 		provider:       "grok",
 		threadID:       "parent",
 		permissionMode: "bypassPermissions",
-		interactions:   map[string]pendingInteraction{},
-		subs:           map[chan wireEvent]struct{}{},
+		interactions:   map[string]interact.PendingInteraction{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"child","toolCall":{"toolCallId":"call-1"},"options":[{"optionId":"yes","kind":"allow_once"},{"optionId":"no","kind":"reject_once"}]}`)
@@ -450,7 +452,7 @@ func TestGrokUnroutedPermissionFailsClosedWithoutParking(t *testing.T) {
 }
 
 func TestGrokCommandUsesDurableLeaderAndFixedSandbox(t *testing.T) {
-	req := providerRequest{Mode: "start", GrokBin: "/opt/grok", GrokLeaderSocket: "/tmp/grok.sock",
+	req := ProviderRequest{Mode: "start", GrokBin: "/opt/grok", GrokLeaderSocket: "/tmp/grok.sock",
 		Model: "grok-4.7", Effort: "high", PermissionMode: "default"}
 	want := []string{
 		"/opt/grok", "--sandbox", "off", "agent",
@@ -497,11 +499,11 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := &session{provider: "grok",
+	sess := &Session{provider: "grok",
 		threadID:       "parent-1",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("grok"),
-		subs:           map[chan wireEvent]struct{}{},
+		subs:           map[chan protocoltypes.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.projection.setNativeThreadID("parent-1")
 	g := &grokSession{sess: sess, seenPromptIDs: map[string]struct{}{}}

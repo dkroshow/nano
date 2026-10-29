@@ -17,8 +17,6 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-type liveTextStatus = liveview.Status
-
 // Integration tests decode the stream's wire values independently.
 type liveTextEntry struct {
 	ID                string   `json:"id"`
@@ -125,9 +123,9 @@ func (p *liveTextPane) Stop() {
 	}
 }
 
-type testLiveTextLoop struct{ sess *session }
+type testLiveTextLoop struct{ sess *sessions.Session }
 
-func liveTextOf(s *session) *testLiveTextLoop { return &testLiveTextLoop{sess: s} }
+func liveTextOf(s *sessions.Session) *testLiveTextLoop { return &testLiveTextLoop{sess: s} }
 func (l *testLiveTextLoop) subscribe(p *liveTextPane) {
 	q := url.Values{"view": {p.query.View}}
 	if p.query.Limit > 0 {
@@ -147,7 +145,7 @@ func (l *testLiveTextLoop) subscribe(p *liveTextPane) {
 	}()
 }
 func (l *testLiveTextLoop) unsubscribe(p *liveTextPane) { p.Stop(); <-p.done }
-func newLiveTextLoop(s *server, sess *session) *sessions.LiveTextLoop {
+func newLiveTextLoop(s *server, sess *sessions.Session) *sessions.LiveTextLoop {
 	if sess != nil {
 		s.startLiveText(sess)
 		return sess.LiveTextService()

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dkroshow/nano/internal/protocol"
 )
 
 const (
@@ -22,7 +24,7 @@ var legacyWireSpoolName = regexp.MustCompile(`^[0-9a-f]{8}\.jsonl$`)
 
 type wireSpool struct {
 	path string
-	ch   chan wireEvent
+	ch   chan protocol.Event
 	wg   sync.WaitGroup
 
 	mu     sync.Mutex
@@ -90,14 +92,14 @@ func newWireSpool(baseDir, sessionID string) (*wireSpool, error) {
 	}
 	sp := &wireSpool{
 		path: path,
-		ch:   make(chan wireEvent, wireSpoolChanSize),
+		ch:   make(chan protocol.Event, wireSpoolChanSize),
 	}
 	sp.wg.Add(1)
 	go sp.writeLoop(f)
 	return sp, nil
 }
 
-func (sp *wireSpool) append(evt wireEvent) error {
+func (sp *wireSpool) append(evt protocol.Event) error {
 	timer := time.NewTimer(wireSpoolAppendTimeout)
 	defer timer.Stop()
 
@@ -140,7 +142,7 @@ func (sp *wireSpool) close(deleteFile bool) error {
 	return sp.currentErr()
 }
 
-func (sp *wireSpool) readBefore(beforeSeq int64, limit int) ([]wireEvent, bool, error) {
+func (sp *wireSpool) readBefore(beforeSeq int64, limit int) ([]protocol.Event, bool, error) {
 	if limit <= 0 {
 		return nil, false, nil
 	}
@@ -153,12 +155,12 @@ func (sp *wireSpool) readBefore(beforeSeq int64, limit int) ([]wireEvent, bool, 
 	}
 	defer f.Close()
 
-	var out []wireEvent
+	var out []protocol.Event
 	seenBefore := 0
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
-		var evt wireEvent
+		var evt protocol.Event
 		if err := json.Unmarshal(scanner.Bytes(), &evt); err != nil {
 			sp.setErr(err)
 			continue

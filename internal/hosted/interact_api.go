@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
@@ -76,7 +77,7 @@ func (s *CompletedFeed) HandleCompletedTurns(w http.ResponseWriter, r *http.Requ
 // An execution two prompts claim publishes no answer. A turn with no Nano
 // prompt, such as one Claude began itself, and every other provider's turn
 // publish as stored.
-func (s *CompletedFeed) publicCompletedTurn(ctx context.Context, hosted string, row completedTurn) (interact.CompletedTurn, bool) {
+func (s *CompletedFeed) publicCompletedTurn(ctx context.Context, hosted string, row coreturns.Record) (interact.CompletedTurn, bool) {
 	var usage *interact.TokenUsage
 	if row.UsageInputTokens != nil || row.UsageCachedInputTokens != nil || row.UsageOutputTokens != nil {
 		usage = &interact.TokenUsage{InputTokens: row.UsageInputTokens, CachedInputTokens: row.UsageCachedInputTokens, OutputTokens: row.UsageOutputTokens}

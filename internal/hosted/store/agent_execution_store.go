@@ -36,20 +36,14 @@ var (
 	ErrAgentTurnIdempotencyConflict     = errors.New("clientActionId was already used with a different prompt")
 )
 
-type agentExecutionError = threads.ExecutionError
-
-type agentSessionRecord = threads.SessionRecord
-
-type agentTurnRecord = threads.TurnRecord
-
 // ExecutionStore is the small durable control-plane record shared by all
 // hosted threads. It deliberately stores prompt hashes, never prompt text.
 // Final responses are provider output and are bounded explicitly at 8 MiB.
 type ExecutionStore struct {
 	mu                 sync.RWMutex
 	runID              string
-	sessions           map[string]agentSessionRecord
-	turns              map[string]agentTurnRecord
+	sessions           map[string]threads.SessionRecord
+	turns              map[string]threads.TurnRecord
 	turnsByHosted      map[string]map[string]bool
 	dirtyTurnThreads   map[string]bool
 	dirtyTurns         map[string]bool
@@ -73,7 +67,7 @@ type ExecutionStore struct {
 	// operations' prompts can never owe a member completion, so their evidence
 	// may go. Until it is set, retention keeps every operation.
 	pruneEligible       func(ctx context.Context, hostedID string, transportActionIDs []string) (map[string]bool, error)
-	savedResultRead     func(context.Context, agentTurnRecord) (string, string, error)
+	savedResultRead     func(context.Context, threads.TurnRecord) (string, string, error)
 	savedResultJobs     map[string]*savedResultJob
 	savedResultFinished func(string)
 }

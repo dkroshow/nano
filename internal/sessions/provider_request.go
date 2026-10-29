@@ -1,6 +1,10 @@
 package sessions
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+)
 
 // ProviderRequest is the resolved launch input consumed by provider transports.
 // Hosted admission and caller-authored orchestration stay with spawnRequest.
@@ -27,7 +31,7 @@ type ProviderRequest struct {
 	// time because the attach replay rewrites the record before anything else
 	// could read it. Zero-valued for a start, or for a record that names no
 	// turn in flight.
-	ClaudeAnchor attachmentRecord `json:"-"`
+	ClaudeAnchor hostedstore.Attachment `json:"-"`
 	// codexZeroTurnResume is boot-only: a supervised daemon can still hold a
 	// thread that has not taken its first turn, but thread/resume cannot load it
 	// because Codex writes no rollout until that turn. codexResumeModel restores

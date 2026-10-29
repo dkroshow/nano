@@ -11,18 +11,18 @@ import (
 // RecordDiagnostic adds one diagnostic to the thread's bounded list. With
 // once, a diagnostic already listed for the same code, source and action is
 // not counted again.
-func (p *LiveProjection) RecordDiagnostic(diagnostic threadDiagnostic, once bool) {
+func (p *LiveProjection) RecordDiagnostic(diagnostic observability.ThreadDiagnostic, once bool) {
 	if p == nil || diagnostic.Code == "" {
 		return
 	}
 	p.diagnosticsMu.Lock()
 	defer p.diagnosticsMu.Unlock()
-	if once && slices.ContainsFunc(p.diagnostics, func(prior threadDiagnostic) bool {
+	if once && slices.ContainsFunc(p.diagnostics, func(prior observability.ThreadDiagnostic) bool {
 		return prior.Code == diagnostic.Code && prior.Source == diagnostic.Source && prior.ActionID == diagnostic.ActionID
 	}) {
 		return
 	}
-	var logged threadDiagnostic
+	var logged observability.ThreadDiagnostic
 	var logKind observability.ThreadDiagnosticLog
 	p.diagnostics, logged, logKind = observability.AppendThreadDiagnostic(p.diagnostics, diagnostic)
 	if logKind == observability.DiagnosticLogNone {
@@ -37,7 +37,7 @@ func (p *LiveProjection) RecordDiagnostic(diagnostic threadDiagnostic, once bool
 }
 
 // ThreadDiagnosticsSnapshot copies the bounded list.
-func (p *LiveProjection) ThreadDiagnosticsSnapshot() []threadDiagnostic {
+func (p *LiveProjection) ThreadDiagnosticsSnapshot() []observability.ThreadDiagnostic {
 	if p == nil {
 		return nil
 	}

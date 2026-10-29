@@ -19,7 +19,9 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -376,7 +378,7 @@ func TestCatalogFrontendDetailFixture(t *testing.T) {
 func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	catalog := newCatalogStoreFixture(t).source
 	var s *server
-	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "session-1", Provider: "claude", HostedThreadID: "name-api", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
+	cfg := runtimeFixtureConfig(t, sessions.Config{ID: "session-1", Provider: "claude", HostedThreadID: "name-api", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
 		func() {
 			if err := catalog.AssignThreadNameIfEmpty(provider, native, name); err != nil {
 				t.Fatal(err)
@@ -384,9 +386,9 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 		}()
 	}})
 	sess := configuredFixtureSession(t, cfg, "", "starting", "")
-	s = testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
+	s = testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*sessions.Session{sess.ID(): sess})
 
-	put := func(name string) sessionSummary {
+	put := func(name string) sessions.Summary {
 		t.Helper()
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/sessions/session-1/name", strings.NewReader(`{"name":`+strconv.Quote(name)+`}`))
@@ -394,7 +396,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("rename %q status = %d, body = %s", name, rec.Code, rec.Body.String())
 		}
-		var summary sessionSummary
+		var summary sessions.Summary
 		if err := json.Unmarshal(rec.Body.Bytes(), &summary); err != nil {
 			t.Fatal(err)
 		}
@@ -421,8 +423,8 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	}
 
 	// A later native bind must not replay a stale pre-bind title.
-	connected := make(chan *shimConn, 1)
-	shim := newFakeShim(t, func(conn *shimConn) {
+	connected := make(chan *claudeshim.Conn, 1)
+	shim := newFakeShim(t, func(conn *claudeshim.Conn) {
 		call, ok := conn.Next()
 		if !ok {
 			return
@@ -431,7 +433,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 		connected <- conn
 		conn.AnswerRest()
 	})
-	if err := sess.BeginProviderSpawn(providerRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(sess.Close)
@@ -458,7 +460,7 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 		Cwd: "/w", AttachedAt: "2026-08-06T10:00:00Z",
 	})
 	var s *server
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "session-1", Provider: "claude", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
+	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "session-1", Provider: "claude", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
 		func() {
 			if err := catalog.AssignThreadNameIfEmpty(provider, native, name); err != nil {
 				t.Fatal(err)
@@ -466,7 +468,7 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 		}()
 	}}, "cs_shim", "")
 	sess := fixture.session
-	s = testServerWithSessions(&server{catalog: catalog, attachments: store, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
+	s = testServerWithSessions(&server{catalog: catalog, attachments: store, Registry: newSessionRegistry()}, map[string]*sessions.Session{sess.ID(): sess})
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/sessions/session-1/name", strings.NewReader(`{"name":"nano api fable"}`))
@@ -492,9 +494,9 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 
 // memorySession builds a live session with a fixed creation time, so the
 // memory rows a request produces are deterministic.
-func memorySession(t *testing.T, id, provider, threadID, status, cwd, model string, createdAt time.Time, configure ...func(*sessionConfig)) *session {
+func memorySession(t *testing.T, id, provider, threadID, status, cwd, model string, createdAt time.Time, configure ...func(*sessions.Config)) *sessions.Session {
 	t.Helper()
-	cfg := sessionConfig{ID: id, Provider: provider, CWD: cwd, CreatedAt: createdAt}
+	cfg := sessions.Config{ID: id, Provider: provider, CWD: cwd, CreatedAt: createdAt}
 	for _, fn := range configure {
 		fn(&cfg)
 	}
@@ -548,16 +550,16 @@ func memoryRowServer(t *testing.T, corrupt ...bool) *server {
 			t.Fatal(err)
 		}
 		if fixture.cwd != "" {
-			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: "cwd", Value: fixture.cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+			if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: record.ID, Field: "cwd", Value: fixture.cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if fixture.model != "" {
-			if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: record.ID, Field: postureFieldModel, Value: fixture.model, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
+			if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: record.ID, Field: postureFieldModel, Value: fixture.model, Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: generation}); err != nil {
 				t.Fatal(err)
 			}
 		}
-		sess := memorySession(t, fixture.id, fixture.provider, fixture.native, fixture.status, fixture.cwd, fixture.model, base.Add(time.Duration(index)*time.Minute), func(cfg *sessionConfig) { cfg.HostedThreadID = hostedID; cfg.Metadata = metadata })
+		sess := memorySession(t, fixture.id, fixture.provider, fixture.native, fixture.status, fixture.cwd, fixture.model, base.Add(time.Duration(index)*time.Minute), func(cfg *sessions.Config) { cfg.HostedThreadID = hostedID; cfg.Metadata = metadata })
 		s.RegisterSession(sess)
 	}
 	return s
@@ -667,7 +669,7 @@ func TestCatalogMemoryRowsMergeIntoFirstPage(t *testing.T) {
 }
 
 func TestMemoryThreadRowCarriesDialogNameBeforeDurableIndexing(t *testing.T) {
-	row := sidebar.MemoryThreadRow(sessionSummary{
+	row := sidebar.MemoryThreadRow(sessions.Summary{
 		ID: "session-1", Provider: "codex", Name: "sidebar name", CreatedAt: "2026-08-04T12:00:00Z",
 	})
 	if row.Name == nil || row.Name.Value != "sidebar name" ||
@@ -740,7 +742,7 @@ func rescueServer(t *testing.T, corrupt ...bool) *server {
 	if len(corrupt) > 0 {
 		fake.stored.corrupt(t, "native-prog")
 	}
-	s := testServerWithSessions(&server{catalog: source, attachments: store, Registry: newSessionRegistry()}, map[string]*session{
+	s := testServerWithSessions(&server{catalog: source, attachments: store, Registry: newSessionRegistry()}, map[string]*sessions.Session{
 		"aaa": memorySession(t, "aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
 		"bbb": memorySession(t, "bbb", "claude", "native-prog", "ready", "/w/prog", "sonnet", base.Add(time.Minute)),
 	})

@@ -20,12 +20,12 @@ func boundAgentResult(value string) (string, int, bool) {
 	return threads.TruncateText(value, maxAgentResultBytes), original, true
 }
 
-func touchAgentSession(rec *agentSessionRecord) {
+func touchAgentSession(rec *threads.SessionRecord) {
 	rec.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	rec.Revision++
 }
 
-func touchAgentTurn(rec *agentTurnRecord) {
+func touchAgentTurn(rec *threads.TurnRecord) {
 	// Metadata reattachment cannot extend a saved-result deadline. The
 	// awaiting transition sets its timestamp once, before this status is set.
 	if rec.Status != agentTurnAwaitingSaved {
@@ -95,7 +95,7 @@ func (s *ExecutionStore) persistControlLocked(with func(*sql.Tx) error) error {
 		if len(s.turnsByHosted[hostedID]) <= maxAgentTurns || s.pruneEligible == nil {
 			continue
 		}
-		records := make([]agentTurnRecord, 0, len(s.turnsByHosted[hostedID]))
+		records := make([]threads.TurnRecord, 0, len(s.turnsByHosted[hostedID]))
 		changed := false
 		for id := range s.turnsByHosted[hostedID] {
 			rec := s.turns[id]
@@ -209,19 +209,19 @@ func (s *ExecutionStore) persistControlLocked(with func(*sql.Tx) error) error {
 	return nil
 }
 
-func insertTurnOperation(tx *sql.Tx, rec agentTurnRecord) error {
+func insertTurnOperation(tx *sql.Tx, rec threads.TurnRecord) error {
 	return upsertTurnOperation(tx, rec)
 }
 
-func upsertTurnOperation(tx *sql.Tx, rec agentTurnRecord) error {
+func upsertTurnOperation(tx *sql.Tx, rec threads.TurnRecord) error {
 	return writeTurnOperation(tx, rec, nil)
 }
 
-func upsertTurnOperationCAS(tx *sql.Tx, rec agentTurnRecord, expected int64) error {
+func upsertTurnOperationCAS(tx *sql.Tx, rec threads.TurnRecord, expected int64) error {
 	return writeTurnOperation(tx, rec, &expected)
 }
 
-func writeTurnOperation(tx *sql.Tx, rec agentTurnRecord, expected *int64) error {
+func writeTurnOperation(tx *sql.Tx, rec threads.TurnRecord, expected *int64) error {
 	var source, code, message, details any
 	if rec.Error != nil {
 		source, code, message = nullableText(rec.Error.Source), nullableText(rec.Error.Code), nullableText(rec.Error.Message)

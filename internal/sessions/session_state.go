@@ -10,6 +10,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // Close tears down the session's provider attachment.
@@ -99,7 +100,7 @@ func (sess *Session) closeProvider(requireReady bool) error {
 // its durable name (one read) and its attention flag from the one-pass
 // operation map.
 func (sess *Session) Summary() Summary {
-	view, err := hostedMetadataView{}, error(sql.ErrNoRows)
+	view, err := hostedstore.MetadataView{}, error(sql.ErrNoRows)
 	if sess.metadata != nil {
 		view, err = sess.metadata.View(sess.hostedThreadID)
 	}
@@ -119,7 +120,7 @@ func (sess *Session) Summary() Summary {
 // views in one batch. The view's name is the display name; summary replaces
 // it with the durable name for one session. The sessions list carries no name
 // in its metadata.
-func (sess *Session) SummaryWith(view hostedMetadataView, viewErr error, needsAttention bool) Summary {
+func (sess *Session) SummaryWith(view hostedstore.MetadataView, viewErr error, needsAttention bool) Summary {
 	sess.stateMu.Lock()
 	presentationMode := sess.presentationMode
 	if presentationMode == "" {
@@ -162,12 +163,12 @@ func (sess *Session) SummaryWith(view hostedMetadataView, viewErr error, needsAt
 	summary.FileTranscript = true
 	// A hosted session's facts are served exclusively from the canonical view.
 	// Local session fields are transport state, not a fallback metadata source.
-	summary.Posture, summary.Model, summary.Cwd = sessionPosture{}, "", ""
+	summary.Posture, summary.Model, summary.Cwd = hostedstore.Posture{}, "", ""
 	if sess.metadata == nil || viewErr != nil {
 		summary.MetadataUnavailable = true
 		return summary
 	}
-	view.Attachment = hostedAttachmentView{State: summary.Status, Provenance: "live_session", Error: summary.Error}
+	view.Attachment = hostedstore.AttachmentView{State: summary.Status, Provenance: "live_session", Error: summary.Error}
 	view.Name = displayMetadataName(summary.Name)
 	summary.Posture = hostedstore.PostureFromFields(view.Fields)
 	summary.Metadata = &view
@@ -178,7 +179,7 @@ func (sess *Session) SummaryWith(view hostedMetadataView, viewErr error, needsAt
 	return summary
 }
 
-func (sess *Session) hostedMetadataName(provider, nativeThreadID, fallback string) (hostedMetadataName, bool) {
+func (sess *Session) hostedMetadataName(provider, nativeThreadID, fallback string) (hostedstore.MetadataName, bool) {
 	if sess.metadataName != nil {
 		if name, ok := sess.metadataName(provider, nativeThreadID); ok {
 			return name, true
@@ -190,11 +191,11 @@ func (sess *Session) hostedMetadataName(provider, nativeThreadID, fallback strin
 
 // displayMetadataName is a hosted view's name when the names store holds
 // none: the session's display name, as a manual name, or no name.
-func displayMetadataName(displayName string) hostedMetadataName {
+func displayMetadataName(displayName string) hostedstore.MetadataName {
 	if displayName == "" {
-		return hostedMetadataName{}
+		return hostedstore.MetadataName{}
 	}
-	return hostedMetadataName{Value: displayName, Provenance: "manual"}
+	return hostedstore.MetadataName{Value: displayName, Provenance: "manual"}
 }
 
 // failSpawn records a background spawn failure: the session stays listed so
@@ -254,13 +255,13 @@ func (sess *Session) settleAgentTurnsOnExit(closed bool) {
 		return
 	}
 	turnStatus := agentTurnDeliveryUnknown
-	executionErr := &agentExecutionError{
+	executionErr := &threads.ExecutionError{
 		Source: "transport", Code: "session_exited",
 		Message: "the Nano session exited without provider terminal evidence",
 	}
 	if closed {
 		turnStatus = agentTurnInterrupted
-		executionErr = &agentExecutionError{
+		executionErr = &threads.ExecutionError{
 			Source: "client", Code: "session_closed", Message: "the caller closed the hosted thread",
 		}
 	}
@@ -294,7 +295,7 @@ func (sess *Session) updateHostedThread(status, message string) {
 	}
 }
 
-func (sess *Session) rememberDurableAttachment(rec attachmentRecord) {
+func (sess *Session) rememberDurableAttachment(rec hostedstore.Attachment) {
 	if sess.rememberAttachment == nil {
 		return
 	}

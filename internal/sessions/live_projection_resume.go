@@ -3,11 +3,12 @@ package sessions
 import (
 	"encoding/json"
 
+	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
 // seedResumeTurns merges the provider's normalized prefix with already-live turns.
-func (p *LiveProjection) seedResumeTurns(id string, seedTurns []*liveProjectionTurn) {
+func (p *LiveProjection) seedResumeTurns(id string, seedTurns []*liveview.Turn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if id != "" {
@@ -27,10 +28,10 @@ func (p *LiveProjection) seedResumeTurns(id string, seedTurns []*liveProjectionT
 	}
 	p.turnOrder = orderedIDUnion(seedTurnOrder, p.turnOrder)
 	p.trimTurnsLocked()
-	p.appendLocked(liveProjectionUpdate{Op: projectionSnapshot, Snapshot: &liveProjectionSnapshot{Revision: p.revision + 1}})
+	p.appendLocked(liveview.Update{Op: projectionSnapshot, Snapshot: &liveview.Snapshot{Revision: p.revision + 1}})
 }
 
-func mergeResumeTurn(baseline, live *liveProjectionTurn) *liveProjectionTurn {
+func mergeResumeTurn(baseline, live *liveview.Turn) *liveview.Turn {
 	if baseline == nil {
 		return cloneTurn(live)
 	}

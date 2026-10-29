@@ -3,11 +3,13 @@ package sessions
 import (
 	"errors"
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // The app sibling verifies committed metadata and duplicate notifications with
 // the canonical store. Rejected provider writes must also publish degradation.
-func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
+func TestPostureRejectionFailurePublishesSessionDegradation(t *testing.T) {
 	metadata := &rejectedPostureWrite{}
 	notified := 0
 	sess := New(Config{ID: "nano-1", HostedThreadID: "hosted", Metadata: metadata, RuntimeNotify: func() { notified++ }})
@@ -22,10 +24,10 @@ func TestRecordPosturePublishesRuntimeOnlyAfterCommittedMutation(t *testing.T) {
 
 type rejectedPostureWrite struct {
 	Metadata
-	events []metadataEvent
+	events []hostedstore.MetadataEvent
 }
 
-func (m *rejectedPostureWrite) AppendEvent(event metadataEvent) (metadataEvent, error) {
+func (m *rejectedPostureWrite) AppendEvent(event hostedstore.MetadataEvent) (hostedstore.MetadataEvent, error) {
 	m.events = append(m.events, event)
-	return metadataEvent{}, errors.New("injected rejected write")
+	return hostedstore.MetadataEvent{}, errors.New("injected rejected write")
 }

@@ -51,6 +51,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/interact"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -504,7 +505,7 @@ func (c *claudeSession) parkControlRequest(requestID string, request json.RawMes
 		}
 		return
 	}
-	pending := pendingInteraction{
+	pending := interact.PendingInteraction{
 		ID: requestID, Method: probe.Subtype, Kind: kind,
 		ThreadID:  c.sess.ThreadID(),
 		CreatedAt: time.Now().Format(time.RFC3339Nano),

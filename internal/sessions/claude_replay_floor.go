@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -48,7 +50,7 @@ type claudeReplayPlan struct {
 // claudeSpoolFrame is one spooled line, from the file or from the replay.
 type claudeSpoolFrame struct {
 	Seq    int64
-	Dir    protocol.Direction
+	Dir    wire.Direction
 	Line   []byte
 	TurnID string
 }
@@ -380,7 +382,7 @@ func scanClaudeSpool(path string, facts *claudeSpoolFacts) (bool, error) {
 		if err := json.Unmarshal(bytes.TrimSpace(line), &envelope); err != nil || envelope.Line == nil {
 			return false, fmt.Errorf("%w: malformed spool line after sequence %d", errClaudeRecoveryUnproven, facts.last)
 		}
-		if _, err := facts.observe(claudeSpoolFrame{Seq: envelope.Seq, Dir: protocol.Direction(envelope.Dir), Line: []byte(*envelope.Line), TurnID: envelope.TurnID}); err != nil {
+		if _, err := facts.observe(claudeSpoolFrame{Seq: envelope.Seq, Dir: wire.Direction(envelope.Dir), Line: []byte(*envelope.Line), TurnID: envelope.TurnID}); err != nil {
 			return false, err
 		}
 	}
@@ -430,7 +432,7 @@ func claudeSpoolFactFreeFrame(raw []byte) (frame claudeSpoolFrame, ok bool) {
 // any frame is requested. Durable facts come from the prompt and turn stores;
 // the spool is found by the key the shim mints turn ids under: the hosted
 // thread id, or the shim session id for a child started before that existed.
-func (sess *Session) planClaudeReplay(ctx context.Context, spoolDir, native string, stored attachmentRecord) (claudeReplayPlan, error) {
+func (sess *Session) planClaudeReplay(ctx context.Context, spoolDir, native string, stored hostedstore.Attachment) (claudeReplayPlan, error) {
 	if strings.TrimSpace(spoolDir) == "" {
 		return claudeReplayPlan{}, fmt.Errorf("%w: the claude shim spool directory is not configured", errClaudeRecoveryUnproven)
 	}

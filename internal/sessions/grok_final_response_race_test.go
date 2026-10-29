@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -24,14 +25,14 @@ func grokRaceTurnCompleted() []byte {
 
 // grokRaceSession records the candidate visible at the first terminal call.
 // withCore attaches the real core session mailbox; persistence stays in app tests.
-func grokRaceSession(t *testing.T, withCore bool) (*session, *grokTerminalRecorder) {
+func grokRaceSession(t *testing.T, withCore bool) (*Session, *grokTerminalRecorder) {
 	t.Helper()
 	store := &grokTerminalRecorder{}
-	var sess *session
+	var sess *Session
 	if withCore {
 		sess, _ = readyTransactionalSendTestSession(t, nil)
 	} else {
-		sess = &session{id: "nano-session", threadID: "native-thread", lifecycleState: testLifecycleSnapshot("ready", false)}
+		sess = &Session{id: "nano-session", threadID: "native-thread", lifecycleState: testLifecycleSnapshot("ready", false)}
 	}
 	sess.provider = "grok"
 	sess.hostedThreadID = "hosted"
@@ -167,7 +168,7 @@ func TestGrokRPCOutcomeCompletesWithinBoundWhenMailboxStalls(t *testing.T) {
 // Fails if the queued RPC outcome and its fallback bound complete the
 // operation twice, or if a later terminal overwrites the first. Boundary: the
 // wire turn_completed, the queued outcome, the bound, and a late failure.
-func TestGrokRPCOutcomeTerminalAppliesExactlyOnce(t *testing.T) {
+func TestGrokRPCOutcomeTerminalSessionTimer(t *testing.T) {
 	setGrokQueuedOutcomeBound(t, 500*time.Millisecond)
 	sess, store := grokRaceSession(t, true)
 	core := sess.coreSession()
@@ -222,7 +223,7 @@ func (r *grokTerminalRecorder) ObserveCandidate(_, _, _, _, _, text string) erro
 	r.candidate = text
 	return nil
 }
-func (r *grokTerminalRecorder) MarkTurnTerminal(_, _, _, status string, _ *agentExecutionError, _, _ string, _ ...agentResultMeta) error {
+func (r *grokTerminalRecorder) MarkTurnTerminal(_, _, _, status string, _ *threadvalues.ExecutionError, _, _ string, _ ...hostedstore.ResultMeta) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, grokTerminalCall{status, r.candidate})
@@ -241,18 +242,20 @@ func (r *grokTerminalRecorder) callsSnapshot() []grokTerminalCall {
 	defer r.mu.Unlock()
 	return append([]grokTerminalCall(nil), r.calls...)
 }
-func (*grokTerminalRecorder) BindSession(string, string, string, string, string) error    { return nil }
-func (*grokTerminalRecorder) UpdateSession(string, string, string, string, string) error  { return nil }
-func (*grokTerminalRecorder) MarkSessionTurns(string, string, *agentExecutionError) error { return nil }
-func (*grokTerminalRecorder) MarkWaiting(string, string, bool) error                      { return nil }
-func (*grokTerminalRecorder) OpenTurnsForProviderTurn(string, string, string) []agentTurnRecord {
+func (*grokTerminalRecorder) BindSession(string, string, string, string, string) error   { return nil }
+func (*grokTerminalRecorder) UpdateSession(string, string, string, string, string) error { return nil }
+func (*grokTerminalRecorder) MarkSessionTurns(string, string, *threadvalues.ExecutionError) error {
 	return nil
 }
-func (*grokTerminalRecorder) TurnsForHosted(string) []agentTurnRecord { return nil }
-func (*grokTerminalRecorder) ReadsSavedResults() bool                 { return false }
-func (*grokTerminalRecorder) TurnForTransportAction(string) (agentTurnRecord, bool) {
-	return agentTurnRecord{}, false
+func (*grokTerminalRecorder) MarkWaiting(string, string, bool) error { return nil }
+func (*grokTerminalRecorder) OpenTurnsForProviderTurn(string, string, string) []threadvalues.TurnRecord {
+	return nil
 }
-func (*grokTerminalRecorder) PersistedTurnForTransportAction(context.Context, string, string) (agentTurnRecord, bool, error) {
-	return agentTurnRecord{}, false, nil
+func (*grokTerminalRecorder) TurnsForHosted(string) []threadvalues.TurnRecord { return nil }
+func (*grokTerminalRecorder) ReadsSavedResults() bool                         { return false }
+func (*grokTerminalRecorder) TurnForTransportAction(string) (threadvalues.TurnRecord, bool) {
+	return threadvalues.TurnRecord{}, false
+}
+func (*grokTerminalRecorder) PersistedTurnForTransportAction(context.Context, string, string) (threadvalues.TurnRecord, bool, error) {
+	return threadvalues.TurnRecord{}, false, nil
 }

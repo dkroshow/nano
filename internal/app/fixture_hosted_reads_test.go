@@ -100,6 +100,6 @@ func fixtureAppendOrchestrationAssignment(store *hostedstore.ExecutionStore, id,
 	} else {
 		value = *assignment
 	}
-	event, err := store.Control().AppendEvent(metadataEvent{HostedThreadID: id, Field: "orchestrationAssignment", Value: value, Disposition: disposition, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + id + ":" + action, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
+	event, err := store.Control().AppendEvent(hostedstore.MetadataEvent{HostedThreadID: id, Field: "orchestrationAssignment", Value: value, Disposition: disposition, Source: postureSourceOperator, Freshness: metadataFreshnessLive, SourceEventKey: "assignment:" + id + ":" + action, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)})
 	return event.ID, err
 }

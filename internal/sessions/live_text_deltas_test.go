@@ -154,7 +154,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	sub := make(chan wireEvent, 64)
+	sub := make(chan protocol.Event, 64)
 	go func() {
 		defer close(sub)
 		scanner := bufio.NewScanner(response.Body)
@@ -163,7 +163,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
-			var event wireEvent
+			var event protocol.Event
 			if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event) == nil && event.Seq > prior {
 				sub <- event
 			}
@@ -198,7 +198,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 		t.Fatalf("turn completion named answer %q, want agent-1", got)
 	}
 
-	var events []wireEvent
+	var events []protocol.Event
 	for _, event := range liveWirePageEvents(sess) {
 		if event.Seq > prior {
 			events = append(events, event)

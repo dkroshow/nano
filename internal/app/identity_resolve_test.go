@@ -14,6 +14,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -122,7 +123,7 @@ func TestIdentityResolveFollowsRename(t *testing.T) {
 func TestIdentityResolveLivePendingName(t *testing.T) {
 	s, store := newIdentityServer(t, nil)
 	record := createIdentityHosted(t, store, "claude", "")
-	s.RegisterSession(configuredFixtureSession(t, sessionConfig{ID: "live", Provider: "claude", HostedThreadID: record.ID, DisplayName: "draft name", CreatedAt: time.Now()}, "", "ready", ""))
+	s.RegisterSession(configuredFixtureSession(t, sessions.Config{ID: "live", Provider: "claude", HostedThreadID: record.ID, DisplayName: "draft name", CreatedAt: time.Now()}, "", "ready", ""))
 
 	status, body, raw := resolveIdentity(t, s, "draft%20name")
 	if status != http.StatusOK || body.HostedThreadID != record.ID || body.DisplayName != "draft name" {

@@ -121,7 +121,7 @@ func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *tes
 
 func TestInteractLifecycleReportsCoordinatorFacts(t *testing.T) {
 	var projection *sessions.LiveProjection
-	s, target := interactTestServer(t, true, func(cfg *sessionConfig) { projection = cfg.Projection })
+	s, target := interactTestServer(t, true, func(cfg *sessions.Config) { projection = cfg.Projection })
 	projection.RecordDiagnostic(observability.ThreadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
 	state, err := interactTestClient(t, s).ReadLifecycle(context.Background(), target)
 	if err != nil || !state.Attached || !state.Ready || !state.Working || !state.TurnActive || state.Availability != availabilityBusy || state.AttachmentState != "live" {
@@ -143,7 +143,7 @@ func interactTestClient(t *testing.T, s *server) *interact.HTTPClient {
 
 // interactTestServer holds one hosted thread over the server's stores, which
 // share one threads database as they do in Nano.
-func interactTestServer(t *testing.T, working bool, configure ...func(*sessionConfig)) (*server, string) {
+func interactTestServer(t *testing.T, working bool, configure ...func(*sessions.Config)) (*server, string) {
 	t.Helper()
 	directory := t.TempDir()
 	stores, err := openThreadRuntimeStores(context.Background(), directory, filepath.Join(directory, "turn-completed.sqlite"), "run-1")
@@ -160,7 +160,7 @@ func interactTestServer(t *testing.T, working bool, configure ...func(*sessionCo
 		t.Fatal(err)
 	}
 	notices := interact.NewNotices()
-	cfg := sessionConfig{ID: "nano-target", Provider: "codex", HostedThreadID: record.ID, CreatedAt: time.Now(), Projection: newLiveProjection("codex", record.ID, "nano-target"), AgentExecutions: executions, QueuedTurns: queue, SendAttempts: attempts, Turns: turnStore, AppendUnread: notices.Append}
+	cfg := sessions.Config{ID: "nano-target", Provider: "codex", HostedThreadID: record.ID, CreatedAt: time.Now(), Projection: newLiveProjection("codex", record.ID, "nano-target"), AgentExecutions: executions, QueuedTurns: queue, SendAttempts: attempts, Turns: turnStore, AppendUnread: notices.Append}
 	for _, apply := range configure {
 		apply(&cfg)
 	}
@@ -168,5 +168,5 @@ func interactTestServer(t *testing.T, working bool, configure ...func(*sessionCo
 	return testServerWithSessions(&server{
 		Registry: newSessionRegistry(), agentExecutions: executions,
 		queuedTurns: queue, sendAttempts: attempts, turns: turnStore, notices: notices,
-	}, map[string]*session{sess.ID(): sess}), record.ID
+	}, map[string]*sessions.Session{sess.ID(): sess}), record.ID
 }

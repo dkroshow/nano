@@ -82,11 +82,11 @@ func (s *MetadataStore) CurrentAssignmentsByHostedIDs(ids []string) map[string]*
 }
 
 // CurrentMetadataByHostedIDs reads canonical metadata fields in bounded database batches.
-func (s *MetadataStore) CurrentMetadataByHostedIDs(ids []string) map[string]map[string]metadataCurrentView {
+func (s *MetadataStore) CurrentMetadataByHostedIDs(ids []string) map[string]map[string]MetadataCurrent {
 	if s == nil || len(ids) == 0 {
 		return nil
 	}
-	views := map[string]map[string]metadataCurrentView{}
+	views := map[string]map[string]MetadataCurrent{}
 	unique := uniqueHostedIDs(ids)
 	for start := 0; start < len(unique); start += 400 {
 		end := start + 400
@@ -118,7 +118,7 @@ func (s *MetadataStore) CurrentMetadataByHostedIDs(ids []string) map[string]map[
 				rows.Close()
 				return nil
 			}
-			entry := metadataCurrentView{DesiredDisposition: nonnullDisposition(dDisp), DesiredSource: dSource.String, EffectiveDisposition: nonnullDisposition(eDisp), EffectiveSource: eSource.String}
+			entry := MetadataCurrent{DesiredDisposition: nonnullDisposition(dDisp), DesiredSource: dSource.String, EffectiveDisposition: nonnullDisposition(eDisp), EffectiveSource: eSource.String}
 			if dVal.Valid {
 				entry.DesiredValue = json.RawMessage(dVal.String)
 			}
@@ -136,7 +136,7 @@ func (s *MetadataStore) CurrentMetadataByHostedIDs(ids []string) map[string]map[
 			projectMetadataDisplay(&entry, desiredFreshness, effectiveFreshness)
 			fields := views[hostedID]
 			if fields == nil {
-				fields = map[string]metadataCurrentView{}
+				fields = map[string]MetadataCurrent{}
 				views[hostedID] = fields
 			}
 			fields[field] = entry
