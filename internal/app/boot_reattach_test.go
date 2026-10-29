@@ -312,7 +312,8 @@ func TestBootReattachReloadsCanonicalCreationNameWhenAttachmentDroppedIt(t *test
 	if err := fixtureRecordCreationName(s.controlMetadata, rec.HostedThreadID, "creation survives boot"); err != nil {
 		t.Fatal(err)
 	}
-	catalog := &fakeThreadCatalog{names: map[string]string{}}
+	catalog := fixtureIdentityCatalog(t, nil)
+	catalog.SetCreationNameSource(s.controlMetadata.CreationThreadNames)
 	s.catalog = catalog
 
 	s.reattachOnBoot()
@@ -324,14 +325,19 @@ func TestBootReattachReloadsCanonicalCreationNameWhenAttachmentDroppedIt(t *test
 		t.Fatal("boot did not register the named Claude session")
 	}
 	waitForSessionStatus(t, s, sess.ID(), "ready")
-	key := "claude\x00" + claudeResumeThreadID
-	if got := catalog.names[key]; got != "creation survives boot" {
+	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", claudeResumeThreadID); got != "creation survives boot" {
 		t.Fatalf("boot bind name = %q, want canonical creation name", got)
 	}
 
-	catalog.names[key] = "operator rename"
+	if err := catalog.AssignThreadName("claude", claudeResumeThreadID, "operator rename"); err != nil {
+		t.Fatal(err)
+	}
+	waitForCatalog(t, func() bool {
+		name, _ := catalog.ThreadNameFor(context.Background(), "claude", claudeResumeThreadID)
+		return name == "operator rename"
+	})
 	emitClaudeInit(t, sess, <-connected, 1, claudeResumeThreadID, "")
-	if got := catalog.names[key]; got != "operator rename" {
+	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", claudeResumeThreadID); got != "operator rename" {
 		t.Fatalf("later bind overwrote operator rename with %q", got)
 	}
 }
