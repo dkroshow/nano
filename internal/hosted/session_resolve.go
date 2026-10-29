@@ -15,7 +15,7 @@ import (
 // endpoint so the previewed JSON matches what a real spawn would send. Resume
 // intentionally avoids applying start defaults for either provider; otherwise
 // nano would silently override the posture the resumed session already has.
-func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, error) {
+func (s *AttachmentCoordinator) resolveSpawn(req SpawnRequest) (SpawnRequest, error) {
 	req.Provider = strings.TrimSpace(req.Provider)
 	if req.Mode == "" {
 		req.Mode = "start"
@@ -47,7 +47,7 @@ func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, er
 		}
 		// Resume routes only through the canonical current native owner. Neither
 		// attachment records nor historical activity may mint or reclaim one.
-		if err := s.ResolveResumeHostedIdentity(&req); err != nil {
+		if err := s.resolveResumeHostedIdentity(&req); err != nil {
 			return req, err
 		}
 		// A hosted attachment is only a transport locator.  Its old cwd/model/
@@ -58,7 +58,7 @@ func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, er
 			if err := s.inheritResumePosture(req.HostedThreadID, req.Provider, req.ThreadID); err != nil {
 				return req, err
 			}
-			if err := s.ApplyCanonicalResumeMetadata(&req); err != nil {
+			if err := s.applyCanonicalResumeMetadata(&req); err != nil {
 				return req, err
 			}
 		}
@@ -66,7 +66,7 @@ func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, er
 		case "codex":
 			return s.resolveCodexResume(req)
 		case "claude":
-			return s.ResolveClaudeResume(req)
+			return s.resolveClaudeResume(req)
 		case "grok":
 			return s.resolveGrokResume(req)
 		}
@@ -138,7 +138,7 @@ func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, er
 // handles (Claude argv, shim ids and replay anchors), but it must never be
 // consulted for model, effort, permission, service tier or cwd once a hosted
 // identity has been established.
-func (s *AttachmentCoordinator) ApplyCanonicalResumeMetadata(req *SpawnRequest) error {
+func (s *AttachmentCoordinator) applyCanonicalResumeMetadata(req *SpawnRequest) error {
 	if req == nil || req.HostedThreadID == "" {
 		return nil
 	}
@@ -251,7 +251,7 @@ func (s *AttachmentCoordinator) resolveCodexResume(req SpawnRequest) (SpawnReque
 // Without an attachment, the canonical hosted owner still supplies the cwd
 // and posture before this provider builder runs. A missing transport record
 // never authorizes public resume to mint a new owner or guess its settings.
-func (s *AttachmentCoordinator) ResolveClaudeResume(req SpawnRequest) (SpawnRequest, error) {
+func (s *AttachmentCoordinator) resolveClaudeResume(req SpawnRequest) (SpawnRequest, error) {
 	req.ClaudeShimWS = s.Defaults.ClaudeShimWS
 	req.ClaudeShimSpools = s.Defaults.ClaudeShimSpools
 	if sessions.NativeThreadIDProvisional("claude", req.ThreadID) && req.HostedThreadID != "" {
@@ -263,11 +263,11 @@ func (s *AttachmentCoordinator) ResolveClaudeResume(req SpawnRequest) (SpawnRequ
 		if err != nil {
 			return req, err
 		}
-		if current, ok := s.AttachmentFor("claude", native); native != "" && ok && current.HostedThreadID == req.HostedThreadID {
+		if current, ok := s.attachmentFor("claude", native); native != "" && ok && current.HostedThreadID == req.HostedThreadID {
 			req.retiredClaudeHandle, req.ThreadID = req.ThreadID, native
 		}
 	}
-	rec, _ := s.AttachmentFor("claude", req.ThreadID)
+	rec, _ := s.attachmentFor("claude", req.ThreadID)
 	cwd := strings.TrimSpace(req.Cwd)
 	if cwd == "" {
 		if req.HostedThreadID != "" {

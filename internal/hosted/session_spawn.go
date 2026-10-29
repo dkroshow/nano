@@ -26,7 +26,7 @@ import (
 // kinds now follow the contract resume has had since Slice R3 — status
 // "starting", the card visible immediately, failure surfaced through failSpawn
 // on the session rather than as an HTTP error nobody is still looking at.
-func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, error) {
+func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, error) {
 	if s.Executions == nil || s.Metadata == nil || s.ExecutionError != "" || s.MetadataError != "" {
 		return nil, errHostedControlUnavailable
 	}
@@ -42,7 +42,7 @@ func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, erro
 		defer lock.Unlock()
 		req.restart.at(observability.RestartLock)
 	}
-	req, err := s.ResolveSpawn(req)
+	req, err := s.resolveSpawn(req)
 	if err != nil {
 		return nil, err
 	}
@@ -66,14 +66,14 @@ func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, erro
 		// same path. Re-apply the now-canonical metadata and rebuild the provider
 		// resume shape so Claude's identity block, in particular, carries the new
 		// hosted id rather than an empty pre-registration placeholder.
-		if err := s.ApplyCanonicalResumeMetadata(&req); err != nil {
+		if err := s.applyCanonicalResumeMetadata(&req); err != nil {
 			return nil, failRegistration(err)
 		}
 		switch req.Provider {
 		case "codex":
 			req, err = s.resolveCodexResume(req)
 		case "claude":
-			req, err = s.ResolveClaudeResume(req)
+			req, err = s.resolveClaudeResume(req)
 		case "grok":
 			req, err = s.resolveGrokResume(req)
 		}

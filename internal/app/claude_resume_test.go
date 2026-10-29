@@ -159,7 +159,7 @@ func ensureClaudeTestSpool(t *testing.T, s *server, provider, hostedID string) {
 
 func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID string) {
 	t.Helper()
-	record, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor(provider, nativeID)
+	record, ok := fixtureAttachmentFor(s, provider, nativeID)
 	if ok && record.HostedThreadID != "" {
 		ensureClaudeTestSpool(t, s, provider, record.HostedThreadID)
 	}
@@ -1149,52 +1149,6 @@ func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
 	}
 }
 
-// The provider transport builder requires an explicit cwd without an attachment.
-// Public resume separately requires a canonical owner before reaching this seam.
-func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
-	s, _ := claudeResumeServer(t, "")
-	_, err := fixtureOwners(s).attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
-	if err == nil || !strings.Contains(err.Error(), "no attachment record") {
-		t.Fatalf("err = %v, want a refusal to guess the cwd", err)
-	}
-	cwd := t.TempDir()
-	req, err := fixtureOwners(s).attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	args := claudeCommand(req.ProviderRequest)[1:]
-	want := append(claudeArgs(providerRequest{AllowedTools: "Read,Grep"}), claudeResumeFlag, claudeResumeThreadID)
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("record-less transport args = %#v, want %#v", args, want)
-	}
-	if req.Cwd != cwd || req.ClaudeBin != resolveClaudeBin("/default/claude") {
-		t.Fatalf("bin = %q cwd = %q, want explicit cwd and configured binary", req.ClaudeBin, req.Cwd)
-	}
-}
-
-// Canonical posture passes into the provider builder after ownership resolves.
-func TestClaudeResumeTransportWithoutAttachmentCarriesPosture(t *testing.T) {
-	s, _ := claudeResumeServer(t, "")
-	req, err := fixtureOwners(s).attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
-		Model: "claude-opus-4-1", PermissionMode: "bypassPermissions", Effort: "high"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	args := claudeCommand(req.ProviderRequest)[1:]
-	want := []string{
-		"-p", "--verbose", "--input-format", "stream-json",
-		"--output-format", "stream-json", "--include-partial-messages",
-		"--permission-prompt-tool", "stdio",
-		"--model", "claude-opus-4-1", "--effort", "high",
-		"--permission-mode", "bypassPermissions",
-		claudeResumeFlag, claudeResumeThreadID,
-	}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("posture argv = %#v, want %#v", args, want)
-	}
-}
-
 // A resume into a project directory that no longer exists is refused before any
 // child is spawned, naming the path — the child would otherwise die looking for
 // a transcript under a path derived from it.
@@ -1206,7 +1160,7 @@ func TestClaudeResumeRefusesMissingWorkingDirectory(t *testing.T) {
 	gone := filepath.Join(t.TempDir(), "deleted-project")
 	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, gone)
 
-	_, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
+	_, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
 	if err == nil {
 		t.Fatal("resume into a missing directory succeeded")
 	}

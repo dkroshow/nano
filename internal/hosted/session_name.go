@@ -53,7 +53,7 @@ func (s *AttachmentCoordinator) HandleSessionName(w http.ResponseWriter, r *http
 	// Nano restart in this window keeps the rename. captureInit updates threadID
 	// under stateMu before it consumes pendingName, so an unchanged threadID
 	// proves the staged value will still be picked up.
-	if rec, ok := s.AttachmentFor(provider, nativeID); ok && rec.Provisional() {
+	if rec, ok := s.attachmentFor(provider, nativeID); ok && rec.Provisional() {
 		var staged bool
 		nativeID, staged = sess.StageProvisionalName(nativeID, name)
 		if staged {

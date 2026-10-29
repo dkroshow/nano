@@ -29,7 +29,7 @@ func (s *AttachmentCoordinator) prepareExternalResume(ctx context.Context, req *
 	if len(historyRecords) != 0 {
 		return fmt.Errorf("native conversation %s was previously hosted by Nano but has no current claim; refusing first registration", req.ThreadID)
 	}
-	if rec, ok := s.AttachmentFor(req.Provider, req.ThreadID); ok && rec.HostedThreadID != "" {
+	if rec, ok := s.attachmentFor(req.Provider, req.ThreadID); ok && rec.HostedThreadID != "" {
 		return fmt.Errorf("native conversation %s has a historical Nano attachment %s but no current claim", req.ThreadID, rec.HostedThreadID)
 	}
 	if s.Catalog == nil {

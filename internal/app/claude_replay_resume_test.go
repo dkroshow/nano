@@ -6,7 +6,6 @@ import (
 	"sync"
 	"testing"
 
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
@@ -51,18 +50,18 @@ func TestClaudeResumeReplayFailureNeverStartsReplacement(t *testing.T) {
 				}
 			} else {
 				seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-				sess, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, BootReattach: &bootProviderControl{}}})
-				if err != nil {
-					t.Fatal(err)
-				}
+				fixtureOwners(s).attachmentCoordinator().PrepareBoot()
+				fixtureOwners(s).attachmentCoordinator().ReattachOnBoot()
+				fixtureReattach(s, store.Records()[0].HostedThreadID)
+
 				waitForClaude(t, "failed boot attachment discarded", func() bool {
-					return s.LookupSession(sess.ID()) == nil || len(shim.CallsOf(shimMethodStart)) > 0
+					return len(s.SnapshotSessions()) == 0 || len(shim.CallsOf(shimMethodStart)) > 0
 				})
 			}
 			if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 				t.Fatalf("replay failure started %d replacements", starts)
 			}
-			if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
+			if _, ok := fixtureAttachmentFor(s, "claude", claudeResumeThreadID); !ok {
 				t.Fatal("replay failure removed the retryable identity")
 			}
 			// The failed attachment must not poison the durable identity: the
@@ -111,7 +110,7 @@ func TestClaudeResumeReplayProcessingTimeoutNeverStartsReplacement(t *testing.T)
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") || len(shim.CallsOf(shimMethodStart)) != 0 {
 		t.Fatalf("timeout must refuse without replacement: HTTP %d, starts %d, %s", response.Code, len(shim.CallsOf(shimMethodStart)), response.Body.String())
 	}
-	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
+	if _, ok := fixtureAttachmentFor(s, "claude", claudeResumeThreadID); !ok {
 		t.Fatal("timeout removed the retryable identity")
 	}
 }

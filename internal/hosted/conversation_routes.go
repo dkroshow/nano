@@ -12,7 +12,7 @@ import (
 // hostedSessionForRequest is sessionForHostedThread for a request that needs
 // the thread live: a thread still starting after a restart is registered first.
 func (s *Controller) hostedSessionForRequest(id string) *sessions.Session {
-	s.AttachmentsControl.ReattachWaitingHosted(id)
+	s.AttachmentsControl.reattachWaitingHosted(id)
 	return s.Sessions.SessionForHostedThread(id)
 }
 

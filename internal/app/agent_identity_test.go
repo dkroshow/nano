@@ -21,7 +21,7 @@ func TestClaudeStartSpawnCarriesIdentity(t *testing.T) {
 	migrateTestControl(t, s.controlMetadata)
 	s.defaults.APIOrigin = "http://127.0.0.1:7999"
 
-	sess, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Cwd: t.TempDir()}})
+	sess, err := fixtureSpawn(s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Cwd: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("start spawn: %v", err)
 	}

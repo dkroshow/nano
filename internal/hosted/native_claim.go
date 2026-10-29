@@ -13,7 +13,7 @@ import (
 // Native claim errors distinguish another live attachment from a stored owner.
 var (
 	ErrNativeClaimOwned = hostedstore.ErrNativeClaimOwned
-	ErrNativeClaimLive  = errors.New("native identity is live-attached on another hosted record")
+	errNativeClaimLive  = errors.New("native identity is live-attached on another hosted record")
 )
 
 // TransferNativeClaim moves a durable native claim only when its current owner is not live.
@@ -28,7 +28,7 @@ func (s *AttachmentCoordinator) TransferNativeClaim(targetHostedID, provider, na
 	}
 	if owner != "" && owner != targetHostedID {
 		if _, live := s.Registry.LiveHostedSummary(owner, s.Executions.SessionNeedsAttention); live {
-			return ErrNativeClaimLive
+			return errNativeClaimLive
 		}
 	}
 	return control.TransferNativeClaim(targetHostedID, provider, nativeID, sessions.NativeThreadIDProvisional(provider, nativeID))
@@ -39,7 +39,7 @@ func (s *AttachmentCoordinator) TransferNativeClaim(targetHostedID, provider, na
 // prepareExternalResume verifies current provider-owned source evidence; the
 // actual registration remains an explicit spawn-time transaction, never a
 // preview or identity-resolution side effect.
-func (s *AttachmentCoordinator) ResolveResumeHostedIdentity(req *SpawnRequest) error {
+func (s *AttachmentCoordinator) resolveResumeHostedIdentity(req *SpawnRequest) error {
 	if req == nil || req.Mode != "resume" {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (s *AttachmentCoordinator) inheritResumePosture(hostedID, provider, nativeI
 }
 
 // RepairCanonicalNativeIdentity repairs a claim and its missing resume settings.
-func (s *AttachmentCoordinator) RepairCanonicalNativeIdentity(provider, nativeID, targetHostedID string) error {
+func (s *AttachmentCoordinator) repairCanonicalNativeIdentity(provider, nativeID, targetHostedID string) error {
 	if s == nil || s.ControlStore() == nil {
 		return errHostedControlUnavailable
 	}

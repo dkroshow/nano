@@ -193,7 +193,7 @@ func TestStoredLegacyNotificationModesLoseCoalescingAndAcknowledgement(t *testin
 func TestCompletionSubscriptionReactsToFinishedTurnsWithoutPolling(t *testing.T) {
 	s, daemon, rec, client, dispatcher := subscribedCodexServer(t, `[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`)
 	fixtureOwners(s).agentController().StartSubscriptions(dispatcher)
-	fixtureOwners(s).attachmentCoordinator().ReattachWaitingHosted(rec.HostedThreadID)
+	fixtureReattach(s, rec.HostedThreadID)
 	waitForClaude(t, "the live turn", func() bool {
 		sess := s.SessionForHostedThread(rec.HostedThreadID)
 		if sess == nil {
@@ -225,7 +225,7 @@ type preparingSubscriptionClient struct {
 }
 
 func (c *preparingSubscriptionClient) SubmitPrompt(ctx context.Context, request interact.SubmitPromptRequest) (interact.Turn, error) {
-	fixtureOwners(c.s).attachmentCoordinator().ReattachWaitingHosted(request.ThreadRef)
+	fixtureReattach(c.s, request.ThreadRef)
 	return c.feedSubscriptionClient.SubmitPrompt(ctx, request)
 }
 
@@ -258,9 +258,9 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	dispatcher := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), client, nil, nil)
 	fixtureOwners(s).agentController().StartSubscriptions(dispatcher)
 	dispatcher.Sweep("")
-	fixtureOwners( // the child's cursor starts where a running Nano would have it
+	fixtureReattach( // the child's cursor starts where a running Nano would have it
 
-		s).attachmentCoordinator().ReattachWaitingHosted(child.ID)
+		s, child.ID)
 	waitForClaude(t, "the child's live turn", func() bool {
 		sess := s.SessionForHostedThread(child.ID)
 		if sess == nil {

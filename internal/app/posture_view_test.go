@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
+
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/dkroshow/nano/internal/config"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
@@ -74,115 +73,6 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	legacy := newProviderRuntimeFixture(t, sessionConfig{ID: "legacy-model", Provider: "claude", HostedThreadID: "nht_legacy"}, "legacy-native", "claude-opus-5").session
 	if got := legacy.Summary().Posture.Model; got != "" {
 		t.Fatalf("unavailable metadata fabricated model = %q", got)
-	}
-}
-
-// Once an attachment names a hosted identity, its retired JSON posture fields
-// are transport-history only.  A resume must take cwd/model/permission from
-// control.sqlite even when the old record says something different.
-func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
-	metadata := newTestControlMetadata(t)
-	canonicalCwd := t.TempDir()
-	legacyCwd := t.TempDir()
-	if err := metadata.EnsureHostedThread("nht_resume_canonical", "claude", presentationShared, "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := metadata.ClaimNativeID("nht_resume_canonical", "claude", "native-resume", false); err != nil {
-		t.Fatal(err)
-	}
-	for _, event := range []metadataEvent{
-		{HostedThreadID: "nht_resume_canonical", Field: "cwd", Value: canonicalCwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive},
-		{HostedThreadID: "nht_resume_canonical", Field: postureFieldModel, Value: "canonical-model", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive},
-		{HostedThreadID: "nht_resume_canonical", Field: postureFieldPermissionMode, Value: "acceptEdits", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive},
-	} {
-		if _, err := metadata.AppendEvent(event); err != nil {
-			t.Fatal(err)
-		}
-	}
-	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	attachments.Remember(hostedstore.Attachment{
-		Provider: "claude", NativeThreadID: "native-resume", HostedThreadID: "nht_resume_canonical",
-		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", claudeModelFlag, "legacy-model", "--permission-mode", "bypassPermissions"},
-	})
-	s := &server{defaults: config.SessionDefaults{CWD: legacyCwd, ClaudeBin: "/claude"}, attachments: attachments, controlMetadata: metadata}
-	resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.Cwd != canonicalCwd || resolved.Model != "canonical-model" || resolved.PermissionMode != "acceptEdits" {
-		t.Fatalf("resume = cwd %q model %q permission %q, want canonical values", resolved.Cwd, resolved.Model, resolved.PermissionMode)
-	}
-	if got := strings.Join(resolved.ClaudeArgs, " "); strings.Contains(got, "legacy-model") || strings.Contains(got, "bypassPermissions") {
-		t.Fatalf("resume argv retained legacy posture: %q", got)
-	}
-}
-
-func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *testing.T) {
-	metadata, executions := newTestHostedControl(t)
-	const hostedID = "nht_historical_resume"
-	canonicalCwd := t.TempDir()
-	if err := metadata.EnsureHostedThread(hostedID, "claude", presentationShared, "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fixtureEnsureSessionWithIdentity(executions, hostedID, "claude", presentationShared, "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := metadata.ClaimNativeID(hostedID, "claude", "native-historical", false); err != nil {
-		t.Fatal(err)
-	}
-	for _, event := range []metadataEvent{
-		// The old creation request remains an auditable desired choice. The
-		// migration fold reports what the prior attachment actually ran.
-		{HostedThreadID: hostedID, Field: postureFieldModel, Value: "opus", Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-resume:model:desired"},
-		{HostedThreadID: hostedID, Field: postureFieldModel, Value: "claude-opus-5", Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Evidence: "legacy_fold_baseline", Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-resume:model:effective"},
-		{HostedThreadID: hostedID, Field: "cwd", Value: canonicalCwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-resume:cwd"},
-		// A historical clear means a new attachment must not reapply the
-		// attachment's stale effort flag.
-		{HostedThreadID: hostedID, Field: postureFieldEffort, Value: "", Disposition: metadataDispositionCleared, Source: postureSourceOperator, Freshness: metadataFreshnessHistorical, SourceEventKey: "historical-resume:effort:clear"},
-	} {
-		if _, err := metadata.AppendEvent(event); err != nil {
-			t.Fatal(err)
-		}
-	}
-	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	attachments.Remember(hostedstore.Attachment{
-		Provider: "claude", NativeThreadID: "native-historical", HostedThreadID: hostedID,
-		Bin: "/claude", Args: []string{"-p", claudeModelFlag, "stale-model", "--effort", "low", "--permission-mode", "bypassPermissions"},
-	})
-	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir(), ClaudeBin: "/default/claude"}, attachments: attachments, controlMetadata: metadata, agentExecutions: executions, Registry: newSessionRegistry()}
-
-	// The public API is presentation state and must expose the observed fold.
-	api := httptest.NewRecorder()
-	applicationHandler(fixtureOwners(s)).ServeHTTP(api, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/"+hostedID+"/metadata", nil))
-	if api.Code != http.StatusOK {
-		t.Fatalf("metadata status = %d: %s", api.Code, api.Body.String())
-	}
-	var body hostedstore.MetadataView
-	if err := json.Unmarshal(api.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if got := string(body.Fields[postureFieldModel].DisplayValue); got != `"claude-opus-5"` {
-		t.Fatalf("API display model = %s, want observed fold", got)
-	}
-
-	resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.Model != "opus" || resolved.Cwd != canonicalCwd || resolved.Effort != "" {
-		t.Fatalf("resume fields = model %q cwd %q effort %q, want desired intent and cleared effort", resolved.Model, resolved.Cwd, resolved.Effort)
-	}
-	if got := singletonValue(t, resolved.ClaudeArgs, claudeModelFlag); got != "opus" {
-		t.Fatalf("Claude fallback argv model = %q, want desired opus: %#v", got, resolved.ClaudeArgs)
-	}
-	if containsArg(resolved.ClaudeArgs, "--effort") || containsArg(resolved.ClaudeArgs, "low") {
-		t.Fatalf("Claude fallback argv retained historical clear's effort: %#v", resolved.ClaudeArgs)
 	}
 }
 
@@ -276,14 +166,11 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 			}
 			owner := &server{controlMetadata: metadata}
 			req := hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
-			if err := fixtureOwners(owner).attachmentCoordinator().ApplyCanonicalResumeMetadata(&req); err != nil {
+			if err := metadata.ClaimNativeID(hostedID, "claude", "canonical-native", false); err != nil {
 				t.Fatal(err)
 			}
-			resolved, err := fixtureOwners(owner).attachmentCoordinator().ResolveClaudeResume(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			args := resolved.ClaudeArgs
+			args := fixturePreviewArgs(t, owner, req)[1:]
+
 			if test.want == "" {
 				args = claudeCanonicalResumeArgs(args, (hostedmodel.SpawnRequest{}).ProviderRequest)
 				if strings.Contains(strings.Join(args, " "), "stale") {

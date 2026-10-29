@@ -41,7 +41,7 @@ func runtimeCreationRequest(req CreationRequest) SpawnRequest {
 
 // prepareCreation resolves provider defaults before durable admission.
 func (s *AttachmentCoordinator) prepareCreation(req CreationRequest) (CreationPlan, error) {
-	resolved, err := s.ResolveSpawn(runtimeCreationRequest(req))
+	resolved, err := s.resolveSpawn(runtimeCreationRequest(req))
 	if err != nil {
 		return CreationPlan{}, err
 	}
@@ -58,7 +58,7 @@ func (s *AttachmentCoordinator) prepareCreation(req CreationRequest) (CreationPl
 			resolved.InvokerNativeThreadID = record.InvokerNativeThreadID
 			resolved.InvokerProvider = record.InvokerProvider
 			resolved.HostedThreadID = record.ID
-			sess, err := s.Spawn(resolved)
+			sess, err := s.spawn(resolved)
 			if err != nil {
 				return "", err
 			}

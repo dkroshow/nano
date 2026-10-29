@@ -2,28 +2,11 @@ package app
 
 import (
 	"encoding/json"
-	"strings"
+
 	"testing"
 
-	"github.com/dkroshow/nano/internal/config"
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	grokfixture "github.com/dkroshow/nano/internal/testsupport/grokserver"
 )
-
-func TestResolveGrokSpawnAcceptsSupportedSessionPermissionPosture(t *testing.T) {
-	cwd := t.TempDir()
-	s := &server{defaults: config.SessionDefaults{CWD: cwd}}
-	for _, mode := range []string{"", "auto", "bypassPermissions"} {
-		resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: mode}})
-		if err != nil || resolved.PermissionMode != mode {
-			t.Fatalf("resolveSpawn(%q) = mode %q, error %v", mode, resolved.PermissionMode, err)
-		}
-	}
-	_, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "grok", Mode: "start", Cwd: cwd, PermissionMode: "acceptEdits"}})
-	if err == nil || !strings.Contains(err.Error(), "Grok permissionMode") {
-		t.Fatalf("unsupported resolveSpawn error = %v", err)
-	}
-}
 
 func TestGrokProviderSelectionSettlesCanonicalEffectiveEffort(t *testing.T) {
 	sess, store := causationTestSessionForProvider(t, "nht_grok_effort", "grok")

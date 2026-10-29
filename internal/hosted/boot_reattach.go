@@ -256,7 +256,7 @@ func (s *AttachmentCoordinator) resumeSpawnLock(provider string) *sync.Mutex {
 
 // ReattachWaitingHosted registers one waiting thread (starting or resting)
 // now, for a request that needs it live. Any other thread is left as it is.
-func (s *AttachmentCoordinator) ReattachWaitingHosted(hostedThreadID string) {
+func (s *AttachmentCoordinator) reattachWaitingHosted(hostedThreadID string) {
 	if s == nil || s.Boot == nil {
 		return
 	}
@@ -274,7 +274,7 @@ func (s *AttachmentCoordinator) HandlePrioritize(w http.ResponseWriter, _ *http.
 	_, state := s.Boot.WaitingHosted(record.ID)
 	starting := state != ""
 	if starting {
-		go s.ReattachWaitingHosted(record.ID)
+		go s.reattachWaitingHosted(record.ID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
@@ -315,7 +315,7 @@ func (s *AttachmentCoordinator) reattachStored(rec hostedstore.Attachment, immed
 			presentationMode = canonical
 		}
 	}
-	sess, err := s.Spawn(SpawnRequest{
+	sess, err := s.spawn(SpawnRequest{
 		ProviderRequest: sessions.ProviderRequest{
 			Provider:            rec.Provider,
 			Mode:                "resume",

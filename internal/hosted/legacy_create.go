@@ -17,7 +17,7 @@ func (s *Controller) handleSessionCreateAction(w http.ResponseWriter, r *http.Re
 		httpapi.WriteHTTPError(w, "body must be {\"provider\": \"codex\"|\"claude\"|\"grok\", ...spawn options}", http.StatusBadRequest)
 		return
 	}
-	sess, err := s.AttachmentsControl.Spawn(req)
+	sess, err := s.AttachmentsControl.spawn(req)
 	if err != nil {
 		if errors.Is(err, errHostedControlUnavailable) {
 			message := err.Error()

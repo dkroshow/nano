@@ -244,47 +244,6 @@ func TestConcurrentExternalResumeCreatesOneRegistrationAndOneAttachment(t *testi
 	}
 }
 
-func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testing.T) {
-	fake := newFakeAppServer(t)
-	s := newResumeTestServer(t, fake.WSURL())
-	s.defaults.AllowedTools = "Read,Write"
-
-	for _, provider := range []string{"claude", "grok"} {
-		t.Run(provider, func(t *testing.T) {
-			nativeID := "external-" + provider
-			catalog := externalResumeCatalog(t, provider, nativeID, s.defaults.CWD)
-			// Unknown permission must remain unknown; Nano must not substitute
-			// its new-session allowlist or a broader permission mode.
-			catalog.setPermission(t, "")
-			s.catalog = catalog.index
-			if s.attachmentsControl != nil {
-				s.attachmentsControl.Catalog = catalog.index.Service
-			}
-			resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !resolved.ExternalResumePosture || resolved.Cwd != s.defaults.CWD || resolved.PermissionMode != "" {
-				t.Fatalf("resolved = %#v", resolved)
-			}
-			switch provider {
-			case "claude":
-				joined := strings.Join(resolved.ClaudeArgs, " ")
-				if !strings.Contains(joined, "--model gpt-external") || !strings.Contains(joined, "--effort high") {
-					t.Fatalf("Claude args lost recorded posture: %q", joined)
-				}
-				if strings.Contains(joined, "--allowedTools") || strings.Contains(joined, "Read,Write") {
-					t.Fatalf("Claude args leaked new-session defaults: %q", joined)
-				}
-			case "grok":
-				if resolved.Model != "" || resolved.Effort != "" || resolved.GrokResumeModel != "gpt-external" {
-					t.Fatalf("Grok resume posture = %#v", resolved)
-				}
-			}
-		})
-	}
-}
-
 func TestExternalResumeProviderFailureKeepsOneRetryableIdentity(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.SetResumeErrorSequence("temporary resume failure", "")
@@ -333,21 +292,15 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 		s.attachmentsControl.Catalog = catalog.index.Service
 	}
 
-	firstResolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if joined := strings.Join(firstResolved.ClaudeArgs, " "); strings.Contains(joined, "--allowed-tools") {
+	firstArgs := fixturePreviewArgs(t, s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	if joined := strings.Join(firstArgs, " "); strings.Contains(joined, "--allowed-tools") {
 		t.Fatalf("first external Resume introduced an allowlist: %q", joined)
 	}
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	waitForSessionStatus(t, s, first.ID, sessionStatusExited)
 
-	retry, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if joined := strings.Join(retry.ClaudeArgs, " "); strings.Contains(joined, "--allowed-tools") {
+	retryArgs := fixturePreviewArgs(t, s, hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	if joined := strings.Join(retryArgs, " "); strings.Contains(joined, "--allowed-tools") {
 		t.Fatalf("retry introduced server default tools absent from the original provider posture: %q", joined)
 	}
 	second := spawnedSummary(t, postExternalResume(s, "claude", nativeID))

@@ -219,7 +219,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				}
 				go func() {
 					fixtureOwners(w.s).attachmentCoordinator().ReattachOnBoot()
-					fixtureOwners(w.s).attachmentCoordinator().ReattachWaitingHosted(hosted) // no work open, so it rests until needed
+					fixtureReattach(w.s, hosted) // no work open, so it rests until needed
 				}()
 				waitForClaude(t, "the boot shell", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
@@ -255,7 +255,7 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				})
 			default:
 				fixtureOwners(w.s).attachmentCoordinator().ReattachOnBoot()
-				fixtureOwners(w.s).attachmentCoordinator().ReattachWaitingHosted(hosted) // no work open, so it rests until needed
+				fixtureReattach(w.s, hosted) // no work open, so it rests until needed
 				waitForClaude(t, "the first attachment", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
 					return sess != nil && sess.Summary().Status == "ready"

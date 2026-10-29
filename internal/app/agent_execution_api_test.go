@@ -539,7 +539,7 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
+	if _, ok := fixtureAttachmentFor(s, "claude", "native-1"); ok {
 		t.Fatal("detached attachment survived delete")
 	}
 	if _, ok := store.Session(hosted.ID); ok {
@@ -581,7 +581,7 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
+	if _, ok := fixtureAttachmentFor(s, "claude", "native-1"); ok {
 		t.Fatal("attachment survived close")
 	}
 	session, ok := store.Session(hosted.ID)
@@ -664,7 +664,7 @@ func TestAgentSessionDetach(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("detach status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
+	if _, ok := fixtureAttachmentFor(s, "claude", "native-1"); ok {
 		t.Fatal("Claude detach retained a dead shim attachment")
 	}
 	session, ok := store.Session(hosted.ID)

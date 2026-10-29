@@ -36,7 +36,7 @@ func reconnectServer(t *testing.T, shimURL string, stale bool) (*server, string)
 	}
 	store.Remember(record)
 	seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-	stored, _ := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID)
+	stored, _ := fixtureAttachmentFor(s, "claude", claudeResumeThreadID)
 	return s, stored.HostedThreadID
 }
 
@@ -342,7 +342,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			if starts, closes := len(shim.CallsOf(shimMethodStart)), len(shim.CallsOf(shimMethodClose)); starts != 0 || closes != 0 {
 				t.Fatalf("unprovable recovery made %d starts and %d closes", starts, closes)
 			}
-			if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
+			if _, ok := fixtureAttachmentFor(s, "claude", claudeResumeThreadID); !ok {
 				t.Fatal("unprovable recovery removed the retryable record")
 			}
 		})
@@ -431,7 +431,7 @@ func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
 	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("ingestion timeout started %d replacement children", starts)
 	}
-	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
+	if _, ok := fixtureAttachmentFor(s, "claude", claudeResumeThreadID); !ok {
 		t.Fatal("ingestion timeout removed the retryable record")
 	}
 }

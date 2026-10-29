@@ -74,7 +74,7 @@ func TestBootReattachRuntimeGateKeepsRefreshAndPrioritizedRegistration(t *testin
 	default:
 	}
 
-	s.ReattachWaitingHosted(rec.HostedThreadID)
+	s.reattachWaitingHosted(rec.HostedThreadID)
 	select {
 	case delta := <-updates:
 		attached := false

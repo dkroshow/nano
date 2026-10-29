@@ -219,7 +219,7 @@ func TestBootReattachUsesRetainedClaudeHistorySeam(t *testing.T) {
 	store.Remember(record)
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
-	stored, _ := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID)
+	stored, _ := fixtureAttachmentFor(s, "claude", claudeResumeThreadID)
 	writeClaudeTestSpool(t, s.defaults.ClaudeShimSpools, stored.HostedThreadID,
 		recvFrame(1, claudeInitLine), sendFrame(2, testUserPrompt), recvFrame(3, messageStart("a")),
 		recvFrame(4, textDelta(0, "done")), recvFrame(5, testMessageStop), recvFrame(6, `{"type":"assistant","message":{"id":"msg_a","content":[]}}`),
@@ -1584,7 +1584,7 @@ func TestResumeAnswerWithOlderTerminalTurnsNotifiesNobody(t *testing.T) {
 	fixtureOwners( // start the child's cursor where a running Nano would have it
 
 		s).attachmentCoordinator().ReattachOnBoot()
-	fixtureOwners(s).attachmentCoordinator().ReattachWaitingHosted(rec.HostedThreadID) // no work open, so it rests until needed
+	fixtureReattach(s, rec.HostedThreadID) // no work open, so it rests until needed
 	waitForClaude(t, "the reattached session", func() bool {
 		sess := s.SessionForHostedThread(rec.HostedThreadID)
 		return sess != nil && sess.Summary().Status == "ready"

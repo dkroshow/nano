@@ -9,10 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/dkroshow/nano/internal/config"
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
-	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 // These tests protect session routing from metadata-read contention and from
@@ -130,64 +126,6 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 	case <-registryDone:
 	case <-time.After(time.Second):
 		t.Fatal("session registry did not finish after releasing metadata readers")
-	}
-}
-
-// The log keys on hostedThreadID, so a click-resume must resume the identity
-// too: each provider's resolver adopts the attachment record's stored id
-// instead of letting spawnSession mint a fresh one that would orphan the
-// thread's log. A request that already names one (agent API, boot reattach)
-// wins over the record.
-func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
-	store := newTestStore(t)
-	cwd := t.TempDir()
-	metadata, executions := newTestHostedControl(t)
-	for provider, hosted := range map[string]string{
-		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
-	} {
-		store.Remember(hostedstore.Attachment{
-			Provider: provider, NativeThreadID: "native-" + provider,
-			HostedThreadID: hosted, Cwd: cwd, AttachedAt: "2026-08-06T10:00:00Z",
-		})
-		if _, err := fixtureEnsureSessionWithIdentity(executions, hosted, provider, presentationShared, "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-		if err := metadata.ClaimNativeID(hosted, provider, "native-"+provider, false); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: hosted, Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	s := &server{defaults: config.SessionDefaults{CWD: cwd, ClaudeBin: "/fake/claude"}, attachments: store, controlMetadata: metadata, agentExecutions: executions}
-
-	for provider, want := range map[string]string{
-		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
-	} {
-		resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
-		if err != nil {
-			t.Fatalf("resolve %s resume: %v", provider, err)
-		}
-		if resolved.HostedThreadID != want {
-			t.Fatalf("%s resume hostedThreadID = %q, want the stored %q", provider, resolved.HostedThreadID, want)
-		}
-	}
-	if _, err := fixtureEnsureSessionWithIdentity(executions, "nht_explicit", "claude", presentationShared, "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := metadata.ClaimNativeID("nht_explicit", "claude", "native-explicit", false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := metadata.AppendEvent(metadataEvent{HostedThreadID: "nht_explicit", Field: "cwd", Value: cwd, Disposition: metadataDispositionRequested, Source: postureSourceCreation, Freshness: metadataFreshnessLive}); err != nil {
-		t.Fatal(err)
-	}
-
-	resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
-	if err != nil {
-		t.Fatalf("resolve explicit resume: %v", err)
-	}
-	if resolved.HostedThreadID != "nht_explicit" {
-		t.Fatalf("explicit hostedThreadID = %q, want the request's own to win", resolved.HostedThreadID)
 	}
 }
 

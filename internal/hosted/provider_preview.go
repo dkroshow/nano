@@ -21,7 +21,7 @@ func (s *AttachmentCoordinator) HandleSpawnPreview(w http.ResponseWriter, r *htt
 		httpapi.WriteHTTPError(w, "body must be a spawn request", http.StatusBadRequest)
 		return
 	}
-	resolved, err := s.ResolveSpawn(req)
+	resolved, err := s.resolveSpawn(req)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
