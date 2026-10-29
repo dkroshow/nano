@@ -8,9 +8,10 @@ import (
 	"io"
 	"net/http"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/httpapi"
+	state "github.com/dkroshow/nano/internal/state/store"
 )
+
 
 type retiredHostedReceipt struct {
 	state.RetirementReceipt

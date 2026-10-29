@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/history"
 )
 
 func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testing.T) {
-	control, err := openControlMetadataStore(filepath.Join(t.TempDir(), "nano_threads.sqlite"))
+	control, err := stateopen.OpenMetadata(filepath.Join(t.TempDir(), "nano_threads.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

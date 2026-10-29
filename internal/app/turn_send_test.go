@@ -41,7 +41,7 @@ func BenchmarkSendAttemptStoreListThreadWithUnrelatedHistory(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.Cleanup(func() { _ = stores.control.Close() })
+	b.Cleanup(func() { _ = stores.Control.Close() })
 
 	attempts := make([]sendAttemptRecord, 0, 10_651)
 	for i := 0; i < 10_648; i++ {
@@ -56,13 +56,13 @@ func BenchmarkSendAttemptStoreListThreadWithUnrelatedHistory(b *testing.B) {
 			Status: sendAttemptAccepted, UpdatedAt: time.Unix(int64(20_000+i), 0).UTC().Format(time.RFC3339Nano),
 		})
 	}
-	if err := prompts.SaveSendAttempts(context.Background(), stores.control.CanonicalDatabase(), attempts); err != nil {
+	if err := prompts.SaveSendAttempts(context.Background(), stores.Control.CanonicalDatabase(), attempts); err != nil {
 		b.Fatal(err)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if got := stores.attempts.ListThread("codex", "target-thread"); len(got) != 3 {
+		if got := stores.Attempts.ListThread("codex", "target-thread"); len(got) != 3 {
 			b.Fatalf("matching attempts = %d, want 3", len(got))
 		}
 	}
@@ -80,20 +80,20 @@ func TestTurnDeliveryListDoesNotWaitForTheWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = stores.control.Close() })
-	if err := prompts.SaveSendAttempts(context.Background(), stores.control.CanonicalDatabase(), []sendAttemptRecord{
+	t.Cleanup(func() { _ = stores.Control.Close() })
+	if err := prompts.SaveSendAttempts(context.Background(), stores.Control.CanonicalDatabase(), []sendAttemptRecord{
 		{ClientActionID: "journal-action", Provider: "codex", NativeThreadID: "target", TextHash: "journal-hash", Status: sendAttemptAccepted, CreatedAt: "2026-10-02T11:00:00Z", UpdatedAt: "2026-10-02T11:00:01Z"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := prompts.SaveQueuedTurns(context.Background(), stores.control.CanonicalDatabase(), []queuedTurnRecord{{
+	if err := prompts.SaveQueuedTurns(context.Background(), stores.Control.CanonicalDatabase(), []queuedTurnRecord{{
 		ClientActionID: "journal-action", Provider: "codex", HostedThreadID: "hosted", NativeThreadID: "target", Text: "journal text",
 		TextHash: "journal-hash", RequestHash: "journal-hash", State: "accepted", Origin: "human", CreatedAt: "2026-10-02T11:00:00Z",
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	sess := newFixtureSession(sessionConfig{ID: "nano-session", Provider: "codex", HostedThreadID: "hosted", SendAttempts: stores.attempts, QueuedTurns: stores.queue, Metadata: stores.control}, "target")
-	tx, err := stores.control.CanonicalDatabase().Begin()
+	sess := newFixtureSession(sessionConfig{ID: "nano-session", Provider: "codex", HostedThreadID: "hosted", SendAttempts: stores.Attempts, QueuedTurns: stores.Queue, Metadata: stores.Control}, "target")
+	tx, err := stores.Control.CanonicalDatabase().Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,8 +120,8 @@ func TestSendAttemptStoreListThreadPreservesStatusFieldsAndOrdering(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = stores.control.Close() })
-	if err := prompts.SaveSendAttempts(context.Background(), stores.control.CanonicalDatabase(), []sendAttemptRecord{
+	t.Cleanup(func() { _ = stores.Control.Close() })
+	if err := prompts.SaveSendAttempts(context.Background(), stores.Control.CanonicalDatabase(), []sendAttemptRecord{
 		{ClientActionID: "older", Provider: "codex", NativeThreadID: "target", TextHash: "older-hash", Status: sendAttemptAccepted, RunID: "old-run", CreatedAt: "2026-09-15T01:00:00Z", UpdatedAt: "2026-09-15T01:01:00Z", Confirmed: true, ProviderTurnID: "older-turn"},
 		{ClientActionID: "newer-orphan", Provider: "codex", NativeThreadID: "target", TextHash: "newer-hash", Status: sendAttemptRefused, RunID: "new-run", Reason: "legacy orphan", CreatedAt: "2026-09-15T02:00:00Z", UpdatedAt: "2026-09-15T02:01:00Z", CanonicalMessageID: "newer-message"},
 		{ClientActionID: "parked", Provider: "codex", NativeThreadID: "target", TextHash: "parked-hash", Status: "unknown", CreatedAt: "2026-09-15T00:00:00Z", UpdatedAt: "2026-09-15T00:01:00Z"},
@@ -130,14 +130,14 @@ func TestSendAttemptStoreListThreadPreservesStatusFieldsAndOrdering(t *testing.T
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := prompts.SaveQueuedTurns(context.Background(), stores.control.CanonicalDatabase(), []queuedTurnRecord{{
+	if err := prompts.SaveQueuedTurns(context.Background(), stores.Control.CanonicalDatabase(), []queuedTurnRecord{{
 		ClientActionID: "parked", Provider: "codex", HostedThreadID: "hosted", NativeThreadID: "target", Text: "queue text",
 		PresentationText: "presentation text", TextHash: "parked-hash", RequestHash: "request", State: "parked", Origin: "human", CreatedAt: "2026-09-15T00:00:00Z",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 
-	got := stores.attempts.ListThread("codex", "target")
+	got := stores.Attempts.ListThread("codex", "target")
 	if len(got) != 3 || got[0].ClientActionID != "newer-orphan" || got[1].ClientActionID != "older" || got[2].ClientActionID != "parked" {
 		t.Fatalf("thread ordering/filter = %+v", got)
 	}
@@ -147,7 +147,7 @@ func TestSendAttemptStoreListThreadPreservesStatusFieldsAndOrdering(t *testing.T
 	if got[2].Status != "parked" {
 		t.Fatalf("outbox status override = %q, want parked", got[2].Status)
 	}
-	queue, err := prompts.LoadQueuedTurns(context.Background(), stores.control.CanonicalDatabase())
+	queue, err := prompts.LoadQueuedTurns(context.Background(), stores.Control.CanonicalDatabase())
 	if err != nil || len(queue) != 1 || queue[0].Text != "queue text" || queue[0].PresentationText != "presentation text" {
 		t.Fatalf("queue text changed: %+v, %v", queue, err)
 	}

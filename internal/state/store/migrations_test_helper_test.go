@@ -10,6 +10,7 @@ import (
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
+
 // testMigrations keeps statestore tests inside their package boundary. Tests
 // exercise statestore's own schema; feature-owner migrations are covered by
 // their packages and by statewiring tests.

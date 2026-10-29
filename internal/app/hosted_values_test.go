@@ -48,3 +48,12 @@ type queuedTurnRecord = prompts.QueuedTurn
 
 const turnOriginHuman = string(prompts.HumanOrigin)
 const turnOriginSystem = string(prompts.SystemOrigin)
+
+const (
+	sidebarPlacementStandalone = threads.SidebarPlacementStandalone
+	agentTurnCompleted         = threads.AgentTurnCompleted
+)
+
+const (
+	turnOriginAgent = string(prompts.AgentOrigin)
+)

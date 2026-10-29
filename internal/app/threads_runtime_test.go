@@ -15,11 +15,12 @@ import (
 	"testing"
 	"time"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/testsupport"
 )
 
@@ -44,7 +45,7 @@ func TestBootFailsClosedWhenTransactionalTurnStoreOpenFails(t *testing.T) {
 	inspectBlock = func(block *ast.BlockStmt) {
 		for index, statement := range block.List {
 			assignment, ok := statement.(*ast.AssignStmt)
-			if ok && callsFunction(assignment.Rhs, "openThreadRuntimeStoresAt") {
+			if ok && callsFunction(assignment.Rhs, "OpenRuntimeStoresAt") {
 				if index+1 >= len(block.List) {
 					t.Fatal("thread runtime open has no error gate")
 				}
@@ -80,9 +81,15 @@ func callsFunction(expressions []ast.Expr, name string) bool {
 		if !ok {
 			continue
 		}
-		identifier, direct := call.Fun.(*ast.Ident)
-		if direct && identifier.Name == name {
-			return true
+		switch function := call.Fun.(type) {
+		case *ast.Ident:
+			if function.Name == name {
+				return true
+			}
+		case *ast.SelectorExpr:
+			if function.Sel.Name == name {
+				return true
+			}
 		}
 	}
 	return false
@@ -143,17 +150,17 @@ func TestTurnDatabaseFixturesAreIsolated(t *testing.T) {
 }
 
 func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
-	for _, name := range []string{"control.sqlite", "queued-prompts.json", "send-attempts.json", "turn-completed.sqlite"} {
+	for _, name := range []string{"control.sqlite", "queued-turns.json", "send-attempts.json", "turn-completed.sqlite"} {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			dir := t.TempDir()
 			controlPath := filepath.Join(dir, "control.sqlite")
-			control, err := openControlMetadataStore(controlPath)
+			control, err := stateopen.OpenMetadata(controlPath)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer control.Close()
-			for _, file := range []string{"queued-prompts.json", "send-attempts.json"} {
+			for _, file := range []string{"queued-turns.json", "send-attempts.json"} {
 				if err := os.WriteFile(filepath.Join(dir, file), []byte("[]"), 0600); err != nil {
 					t.Fatal(err)
 				}
@@ -168,13 +175,13 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := stores.control.Close(); err != nil {
+			if err := stores.Control.Close(); err != nil {
 				t.Fatal(err)
 			}
 			switch name {
 			case "control.sqlite":
 				err = control.EnsureHostedThread("rollback-owner", "codex", presentationShared, "", "", "")
-			case "queued-prompts.json":
+			case "queued-turns.json":
 				err = os.WriteFile(filepath.Join(dir, name), []byte(`[{"clientActionId":"rollback","provider":"codex","hostedThreadId":"rollback-owner","text":"retained prompt"}]`), 0600)
 			case "send-attempts.json":
 				err = os.WriteFile(filepath.Join(dir, name), []byte(`[{"clientActionId":"rollback","provider":"codex","status":"uncertain"}]`), 0600)
@@ -188,22 +195,22 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resumed.control.Close()
+			defer resumed.Control.Close()
 			switch name {
 			case "control.sqlite":
-				if _, err := resumed.control.View("rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
+				if _, err := resumed.Control.View("rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
 					t.Fatalf("later schema reimported changed control facts: %v", err)
 				}
-			case "queued-prompts.json":
-				if rows := QueueSnapshot(resumed.queue); len(rows) != 0 {
+			case "queued-turns.json":
+				if rows := QueueSnapshot(resumed.Queue); len(rows) != 0 {
 					t.Fatalf("later schema reimported changed queue: %+v", rows)
 				}
 			case "send-attempts.json":
-				if row, ok := resumed.attempts.Get("rollback"); ok {
+				if row, ok := resumed.Attempts.Get("rollback"); ok {
 					t.Fatalf("later schema reimported changed attempt: %+v", row)
 				}
 			case "turn-completed.sqlite":
-				if row, err := fixtureLatestCompleted(resumed.completed, "rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
+				if row, err := fixtureLatestCompleted(resumed.Completed, "rollback-owner"); !errors.Is(err, sql.ErrNoRows) {
 					t.Fatalf("later schema reimported changed completion: %+v %v", row, err)
 				}
 			}
@@ -213,7 +220,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 
 func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	dir := t.TempDir()
-	control, err := openControlMetadataStore(filepath.Join(dir, "control.sqlite"))
+	control, err := stateopen.OpenMetadata(filepath.Join(dir, "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +235,7 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	}
 	queued := queuedTurnRecord{ClientActionID: "action", Provider: "claude", HostedThreadID: "owner", NativeThreadID: "native", Text: "unconfirmed prompt", TextHash: "hash", RequestHash: "hash", State: submissionAccepted, ProviderTurnID: "provider-turn", CreatedAt: "2026-09-09T00:00:00Z"}
 	attempt := sendAttemptRecord{ClientActionID: "action", Provider: "claude", NativeThreadID: "native", TextHash: "hash", Status: sendAttemptAccepted, ProviderTurnID: "provider-turn", CreatedAt: queued.CreatedAt, UpdatedAt: queued.CreatedAt, RunID: "old"}
-	for name, value := range map[string]any{"queued-prompts.json": []queuedTurnRecord{queued}, "send-attempts.json": []sendAttemptRecord{attempt}} {
+	for name, value := range map[string]any{"queued-turns.json": []queuedTurnRecord{queued}, "send-attempts.json": []sendAttemptRecord{attempt}} {
 		body, _ := json.Marshal(value)
 		if err := os.WriteFile(filepath.Join(dir, name), body, 0600); err != nil {
 			t.Fatal(err)
@@ -252,31 +259,31 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stores.control.Close()
-	if stores.queue.Database() != stores.control.CanonicalDatabase() || stores.attempts.Database() != stores.control.CanonicalDatabase() {
+	defer stores.Control.Close()
+	if stores.Queue.Database() != stores.Control.CanonicalDatabase() || stores.Attempts.Database() != stores.Control.CanonicalDatabase() {
 		t.Fatal("hosted writers use separate databases")
 	}
-	if got := QueueSnapshot(stores.queue); len(got) != 1 || got[0] != queued {
+	if got := QueueSnapshot(stores.Queue); len(got) != 1 || got[0] != queued {
 		t.Fatalf("runtime queue changed imported evidence: %+v", got)
 	}
-	if got, ok := stores.attempts.Get("action"); !ok || got != attempt {
+	if got, ok := stores.Attempts.Get("action"); !ok || got != attempt {
 		t.Fatalf("runtime journal changed imported evidence: %+v", got)
 	}
-	if owner := activeOwner(t, stores.control, "claude", "native"); owner != "owner" {
+	if owner := activeOwner(t, stores.Control, "claude", "native"); owner != "owner" {
 		t.Fatal("identity did not migrate")
 	}
-	if next, inserted, err := recordTestCompletedTurn(stores.completed, coreturns.Finish{HostedThreadID: "owner", Provider: "claude", TurnID: "next", FinalMessageID: "next-final", Outcome: "completed", At: time.Now(), Source: "adapter"}); err != nil || !inserted || next.ID != "18" {
+	if next, inserted, err := recordTestCompletedTurn(stores.Completed, coreturns.Finish{HostedThreadID: "owner", Provider: "claude", TurnID: "next", FinalMessageID: "next-final", Outcome: "completed", At: time.Now(), Source: "adapter"}); err != nil || !inserted || next.ID != "18" {
 		t.Fatalf("completion cursor lost: %+v %v %v", next, inserted, err)
 	}
 
 	var observers int
-	if err := stores.control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name='retained_observer_fixture'`).Scan(&observers); err != nil || observers != 0 {
+	if err := stores.Control.CanonicalDatabase().QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name='retained_observer_fixture'`).Scan(&observers); err != nil || observers != 0 {
 		t.Fatal("observer state migrated with completion facts")
 	}
-	if _, err := stores.turns.Cancel(context.Background(), "action"); err == nil {
+	if _, err := stores.Turns.Cancel(context.Background(), "action"); err == nil {
 		t.Fatal("accepted prompt was canceled")
 	}
-	if err := stores.control.Close(); err != nil {
+	if err := stores.Control.Close(); err != nil {
 		t.Fatal(err)
 	}
 	// Accepted prompt evidence remains permanent and cannot be reopened after cutover.
@@ -284,11 +291,11 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resumed.control.Close()
-	if retained, ok := resumed.queue.Get("action"); !ok || retained.State != string(prompts.Accepted) || retained.Text != "unconfirmed prompt" || retained.ProviderTurnID != "provider-turn" {
+	defer resumed.Control.Close()
+	if retained, ok := resumed.Queue.Get("action"); !ok || retained.State != string(prompts.Accepted) || retained.Text != "unconfirmed prompt" || retained.ProviderTurnID != "provider-turn" {
 		t.Fatalf("restart changed accepted prompt evidence: %+v", retained)
 	}
-	if got, ok := resumed.attempts.Get("action"); !ok || got.Confirmed {
+	if got, ok := resumed.Attempts.Get("action"); !ok || got.Confirmed {
 		t.Fatal("restart invented confirmation")
 	}
 	old, err = openCompletedTurnStore(legacyCompleted)
@@ -304,10 +311,10 @@ func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 		t.Fatal("observer state changed")
 	}
 	// The completed adapter must use the same writer connection, not a second database handle.
-	if err := stores.control.Close(); err != nil {
+	if err := stores.Control.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixtureLatestCompleted(stores.completed, "owner"); err == nil {
+	if _, err := fixtureLatestCompleted(stores.Completed, "owner"); err == nil {
 		t.Fatal("completed adapter survived closure of the shared writer")
 	}
 

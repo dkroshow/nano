@@ -1,10 +1,10 @@
-// Package persistence owns root application tables that remain in the shared
-// state database.
-package persistence
+// Package schema owns the hosted permission and native-recovery table schemas.
+package schema
 
 import (
 	"database/sql"
 )
+
 
 // MigratePermissionEventSchema owns provider permission event evidence.
 func MigratePermissionEventSchema(tx *sql.Tx, version int) error {

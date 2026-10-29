@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -27,7 +28,7 @@ func newTestAgentExecutionStore(t *testing.T, runID string) *hostedstore.Executi
 }
 
 func newAgentExecutionStore(path, runID string) (*hostedstore.ExecutionStore, error) {
-	control, err := openControlMetadataStore(path)
+	control, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +37,7 @@ func newAgentExecutionStore(path, runID string) (*hostedstore.ExecutionStore, er
 
 func newTestControlMetadata(t *testing.T) *hostedstore.MetadataStore {
 	t.Helper()
-	store, err := openControlMetadataStore(filepath.Join(t.TempDir(), "control.sqlite"))
+	store, err := stateopen.OpenMetadata(filepath.Join(t.TempDir(), "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,8 +123,8 @@ func mustCompletedStore(t *testing.T) *hostedmodel.CompletedTurnStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = stores.control.Close() })
-	return stores.completed
+	t.Cleanup(func() { _ = stores.Control.Close() })
+	return stores.Completed
 }
 func fixtureLatestCompleted(store *hostedmodel.CompletedTurnStore, target string) (completedTurn, error) {
 	core, err := store.CoreStore(context.Background())
@@ -156,4 +157,18 @@ func fixtureExecutionLocked(t *testing.T, store *hostedstore.ExecutionStore, whi
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+// openThreadRuntimeStores gives tests a disposable set of the default store paths.
+func openThreadRuntimeStores(ctx context.Context, directory, legacyCompleted, runID string) (*stateopen.RuntimeStores, error) {
+	return stateopen.OpenRuntimeStoresAt(ctx, state.StorePaths{
+		Destination: filepath.Join(directory, "nano_threads.sqlite"), Control: filepath.Join(directory, "control.sqlite"),
+		BackupRoot: filepath.Join(directory, "threads-backups"),
+		Turns:      prompts.LegacyTurnPaths{Queue: filepath.Join(directory, "queued-turns.json"), Attempts: filepath.Join(directory, "send-attempts.json"), Completed: legacyCompleted},
+	}, runID)
+}
+
+// newControlAgentExecutionStore composes feature admission with durable execution loading.
+func newControlAgentExecutionStore(control *hostedstore.MetadataStore, runID string) (*hostedstore.ExecutionStore, error) {
+	return hostedstore.NewExecutionStore(control, runID, subscriptions.IsFeatureAction)
 }

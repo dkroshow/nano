@@ -36,6 +36,6 @@ func (s *server) hostedPins() *hostedmodel.PinService {
 			var ambiguous *threadindex.AmbiguousReferenceError
 			return errors.As(err, &ambiguous)
 		},
-		ReadCandidates: read, WriteReferenceError: threadindex.WriteThreadReferenceError, WriteTranscriptError: writeTranscriptBackendError,
+		ReadCandidates: read, WriteReferenceError: threadindex.WriteThreadReferenceError, WriteTranscriptError: threadindex.WriteTranscriptBackendError,
 		DefaultCandidateLimit: threadindex.DefaultMessagesTail, MaxCandidateLimit: threadindex.MaxMessagesTail}
 }

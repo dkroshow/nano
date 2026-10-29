@@ -12,6 +12,7 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
+
 const transcriptBoundariesRetirement = "transcript-boundaries-retired-v1"
 
 type transcriptBoundariesReport struct {

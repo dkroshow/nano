@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
 

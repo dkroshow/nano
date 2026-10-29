@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
+	state "github.com/dkroshow/nano/internal/state/store"
 )
 
 func TestThreadsSizeWatchReportsGrowthAndStops(t *testing.T) {
@@ -22,7 +22,7 @@ func TestThreadsSizeWatchReportsGrowthAndStops(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		watchThreadsSize(ctx, db, path, 10*time.Millisecond, func(size state.SizeReport, err error) {
+		state.WatchSize(ctx, db, path, 10*time.Millisecond, func(size state.SizeReport, err error) {
 			if err == nil {
 				select {
 				case rows <- size:

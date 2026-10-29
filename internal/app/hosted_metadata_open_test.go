@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
+	state "github.com/dkroshow/nano/internal/state/store"
 )
 
 func TestControlMetadataReadPoolIsBoundedAndReadOnly(t *testing.T) {
@@ -87,7 +88,7 @@ func TestControlMetadataMigratesInvokerNotificationFlagFromVersionSix(t *testing
 
 func TestControlMetadataMigrationAddsBrowserDuplicateIncidentsFromVersion17(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := openControlMetadataStore(path)
+	store, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +102,7 @@ func TestControlMetadataMigrationAddsBrowserDuplicateIncidentsFromVersion17(t *t
 		t.Fatal(err)
 	}
 
-	store, err = openControlMetadataStore(path)
+	store, err = stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +121,7 @@ func TestControlMetadataMigrationAddsBrowserDuplicateIncidentsFromVersion17(t *t
 
 func TestControlMetadataRefusesVersionThreeWithoutDroppingExecutionState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := openControlMetadataStore(path)
+	store, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func TestControlMetadataRefusesVersionThreeWithoutDroppingExecutionState(t *test
 		t.Fatal(err)
 	}
 
-	if reopened, err := openControlMetadataStore(path); err == nil {
+	if reopened, err := stateopen.OpenMetadata(path); err == nil {
 		reopened.Close()
 		t.Fatal("version 3 migration succeeded without a lossless execution-state importer")
 	} else if !strings.Contains(err.Error(), "schema 3") {
@@ -160,7 +161,7 @@ func TestControlMetadataRefusesVersionThreeWithoutDroppingExecutionState(t *test
 
 func TestControlSchemaVersionSevenMigratesNotificationState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := openControlMetadataStore(path)
+	store, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +183,7 @@ func TestControlSchemaVersionSevenMigratesNotificationState(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openControlMetadataStore(path)
+	store, err = stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}

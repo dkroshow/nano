@@ -13,15 +13,15 @@ import (
 	"os"
 	"time"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
-	prompts "github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/history"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
-
-	sqlite "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
+
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {

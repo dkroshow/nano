@@ -22,7 +22,7 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := initial.control.Close(); err != nil {
+	if err := initial.Control.Close(); err != nil {
 		t.Fatal(err)
 	}
 	db, err := statedb.Open(context.Background(), filepath.Join(directory, "nano_threads.sqlite"))
@@ -74,23 +74,23 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 		}
 	}
 
-	got, ok := stores.queue.Get(stage5BadQueuedAction)
+	got, ok := stores.Queue.Get(stage5BadQueuedAction)
 	if !ok {
 		t.Fatal("boot repair removed the offending row")
 	}
 	if got.State != submissionParked || got.Text != "" {
 		t.Fatalf("boot repair row = %+v, want retained parked row", got)
 	}
-	if _, deliverable := stores.queue.First(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); deliverable {
+	if _, deliverable := stores.Queue.First(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); deliverable {
 		t.Fatal("boot-parked row remained eligible for delivery")
 	}
-	gotAttempt, ok := stores.attempts.Get(stage5BadQueuedAction)
+	gotAttempt, ok := stores.Attempts.Get(stage5BadQueuedAction)
 	if !ok || gotAttempt.Status != submissionParked || gotAttempt.Reason != "boot_incomplete_outbox:text" {
 		t.Fatalf("boot repair journal marker = %+v, present=%v", gotAttempt, ok)
 	}
 
 	projection := newLiveProjection(queued.Provider, queued.HostedThreadID, "nano-fixture")
-	newProviderRuntimeFixture(t, sessionConfig{ID: "nano-fixture", Provider: queued.Provider, HostedThreadID: queued.HostedThreadID, Projection: projection, QueuedTurns: stores.queue, SendAttempts: stores.attempts, Turns: stores.turns}, queued.NativeThreadID, "")
+	newProviderRuntimeFixture(t, sessionConfig{ID: "nano-fixture", Provider: queued.Provider, HostedThreadID: queued.HostedThreadID, Projection: projection, QueuedTurns: stores.Queue, SendAttempts: stores.Attempts, Turns: stores.Turns}, queued.NativeThreadID, "")
 	diagnostics := projection.ThreadDiagnosticsSnapshot()
 	if len(diagnostics) != 1 || diagnostics[0].Code != "boot_incomplete_outbox" ||
 		diagnostics[0].Source != "turn-store-boot" || diagnostics[0].ActionID != stage5BadQueuedAction ||
@@ -98,15 +98,15 @@ func TestThreadRuntimeParksIncompleteQueuedFixtureAndBoots(t *testing.T) {
 		t.Fatalf("thread boot diagnostics = %#v", diagnostics)
 	}
 
-	if err := stores.control.Close(); err != nil {
+	if err := stores.Control.Close(); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := openThreadRuntimeStores(context.Background(), directory, filepath.Join(directory, "turn-completed.sqlite"), "second-reboot")
 	if err != nil {
 		t.Fatalf("park marker did not survive the next boot: %v", err)
 	}
-	t.Cleanup(func() { _ = reopened.control.Close() })
-	if parks := reopened.queue.BootParksFor(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); len(parks) != 1 || parks[0].ActionID != stage5BadQueuedAction {
+	t.Cleanup(func() { _ = reopened.Control.Close() })
+	if parks := reopened.Queue.BootParksFor(queued.Provider, queued.NativeThreadID, queued.HostedThreadID); len(parks) != 1 || parks[0].ActionID != stage5BadQueuedAction {
 		t.Fatalf("reopened boot diagnostics = %#v", parks)
 	}
 }

@@ -8,11 +8,12 @@ import (
 	"os"
 	"path/filepath"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
+
 
 func openTestMetadataStore(path string) (*MetadataStore, error) {
 	abs, err := filepath.Abs(path)

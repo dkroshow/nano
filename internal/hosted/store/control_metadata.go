@@ -1,9 +1,5 @@
 package store
 
-// control_metadata.go owns the durable hosted-thread metadata read model. It
-// deliberately lives outside history.sqlite: provider history is rebuildable,
-// while a hosted identity and an operator decision are not.
-
 import (
 	"context"
 	"database/sql"
@@ -16,11 +12,16 @@ import (
 	"sync"
 	"time"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
+
+// control_metadata.go owns the durable hosted-thread metadata read model. It
+// deliberately lives outside history.sqlite: provider history is rebuildable,
+// while a hosted identity and an operator decision are not.
+
 
 const (
 	metadataDispositionRequested = DispositionRequested

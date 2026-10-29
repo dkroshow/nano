@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -325,7 +326,7 @@ func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
 	if err := store.CanonicalDatabase().QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&databasePath); err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := openControlMetadataStore(databasePath)
+	restarted, err := stateopen.OpenMetadata(databasePath)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,19 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/dkroshow/nano/internal/core/prompts"
-	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/core/prompts"
+	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
+
 
 func openTestMetadataStore(path string) (*hostedstore.MetadataStore, error) {
 	abs, err := filepath.Abs(path)

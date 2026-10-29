@@ -9,13 +9,14 @@ import (
 	"sync"
 	"testing"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
+
 
 // Existing delivery fixtures name a queue/journal path. Both now resolve to
 // one disposable SQLite file in that fixture directory, just as startup does.

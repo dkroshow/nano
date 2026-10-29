@@ -711,7 +711,7 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 // session admission calls it); the legacy writer only imports old queues.
 func TestQueuedPromptsAlwaysCarryAHostedThread(t *testing.T) {
 	ctx := context.Background()
-	db, _, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "queued-prompts.json"))
+	db, _, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

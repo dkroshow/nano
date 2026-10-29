@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sessions"
@@ -19,16 +18,4 @@ func newThreadCatalogService(ctx context.Context, store *history.Store, options 
 		return nil, err
 	}
 	return &sidebar.CatalogSource{Service: service}, nil
-}
-
-func writeCatalogBackendError(w http.ResponseWriter, err error) {
-	threadindex.WriteCatalogBackendError(w, err)
-}
-
-func writeTranscriptBackendError(w http.ResponseWriter, err error) {
-	threadindex.WriteTranscriptBackendError(w, err)
-}
-
-func writeCatalogJSON(w http.ResponseWriter, status int, value any) {
-	threadindex.WriteCatalogJSON(w, status, value)
 }

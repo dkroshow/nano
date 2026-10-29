@@ -10,6 +10,7 @@ import (
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
+
 // OpenReadOnly validates the canonical schema without creating or migrating a
 // store. Offline diagnosis never falls back to legacy files.
 func OpenReadOnly(ctx context.Context, path string, migrations statedb.MigrationRunner) (*sql.DB, error) {

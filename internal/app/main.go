@@ -25,11 +25,11 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/agentapi"
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/configpaths"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/diagnostics"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/features/feedback"
 	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
@@ -45,6 +45,7 @@ import (
 	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/usage"
@@ -268,7 +269,7 @@ func construct(cfg config.Config) *application {
 			attachments = store
 			log.Printf("attachment store using %s", attachPath)
 		}
-		stores, err := openThreadRuntimeStoresAt(context.Background(), state.StorePaths{
+		stores, err := stateopen.OpenRuntimeStoresAt(context.Background(), state.StorePaths{
 			Destination: cfg.Paths.ThreadsDB,
 			Control:     cfg.Paths.LegacyControlDB,
 			BackupRoot:  cfg.Paths.ThreadsBackups,
@@ -281,9 +282,9 @@ func construct(cfg config.Config) *application {
 		if err != nil {
 			log.Fatalf("required schema %d turns store unavailable: %v", prompts.TurnSchemaVersion, err)
 		} else {
-			controlMetadata, agentExecutions = stores.control, stores.executions
-			queuedTurns, sendAttempts, completedTurns, turnStore = stores.queue, stores.attempts, stores.completed, stores.turns
-			startThreadsSizeWatch(stores.control.CanonicalDatabase(), stores.queue.Path())
+			controlMetadata, agentExecutions = stores.Control, stores.Executions
+			queuedTurns, sendAttempts, completedTurns, turnStore = stores.Queue, stores.Attempts, stores.Completed, stores.Turns
+			state.StartSizeWatch(stores.Control.CanonicalDatabase(), stores.Queue.Path())
 			if err := hostedstore.ImportAndScrubLegacyAttachments(controlMetadata, attachments); err != nil {
 				log.Printf("canonical attachment migration unavailable: %v", err)
 				controlMetadataErr, executionControlErr = err.Error(), err.Error()

@@ -150,8 +150,8 @@ func interactTestServer(t *testing.T, working bool, configure ...func(*sessionCo
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = stores.control.Close() })
-	executions, queue, attempts, turnStore := stores.executions, stores.queue, stores.attempts, stores.turns
+	t.Cleanup(func() { _ = stores.Control.Close() })
+	executions, queue, attempts, turnStore := stores.Executions, stores.Queue, stores.Attempts, stores.Turns
 	record, _, err := fixtureBeginSession(executions, "target", "target-hash", "codex", presentationBackground)
 	if err != nil {
 		t.Fatal(err)

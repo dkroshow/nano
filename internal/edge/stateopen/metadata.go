@@ -1,4 +1,4 @@
-package app
+package stateopen
 
 import (
 	"context"
@@ -8,14 +8,15 @@ import (
 	"os"
 	"path/filepath"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-func openControlMetadataStore(path string) (*hostedstore.MetadataStore, error) {
+// OpenMetadata opens and migrates the canonical writer and its bounded read pool.
+func OpenMetadata(path string) (*hostedstore.MetadataStore, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve control metadata path: %w", err)

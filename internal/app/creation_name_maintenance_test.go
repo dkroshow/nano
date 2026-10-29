@@ -12,6 +12,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -24,7 +25,7 @@ type creationNameRepairHTTPReceipt struct {
 
 func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nano_threads.sqlite")
-	control, err := openControlMetadataStore(path)
+	control, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}

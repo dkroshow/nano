@@ -15,6 +15,7 @@ import (
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
+
 // ErrLegacySourceChanged prevents the one-time legacy copy from publishing a
 // mixed snapshot when a source changes during that copy.
 var ErrLegacySourceChanged = errors.New("threads_legacy_source_changed")

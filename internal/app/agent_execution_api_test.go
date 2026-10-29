@@ -723,7 +723,7 @@ func TestHostedTurnQueuesBehindActiveTurnAndDrains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -811,7 +811,7 @@ func TestHostedClaudeFollowupIgnoresStaleRunningOperationAfterRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -857,7 +857,7 @@ func TestHostedClaudeFollowupQueuesWhileFirstTurnRunsThenDrains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -913,7 +913,7 @@ func TestHostedClaudeFollowupDispatchesAfterAcceptedFirstPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -997,7 +997,7 @@ func TestHostedClaudeAcceptedPromptDoesNotHoldFollowupClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1060,7 +1060,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1145,7 +1145,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1242,7 +1242,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-prompts.json"))
+	queue, err := newTestQueuedTurnStore(t, filepath.Join(dir, "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1427,8 +1427,8 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = stores.control.Close() })
-	executions, attempts, queue, turnStore := stores.executions, stores.attempts, stores.queue, stores.turns
+	t.Cleanup(func() { _ = stores.Control.Close() })
+	executions, attempts, queue, turnStore := stores.Executions, stores.Attempts, stores.Queue, stores.Turns
 	hosted, _, _ := fixtureBeginSession(executions, "queue-cancel", "request-hash", "codex", presentationShared)
 	_ = executions.BindSession(hosted.ID, "nano-1", "native-1", "ready", presentationShared)
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationShared, AgentExecutions: executions, Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "native-1", "ready", "", true)

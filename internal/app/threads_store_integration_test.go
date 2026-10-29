@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -19,7 +20,7 @@ import (
 func TestThreadsApplicationBindingRejectsInvalidDurableCounters(t *testing.T) {
 	for _, generation := range []int64{-1, math.MaxInt64} {
 		t.Run(fmt.Sprint(generation), func(t *testing.T) {
-			store, err := openControlMetadataStore(filepath.Join(t.TempDir(), "control.sqlite"))
+			store, err := stateopen.OpenMetadata(filepath.Join(t.TempDir(), "control.sqlite"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -43,7 +44,7 @@ func TestThreadsApplicationBindingRejectsInvalidDurableCounters(t *testing.T) {
 
 func TestThreadsPrimitivesUseCanonicalAttachmentCounter(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := openControlMetadataStore(path)
+	store, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,7 @@ func TestThreadsPrimitivesUseCanonicalAttachmentCounter(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openControlMetadataStore(path)
+	store, err = stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestThreadsPrimitivesUseCanonicalAttachmentCounter(t *testing.T) {
 
 func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 	dir := t.TempDir()
-	source, err := openControlMetadataStore(filepath.Join(dir, "synthetic-control.sqlite"))
+	source, err := stateopen.OpenMetadata(filepath.Join(dir, "synthetic-control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +133,7 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 	if err := threads.Restore(context.Background(), backupPath, candidatePath); err != nil {
 		t.Fatal(err)
 	}
-	candidate, err := openControlMetadataStore(candidatePath)
+	candidate, err := stateopen.OpenMetadata(candidatePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestThreadsBackupAllowsControlMigrationOnDisposableCopy(t *testing.T) {
 	if err := candidate.Close(); err != nil {
 		t.Fatal(err)
 	}
-	candidate, err = openControlMetadataStore(candidatePath)
+	candidate, err = stateopen.OpenMetadata(candidatePath)
 	if err != nil {
 		t.Fatal(err)
 	}

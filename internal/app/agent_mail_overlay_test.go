@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -288,7 +289,7 @@ func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 func TestMailSchemaV16RebuildPreservesMailAndAdmitsOperator(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/control.sqlite"
-	store, err := openControlMetadataStore(path)
+	store, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +343,7 @@ func TestMailSchemaV16RebuildPreservesMailAndAdmitsOperator(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := openControlMetadataStore(path)
+	reopened, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatalf("v16→v17 migration failed: %v", err)
 	}

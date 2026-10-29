@@ -1,21 +1,22 @@
-package app
+package statestore
 
 import (
 	"context"
 	"database/sql"
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"log"
 	"time"
 )
 
-func watchThreadsSize(ctx context.Context, db *sql.DB, path string, interval time.Duration, report func(state.SizeReport, error)) {
+
+// WatchSize reports database growth until cancellation.
+func WatchSize(ctx context.Context, db *sql.DB, path string, interval time.Duration, report func(SizeReport, error)) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		size, err := state.ReadSize(ctx, db, path)
+		size, err := ReadSize(ctx, db, path)
 		report(size, err)
 		select {
 		case <-ctx.Done():
@@ -25,8 +26,9 @@ func watchThreadsSize(ctx context.Context, db *sql.DB, path string, interval tim
 	}
 }
 
-func startThreadsSizeWatch(db *sql.DB, path string) {
-	go watchThreadsSize(context.Background(), db, path, time.Hour, func(size state.SizeReport, err error) {
+// StartSizeWatch reports canonical file sizes once per hour.
+func StartSizeWatch(db *sql.DB, path string) {
+	go WatchSize(context.Background(), db, path, time.Hour, func(size SizeReport, err error) {
 		if err != nil {
 			log.Printf("threads size watch: %v", err)
 			return

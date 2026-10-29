@@ -13,14 +13,15 @@ import (
 	"testing"
 	"time"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/history"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
+
 
 func TestBackupRestoreCommandPreservesPrivateCanonicalFacts(t *testing.T) {
 	ctx := context.Background()

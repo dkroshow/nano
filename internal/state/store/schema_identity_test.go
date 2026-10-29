@@ -12,6 +12,7 @@ import (
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
+
 const statestoreFreshSchemaHash = "e3a50e8d0705ad87203b221adfbed3a279a79d5b4aeacbd282088bbd78f1612b"
 
 func TestFreshStatestoreSchemaIsStable(t *testing.T) {

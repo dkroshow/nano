@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -256,7 +257,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 
 func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	control, err := openControlMetadataStore(path)
+	control, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +274,7 @@ func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) 
 	if err := control.Close(); err != nil {
 		t.Fatal(err)
 	}
-	control, err = openControlMetadataStore(path)
+	control, err = stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +296,7 @@ func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) 
 func TestAgentMailStoreCopiesLegacyRowsOnceAndLeavesSource(t *testing.T) {
 	dir := t.TempDir()
 	controlPath := filepath.Join(dir, "control.sqlite")
-	control, err := openControlMetadataStore(controlPath)
+	control, err := stateopen.OpenMetadata(controlPath)
 	if err != nil {
 		t.Fatal(err)
 	}

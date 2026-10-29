@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"fmt"
 
-	appstate "github.com/dkroshow/nano/internal/app/persistence"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/diagnostics"
 	"github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -36,11 +36,11 @@ func Migrations() statedb.MigrationRunner {
 			}
 			return diagnostics.MigrateStateSchema(tx, version)
 		case statedb.MigrationPermissionEvents:
-			return appstate.MigratePermissionEventSchema(tx, version)
+			return hostedschema.MigratePermissionEventSchema(tx, version)
 		case statedb.MigrationMail:
 			return mail.MigrateLegacyStateSchema(tx, version)
 		case statedb.MigrationNativeRecovery:
-			return appstate.MigrateNativeRecoverySchema(tx)
+			return hostedschema.MigrateNativeRecoverySchema(tx)
 		case statedb.MigrationCompletedUsage:
 			cursors, err := subscriptions.StateCursorCount(db)
 			if err != nil {

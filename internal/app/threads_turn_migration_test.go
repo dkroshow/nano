@@ -10,17 +10,18 @@ import (
 	"reflect"
 	"testing"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
+	state "github.com/dkroshow/nano/internal/state/store"
 )
 
 func turnMigrationFixture(t *testing.T) (*hostedstore.MetadataStore, prompts.LegacyTurnPaths, []prompts.QueuedTurn, []prompts.SendAttempt) {
 	t.Helper()
 	dir := t.TempDir()
-	control, err := openControlMetadataStore(filepath.Join(dir, "control-copy.sqlite"))
+	control, err := stateopen.OpenMetadata(filepath.Join(dir, "control-copy.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func turnMigrationFixture(t *testing.T) (*hostedstore.MetadataStore, prompts.Leg
 	if err := control.ClaimNativeID("provisional", "claude", "cs_provisional", true); err != nil {
 		t.Fatal(err)
 	}
-	paths := prompts.LegacyTurnPaths{Queue: filepath.Join(dir, "queued-prompts.json"), Attempts: filepath.Join(dir, "send-attempts.json"), Completed: filepath.Join(dir, "turn-completed.sqlite")}
+	paths := prompts.LegacyTurnPaths{Queue: filepath.Join(dir, "queued-turns.json"), Attempts: filepath.Join(dir, "send-attempts.json"), Completed: filepath.Join(dir, "turn-completed.sqlite")}
 	queue := []prompts.QueuedTurn{
 		{ClientActionID: "q2", Provider: "claude", HostedThreadID: "current", NativeThreadID: "native", Text: "same text", PresentationText: "shown text", TextHash: "hash", RequestHash: "request", State: "uncertain", Origin: "agent", CreatedAt: "later", ProviderTurnID: "turn-2", ProviderTerminalStatus: "interrupted", ProviderTerminalAt: "terminal"},
 		{ClientActionID: "q1", Provider: "claude", HostedThreadID: "provisional", NativeThreadID: "cs_provisional", Text: "same text", TextHash: "hash", State: "parked", CreatedAt: "earlier"},
@@ -138,7 +139,7 @@ func TestThreadsTurnMigrationPreservesExactFactsAndRerunsWithoutImport(t *testin
 		t.Fatal("backup is not the pre-migration database")
 	}
 	backupDB.Close()
-	for _, name := range []string{"control.sqlite", "queued-prompts.json", "send-attempts.json", "turn-completed.sqlite", "manifest.json"} {
+	for _, name := range []string{"control.sqlite", "queued-turns.json", "send-attempts.json", "turn-completed.sqlite", "manifest.json"} {
 		info, err := os.Stat(filepath.Join(backup, name))
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatalf("non-private/missing backup %s: %v", name, err)
@@ -273,7 +274,7 @@ func TestThreadsStorePublicationKeepsOriginalUntilAllRecordsReconcile(t *testing
 		t.Fatalf("canonical mode: %v %v", info, err)
 	}
 	// Metadata's application wrapper must accept the migrated schema unchanged.
-	view, err := openControlMetadataStore(paths.Destination)
+	view, err := stateopen.OpenMetadata(paths.Destination)
 	if err != nil {
 		t.Fatal(err)
 	}

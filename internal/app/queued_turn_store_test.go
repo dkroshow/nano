@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	state "github.com/dkroshow/nano/internal/app/statestore"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
+	state "github.com/dkroshow/nano/internal/state/store"
 )
 
 func TestQueuedTurnStoreBindProviderTurnPersistsAcceptedIdentity(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "queued-prompts.json")
+	path := filepath.Join(t.TempDir(), "queued-turns.json")
 	store, err := newTestQueuedTurnStore(t, path)
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +41,7 @@ func TestQueuedTurnStoreBindProviderTurnPersistsAcceptedIdentity(t *testing.T) {
 }
 
 func TestQueuedTurnStoreOlderJSONWithoutBindingStillLoads(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "queued-prompts.json")
+	path := filepath.Join(t.TempDir(), "queued-turns.json")
 	legacy := `[
   {
     "clientActionId": "legacy-action",
@@ -75,7 +75,7 @@ func TestQueuedTurnStoreOlderJSONWithoutBindingStillLoads(t *testing.T) {
 }
 
 func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
-	store, err := newTestQueuedTurnStore(t, filepath.Join(t.TempDir(), "queued-prompts.json"))
+	store, err := newTestQueuedTurnStore(t, filepath.Join(t.TempDir(), "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestQueuedTurnByProviderTurnRequiresExactThreadIdentity(t *testing.T) {
 }
 
 func TestQueuedTurnBindProviderTurnFailureLeavesPreviousState(t *testing.T) {
-	store, err := newTestQueuedTurnStore(t, filepath.Join(t.TempDir(), "queued-prompts.json"))
+	store, err := newTestQueuedTurnStore(t, filepath.Join(t.TempDir(), "queued-turns.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

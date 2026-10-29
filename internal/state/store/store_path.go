@@ -14,6 +14,7 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
+
 // StorePaths keeps the canonical destination separate from retained legacy
 // sources. Writers must be stopped for the whole PrepareStore call.
 type StorePaths struct {

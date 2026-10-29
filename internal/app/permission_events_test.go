@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
@@ -121,7 +122,7 @@ func TestPermissionEventsAPIIsPagedByHostedThread(t *testing.T) {
 
 func TestControlSchemaTenMigratesPermissionAuditTable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := openControlMetadataStore(path)
+	store, err := stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +132,7 @@ func TestControlSchemaTenMigratesPermissionAuditTable(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openControlMetadataStore(path)
+	store, err = stateopen.OpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
