@@ -62,7 +62,7 @@ func (s *AttachmentCoordinator) PrepareBoot() {
 		}
 	}
 	s.boot = boot
-	s.Restart.AddThreads(boot.order)
+	s.Restart.addThreads(boot.order)
 }
 
 type bootReattachOutcome int
@@ -105,12 +105,12 @@ func (s *AttachmentCoordinator) ReattachOnBoot() {
 		log.Printf("boot re-attach: sidebar unavailable; attaching in stored order")
 	}
 	ordered := bootOrder(boot.order, ranks)
-	s.Restart.Rank(ranks, ordered)
+	s.Restart.rank(ranks, ordered)
 	order, resting := bootQueue(ordered, func(rec hostedstore.Attachment) bool {
 		return ranks[rec.Key()].Visible || s.bootWorkOpen(rec)
 	})
 	s.Boot.Rest(resting)
-	s.Restart.Rest(resting)
+	s.Restart.rest(resting)
 	log.Printf("boot re-attach: %d threads queued, %d resting until needed", len(order), len(resting))
 	// One queue per provider, each in sidebar priority, so a provider whose
 	// daemon hangs holds only its own threads. The restart record's order is
@@ -177,7 +177,7 @@ registering:
 	log.Printf("boot re-attach finished: %d threads in %s (%d registered, %d settled by a request, %d failed, %d no longer stored)",
 		len(boot.order), time.Since(started).Round(time.Millisecond), counts[bootReattachRegistered],
 		counts[bootReattachSettled], counts[bootReattachFailed], counts[bootReattachForgotten])
-	s.Restart.MarkBootLoopDone()
+	s.Restart.markBootLoopDone()
 }
 
 // bootOrder sets restart priority from the sidebar, so the threads near its
@@ -293,16 +293,16 @@ func (s *AttachmentCoordinator) reattachStored(rec hostedstore.Attachment, immed
 	defer func() {
 		s.Boot.Settle(rec)
 		if immediateRuntimePublish {
-			s.PublishRuntime(false)
+			s.publishRuntime(false)
 		} else {
 			s.NotifyRuntime()
 		}
 	}()
 	s.Boot.Wake(rec)
-	restart := s.Restart.Thread(rec.Key())
-	restart.At(observability.RestartPicked)
+	restart := s.Restart.thread(rec.Key())
+	restart.at(observability.RestartPicked)
 	if _, stored := s.Attachments.Get(rec.Provider, rec.NativeThreadID); !stored {
-		restart.Fail("no_longer_stored")
+		restart.fail("no_longer_stored")
 		return bootReattachForgotten // detached or closed while it waited
 	}
 	// Presentation is mutable and control.sqlite is its authority; the
@@ -334,18 +334,18 @@ func (s *AttachmentCoordinator) reattachStored(rec hostedstore.Attachment, immed
 		// A thread the sidebar does not show catches up after the visible
 		// ones; one the operator opened before the boot loop reached it
 		// (immediateRuntimePublish) does not wait.
-		catalogBackground: !immediateRuntimePublish && restart.HiddenAtBoot(),
+		catalogBackground: !immediateRuntimePublish && restart.hiddenAtBoot(),
 	})
 	var attached *sessions.ThreadAttachedError
 	switch {
 	case errors.As(err, &attached):
 		return bootReattachSettled // the winning resume carries the entry
-	case errors.Is(err, ErrHostedControlUnavailable):
-		restart.Fail("control_unavailable")
+	case errors.Is(err, errHostedControlUnavailable):
+		restart.fail("control_unavailable")
 		log.Printf("boot re-attach %s/%s failed (left detached): %v", rec.Provider, rec.NativeThreadID, err)
 		return bootReattachFailed
 	case err != nil:
-		restart.Fail("spawn_error")
+		restart.fail("spawn_error")
 		log.Printf("boot re-attach %s/%s failed (left detached): %v", rec.Provider, rec.NativeThreadID, err)
 		return bootReattachFailed
 	}

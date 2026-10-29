@@ -20,7 +20,7 @@ var (
 func (s *AttachmentCoordinator) TransferNativeClaim(targetHostedID, provider, nativeID string) error {
 	control := s.ControlStore()
 	if s == nil || control == nil {
-		return ErrHostedControlUnavailable
+		return errHostedControlUnavailable
 	}
 	owner, err := control.ActiveNativeOwner(provider, nativeID)
 	if err != nil {
@@ -36,7 +36,7 @@ func (s *AttachmentCoordinator) TransferNativeClaim(targetHostedID, provider, na
 
 // ResolveResumeHostedIdentity is a read-only routing decision. An exact active
 // claim still wins. A conversation with no Nano history may proceed only after
-// PrepareExternalResume verifies current provider-owned source evidence; the
+// prepareExternalResume verifies current provider-owned source evidence; the
 // actual registration remains an explicit spawn-time transaction, never a
 // preview or identity-resolution side effect.
 func (s *AttachmentCoordinator) ResolveResumeHostedIdentity(req *SpawnRequest) error {
@@ -49,7 +49,7 @@ func (s *AttachmentCoordinator) ResolveResumeHostedIdentity(req *SpawnRequest) e
 	}
 	control := s.ControlStore()
 	if control == nil {
-		return ErrHostedControlUnavailable
+		return errHostedControlUnavailable
 	}
 	named := strings.TrimSpace(req.HostedThreadID)
 	if err := control.NativeRecoveryResumeGuard(context.Background(), named, nativeID, sessions.ProviderLifecycleCapabilities(req.Provider).NativeRecovery); err != nil {
@@ -78,7 +78,7 @@ func (s *AttachmentCoordinator) ResolveResumeHostedIdentity(req *SpawnRequest) e
 		if named != "" {
 			return fmt.Errorf("hosted thread %s has no current claim for native conversation %s", named, nativeID)
 		}
-		return s.PrepareExternalResume(context.Background(), req)
+		return s.prepareExternalResume(context.Background(), req)
 	}
 	if named != "" && named != owner {
 		knows, err := control.HostedKnowsNative(named, req.Provider, nativeID)
@@ -93,8 +93,8 @@ func (s *AttachmentCoordinator) ResolveResumeHostedIdentity(req *SpawnRequest) e
 	return nil
 }
 
-// InheritResumePosture fills missing desired settings from prior hosted owners.
-func (s *AttachmentCoordinator) InheritResumePosture(hostedID, provider, nativeID string) error {
+// inheritResumePosture fills missing desired settings from prior hosted owners.
+func (s *AttachmentCoordinator) inheritResumePosture(hostedID, provider, nativeID string) error {
 	if s == nil || s.ControlStore() == nil || s.Executions == nil || hostedID == "" || nativeID == "" {
 		return nil
 	}
@@ -116,12 +116,12 @@ func (s *AttachmentCoordinator) InheritResumePosture(hostedID, provider, nativeI
 // RepairCanonicalNativeIdentity repairs a claim and its missing resume settings.
 func (s *AttachmentCoordinator) RepairCanonicalNativeIdentity(provider, nativeID, targetHostedID string) error {
 	if s == nil || s.ControlStore() == nil {
-		return ErrHostedControlUnavailable
+		return errHostedControlUnavailable
 	}
 	if err := s.TransferNativeClaim(targetHostedID, provider, nativeID); err != nil {
 		return err
 	}
-	return s.InheritResumePosture(targetHostedID, provider, nativeID)
+	return s.inheritResumePosture(targetHostedID, provider, nativeID)
 }
 
 // ControlStore returns the available canonical metadata owner.

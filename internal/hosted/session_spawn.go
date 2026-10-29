@@ -28,19 +28,19 @@ import (
 // on the session rather than as an HTTP error nobody is still looking at.
 func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, error) {
 	if s.Executions == nil || s.Metadata == nil || s.ExecutionError != "" || s.MetadataError != "" {
-		return nil, ErrHostedControlUnavailable
+		return nil, errHostedControlUnavailable
 	}
 	if req.Mode == "resume" {
 		// Whichever path registers a still-starting thread (the boot loop, a
 		// request, a manual resume) is tracked from here, lock wait included.
 		if key := (hostedstore.AttachmentKey{Provider: req.Provider, NativeThreadID: req.ThreadID}); req.restart == nil && s.Boot.Waiting(key) {
-			req.restart = s.Restart.Thread(key)
-			req.restart.At(observability.RestartPicked)
+			req.restart = s.Restart.thread(key)
+			req.restart.at(observability.RestartPicked)
 		}
 		lock := s.resumeSpawnLock(req.Provider)
 		lock.Lock()
 		defer lock.Unlock()
-		req.restart.At(observability.RestartLock)
+		req.restart.at(observability.RestartLock)
 	}
 	req, err := s.ResolveSpawn(req)
 	if err != nil {
@@ -71,11 +71,11 @@ func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, erro
 		}
 		switch req.Provider {
 		case "codex":
-			req, err = s.ResolveCodexResume(req)
+			req, err = s.resolveCodexResume(req)
 		case "claude":
 			req, err = s.ResolveClaudeResume(req)
 		case "grok":
-			req, err = s.ResolveGrokResume(req)
+			req, err = s.resolveGrokResume(req)
 		}
 		if err != nil {
 			return nil, failRegistration(err)
@@ -183,8 +183,8 @@ func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, erro
 		RuntimeNotify:      s.NotifyRuntime,
 		RememberAttachment: s.RememberAttachment,
 		ForgetAttachment:   s.ForgetAttachment,
-		UpdateTurnAnchor:   s.SetAttachmentTurnAnchor,
-		UpdateShimSession:  s.SetAttachmentShimSession,
+		UpdateTurnAnchor:   s.setAttachmentTurnAnchor,
+		UpdateShimSession:  s.setAttachmentShimSession,
 		Turns:              s.Turns,
 		AgentExecutions:    s.Executions,
 		Metadata:           s.Metadata,
@@ -234,12 +234,12 @@ func (s *AttachmentCoordinator) Spawn(req SpawnRequest) (*sessions.Session, erro
 	// is still in flight has to be able to reach this session, and the card has
 	// to appear at once rather than when the provider answers. Bind: the session
 	// is now visible to the catalog's runtime overlay.
-	sess.ConfigureRegistration(req.restart.At, req.restart.Fail, req.catalogBackground, s.CatalogSources)
+	sess.ConfigureRegistration(req.restart.at, req.restart.fail, req.catalogBackground, s.CatalogSources)
 	s.Registry.RegisterSession(sess)
 	sess.DidRegister()
 
 	if req.immediateRuntimePublish {
-		s.PublishRuntime(false)
+		s.publishRuntime(false)
 	} else {
 		s.NotifyRuntime()
 	}

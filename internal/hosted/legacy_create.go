@@ -19,7 +19,7 @@ func (s *Controller) handleSessionCreateAction(w http.ResponseWriter, r *http.Re
 	}
 	sess, err := s.AttachmentsControl.Spawn(req)
 	if err != nil {
-		if errors.Is(err, ErrHostedControlUnavailable) {
+		if errors.Is(err, errHostedControlUnavailable) {
 			message := err.Error()
 			if s.ExecutionError != "" {
 				message += ": " + s.ExecutionError

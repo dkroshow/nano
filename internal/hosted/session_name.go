@@ -57,7 +57,7 @@ func (s *AttachmentCoordinator) HandleSessionName(w http.ResponseWriter, r *http
 		var staged bool
 		nativeID, staged = sess.StageProvisionalName(nativeID, name)
 		if staged {
-			s.SetAttachmentPendingName(provider, nativeID, name)
+			s.setAttachmentPendingName(provider, nativeID, name)
 			s.NotifyRuntimeRefresh()
 			httpapi.WriteJSON(w, sess.Summary())
 			return

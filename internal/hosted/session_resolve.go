@@ -55,7 +55,7 @@ func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, er
 		// hosted identity exists, the canonical control row supplies every
 		// provider setting that can be replayed.
 		if req.HostedThreadID != "" {
-			if err := s.InheritResumePosture(req.HostedThreadID, req.Provider, req.ThreadID); err != nil {
+			if err := s.inheritResumePosture(req.HostedThreadID, req.Provider, req.ThreadID); err != nil {
 				return req, err
 			}
 			if err := s.ApplyCanonicalResumeMetadata(&req); err != nil {
@@ -64,11 +64,11 @@ func (s *AttachmentCoordinator) ResolveSpawn(req SpawnRequest) (SpawnRequest, er
 		}
 		switch req.Provider {
 		case "codex":
-			return s.ResolveCodexResume(req)
+			return s.resolveCodexResume(req)
 		case "claude":
 			return s.ResolveClaudeResume(req)
 		case "grok":
-			return s.ResolveGrokResume(req)
+			return s.resolveGrokResume(req)
 		}
 		return req, fmt.Errorf("resume is not supported for provider %q", req.Provider)
 	}
@@ -143,7 +143,7 @@ func (s *AttachmentCoordinator) ApplyCanonicalResumeMetadata(req *SpawnRequest) 
 		return nil
 	}
 	if s.Metadata == nil || s.MetadataError != "" {
-		return ErrHostedControlUnavailable
+		return errHostedControlUnavailable
 	}
 	view, err := s.Metadata.View(req.HostedThreadID)
 	if err != nil {
@@ -178,10 +178,10 @@ func (s *AttachmentCoordinator) ApplyCanonicalResumeMetadata(req *SpawnRequest) 
 	return nil
 }
 
-// ResolveGrokResume restores only the attachment's identity and cwd. The
+// resolveGrokResume restores only the attachment's identity and cwd. The
 // native leader owns model and permission posture; session/load is the source
 // of truth and Nano does not layer current start defaults over it.
-func (s *AttachmentCoordinator) ResolveGrokResume(req SpawnRequest) (SpawnRequest, error) {
+func (s *AttachmentCoordinator) resolveGrokResume(req SpawnRequest) (SpawnRequest, error) {
 	cwd := strings.TrimSpace(req.Cwd)
 	if cwd == "" {
 		return req, fmt.Errorf("no attachment record for Grok session %s and no cwd supplied", req.ThreadID)
@@ -209,11 +209,11 @@ func (s *AttachmentCoordinator) ResolveGrokResume(req SpawnRequest) (SpawnReques
 	return req, nil
 }
 
-// ResolveCodexResume keeps a codex resume free of start defaults: the
+// resolveCodexResume keeps a codex resume free of start defaults: the
 // app-server already holds the thread's posture, so every start-only field is
 // blanked rather than re-sent. The service tier is the exception: Codex resumes
 // at its own config's tier, so every resume handshake sends the thread's.
-func (s *AttachmentCoordinator) ResolveCodexResume(req SpawnRequest) (SpawnRequest, error) {
+func (s *AttachmentCoordinator) resolveCodexResume(req SpawnRequest) (SpawnRequest, error) {
 	if req.Cwd == "" {
 		if req.HostedThreadID != "" {
 			return req, fmt.Errorf("canonical cwd is unknown for hosted Codex thread %s", req.HostedThreadID)

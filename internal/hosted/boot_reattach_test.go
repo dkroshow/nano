@@ -34,7 +34,7 @@ func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	s.PrepareBoot()
-	s.Restart.Rank(map[hostedstore.AttachmentKey]sidebar.BootRank{records["visible"].Key(): {Tier: 0, Visible: true}}, s.boot.order)
+	s.Restart.rank(map[hostedstore.AttachmentKey]sidebar.BootRank{records["visible"].Key(): {Tier: 0, Visible: true}}, s.boot.order)
 
 	s.reattachStored(records["visible"], false)
 	s.reattachStored(records["hidden"], false)
@@ -60,7 +60,7 @@ func TestBootReattachRuntimeGateKeepsRefreshAndPrioritizedRegistration(t *testin
 	daemon.SetReplyDelay("thread/resume", 10*time.Second)
 	updates := s.events.Subscribe()
 	defer s.events.Unsubscribe(updates)
-	s.PublishRuntime(false)
+	s.publishRuntime(false)
 	<-updates
 	// The prepared starting thread is opened while the boot publisher is active.
 	s.boot.mu.Lock()

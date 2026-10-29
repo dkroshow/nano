@@ -131,8 +131,8 @@ type RestartTracker struct {
 	mu          sync.Mutex
 	httpOpen    *int64
 	bootLoop    *int64
-	threads     []*RestartThread
-	byKey       map[hostedstore.AttachmentKey]*RestartThread
+	threads     []*restartThread
+	byKey       map[hostedstore.AttachmentKey]*restartThread
 	wake        *time.Timer // the next time the record may be written
 	lastMark    time.Time   // when a mark last changed the record
 	written     bool        // final: no later mark changes the record
@@ -140,17 +140,17 @@ type RestartTracker struct {
 	saved       bool // the line is in the file
 }
 
-// RestartThread is one stored thread's entry, changed only under the
+// restartThread is one stored thread's entry, changed only under the
 // tracker's lock. Each timestamp is set at most once; state follows the last
 // of live and failed.
-type RestartThread struct {
+type restartThread struct {
 	tracker *RestartTracker
 	RestartThreadRecord
 }
 
 // NewRestartTracker starts a bounded record for this process boot.
 func NewRestartTracker(path, stamp, bootID string, started time.Time) *RestartTracker {
-	t := &RestartTracker{path: path, stamp: stamp, bootID: bootID, started: started, byKey: map[hostedstore.AttachmentKey]*RestartThread{}}
+	t := &RestartTracker{path: path, stamp: stamp, bootID: bootID, started: started, byKey: map[hostedstore.AttachmentKey]*restartThread{}}
 	time.AfterFunc(time.Until(started.Add(restartRecordCap)), func() { t.WriteUnsettled("not_live_at_cap", false) })
 	return t
 }
@@ -174,8 +174,8 @@ func (t *RestartTracker) MarkHTTPOpen() {
 
 // addThreads registers the boot's stored threads, before HTTP serves, so a
 // request that attaches one early is tracked too.
-// AddThreads records the durable attachments selected for this boot.
-func (t *RestartTracker) AddThreads(records []hostedstore.Attachment) {
+// addThreads records the durable attachments selected for this boot.
+func (t *RestartTracker) addThreads(records []hostedstore.Attachment) {
 	if t == nil {
 		return
 	}
@@ -185,7 +185,7 @@ func (t *RestartTracker) AddThreads(records []hostedstore.Attachment) {
 		if t.byKey[rec.Key()] != nil {
 			continue
 		}
-		th := &RestartThread{tracker: t, RestartThreadRecord: RestartThreadRecord{
+		th := &restartThread{tracker: t, RestartThreadRecord: RestartThreadRecord{
 			Provider: rec.Provider, NativeThreadID: rec.NativeThreadID, HostedThreadID: rec.HostedThreadID,
 			Tier: restartBootTierNames[sidebar.BootTierUnseen], Order: i, State: restartStatePending,
 		}}
@@ -196,8 +196,8 @@ func (t *RestartTracker) AddThreads(records []hostedstore.Attachment) {
 
 // rank fixes each thread's sidebar place and the order the boot loop takes,
 // before the loop starts, so requests that jump the queue do not change them.
-// Rank applies the sidebar order used by boot scheduling.
-func (t *RestartTracker) Rank(ranks map[hostedstore.AttachmentKey]sidebar.BootRank, ordered []hostedstore.Attachment) {
+// rank applies the sidebar order used by boot scheduling.
+func (t *RestartTracker) rank(ranks map[hostedstore.AttachmentKey]sidebar.BootRank, ordered []hostedstore.Attachment) {
 	if t == nil {
 		return
 	}
@@ -216,7 +216,7 @@ func (t *RestartTracker) Rank(ranks map[hostedstore.AttachmentKey]sidebar.BootRa
 
 // rest marks threads the boot loop leaves resting.
 // Rest records attachments deferred until they are requested.
-func (t *RestartTracker) Rest(records []hostedstore.Attachment) {
+func (t *RestartTracker) rest(records []hostedstore.Attachment) {
 	if t == nil {
 		return
 	}
@@ -230,7 +230,7 @@ func (t *RestartTracker) Rest(records []hostedstore.Attachment) {
 }
 
 // Thread returns the existing progress record for an attachment.
-func (t *RestartTracker) Thread(key hostedstore.AttachmentKey) *RestartThread {
+func (t *RestartTracker) thread(key hostedstore.AttachmentKey) *restartThread {
 	if t == nil {
 		return nil
 	}
@@ -239,8 +239,8 @@ func (t *RestartTracker) Thread(key hostedstore.AttachmentKey) *RestartThread {
 	return t.byKey[key]
 }
 
-// MarkBootLoopDone records the end of initial registration.
-func (t *RestartTracker) MarkBootLoopDone() {
+// markBootLoopDone records the end of initial registration.
+func (t *RestartTracker) markBootLoopDone() {
 	if t == nil {
 		return
 	}
@@ -254,8 +254,8 @@ func (t *RestartTracker) MarkBootLoopDone() {
 
 // hiddenAtBoot reports a boot thread the sidebar did not show at first sight.
 // Nil-safe: a session outside a boot is never hidden.
-// HiddenAtBoot reports whether the sidebar excluded this thread at boot.
-func (th *RestartThread) HiddenAtBoot() bool {
+// hiddenAtBoot reports whether the sidebar excluded this thread at boot.
+func (th *restartThread) hiddenAtBoot() bool {
 	if th == nil {
 		return false
 	}
@@ -267,7 +267,7 @@ func (th *RestartThread) HiddenAtBoot() bool {
 // at records when this thread reached step. Nil-safe: sessions outside a
 // boot have no entry.
 // At records a qualified attachment stage.
-func (th *RestartThread) At(step observability.RestartStep) {
+func (th *restartThread) at(step observability.RestartStep) {
 	if th == nil {
 		return
 	}
@@ -297,7 +297,7 @@ func (th *RestartThread) At(step observability.RestartStep) {
 // that was live and then fails counts as failed, and one that fails and then
 // becomes live counts as live.
 // Fail settles an attachment with a content-free reason code.
-func (th *RestartThread) Fail(reason string) {
+func (th *restartThread) fail(reason string) {
 	if th == nil {
 		return
 	}
@@ -444,7 +444,7 @@ func (t *RestartTracker) recordLocked(withThreads bool) RestartRecord {
 		failed, pending bool
 	}
 	var all, Visible span
-	note := func(s *span, th *RestartThread) {
+	note := func(s *span, th *restartThread) {
 		switch th.State {
 		case restartStateLive:
 			s.last = laterMs(s.last, th.LiveMs)

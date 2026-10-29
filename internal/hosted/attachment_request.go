@@ -31,7 +31,7 @@ type SpawnRequest struct {
 	// Prioritized registrations must appear immediately even during fleet boot.
 	immediateRuntimePublish bool `json:"-"`
 	// restart is this thread's entry in the boot's restart record, if any.
-	restart *RestartThread `json:"-"`
+	restart *restartThread `json:"-"`
 	// catalogBackground queues the catalog holds of a thread the sidebar did
 	// not show at boot behind foreground ones, for a bounded time
 	// (catalog_attached.go).
@@ -45,5 +45,5 @@ type SpawnRequest struct {
 	externalResumeMetadata map[string]string `json:"-"`
 }
 
-// ErrHostedControlUnavailable refuses starts and resumes without durable hosted state.
-var ErrHostedControlUnavailable = errors.New("hosted control unavailable; new hosted sessions and resumes are disabled")
+// errHostedControlUnavailable refuses starts and resumes without durable hosted state.
+var errHostedControlUnavailable = errors.New("hosted control unavailable; new hosted sessions and resumes are disabled")

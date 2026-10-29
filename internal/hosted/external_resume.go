@@ -12,15 +12,15 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-// PrepareExternalResume proves that a provider-native conversation exists and
+// prepareExternalResume proves that a provider-native conversation exists and
 // has never been registered in Nano. It is deliberately read-only so preview,
 // link resolution, and opening a historical pane cannot create hosted state.
-func (s *AttachmentCoordinator) PrepareExternalResume(ctx context.Context, req *SpawnRequest) error {
+func (s *AttachmentCoordinator) prepareExternalResume(ctx context.Context, req *SpawnRequest) error {
 	if s == nil || req == nil || req.Provider == "" || req.ThreadID == "" {
 		return errors.New("provider and native conversation id are required")
 	}
 	if s.Executions == nil || s.ControlStore() == nil {
-		return ErrHostedControlUnavailable
+		return errHostedControlUnavailable
 	}
 	historyRecords, err := s.Executions.SessionsForNativeHistory(req.Provider, req.ThreadID)
 	if err != nil {

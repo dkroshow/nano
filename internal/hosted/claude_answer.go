@@ -25,11 +25,11 @@ type claudeOwedRun struct {
 	dirty atomic.Bool
 }
 
-// FinishDetachedClaudeOwed finishes, after a catalog commit of one native
+// finishDetachedClaudeOwed finishes, after a catalog commit of one native
 // thread, the owed prompts of each hosted thread no session holds: an exited
 // thread's prompts are finished by the same rule, with no provider. A thread
 // with a session runs its own member step.
-func (s *AttachmentCoordinator) FinishDetachedClaudeOwed(native string) {
+func (s *AttachmentCoordinator) finishDetachedClaudeOwed(native string) {
 	if s.Turns == nil || s.Executions == nil || s.CompletedTurns == nil || native == "" {
 		return
 	}

@@ -14,7 +14,7 @@ func (s *AttachmentCoordinator) NotifyRuntime() {
 	if s.deferBootRuntime(false) {
 		return
 	}
-	s.PublishRuntime(false)
+	s.publishRuntime(false)
 }
 
 // NotifyRuntimeRefresh publishes the latest runtime snapshot and also tells
@@ -29,7 +29,7 @@ func (s *AttachmentCoordinator) NotifyRuntimeRefresh() {
 	if s.deferBootRuntime(true) {
 		return
 	}
-	s.PublishRuntime(true)
+	s.publishRuntime(true)
 }
 
 // Handshakes must not pay for fleet snapshots while the boot queues register.
@@ -55,7 +55,7 @@ func (s *AttachmentCoordinator) publishBootRuntime(final bool) {
 	boot.runtimeDirty, boot.runtimeRefresh = false, false
 	boot.mu.Unlock()
 	if dirty || final {
-		s.PublishRuntime(refresh)
+		s.publishRuntime(refresh)
 	}
 	if final {
 		// Notices arriving during the final snapshot must survive the handoff
@@ -65,13 +65,13 @@ func (s *AttachmentCoordinator) publishBootRuntime(final bool) {
 		boot.runtimeActive, boot.runtimeDirty, boot.runtimeRefresh = false, false, false
 		boot.mu.Unlock()
 		if dirty {
-			s.PublishRuntime(refresh)
+			s.publishRuntime(refresh)
 		}
 	}
 }
 
-// PublishRuntime sends the current runtime snapshot to sidebar subscribers.
-func (s *AttachmentCoordinator) PublishRuntime(refresh bool) {
+// publishRuntime sends the current runtime snapshot to sidebar subscribers.
+func (s *AttachmentCoordinator) publishRuntime(refresh bool) {
 	s.Runtime.PublishRuntimeDelta(refresh, false)
 }
 
@@ -97,30 +97,30 @@ func (s *AttachmentCoordinator) ForgetAttachment(provider, nativeThreadID string
 	s.Attachments.Forget(provider, nativeThreadID)
 }
 
-// SetAttachmentTurnAnchor persists (or clears) the live-turn anchor on an
+// setAttachmentTurnAnchor persists (or clears) the live-turn anchor on an
 // existing attachment record; nil-safe like the rest. Handed to sessions so
 // the claude transport can keep the record current without reaching for the
 // store — it is the one piece of live state that has to outlive the process.
-func (s *AttachmentCoordinator) SetAttachmentTurnAnchor(provider, nativeThreadID string, startedAtMs, anchorSeq int64) {
+func (s *AttachmentCoordinator) setAttachmentTurnAnchor(provider, nativeThreadID string, startedAtMs, anchorSeq int64) {
 	if s.Attachments == nil {
 		return
 	}
 	s.Attachments.SetTurnAnchor(provider, nativeThreadID, startedAtMs, anchorSeq)
 }
 
-// SetAttachmentPendingName persists a pre-init rename onto an existing
+// setAttachmentPendingName persists a pre-init rename onto an existing
 // provisional record; nil-safe like the rest (handleSessionName).
-func (s *AttachmentCoordinator) SetAttachmentPendingName(provider, nativeThreadID, name string) {
+func (s *AttachmentCoordinator) setAttachmentPendingName(provider, nativeThreadID, name string) {
 	if s.Attachments == nil {
 		return
 	}
 	s.Attachments.SetPendingName(provider, nativeThreadID, name)
 }
 
-// SetAttachmentShimSession ties an existing attachment record to the shim
+// setAttachmentShimSession ties an existing attachment record to the shim
 // child now hosting its thread; nil-safe like the rest. Handed to sessions for
 // the `--resume` respawn window (claude.go, openClaudeSession).
-func (s *AttachmentCoordinator) SetAttachmentShimSession(provider, nativeThreadID, shimSessionID string) {
+func (s *AttachmentCoordinator) setAttachmentShimSession(provider, nativeThreadID, shimSessionID string) {
 	if s.Attachments == nil {
 		return
 	}
