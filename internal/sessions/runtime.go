@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/wire"
 	codexwire "github.com/dkroshow/nano/internal/wire/codex"
@@ -125,7 +124,7 @@ func deliveryExecutionError(err error) *threads.ExecutionError {
 }
 
 func wireNudgesProjectionMeta(provider string, dir wire.Direction, line []byte) bool {
-	if dir != protocol.Recv {
+	if dir != wire.Recv {
 		return false
 	}
 	if provider == "grok" {
@@ -170,13 +169,13 @@ func ClaudeProjectionTerminal(line []byte) (string, json.RawMessage) {
 	if json.Unmarshal(line, &message) != nil {
 		return agentTurnFailed, json.RawMessage(`{"message":"invalid Claude result"}`)
 	}
-	reason := protocol.String(message["terminal_reason"])
+	reason := wire.String(message["terminal_reason"])
 	if strings.HasPrefix(reason, "aborted") {
 		return agentTurnInterrupted, nil
 	}
-	if protocol.Bool(message["is_error"]) {
+	if wire.Bool(message["is_error"]) {
 		detail, _ := json.Marshal(map[string]any{
-			"message":        threads.FirstNonEmpty(protocol.String(message["result"]), protocol.String(message["subtype"]), "Claude turn failed"),
+			"message":        threads.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "Claude turn failed"),
 			"terminalReason": reason,
 		})
 		return agentTurnFailed, detail

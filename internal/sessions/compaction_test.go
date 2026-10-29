@@ -3,8 +3,8 @@ package sessions
 import (
 	"testing"
 
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	fixture "github.com/dkroshow/nano/internal/testsupport"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -41,7 +41,7 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 		},
 	} {
 		t.Run(test.provider, func(t *testing.T) {
-			sess := &Session{provider: test.provider, subs: map[chan protocoltypes.Event]struct{}{},
+			sess := &Session{provider: test.provider, subs: map[chan wire.Event]struct{}{},
 				lifecycleState: testLifecycleSnapshot("ready", false),
 				projection:     newDeliveryTestProjection(test.provider)}
 			sess.threadID = "16952569-d518-579a-914e-2c422f5d5946"

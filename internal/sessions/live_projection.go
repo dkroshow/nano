@@ -13,7 +13,6 @@ import (
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/observability"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	"github.com/dkroshow/nano/internal/wire"
@@ -238,7 +237,7 @@ func (p *LiveProjection) ensureClaudeActiveTurn(startedAtMs int64) string {
 // Only the Claude shim's re-attach spool sets replay; other non-live
 // observations remain ordinary.
 func (p *LiveProjection) applyWireLive(dir wire.Direction, line []byte, at time.Time, live, replay bool, _ ...int64) {
-	if p.dropLiveTextDeltas && p.provider == "codex" && dir == protocol.Recv {
+	if p.dropLiveTextDeltas && p.provider == "codex" && dir == wire.Recv {
 		if turn, hidden := codexAgentTextDelta(line); hidden {
 			// Hidden text is still the turn's live work.
 			if live && !replay && turn != "" {
@@ -256,9 +255,9 @@ func (p *LiveProjection) applyWireLive(dir wire.Direction, line []byte, at time.
 			Type string `json:"type"`
 		}
 		if json.Unmarshal(line, &envelope) == nil {
-			claudeTurnOpened = (dir == protocol.Send && envelope.Type == "user") ||
-				(live && dir == protocol.Recv && ClaudeExecutionEvidence(line))
-			claudeTurnClosed = dir == protocol.Recv && envelope.Type == "result"
+			claudeTurnOpened = (dir == wire.Send && envelope.Type == "user") ||
+				(live && dir == wire.Recv && ClaudeExecutionEvidence(line))
+			claudeTurnClosed = dir == wire.Recv && envelope.Type == "result"
 		}
 	}
 	providerTurnID := ""
@@ -289,7 +288,7 @@ func (p *LiveProjection) applyWireLive(dir wire.Direction, line []byte, at time.
 		}
 		p.claudeRun = liveTurnWork{}
 	}
-	if claudeTurnOpened && p.claudeTurnID != "" && (dir == protocol.Send || !p.latestTurnInProgressLocked()) {
+	if claudeTurnOpened && p.claudeTurnID != "" && (dir == wire.Send || !p.latestTurnInProgressLocked()) {
 		turn := &liveview.Turn{ID: p.claudeTurnID, Status: "in_progress", StartedAtMs: at.UnixMilli()}
 		p.upsertTurnLocked(turn)
 		p.appendLocked(liveview.Update{Op: projectionTurnUpsert, Turn: cloneTurn(turn)})

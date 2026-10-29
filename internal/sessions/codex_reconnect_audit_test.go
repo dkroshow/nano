@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -37,7 +37,7 @@ func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID 
 		threadID:       threadID,
 		hostedThreadID: "hosted-" + threadID,
 		state:          map[string]json.RawMessage{},
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		projection:     newDeliveryTestProjection("codex"),
 		sendOps:        map[string]*turnSendOperation{},
 		turns:          queue.TransactionStore(),

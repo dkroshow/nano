@@ -14,9 +14,9 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/providers"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/wire"
 	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -30,9 +30,9 @@ func (sess *Session) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	ch := make(chan protocol.Event, 512)
+	ch := make(chan wire.Event, 512)
 	sess.mu.Lock()
-	replay := append([]protocol.Event(nil), sess.events...)
+	replay := append([]wire.Event(nil), sess.events...)
 	sess.subs[ch] = struct{}{}
 	sess.mu.Unlock()
 	defer func() {
@@ -41,7 +41,7 @@ func (sess *Session) HandleEvents(w http.ResponseWriter, r *http.Request) {
 		sess.mu.Unlock()
 	}()
 
-	writeEvent := func(evt protocol.Event) bool {
+	writeEvent := func(evt wire.Event) bool {
 		data, err := json.Marshal(evt)
 		if err != nil {
 			return false
@@ -97,7 +97,7 @@ func (sess *Session) HandleEventsPage(w http.ResponseWriter, r *http.Request) {
 		firstSeq = sess.events[0].Seq
 	}
 	currentSeq := sess.seq
-	memory := append([]protocol.Event(nil), sess.events...)
+	memory := append([]wire.Event(nil), sess.events...)
 	spool := sess.spool
 	sess.mu.Unlock()
 
@@ -132,11 +132,11 @@ func (sess *Session) HandleEventsPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func readEventsBefore(memory []protocol.Event, spool *wireSpool, beforeSeq int64, limit int) ([]protocol.Event, bool, error) {
+func readEventsBefore(memory []wire.Event, spool *wireSpool, beforeSeq int64, limit int) ([]wire.Event, bool, error) {
 	if spool != nil {
 		return spool.readBefore(beforeSeq, limit)
 	}
-	var older []protocol.Event
+	var older []wire.Event
 	for _, evt := range memory {
 		if evt.Seq < beforeSeq {
 			older = append(older, evt)

@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
 	fixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 var dataLines = fixture.DataLines
 var waitForClaude = fixture.WaitFor
 var waitForClaudeWithin = fixture.WaitForWithin
 
-func claudeDataWireEvents(sess *sessions.Session) []protocol.Event {
+func claudeDataWireEvents(sess *sessions.Session) []wire.Event {
 	return fixture.DataEvents(claudeWireEvents(sess))
 }
 

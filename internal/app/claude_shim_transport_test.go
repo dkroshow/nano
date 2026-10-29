@@ -10,9 +10,9 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/testsupport"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // claudeTestSession makes a session wired like a spawned one minus the spool:
@@ -67,11 +67,11 @@ func claudeTestSession(t *testing.T) (*sessions.Session, *testsupport.Attachment
 	return sess, recorder
 }
 
-func claudeWireEvents(sess *sessions.Session) []protocol.Event {
+func claudeWireEvents(sess *sessions.Session) []wire.Event {
 	recorder := httptest.NewRecorder()
 	sess.HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
 	var page struct {
-		Events []protocol.Event `json:"events"`
+		Events []wire.Event `json:"events"`
 	}
 	if recorder.Code != http.StatusOK {
 		panic(recorder.Body.String())

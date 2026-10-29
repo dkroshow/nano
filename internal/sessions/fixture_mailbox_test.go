@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	"github.com/dkroshow/nano/internal/wire"
 )
@@ -84,8 +83,8 @@ func awaitProviderFrameWithin(t *testing.T, f *providerRuntimeFixture, line []by
 	})
 }
 
-func receivedProviderFrames(sess *Session) []protocol.Event {
-	var frames []protocol.Event
+func receivedProviderFrames(sess *Session) []wire.Event {
+	var frames []wire.Event
 	for _, event := range liveWirePageEvents(sess) {
 		var body struct {
 			Method string `json:"method"`
@@ -98,11 +97,11 @@ func receivedProviderFrames(sess *Session) []protocol.Event {
 	return frames
 }
 
-func liveWirePageEvents(sess *Session) []protocol.Event {
+func liveWirePageEvents(sess *Session) []wire.Event {
 	recorder := httptest.NewRecorder()
 	sess.HandleEventsPage(recorder, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
 	var page struct {
-		Events []protocol.Event `json:"events"`
+		Events []wire.Event `json:"events"`
 	}
 	if recorder.Code != http.StatusOK {
 		panic(recorder.Body.String())

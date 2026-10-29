@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/lifecycle"
-	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/grok"
 	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -116,7 +115,7 @@ func grokRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time
 		duration := int64(0)
 		var usageBody map[string]json.RawMessage
 		if json.Unmarshal(usage, &usageBody) == nil {
-			duration = wirevalue.Int64(usageBody["apiDurationMs"])
+			duration = wire.Int64(usageBody["apiDurationMs"])
 		}
 		sess.projection.updateCompletedTurn(promptID, status, duration, at.UnixMilli())
 		return

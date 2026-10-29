@@ -15,11 +15,11 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	fixture "github.com/dkroshow/nano/internal/testsupport"
 	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -80,7 +80,7 @@ func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.S
 	sess, store := readyTransactionalSendTestSession(t, nil)
 	sess.provider, sess.hostedThreadID, sess.threadID = "claude", "hosted", "claude-settle"
 	sess.state = map[string]json.RawMessage{}
-	sess.subs = map[chan protocoltypes.Event]struct{}{}
+	sess.subs = map[chan wire.Event]struct{}{}
 	sess.interactions = map[string]interact.PendingInteraction{}
 	recorder := &resultRecorder{}
 	sess.agentExecutions = recorder

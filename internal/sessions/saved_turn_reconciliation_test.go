@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/liveview"
-	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 func durableLiveWorkTestSession(t *testing.T, turnID string, startedAtMs int64, drop ...bool) (*Session, *LiveProjection) {
@@ -30,7 +30,7 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 	saved := liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}
 	views := map[*Session]*LiveProjection{}
 	work := func(sess *Session, at time.Time) {
-		views[sess].applyWire(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
+		views[sess].applyWire(wire.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
 	}
 	for _, tc := range []struct {
 		name    string
@@ -42,10 +42,10 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 		{"same-turn live work during the read", nil, func(sess *Session) { work(sess, started.Add(time.Second/2)) }, true},
 		// Hiding Codex text deltas hides text, not the work they are.
 		{"same-turn hidden text delta during the read", nil, func(sess *Session) {
-			views[sess].applyWire(protocol.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
+			views[sess].applyWire(wire.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
 		}, true},
 		{"replayed old output during the read", nil, func(sess *Session) {
-			views[sess].applyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
+			views[sess].applyWireLive(wire.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
 		}, false},
 		{"nothing since the saved completion", nil, nil, false},
 	} {

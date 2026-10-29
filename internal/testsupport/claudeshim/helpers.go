@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // DataLines drops the control channel's frames. Control traffic is real wire
@@ -21,8 +21,8 @@ func DataLines(lines []string) []string {
 	return out
 }
 
-func DataEvents(events []protocol.Event) []protocol.Event {
-	out := make([]protocol.Event, 0, len(events))
+func DataEvents(events []wire.Event) []wire.Event {
+	out := make([]wire.Event, 0, len(events))
 	for _, evt := range events {
 		if !strings.Contains(string(evt.Msg), `"type":"control_`) {
 			out = append(out, evt)

@@ -1,4 +1,5 @@
-// Package wire defines provider-neutral wire direction values.
+// Package wire defines provider-neutral wire events, direction values and JSON
+// field readers shared by live provider adapters.
 package wire
 
 // Direction identifies whether a frame crossed toward or away from a provider.

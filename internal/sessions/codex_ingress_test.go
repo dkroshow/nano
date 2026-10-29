@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/protocol"
 	fixture "github.com/dkroshow/nano/internal/testsupport"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // Boundary: ordered session ingress must remain independent of an outstanding provider call.
@@ -44,7 +44,7 @@ func TestCodexTextDeltaIngressDoesNotWaitForOutstandingProviderCall(t *testing.T
 
 	callbackReturned := make(chan struct{})
 	go func() {
-		sess.recordWireAt(protocol.Recv, fixture.CodexDeltaFrames("streaming")[0], true, false, time.Now())
+		sess.recordWireAt(wire.Recv, fixture.CodexDeltaFrames("streaming")[0], true, false, time.Now())
 		close(callbackReturned)
 	}()
 	select {

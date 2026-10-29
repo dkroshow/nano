@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -83,9 +83,9 @@ func TestWireSpoolReadBeforeSkipsMalformedLines(t *testing.T) {
 
 func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
 	sess := &Session{id: "s1",
-		events:         []protocoltypes.Event{testWireEvent(1), testWireEvent(2), testWireEvent(3), testWireEvent(4)},
+		events:         []wire.Event{testWireEvent(1), testWireEvent(2), testWireEvent(3), testWireEvent(4)},
 		seq:            4,
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions/s1/events/page?beforeSeq=4&limit=2", nil)
 	rec := httptest.NewRecorder()
@@ -94,8 +94,8 @@ func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
 	var res struct {
-		Events  []protocoltypes.Event `json:"events"`
-		HasMore bool                  `json:"hasMore"`
+		Events  []wire.Event `json:"events"`
+		HasMore bool         `json:"hasMore"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -107,7 +107,7 @@ func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
 }
 
 func TestRecordWireCapsMemoryBuffer(t *testing.T) {
-	sess := &Session{subs: map[chan protocoltypes.Event]struct{}{},
+	sess := &Session{subs: map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	for i := 0; i < wireBufferCap+5; i++ {
 		sess.recordWire(protocol.Send, []byte(`{"jsonrpc":"2.0","method":"test"}`))
@@ -136,8 +136,8 @@ func newTestWireSpool(t *testing.T) *wireSpool {
 	return sp
 }
 
-func testWireEvent(seq int64) protocoltypes.Event {
-	return protocoltypes.Event{
+func testWireEvent(seq int64) wire.Event {
+	return wire.Event{
 		Seq: seq,
 		TS:  "2026-07-07T00:00:00Z",
 		Dir: "recv",
@@ -145,7 +145,7 @@ func testWireEvent(seq int64) protocoltypes.Event {
 	}
 }
 
-func assertSeqs(t *testing.T, events []protocoltypes.Event, want []int64) {
+func assertSeqs(t *testing.T, events []wire.Event, want []int64) {
 	t.Helper()
 	if len(events) != len(want) {
 		t.Fatalf("len(events) = %d, want %d (%v)", len(events), len(want), events)

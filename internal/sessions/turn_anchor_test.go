@@ -9,8 +9,8 @@ import (
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -18,7 +18,7 @@ func anchorTestSession(provider string) *Session {
 	return &Session{id: "sess-anchor",
 		provider:       provider,
 		createdAt:      time.Now(),
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		state:          map[string]json.RawMessage{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 }

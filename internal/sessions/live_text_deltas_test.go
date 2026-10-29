@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // liveTextDeltaAgentTexts is the agent text the live reader holds: what live
@@ -40,10 +40,10 @@ func runLiveTextDeltaTurn(t *testing.T, drop bool, deltas [][]byte, tail ...[]by
 	p := newLiveProjection("codex", "hosted", "nano")
 	p.setNativeThreadID("native-thread")
 	p.dropLiveTextDeltas = drop
-	p.applyWire(protocol.Recv, []byte(liveTextDeltaTurnStarted), time.Now())
-	p.applyWire(protocol.Recv, []byte(liveTextDeltaItemStarted), time.Now())
+	p.applyWire(wire.Recv, []byte(liveTextDeltaTurnStarted), time.Now())
+	p.applyWire(wire.Recv, []byte(liveTextDeltaItemStarted), time.Now())
 	for _, line := range deltas {
-		p.applyWire(protocol.Recv, line, time.Now())
+		p.applyWire(wire.Recv, line, time.Now())
 	}
 	if texts := liveTextDeltaAgentTexts(t, p); drop && len(texts) != 0 {
 		t.Fatalf("agent text read before completion: %q", texts)
@@ -51,7 +51,7 @@ func runLiveTextDeltaTurn(t *testing.T, drop bool, deltas [][]byte, tail ...[]by
 		t.Fatal("streaming deltas were not read")
 	}
 	for _, line := range tail {
-		p.applyWire(protocol.Recv, line, time.Now())
+		p.applyWire(wire.Recv, line, time.Now())
 	}
 	return p
 }
@@ -119,8 +119,8 @@ func TestCodexAgentTextDeltaClassifierScope(t *testing.T) {
 	p := newLiveProjection("codex", "hosted", "nano")
 	p.setNativeThreadID("native-thread")
 	p.dropLiveTextDeltas = true
-	p.applyWire(protocol.Recv, []byte(liveTextDeltaTurnStarted), time.Now())
-	p.applyWire(protocol.Recv, []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"stream-turn","item":{"id":"agent-1","type":"agentMessage","text":"already here"}}}`), time.Now())
+	p.applyWire(wire.Recv, []byte(liveTextDeltaTurnStarted), time.Now())
+	p.applyWire(wire.Recv, []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"stream-turn","item":{"id":"agent-1","type":"agentMessage","text":"already here"}}}`), time.Now())
 	if texts := liveTextDeltaAgentTexts(t, p); len(texts) != 1 || texts[0] != "already here" {
 		t.Fatalf("nonempty agent start rows = %q", texts)
 	}
@@ -128,7 +128,7 @@ func TestCodexAgentTextDeltaClassifierScope(t *testing.T) {
 	claude := newLiveProjection("claude", "hosted", "nano")
 	claude.dropLiveTextDeltas = true
 	claude.setClaudeProviderTurnID("claude-turn")
-	claude.applyWire(protocol.Recv, []byte(`{"type":"assistant","session_id":"native","message":{"id":"msg_1","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}}`), time.Now())
+	claude.applyWire(wire.Recv, []byte(`{"type":"assistant","session_id":"native","message":{"id":"msg_1","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}}`), time.Now())
 	if claude.finalAgentItemID("claude-turn") == "" {
 		t.Fatal("claude projection affected by the Codex-only switch")
 	}
@@ -154,7 +154,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	sub := make(chan protocol.Event, 64)
+	sub := make(chan wire.Event, 64)
 	go func() {
 		defer close(sub)
 		scanner := bufio.NewScanner(response.Body)
@@ -163,7 +163,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
-			var event protocol.Event
+			var event wire.Event
 			if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event) == nil && event.Seq > prior {
 				sub <- event
 			}
@@ -198,7 +198,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 		t.Fatalf("turn completion named answer %q, want agent-1", got)
 	}
 
-	var events []protocol.Event
+	var events []wire.Event
 	for _, event := range liveWirePageEvents(sess) {
 		if event.Seq > prior {
 			events = append(events, event)
@@ -247,7 +247,7 @@ func TestQueuedCodexTextDeltasBatchAcrossMailboxWithoutCrossingControl(t *testin
 	want.setNativeThreadID("native-thread")
 	base := time.Now()
 	for index, frame := range frames {
-		want.applyWire(protocol.Recv, frame, base.Add(time.Duration(index)*time.Millisecond))
+		want.applyWire(wire.Recv, frame, base.Add(time.Duration(index)*time.Millisecond))
 	}
 
 	p := newLiveProjection("codex", "hosted-thread")

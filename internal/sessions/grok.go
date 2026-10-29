@@ -18,7 +18,6 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
-	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -540,25 +539,25 @@ func grokSessionID(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &body) != nil {
 		return ""
 	}
-	if id := wirevalue.String(body["sessionId"]); id != "" {
+	if id := wire.String(body["sessionId"]); id != "" {
 		return id
 	}
 	// session/load puts its identity in _meta; session/new uses the top level.
 	var meta map[string]json.RawMessage
 	if json.Unmarshal(body["_meta"], &meta) == nil {
-		if id := wirevalue.String(meta["sessionId"]); id != "" {
+		if id := wire.String(meta["sessionId"]); id != "" {
 			return id
 		}
 		var detail map[string]json.RawMessage
 		if json.Unmarshal(meta["x.ai/sessionDetail"], &detail) == nil {
-			if id := wirevalue.String(detail["sessionId"]); id != "" {
+			if id := wire.String(detail["sessionId"]); id != "" {
 				return id
 			}
 		}
 	}
 	var info map[string]json.RawMessage
 	if json.Unmarshal(body["info"], &info) == nil {
-		return wirevalue.String(info["id"])
+		return wire.String(info["id"])
 	}
 	return ""
 }
@@ -585,7 +584,7 @@ func grokCurrentModel(raw json.RawMessage) string {
 	var detail map[string]json.RawMessage
 	if json.Unmarshal(raw, &top) == nil && json.Unmarshal(top["_meta"], &meta) == nil &&
 		json.Unmarshal(meta["x.ai/sessionDetail"], &detail) == nil {
-		return wirevalue.String(detail["currentModelId"])
+		return wire.String(detail["currentModelId"])
 	}
 	return ""
 }
@@ -618,12 +617,12 @@ func normalizeGrokModelCatalog(initialize json.RawMessage) json.RawMessage {
 	if json.Unmarshal(initialize, &top) != nil || json.Unmarshal(top["_meta"], &meta) != nil || json.Unmarshal(meta["modelState"], &state) != nil {
 		return json.RawMessage(`{"data":[]}`)
 	}
-	current := wirevalue.String(state["currentModelId"])
+	current := wire.String(state["currentModelId"])
 	var available []map[string]json.RawMessage
 	_ = json.Unmarshal(state["availableModels"], &available)
 	data := make([]map[string]any, 0, len(available))
 	for _, model := range available {
-		id := threadvalues.FirstNonEmpty(wirevalue.String(model["modelId"]), wirevalue.String(model["model"]), wirevalue.String(model["id"]))
+		id := threadvalues.FirstNonEmpty(wire.String(model["modelId"]), wire.String(model["model"]), wire.String(model["id"]))
 		if id == "" {
 			continue
 		}
@@ -634,22 +633,22 @@ func normalizeGrokModelCatalog(initialize json.RawMessage) json.RawMessage {
 			_ = json.Unmarshal(model["reasoningEfforts"], &rawEfforts)
 		}
 		efforts := make([]map[string]any, 0, len(rawEfforts))
-		defaultEffort := threadvalues.FirstNonEmpty(wirevalue.String(modelMeta["reasoningEffort"]), wirevalue.String(model["reasoningEffort"]))
+		defaultEffort := threadvalues.FirstNonEmpty(wire.String(modelMeta["reasoningEffort"]), wire.String(model["reasoningEffort"]))
 		for _, rawEffort := range rawEfforts {
-			effort := threadvalues.FirstNonEmpty(wirevalue.String(rawEffort["reasoningEffort"]), wirevalue.String(rawEffort["id"]), wirevalue.String(rawEffort["value"]))
+			effort := threadvalues.FirstNonEmpty(wire.String(rawEffort["reasoningEffort"]), wire.String(rawEffort["id"]), wire.String(rawEffort["value"]))
 			if effort == "" {
 				continue
 			}
 			efforts = append(efforts, map[string]any{
 				"reasoningEffort": effort,
-				"label":           threadvalues.FirstNonEmpty(wirevalue.String(rawEffort["label"]), wirevalue.String(rawEffort["name"]), effort),
+				"label":           threadvalues.FirstNonEmpty(wire.String(rawEffort["label"]), wire.String(rawEffort["name"]), effort),
 			})
-			if defaultEffort == "" && (wirevalue.Bool(rawEffort["isDefault"]) || wirevalue.Bool(rawEffort["default"])) {
+			if defaultEffort == "" && (wire.Bool(rawEffort["isDefault"]) || wire.Bool(rawEffort["default"])) {
 				defaultEffort = effort
 			}
 		}
 		data = append(data, map[string]any{
-			"model": id, "displayName": threadvalues.FirstNonEmpty(wirevalue.String(model["name"]), wirevalue.String(model["displayName"]), id),
+			"model": id, "displayName": threadvalues.FirstNonEmpty(wire.String(model["name"]), wire.String(model["displayName"]), id),
 			"isDefault": id == current, "defaultReasoningEffort": defaultEffort,
 			"supportedReasoningEfforts": efforts,
 		})
@@ -668,7 +667,7 @@ func grokRunningPromptID(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &top) != nil || json.Unmarshal(top["_meta"], &meta) != nil {
 		return ""
 	}
-	return wirevalue.String(meta["x.ai/runningPromptId"])
+	return wire.String(meta["x.ai/runningPromptId"])
 }
 
 func (sess *Session) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {

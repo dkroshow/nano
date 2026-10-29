@@ -13,8 +13,8 @@ import (
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/observability"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // Config supplies one attachment's values and existing owner services.
@@ -75,7 +75,7 @@ func New(cfg Config) *Session {
 		permissionMode:        cfg.PermissionMode,
 		createdAt:             cfg.CreatedAt,
 		spawnMode:             cfg.SpawnMode,
-		subs:                  map[chan protocol.Event]struct{}{},
+		subs:                  map[chan wire.Event]struct{}{},
 		state:                 map[string]json.RawMessage{},
 		reasoningSummary:      cfg.ReasoningSummary,
 		projection:            cfg.Projection,

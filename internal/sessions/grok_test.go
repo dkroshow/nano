@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/interact"
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -280,7 +280,7 @@ func TestGrokPermissionRequestUsesExistingInteractionShape(t *testing.T) {
 		provider:       "grok",
 		threadID:       "s1",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","hostname":"private-host","toolCall":{"toolCallId":"call-1","title":"Run tests",` +
@@ -314,7 +314,7 @@ func TestGrokExitPlanRequestParksPlanApproval(t *testing.T) {
 		provider:       "grok",
 		threadID:       "s1",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","toolCallId":"call-9","planContent":"# The plan\n"}`)
@@ -344,7 +344,7 @@ func TestGrokAskQuestionRequestParksAsUserInput(t *testing.T) {
 		provider:       "grok",
 		threadID:       "s1",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"s1","toolCallId":"call-3",` +
@@ -438,7 +438,7 @@ func TestGrokUnroutedPermissionFailsClosedWithoutParking(t *testing.T) {
 		threadID:       "parent",
 		permissionMode: "bypassPermissions",
 		interactions:   map[string]interact.PendingInteraction{},
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	grok := &grokSession{sess: sess}
 	params := json.RawMessage(`{"sessionId":"child","toolCall":{"toolCallId":"call-1"},"options":[{"optionId":"yes","kind":"allow_once"},{"optionId":"no","kind":"reject_once"}]}`)
@@ -503,7 +503,7 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 		threadID:       "parent-1",
 		state:          map[string]json.RawMessage{},
 		projection:     newDeliveryTestProjection("grok"),
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.projection.setNativeThreadID("parent-1")
 	g := &grokSession{sess: sess, seenPromptIDs: map[string]struct{}{}}

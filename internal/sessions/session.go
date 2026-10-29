@@ -16,9 +16,9 @@ import (
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/observability"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/providers"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // Session owns one live provider attachment and its ordered runtime state.
@@ -206,9 +206,9 @@ type Session struct {
 	codexHandshakeMu sync.Mutex
 
 	mu     sync.Mutex
-	events []protocol.Event
+	events []wire.Event
 	seq    int64
-	subs   map[chan protocol.Event]struct{}
+	subs   map[chan wire.Event]struct{}
 	spool  *wireSpool
 
 	// mcp caches the projected MCP tool registry served by

@@ -7,7 +7,6 @@ import (
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
-	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -150,19 +149,19 @@ func claudeRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at ti
 	if json.Unmarshal(line, &message) != nil {
 		return
 	}
-	switch wirevalue.String(message["type"]) {
+	switch wire.String(message["type"]) {
 	case "system":
 		// Claude reports status "compacting" every 30 s while it compacts,
 		// then status null (with compact_result) when it has finished.
-		if status, ok := message["status"]; ok && wirevalue.String(message["subtype"]) == "status" {
-			sess.markCompacting(wirevalue.String(status) == "compacting", at.UnixMilli())
+		if status, ok := message["status"]; ok && wire.String(message["subtype"]) == "status" {
+			sess.markCompacting(wire.String(status) == "compacting", at.UnixMilli())
 		}
 	case "result":
 		if usagePayload := claudeResultUsagePayload(message); usagePayload != nil {
 			sess.setLiveTokenUsageForTurn(sess.projection.latestTerminalTurnID(), usagePayload)
 		}
-		if wirevalue.Bool(message["is_error"]) && !strings.HasPrefix(wirevalue.String(message["terminal_reason"]), "aborted") {
-			sess.setLiveError(threadvalues.FirstNonEmpty(wirevalue.String(message["result"]), wirevalue.String(message["subtype"]), "turn failed"))
+		if wire.Bool(message["is_error"]) && !strings.HasPrefix(wire.String(message["terminal_reason"]), "aborted") {
+			sess.setLiveError(threadvalues.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "turn failed"))
 		}
 	}
 }
@@ -175,9 +174,9 @@ func claudeResultUsagePayload(message map[string]json.RawMessage) json.RawMessag
 	if len(usage) == 0 {
 		return nil
 	}
-	input := wirevalue.Int64(usage["input_tokens"])
-	cachedInput := wirevalue.Int64(usage["cache_creation_input_tokens"]) + wirevalue.Int64(usage["cache_read_input_tokens"])
-	output := wirevalue.Int64(usage["output_tokens"])
+	input := wire.Int64(usage["input_tokens"])
+	cachedInput := wire.Int64(usage["cache_creation_input_tokens"]) + wire.Int64(usage["cache_read_input_tokens"])
+	output := wire.Int64(usage["output_tokens"])
 	payload, _ := json.Marshal(map[string]any{
 		"last":               map[string]int64{"inputTokens": input, "cachedInputTokens": cachedInput, "outputTokens": output},
 		"total":              map[string]int64{"totalTokens": input + cachedInput + output, "inputTokens": input + cachedInput, "outputTokens": output},

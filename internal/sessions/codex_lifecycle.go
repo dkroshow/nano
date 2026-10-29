@@ -10,7 +10,6 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	"github.com/dkroshow/nano/internal/lifecycle"
-	wirevalue "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -125,27 +124,27 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 			Type string `json:"type"`
 		}
 		if json.Unmarshal(envelope.Params["item"], &item) == nil && item.Type == "contextCompaction" {
-			started := wirevalue.Int64(envelope.Params["startedAtMs"])
+			started := wire.Int64(envelope.Params["startedAtMs"])
 			if started == 0 {
 				started = at.UnixMilli()
 			}
 			sess.markCompacting(envelope.Method == "item/started", started)
 		}
 	case "thread/tokenUsage/updated":
-		sess.setLiveTokenUsageForTurn(wirevalue.String(envelope.Params["turnId"]), envelope.Params["tokenUsage"])
+		sess.setLiveTokenUsageForTurn(wire.String(envelope.Params["turnId"]), envelope.Params["tokenUsage"])
 	case "error":
 		var payload map[string]json.RawMessage
 		if json.Unmarshal(envelope.Params["error"], &payload) == nil {
-			sess.setLiveError(wirevalue.String(payload["message"]))
+			sess.setLiveError(wire.String(payload["message"]))
 		} else {
-			sess.setLiveError(wirevalue.String(envelope.Params["message"]))
+			sess.setLiveError(wire.String(envelope.Params["message"]))
 		}
 	case "turn/completed":
 		var turn map[string]json.RawMessage
 		if json.Unmarshal(envelope.Params["turn"], &turn) == nil {
-			status := wirevalue.String(turn["status"])
-			turnID := wirevalue.String(turn["id"])
-			sess.projection.updateCompletedTurn(turnID, status, wirevalue.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
+			status := wire.String(turn["status"])
+			turnID := wire.String(turn["id"])
+			sess.projection.updateCompletedTurn(turnID, status, wire.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
 			if status == "interrupted" {
 				// A turn interrupted before it recorded its input saves nothing,
 				// so no saved commit may follow to settle a prompt it dropped.

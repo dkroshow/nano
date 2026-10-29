@@ -13,9 +13,9 @@ import (
 	"github.com/dkroshow/nano/internal/config"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/liveview"
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	sessionstypes "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -589,7 +589,7 @@ func TestResumeWireReplyOmitsHistoricalTurns(t *testing.T) {
 	if sess == nil {
 		t.Fatal("resumed session missing")
 	}
-	var events []protocoltypes.Event
+	var events []wire.Event
 	waitForClaude(t, "compact resume reply persisted", func() bool {
 		events = claudeWireEvents(sess)
 		for _, event := range events {

@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	protocoltypes "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/wire"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
@@ -62,7 +61,7 @@ func TestTurnActiveTransition(t *testing.T) {
 // a turn that already ended.
 func TestSessionTracksTurnID(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.threadID = "thread_a"
 
@@ -85,7 +84,7 @@ func TestSessionTracksTurnID(t *testing.T) {
 // interrupted, not an error the operator has to read.
 func TestHandleInterruptWithoutTurn(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.threadID = "thread_a"
 
@@ -126,7 +125,7 @@ func TestInterruptRaceReason(t *testing.T) {
 // omitted field is left alone while an explicit empty string clears it.
 func TestHandleTurnOptions(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	sess.model = "gpt-5.6-sol"
 	sess.threadID = "native-1"
@@ -175,7 +174,7 @@ func TestHandleTurnOptions(t *testing.T) {
 func TestSessionTurnActiveFromWire(t *testing.T) {
 	var nudges int
 	sess := &Session{provider: "codex",
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		runtimeNotify:  func() { nudges++ },
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
@@ -207,7 +206,7 @@ func TestSessionTurnActiveFromWire(t *testing.T) {
 // one restart minute). Replay flips the flag; only a live close stamps.
 func TestReplayedTurnCloseDoesNotStampLastTurnEnded(t *testing.T) {
 	sess := &Session{provider: "codex",
-		subs:           map[chan protocoltypes.Event]struct{}{},
+		subs:           map[chan wire.Event]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
 	started := []byte(`{"method":"turn/started","params":{"threadId":"t1"}}`)
 	completed := []byte(`{"method":"turn/completed","params":{"threadId":"t1"}}`)

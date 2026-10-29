@@ -22,7 +22,7 @@ on local port 7691. Wire captures record the protocol logger's `{ts,dir,msg}`
 wrappers; the checked-in [paired capture](../../internal/transcriptparse/codex/testdata/research/paired-first-turn/input.jsonl)
 is an example input for `transcript-dump --source wire`.
 
-Codex uses JSON-RPC-shaped objects without requiring `jsonrpc: "2.0"`: request `{id,method,params}`, notification `{method,params}`, success `{id,result}`, failure `{id,error:{code,message,data?}}`. IDs can be strings or integers; preserve the original type. Stdio uses one JSON object per newline; WebSocket transports messages, not rollout lines. Transport control/ping/close frames are not conversation items. Capture wrappers `{ts,dir,msg}` are recorder metadata, not provider fields (internal/protocol/client.go:1).
+Codex uses JSON-RPC-shaped objects without requiring `jsonrpc: "2.0"`: request `{id,method,params}`, notification `{method,params}`, success `{id,result}`, failure `{id,error:{code,message,data?}}`. IDs can be strings or integers; preserve the original type. Stdio uses one JSON object per newline; WebSocket transports messages, not rollout lines. Transport control/ping/close frames are not conversation items. Capture wrappers `{ts,dir,msg}` are recorder metadata, not provider fields (internal/wire/codex/client.go).
 
 Handshake: initialize request/result, unsolicited status may arrive, initialized client notification, thread/start or thread/resume, turn/start acceptance, then notifications. `turn/start` acceptance is not completion. Client-side requests and server-side requests use separate identity namespaces even if numeric IDs coincide. Requests may remain pending while unrelated thread events flow.
 

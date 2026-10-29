@@ -17,9 +17,9 @@ import (
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/testsupport"
 	"github.com/dkroshow/nano/internal/testsupport/claudeshim"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // Failure caught: the shim decodes a session's whole spool before it answers
@@ -38,10 +38,10 @@ func TestClaudeShimAttachTimeoutFollowsTheSpoolAndStaysBounded(t *testing.T) {
 	}
 }
 
-func claudeWireEvents(sess *Session) []protocol.Event {
+func claudeWireEvents(sess *Session) []wire.Event {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	return append([]protocol.Event(nil), sess.events...)
+	return append([]wire.Event(nil), sess.events...)
 }
 
 // waitForClaudeThreadID waits for the native id the child announces on its

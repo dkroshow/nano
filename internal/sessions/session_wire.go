@@ -9,7 +9,6 @@ import (
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/inspection"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/wire"
 )
 
@@ -26,7 +25,7 @@ type queuedCodexDelta struct {
 	itemID   string
 	delta    string
 	at       time.Time
-	event    protocol.Event
+	event    wire.Event
 	wireSeq  []int64
 }
 
@@ -173,7 +172,7 @@ func (sess *Session) recordWireRaw(dir wire.Direction, line []byte) {
 	at := time.Now()
 	// A multiplexed child without its own attachment is not watched: its raw
 	// traffic hints nothing, and only an explicit child attachment opts in.
-	sess.publishWireEvent(protocol.Event{
+	sess.publishWireEvent(wire.Event{
 		TS: at.Format(time.RFC3339Nano), Dir: string(dir),
 		Msg: json.RawMessage(append([]byte(nil), line...)),
 	}, true)
@@ -206,12 +205,12 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.
 	if at.IsZero() {
 		at = time.Now()
 	}
-	evt := protocol.Event{
+	evt := wire.Event{
 		TS:  at.Format(time.RFC3339Nano),
 		Dir: string(dir),
 		Msg: json.RawMessage(append([]byte(nil), line...)),
 	}
-	if core := sess.coreSession(); core != nil && (dir == protocol.Recv || replay) {
+	if core := sess.coreSession(); core != nil && (dir == wire.Recv || replay) {
 		frame := append([]byte(nil), evt.Msg...)
 		sequence := append([]int64(nil), wireSeq...)
 		adapterEvent, terminal := sess.adapterTurnEvent(dir, frame, live, at)
@@ -242,7 +241,7 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.
 			return nil
 		}
 		if gate == nil && prepare == nil && live && !replay && sess.provider == "codex" &&
-			dir == protocol.Recv && sess.projection != nil {
+			dir == wire.Recv && sess.projection != nil {
 			if delta, ok := parseQueuedCodexDelta(frame); ok &&
 				(delta.method != "item/agentMessage/delta" || !sess.projection.dropsLiveTextDeltas()) {
 				delta.at = at
@@ -293,7 +292,7 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir wire.
 }
 
 func (sess *Session) adapterTurnEvent(dir wire.Direction, line []byte, live bool, at time.Time) (coresession.AdapterEvent, *coreturns.Finish) {
-	if !live || dir != protocol.Recv {
+	if !live || dir != wire.Recv {
 		return coresession.AdapterEvent{}, nil
 	}
 	active, turnID, _, ok := turnActiveTransition(sess.provider, dir, line)
@@ -373,7 +372,7 @@ func (sess *Session) applyWireSemantic(gate func() error, dir wire.Direction, li
 	sess.observeAgentExecutionWire(dir, line)
 }
 
-func (sess *Session) publishWireEvent(evt protocol.Event, writeSpool bool) {
+func (sess *Session) publishWireEvent(evt wire.Event, writeSpool bool) {
 	sess.mu.Lock()
 	sess.seq++
 	evt.Seq = sess.seq
@@ -381,7 +380,7 @@ func (sess *Session) publishWireEvent(evt protocol.Event, writeSpool bool) {
 	if len(sess.events) > wireBufferCap {
 		sess.events = sess.events[len(sess.events)-wireBufferCap:]
 	}
-	subs := make([]chan protocol.Event, 0, len(sess.subs))
+	subs := make([]chan wire.Event, 0, len(sess.subs))
 	for ch := range sess.subs {
 		subs = append(subs, ch)
 	}
@@ -409,14 +408,14 @@ func (sess *Session) publishWireEvent(evt protocol.Event, writeSpool bool) {
 // nanoNotification builds a synthetic JSON-RPC notification for events nano
 // itself originates (spool failures, instruction-file edits) so they render
 // in the Event Feed like any other wire notification.
-func nanoNotification(method string, params map[string]any) (protocol.Event, bool) {
+func nanoNotification(method string, params map[string]any) (wire.Event, bool) {
 	line, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 	if err != nil {
-		return protocol.Event{}, false
+		return wire.Event{}, false
 	}
-	return protocol.Event{
+	return wire.Event{
 		TS:  time.Now().Format(time.RFC3339Nano),
-		Dir: string(protocol.Recv),
+		Dir: string(wire.Recv),
 		Msg: json.RawMessage(line),
 	}, true
 }

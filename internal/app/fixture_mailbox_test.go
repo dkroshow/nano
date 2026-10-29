@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/wire"
 )
 
 // awaitProviderIngress reads an RPC response behind the burst on the same
@@ -39,8 +39,8 @@ func awaitProviderFrameWithin(t *testing.T, f *providerRuntimeFixture, line []by
 	})
 }
 
-func receivedProviderFrames(sess *sessions.Session) []protocol.Event {
-	var frames []protocol.Event
+func receivedProviderFrames(sess *sessions.Session) []wire.Event {
+	var frames []wire.Event
 	for _, event := range claudeWireEvents(sess) {
 		var body struct {
 			Method string `json:"method"`
