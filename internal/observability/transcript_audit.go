@@ -248,11 +248,6 @@ func (h *AuditHub) notify(event AuditEvent) {
 	}
 }
 
-type transcriptAuditCatalog interface {
-	LoadTranscript(context.Context, string, threadindex.TranscriptQuery) (threadindex.TranscriptResponse, error)
-	LoadTranscriptAuditReference(context.Context, string, string, int64, int64, int64, []threadindex.AuditScope) (threadindex.AuditReference, error)
-}
-
 func normalizeTranscriptAuditScopes(scopes []threadindex.AuditScope) ([]threadindex.AuditScope, bool) {
 	for _, scope := range scopes {
 		if scope != threadindex.AuditMessages {
@@ -268,8 +263,8 @@ func (s *AuditHandlers) HandleTranscriptAuditCreate(w http.ResponseWriter, r *ht
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	catalog, ok := s.catalog.(transcriptAuditCatalog)
-	if s.catalog == nil || !ok {
+	catalog := s.catalog
+	if catalog == nil {
 		httpapi.WriteHTTPError(w, "transcript catalog unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -356,8 +351,8 @@ func (s *AuditHandlers) HandleTranscriptAuditReference(w http.ResponseWriter, r 
 		httpapi.WriteHTTPError(w, "transcript audits unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	catalog, ok := s.catalog.(transcriptAuditCatalog)
-	if s.catalog == nil || !ok {
+	catalog := s.catalog
+	if catalog == nil {
 		httpapi.WriteHTTPError(w, "transcript catalog unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -542,7 +537,7 @@ func WriteTranscriptAuditEvent(w io.Writer, event AuditEvent) {
 
 // AuditHandlers coordinates bounded browser audits against saved transcript references.
 type AuditHandlers struct {
-	catalog          transcriptAuditCatalog
+	catalog          *threadindex.Service
 	transcriptAudits *AuditStore
 	AuditEvents      *AuditHub
 	buildName        string
@@ -557,7 +552,6 @@ func NewAuditHandlers(catalog *threadindex.Service, store *AuditStore, events *A
 	return h
 }
 func (s *AuditHandlers) resolveThreadReference(ctx context.Context, ref string) (string, error) {
-	resolver, _ := s.catalog.(threadindex.ReferenceResolver)
-	return threadindex.ResolveReference(ctx, resolver, ref)
+	return threadindex.ResolveReference(ctx, s.catalog, ref)
 }
 func auditID() string { b := make([]byte, 4); rand.Read(b); return hex.EncodeToString(b) }

@@ -18,37 +18,54 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-type fakeTranscriptAuditCatalog struct {
-	fakeAuditTranscript
-	reference           threadindex.AuditReference
-	referenceErr        error
-	referenceThread     string
-	referenceProjection string
-	referenceHead       int64
-	referenceMin        int64
-	referenceMax        int64
-	referenceScopes     []threadindex.AuditScope
+type auditCatalogFixture struct {
+	store    *history.Store
+	threadID string
+	request  history.TranscriptApplyRequest
 }
 
-func (f *fakeTranscriptAuditCatalog) LoadTranscriptAuditReference(_ context.Context, threadID, projectionKey string, snapshotHead, minSeq, maxSeq int64, scopes []threadindex.AuditScope) (threadindex.AuditReference, error) {
-	f.referenceThread, f.referenceProjection, f.referenceHead = threadID, projectionKey, snapshotHead
-	f.referenceMin, f.referenceMax = minSeq, maxSeq
-	f.referenceScopes = append([]threadindex.AuditScope(nil), scopes...)
-	return f.reference, f.referenceErr
-}
-
-func newTranscriptAuditTestServer() (*AuditHandlers, *fakeTranscriptAuditCatalog) {
-	catalog := &fakeTranscriptAuditCatalog{
-		fakeAuditTranscript: fakeAuditTranscript{response: threadindex.TranscriptResponse{
-			ThreadID: "nth-one", Projection: threadindex.TranscriptProjection{Key: "projection-1", State: "ready", SourceStatus: "present"},
-			Page: threadindex.TranscriptPageInfo{SnapshotHeadSeq: 3},
-		}},
-		reference: threadindex.AuditReference{
-			ProjectionKey: "projection-1", SnapshotHeadSeq: 3, StartSeq: 1, EndSeq: 3,
-			Rows: []threadindex.AuditReferenceRow{{ID: "a", ProjectedSeq: 1, Category: "messages", Role: "assistant", Text: "private-reference-body"}},
-		},
+func newTranscriptAuditTestServer(t *testing.T) (*AuditHandlers, *auditCatalogFixture) {
+	t.Helper()
+	ctx := context.Background()
+	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	return &AuditHandlers{catalog: catalog, transcriptAudits: NewAuditStore(), AuditEvents: NewAuditHub(), buildName: "index-audit-test.js"}, catalog
+	t.Cleanup(func() { store.Close() })
+	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	persisted, err := store.EnsureRoot(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	path := filepath.Join(root.Path, "audit.jsonl")
+	applied, err := store.ApplySource(ctx, history.SourceProjection{Source: history.SourceCandidate{Root: root, Path: path, RelativePath: "audit.jsonl", Kind: history.ThreadMain, Size: 1, ModTime: now}, Result: &history.ProjectionResult{Projection: history.ThreadProjection{Provider: history.ProviderCodex, NativeThreadID: "nth-one", IdentityEvidence: history.EvidenceNativeDurable, Kind: history.ThreadMain, CreatedAt: &now, UpdatedAt: &now}, CompleteOffset: 1, CompleteLines: 1}, ParserVersion: "audit-test", Status: history.SourcePresent, IndexedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, ok, err := store.LoadSource(ctx, persisted.ID, path)
+	if err != nil || !ok {
+		t.Fatalf("source: %v %v", ok, err)
+	}
+	items := []history.TranscriptItem{}
+	for i := int64(1); i <= 6; i++ {
+		items = append(items, history.TranscriptItem{ID: fmt.Sprintf("row-%d", i), ProjectedSeq: i, SourceKey: fmt.Sprintf("source-%d", i), TurnKey: "turn-1", TurnOrdinal: 1, Type: history.ItemAgentMessage, Status: history.ItemStatusCompleted, Role: history.RoleAssistant, Text: "private-reference-body", SourceLineSHA256: strings.Repeat("a", 64)})
+	}
+	request := history.TranscriptApplyRequest{Mode: history.TranscriptRebuild, ThreadID: applied.ThreadID, SourceID: source.ID, SourceGeneration: source.Generation, Provider: history.ProviderCodex, ParserVersion: "audit-test", CompletionRuleVersion: "audit-test", Result: history.TranscriptProjectionResult{ProjectionKey: "projection-1", CompleteOffset: 1, ReadOffset: 1, CompleteLines: 1, ParserState: json.RawMessage(`{}`), Items: items, Turns: []history.TranscriptTurn{{Key: "turn-1", Ordinal: 1, StartSeq: 1, EndSeq: 6, CompletionSeq: 6, Status: history.TurnCompleted, CompletionEvidence: history.CompletionTaskComplete}}}}
+	if _, err = store.ApplyTranscript(ctx, request); err != nil {
+		t.Fatal(err)
+	}
+	service := newStoredCatalog(t, store)
+	return NewAuditHandlers(service, NewAuditStore(), NewAuditHub(), "index-audit-test.js"), &auditCatalogFixture{store: store, threadID: applied.ThreadID, request: request}
+}
+func (f *auditCatalogFixture) changeReference(t *testing.T) {
+	t.Helper()
+	request := f.request
+	request.ExpectedProjectionKey = "projection-1"
+	request.Result.ProjectionKey = "projection-2"
+	if _, err := f.store.ApplyTranscript(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func createTranscriptAuditForTest(t *testing.T, s *AuditHandlers) transcriptAuditRequest {
@@ -81,16 +98,16 @@ func pinTranscriptAuditTestBuild(t *testing.T, s *AuditHandlers, request transcr
 }
 
 func TestTranscriptAuditTargetsExactPaneAndPinsReference(t *testing.T) {
-	s, catalog := newTranscriptAuditTestServer()
+	s, catalog := newTranscriptAuditTestServer(t)
 	events := s.AuditEvents.Subscribe()
 	defer s.AuditEvents.Unsubscribe(events)
 	request := createTranscriptAuditForTest(t, s)
-	if request.Status != "pending" || request.CatalogThreadID != "nth-one" || !slices.Equal(request.Scopes, []threadindex.AuditScope{threadindex.AuditMessages}) || request.ReferenceProjectionKey != "projection-1" || request.ReferenceSnapshotHead != 3 {
+	if request.Status != "pending" || request.CatalogThreadID != catalog.threadID || !slices.Equal(request.Scopes, []threadindex.AuditScope{threadindex.AuditMessages}) || request.ReferenceProjectionKey != "projection-1" || request.ReferenceSnapshotHead != 6 {
 		t.Fatalf("request = %#v", request)
 	}
 	select {
 	case event := <-events:
-		if event.AuditID != request.ID || event.TabID != "tab-1" || event.PageID != "page-1" || event.PaneID != "pane-1" || event.CatalogThreadID != "nth-one" {
+		if event.AuditID != request.ID || event.TabID != "tab-1" || event.PageID != "page-1" || event.PaneID != "pane-1" || event.CatalogThreadID != catalog.threadID {
 			t.Fatalf("event = %#v", event)
 		}
 	default:
@@ -103,24 +120,29 @@ func TestTranscriptAuditTargetsExactPaneAndPinsReference(t *testing.T) {
 	if referenceRecorder.Code != http.StatusOK {
 		t.Fatalf("reference = %d %s", referenceRecorder.Code, referenceRecorder.Body.String())
 	}
-	if catalog.referenceThread != "nth-one" || catalog.referenceProjection != "projection-1" || catalog.referenceHead != 3 || catalog.referenceMin != 1 || catalog.referenceMax != 3 {
-		t.Fatalf("reference request = thread=%q projection=%q head=%d range=%d-%d", catalog.referenceThread, catalog.referenceProjection, catalog.referenceHead, catalog.referenceMin, catalog.referenceMax)
+	var reference threadindex.AuditReference
+	if err := json.Unmarshal(referenceRecorder.Body.Bytes(), &reference); err != nil {
+		t.Fatal(err)
 	}
+	if reference.ProjectionKey != "projection-1" || reference.SnapshotHeadSeq != 6 || reference.StartSeq != 1 || reference.EndSeq != 3 || len(reference.Rows) != 3 || reference.Rows[0].ID != "row-1" || reference.Rows[2].ID != "row-3" {
+		t.Fatalf("pinned bounded reference = %+v", reference)
+	}
+
 }
 
 func TestTranscriptAuditAcceptsContentFreeScopedMatch(t *testing.T) {
-	s, _ := newTranscriptAuditTestServer()
+	s, _ := newTranscriptAuditTestServer(t)
 	request := createTranscriptAuditForTest(t, s)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	body, err := json.Marshal(map[string]any{
 		"capturedAt": now, "tabId": "tab-1", "pageId": "page-1", "build": request.ExpectedBuild,
 		"paneId": "pane-1", "paneThreadRef": "nth-one", "viewMode": "clean",
-		"pageVisible": true, "surfaceVisible": true, "projectionKey": "projection-1", "snapshotHeadSeq": 3,
+		"pageVisible": true, "surfaceVisible": true, "projectionKey": "projection-1", "snapshotHeadSeq": 6,
 		"result": map[string]any{
 			"status": "match", "complete": true, "scopes": []string{"messages"},
 			"counts":      map[string]int{"reference": 1, "browser": 1, "contentChecked": 1},
 			"differences": []any{}, "differencesTruncated": false, "exclusions": []any{}, "reasons": []any{},
-			"range": map[string]any{"startSeq": 1, "endSeq": 1, "snapshotHeadSeq": 3, "partial": true},
+			"range": map[string]any{"startSeq": 1, "endSeq": 1, "snapshotHeadSeq": 6, "partial": true},
 		},
 	})
 	if err != nil {
@@ -144,7 +166,7 @@ func TestTranscriptAuditAcceptsContentFreeScopedMatch(t *testing.T) {
 func TestTranscriptAuditRejectsRemovedScopes(t *testing.T) {
 	for _, scope := range []string{"tools", "reasoning"} {
 		t.Run(scope, func(t *testing.T) {
-			s, _ := newTranscriptAuditTestServer()
+			s, _ := newTranscriptAuditTestServer(t)
 			body := `{"clientActionId":"removed-scope","threadRef":"nth-one","tabId":"tab-1","pageId":"page-1","paneId":"pane-1","scopes":["` + scope + `"]}`
 			recorder := httptest.NewRecorder()
 			s.HandleTranscriptAuditCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/transcript-audits", strings.NewReader(body)))
@@ -156,7 +178,7 @@ func TestTranscriptAuditRejectsRemovedScopes(t *testing.T) {
 }
 
 func TestTranscriptAuditRejectsMalformedReferenceRange(t *testing.T) {
-	s, _ := newTranscriptAuditTestServer()
+	s, _ := newTranscriptAuditTestServer(t)
 	request := createTranscriptAuditForTest(t, s)
 	recorder := httptest.NewRecorder()
 	url := "/api/v1/transcript-audits/" + request.ID + "/reference?minProjectedSeq=not-a-number"
@@ -167,7 +189,7 @@ func TestTranscriptAuditRejectsMalformedReferenceRange(t *testing.T) {
 }
 
 func TestTranscriptAuditRejectsIdempotencyConflict(t *testing.T) {
-	s, _ := newTranscriptAuditTestServer()
+	s, _ := newTranscriptAuditTestServer(t)
 	createTranscriptAuditForTest(t, s)
 	body := `{"clientActionId":"action-1","threadRef":"nth-one","tabId":"tab-1","pageId":"different-page","paneId":"pane-1","scopes":["messages"]}`
 	recorder := httptest.NewRecorder()
@@ -179,9 +201,9 @@ func TestTranscriptAuditRejectsIdempotencyConflict(t *testing.T) {
 
 func TestTranscriptAuditWrongBuildAndChangedReferenceCannotPass(t *testing.T) {
 	t.Run("wrong build", func(t *testing.T) {
-		s, _ := newTranscriptAuditTestServer()
+		s, _ := newTranscriptAuditTestServer(t)
 		request := createTranscriptAuditForTest(t, s)
-		body := `{"capturedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","tabId":"tab-1","pageId":"page-1","build":"index-stale.js","paneId":"pane-1","paneThreadRef":"nth-one","viewMode":"clean","pageVisible":true,"surfaceVisible":true,"projectionKey":"projection-1","snapshotHeadSeq":3,"result":{"status":"match","complete":true,"scopes":["messages"],"counts":{},"differences":[],"differencesTruncated":false,"exclusions":[],"reasons":[],"range":{}}}`
+		body := `{"capturedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","tabId":"tab-1","pageId":"page-1","build":"index-stale.js","paneId":"pane-1","paneThreadRef":"nth-one","viewMode":"clean","pageVisible":true,"surfaceVisible":true,"projectionKey":"projection-1","snapshotHeadSeq":6,"result":{"status":"match","complete":true,"scopes":["messages"],"counts":{},"differences":[],"differencesTruncated":false,"exclusions":[],"reasons":[],"range":{}}}`
 		recorder := httptest.NewRecorder()
 		s.HandleTranscriptAuditResult(recorder, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)), request.ID)
 		stored, _ := s.transcriptAudits.get(request.ID)
@@ -191,9 +213,9 @@ func TestTranscriptAuditWrongBuildAndChangedReferenceCannotPass(t *testing.T) {
 	})
 
 	t.Run("changed reference", func(t *testing.T) {
-		s, catalog := newTranscriptAuditTestServer()
+		s, catalog := newTranscriptAuditTestServer(t)
 		request := createTranscriptAuditForTest(t, s)
-		catalog.referenceErr = history.ErrTranscriptChanged
+		catalog.changeReference(t)
 		recorder := httptest.NewRecorder()
 		s.HandleTranscriptAuditReference(recorder, httptest.NewRequest(http.MethodGet, "/", nil), request.ID)
 		stored, _ := s.transcriptAudits.get(request.ID)
@@ -217,12 +239,12 @@ func TestTranscriptAuditWrongOrStaleBrowserCannotPass(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := newTranscriptAuditTestServer()
+			s, _ := newTranscriptAuditTestServer(t)
 			request := createTranscriptAuditForTest(t, s)
 			body := map[string]any{
 				"capturedAt": time.Now().UTC().Format(time.RFC3339Nano), "tabId": "tab-1", "pageId": "page-1", "build": request.ExpectedBuild,
 				"paneId": "pane-1", "paneThreadRef": "nth-one", "viewMode": "clean",
-				"pageVisible": true, "surfaceVisible": true, "projectionKey": "projection-1", "snapshotHeadSeq": 3,
+				"pageVisible": true, "surfaceVisible": true, "projectionKey": "projection-1", "snapshotHeadSeq": 6,
 				"result": map[string]any{"status": "match", "complete": true, "scopes": []string{"messages"}, "counts": map[string]int{}, "differences": []any{}, "differencesTruncated": false, "exclusions": []any{}, "reasons": []any{}, "range": map[string]any{}},
 			}
 			test.mutate(body)
@@ -393,18 +415,6 @@ func TestTranscriptAuditReferenceUsesPinnedStoreScopesAndBounds(t *testing.T) {
 	}
 }
 
-type fakeAuditTranscript struct {
-	response threadindex.TranscriptResponse
-	query    threadindex.TranscriptQuery
-	threadID string
-	err      error
-}
-
-func (f *fakeAuditTranscript) LoadTranscript(_ context.Context, id string, q threadindex.TranscriptQuery) (threadindex.TranscriptResponse, error) {
-	f.threadID = id
-	f.query = q
-	return f.response, f.err
-}
 func newStoredCatalog(t *testing.T, store *history.Store) *threadindex.Service {
 	t.Helper()
 	s, err := threadindex.New(context.Background(), store, threadindex.Options{Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}}, DisableWatcher: true, NativeIDProvisional: func(string, string) bool { return false }, ClaudeProjectSlug: func(s string) string { return s }})
