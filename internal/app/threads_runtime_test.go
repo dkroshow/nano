@@ -25,7 +25,7 @@ import (
 )
 
 func TestBootFailsClosedWhenTransactionalTurnStoreOpenFails(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	file, err := parser.ParseFile(token.NewFileSet(), "construct.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

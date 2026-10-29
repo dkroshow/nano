@@ -9,7 +9,7 @@ under [decisions/](decisions/) say why each piece is the way it is.
 
 ## The server
 
-The `internal/app` package is the server; `cmd/nanod` calls its entry point. It
+The `internal/app` package wires the server; `cmd/nanod` calls its entry point. It
 uses `internal/config` to parse every flag into one `Config` value before it opens a
 store or a listener, builds the HTTP router (`routes.go`), and composes the
 session registry from `internal/sessions`. That package owns live attachments,
@@ -19,8 +19,8 @@ output. `internal/hosted` owns hosted identity, admission and control;
 `internal/hosted/store` supplies the shared durable adapters over canonical
 records. `internal/sidebar` owns the visible-thread projection, fleet changes,
 stars and browser warm streams. `internal/agentapi` adapts the existing feature
-stores and schedulers to HTTP. App constructs these concrete owners and
-composes routes and boot scheduling.
+stores and schedulers to HTTP. App constructs these concrete owners, composes routes and listeners, and runs
+and shuts down the process. Hosted owns boot registration and restart evidence.
 
 `internal/` also holds the packages the server is built from. Each package's doc
 comment states what it may depend on, and import tests hold the direction
@@ -28,7 +28,7 @@ for the parsing module, the state layer and lifecycle.
 
 | Package | Owns |
 | --- | --- |
-| `hosted` | Hosted identity/control APIs, admission ordering and transcript pins. It reads concrete session state and the catalog; it owns no second durable record set. |
+| `hosted` | Hosted identity/control APIs, admission ordering, boot registration, restart evidence and transcript pins. It reads concrete session state and the catalog; it owns no second durable record set. |
 | `hosted/store` | Shared metadata, execution and attachment adapters over the canonical thread/prompt/turn stores. Hosted and sessions use the same records. |
 | `sessions` | Live attachment state and its registry, provider wiring, lifecycle application, prompt delivery, wire ordering, live projection and saved/live reconciliation. It also owns pane queues, warm sizing and pending/resting boot attachment facts; it never imports `app` or `sidebar`. |
 | `sidebar` | Visible-thread materialization, fleet transitions, operator stars, runtime/list overlays and browser warm-stream membership. It consumes concrete catalog, session and feature owners; it does not own saved/live reconciliation. |
@@ -38,7 +38,7 @@ for the parsing module, the state layer and lifecycle.
 | `wire`, `wire/{codex,claude,grok}` | The live connection to each runtime: Codex JSON-RPC over WebSocket, the Claude shim's framed stdio, Grok's ACP process. |
 | `transcriptparse` | Pure readers of provider transcript bytes, file and wire, for all three providers (below). No Nano dependency. |
 | `history` | Discovery and read-only projection of the native session files under `~/.codex`, `~/.claude` and `~/.grok`. |
-| `threadindex` | Saved-thread catalog orchestration, provider-file ingestion, name projection, bounded transcript reads and their HTTP API. It consumes explicit provider path functions; sidebar composes runtime, hosted and mail overlays; app composes the combined event stream and setup routes. |
+| `threadindex` | Saved-thread catalog orchestration, provider-file ingestion, name projection, bounded transcript reads and their HTTP API. It consumes explicit provider path functions; sidebar composes runtime, hosted and mail overlays, the full catalog response and the combined event stream. |
 | `catalog` | The kqueue watcher over held files, the FSEvents trigger that finds sessions Nano did not start, the conflated index-change stream, and the fleet read models the sidebar and Thread Explorer share. |
 | `threads` | Durable hosted-thread state: identity, metadata, execution sessions, operations, attachment generations. |
 | `core/prompts`, `core/turns`, `core/session` | Durable prompt delivery through provider acceptance; the per-turn record and usage; the mutable runtime of one hosted thread. |
@@ -47,12 +47,14 @@ for the parsing module, the state layer and lifecycle.
 | `interact` | The four operations features build on: submit a prompt, send and read mail, read the completed-turn feed, read a transcript page and lifecycle facts. Standard library only. |
 | `features/{mail,heartbeat,subscriptions,feedback}` | Durable inbox, scheduled wakes, child-completion notices, operator notes. Each depends on `interact`, never on providers. |
 | `config` | Process flags, defaults and resolved filesystem paths; opens no stores or workers. |
-| `usage`, `usageclients` | Account-usage polling, retention and read models; read-only Claude and Codex clients. Grok launch-policy glue stays in `app`. |
+| `usage`, `usageclients` | Account-usage polling, retention and HTTP reads; read-only Claude, Codex and Grok clients. |
+| `historical` | Prepared workspace/configuration reads for saved Codex and Claude threads. |
+| `files/api` | Workspace file HTTP operations and reference resolution over saved and live evidence; `files` keeps its standard-library filesystem primitives. |
 | `setup` | Read-only Claude context sources and the workspace skills cache. Session receiver handlers live in `sessions`. |
-| `observability` | Bounded request measurements and rotating process logs. Session diagnostics handlers live in `sessions`; server diagnostics stay in `app`. |
+| `observability` | Bounded request measurements, rotating process logs, host-monitor reads, browser validation and transcript audits. Durable browser evidence remains in diagnostics. |
 | `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution; content-free browser evidence. |
 | `httpapi`, `httpapi/remoteauth` | HTTP transport conventions, compression, discovery document delivery and connection measurement; the password-guarded remote listener and its store. |
-| `state/db`, `app/persistence`, `app/statestore`, `edge/statewiring` | The shared SQLite connection policy and the composition of table owners at the program edge. |
+| `state/db`, `state/store`, `hosted/schema`, `edge/statewiring`, `edge/stateopen` | Shared SQLite policy, checked migration and backup paths, hosted table schemas, and ordered opening of canonical stores at the program edge. |
 
 `cmd/` holds the `nanod` entry point and the helper binaries: `claude-shim` (below), `nano-agent` (a thin
 localhost client for the hosted-thread API), `nano-threads` (inspect or copy

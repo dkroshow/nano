@@ -1,9 +1,11 @@
-package app
+package config
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/configpaths"
 )
 
 func TestThreadCatalogDatabaseCannotLiveInProviderDirectory(t *testing.T) {
@@ -20,11 +22,11 @@ func TestThreadCatalogDatabaseCannotLiveInProviderDirectory(t *testing.T) {
 		filepath.Join(codexHome, "nano.sqlite"),
 		filepath.Join(claudeHome, "cache", "nano.sqlite"),
 	} {
-		if err := validateThreadCatalogDBLocation(database, providerHomes); err == nil {
+		if err := ValidateCatalogLocation(database, providerHomes); err == nil {
 			t.Fatalf("provider-owned database path %q was accepted", database)
 		}
 	}
-	if err := validateThreadCatalogDBLocation(filepath.Join(home, ".nanod", "history.sqlite"), providerHomes); err != nil {
+	if err := ValidateCatalogLocation(filepath.Join(home, ".nanod", "history.sqlite"), providerHomes); err != nil {
 		t.Fatalf("Nano-owned database path was rejected: %v", err)
 	}
 
@@ -32,11 +34,11 @@ func TestThreadCatalogDatabaseCannotLiveInProviderDirectory(t *testing.T) {
 	if err := os.Symlink(codexHome, link); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := canonicalProspectivePath(filepath.Join(link, "nested", "history.sqlite"))
+	resolved, err := configpaths.CanonicalProspective(filepath.Join(link, "nested", "history.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validateThreadCatalogDBLocation(resolved, providerHomes); err == nil {
+	if err := ValidateCatalogLocation(resolved, providerHomes); err == nil {
 		t.Fatalf("symlinked provider-owned database path %q was accepted", resolved)
 	}
 }

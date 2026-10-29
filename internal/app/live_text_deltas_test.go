@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
@@ -42,14 +43,14 @@ func TestAsyncTurnStoreFailureReachesTheThreadDiagnostics(t *testing.T) {
 
 func TestLiveTextDeltasEnvironmentSwitch(t *testing.T) {
 	t.Setenv("NANO_LIVE_TEXT_DELTAS", "")
-	if liveTextDeltasDisabled() {
+	if config.LiveTextDeltasDisabled() {
 		t.Fatal("unset switch disabled live text deltas")
 	}
 	t.Setenv("NANO_LIVE_TEXT_DELTAS", " OFF ")
-	if !liveTextDeltasDisabled() {
+	if !config.LiveTextDeltasDisabled() {
 		t.Fatal("NANO_LIVE_TEXT_DELTAS=off not honored")
 	}
-	s := &server{dropLiveTextDeltas: liveTextDeltasDisabled()}
+	s := &server{dropLiveTextDeltas: config.LiveTextDeltasDisabled()}
 	p := s.newSessionProjection("codex", "hosted")
 	runtime := newProviderRuntimeFixture(t, sessionConfig{ID: "delta-switch", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "")
 	runtime.session.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, runtime.session))

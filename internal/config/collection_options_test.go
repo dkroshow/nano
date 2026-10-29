@@ -1,9 +1,11 @@
-package app
+package config
 
-import "testing"
+import (
+	"testing"
+)
 
 // The catalog must not enable destructive collection unless its environment
-// switch explicitly opts in. This tests the app boundary that reads the switch.
+// switch explicitly opts in. This tests the config boundary that reads the switch.
 func TestSupersededProjectionCollectionSwitchRequiresExplicitEnable(t *testing.T) {
 	for _, test := range []struct {
 		name, value string
@@ -15,7 +17,7 @@ func TestSupersededProjectionCollectionSwitchRequiresExplicitEnable(t *testing.T
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("NANO_SUPERSEDED_COLLECTION", test.value)
-			if got := supersededProjectionCollectionEnabled(); got != test.want {
+			if got := SupersededProjectionCollectionEnabled(); got != test.want {
 				t.Fatalf("superseded collection switch %q = %v, want %v", test.value, got, test.want)
 			}
 		})
