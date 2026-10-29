@@ -91,7 +91,7 @@ func readyClaimSession(t *testing.T, cfg sessions.Config, native string) *sessio
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID(native)
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Cwd: t.TempDir(), ClaudeShimWS: shimServer.WSURL(), ClaudeShimSpools: t.TempDir(), ClaudeBin: "/fake/claude"}, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Cwd: t.TempDir(), ClaudeShimWS: shimServer.WSURL(), ClaudeShimSpools: t.TempDir(), ClaudeBin: "/fake/claude"}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(sess.Close)

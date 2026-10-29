@@ -113,14 +113,14 @@ func (sess *Delivery) permissionModeForEvent() string {
 			return mode
 		}
 	}
-	return sess.session.permissionMode
+	return sess.session.stateOwner.permissionMode
 }
 
 func (sess *Delivery) permissionEvent(p interact.PendingInteraction, eventKind, decision, source, outcome string) hostedstore.PermissionEvent {
 	toolName, summary, digest := permissionRequestDetails(p)
 	return hostedstore.PermissionEvent{
-		HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, sess.session.ThreadID()),
-		NanoSessionID: sess.session.id, AttachmentGeneration: sess.session.attachmentGeneration,
+		HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, sess.session.stateOwner.ThreadID()),
+		NanoSessionID: sess.session.id, AttachmentGeneration: sess.session.stateOwner.attachmentGeneration,
 		ProviderRequestID: p.ID, TurnID: p.TurnID, ItemID: p.ItemID, Method: p.Method,
 		InteractionKind: p.Kind, ToolName: toolName, EventKind: eventKind,
 		PermissionMode: sess.permissionModeForEvent(), Decision: decision, DecisionSource: source,

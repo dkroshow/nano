@@ -667,7 +667,7 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 			len(v.Reasons) != 1 || v.Reasons[0] != "queued_backlog" {
 			t.Fatalf("own backlog = %+v", v)
 		}
-		provider.EmitThreadNotification(sess.ThreadID(), map[string]any{"method": "turn/started", "params": map[string]any{"threadId": sess.ThreadID(), "turn": map[string]any{"id": "t1"}}})
+		provider.EmitThreadNotification(sess.State().ThreadID(), map[string]any{"method": "turn/started", "params": map[string]any{"threadId": sess.State().ThreadID(), "turn": map[string]any{"id": "t1"}}})
 		waitForClaude(t, "availability working turn", func() bool { return sess.Summary().TurnActive })
 		return nil
 	}); err != nil || reason != "" {

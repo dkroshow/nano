@@ -107,7 +107,7 @@ func (l *LiveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, [
 	for _, turn := range turns {
 		ok, read := readable[turn]
 		if !read {
-			events, err := l.sess.delivery.PromptStore().TurnEvents(context.Background(), l.sess.HostedThreadID(), model.ProviderCodex, l.sess.ThreadID(), turn)
+			events, err := l.sess.delivery.PromptStore().TurnEvents(context.Background(), l.sess.HostedThreadID(), model.ProviderCodex, l.sess.stateOwner.ThreadID(), turn)
 			if ok = err == nil; !ok {
 				log.Printf("live text turn events %s: %v", turn, err)
 			} else if len(events) > 0 {
@@ -150,7 +150,7 @@ func (l *LiveTextLoop) catalogThreadID() (string, error) {
 	if l.sess == nil {
 		return "", errLiveTextNotIndexed
 	}
-	native := l.sess.ThreadID()
+	native := l.sess.stateOwner.ThreadID()
 	resolver, ok := l.sources.Catalog, l.sources.Catalog != nil
 	if native == "" || !ok {
 		return "", errLiveTextNotIndexed

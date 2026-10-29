@@ -67,7 +67,7 @@ func connectProviderRuntimeFixture(t *testing.T, sess *sessions.Session, view *s
 		} else {
 			f.codex.SetResumeResult(map[string]any{"thread": map[string]any{"id": native}, "model": model})
 		}
-		if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: native}, f.daemon, func() {}); err != nil {
+		if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: native}, f.daemon, func() {}); err != nil {
 			t.Fatal(err)
 		}
 	case "claude":
@@ -131,7 +131,7 @@ func connectProviderRuntimeFixture(t *testing.T, sess *sessions.Session, view *s
 				}
 			}
 		})
-		if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: sess.CWD()}, nil, func() {}); err != nil {
+		if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: sess.CWD()}, nil, func() {}); err != nil {
 			t.Fatal(err)
 		}
 		select {
@@ -185,7 +185,7 @@ func connectProviderRuntimeFixture(t *testing.T, sess *sessions.Session, view *s
 				}
 			}
 		})
-		if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: native, Cwd: t.TempDir(), GrokBin: provider.Bin(), GrokLeaderSocket: "fixture-only"}, nil, func() {}); err != nil {
+		if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: native, Cwd: t.TempDir(), GrokBin: provider.Bin(), GrokLeaderSocket: "fixture-only"}, nil, func() {}); err != nil {
 			t.Fatal(err)
 		}
 		// This is a child-process setup wait, not a product timing assertion.
@@ -216,7 +216,7 @@ func (f *providerRuntimeFixture) emitAt(t *testing.T, line []byte, at time.Time,
 func (f *providerRuntimeFixture) emitDirectionAt(t *testing.T, dir string, line []byte, at time.Time, turn string) {
 	t.Helper()
 	if f.codex != nil {
-		f.codex.EmitRawThreadNotification(f.session.ThreadID(), line)
+		f.codex.EmitRawThreadNotification(f.session.State().ThreadID(), line)
 	} else if f.grok != nil {
 		var frame map[string]any
 		if err := json.Unmarshal(line, &frame); err != nil {
@@ -258,11 +258,11 @@ func configuredFixtureSession(t *testing.T, cfg sessions.Config, native, status,
 		if len(active) > 0 && active[0] {
 			switch cfg.Provider {
 			case "codex":
-				f.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"`+f.session.ThreadID()+`","turn":{}}}`))
+				f.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"`+f.session.State().ThreadID()+`","turn":{}}}`))
 			case "claude":
 				f.emit(t, []byte(`{"type":"assistant","message":{"id":"fixture-message","role":"assistant","content":[{"type":"text","text":"working"}]}}`))
 			case "grok":
-				f.emit(t, []byte(`{"method":"session/update","params":{"sessionId":"`+f.session.ThreadID()+`","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"working"}},"_meta":{"promptId":"fixture-turn","eventId":"fixture-event"}}}`))
+				f.emit(t, []byte(`{"method":"session/update","params":{"sessionId":"`+f.session.State().ThreadID()+`","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"working"}},"_meta":{"promptId":"fixture-turn","eventId":"fixture-event"}}}`))
 			}
 			waitReconnectCondition(t, func() bool { return f.session.Summary().TurnActive })
 		}
@@ -315,7 +315,7 @@ func (f *providerRuntimeFixture) emitDirectionAtAndWait(t *testing.T, dir string
 func (f *providerRuntimeFixture) activate(t *testing.T) {
 	switch f.session.Provider() {
 	case "codex":
-		f.emitAndWait(t, []byte(`{"method":"turn/started","params":{"threadId":"`+f.session.ThreadID()+`","turn":{}}}`))
+		f.emitAndWait(t, []byte(`{"method":"turn/started","params":{"threadId":"`+f.session.State().ThreadID()+`","turn":{}}}`))
 	case "claude":
 		f.emitAndWait(t, []byte(`{"type":"assistant","message":{"id":"fixture-message","role":"assistant","content":[{"type":"text","text":"working"}]}}`))
 	}
@@ -324,7 +324,7 @@ func (f *providerRuntimeFixture) activate(t *testing.T) {
 func (f *providerRuntimeFixture) finishTurn(t *testing.T) {
 	if f.session.Provider() == "codex" {
 		turn := liveStatusForTest(t, f.session).Runtime.TurnID
-		f.emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"`+f.session.ThreadID()+`","turn":{"id":"`+turn+`","status":"completed"}}}`))
+		f.emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"`+f.session.State().ThreadID()+`","turn":{"id":"`+turn+`","status":"completed"}}}`))
 	} else {
 		f.emitAndWait(t, []byte(`{"type":"result","subtype":"success","is_error":false}`))
 	}
@@ -336,11 +336,11 @@ func (f *providerRuntimeFixture) completeTurn(t *testing.T, turn, action string)
 	var line []byte
 	switch f.session.Provider() {
 	case "codex":
-		line = []byte(`{"method":"turn/completed","params":{"threadId":"` + f.session.ThreadID() + `","turn":{"id":"` + turn + `","status":"completed"}}}`)
+		line = []byte(`{"method":"turn/completed","params":{"threadId":"` + f.session.State().ThreadID() + `","turn":{"id":"` + turn + `","status":"completed"}}}`)
 	case "claude":
 		line = []byte(`{"type":"result","subtype":"success","is_error":false,"user_message_uuid":"` + submissionEventID(f.session.HostedThreadID(), action) + `"}`)
 	case "grok":
-		line = []byte(`{"method":"_x.ai/session_notification","params":{"sessionId":"` + f.session.ThreadID() + `","update":{"sessionUpdate":"turn_completed","prompt_id":"` + turn + `","stop_reason":"end_turn"}}}`)
+		line = []byte(`{"method":"_x.ai/session_notification","params":{"sessionId":"` + f.session.State().ThreadID() + `","update":{"sessionUpdate":"turn_completed","prompt_id":"` + turn + `","stop_reason":"end_turn"}}}`)
 	}
 	f.emitAndWait(t, line)
 }
@@ -352,7 +352,7 @@ func (f *providerRuntimeFixture) emitAndDrain(t *testing.T, line []byte) {
 	t.Helper()
 	f.emitAndWait(t, line)
 	if f.codex != nil {
-		f.emitAndWait(t, []byte(`{"method":"fixture/provider-state-drained","params":{"threadId":"`+f.session.ThreadID()+`"}}`))
+		f.emitAndWait(t, []byte(`{"method":"fixture/provider-state-drained","params":{"threadId":"`+f.session.State().ThreadID()+`"}}`))
 		return
 	}
 	f.emitAndWait(t, []byte(`{"type":"fixture_provider_state_drained"}`))

@@ -9,22 +9,22 @@ import (
 // volatileSummary snapshots attachment runtime fields without reading canonical stores.
 // Fleet and point reads share the same volatile fields without metadata reads.
 func (sess *Session) volatileSummary(needsAttention bool) (Summary, bool) {
-	sess.stateMu.Lock()
-	presentationMode := sess.presentationMode
+	sess.stateOwner.stateMu.Lock()
+	presentationMode := sess.stateOwner.presentationMode
 	if presentationMode == "" {
 		presentationMode = presentationShared
 	}
 	summary := Summary{
-		ID: sess.id, Provider: sess.provider, ThreadID: sess.threadID, Name: sess.displayName,
-		Model: sess.model, Cwd: sess.cwd, Status: sess.connectionStatusLocked(), HostedThreadID: sess.hostedThreadID,
+		ID: sess.id, Provider: sess.provider, ThreadID: sess.stateOwner.threadID, Name: sess.stateOwner.displayName,
+		Model: sess.stateOwner.model, Cwd: sess.stateOwner.cwd, Status: sess.stateOwner.connectionStatusLocked(), HostedThreadID: sess.hostedThreadID,
 		InvokerHostedThreadID: sess.invokerHostedThreadID, InvokerNativeThreadID: sess.invokerNativeThreadID,
-		InvokerProvider: sess.invokerProvider, PresentationMode: presentationMode, SidebarPlacement: sess.sidebarPlacement, SpawnMode: sess.spawnMode,
-		Error: sess.spawnError, TurnActive: sess.workActiveLocked(), ThreadStatus: sess.threadStatusLocked(), TurnStartedAtMs: sess.turnStartedAtMs,
-		CompactingSinceMs: sess.compactingSinceMsLocked(), LastTurnEndedAt: sess.lastTurnEndedAt, Waiting: sess.waitingLocked(), MetadataDegraded: sess.metadataDegraded,
+		InvokerProvider: sess.invokerProvider, PresentationMode: presentationMode, SidebarPlacement: sess.stateOwner.sidebarPlacement, SpawnMode: sess.spawnMode,
+		Error: sess.stateOwner.spawnError, TurnActive: sess.stateOwner.workActiveLocked(), ThreadStatus: sess.stateOwner.threadStatusLocked(), TurnStartedAtMs: sess.stateOwner.turnStartedAtMs,
+		CompactingSinceMs: sess.stateOwner.compactingSinceMsLocked(), LastTurnEndedAt: sess.stateOwner.lastTurnEndedAt, Waiting: sess.stateOwner.waitingLocked(), MetadataDegraded: sess.stateOwner.metadataDegraded,
 		CreatedAt: sess.createdAt.Format(time.RFC3339),
-		Posture:   hostedstore.Posture{Model: sess.model, Effort: sess.turnEffort, PermissionMode: sess.permissionMode, ServiceTier: sess.turnServiceTier},
+		Posture:   hostedstore.Posture{Model: sess.stateOwner.model, Effort: sess.stateOwner.turnEffort, PermissionMode: sess.stateOwner.permissionMode, ServiceTier: sess.stateOwner.turnServiceTier},
 	}
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 	if summary.Status == StatusExited {
 		return Summary{}, false
 	}

@@ -98,7 +98,7 @@ func observeGrokWork(sess *Session, dir wire.Direction, line []byte, live bool) 
 	if active && startedAtMs == 0 {
 		startedAtMs = time.Now().UnixMilli()
 	}
-	sess.setTurnActive(active, turnID, startedAtMs, true)
+	sess.stateOwner.setTurnActive(active, turnID, startedAtMs, true)
 }
 
 func grokRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {

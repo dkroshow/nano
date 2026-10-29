@@ -70,10 +70,10 @@ func (sess *Session) instructionFileSources() ([]setup.InstructionFileSource, in
 	var sources []setup.InstructionFileSource
 	switch sess.provider {
 	case "codex":
-		sess.stateMu.Lock()
-		raw := sess.state["thread"]
-		cwd := sess.cwd // the background resume handshake may still be updating it
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		raw := sess.stateOwner.state["thread"]
+		cwd := sess.stateOwner.cwd // the background resume handshake may still be updating it
+		sess.stateOwner.stateMu.Unlock()
 		var thread struct {
 			Cwd                   string   `json:"cwd"`
 			InstructionSources    []string `json:"instructionSources"`
@@ -101,11 +101,11 @@ func (sess *Session) instructionFileSources() ([]setup.InstructionFileSource, in
 			pol.writeRoots = append(pol.writeRoots, filemodel.CanonicalPath(r))
 		}
 	case "claude":
-		sess.stateMu.Lock()
-		initRaw := sess.state["init"]
-		sess.stateMu.Unlock()
-		sources = append(sources, setup.ClaudeInstructionSources(sess.cwd, initRaw)...)
-		pol.writeRoots = []string{filemodel.CanonicalPath(sess.cwd)}
+		sess.stateOwner.stateMu.Lock()
+		initRaw := sess.stateOwner.state["init"]
+		sess.stateOwner.stateMu.Unlock()
+		sources = append(sources, setup.ClaudeInstructionSources(sess.stateOwner.cwd, initRaw)...)
+		pol.writeRoots = []string{filemodel.CanonicalPath(sess.stateOwner.cwd)}
 	}
 	return sources, pol
 }

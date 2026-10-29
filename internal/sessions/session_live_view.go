@@ -114,7 +114,7 @@ func (sess *Session) fileConversationSnapshot(ctx context.Context, view liveview
 		return liveview.Snapshot{}, err
 	}
 	status := sess.projection.status()
-	return liveview.Snapshot{Version: liveProjectionVersion, Provider: sess.provider, NativeThreadID: sess.ThreadID(),
+	return liveview.Snapshot{Version: liveProjectionVersion, Provider: sess.provider, NativeThreadID: sess.stateOwner.ThreadID(),
 		Epoch: status.Epoch, Revision: status.Revision, Items: items, Turns: []liveview.Turn{},
 		Runtime: status.Runtime, Interactions: status.Interactions, Page: page}, nil
 }

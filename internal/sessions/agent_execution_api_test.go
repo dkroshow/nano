@@ -22,11 +22,12 @@ func TestDeliveryErrorsDistinguishRefusalFromUncertainty(t *testing.T) {
 }
 
 func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
-	sess := sessionWithOwners(&Session{lifecycleState: testLifecycleSnapshot("ready", false)})
+	sess := sessionWithOwners(&Session{
+		stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)}})
 	if sess.Summary().TurnActive {
 		t.Fatal("local reservation asserted work")
 	}
-	sess.acceptProviderTurn("accepted-turn")
+	sess.stateOwner.acceptProviderTurn("accepted-turn")
 	if summary := sess.Summary(); !summary.TurnActive {
 		t.Fatalf("accepted provider turn summary = %#v", summary)
 	}
@@ -37,8 +38,9 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 	sess := sessionWithOwners(&Session{id: "nano-lock-boundary",
 		hostedThreadID: hosted.ID,
 		provider:       "codex",
-		threadID:       "native-live-only",
-		lifecycleState: testLifecycleSnapshot("ready", false)})
+		stateOwner: State{
+			threadID:       "native-live-only",
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	s := NewRegistry()
 	s.RegisterSession(sess)
 
@@ -83,12 +85,15 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 // operations use.
 func TestHostedThreadOperationsUseItsLiveSessionNotAnExitedOne(t *testing.T) {
 	sessions := map[string]*Session{
-		"dead": sessionWithOwners(&Session{id: "dead", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot(StatusExited, false)}),
-		"live": sessionWithOwners(&Session{id: "live", hostedThreadID: "target", lifecycleState: testLifecycleSnapshot("ready", false)}),
+		"dead": sessionWithOwners(&Session{id: "dead", hostedThreadID: "target",
+			stateOwner: State{lifecycleState: testLifecycleSnapshot(StatusExited, false)}}),
+		"live": sessionWithOwners(&Session{id: "live", hostedThreadID: "target",
+			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)}}),
 	}
 	for i := range 20 { // more entries, so map order varies between lookups
 		id := fmt.Sprintf("other-%d", i)
-		sessions[id] = sessionWithOwners(&Session{id: id, hostedThreadID: id, lifecycleState: testLifecycleSnapshot("ready", false)})
+		sessions[id] = sessionWithOwners(&Session{id: id, hostedThreadID: id,
+			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)}})
 	}
 	s := NewRegistry()
 	for _, sess := range sessions {

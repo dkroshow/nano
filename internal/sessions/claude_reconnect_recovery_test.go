@@ -28,13 +28,13 @@ func seedRecoveryPrompt(t *testing.T, store *prompts.Store, hosted, native, acti
 func TestClaudeUnfinishedPromptsWaitForABusyWriterOncePerThread(t *testing.T) {
 	sess, store := readyTransactionalSendTestSession(t, nil)
 	hosted := sess.HostedThreadID()
-	native := sess.ThreadID()
+	native := sess.stateOwner.ThreadID()
 	ctx := context.Background()
 	completed, err := coreturns.OpenStore(ctx, sess.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess.completedTurns = func(context.Context) (*coreturns.Store, error) { return completed, nil }
+	sess.runtime.completedTurns = func(context.Context) (*coreturns.Store, error) { return completed, nil }
 	prefix := "claude:" + hosted + ":"
 	// The last two prompts are still owed: one turn started without an
 	// outcome, and one has no turn row yet. Every other turn ended.
@@ -74,7 +74,7 @@ func TestClaudeUnfinishedPromptsWaitForABusyWriterOncePerThread(t *testing.T) {
 		}
 	}()
 	started := time.Now()
-	wanted, _, err := sess.unfinishedClaudePrompts(ctx, prefix, native)
+	wanted, _, err := sess.runtime.unfinishedClaudePrompts(ctx, prefix, native)
 	took := time.Since(started)
 	close(stop)
 	<-done

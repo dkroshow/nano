@@ -10,7 +10,7 @@ import (
 
 func TestGrokProviderSelectionSettlesCanonicalEffectiveEffort(t *testing.T) {
 	sess, store := causationTestSessionForProvider(t, "nht_grok_effort", "grok")
-	sess.RecordCreationPosture(sessions.ProviderRequest{Effort: "xhigh"})
+	sess.State().RecordCreationPosture(sessions.ProviderRequest{Effort: "xhigh"})
 	result := json.RawMessage(`{"sessionId":"native","_meta":{"x.ai/sessionConfig":{"options":[{"category":"mode","id":"xhigh","selected":true},{"category":"mode","id":"high","selected":false}]}}}`)
 	provider := grokfixture.NewServer(t, func(c *grokfixture.Conn) {
 		for {
@@ -28,7 +28,7 @@ func TestGrokProviderSelectionSettlesCanonicalEffectiveEffort(t *testing.T) {
 			}
 		}
 	})
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "start", Effort: "xhigh", GrokBin: provider.Bin(), Cwd: t.TempDir()}, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "start", Effort: "xhigh", GrokBin: provider.Bin(), Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")

@@ -37,7 +37,7 @@ func TestGuardedHostedTurnAdmissionRejectsWithoutSideEffectsAndPreservesReplay(t
 	}
 	sess.ReserveNativeID("native-worker")
 	daemon := sessions.NewCodexDaemon(provider.WSURL(), "", nil)
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(sess.Close)

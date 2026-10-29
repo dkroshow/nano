@@ -54,15 +54,15 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 			bin := writeRetryingGrokACP(t, stateDir, tc.timeouts, tc.neverAnswers)
 			sess, _ := readyTransactionalSendTestSession(t, nil)
 			sess.id, sess.provider = "grok-boot-"+tc.name, "grok"
-			sess.hostedThreadID, sess.threadID = "nht_grok_boot_"+tc.name, "native-"+tc.name
-			sess.state = map[string]json.RawMessage{}
+			sess.hostedThreadID, sess.stateOwner.threadID = "nht_grok_boot_"+tc.name, "native-"+tc.name
+			sess.stateOwner.state = map[string]json.RawMessage{}
 			sess.projection = newDeliveryTestProjection("grok")
-			sess.lifecycleState = testLifecycleSnapshot("starting", false)
+			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
 			executions := &bootStatusRecorder{}
 			sess.agentExecutions = executions
 			t.Cleanup(sess.Close)
 
-			if err := sess.BeginProviderSpawn(ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {
+			if err := sess.runtime.BeginProviderSpawn(ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.stateOwner.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {
 				t.Fatal(err)
 			}
 

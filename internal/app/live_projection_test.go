@@ -285,7 +285,7 @@ func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	sess := newFixtureSession(sessions.Config{Provider: "codex", Projection: p}, nativeThreadID)
 	recorder := httptest.NewRecorder()
 	threadindex.NewHandlers(fake).HandleConversationHistory(recorder,
-		httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session/conversation/history", nil), sess.ThreadID())
+		httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session/conversation/history", nil), sess.State().ThreadID())
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}

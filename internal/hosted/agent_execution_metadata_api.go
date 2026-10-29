@@ -35,7 +35,7 @@ func (s *Controller) HandlePresentation(w http.ResponseWriter, r *http.Request, 
 	}
 	if changed {
 		if sess := s.sessionForHosted(record.ID); sess != nil {
-			sess.SetPresentation(rec.PresentationMode)
+			sess.State().SetPresentation(rec.PresentationMode)
 		}
 		s.NotifyRuntime()
 	}
@@ -78,7 +78,7 @@ func (s *Controller) HandleSidebarPlacement(w http.ResponseWriter, r *http.Reque
 	}
 	if changed {
 		if sess := s.sessionForHosted(record.ID); sess != nil {
-			sess.SetSidebarPlacement(rec.SidebarPlacement)
+			sess.State().SetSidebarPlacement(rec.SidebarPlacement)
 		}
 		// Placement changes are structural catalog changes, not runtime
 		// overlay fields. Force every open browser to re-read the sidebar

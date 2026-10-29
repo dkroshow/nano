@@ -40,7 +40,7 @@ func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, ho
 }
 func startCodexObserverFixture(t *testing.T, sess *sessions.Session, fake *fakeAppServer) {
 	t.Helper()
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.State().ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)

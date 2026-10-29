@@ -71,7 +71,7 @@ func TestRuntimeOverlayCarriesAnchorAndWaiting(t *testing.T) {
 	sess := resumeCodexFixture(t, sessions.Config{ID: "sess-anchor", Provider: "codex", HostedThreadID: "anchor-hosted", Projection: newLiveProjection("codex"), Turns: store, QueuedTurns: queue, SendAttempts: journal}, "t1", fake)
 	fake.EmitThreadNotification("t1", map[string]any{"method": "turn/started", "params": map[string]any{"threadId": "t1", "turn": map[string]any{"id": "turn-1", "status": "inProgress", "startedAt": int64(1785510514)}}})
 	fake.EmitThreadNotification("t1", map[string]any{"id": 1, "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "t1", "turnId": "turn-1", "command": "pwd"}})
-	waitReconnectCondition(t, func() bool { return sess.AvailabilityState().Waiting })
+	waitReconnectCondition(t, func() bool { return sess.State().AvailabilityState().Waiting })
 
 	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*sessions.Session{"sess-anchor": sess})
 	info, ok := runtimeForTest(t, s, "codex", "t1")

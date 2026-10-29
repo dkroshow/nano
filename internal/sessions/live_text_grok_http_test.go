@@ -260,7 +260,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				if _, err := h.sess.delivery.PromptStore().Cancel(context.Background(), "action-1"); err != nil {
 					t.Fatal(err)
 				}
-				seedUncertainTransactionalTurn(t, h.sess.delivery.PromptStore(), h.sess.HostedThreadID(), model.ProviderGrok, h.sess.ThreadID(), "action-2", "Neutral prompt 2.")
+				seedUncertainTransactionalTurn(t, h.sess.delivery.PromptStore(), h.sess.HostedThreadID(), model.ProviderGrok, h.sess.stateOwner.ThreadID(), "action-2", "Neutral prompt 2.")
 				record, _, err := h.sess.delivery.PromptStore().Get(context.Background(), "action-2")
 				if err != nil {
 					t.Fatal(err)

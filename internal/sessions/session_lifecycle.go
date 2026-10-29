@@ -11,7 +11,7 @@ import (
 
 // connectionStatusLocked is the compatibility projection for existing API
 // readers. It is never stored or accepted as current provider evidence.
-func (sess *Session) connectionStatusLocked() string {
+func (sess *State) connectionStatusLocked() string {
 	switch sess.lifecycleState.State.Connection {
 	case lifecycle.Parked:
 		return "reconnect_parked"
@@ -25,11 +25,11 @@ func (sess *Session) connectionStatusLocked() string {
 // threadStatusLocked is the thread's turn state while Nano holds it. Every
 // surface that shows it (pane, session list, runtime overlay, catalog row)
 // reads this one value.
-func (sess *Session) threadStatusLocked() string {
+func (sess *State) threadStatusLocked() string {
 	return catalog.FleetLabelFromLifecycle(sess.lifecycleState.State)
 }
 
-func (sess *Session) workActiveLocked() bool {
+func (sess *State) workActiveLocked() bool {
 	state := sess.lifecycleState.State
 	return state.Connection == lifecycle.Ready && state.Work != lifecycle.Idle
 }
@@ -37,17 +37,17 @@ func (sess *Session) workActiveLocked() bool {
 // transitionLifecycleLocked submits a qualified observation. Its callers
 // have already qualified the provider identity/turn and discarded stale replay.
 // stateMu serializes the observation with the current snapshot and its effects.
-func (sess *Session) transitionLifecycleLocked(event lifecycle.Event) (changed, drain bool) {
+func (sess *State) transitionLifecycleLocked(event lifecycle.Event) (changed, drain bool) {
 	before := sess.lifecycleState
 	observation := lifecycle.Observation{Event: event, Epoch: before.Epoch, Sequence: sess.nextEvidenceSequenceLocked()}
 	return sess.applyLifecycleObservationLocked(observation)
 }
 
-func (sess *Session) applyLifecycleObservationLocked(observation lifecycle.Observation) (changed, drain bool) {
+func (sess *State) applyLifecycleObservationLocked(observation lifecycle.Observation) (changed, drain bool) {
 	before := sess.lifecycleState
 	out, err := lifecycle.Transition(before, observation)
 	if err != nil {
-		log.Printf("session %s lifecycle observation %s: %v", sess.id, observation.Event, err)
+		log.Printf("session %s lifecycle observation %s: %v", sess.session.id, observation.Event, err)
 		return false, false
 	}
 	sess.lifecycleState = out.Snapshot
@@ -68,7 +68,7 @@ func (sess *Session) applyLifecycleObservationLocked(observation lifecycle.Obser
 			sess.recordRestartFailure("detached")
 		}
 	}
-	if core := sess.coreSession(); core != nil {
+	if core := sess.session.runtime.coreSession(); core != nil {
 		copy := observation
 		core.ObserveAsync(coresession.AdapterEvent{Lifecycle: &copy})
 		// A thread that starts or returns to working can take a prompt queued
@@ -77,7 +77,7 @@ func (sess *Session) applyLifecycleObservationLocked(observation lifecycle.Obser
 		// observation, and the drain reads the current turn only after the
 		// caller releases stateMu.
 		if workingLifecycle(out.Snapshot.State) && !workingLifecycle(before.State) && core.TurnCapabilities().RunningTurnInput {
-			sess.delivery.kickQueuedTurnDrain()
+			sess.session.delivery.kickQueuedTurnDrain()
 		}
 	}
 	return before.State != out.Snapshot.State, out.Drain
@@ -87,7 +87,7 @@ func workingLifecycle(state lifecycle.State) bool {
 	return state.Connection == lifecycle.Ready && state.Work == lifecycle.Working
 }
 
-func (sess *Session) readyLifecycleEventLocked() lifecycle.Event {
+func (sess *State) readyLifecycleEventLocked() lifecycle.Event {
 	if len(sess.interactions) > 0 {
 		return lifecycle.EventReadyWaiting
 	}
@@ -113,7 +113,7 @@ func (sess *Session) readyLifecycleEventLocked() lifecycle.Event {
 	return lifecycle.EventReadyIdle
 }
 
-func (sess *Session) observeConnection(event lifecycle.Event) {
+func (sess *State) observeConnection(event lifecycle.Event) {
 	sess.stateMu.Lock()
 	if event == lifecycle.EventReadyIdle {
 		if sess.turnRestoreInProgress {
@@ -140,19 +140,19 @@ func (sess *Session) observeConnection(event lifecycle.Event) {
 		return
 	}
 	if status == StatusExited {
-		sess.delivery.settleAgentTurnsOnExit(closed)
+		sess.session.delivery.settleAgentTurnsOnExit(closed)
 	}
-	sess.PublishProjectionRuntime()
+	sess.session.PublishProjectionRuntime()
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
-		sess.delivery.kickQueuedTurnDrain()
+		sess.session.delivery.kickQueuedTurnDrain()
 	}
 }
 
 // Provider acceptance is distinct from a local send reservation. An ACK that
 // follows the same turn's terminal cannot make that completed turn active again.
-func (sess *Session) acceptProviderTurn(turnID string) {
+func (sess *State) acceptProviderTurn(turnID string) {
 	sess.stateMu.Lock()
 	if turnID != "" && (turnID == sess.lastProviderTerminalTurnID || turnID == sess.durablyTerminalTurnID) {
 		sess.stateMu.Unlock()
@@ -173,23 +173,23 @@ func (sess *Session) acceptProviderTurn(turnID string) {
 	}
 	sess.stateMu.Unlock()
 	if changed {
-		sess.PublishProjectionRuntime()
+		sess.session.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 	}
 }
 
-func (sess *Session) lifecyclePermissionLocked() lifecycle.Permission {
+func (sess *State) lifecyclePermissionLocked() lifecycle.Permission {
 	permission, _ := lifecycle.Permissions(sess.lifecycleState.State)
 	return permission
 }
 
-func (sess *Session) waitingLocked() bool {
+func (sess *State) waitingLocked() bool {
 	return sess.lifecycleState.State.Connection == lifecycle.Ready && sess.lifecycleState.State.Work == lifecycle.WaitingOnYou
 }
 
 // During replay, interaction changes are provider evidence to settle with the
 // response. They cannot advance the visible lifecycle ahead of that barrier.
-func (sess *Session) observeInteractionLocked(event lifecycle.Event, turnID string) {
+func (sess *State) observeInteractionLocked(event lifecycle.Event, turnID string) {
 	if sess.turnRestoreInProgress {
 		sess.turnRestoreSequence = sess.nextEvidenceSequenceLocked()
 		sess.turnRestoreActive, sess.turnRestoreAccepted = true, false

@@ -29,15 +29,7 @@ type Session struct {
 	invokerHostedThreadID string
 	invokerNativeThreadID string
 	invokerProvider       string
-	presentationMode      string
-	sidebarPlacement      string
-	cwd                   string
-	// permissionMode is the resolved creation/resume posture retained on the
-	// live attachment. Canonical metadata remains the durable authority; this
-	// is the immediate fallback used when a provider asks before that read is
-	// available.
-	permissionMode string
-	createdAt      time.Time
+	createdAt             time.Time
 	// processStarted is the immutable application start supplied at construction.
 	processStarted time.Time
 	// spawnMode is how this session came into being — "start" (a thread that
@@ -46,14 +38,114 @@ type Session struct {
 	// state: it rides the summary so a surface showing "starting" can say which
 	// kind of starting it is (creating vs attaching) instead of guessing from an
 	// absent thread id.
-	spawnMode string
+	spawnMode  string
+	projection *LiveProjection // normalized live transcript, one per session
+	// transcriptRepairMu serializes the operator's stop/discard/rebuild action
+	// and retains its last idempotent response until the attachment changes.
+	transcriptRepairMu      sync.Mutex
+	transcriptRepairResults map[string]TranscriptRepairResponse
+	nameThread              func(provider, nativeThreadID, name string)
+	// publishCreationName refreshes the derived name projection from the
+	// canonical creation fact without writing it into the manual names file.
+	publishCreationName func(provider, nativeThreadID, name string)
+	// creationName reloads the immutable creation request from the canonical
+	// threads store. Every bind site consults it, so a restart cannot lose the
+	// name merely because the first in-memory pendingName was consumed.
+	creationName func() string
+	// metadataName reads the names-store overlay with its provenance. It is
+	// separate from displayName, which is only the immediate pre-catalog UI
+	// value while a new native id has not yet been indexed.
+	metadataName    func(provider, nativeThreadID string) (hostedstore.MetadataName, bool)
+	agentExecutions Executions
+	metadata        Metadata
 
-	codex            *CodexDaemon    // codex provider: shared daemon client
-	claude           *claudeSession  // claude provider
-	grok             *grokSession    // grok provider: stdio proxy to the durable native leader
-	reasoningSummary string          // codex: turn/start summary level
-	projection       *LiveProjection // normalized live transcript, one per session
-	completedTurns   func(context.Context) (*coreturns.Store, error)
+	// mcp caches the projected MCP tool registry served by
+	// /api/sessions/{id}/mcp, invalidated from the wire (mcp_inventory.go).
+	mcp inspection.MCPCache
+	// skills is shared across every session because app-server scopes its
+	// skills/list answer to cwd, not to one provider thread.
+	skills   *setup.SkillsListCache
+	closeMu  sync.Mutex // serialize teardown and its cached outcome
+	closeErr error      // guarded by closeMu
+
+	// liveText is set for a provider switched to file-only transcripts.
+	liveText *LiveTextLoop
+	wire     Wire
+
+	delivery Delivery
+
+	stateOwner State
+
+	runtime Runtime
+}
+
+// Wire owns the ordered raw event history, retained spool and event subscribers.
+type Wire struct {
+	session *Session
+
+	mu     sync.Mutex
+	events []wire.Event
+	seq    int64
+	subs   map[chan wire.Event]struct{}
+	spool  *wireSpool
+}
+
+// Delivery owns prompt admission, delivery, settlement and interaction operations.
+type Delivery struct {
+	session      *Session
+	savedPrompts SavedPromptReader
+	// savedPromptsIn reads saved user rows in a named native thread, for a
+	// Claude prompt whose exact native is not the current one; savedTurnFinal
+	// reads a decided saved turn's own final answer from the catalog.
+	savedPromptsIn savedPromptNativeReader
+	savedTurnFinal savedTurnFinalReader
+	// owedHint says this hosted thread may have Claude prompts that owe their
+	// member completion: set when settlement records one or an owed read finds
+	// one, cleared only when a member step reads none. It only gates the pass;
+	// the owed rows are the fact.
+	owedHint atomic.Bool
+	// memberDirty records a member step a trigger asked for while settleMu
+	// was held (requestMemberStep, releaseSettle).
+	memberDirty atomic.Bool
+	// memberCursor is the delivery sequence the next member step starts its
+	// owed read from. Guarded by settleMu.
+	memberCursor uint64
+	// discardedUnknown names the actions the person discarded before Nano had
+	// them, so an attempt still on its way is refused. Guarded by sendMu.
+	discardedUnknown map[string]bool
+	// settleMu runs one settlement pass at a time, so an older pass never
+	// restores a prompt a newer one settled.
+	settleMu sync.Mutex
+
+	// Submitted prompts are idempotent operations keyed by the browser's
+	// clientActionId. sendAttempts carries their small hash-only journal across
+	// Nano restarts; sendOps lets duplicate requests join an in-flight send.
+	sendAttempts Journal
+	queuedTurns  Queue
+	turns        *prompts.Store
+	appendUnread func(string, string) string
+	sendMu       sync.Mutex
+	sendOps      map[string]*turnSendOperation
+	// nanoStopping is the server's stop flag. Once it is set, no delivery
+	// starts; see claimAndStartTransactionalTurnLocked.
+	nanoStopping *atomic.Bool
+	// deliveryExpiries is the server's count of recent delivery deadline
+	// expiries per provider, shown in this session's runtime status. Nil-safe.
+	deliveryExpiries *DeliveryExpiries
+	turnSender       func(context.Context, string) (json.RawMessage, error) // test seam
+}
+
+// State owns the atomic lifecycle, native identity, turn and replay facts.
+type State struct {
+	session          *Session
+	presentationMode string
+	sidebarPlacement string
+	cwd              string
+	// permissionMode is the resolved creation/resume posture retained on the
+	// live attachment. Canonical metadata remains the durable authority; this
+	// is the immediate fallback used when a provider asks before that read is
+	// available.
+	permissionMode string
 	// savedTurn reads the saved status of one turn by exact native turn id,
 	// to settle a live turn whose terminal event was lost.
 	savedTurn func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool)
@@ -72,10 +164,6 @@ type Session struct {
 	// catch-up, so a later one needs a fresh pass. Both stateMu.
 	releaseHandshakeSlot func()
 	savedCaughtUp        bool
-	// transcriptRepairMu serializes the operator's stop/discard/rebuild action
-	// and retains its last idempotent response until the attachment changes.
-	transcriptRepairMu      sync.Mutex
-	transcriptRepairResults map[string]TranscriptRepairResponse
 	// catalogRefresh hints the catalog that a known native file may have
 	// changed (catalog_nudge.go); an empty path is ignored. Nil when the
 	// catalog is unavailable; set once before wire activity, never mutated.
@@ -119,25 +207,6 @@ type Session struct {
 	// value available before the catalog exposes its overlay.
 	pendingName string
 	displayName string
-	nameThread  func(provider, nativeThreadID, name string)
-	// publishCreationName refreshes the derived name projection from the
-	// canonical creation fact without writing it into the manual names file.
-	publishCreationName func(provider, nativeThreadID, name string)
-	// creationName reloads the immutable creation request from the canonical
-	// threads store. Every bind site consults it, so a restart cannot lose the
-	// name merely because the first in-memory pendingName was consumed.
-	creationName func() string
-	// metadataName reads the names-store overlay with its provenance. It is
-	// separate from displayName, which is only the immediate pre-catalog UI
-	// value while a new native id has not yet been indexed.
-	metadataName    func(provider, nativeThreadID string) (hostedstore.MetadataName, bool)
-	core            *coresession.Session
-	coreMu          sync.RWMutex
-	coreOnce        sync.Once
-	coreErr         error
-	providerAdapter providers.Adapter
-	agentExecutions Executions
-	metadata        Metadata
 	// metadataDegraded means a newer observation failed to enter the canonical
 	// log. It never makes the last committed canonical record unreadable; API
 	// reads derive unavailable directly from control.sqlite instead.
@@ -160,17 +229,6 @@ type Session struct {
 	// this attachment, a hard availability fact. Durable copy:
 	// hosted_threads.last_human_prompt_at via agentExecutions.noteHumanPrompt.
 	lastHumanPromptAt time.Time
-	// A daemon reconnect may begin while the previous thread handshake is still
-	// unwinding its response. Serialize the whole bind transaction per session so
-	// its identity, attachment record, and ready transition cannot interleave.
-	codexHandshakeMu sync.Mutex
-
-	// mcp caches the projected MCP tool registry served by
-	// /api/sessions/{id}/mcp, invalidated from the wire (mcp_inventory.go).
-	mcp inspection.MCPCache
-	// skills is shared across every session because app-server scopes its
-	// skills/list answer to cwd, not to one provider thread.
-	skills *setup.SkillsListCache
 
 	stateMu                    sync.Mutex
 	threadID                   string
@@ -236,10 +294,8 @@ type Session struct {
 	// still has state worth capturing, while one landing on a torn-down session
 	// has nobody left to hand it to (claude.go markTransportReady).
 	closed           bool
-	closeMu          sync.Mutex // serialize teardown and its cached outcome
-	closeErr         error      // guarded by closeMu
-	closeUnconfirmed bool       // stateMu: suppress settlement until stop acknowledgement
-	spawnError       string     // background handshake failure; surfaced as "error" (Slice R3)
+	closeUnconfirmed bool   // stateMu: suppress settlement until stop acknowledgement
+	spawnError       string // background handshake failure; surfaced as "error" (Slice R3)
 	tokenUsage       json.RawMessage
 	turnTokenUsage   map[string]*interact.TokenUsage
 	lastError        string
@@ -260,68 +316,26 @@ type Session struct {
 	autoRejectInteractions bool
 	rejectedInteractionSeq int64
 	state                  map[string]json.RawMessage
-
-	// liveText is set for a provider switched to file-only transcripts.
-	liveText *LiveTextLoop
-	wire     Wire
-
-	delivery Delivery
 }
 
-// Wire owns the ordered raw event history, retained spool and event subscribers.
-type Wire struct {
+// Runtime owns provider handles, handshake serialization and the core event coordinator.
+type Runtime struct {
 	session *Session
 
-	mu     sync.Mutex
-	events []wire.Event
-	seq    int64
-	subs   map[chan wire.Event]struct{}
-	spool  *wireSpool
-}
-
-// Delivery owns prompt admission, delivery, settlement and interaction operations.
-type Delivery struct {
-	session      *Session
-	savedPrompts SavedPromptReader
-	// savedPromptsIn reads saved user rows in a named native thread, for a
-	// Claude prompt whose exact native is not the current one; savedTurnFinal
-	// reads a decided saved turn's own final answer from the catalog.
-	savedPromptsIn savedPromptNativeReader
-	savedTurnFinal savedTurnFinalReader
-	// owedHint says this hosted thread may have Claude prompts that owe their
-	// member completion: set when settlement records one or an owed read finds
-	// one, cleared only when a member step reads none. It only gates the pass;
-	// the owed rows are the fact.
-	owedHint atomic.Bool
-	// memberDirty records a member step a trigger asked for while settleMu
-	// was held (requestMemberStep, releaseSettle).
-	memberDirty atomic.Bool
-	// memberCursor is the delivery sequence the next member step starts its
-	// owed read from. Guarded by settleMu.
-	memberCursor uint64
-	// discardedUnknown names the actions the person discarded before Nano had
-	// them, so an attempt still on its way is refused. Guarded by sendMu.
-	discardedUnknown map[string]bool
-	// settleMu runs one settlement pass at a time, so an older pass never
-	// restores a prompt a newer one settled.
-	settleMu sync.Mutex
-
-	// Submitted prompts are idempotent operations keyed by the browser's
-	// clientActionId. sendAttempts carries their small hash-only journal across
-	// Nano restarts; sendOps lets duplicate requests join an in-flight send.
-	sendAttempts Journal
-	queuedTurns  Queue
-	turns        *prompts.Store
-	appendUnread func(string, string) string
-	sendMu       sync.Mutex
-	sendOps      map[string]*turnSendOperation
-	// nanoStopping is the server's stop flag. Once it is set, no delivery
-	// starts; see claimAndStartTransactionalTurnLocked.
-	nanoStopping *atomic.Bool
-	// deliveryExpiries is the server's count of recent delivery deadline
-	// expiries per provider, shown in this session's runtime status. Nil-safe.
-	deliveryExpiries *DeliveryExpiries
-	turnSender       func(context.Context, string) (json.RawMessage, error) // test seam
+	codex            *CodexDaemon   // codex provider: shared daemon client
+	claude           *claudeSession // claude provider
+	grok             *grokSession   // grok provider: stdio proxy to the durable native leader
+	reasoningSummary string         // codex: turn/start summary level
+	completedTurns   func(context.Context) (*coreturns.Store, error)
+	core             *coresession.Session
+	coreMu           sync.RWMutex
+	coreOnce         sync.Once
+	coreErr          error
+	providerAdapter  providers.Adapter
+	// A daemon reconnect may begin while the previous thread handshake is still
+	// unwinding its response. Serialize the whole bind transaction per session so
+	// its identity, attachment record, and ready transition cannot interleave.
+	codexHandshakeMu sync.Mutex
 }
 
 // Summary is the public snapshot of an attachment identity, lifecycle, and provider settings.
@@ -395,10 +409,10 @@ func (sess *Session) applyPendingName(nativeThreadID string) {
 	if nativeThreadID == "" {
 		return // no id yet — keep the name for a later bind site
 	}
-	sess.stateMu.Lock()
-	name := sess.pendingName
-	sess.pendingName = ""
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	name := sess.stateOwner.pendingName
+	sess.stateOwner.pendingName = ""
+	sess.stateOwner.stateMu.Unlock()
 	if name != "" {
 		if sess.nameThread != nil {
 			sess.nameThread(sess.provider, nativeThreadID, name)

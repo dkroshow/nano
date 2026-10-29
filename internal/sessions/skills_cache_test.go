@@ -29,10 +29,12 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 		sessions[i] = sessionWithOwners(&Session{
 			id:       NewID(),
 			provider: "codex",
-			cwd:      cwds[i%len(cwds)],
-			codex:    daemon,
 			skills:   cache,
-			state:    map[string]json.RawMessage{},
+			stateOwner: State{
+				cwd:   cwds[i%len(cwds)],
+				state: map[string]json.RawMessage{}},
+			runtime: Runtime{
+				codex: daemon},
 		})
 	}
 

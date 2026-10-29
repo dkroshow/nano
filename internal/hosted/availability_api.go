@@ -60,8 +60,8 @@ func (s *ViewService) AvailabilityFor(hostedThreadID string, now time.Time) Avai
 	var pending bool
 	var queued int
 	if attached {
-		state = live.AvailabilityState()
-		pending = live.CorePromptInFlight()
+		state = live.State().AvailabilityState()
+		pending = live.Runtime().CorePromptInFlight()
 		queued = live.Delivery().QueuedPromptCount()
 	}
 	if !attached && record.Status == hostedstore.StatusExited {

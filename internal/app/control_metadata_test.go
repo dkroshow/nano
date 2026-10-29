@@ -191,7 +191,7 @@ func TestRecordPostureFailureSeparatesDegradedIngestionFromReadAvailability(t *t
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
-	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
+	sess.State().RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
 	if notified != 1 {
 		t.Fatalf("runtime notifications = %d", notified)
 	}
@@ -217,10 +217,10 @@ func TestIngestionFailureKeepsLastCommittedCanonicalStateVisible(t *testing.T) {
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
-	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
+	sess.State().RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
 	// A rejected newer append must not hide the healthy committed view.
 	metadata.fail = true
-	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "bad"})
+	sess.State().RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "bad"})
 
 	summary := sess.Summary()
 	if summary.MetadataUnavailable || !summary.MetadataDegraded || summary.Metadata == nil {
@@ -253,7 +253,7 @@ func TestPostureStoreCommitPrecedesRuntimePublication(t *testing.T) {
 	}}, "native-notify", "", func(f *providerRuntimeFixture) { sess = f.session })
 	<-ready
 	before := notified.Load()
-	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
+	sess.State().RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
 	if got := notified.Load() - before; got != 1 {
 		t.Fatalf("runtime notifications = %d, want one committed mutation", got)
 	}
@@ -370,7 +370,7 @@ func TestSessionListCarriesDisplayedMetadataOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess := configuredFixtureSession(t, sessions.Config{ID: "session-listed", Provider: "codex", HostedThreadID: "nht_listed", CreatedAt: time.Now(), Metadata: metadata, RuntimeNotify: func() {}}, "native-listed", "ready", "")
-	sess.RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
+	sess.State().RecordCreationPosture(sessions.ProviderRequest{ServiceTier: "priority"})
 	server := testServerWithSessions(&server{Registry: newSessionRegistry(), controlMetadata: metadata}, map[string]*sessions.Session{sess.ID(): sess})
 	rec := httptest.NewRecorder()
 	fixtureOwners(server).sidebarOwner().SessionsHandler(server.defaults)(rec, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
@@ -424,8 +424,8 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 		t.Fatalf("starting metadata = %d %s", rec.Code, rec.Body.String())
 	}
 	fake := newFakeAppServer(t)
-	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": live.ThreadID()}})
-	if err := live.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: live.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": live.State().ThreadID()}})
+	if err := live.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: live.State().ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, live, "ready")

@@ -498,7 +498,7 @@ func (l *LiveTextLoop) reportUnsaved(key string, finishedAt time.Time, deferred 
 	l.sources.Diagnostics.Add([]diagnostics.Event{{
 		EventID: "file.reply.unsaved:" + l.hostedID() + ":" + key, Kind: "file.reply.unsaved",
 		ClientAt: finishedAt.UTC().Format(time.RFC3339Nano), Provider: l.sess.Provider(),
-		HostedThreadID: l.hostedID(), ThreadID: l.sess.ThreadID(), Code: key,
+		HostedThreadID: l.hostedID(), ThreadID: l.sess.stateOwner.ThreadID(), Code: key,
 		DurationMS: int(elapsed / time.Millisecond),
 		Status:     strings.ReplaceAll(label, " ", "-"),
 	}})

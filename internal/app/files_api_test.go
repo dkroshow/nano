@@ -173,7 +173,7 @@ func liveEvidenceSession(t *testing.T, texts ...string) (*sessions.Session, *pro
 func addLiveEvidence(t *testing.T, runtime *providerRuntimeFixture, text string) {
 	id := "reply-" + sendTextHash(text)
 	for _, method := range []string{"item/started", "item/completed"} {
-		frame, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"threadId": runtime.session.ThreadID(), "turnId": "turn-1",
+		frame, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"threadId": runtime.session.State().ThreadID(), "turnId": "turn-1",
 			"item": map[string]any{"id": id, "type": "agentMessage", "text": text}}})
 		runtime.emitAndWait(t, frame)
 	}

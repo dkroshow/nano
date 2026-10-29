@@ -172,10 +172,10 @@ func (s *Handlers) sessionCatalogThreadID(ctx context.Context, sessionID string)
 		return ""
 	}
 	session := s.Registry.LookupSession(sessionID)
-	if session == nil || session.ThreadID() == "" {
+	if session == nil || session.State().ThreadID() == "" {
 		return ""
 	}
-	threadID, err := s.Catalog.ResolveThreadReference(ctx, session.ThreadID())
+	threadID, err := s.Catalog.ResolveThreadReference(ctx, session.State().ThreadID())
 	if err != nil {
 		return ""
 	}

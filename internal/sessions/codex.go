@@ -224,11 +224,11 @@ func (d *CodexDaemon) markExited(client *protocol.Client) {
 		}
 		d.mu.Unlock()
 		for _, sess := range sessions {
-			sess.stateMu.Lock()
-			closed := sess.closed || sess.connectionStatusLocked() == StatusExited
-			sess.stateMu.Unlock()
+			sess.stateOwner.stateMu.Lock()
+			closed := sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() == StatusExited
+			sess.stateOwner.stateMu.Unlock()
 			if !closed {
-				sess.observeConnection(lifecycle.EventLinkLost)
+				sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 			}
 		}
 		if startRecovery {
@@ -257,9 +257,9 @@ func (d *CodexDaemon) recoveryOwnsSessionFailure(sess *Session) bool {
 	if !recovering {
 		return false
 	}
-	sess.stateMu.Lock()
-	closed := sess.closed
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	closed := sess.stateOwner.closed
+	sess.stateOwner.stateMu.Unlock()
 	return !closed
 }
 
@@ -310,11 +310,11 @@ func (d *CodexDaemon) reconnectSessions() {
 		if d.reconnecting[sess.id] {
 			continue
 		}
-		sess.stateMu.Lock()
-		closed := sess.closed || sess.connectionStatusLocked() == StatusExited
-		eligible := sess.connectionStatusLocked() == "ready" || sess.connectionStatusLocked() == "reconnecting" || sess.connectionStatusLocked() == "reconnect_parked" || sess.connectionStatusLocked() == "reconnect_failed"
-		threadID := sess.threadID
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		closed := sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() == StatusExited
+		eligible := sess.stateOwner.connectionStatusLocked() == "ready" || sess.stateOwner.connectionStatusLocked() == "reconnecting" || sess.stateOwner.connectionStatusLocked() == "reconnect_parked" || sess.stateOwner.connectionStatusLocked() == "reconnect_failed"
+		threadID := sess.stateOwner.threadID
+		sess.stateOwner.stateMu.Unlock()
 		if closed || !eligible || threadID == "" {
 			continue
 		}
@@ -330,14 +330,14 @@ func (d *CodexDaemon) reconnectSessions() {
 
 func (d *CodexDaemon) requestSessionRecovery(sess *Session) {
 	d.mu.Lock()
-	sess.stateMu.Lock()
-	eligible := !sess.closed && (sess.connectionStatusLocked() == "reconnecting" || sess.connectionStatusLocked() == "reconnect_parked") && sess.threadID != ""
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	eligible := !sess.stateOwner.closed && (sess.stateOwner.connectionStatusLocked() == "reconnecting" || sess.stateOwner.connectionStatusLocked() == "reconnect_parked") && sess.stateOwner.threadID != ""
+	sess.stateOwner.stateMu.Unlock()
 	if !eligible || d.reconnecting[sess.id] {
 		if eligible && d.reconnecting[sess.id] {
-			sess.stateMu.Lock()
-			parked := sess.connectionStatusLocked() == "reconnect_parked"
-			sess.stateMu.Unlock()
+			sess.stateOwner.stateMu.Lock()
+			parked := sess.stateOwner.connectionStatusLocked() == "reconnect_parked"
+			sess.stateOwner.stateMu.Unlock()
 			if parked {
 				select {
 				case d.reconnectWake[sess.id] <- struct{}{}:
@@ -367,12 +367,12 @@ func (d *CodexDaemon) reconnectSessionLoop(sess *Session) {
 		delete(d.reconnectWake, sess.id)
 		d.mu.Unlock()
 		if rearm {
-			sess.stateMu.Lock()
-			closed := sess.closed || sess.connectionStatusLocked() == StatusExited
-			sess.stateMu.Unlock()
+			sess.stateOwner.stateMu.Lock()
+			closed := sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() == StatusExited
+			sess.stateOwner.stateMu.Unlock()
 			if !closed {
-				sess.observeConnection(lifecycle.EventRetryRequested)
-				sess.observeConnection(lifecycle.EventLinkLost)
+				sess.stateOwner.observeConnection(lifecycle.EventRetryRequested)
+				sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 				d.requestSessionRecovery(sess)
 			}
 		}
@@ -380,7 +380,7 @@ func (d *CodexDaemon) reconnectSessionLoop(sess *Session) {
 	d.mu.Lock()
 	wake := d.reconnectWake[sess.id]
 	d.mu.Unlock()
-	sess.observeConnection(lifecycle.EventRetryRequested)
+	sess.stateOwner.observeConnection(lifecycle.EventRetryRequested)
 	delay := codexReconnectInitialBackoff
 	if d.reconnectBackoff > 0 {
 		delay = d.reconnectBackoff
@@ -391,46 +391,46 @@ func (d *CodexDaemon) reconnectSessionLoop(sess *Session) {
 	}
 	baseTimeout := timeout
 	for attempt := 1; attempt <= codexReconnectAttempts; attempt++ {
-		sess.stateMu.Lock()
-		closed := sess.closed || sess.connectionStatusLocked() == StatusExited
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		closed := sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() == StatusExited
+		sess.stateOwner.stateMu.Unlock()
 		if closed {
 			return
 		}
 		progress, _ := json.Marshal(map[string]any{"attempts": attempt, "retrying": true, "timeoutMs": timeout.Milliseconds()})
-		sess.setState("codexReconnect", progress)
-		sess.observeConnection(lifecycle.EventLinkLost)
-		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}
+		sess.stateOwner.setState("codexReconnect", progress)
+		sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
+		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.stateOwner.ThreadID()}
 		err := runCodexHandshakeWithTimeout(context.Background(), sess, d, req, timeout)
 		if err == nil {
-			sess.setState("codexReconnect", json.RawMessage(`{"retrying":false}`))
+			sess.stateOwner.setState("codexReconnect", json.RawMessage(`{"retrying":false}`))
 			return
 		}
-		sess.stateMu.Lock()
-		model := sess.model
-		closed = sess.closed || sess.connectionStatusLocked() == StatusExited
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		model := sess.stateOwner.model
+		closed = sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() == StatusExited
+		sess.stateOwner.stateMu.Unlock()
 		if closed {
 			return
 		}
-		if codexNoRolloutError(err) && sess.codexMayBeZeroTurn() && sess.markCodexZeroTurnReady(model) {
+		if codexNoRolloutError(err) && sess.runtime.codexMayBeZeroTurn() && sess.runtime.markCodexZeroTurnReady(model) {
 			return
 		}
 		var rpcErr *protocol.RPCError
-		terminal := (codexNoRolloutError(err) && !sess.codexZeroTurnRecoveryNeeded()) ||
+		terminal := (codexNoRolloutError(err) && !sess.runtime.codexZeroTurnRecoveryNeeded()) ||
 			(errors.As(err, &rpcErr) && !codexNoRolloutError(err) && (rpcErr.Code == -32600 || rpcErr.Code == -32602))
 		if terminal {
-			if settlementErr := sess.failCodexReconnect(err.Error()); settlementErr != nil {
+			if settlementErr := sess.runtime.failCodexReconnect(err.Error()); settlementErr != nil {
 				err, terminal = settlementErr, false
 			}
 		}
 		state, _ := json.Marshal(map[string]any{"error": err.Error(), "attempts": attempt, "retrying": !terminal && attempt < codexReconnectAttempts})
-		sess.setState("codexReconnect", state)
+		sess.stateOwner.setState("codexReconnect", state)
 		if terminal {
 			return
 		}
 		if attempt == codexReconnectAttempts {
-			sess.observeConnection(lifecycle.EventRetriesExhausted)
+			sess.stateOwner.observeConnection(lifecycle.EventRetriesExhausted)
 			return
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -647,7 +647,7 @@ func (d *CodexDaemon) closeSession(sess *Session) {
 	// outlives nano, so a request left unanswered here holds a turn open with
 	// nobody able to reach it (interactions.go).
 	sess.delivery.closeInteractions()
-	threadID := sess.ThreadID()
+	threadID := sess.stateOwner.ThreadID()
 	if threadID == "" {
 		return // no id yet: a fresh start's handshake owns the cleanup instead
 	}
@@ -874,29 +874,29 @@ func (d *CodexDaemon) interruptTurn(ctx context.Context, sess *Session, threadID
 // seedCodexTurnOverrides is retained only for legacy rollback-parser tests.
 // Production resume always calls seedCodexCanonicalOverrides below, which is
 // keyed by the hosted identity in control.sqlite.
-func (sess *Session) seedCodexTurnOverrides(folded map[string]hostedstore.PostureEntry, legacyServiceTier string) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
+func (sess *Runtime) seedCodexTurnOverrides(folded map[string]hostedstore.PostureEntry, legacyServiceTier string) {
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
 	if folded == nil {
 		if legacyServiceTier != "" {
-			sess.turnServiceTier = legacyServiceTier
+			sess.session.stateOwner.turnServiceTier = legacyServiceTier
 		}
 		return
 	}
-	overlayFold(folded, postureFieldModel, &sess.turnModel)
-	overlayFold(folded, postureFieldEffort, &sess.turnEffort)
-	overlayFold(folded, postureFieldServiceTier, &sess.turnServiceTier)
+	overlayFold(folded, postureFieldModel, &sess.session.stateOwner.turnModel)
+	overlayFold(folded, postureFieldEffort, &sess.session.stateOwner.turnEffort)
+	overlayFold(folded, postureFieldServiceTier, &sess.session.stateOwner.turnServiceTier)
 }
 
 func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) error {
-	sess.codexZeroTurnEligible = req.Mode == "start" || req.CodexZeroTurnResume
+	sess.stateOwner.codexZeroTurnEligible = req.Mode == "start" || req.CodexZeroTurnResume
 	// Set before any handshake runs: close() reaches the daemon through this
 	// field, and a session torn down mid-handshake must be able to unsubscribe
 	// and release whatever it holds.
-	sess.codex = daemon
+	sess.runtime.codex = daemon
 	if req.Mode == "resume" && sess.metadata != nil {
 		if view, err := sess.metadata.View(sess.hostedThreadID); err == nil {
-			sess.seedCodexCanonicalOverrides(view)
+			sess.runtime.seedCodexCanonicalOverrides(view)
 		}
 	}
 	if req.Mode == "resume" {
@@ -909,10 +909,10 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 		if err := daemon.claimThread(req.ThreadID, sess); err != nil {
 			return err
 		}
-		sess.stateMu.Lock()
-		sess.threadID = req.ThreadID
-		sess.stateMu.Unlock()
-		sess.setProjectionThreadID(req.ThreadID)
+		sess.stateOwner.stateMu.Lock()
+		sess.stateOwner.threadID = req.ThreadID
+		sess.stateOwner.stateMu.Unlock()
+		sess.stateOwner.setProjectionThreadID(req.ThreadID)
 		go func() {
 			if err := runCodexHandshake(sess, daemon, req); err != nil {
 				// A supervised daemon keeps a newly started, zero-turn thread in
@@ -921,8 +921,8 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 				// thread routed so its delayed first turn can create the rollout.
 				// Manual resumes and every other error retain the normal exited
 				// contract below.
-				if sess.codexMayBeZeroTurn() && codexNoRolloutError(err) &&
-					sess.markCodexZeroTurnReady(req.codexResumeModel) {
+				if sess.runtime.codexMayBeZeroTurn() && codexNoRolloutError(err) &&
+					sess.runtime.markCodexZeroTurnReady(req.codexResumeModel) {
 					log.Printf("boot re-attach kept zero-turn codex thread %s in session %s", req.ThreadID, sess.id)
 					return
 				}
@@ -930,13 +930,13 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 				// reconnecting before the dead client's pending Call returns. The
 				// replacement handshake now owns this session; the old goroutine must
 				// not release its routing claim or overwrite recovery with exited.
-				sess.stateMu.Lock()
-				statusRecovery := !sess.closed && (sess.connectionStatusLocked() == "reconnecting" || sess.connectionStatusLocked() == "ready")
-				sess.stateMu.Unlock()
+				sess.stateOwner.stateMu.Lock()
+				statusRecovery := !sess.stateOwner.closed && (sess.stateOwner.connectionStatusLocked() == "reconnecting" || sess.stateOwner.connectionStatusLocked() == "ready")
+				sess.stateOwner.stateMu.Unlock()
 				recoveryOwnsFailure := statusRecovery || daemon.recoveryOwnsSessionFailure(sess) ||
 					(req.BootReattach != nil && (errors.Is(err, context.DeadlineExceeded) || codexThreadClosingError(err)))
 				if recoveryOwnsFailure {
-					sess.observeConnection(lifecycle.EventLinkLost)
+					sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 					daemon.requestSessionRecovery(sess)
 					log.Printf("resume thread %s (session %s): old connection ended during recovery: %v", req.ThreadID, sess.id, err)
 					return
@@ -945,7 +945,7 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 				// is observable the thread must already be resumable again.
 				daemon.releaseThread(req.ThreadID, sess)
 				log.Printf("resume thread %s (session %s): %v", req.ThreadID, sess.id, err)
-				sess.failSpawn(err.Error())
+				sess.stateOwner.failSpawn(err.Error())
 			}
 		}()
 		return nil
@@ -957,18 +957,18 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 	go func() {
 		if err := runCodexHandshake(sess, daemon, req); err != nil {
 			log.Printf("start thread (session %s): %v", sess.id, err)
-			sess.failSpawn(err.Error())
+			sess.stateOwner.failSpawn(err.Error())
 		}
 	}()
 	return nil
 }
 
-func (sess *Session) seedCodexCanonicalOverrides(view hostedstore.MetadataView) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
+func (sess *Runtime) seedCodexCanonicalOverrides(view hostedstore.MetadataView) {
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
 	// A cleared/unknown canonical value must not leave a stale in-memory
 	// override from an earlier attachment generation.
-	sess.turnModel, sess.turnEffort, sess.turnServiceTier = "", "", ""
+	sess.session.stateOwner.turnModel, sess.session.stateOwner.turnEffort, sess.session.stateOwner.turnServiceTier = "", "", ""
 	for field, current := range view.Fields {
 		value, ok := hostedstore.ResumeString(current)
 		if !ok {
@@ -976,11 +976,11 @@ func (sess *Session) seedCodexCanonicalOverrides(view hostedstore.MetadataView) 
 		}
 		switch field {
 		case postureFieldModel:
-			sess.turnModel = value
+			sess.session.stateOwner.turnModel = value
 		case postureFieldEffort:
-			sess.turnEffort = value
+			sess.session.stateOwner.turnEffort = value
 		case postureFieldServiceTier:
-			sess.turnServiceTier = value
+			sess.session.stateOwner.turnServiceTier = value
 		}
 	}
 }
@@ -1011,56 +1011,56 @@ func codexThreadClosingError(err error) bool {
 // markCodexZeroTurnReady turns a boot resume's zero-rollout failure into the
 // usable daemon-resident state. A concurrent explicit close wins and leaves
 // the caller to run the ordinary failure cleanup.
-func (sess *Session) markCodexZeroTurnReady(model string) bool {
-	sess.stateMu.Lock()
-	if sess.closed || sess.connectionStatusLocked() == StatusExited {
-		sess.stateMu.Unlock()
+func (sess *Runtime) markCodexZeroTurnReady(model string) bool {
+	sess.session.stateOwner.stateMu.Lock()
+	if sess.session.stateOwner.closed || sess.session.stateOwner.connectionStatusLocked() == StatusExited {
+		sess.session.stateOwner.stateMu.Unlock()
 		return false
 	}
-	sess.transitionLifecycleLocked(lifecycle.EventReadyIdle)
-	sess.model = model
-	sess.spawnError = ""
-	sess.codexZeroTurnResume = true
-	sess.stateMu.Unlock()
-	sess.setState("codexReconnect", json.RawMessage(`{"retrying":false,"zeroTurn":true}`))
-	sess.PublishProjectionRuntime()
-	sess.NotifyRuntime()
-	sess.updateHostedThread("ready", "")
-	sess.delivery.kickQueuedTurnDrain()
+	sess.session.stateOwner.transitionLifecycleLocked(lifecycle.EventReadyIdle)
+	sess.session.stateOwner.model = model
+	sess.session.stateOwner.spawnError = ""
+	sess.session.stateOwner.codexZeroTurnResume = true
+	sess.session.stateOwner.stateMu.Unlock()
+	sess.session.stateOwner.setState("codexReconnect", json.RawMessage(`{"retrying":false,"zeroTurn":true}`))
+	sess.session.PublishProjectionRuntime()
+	sess.session.stateOwner.NotifyRuntime()
+	sess.session.stateOwner.updateHostedThread("ready", "")
+	sess.session.delivery.kickQueuedTurnDrain()
 	return true
 }
 
-func (sess *Session) codexZeroTurnRecoveryNeeded() bool {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return !sess.closed && sess.codexZeroTurnResume
+func (sess *Runtime) codexZeroTurnRecoveryNeeded() bool {
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
+	return !sess.session.stateOwner.closed && sess.session.stateOwner.codexZeroTurnResume
 }
 
-func (sess *Session) finishCodexZeroTurnRecovery() {
-	sess.stateMu.Lock()
-	sess.codexZeroTurnResume = false
-	sess.stateMu.Unlock()
+func (sess *Runtime) finishCodexZeroTurnRecovery() {
+	sess.session.stateOwner.stateMu.Lock()
+	sess.session.stateOwner.codexZeroTurnResume = false
+	sess.session.stateOwner.stateMu.Unlock()
 }
 
-func (sess *Session) startCodexZeroTurnRecovery() {
-	if sess == nil || !ProviderLifecycleCapabilities(sess.provider).ResumeWithoutTranscript || sess.codex == nil {
+func (sess *Runtime) startCodexZeroTurnRecovery() {
+	if sess == nil || !ProviderLifecycleCapabilities(sess.session.provider).ResumeWithoutTranscript || sess.codex == nil {
 		return
 	}
-	sess.stateMu.Lock()
-	if sess.closed || !sess.codexZeroTurnResume || sess.codexZeroTurnRecoveryRunning {
-		sess.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Lock()
+	if sess.session.stateOwner.closed || !sess.session.stateOwner.codexZeroTurnResume || sess.session.stateOwner.codexZeroTurnRecoveryRunning {
+		sess.session.stateOwner.stateMu.Unlock()
 		return
 	}
-	sess.codexZeroTurnRecoveryRunning = true
-	sess.stateMu.Unlock()
+	sess.session.stateOwner.codexZeroTurnRecoveryRunning = true
+	sess.session.stateOwner.stateMu.Unlock()
 	go sess.runCodexZeroTurnRecovery()
 }
 
-func (sess *Session) runCodexZeroTurnRecovery() {
+func (sess *Runtime) runCodexZeroTurnRecovery() {
 	defer func() {
-		sess.stateMu.Lock()
-		sess.codexZeroTurnRecoveryRunning = false
-		sess.stateMu.Unlock()
+		sess.session.stateOwner.stateMu.Lock()
+		sess.session.stateOwner.codexZeroTurnRecoveryRunning = false
+		sess.session.stateOwner.stateMu.Unlock()
 	}()
 	backoff := time.Duration(0)
 	for attempt := 1; attempt <= codexZeroTurnRecoveryAttempts; attempt++ {
@@ -1074,17 +1074,17 @@ func (sess *Session) runCodexZeroTurnRecovery() {
 				return
 			}
 		}
-		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}
-		err := runCodexHandshakeWithTimeout(context.Background(), sess, sess.codex, req, codexZeroTurnRecoveryAttemptTimeout)
+		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.session.stateOwner.ThreadID()}
+		err := runCodexHandshakeWithTimeout(context.Background(), sess.session, sess.codex, req, codexZeroTurnRecoveryAttemptTimeout)
 		if err == nil || !sess.codexZeroTurnRecoveryNeeded() {
 			return
 		}
 		log.Printf("zero-turn recovery resume %d/%d for thread %s (session %s): %v",
-			attempt, codexZeroTurnRecoveryAttempts, req.ThreadID, sess.id, err)
-		sess.observeConnection(lifecycle.EventLinkLost)
+			attempt, codexZeroTurnRecoveryAttempts, req.ThreadID, sess.session.id, err)
+		sess.session.stateOwner.observeConnection(lifecycle.EventLinkLost)
 		var rpcErr *protocol.RPCError
 		if !errors.As(err, &rpcErr) {
-			sess.codex.requestSessionRecovery(sess)
+			sess.codex.requestSessionRecovery(sess.session)
 			// Transport loss owns its replacement connection and ordinary resume.
 			// The shared success path below clears the zero-turn flag if it wins.
 			return
@@ -1099,8 +1099,8 @@ func (sess *Session) runCodexZeroTurnRecovery() {
 		}
 	}
 	log.Printf("zero-turn recovery exhausted for thread %s (session %s); leaving session reconnecting",
-		sess.ThreadID(), sess.id)
-	sess.codex.requestSessionRecovery(sess)
+		sess.session.stateOwner.ThreadID(), sess.session.id)
+	sess.codex.requestSessionRecovery(sess.session)
 }
 
 // runCodexHandshake performs the thread/start or thread/resume call and
@@ -1121,8 +1121,8 @@ func runCodexHandshakeContext(parent context.Context, sess *Session, daemon *Cod
 }
 
 func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon *CodexDaemon, req ProviderRequest, timeout time.Duration) error {
-	sess.codexHandshakeMu.Lock()
-	defer sess.codexHandshakeMu.Unlock()
+	sess.runtime.codexHandshakeMu.Lock()
+	defer sess.runtime.codexHandshakeMu.Unlock()
 	releaseSlot := func() {}
 	if req.Mode == "resume" {
 		select {
@@ -1133,9 +1133,9 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		case <-parent.Done():
 			return parent.Err()
 		}
-		sess.stateMu.Lock()
-		closed := sess.closed || sess.connectionStatusLocked() == StatusExited
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		closed := sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() == StatusExited
+		sess.stateOwner.stateMu.Unlock()
 		if closed {
 			return nil
 		}
@@ -1144,11 +1144,11 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		// A resume without a tier takes the tier of Codex's own config, not
 		// the thread's: it would run at that tier until its next turn sends the
 		// override, and report it as the thread's confirmed tier.
-		_, _, req.ServiceTier = sess.turnOptions()
+		_, _, req.ServiceTier = sess.stateOwner.turnOptions()
 	}
-	sess.beginTurnRestore()
-	defer sess.cancelTurnRestore()
-	sess.forgetCodexTurnInputs()
+	sess.stateOwner.beginTurnRestore()
+	defer sess.stateOwner.cancelTurnRestore()
+	sess.runtime.forgetCodexTurnInputs()
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	method, params := CodexSessionRequest(req)
@@ -1164,13 +1164,13 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 			sent[pair.field] = value
 		}
 	}
-	causation := sess.snapshotProviderCausation(sent)
+	causation := sess.stateOwner.snapshotProviderCausation(sent)
 	var threadResp json.RawMessage
 	var decoded *codexResumeResponse
 	wireLog := protocol.WireLogger(sess.wire.recordWire)
 	if method == "thread/resume" {
 		wireLog = func(dir wire.Direction, line []byte) {
-			if response := sess.recordResumeWire(dir, line); response != nil {
+			if response := sess.runtime.recordResumeWire(dir, line); response != nil {
 				decoded = response
 			}
 		}
@@ -1181,7 +1181,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		if dir == protocol.Recv {
 			var message protocol.Message
 			if json.Unmarshal(line, &message) == nil && message.IsResponse() {
-				responseEpoch, responseSequence = sess.evidenceCoordinates()
+				responseEpoch, responseSequence = sess.stateOwner.evidenceCoordinates()
 			}
 		}
 		recordWire(dir, line)
@@ -1199,7 +1199,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		// for the tier it carried.
 		var rpcErr *protocol.RPCError
 		if errors.As(err, &rpcErr) && method != "thread/resume" {
-			sess.recordProviderRejection(method+"_rejected", causation)
+			sess.stateOwner.recordProviderRejection(method+"_rejected", causation)
 		}
 		return fmt.Errorf("%s: %w", method, err)
 	}
@@ -1234,11 +1234,11 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	}
 	// The response names the rollout; boot's saved-catalog path stands in
 	// only until this confirms or replaces it.
-	sess.learnCatalogSourcePath(thread.Thread.Path)
-	sess.setProjectionThreadID(thread.Thread.ID)
+	sess.stateOwner.learnCatalogSourcePath(thread.Thread.Path)
+	sess.stateOwner.setProjectionThreadID(thread.Thread.ID)
 	if method == "thread/resume" {
 		// Boot and recovery resumes both pass here, before readiness.
-		sess.recordRestartStep(restartAttached)
+		sess.stateOwner.recordRestartStep(restartAttached)
 	}
 	if method == "thread/resume" && sess.projection != nil {
 		// Restore action-bearing rows before the lossy provider baseline so a
@@ -1255,12 +1255,12 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		// zero-turn task and an ordinary daemon reconnect that wins the race.
 
 	}
-	sess.setState("thread", compactResponse)
-	sess.stateMu.Lock()
-	if sess.connectionStatusLocked() == "exited" {
+	sess.stateOwner.setState("thread", compactResponse)
+	sess.stateOwner.stateMu.Lock()
+	if sess.stateOwner.connectionStatusLocked() == "exited" {
 		// The session was closed (or the daemon died) while the background
 		// handshake ran: do not resurrect it or its routing claim.
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Unlock()
 		daemon.releaseThread(req.ThreadID, sess)
 		if req.Mode != "resume" {
 			// This very call minted the thread, and close() ran before there was
@@ -1269,14 +1269,14 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		}
 		return nil
 	}
-	sess.threadID = thread.Thread.ID
-	sess.model = thread.Model
+	sess.stateOwner.threadID = thread.Thread.ID
+	sess.stateOwner.model = thread.Model
 	if thread.Cwd != "" {
-		sess.cwd = thread.Cwd
+		sess.stateOwner.cwd = thread.Cwd
 	} else if thread.Thread.Cwd != "" {
-		sess.cwd = thread.Thread.Cwd
+		sess.stateOwner.cwd = thread.Thread.Cwd
 	}
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 	// AskForApproval is a string-or-granular-object union in the checked-in v2
 	// schema.  Nano only has a lossless posture representation for the string
 	// form; an object remains deliberately unknown rather than failing start.
@@ -1290,7 +1290,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	if approval != "" {
 		providerValues[postureFieldPermissionMode] = approval
 	}
-	sess.recordProviderEvidence(method+"_response", providerValues, metadataFreshnessLive, causation)
+	sess.stateOwner.recordProviderEvidence(method+"_response", providerValues, metadataFreshnessLive, causation)
 	// The native id is authoritative from here: a dialog-supplied session name
 	// can finally reach the names store (start and resume both land here).
 	sess.applyPendingName(thread.Thread.ID)
@@ -1301,40 +1301,40 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	// the turn streams — a gap that predates the timers work and that the
 	// timers make visible.
 	_ = resuming // Current() chooses work from the full provider response.
-	sess.stateMu.Lock()
-	if sess.closed || sess.connectionStatusLocked() == StatusExited {
-		sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	if sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() == StatusExited {
+		sess.stateOwner.stateMu.Unlock()
 		return nil
 	}
 	// Readiness is published only after replay and current provider evidence settle.
-	sess.spawnError = ""
-	sess.stateMu.Unlock()
-	if method == "thread/resume" && !sess.awaitSavedCatchUp(transport, nil) {
-		if sess.ended() {
+	sess.stateOwner.spawnError = ""
+	sess.stateOwner.stateMu.Unlock()
+	if method == "thread/resume" && !sess.stateOwner.awaitSavedCatchUp(transport, nil) {
+		if sess.stateOwner.ended() {
 			daemon.releaseThread(req.ThreadID, sess)
 			return nil
 		}
 		return fmt.Errorf("%s: the app-server connection closed while the saved file caught up", method)
 	}
-	sess.settleProviderEvidence(codexLifecycleAdapter{epoch: responseEpoch, sequence: responseSequence, response: decoded, nativeID: thread.Thread.ID, settled: true}, inFlight.ID, inFlight.startedAtMs())
+	sess.stateOwner.settleProviderEvidence(codexLifecycleAdapter{epoch: responseEpoch, sequence: responseSequence, response: decoded, nativeID: thread.Thread.ID, settled: true}, inFlight.ID, inFlight.startedAtMs())
 	// Persist the durable attachment now that the thread id is authoritative:
 	// a restart that kills this session leaves the record behind, so the
 	// thread returns as re-attachable (attachments.go). Covers start and resume
 	// alike — both reach ready here.
-	if sess.rememberAttachment != nil {
-		sess.rememberDurableAttachment(hostedstore.Attachment{
+	if sess.stateOwner.rememberAttachment != nil {
+		sess.stateOwner.rememberDurableAttachment(hostedstore.Attachment{
 			Provider:       "codex",
 			NativeThreadID: thread.Thread.ID,
-			Cwd:            sess.cwd,
+			Cwd:            sess.stateOwner.cwd,
 			Model:          thread.Model,
 		})
 	}
 	// A resume can lose its link while it waits for its saved catch-up, so
 	// the record takes the status the settle left, not a fixed "ready".
-	sess.stateMu.Lock()
-	status := sess.connectionStatusLocked()
-	sess.stateMu.Unlock()
-	sess.updateHostedThread(status, "")
+	sess.stateOwner.stateMu.Lock()
+	status := sess.stateOwner.connectionStatusLocked()
+	sess.stateOwner.stateMu.Unlock()
+	sess.stateOwner.updateHostedThread(status, "")
 	if req.ThreadID != thread.Thread.ID {
 		// Start mode (no pre-claim), or a resume answered with a different id
 		// than requested (not observed in practice): route the real id and
@@ -1342,9 +1342,9 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		// pre-claim already IS the registration.
 		daemon.registerThread(thread.Thread.ID, sess)
 		daemon.releaseThread(req.ThreadID, sess)
-		sess.stateMu.Lock()
-		exited := sess.connectionStatusLocked() == "exited"
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		exited := sess.stateOwner.connectionStatusLocked() == "exited"
+		sess.stateOwner.stateMu.Unlock()
 		if exited {
 			// close() slipped between the ready transition and the rebind;
 			// don't leave a routing entry for a torn-down session.
@@ -1352,7 +1352,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		}
 	}
 	if req.Mode == "resume" {
-		sess.finishCodexZeroTurnRecovery()
+		sess.runtime.finishCodexZeroTurnRecovery()
 	}
 	return nil
 }
@@ -1362,28 +1362,28 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 // used by any Nano view: the conversation has already loaded from the durable
 // transcript. Remove them before the wire event reaches the spool, SSE, or
 // browser, and leave an explicit marker in the raw Event Feed payload.
-func (sess *Session) recordResumeWire(dir wire.Direction, line []byte) *codexResumeResponse {
+func (sess *Runtime) recordResumeWire(dir wire.Direction, line []byte) *codexResumeResponse {
 	if dir != protocol.Recv {
-		sess.wire.recordWire(dir, line)
+		sess.session.wire.recordWire(dir, line)
 		return nil
 	}
 	envelope, err := decodeCodexResumeResponse(line)
 	if err != nil {
-		sess.wire.recordWire(dir, line)
+		sess.session.wire.recordWire(dir, line)
 		return nil
 	}
 	if _, hasError := envelope.fields["error"]; hasError {
-		sess.wire.recordWire(dir, line)
+		sess.session.wire.recordWire(dir, line)
 		return nil
 	}
 	fields, ok := envelope.fields["result"].(map[string]any)
 	if !ok {
-		sess.wire.recordWire(dir, line)
+		sess.session.wire.recordWire(dir, line)
 		return nil
 	}
 	response := newCodexResumeResponse(fields)
 	if _, present := response.thread["turns"]; !present {
-		sess.wire.recordWire(dir, line)
+		sess.session.wire.recordWire(dir, line)
 		return response
 	}
 	compact := response.compactFields()
@@ -1394,9 +1394,9 @@ func (sess *Session) recordResumeWire(dir wire.Direction, line []byte) *codexRes
 	envelope.fields["result"] = compact
 	compactLine, err := json.Marshal(envelope.fields)
 	if err != nil {
-		sess.wire.recordWire(dir, line)
+		sess.session.wire.recordWire(dir, line)
 		return response
 	}
-	sess.wire.recordWire(dir, compactLine)
+	sess.session.wire.recordWire(dir, compactLine)
 	return response
 }

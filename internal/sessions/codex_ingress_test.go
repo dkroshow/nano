@@ -26,10 +26,10 @@ func TestCodexTextDeltaIngressDoesNotWaitForOutstandingProviderCall(t *testing.T
 		<-providerRelease
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	if err := sess.ensureCoreSession(); err != nil {
+	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
-	core := sess.coreSession()
+	core := sess.runtime.coreSession()
 	t.Cleanup(core.Close)
 
 	response := make(chan int, 1)

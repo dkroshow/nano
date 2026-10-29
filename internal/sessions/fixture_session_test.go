@@ -21,7 +21,7 @@ func resumeCodexFixture(t *testing.T, cfg Config, nativeID string, fake *fakeApp
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID(nativeID)
-	if err := sess.BeginProviderSpawn(ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: nativeID}, fake.daemon(), func() {}); err != nil {
+	if err := sess.runtime.BeginProviderSpawn(ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: nativeID}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
@@ -33,5 +33,7 @@ func resumeCodexFixture(t *testing.T, cfg Config, nativeID string, fake *fakeApp
 func sessionWithOwners(sess *Session) *Session {
 	sess.wire.session = sess
 	sess.delivery.session = sess
+	sess.stateOwner.session = sess
+	sess.runtime.session = sess
 	return sess
 }

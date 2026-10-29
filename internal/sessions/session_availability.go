@@ -17,7 +17,7 @@ type Availability struct {
 }
 
 // AvailabilityState reads the runtime facts used by admission and availability.
-func (sess *Session) AvailabilityState() Availability {
+func (sess *State) AvailabilityState() Availability {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return Availability{
@@ -32,16 +32,16 @@ func (sess *Delivery) QueuedPromptCount() int {
 	if sess.queuedTurns == nil {
 		return 0
 	}
-	return sess.queuedTurns.QueuedCount(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID)
+	return sess.queuedTurns.QueuedCount(sess.session.provider, sess.session.stateOwner.ThreadID(), sess.session.hostedThreadID)
 }
 
 // ActiveTurnSnapshot returns one atomic snapshot of the live turn fields.
 // activeTurn is one atomic snapshot of the monitor's live turn fields.
-func (sess *Session) ActiveTurnSnapshot() (observability.ActiveTurn, bool) {
+func (sess *State) ActiveTurnSnapshot() (observability.ActiveTurn, bool) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
-	return observability.ActiveTurn{Provider: sess.provider, ThreadID: sess.threadID,
-		HostedThreadID: sess.hostedThreadID, Name: sess.displayName,
+	return observability.ActiveTurn{Provider: sess.session.provider, ThreadID: sess.threadID,
+		HostedThreadID: sess.session.hostedThreadID, Name: sess.displayName,
 		TurnStartedAtMs: sess.turnStartedAtMs}, sess.workActiveLocked()
 }
 
@@ -50,9 +50,9 @@ func (sess *Session) ActiveTurnSnapshot() (observability.ActiveTurn, bool) {
 func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (string, error) {
 	sess.sendMu.Lock()
 	defer sess.sendMu.Unlock()
-	sess.session.stateMu.Lock()
-	status, permission := sess.session.connectionStatusLocked(), sess.session.lifecyclePermissionLocked()
-	sess.session.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Lock()
+	status, permission := sess.session.stateOwner.connectionStatusLocked(), sess.session.stateOwner.lifecyclePermissionLocked()
+	sess.session.stateOwner.stateMu.Unlock()
 	// A resting thread had no open work at boot and queues behind its attach.
 	restingIdle := rested && status == "starting"
 	switch {
@@ -60,11 +60,11 @@ func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (strin
 		return "detached", nil
 	case sess.nanoIsStopping() || status != "ready" && !restingIdle:
 		return "notReady", nil
-	case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.session.CorePromptInFlight()):
+	case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.session.runtime.CorePromptInFlight()):
 		return "busy", nil
 	}
 	if sess.queuedTurns != nil {
-		if _, queued := sess.queuedTurns.First(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID); queued {
+		if _, queued := sess.queuedTurns.First(sess.session.provider, sess.session.stateOwner.ThreadID(), sess.session.hostedThreadID); queued {
 			return "queuedBacklog", nil
 		}
 	}
@@ -74,9 +74,9 @@ func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (strin
 // BusyForMaintenance reports live, restoring or delivering work. Locks do not
 // extend into the caller's maintenance store operations.
 func (sess *Delivery) BusyForMaintenance() bool {
-	sess.session.stateMu.Lock()
-	active := sess.session.workActiveLocked() || sess.session.turnRestoreInProgress
-	sess.session.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Lock()
+	active := sess.session.stateOwner.workActiveLocked() || sess.session.stateOwner.turnRestoreInProgress
+	sess.session.stateOwner.stateMu.Unlock()
 	if active {
 		return true
 	}

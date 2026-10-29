@@ -16,9 +16,9 @@ func TestReconnectAuditDeadlineBudgets(t *testing.T) {
 	daemon.requestSessionRecovery(sess)
 	for attempt, expected := range []int64{40, 80, 120} {
 		waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= attempt+1 })
-		sess.stateMu.Lock()
-		raw := append(json.RawMessage(nil), sess.state["codexReconnect"]...)
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		raw := append(json.RawMessage(nil), sess.stateOwner.state["codexReconnect"]...)
+		sess.stateOwner.stateMu.Unlock()
 		var state struct {
 			TimeoutMS int64 `json:"timeoutMs"`
 		}

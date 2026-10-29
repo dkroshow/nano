@@ -433,7 +433,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 		connected <- conn
 		conn.AnswerRest()
 	})
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(sess.Close)

@@ -18,8 +18,9 @@ import (
 // request surface to ask, so the endpoint says so rather than calling codex.
 func TestMCPEndpointRejectsClaudeSessions(t *testing.T) {
 	sess := sessionWithOwners(&Session{id: "claude-1",
-		provider:       "claude",
-		lifecycleState: testLifecycleSnapshot("ready", false)})
+		provider: "claude",
+		stateOwner: State{
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	rec := httptest.NewRecorder()
 	sess.HandleMCPServers(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/claude-1/mcp", nil))
 	if rec.Code != http.StatusNotImplemented {
@@ -150,7 +151,7 @@ func TestMCPCacheInvalidatedByStartupNotification(t *testing.T) {
 	getSessionPath(t, sess.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")
 	sess.wire.recordWire(protocol.Recv, []byte(`{"method":"mcpServer/startupStatus/updated","params":{"name":"docs","status":"ready"}}`))
 	// The ingress queues work; wait for its processor before reading the cache.
-	if err := sess.core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
+	if err := sess.runtime.core.Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	getSessionPath(t, sess.HandleMCPServers, "/api/sessions/"+sess.ID()+"/mcp")

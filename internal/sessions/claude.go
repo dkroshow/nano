@@ -384,7 +384,7 @@ func startClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, err
 		req.ClaudeBin = ResolveClaudeBin("")
 	}
 	posture := claudeSpawnPosture{Bin: req.ClaudeBin, Args: ClaudeArgs(req)}
-	return openClaudeSession(sess, req.ClaudeShimWS, posture, "", sess.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
+	return openClaudeSession(sess, req.ClaudeShimWS, posture, "", sess.stateOwner.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
 }
 
 // resumeClaudeSession re-attaches a detached claude session, walking the
@@ -412,10 +412,10 @@ func resumeClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, er
 	// would match no thread at all: no dual-attachment guard, no runtime
 	// overlay, no tab identity. captureInit replaces this with the real id when
 	// it lands.
-	sess.stateMu.Lock()
-	sess.threadID = req.ThreadID
-	sess.stateMu.Unlock()
-	sess.setProjectionThreadID(req.ThreadID)
+	sess.stateOwner.stateMu.Lock()
+	sess.stateOwner.threadID = req.ThreadID
+	sess.stateOwner.stateMu.Unlock()
+	sess.stateOwner.setProjectionThreadID(req.ThreadID)
 	// A normal resume knows its real id before any wire traffic, so write a
 	// dialog-supplied name now. A never-prompted child carries only a provisional
 	// shim handle: keep its restored New Window title pending until the first
@@ -427,18 +427,18 @@ func resumeClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, er
 	if shimURL := strings.TrimSpace(req.ClaudeShimWS); shimURL != "" {
 		// The replay floor comes from durable prompt facts and the shim's
 		// spool, never from the stored turn anchor (claude_replay_floor.go).
-		plan, err := sess.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
+		plan, err := sess.runtime.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
 		if err != nil && plan.Resolved != "" {
 			// The spool proves which session the provisional handle's own
 			// prompts landed in. That pair is recorded before any frame is
 			// admitted or any rung chosen, and the resume continues as that
 			// native; if it cannot be recorded, nothing proceeds.
-			anchor, adoptErr := sess.adoptResolvedClaudeNative(req.ThreadID, plan.Resolved, req.ClaudeAnchor)
+			anchor, adoptErr := sess.runtime.adoptResolvedClaudeNative(req.ThreadID, plan.Resolved, req.ClaudeAnchor)
 			if adoptErr != nil {
 				return nil, adoptErr
 			}
 			req.ThreadID, req.ClaudeAnchor = plan.Resolved, anchor
-			plan, err = sess.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
+			plan, err = sess.runtime.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
 		}
 		if err != nil {
 			plan = claudeReplayPlan{FromSeq: claudeShimTailSeq, Err: err, SpoolBytes: plan.SpoolBytes}
@@ -474,7 +474,7 @@ func resumeClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, er
 				// Only positive evidence that nothing was ever handed to the
 				// provider lets the caller retire the record: a prompt that
 				// was or may have been delivered keeps it for recovery.
-				if delivered, proofErr := sess.provisionalMayHaveDelivered(context.Background(), req.ThreadID); delivered || proofErr != nil {
+				if delivered, proofErr := sess.runtime.provisionalMayHaveDelivered(context.Background(), req.ThreadID); delivered || proofErr != nil {
 					return nil, fmt.Errorf("%w: claude thread %s may have been prompted under %s and its child is gone (%v): %v", errClaudeRecoveryUnproven, sess.hostedThreadID, req.ThreadID, proofErr, err)
 				}
 				return nil, fmt.Errorf("%w: %v", errClaudeProvisionalGone, err)
@@ -511,7 +511,7 @@ func resumeClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, er
 	// Only this rung spawns from argv, so only this rung applies canonical
 	// desired intent (a shim attach above re-joins the live child as-is).
 	posture.Args = applyClaudeResumeOverlay(posture.Args, sess.metadata, sess.hostedThreadID)
-	return openClaudeSession(sess, req.ClaudeShimWS, posture, req.ThreadID, sess.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
+	return openClaudeSession(sess, req.ClaudeShimWS, posture, req.ThreadID, sess.stateOwner.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
 }
 
 // errClaudeProvisionalGone: a never-prompted thread's shim child is gone, and a
@@ -528,24 +528,24 @@ var errClaudeProvisionalGone = errors.New("claude session was never prompted and
 // failed write leaves the handle's record on disk. A claim error, including
 // one reported after its commit, stops the resume with the record intact; a
 // retry finds the recorded resolution.
-func (sess *Session) adoptResolvedClaudeNative(handle, native string, anchor hostedstore.Attachment) (hostedstore.Attachment, error) {
-	if sess.metadata == nil || sess.hostedThreadID == "" {
+func (sess *Runtime) adoptResolvedClaudeNative(handle, native string, anchor hostedstore.Attachment) (hostedstore.Attachment, error) {
+	if sess.session.metadata == nil || sess.session.hostedThreadID == "" {
 		return anchor, fmt.Errorf("%w: no claim owner for %s", errClaudeRecoveryUnproven, handle)
 	}
 	pair := hostedstore.NativeResolution{Handle: handle, Native: native}
-	if err := sess.metadata.ClaimNativeIDResolving(sess.hostedThreadID, sess.provider, native, false, &pair); err != nil {
+	if err := sess.session.metadata.ClaimNativeIDResolving(sess.session.hostedThreadID, sess.session.provider, native, false, &pair); err != nil {
 		return anchor, fmt.Errorf("%w: record provisional %s as %s: %v", errClaudeRecoveryUnproven, handle, native, err)
 	}
-	sess.stateMu.Lock()
-	sess.threadID = native
-	sess.stateMu.Unlock()
-	sess.setProjectionThreadID(native)
+	sess.session.stateOwner.stateMu.Lock()
+	sess.session.stateOwner.threadID = native
+	sess.session.stateOwner.stateMu.Unlock()
+	sess.session.stateOwner.setProjectionThreadID(native)
 	rec := anchor
 	rec.NativeThreadID = native
-	if sess.rememberAttachment != nil {
-		sess.rememberDurableAttachment(rec)
-		if sess.forgetAttachment != nil {
-			sess.forgetAttachment(sess.provider, handle)
+	if sess.session.stateOwner.rememberAttachment != nil {
+		sess.session.stateOwner.rememberDurableAttachment(rec)
+		if sess.session.stateOwner.forgetAttachment != nil {
+			sess.session.stateOwner.forgetAttachment(sess.session.provider, handle)
 		}
 	}
 	return rec, nil
@@ -559,15 +559,15 @@ func (sess *Session) adoptResolvedClaudeNative(handle, native string, anchor hos
 // only after a definite refusal. Anything else (another state or journal
 // status, a legacy or unmanaged row, an orphan journal row, another owner)
 // counts as possibly delivered, and an unreadable store is an error.
-func (sess *Session) provisionalMayHaveDelivered(ctx context.Context, handle string) (bool, error) {
-	if sess.delivery.turns == nil {
+func (sess *Runtime) provisionalMayHaveDelivered(ctx context.Context, handle string) (bool, error) {
+	if sess.session.delivery.turns == nil {
 		return false, errors.New("prompt store unavailable")
 	}
-	records, err := sess.delivery.turns.List(ctx, sess.hostedThreadID)
+	records, err := sess.session.delivery.turns.List(ctx, sess.session.hostedThreadID)
 	if err != nil {
 		return false, err
 	}
-	attempts, err := sess.delivery.turns.ListThreadAttempts(ctx, transcriptmodel.ProviderClaude, handle)
+	attempts, err := sess.session.delivery.turns.ListThreadAttempts(ctx, transcriptmodel.ProviderClaude, handle)
 	if err != nil {
 		return false, err
 	}
@@ -586,7 +586,7 @@ func (sess *Session) provisionalMayHaveDelivered(ctx context.Context, handle str
 		outboxQueued := record.Outbox.State == prompts.Queued && record.Revision != 0 && record.Provider == transcriptmodel.ProviderClaude &&
 			record.Outbox.Binding == nil && record.ProviderTurnID == "" && record.ClaimToken == ""
 		journalQueued := ok && attempt.OutboxState == prompts.Queued && attempt.Attempt.State == prompts.JournalQueued &&
-			attempt.Attempt.Revision == record.Revision && attempt.Attempt.HostedThreadID == sess.hostedThreadID &&
+			attempt.Attempt.Revision == record.Revision && attempt.Attempt.HostedThreadID == sess.session.hostedThreadID &&
 			attempt.Attempt.Provider == transcriptmodel.ProviderClaude && attempt.Attempt.Binding == nil &&
 			attempt.Attempt.ProviderTurnID == "" && attempt.Attempt.ClaimToken == "" && !attempt.Attempt.Confirmed
 		if !outboxQueued || !journalQueued {
@@ -614,8 +614,8 @@ func requireResumeCwd(req ProviderRequest) error {
 // the wired-up session back. supersedes names the native session id this child
 // replaces (a `--resume` target), empty for a fresh start.
 func openClaudeSession(sess *Session, shimURL string, posture claudeSpawnPosture, supersedes string, causation providerCausationSnapshot) (*claudeSession, error) {
-	sess.beginTurnRestore()
-	defer sess.cancelTurnRestore()
+	sess.stateOwner.beginTurnRestore()
+	defer sess.stateOwner.cancelTurnRestore()
 	c := newClaudeSession(sess, supersedes, causation)
 	tr, err := openClaudeTransport(c, shimURL, posture)
 	if err != nil {
@@ -633,18 +633,18 @@ func openClaudeSession(sess *Session, shimURL string, posture claudeSpawnPosture
 	}
 	// A fresh child needs no init frame, but any output that raced transport
 	// setup must settle with readiness instead of being dropped while starting.
-	sess.stateMu.Lock()
-	epoch, sequence := sess.lifecycleState.Epoch, sess.nextEvidenceSequenceLocked()
-	active, turnID, anchor := sess.turnRestoreActive, sess.turnRestoreID, sess.turnRestoreStartedAtMs
+	sess.stateOwner.stateMu.Lock()
+	epoch, sequence := sess.stateOwner.lifecycleState.Epoch, sess.stateOwner.nextEvidenceSequenceLocked()
+	active, turnID, anchor := sess.stateOwner.turnRestoreActive, sess.stateOwner.turnRestoreID, sess.stateOwner.turnRestoreStartedAtMs
 	ended := false
 	select {
 	case <-c.exited:
 		ended = true
 	default:
 	}
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 	if !ended {
-		sess.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: "running", active: active, settled: true}, turnID, anchor)
+		sess.stateOwner.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: "running", active: active, settled: true}, turnID, anchor)
 	}
 	go c.startControlChannel()
 	return c, nil
@@ -677,48 +677,48 @@ func (c *claudeSession) adoptDurableIdentity(tr claudeTransport) {
 		return
 	}
 	if c.supersedes != "" {
-		if c.sess.updateShimSession != nil {
-			c.sess.updateShimSession(c.sess.provider, c.supersedes, rec.ShimSessionID)
+		if c.sess.stateOwner.updateShimSession != nil {
+			c.sess.stateOwner.updateShimSession(c.sess.provider, c.supersedes, rec.ShimSessionID)
 		}
 		return
 	}
-	c.sess.stateMu.Lock()
-	if c.sess.closed || c.sess.threadID != "" {
+	c.sess.stateOwner.stateMu.Lock()
+	if c.sess.stateOwner.closed || c.sess.stateOwner.threadID != "" {
 		// The child spoke before spawn finished wiring — captureInit already
 		// landed the real identity — or the operator let the session go.
 		// Either way there is nothing provisional to adopt.
-		c.sess.stateMu.Unlock()
+		c.sess.stateOwner.stateMu.Unlock()
 		return
 	}
 	// supersedes is written under stateMu so captureInit, which takes the lock
 	// before deriving identity, cannot observe the provisional threadID without
 	// also observing the supersedes that retires it.
 	c.supersedes = rec.ShimSessionID
-	c.sess.threadID = rec.ShimSessionID
-	c.sess.stateMu.Unlock()
-	c.sess.setProjectionThreadID(rec.ShimSessionID)
+	c.sess.stateOwner.threadID = rec.ShimSessionID
+	c.sess.stateOwner.stateMu.Unlock()
+	c.sess.stateOwner.setProjectionThreadID(rec.ShimSessionID)
 	c.sess.PublishProjectionRuntime()
-	c.sess.NotifyRuntime()
-	c.sess.updateHostedThread("ready", "")
-	if c.sess.rememberAttachment == nil {
+	c.sess.stateOwner.NotifyRuntime()
+	c.sess.stateOwner.updateHostedThread("ready", "")
+	if c.sess.stateOwner.rememberAttachment == nil {
 		return
 	}
 	rec.NativeThreadID = rec.ShimSessionID
-	c.sess.rememberDurableAttachment(rec)
+	c.sess.stateOwner.rememberDurableAttachment(rec)
 	// Reconcile: a close (DELETE forgets by the threadID it could see) or the
 	// real init (captureInit forgets by supersedes) can race the writes above,
 	// making the provisional identity stale the moment it hits disk. Re-check
 	// and retire it ourselves so neither race leaves a record that would
 	// resurrect a closed session — or a duplicate of a real one — on boot.
-	c.sess.stateMu.Lock()
-	closed, current := c.sess.closed, c.sess.threadID
-	c.sess.stateMu.Unlock()
+	c.sess.stateOwner.stateMu.Lock()
+	closed, current := c.sess.stateOwner.closed, c.sess.stateOwner.threadID
+	c.sess.stateOwner.stateMu.Unlock()
 	if closed || current != rec.ShimSessionID {
-		if c.sess.forgetAttachment != nil {
-			c.sess.forgetAttachment(c.sess.provider, rec.ShimSessionID)
+		if c.sess.stateOwner.forgetAttachment != nil {
+			c.sess.stateOwner.forgetAttachment(c.sess.provider, rec.ShimSessionID)
 		}
 		if !closed && current != "" {
-			c.sess.setProjectionThreadID(current) // re-assert the id that won
+			c.sess.stateOwner.setProjectionThreadID(current) // re-assert the id that won
 		}
 	}
 }
@@ -803,29 +803,29 @@ func claudeOutboundFacts(args []string) map[string]string {
 // or a transport that dropped during attach replay — still adopts its handle
 // and is left where it is, so its teardown path still has something to close.
 func (c *claudeSession) markTransportReady() bool {
-	c.sess.stateMu.Lock()
-	if c.sess.closed {
-		c.sess.stateMu.Unlock()
+	c.sess.stateOwner.stateMu.Lock()
+	if c.sess.stateOwner.closed {
+		c.sess.stateOwner.stateMu.Unlock()
 		return false
 	}
-	c.sess.claude = c
+	c.sess.runtime.claude = c
 	select {
 	case <-c.exited:
-		c.sess.stateMu.Unlock()
+		c.sess.stateOwner.stateMu.Unlock()
 		return true
 	default:
 	}
-	event := c.sess.readyLifecycleEventLocked()
-	if c.sess.turnRestoreInProgress {
+	event := c.sess.stateOwner.readyLifecycleEventLocked()
+	if c.sess.stateOwner.turnRestoreInProgress {
 		event = lifecycle.EventReadyBeforeReplaySettled
 	}
-	changed, drain := c.sess.transitionLifecycleLocked(event)
-	status := c.sess.connectionStatusLocked()
-	c.sess.stateMu.Unlock()
+	changed, drain := c.sess.stateOwner.transitionLifecycleLocked(event)
+	status := c.sess.stateOwner.connectionStatusLocked()
+	c.sess.stateOwner.stateMu.Unlock()
 	if changed {
 		c.sess.PublishProjectionRuntime()
-		c.sess.NotifyRuntime()
-		c.sess.updateHostedThread(status, "")
+		c.sess.stateOwner.NotifyRuntime()
+		c.sess.stateOwner.updateHostedThread(status, "")
 	}
 	if drain {
 		c.sess.delivery.kickQueuedTurnDrain()
@@ -896,7 +896,7 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir wire.Direction
 		at = time.Now()
 	}
 	if !replaying {
-		if anchor := c.sess.turnAnchor(); anchor > 0 && at.UnixMilli() < anchor {
+		if anchor := c.sess.stateOwner.turnAnchor(); anchor > 0 && at.UnixMilli() < anchor {
 			at = time.UnixMilli(anchor)
 		}
 		if !c.lastLiveWireAt.IsZero() && at.Before(c.lastLiveWireAt) {
@@ -915,7 +915,7 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir wire.Direction
 			SessionID string `json:"session_id"`
 		}
 		if json.Unmarshal(line, &init) == nil && init.Type == "system" && init.Subtype == "init" && init.SessionID != "" {
-			c.sess.setProjectionThreadID(init.SessionID)
+			c.sess.stateOwner.setProjectionThreadID(init.SessionID)
 		}
 		result = init.Type == "result"
 	}
@@ -934,9 +934,9 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir wire.Direction
 		case result:
 			// On every transport a result's turn is the prompt it names, never
 			// a frame tag or the prompt last sent.
-			id, named := c.sess.claudeAnsweredTurn(line)
+			id, named := c.sess.runtime.claudeAnsweredTurn(line)
 			c.sess.projection.setClaudeResultTurnID(id)
-			native := c.sess.ThreadID()
+			native := c.sess.stateOwner.ThreadID()
 			if c.noteAnswered(line) && !named && c.unnamedLoggedFor != native {
 				c.unnamedLoggedFor = native
 				log.Printf("Claude result on %s names no prompt while one Nano wrote is unanswered; it finishes no operation (logged once per transcript)", c.sess.hostedThreadID)
@@ -1052,7 +1052,7 @@ func (c *claudeSession) restoreReplayedTurnAnchor() {
 		// still stands — carry it, or the next sync would rewrite the record
 		// with a zero seq and disarm the very check that just passed.
 		c.anchorSeq.Store(rec.TurnAnchorSeq)
-		if c.sess.restoreTurnAnchorQuietly(rec.TurnStartedAtMs) {
+		if c.sess.stateOwner.restoreTurnAnchorQuietly(rec.TurnStartedAtMs) {
 			log.Printf("claude session %s: restored turn anchor %d (spool seq %d > anchor seq %d)",
 				c.sess.id, rec.TurnStartedAtMs, turnSeq, rec.TurnAnchorSeq)
 		}
@@ -1068,12 +1068,12 @@ func (c *claudeSession) restoreReplayedTurnAnchor() {
 func (c *claudeSession) syncTurnAnchor() {
 	c.anchorMu.Lock()
 	defer c.anchorMu.Unlock()
-	anchor := c.sess.turnAnchor()
+	anchor := c.sess.stateOwner.turnAnchor()
 	if c.persistedAnchor.Load() == anchor {
 		return
 	}
-	threadID := c.sess.ThreadID()
-	if threadID == "" || c.sess.updateTurnAnchor == nil {
+	threadID := c.sess.stateOwner.ThreadID()
+	if threadID == "" || c.sess.stateOwner.updateTurnAnchor == nil {
 		// No record to write to yet. Deliberately do NOT mark this anchor as
 		// persisted: a claude session is sent its first turn before it has ever
 		// announced a native id, so recording "done" here would lose exactly the
@@ -1084,7 +1084,7 @@ func (c *claudeSession) syncTurnAnchor() {
 	if anchor != 0 {
 		seq = c.anchorSeq.Load()
 	}
-	c.sess.updateTurnAnchor(c.sess.provider, threadID, anchor, seq)
+	c.sess.stateOwner.updateTurnAnchor(c.sess.provider, threadID, anchor, seq)
 	c.persistedAnchor.Store(anchor)
 }
 
@@ -1106,7 +1106,7 @@ func (c *claudeSession) rekeyTurnAnchor() {
 func (c *claudeSession) markExited() {
 	c.exitOnce.Do(func() {
 		close(c.exited)
-		c.sess.observeConnection(lifecycle.EventRuntimeExited)
+		c.sess.stateOwner.observeConnection(lifecycle.EventRuntimeExited)
 		log.Printf("claude session %s exited", c.sess.id)
 	})
 }
@@ -1126,7 +1126,7 @@ type claudeChildTransport struct {
 
 func startClaudeChild(owner *claudeSession, posture claudeSpawnPosture) (*claudeChildTransport, error) {
 	cmd := exec.Command(posture.Bin, posture.Args...)
-	cmd.Dir = owner.sess.cwd
+	cmd.Dir = owner.sess.stateOwner.cwd
 	cmd.Stderr = os.Stderr
 	// Appended, so it overrides an entrypoint nano itself inherited (a nano
 	// launched from a Claude session carries `cli`): exec keeps the last
@@ -1260,9 +1260,9 @@ func (c *claudeSession) captureState(tr claudeTransport, line []byte) {
 // captureInit snapshots the system.init line — the Claude analog of the
 // thread/start response (model, tools, mcp_servers, permission mode).
 func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, model, permissionMode string) {
-	c.sess.stateMu.Lock()
-	closed := c.sess.closed
-	c.sess.stateMu.Unlock()
+	c.sess.stateOwner.stateMu.Lock()
+	closed := c.sess.stateOwner.closed
+	c.sess.stateOwner.stateMu.Unlock()
 	// This child's own init resolves the provisional handle it ran under. The
 	// claim owner records that pair before anything else adopts the identity,
 	// so nothing can retire the handle without it; if it cannot be recorded,
@@ -1281,21 +1281,21 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 			}
 		}
 	}
-	c.sess.stateMu.Lock()
-	if c.sess.closed {
+	c.sess.stateOwner.stateMu.Lock()
+	if c.sess.stateOwner.closed {
 		// The operator let this session go while its child was still coming up.
 		// An init landing now must not bring it back — not as a ready session,
 		// and not as a durable attachment offering to re-attach to a session
 		// that was deliberately closed. The line itself still reaches the wire
 		// buffer; only the identity it carries is refused.
-		c.sess.stateMu.Unlock()
+		c.sess.stateOwner.stateMu.Unlock()
 		return
 	}
-	c.sess.threadID = sessionID
-	c.sess.model = model
-	c.sess.stateMu.Unlock()
+	c.sess.stateOwner.threadID = sessionID
+	c.sess.stateOwner.model = model
+	c.sess.stateOwner.stateMu.Unlock()
 	c.initSeen.Store(true)
-	c.sess.setState("init", json.RawMessage(line))
+	c.sess.stateOwner.setState("init", json.RawMessage(line))
 	// Live inits are provider evidence of what the child actually runs. A shim
 	// replay re-delivers the ORIGINAL spawn's init, which the log already
 	// holds — re-appending it would postdate stale evidence past any operator
@@ -1309,16 +1309,16 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	if tr.isReplaying() {
 		cause = nil
 	}
-	c.sess.recordProviderEvidence("claude_system_init", values, freshness, cause)
-	c.sess.setProjectionThreadID(sessionID)
+	c.sess.stateOwner.recordProviderEvidence("claude_system_init", values, freshness, cause)
+	c.sess.stateOwner.setProjectionThreadID(sessionID)
 	// A fresh claude start learns its native id here (init lands with the
 	// first turn), which is the earliest a dialog-supplied name can be written.
 	c.sess.applyPendingName(sessionID)
 	// The threadID landing is what makes this session matchable by the
 	// catalog's runtime overlay (provider + nativeId).
 	c.sess.PublishProjectionRuntime()
-	c.sess.NotifyRuntime()
-	c.sess.updateHostedThread("ready", "")
+	c.sess.stateOwner.NotifyRuntime()
+	c.sess.stateOwner.updateHostedThread("ready", "")
 	// A `--resume` child mints a fresh native id; an attach lands back on the
 	// one it asked for. Only the former is a succession. A provisional identity
 	// (the shim handle standing in for a native id on a never-prompted session,
@@ -1326,7 +1326,7 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	succeeds := c.supersedes != "" && c.supersedes != sessionID
 	provisionalRetired := false
 	if succeeds {
-		err := c.sess.requireTransactionalTurnsLocked()
+		err := c.sess.runtime.requireTransactionalTurnsLocked()
 		if err != nil {
 			log.Printf("rebind transactional turns %s to %s: %v", c.supersedes, sessionID, err)
 		} else {
@@ -1342,7 +1342,7 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	}
 	// Now that the native id is authoritative, persist the attachment — but
 	// only for a transport whose child outlives nano.
-	if c.sess.rememberAttachment != nil {
+	if c.sess.stateOwner.rememberAttachment != nil {
 		if rec, ok := tr.durableAttachment(sessionID, model); ok {
 			provisionalRetired = succeeds && c.supersedes == rec.ShimSessionID
 			if succeeds && !provisionalRetired {
@@ -1354,7 +1354,7 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 				// shim handle, not a predecessor conversation.
 				rec.ContinuedFrom = c.supersedes
 			}
-			c.sess.rememberDurableAttachment(rec)
+			c.sess.stateOwner.rememberDurableAttachment(rec)
 		}
 	}
 	// The superseded record now names a session nothing can ever re-attach to:
@@ -1362,8 +1362,8 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	// forks the conversation again on every click. Only here, on the
 	// successor's own init — a resume that never got that far must leave the
 	// record intact.
-	if succeeds && c.sess.forgetAttachment != nil {
-		c.sess.forgetAttachment(c.sess.provider, c.supersedes)
+	if succeeds && c.sess.stateOwner.forgetAttachment != nil {
+		c.sess.stateOwner.forgetAttachment(c.sess.provider, c.supersedes)
 	}
 	if provisionalRetired {
 		// This init is the first turn's: the turn's anchor was persisted onto
@@ -1384,7 +1384,7 @@ func (c *claudeSession) captureSpawnFailure(sessionID string, errs []string) {
 	if c.initSeen.Load() {
 		return
 	}
-	c.sess.failSpawn(claudeSpawnFailure(sessionID, errs))
+	c.sess.stateOwner.failSpawn(claudeSpawnFailure(sessionID, errs))
 }
 
 // claudeSpawnFailure translates the child's own error text into something the

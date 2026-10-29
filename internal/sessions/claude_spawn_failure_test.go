@@ -24,7 +24,7 @@ func (rejectingNativeClaim) ClaimNativeIDResolving(string, string, string, bool,
 // exactly the rung most likely to need it.
 func TestClaudeSpawnFailureTranslatedDespiteTheSeededThreadID(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	sess.threadID = "native-1" // identity at spawn, no handshake yet
+	sess.stateOwner.threadID = "native-1" // identity at spawn, no handshake yet
 	c := &claudeSession{sess: sess, exited: make(chan struct{})}
 
 	c.captureState(&claudeChildTransport{owner: c}, []byte(claudeMissingTranscriptResult))
@@ -56,7 +56,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	unrecorded, _ := claudeTestSession(t)
 	unrecorded.hostedThreadID = "nht_unrecorded"
 	unrecorded.metadata = rejectingNativeClaim{unrecorded.metadata} // models the hosted owner refusing the absent identity
-	unrecorded.threadID = "cs_handle"
+	unrecorded.stateOwner.threadID = "cs_handle"
 	child := &claudeSession{sess: unrecorded, exited: make(chan struct{}), supersedes: "cs_handle"}
 	shim := &claudeShimTransport{owner: child, shimSessionID: "cs_handle"}
 	child.markTransportReady()
@@ -65,7 +65,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	if sum := unrecorded.Summary(); sum.Status == "exited" || strings.Contains(sum.Error, "no longer on disk") {
 		t.Fatalf("summary = %#v; a handshake whose pair was not recorded became a failed spawn", sum)
 	}
-	if got := unrecorded.ThreadID(); got != "cs_handle" {
+	if got := unrecorded.stateOwner.ThreadID(); got != "cs_handle" {
 		t.Fatalf("identity = %q; want it to stay provisional until the pair is recorded", got)
 	}
 }

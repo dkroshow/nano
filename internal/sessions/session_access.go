@@ -34,7 +34,7 @@ func (sess *Delivery) PersistedOperation(ctx context.Context, actionID string) (
 }
 
 // CWD returns the working directory retained by this attachment.
-func (sess *Session) CWD() string { return sess.cwd }
+func (sess *Session) CWD() string { return sess.stateOwner.cwd }
 
 // Wire returns the attachment's concrete wire owner.
 func (sess *Session) Wire() *Wire {
@@ -50,4 +50,20 @@ func (sess *Session) Delivery() *Delivery {
 		return nil
 	}
 	return &sess.delivery
+}
+
+// State returns the attachment's concrete stateOwner owner.
+func (sess *Session) State() *State {
+	if sess == nil {
+		return nil
+	}
+	return &sess.stateOwner
+}
+
+// Runtime returns the attachment's concrete runtime owner.
+func (sess *Session) Runtime() *Runtime {
+	if sess == nil {
+		return nil
+	}
+	return &sess.runtime
 }

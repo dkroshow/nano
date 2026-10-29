@@ -100,7 +100,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				sess := h.attach("codex", nil)
 				saved := h.savedReader(sess)
 				h.setSavedReader(sess, func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-					h.runtimes[sess].emitAndWait(t, []byte(`{"method":"turn/started","params":{"threadId":"`+sess.ThreadID()+`","turn":{"id":"new-work"}}}`))
+					h.runtimes[sess].emitAndWait(t, []byte(`{"method":"turn/started","params":{"threadId":"`+sess.State().ThreadID()+`","turn":{"id":"new-work"}}}`))
 					return saved(ctx, keys)
 				})
 				seedTestSessionRegistry(&h.server.Registry, map[string]*sessions.Session{sess.ID(): sess})

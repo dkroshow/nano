@@ -197,10 +197,10 @@ func connectionLevelResponse(method string) (any, *protocol.RPCError, bool) {
 }
 
 func (sess *Delivery) respondInteraction(ctx context.Context, p interact.PendingInteraction, decision string, answers json.RawMessage) (model.Batch, error) {
-	if err := sess.session.ensureProviderCoordinator(); err != nil {
+	if err := sess.session.runtime.ensureProviderCoordinator(); err != nil {
 		return model.Batch{}, err
 	}
-	scope := sess.session.deliveryScope()
+	scope := sess.session.runtime.deliveryScope()
 	if p.ThreadID != "" {
 		scope.NativeThreadID = &p.ThreadID
 	}
@@ -208,7 +208,7 @@ func (sess *Delivery) respondInteraction(ctx context.Context, p interact.Pending
 		scope.NativeTurnID = &p.TurnID
 	}
 	request := model.Item{ID: p.ID, Scope: scope, Detail: append(json.RawMessage(nil), p.Params...)}
-	return sess.session.core.RespondInteraction(ctx, providers.InteractionResponse{
+	return sess.session.runtime.core.RespondInteraction(ctx, providers.InteractionResponse{
 		Request: request, RequestID: p.ID, Method: p.Method, Params: p.Params,
 		Kind: providers.InteractionKind(p.Kind), Decision: decision, Answers: answers,
 	})
@@ -505,12 +505,12 @@ func (d *CodexDaemon) handleNotification(method string, params json.RawMessage) 
 		if approval != "" {
 			values[postureFieldPermissionMode] = approval
 		}
-		entry, known := sess.takeSettingsCausation(settingsSemanticKey(values))
+		entry, known := sess.stateOwner.takeSettingsCausation(settingsSemanticKey(values))
 		var snapshot providerCausationSnapshot
 		if known {
 			snapshot = entry.Snapshot
 		}
-		sess.recordProviderEvidence("thread_settings_updated", values, metadataFreshnessLive, snapshot)
+		sess.stateOwner.recordProviderEvidence("thread_settings_updated", values, metadataFreshnessLive, snapshot)
 		return
 	}
 	if method != serverRequestResolvedMethod {
@@ -586,18 +586,18 @@ func (sess *Delivery) addPendingInteraction(p interact.PendingInteraction) {
 	if err := sess.recordPermissionRequest(p); err != nil {
 		log.Printf("session %s: record permission request %s: %v", sess.session.id, p.ID, err)
 	}
-	sess.session.stateMu.Lock()
-	if sess.session.interactions == nil {
-		sess.session.interactions = map[string]interact.PendingInteraction{}
+	sess.session.stateOwner.stateMu.Lock()
+	if sess.session.stateOwner.interactions == nil {
+		sess.session.stateOwner.interactions = map[string]interact.PendingInteraction{}
 	}
-	sess.session.interactions[p.ID] = p
-	sess.session.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
-	sess.session.stateMu.Unlock()
+	sess.session.stateOwner.interactions[p.ID] = p
+	sess.session.stateOwner.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
+	sess.session.stateOwner.stateMu.Unlock()
 	if sess.session.projection != nil {
 		sess.session.projection.upsertInteraction(p)
 	}
 	sess.session.wire.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
-	sess.session.NotifyRuntime()
+	sess.session.stateOwner.NotifyRuntime()
 	if sess.session.agentExecutions != nil && sess.session.hostedThreadID != "" {
 		if err := sess.session.agentExecutions.MarkWaiting(sess.session.hostedThreadID, p.TurnID, true); err != nil {
 			log.Printf("mark hosted thread %s waiting: %v", sess.session.hostedThreadID, err)
@@ -606,15 +606,15 @@ func (sess *Delivery) addPendingInteraction(p interact.PendingInteraction) {
 }
 
 func (sess *Delivery) configureStatusClassifier() {
-	sess.session.stateMu.Lock()
-	sess.session.autoRejectInteractions = true
-	sess.session.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Lock()
+	sess.session.stateOwner.autoRejectInteractions = true
+	sess.session.stateOwner.stateMu.Unlock()
 }
 
 func (sess *Delivery) statusInteractionEpoch() int64 {
-	sess.session.stateMu.Lock()
-	defer sess.session.stateMu.Unlock()
-	return sess.session.rejectedInteractionSeq
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
+	return sess.session.stateOwner.rejectedInteractionSeq
 }
 
 // rejectStatusInteraction records the abnormal request without ever adding it
@@ -622,13 +622,13 @@ func (sess *Delivery) statusInteractionEpoch() int64 {
 // returns its own decline shape immediately; the status dispatcher observes
 // the epoch change and interrupts the classifier turn.
 func (sess *Delivery) rejectStatusInteraction(p interact.PendingInteraction) bool {
-	sess.session.stateMu.Lock()
-	if !sess.session.autoRejectInteractions {
-		sess.session.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Lock()
+	if !sess.session.stateOwner.autoRejectInteractions {
+		sess.session.stateOwner.stateMu.Unlock()
 		return false
 	}
-	sess.session.rejectedInteractionSeq++
-	sess.session.stateMu.Unlock()
+	sess.session.stateOwner.rejectedInteractionSeq++
+	sess.session.stateOwner.stateMu.Unlock()
 	if err := sess.recordPermissionRequest(p); err != nil {
 		log.Printf("session %s: record hidden status interaction %s: %v", sess.session.id, p.ID, err)
 	}
@@ -642,13 +642,13 @@ func (sess *Delivery) rejectStatusInteraction(p interact.PendingInteraction) boo
 // idempotency point on nano's side: a second answer finds nothing and is told
 // so, which is what makes a second tab's click collapse rather than double-send.
 func (sess *Delivery) takePendingInteraction(id string) (interact.PendingInteraction, bool) {
-	sess.session.stateMu.Lock()
-	defer sess.session.stateMu.Unlock()
-	p, ok := sess.session.interactions[id]
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
+	p, ok := sess.session.stateOwner.interactions[id]
 	if ok {
-		delete(sess.session.interactions, id)
-		if len(sess.session.interactions) == 0 {
-			sess.session.observeInteractionLocked(lifecycle.EventAnswered, "")
+		delete(sess.session.stateOwner.interactions, id)
+		if len(sess.session.stateOwner.interactions) == 0 {
+			sess.session.stateOwner.observeInteractionLocked(lifecycle.EventAnswered, "")
 		}
 	}
 	if ok && sess.session.projection != nil {
@@ -663,7 +663,7 @@ func (sess *Delivery) takePendingInteraction(id string) (interact.PendingInterac
 func (sess *Delivery) claimPendingInteraction(id string) (interact.PendingInteraction, bool) {
 	p, ok := sess.takePendingInteraction(id)
 	if ok {
-		sess.session.NotifyRuntime()
+		sess.session.stateOwner.NotifyRuntime()
 		if sess.session.agentExecutions != nil && sess.session.hostedThreadID != "" {
 			remaining := len(sess.PendingInteractionList()) > 0
 			if err := sess.session.agentExecutions.MarkWaiting(sess.session.hostedThreadID, p.TurnID, remaining); err != nil {
@@ -677,14 +677,14 @@ func (sess *Delivery) claimPendingInteraction(id string) (interact.PendingIntera
 // drainPendingInteractions removes and returns everything still parked —
 // teardown's list of requests it must answer before unsubscribing.
 func (sess *Delivery) drainPendingInteractions() []interact.PendingInteraction {
-	sess.session.stateMu.Lock()
-	out := make([]interact.PendingInteraction, 0, len(sess.session.interactions))
-	for _, p := range sess.session.interactions {
+	sess.session.stateOwner.stateMu.Lock()
+	out := make([]interact.PendingInteraction, 0, len(sess.session.stateOwner.interactions))
+	for _, p := range sess.session.stateOwner.interactions {
 		out = append(out, p)
 	}
-	sess.session.interactions = nil
-	sess.session.observeInteractionLocked(lifecycle.EventAnswered, "")
-	sess.session.stateMu.Unlock()
+	sess.session.stateOwner.interactions = nil
+	sess.session.stateOwner.observeInteractionLocked(lifecycle.EventAnswered, "")
+	sess.session.stateOwner.stateMu.Unlock()
 	if sess.session.projection != nil {
 		for _, interaction := range out {
 			sess.session.projection.removeInteraction(interaction.ID)
@@ -692,7 +692,7 @@ func (sess *Delivery) drainPendingInteractions() []interact.PendingInteraction {
 	}
 	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
 	if len(out) > 0 {
-		sess.session.NotifyRuntime()
+		sess.session.stateOwner.NotifyRuntime()
 		if sess.session.agentExecutions != nil && sess.session.hostedThreadID != "" {
 			if err := sess.session.agentExecutions.MarkWaiting(sess.session.hostedThreadID, "", false); err != nil {
 				log.Printf("clear hosted thread %s interactions: %v", sess.session.hostedThreadID, err)
@@ -705,12 +705,12 @@ func (sess *Delivery) drainPendingInteractions() []interact.PendingInteraction {
 // PendingInteractionList is the /state snapshot — the authoritative copy for a
 // tab that opened after the request landed and so cannot find it by replay.
 func (sess *Delivery) PendingInteractionList() []interact.PendingInteraction {
-	sess.session.stateMu.Lock()
-	out := make([]interact.PendingInteraction, 0, len(sess.session.interactions))
-	for _, p := range sess.session.interactions {
+	sess.session.stateOwner.stateMu.Lock()
+	out := make([]interact.PendingInteraction, 0, len(sess.session.stateOwner.interactions))
+	for _, p := range sess.session.stateOwner.interactions {
 		out = append(out, p)
 	}
-	sess.session.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
 	return out
 }

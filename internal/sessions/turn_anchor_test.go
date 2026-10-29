@@ -16,12 +16,13 @@ import (
 
 func anchorTestSession(provider string) *Session {
 	return sessionWithOwners(&Session{id: "sess-anchor",
-		provider:       provider,
-		createdAt:      time.Now(),
-		state:          map[string]json.RawMessage{},
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		provider:  provider,
+		createdAt: time.Now(),
 		wire: Wire{
-			subs: map[chan wire.Event]struct{}{}}})
+			subs: map[chan wire.Event]struct{}{}},
+		stateOwner: State{
+			state:          map[string]json.RawMessage{},
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
 }
 
 func codexTurnStartedLine(turnID string, startedAtSeconds int64) []byte {
@@ -73,11 +74,11 @@ func TestCodexTurnStartedAnchorAbsentWhenUnstated(t *testing.T) {
 func TestTurnAnchorSetOnStartAndNotMovedByAKeepAlive(t *testing.T) {
 	sess := anchorTestSession("codex")
 	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
-	if got := sess.turnAnchor(); got != 1785510514000 {
+	if got := sess.stateOwner.turnAnchor(); got != 1785510514000 {
 		t.Fatalf("anchor after start = %d, want 1785510514000", got)
 	}
 	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510999))
-	if got := sess.turnAnchor(); got != 1785510514000 {
+	if got := sess.stateOwner.turnAnchor(); got != 1785510514000 {
 		t.Fatalf("anchor after a same-turn event = %d, want it unmoved at 1785510514000", got)
 	}
 }
@@ -92,7 +93,7 @@ func TestTurnAnchorResetsForTheNextTurn(t *testing.T) {
 	})
 	sess.wire.recordWire(protocol.Recv, completed)
 	sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-2", 1785510999))
-	if got := sess.turnAnchor(); got != 1785510999000 {
+	if got := sess.stateOwner.turnAnchor(); got != 1785510999000 {
 		t.Fatalf("anchor for the second turn = %d, want 1785510999000", got)
 	}
 }
@@ -104,19 +105,19 @@ func TestTurnAnchorClearsAtEveryTerminalSite(t *testing.T) {
 		name string
 		end  func(*Session)
 	}{
-		{"turn completed", func(s *Session) { s.setTurnActive(false, "", 0, true) }},
+		{"turn completed", func(s *Session) { s.stateOwner.setTurnActive(false, "", 0, true) }},
 		{"session exited", func(s *Session) { s.setStatus("exited") }},
-		{"spawn failed", func(s *Session) { s.failSpawn("boom") }},
+		{"spawn failed", func(s *Session) { s.stateOwner.failSpawn("boom") }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sess := anchorTestSession("codex")
 			sess.wire.recordWire(protocol.Recv, codexTurnStartedLine("turn-1", 1785510514))
-			if sess.turnAnchor() == 0 {
+			if sess.stateOwner.turnAnchor() == 0 {
 				t.Fatal("precondition: the turn should be anchored")
 			}
 			tc.end(sess)
-			if got := sess.turnAnchor(); got != 0 {
+			if got := sess.stateOwner.turnAnchor(); got != 0 {
 				t.Fatalf("anchor after %s = %d, want 0", tc.name, got)
 			}
 			if sum := sess.Summary(); sum.TurnStartedAtMs != 0 {
@@ -135,25 +136,25 @@ func TestClaudeReplayRecoversTurnStateWithoutInventingAnAnchor(t *testing.T) {
 
 	live := anchorTestSession("claude")
 	live.wire.recordWireLive(protocol.Send, userLine, true)
-	if live.Summary().TurnActive || live.turnAnchor() != 0 {
+	if live.Summary().TurnActive || live.stateOwner.turnAnchor() != 0 {
 		t.Fatal("local send invented execution evidence")
 	}
 	live.wire.recordWireLive(protocol.Recv, []byte(`{"type":"assistant","message":{"role":"assistant"}}`), true)
-	if !live.Summary().TurnActive || live.turnAnchor() == 0 {
+	if !live.Summary().TurnActive || live.stateOwner.turnAnchor() == 0 {
 		t.Fatalf("live provider output should open an anchored turn, got %+v", live.Summary())
 	}
 
 	replayed := anchorTestSession("claude")
-	replayed.beginTurnRestore()
+	replayed.stateOwner.beginTurnRestore()
 	replayed.wire.recordWireLive(protocol.Send, userLine, false)
 	if replayed.Summary().TurnActive {
 		t.Fatal("replay published work before settlement")
 	}
-	replayed.settleRestoredTurnState()
+	replayed.stateOwner.settleRestoredTurnState()
 	if !replayed.Summary().TurnActive {
 		t.Fatal("a replayed send should still recover the turn state")
 	}
-	if got := replayed.turnAnchor(); got != 0 {
+	if got := replayed.stateOwner.turnAnchor(); got != 0 {
 		t.Fatalf("replayed anchor = %d, want 0 — arrival time is not evidence here", got)
 	}
 }
@@ -164,22 +165,22 @@ func TestClaudeReplayRecoversTurnStateWithoutInventingAnAnchor(t *testing.T) {
 // silently shorten one.
 func TestRestoreTurnAnchorGuards(t *testing.T) {
 	idle := anchorTestSession("claude")
-	if idle.restoreTurnAnchor(1785510514000) {
+	if idle.stateOwner.restoreTurnAnchor(1785510514000) {
 		t.Fatal("an idle session must not accept an anchor")
 	}
 
 	sess := anchorTestSession("claude")
 	sess.wire.recordWireLive(protocol.Send, []byte(`{"type":"user"}`), false)
-	if !sess.restoreTurnAnchor(1785510514000) {
+	if !sess.stateOwner.restoreTurnAnchor(1785510514000) {
 		t.Fatal("an unanchored active turn should accept the persisted anchor")
 	}
-	if sess.restoreTurnAnchor(1785510999000) {
+	if sess.stateOwner.restoreTurnAnchor(1785510999000) {
 		t.Fatal("an anchor must never move forward")
 	}
-	if got := sess.turnAnchor(); got != 1785510514000 {
+	if got := sess.stateOwner.turnAnchor(); got != 1785510514000 {
 		t.Fatalf("anchor = %d, want the earlier 1785510514000", got)
 	}
-	if !sess.restoreTurnAnchor(1785510000000) {
+	if !sess.stateOwner.restoreTurnAnchor(1785510000000) {
 		t.Fatal("an earlier anchor is a legitimate backward correction")
 	}
 }
@@ -231,7 +232,7 @@ func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 			sess := anchorTestSession("codex")
 			var mu sync.Mutex
 			var nudges int
-			sess.runtimeNotify = func() {
+			sess.stateOwner.runtimeNotify = func() {
 				mu.Lock()
 				nudges++
 				mu.Unlock()
@@ -257,8 +258,9 @@ func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 func TestApplyPendingNameWritesOnceAtTheFirstRealBind(t *testing.T) {
 	var writes []string
 	sess := sessionWithOwners(&Session{provider: "claude",
-		pendingName:    "overnight run",
-		lifecycleState: testLifecycleSnapshot("ready", false)})
+		stateOwner: State{
+			pendingName:    "overnight run",
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	sess.nameThread = func(provider, nativeID, name string) {
 		writes = append(writes, provider+"/"+nativeID+"="+name)
 	}
@@ -389,7 +391,7 @@ func attachWithStoredAnchor(t *testing.T, shim *claudeshim.Server, stored hosted
 	t.Helper()
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
-	sess.updateTurnAnchor = anchors.set
+	sess.stateOwner.updateTurnAnchor = anchors.set
 	claude, err := attachClaudeSession(sess, shim.WSURL(), "native-1", claudeReplayPlan{}, claudeSpawnPosture{}, stored)
 	if err != nil {
 		t.Fatalf("attachClaudeSession: %v", err)
@@ -519,14 +521,14 @@ func TestClaudeSendTurnPersistsAndClearsTheAnchor(t *testing.T) {
 
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
-	sess.updateTurnAnchor = anchors.set
+	sess.stateOwner.updateTurnAnchor = anchors.set
 	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
 	}
 	defer claude.Close()
 	waitForClaude(t, "the init line and the shim seq watermark", func() bool {
-		return sess.ThreadID() == "native-1" && claude.tr.lastSeq() == 2
+		return sess.stateOwner.ThreadID() == "native-1" && claude.tr.lastSeq() == 2
 	})
 
 	if err := claude.SendTurn("hello"); err != nil {
@@ -543,7 +545,7 @@ func TestClaudeSendTurnPersistsAndClearsTheAnchor(t *testing.T) {
 	}
 
 	claude.deliverLine(claude.tr, protocol.Recv, []byte(claudeReplayResultLine), 4, time.Time{})
-	if got := sess.turnAnchor(); got != 0 {
+	if got := sess.stateOwner.turnAnchor(); got != 0 {
 		t.Fatalf("anchor after the result line = %d, want 0", got)
 	}
 	if write, _ := anchors.last(); write.startedAt != 0 || write.seq != 0 {
@@ -592,7 +594,7 @@ func TestClaudeFirstTurnAnchorIsPersistedOnceTheInitLineLands(t *testing.T) {
 
 	sess, _ := claudeTestSession(t)
 	anchors := newAnchorRecorder()
-	sess.updateTurnAnchor = anchors.set
+	sess.stateOwner.updateTurnAnchor = anchors.set
 	claude, err := startClaudeSession(sess, claudeShimSpawnRequest(sess, shim.WSURL()))
 	if err != nil {
 		t.Fatalf("startClaudeSession: %v", err)
@@ -612,6 +614,6 @@ func TestClaudeFirstTurnAnchorIsPersistedOnceTheInitLineLands(t *testing.T) {
 	waitForClaudeThreadID(t, sess, "native-1")
 	waitForClaude(t, "the first turn's anchor to reach the record", func() bool {
 		write, ok := anchors.last()
-		return ok && write.threadID == "native-1" && write.startedAt == sess.turnAnchor()
+		return ok && write.threadID == "native-1" && write.startedAt == sess.stateOwner.turnAnchor()
 	})
 }

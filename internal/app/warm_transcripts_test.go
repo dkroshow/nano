@@ -328,7 +328,7 @@ func TestWarmStreamRetriesARefusedThreadWithATail(t *testing.T) {
 	seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{h.sess.ID(): h.sess}) // it is back
 	// An operator star change is a real sidebar delta that wakes the stream.
 	rec := httptest.NewRecorder()
-	h.srv.sidebar.HandleThreadStarred(rec, httptest.NewRequest(http.MethodPut, "/star", strings.NewReader(`{"starred":true}`)), h.sess.ThreadID())
+	h.srv.sidebar.HandleThreadStarred(rec, httptest.NewRequest(http.MethodPut, "/star", strings.NewReader(`{"starred":true}`)), h.sess.State().ThreadID())
 	if rec.Code != http.StatusOK {
 		t.Fatalf("sidebar wake: %d %s", rec.Code, rec.Body.String())
 	}

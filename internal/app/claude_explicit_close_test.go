@@ -287,14 +287,14 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "close-test")
 	hosted, _, _ := fixtureBeginSession(store, "live-close", "hash", "claude", presentationShared)
 	sess := newCloseFixtureSession(t, store, hosted.ID)
-	if err := sess.BeginProviderSpawn(claudeShimSpawnRequest(sess, shim.WSURL()).ProviderRequest, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(claudeShimSpawnRequest(sess, shim.WSURL()).ProviderRequest, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")
-	_ = store.BindSession(hosted.ID, sess.ID(), sess.ThreadID(), "ready", presentationShared)
+	_ = store.BindSession(hosted.ID, sess.ID(), sess.State().ThreadID(), "ready", presentationShared)
 	op, _, _ := fixtureBeginTurn(store, hosted.ID, "pending", "hash")
 	attachments := newTestStore(t)
-	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
+	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.State().ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), attachments: attachments, agentExecutions: store}, map[string]*sessions.Session{sess.ID(): sess})
 	w := httptest.NewRecorder()
 	fixtureOwners(s).hostedController().HandleLegacyClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
@@ -343,11 +343,11 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 				t.Fatal(err)
 			}
 			sess := newCloseFixtureSession(t, store, hosted.ID)
-			if err := sess.BeginProviderSpawn(claudeShimSpawnRequest(sess, shim.WSURL()).ProviderRequest, nil, func() {}); err != nil {
+			if err := sess.Runtime().BeginProviderSpawn(claudeShimSpawnRequest(sess, shim.WSURL()).ProviderRequest, nil, func() {}); err != nil {
 				t.Fatal(err)
 			}
 			waitForClaudeStatus(t, sess, "ready")
-			if err := store.BindSession(hosted.ID, sess.ID(), sess.ThreadID(), "ready", presentationShared); err != nil {
+			if err := store.BindSession(hosted.ID, sess.ID(), sess.State().ThreadID(), "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
 			op, _, err := fixtureBeginTurn(store, hosted.ID, "pending", "hash")

@@ -10,7 +10,7 @@ import (
 // the POST answers with, so only the failures a caller can act on — an
 // already-attached thread, a resume ladder that found nothing to attach to —
 // come back as errors here. Handshake failures land on the session itself.
-func (sess *Session) BeginProviderSpawn(req ProviderRequest, daemon *CodexDaemon, discard func()) error {
+func (sess *Runtime) BeginProviderSpawn(req ProviderRequest, daemon *CodexDaemon, discard func()) error {
 	if err := sess.ensureCoreSession(); err != nil {
 		return err
 	}
@@ -30,32 +30,32 @@ func (sess *Session) BeginProviderSpawn(req ProviderRequest, daemon *CodexDaemon
 
 // beginProviderSpawnLegacy is the c2: asynchronous attachment shim. Provider
 // adapters replace it when their Start and Resume operations return evidence.
-func (sess *Session) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDaemon, discard func()) error {
+func (sess *Runtime) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDaemon, discard func()) error {
 	if req.Provider == "codex" {
-		return startCodexSession(sess, daemon, req)
+		return startCodexSession(sess.session, daemon, req)
 	}
 	if req.Provider == "grok" {
-		startGrokSession(sess, req)
+		startGrokSession(sess.session, req)
 		return nil
 	}
 	if req.Mode == "resume" {
 		if req.BootReattach != nil {
 			go func() {
-				defer req.BootReattach.holdHandshakeSlot(sess)()
-				sess.stateMu.Lock()
-				closed := sess.closed
-				sess.stateMu.Unlock()
+				defer req.BootReattach.holdHandshakeSlot(sess.session)()
+				sess.session.stateOwner.stateMu.Lock()
+				closed := sess.session.stateOwner.closed
+				sess.session.stateOwner.stateMu.Unlock()
 				if closed {
-					sess.recordRestartFailure("closed")
+					sess.session.stateOwner.recordRestartFailure("closed")
 					return
 				}
 				if err := sess.resumeClaudeForSpawn(req); err != nil {
 					if errors.Is(err, errSpawnSessionClosed) {
-						sess.recordRestartFailure("closed")
-						log.Printf("claude boot session %s was closed before its transport came up", sess.id)
+						sess.session.stateOwner.recordRestartFailure("closed")
+						log.Printf("claude boot session %s was closed before its transport came up", sess.session.id)
 						return
 					}
-					sess.recordRestartFailure("handshake_failed")
+					sess.session.stateOwner.recordRestartFailure("handshake_failed")
 					log.Printf("boot re-attach %s/%s failed (left detached): %v", req.Provider, req.ThreadID, err)
 					discard()
 				}
@@ -68,7 +68,7 @@ func (sess *Session) beginProviderSpawnLegacy(req ProviderRequest, daemon *Codex
 					if errors.Is(err, errSpawnSessionClosed) {
 						return
 					}
-					sess.failSpawn(err.Error())
+					sess.session.stateOwner.failSpawn(err.Error())
 				}
 			}()
 			return nil
@@ -76,33 +76,33 @@ func (sess *Session) beginProviderSpawnLegacy(req ProviderRequest, daemon *Codex
 		return sess.resumeClaudeForSpawn(req)
 	}
 	go func() {
-		if _, err := startClaudeSession(sess, req); err != nil {
+		if _, err := startClaudeSession(sess.session, req); err != nil {
 			if errors.Is(err, errSpawnSessionClosed) {
-				log.Printf("claude session %s was closed before its transport came up", sess.id)
+				log.Printf("claude session %s was closed before its transport came up", sess.session.id)
 				return // closed by the operator: reporting a failure would resurrect it
 			}
-			log.Printf("start claude session %s: %v", sess.id, err)
-			sess.failSpawn(err.Error())
+			log.Printf("start claude session %s: %v", sess.session.id, err)
+			sess.session.stateOwner.failSpawn(err.Error())
 		}
 	}()
 	return nil
 }
 
-func (sess *Session) resumeClaudeForSpawn(req ProviderRequest) error {
+func (sess *Runtime) resumeClaudeForSpawn(req ProviderRequest) error {
 	// The manual path calls this synchronously because its rungs decide WHICH
 	// session the operator gets (attach, respawn, or refuse), and the refusal is
 	// the frozen 409 the frontend routes on. Boot runs the same work behind its
 	// already-registered shell because no HTTP caller is waiting for that choice.
-	_, err := resumeClaudeSession(sess, req)
+	_, err := resumeClaudeSession(sess.session, req)
 	if err == nil {
-		sess.recordRestartStep(restartAttached)
+		sess.session.stateOwner.recordRestartStep(restartAttached)
 	}
-	if errors.Is(err, errClaudeProvisionalGone) && sess.forgetAttachment != nil {
+	if errors.Is(err, errClaudeProvisionalGone) && sess.session.stateOwner.forgetAttachment != nil {
 		// The never-prompted thread's child is gone and it has no transcript
 		// to come back from. Retire the record: an empty conversation lost is
 		// nothing lost, while a surviving record would sit in the sidebar as
 		// a detached row that can never resume.
-		sess.forgetAttachment("claude", req.ThreadID)
+		sess.session.stateOwner.forgetAttachment("claude", req.ThreadID)
 	}
 	return err
 }

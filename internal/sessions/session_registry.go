@@ -33,12 +33,12 @@ func (s *Registry) SessionForThread(provider, nativeThreadID string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider != provider || sess.ThreadID() != nativeThreadID {
+		if sess.provider != provider || sess.stateOwner.ThreadID() != nativeThreadID {
 			continue
 		}
-		sess.stateMu.Lock()
-		exited := sess.connectionStatusLocked() == StatusExited
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		exited := sess.stateOwner.connectionStatusLocked() == StatusExited
+		sess.stateOwner.stateMu.Unlock()
 		if exited {
 			continue
 		}
@@ -58,9 +58,9 @@ func (s *Registry) LiveSessionForResume(provider, nativeThreadID, hostedThreadID
 	if existing == nil || hostedThreadID == "" {
 		return nil
 	}
-	existing.stateMu.Lock()
-	exited := existing.connectionStatusLocked() == StatusExited
-	existing.stateMu.Unlock()
+	existing.stateOwner.stateMu.Lock()
+	exited := existing.stateOwner.connectionStatusLocked() == StatusExited
+	existing.stateOwner.stateMu.Unlock()
 	if exited {
 		return nil
 	}
@@ -105,9 +105,9 @@ func liveHostedThreadSession(matches []*Session) *Session {
 	var oldest *Session
 	var oldestCreated string
 	for _, sess := range matches {
-		sess.stateMu.Lock()
-		exited := sess.connectionStatusLocked() == StatusExited
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		exited := sess.stateOwner.connectionStatusLocked() == StatusExited
+		sess.stateOwner.stateMu.Unlock()
 		if exited {
 			continue
 		}
@@ -131,7 +131,7 @@ func (s *Registry) ResolveLiveHostedThreadRecord(ref string, lookup func(string)
 	}
 	if hostedThreadID == "" {
 		for _, sess := range s.sessions {
-			if sess.ThreadID() != ref {
+			if sess.stateOwner.ThreadID() != ref {
 				continue
 			}
 			if hostedThreadID != "" && hostedThreadID != sess.hostedThreadID {
@@ -216,7 +216,7 @@ func (s *Registry) AttachmentSession(provider, nativeID string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider == provider && sess.ThreadID() == nativeID {
+		if sess.provider == provider && sess.stateOwner.ThreadID() == nativeID {
 			return sess
 		}
 	}
@@ -228,7 +228,7 @@ func (s *Registry) ForgetDetachedClaude(nativeID string, forget func() error) er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.provider == "claude" && sess.ThreadID() == nativeID && sess.Summary().Status != StatusExited {
+		if sess.provider == "claude" && sess.stateOwner.ThreadID() == nativeID && sess.Summary().Status != StatusExited {
 			return fmt.Errorf("thread is attached; end its session before forgetting")
 		}
 	}
@@ -266,7 +266,7 @@ func (s *Registry) MonitorSnapshot() (int, []observability.ActiveTurn) {
 	sessions := s.SnapshotSessions()
 	turns := []observability.ActiveTurn{}
 	for _, sess := range sessions {
-		if turn, active := sess.ActiveTurnSnapshot(); active {
+		if turn, active := sess.stateOwner.ActiveTurnSnapshot(); active {
 			turns = append(turns, turn)
 		}
 	}

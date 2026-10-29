@@ -78,29 +78,29 @@ func newResultProjection(provider string, finals map[string]string) *LiveProject
 func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.Store, []resultPrompt, []resultFrame) {
 	t.Helper()
 	sess, store := readyTransactionalSendTestSession(t, nil)
-	sess.provider, sess.hostedThreadID, sess.threadID = "claude", "hosted", "claude-settle"
-	sess.state = map[string]json.RawMessage{}
+	sess.provider, sess.hostedThreadID, sess.stateOwner.threadID = "claude", "hosted", "claude-settle"
+	sess.stateOwner.state = map[string]json.RawMessage{}
 	sess.wire.subs = map[chan wire.Event]struct{}{}
-	sess.interactions = map[string]interact.PendingInteraction{}
+	sess.stateOwner.interactions = map[string]interact.PendingInteraction{}
 	recorder := &resultRecorder{}
 	sess.agentExecutions = recorder
 	identities := fixture.ClaudeResultPromptIdentities()
 	sess.projection = newResultProjection("claude", map[string]string{identities[0].Turn: fixture.ClaudeResultAnswerA, identities[3].Turn: fixture.ClaudeResultAnswerMerged})
 	var order []resultPrompt
-	replacements := []string{"{{NATIVE}}", sess.ThreadID()}
+	replacements := []string{"{{NATIVE}}", sess.stateOwner.ThreadID()}
 	for _, identity := range identities {
 		action := "prompt-" + identity.Name
 		event := SubmissionEventID("hosted", action)
 		order = append(order, resultPrompt{identity.Name, event, identity.Turn})
 		replacements = append(replacements, "{{"+identity.Name+"}}", event)
-		if _, _, err := store.Submit(context.Background(), prompts.Submission{HostedThreadID: "hosted", Provider: model.ProviderClaude, NativeThreadID: sess.ThreadID(), ActionID: action, ProviderText: action, PresentationText: action, TextHash: action, RequestHash: action}); err != nil {
+		if _, _, err := store.Submit(context.Background(), prompts.Submission{HostedThreadID: "hosted", Provider: model.ProviderClaude, NativeThreadID: sess.stateOwner.ThreadID(), ActionID: action, ProviderText: action, PresentationText: action, TextHash: action, RequestHash: action}); err != nil {
 			t.Fatal(err)
 		}
 		token := "claim-" + identity.Name
 		if _, claimed, err := store.Claim(context.Background(), prompts.ClaimRequest{HostedThreadID: "hosted", Token: token, AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 			t.Fatalf("claim %s: %v %v", identity.Name, claimed, err)
 		}
-		native := sess.ThreadID()
+		native := sess.stateOwner.ThreadID()
 		if _, err := store.Accepted(context.Background(), prompts.Acceptance{ActionID: action, ClaimToken: token, AttachmentEpoch: 1, Binding: prompts.Binding{EventID: event, Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderClaude, NativeThreadID: &native, NativeTurnID: &identity.Turn}}}); err != nil {
 			t.Fatal(err)
 		}
@@ -121,10 +121,10 @@ func resultBindingFixture(t *testing.T) (*Session, *resultRecorder, *coreturns.S
 		}
 		frames = append(frames, frame)
 	}
-	if err := sess.ensureCoreSession(); err != nil {
+	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.coreSession().Close)
+	t.Cleanup(sess.runtime.coreSession().Close)
 	turns, err := coreturns.OpenStore(context.Background(), sess.delivery.queuedTurns.Database())
 	if err != nil {
 		t.Fatal(err)
@@ -166,14 +166,14 @@ func TestClaudeResultIngressBindsToAnsweredPrompt(t *testing.T) {
 		}
 		c.AnswerRest()
 	})
-	owner := newClaudeSession(sess, sess.ThreadID())
+	owner := newClaudeSession(sess, sess.stateOwner.ThreadID())
 	tr, err := startClaudeShimSession(owner, shim.WSURL(), claudeSpawnPosture{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tr.close()
 	owner.tr = tr
-	sess.claude = owner
+	sess.runtime.claude = owner
 	for _, prompt := range order {
 		if _, err := owner.sendTurnWithEventID("prompt "+prompt.name, prompt.event); err != nil {
 			t.Fatal(err)
@@ -181,7 +181,7 @@ func TestClaudeResultIngressBindsToAnsweredPrompt(t *testing.T) {
 		written <- struct{}{}
 		waitForClaude(t, "captured frames", func() bool { return tr.lastSeq() >= until[prompt.name] })
 	}
-	if err := sess.coreSession().Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
+	if err := sess.runtime.coreSession().Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []resultTerminal{{order[0].turn, agentTurnCompleted, fixture.ClaudeResultAnswerA}, {order[3].turn, agentTurnCompleted, fixture.ClaudeResultAnswerMerged}} {
@@ -221,7 +221,7 @@ func (directResultTransport) durableAttachment(string, string) (hostedstore.Atta
 
 func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	sess, recorder, _, order, frames := resultBindingFixture(t)
-	owner := newClaudeSession(sess, sess.ThreadID())
+	owner := newClaudeSession(sess, sess.stateOwner.ThreadID())
 	tr := directResultTransport{}
 	owner.tr = tr
 	var logs resultLogBuffer
@@ -240,7 +240,7 @@ func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 			owner.deliverLine(tr, protocol.Recv, frame.Line, 0, time.Now())
 		}
 	}
-	if err := sess.coreSession().Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
+	if err := sess.runtime.coreSession().Observe(context.Background(), coresession.AdapterEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	found := false

@@ -179,7 +179,7 @@ func (h *liveTextHarness) release() {
 // page reads the catalog directly: the test's own view of what is saved.
 func (h *liveTextHarness) page(query threadindex.TranscriptQuery) []threadindex.TranscriptItem {
 	h.t.Helper()
-	id, err := h.service.ResolveThreadReference(context.Background(), h.sess.ThreadID())
+	id, err := h.service.ResolveThreadReference(context.Background(), h.sess.State().ThreadID())
 	if err != nil {
 		return nil
 	}
@@ -195,7 +195,7 @@ func (h *liveTextHarness) page(query threadindex.TranscriptQuery) []threadindex.
 func (h *liveTextHarness) waitTurnEnded(nativeTurnID string) {
 	h.t.Helper()
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		id, err := h.service.ResolveThreadReference(context.Background(), h.sess.ThreadID())
+		id, err := h.service.ResolveThreadReference(context.Background(), h.sess.State().ThreadID())
 		if err != nil {
 			continue // not indexed yet
 		}
@@ -253,7 +253,7 @@ func fixtureLines(t *testing.T, name string) [][]byte {
 // feed supplies captured evidence through the actual provider transport.
 func (h *liveTextHarness) feed(lines [][]byte) {
 	if h.runtime == nil {
-		h.runtime = connectProviderRuntimeFixture(h.t, h.sess, h.projection, h.sess.ThreadID(), "fixture-model")
+		h.runtime = connectProviderRuntimeFixture(h.t, h.sess, h.projection, h.sess.State().ThreadID(), "fixture-model")
 	}
 	for _, line := range lines {
 		h.runtime.emitAtAndWait(h.t, line, time.Now(), h.turn)
@@ -452,7 +452,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 			out["conversation "+string(view)] = rec.Body.String()
 		}
 		rec := httptest.NewRecorder()
-		threadindex.NewHandlers(h.srv.catalog).HandleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess.ThreadID())
+		threadindex.NewHandlers(h.srv.catalog).HandleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess.State().ThreadID())
 		out["session history"] = rec.Body.String()
 		return out
 	}
@@ -587,7 +587,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 					want["prompt:"+action] = ""
 				}
 				if _, _, err := h.sess.Delivery().PromptStore().Submit(context.Background(), prompts.Submission{
-					HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", NativeThreadID: h.sess.ThreadID(),
+					HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", NativeThreadID: h.sess.State().ThreadID(),
 					ActionID: action, ProviderText: "The same prompt.", PresentationText: "The same prompt.",
 					TextHash: sendTextHash("The same prompt."), RequestHash: sendTextHash("The same prompt."), Origin: prompts.HumanOrigin,
 				}); err != nil {
@@ -599,7 +599,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			// no cached operations, requiring the scoped committed lookup.
 			liveTextOf(h.sess).unsubscribe(h.pane)
 			store = emptyReader
-			fresh := newFixtureSession(sessions.Config{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.Delivery().PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
+			fresh := newFixtureSession(sessions.Config{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.Delivery().PromptStore(), AgentExecutions: store}, h.sess.State().ThreadID())
 			h.srv.startLiveText(fresh)
 			stream := httptest.NewServer(http.HandlerFunc(fresh.HandleLiveStream))
 			defer stream.Close()
@@ -712,7 +712,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				ctx := context.Background()
 				h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 				sess := h.sess
-				hosted, native := sess.HostedThreadID(), sess.ThreadID()
+				hosted, native := sess.HostedThreadID(), sess.State().ThreadID()
 				var interrupts atomic.Int32
 
 				seedTestSessionRegistry(&h.srv.Registry, map[string]*sessions.Session{sess.ID(): sess})
@@ -936,7 +936,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 	executions := newTestAgentExecutionStore(t, "run")
 	h := newLiveTextHarnessForThread(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40}, grokFixtureThread, func(cfg *sessions.Config) { cfg.AgentExecutions = executions })
 	sess := h.sess // a Discard ends any operation the prompt carries
-	hosted, native := sess.HostedThreadID(), sess.ThreadID()
+	hosted, native := sess.HostedThreadID(), sess.State().ThreadID()
 	const text = "no, budget requests go to me"
 	if _, _, err := sess.Delivery().PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "dropped",
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: prompts.HumanOrigin}); err != nil {
@@ -977,7 +977,7 @@ func TestLiveTextDiscardRemovesAnUnsavedDeliveredPrompt(t *testing.T) {
 func (h *liveTextHarness) deliveryJournal() map[string]prompts.View {
 	h.t.Helper()
 	rec := httptest.NewRecorder()
-	h.sess.Delivery().HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.ThreadID(), nil))
+	h.sess.Delivery().HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.State().ThreadID(), nil))
 	var body struct {
 		Operations []prompts.View `json:"operations"`
 	}
@@ -1020,7 +1020,7 @@ func liveEntry(live []liveTextEntry, id string) *liveTextEntry {
 func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin prompts.Origin, createdAt string) {
 	h.t.Helper()
 	ctx := context.Background()
-	hosted, native := h.sess.HostedThreadID(), h.sess.ThreadID()
+	hosted, native := h.sess.HostedThreadID(), h.sess.State().ThreadID()
 	if _, _, err := h.sess.Delivery().PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: origin, CreatedAt: createdAt}); err != nil {
 		h.t.Fatal(err)
@@ -1050,7 +1050,7 @@ func TestLiveTextAcceptedPromptWhoseSavedTurnEndedWithoutItIsHeld(t *testing.T) 
 	h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
 	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
-		return h.srv.hostedCatalog().SavedTurnEvidence(ctx, sess.Provider(), sess.ThreadID(), turnID)
+		return h.srv.hostedCatalog().SavedTurnEvidence(ctx, sess.Provider(), sess.State().ThreadID(), turnID)
 	}, h.srv.savedPromptsFor(sess), nil, nil, nil)
 	const running = "01a0f650-0000-7000-8000-0000000000aa"
 	saved := fixtureLines(t, "codex-turns.saved.jsonl")
@@ -1108,7 +1108,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	wire := fixtureLines(t, "claude-multi-message-turn.constructed.wire.jsonl")
 	const action = "restart-action"
 	ctx := context.Background()
-	hosted, native := h.sess.HostedThreadID(), h.sess.ThreadID()
+	hosted, native := h.sess.HostedThreadID(), h.sess.State().ThreadID()
 	turn, promptID := "claude:"+hosted+":2", submissionEventID(hosted, action)
 	for _, lines := range [][][]byte{saved, wire} {
 		for index := range lines {

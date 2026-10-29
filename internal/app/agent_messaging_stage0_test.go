@@ -70,7 +70,7 @@ func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, thread
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("native-worker")
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: "native-worker"}, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.Summary().Status == "ready" })
@@ -282,7 +282,7 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 		t.Fatal("last human prompt not persisted")
 	}
 	// Pending interaction holds the thread.
-	fake.EmitNotification(map[string]any{"id": "req-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": sess.ThreadID()}})
+	fake.EmitNotification(map[string]any{"id": "req-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": sess.State().ThreadID()}})
 	waitForClaude(t, "pending permissions", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
 	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
 		t.Fatalf("pending interaction = %+v", v)

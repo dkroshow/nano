@@ -14,9 +14,9 @@ func (sess *Session) HandleSkills(w http.ResponseWriter, _ *http.Request) {
 		httpapi.WriteHTTPError(w, "the skills list is codex-only", http.StatusNotImplemented)
 		return
 	}
-	sess.stateMu.Lock()
-	cwd := sess.cwd
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	cwd := sess.stateOwner.cwd
+	sess.stateOwner.stateMu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(sess.skills.Current(cwd))
 }

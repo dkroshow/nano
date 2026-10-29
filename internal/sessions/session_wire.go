@@ -82,14 +82,14 @@ func (batch *queuedCodexDeltaBatch) mergedLine() ([]byte, error) {
 	})
 }
 
-func (sess *Session) catalogPathForNudge(line []byte) string {
-	if sess.provider == "codex" {
+func (sess *State) catalogPathForNudge(line []byte) string {
+	if sess.session.provider == "codex" {
 		sess.learnCatalogSourcePath(codexCatalogPath(line))
 	}
 	sess.stateMu.Lock()
 	path, threadID := sess.catalogSourcePath, sess.threadID
 	sess.stateMu.Unlock()
-	if sess.provider == "claude" {
+	if sess.session.provider == "claude" {
 		return claudeTranscriptPath(sess.cwd, threadID)
 	}
 	return path
@@ -97,7 +97,7 @@ func (sess *Session) catalogPathForNudge(line []byte) string {
 
 // learnCatalogSourcePath records the native file a Codex thread reported and
 // moves the attachment's hold to it when it differs.
-func (sess *Session) learnCatalogSourcePath(path string) {
+func (sess *State) learnCatalogSourcePath(path string) {
 	if path == "" {
 		return
 	}
@@ -111,15 +111,15 @@ func (sess *Session) learnCatalogSourcePath(path string) {
 	}
 }
 
-func (sess *Session) setProjectionThreadID(id string) {
+func (sess *State) setProjectionThreadID(id string) {
 	sess.stateMu.Lock()
 	if sess.durablyTerminalTurnThreadID != "" && sess.durablyTerminalTurnThreadID != id {
 		sess.durablyTerminalTurnID = ""
 		sess.durablyTerminalTurnThreadID = ""
 	}
 	sess.stateMu.Unlock()
-	if sess.projection != nil {
-		sess.projection.setNativeThreadID(id)
+	if sess.session.projection != nil {
+		sess.session.projection.setNativeThreadID(id)
 	}
 	sess.bindCatalogSource(id)
 }
@@ -128,7 +128,7 @@ func (sess *Session) setProjectionThreadID(id string) {
 // real provider identity the attachment is held unresolved, with no file.
 // Holding runs outside session locks; a close that races it releases again,
 // so a closed attachment never keeps a watch.
-func (sess *Session) bindCatalogSource(id string) {
+func (sess *State) bindCatalogSource(id string) {
 	if sess.catalogSources == nil {
 		return
 	}
@@ -138,7 +138,7 @@ func (sess *Session) bindCatalogSource(id string) {
 	if closed {
 		return
 	}
-	sess.catalogSources.BindAttachedSource(sess.id, sess.provider, id, cwd, known, background)
+	sess.catalogSources.BindAttachedSource(sess.session.id, sess.session.provider, id, cwd, known, background)
 	sess.stateMu.Lock()
 	closed = sess.closed
 	sess.stateMu.Unlock()
@@ -147,9 +147,9 @@ func (sess *Session) bindCatalogSource(id string) {
 	}
 }
 
-func (sess *Session) releaseCatalogSource() {
+func (sess *State) releaseCatalogSource() {
 	if sess.catalogSources != nil {
-		sess.catalogSources.ReleaseAttachedSource(sess.id)
+		sess.catalogSources.ReleaseAttachedSource(sess.session.id)
 	}
 }
 
@@ -210,7 +210,7 @@ func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Dir
 		Dir: string(dir),
 		Msg: json.RawMessage(append([]byte(nil), line...)),
 	}
-	if core := sess.session.coreSession(); core != nil && (dir == wire.Recv || replay) {
+	if core := sess.session.runtime.coreSession(); core != nil && (dir == wire.Recv || replay) {
 		frame := append([]byte(nil), evt.Msg...)
 		sequence := append([]int64(nil), wireSeq...)
 		adapterEvent, terminal := sess.adapterTurnEvent(dir, frame, live, at)
@@ -301,13 +301,13 @@ func (sess *Wire) adapterTurnEvent(dir wire.Direction, line []byte, live bool, a
 	}
 	actionID := ""
 	if sess.session.delivery.queuedTurns != nil {
-		if prompt, found := sess.session.delivery.queuedTurns.ByProviderTurn(sess.session.provider, sess.session.ThreadID(), sess.session.hostedThreadID, turnID); found {
+		if prompt, found := sess.session.delivery.queuedTurns.ByProviderTurn(sess.session.provider, sess.session.stateOwner.ThreadID(), sess.session.hostedThreadID, turnID); found {
 			actionID = prompt.ClientActionID
 		}
 	}
 	event := coresession.AdapterEvent{ProviderTurnID: turnID}
 	if active {
-		started := coreturns.Start{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.ThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
+		started := coreturns.Start{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(), TurnID: turnID, ActionID: actionID, At: at, Source: "adapter"}
 		event.TurnEvents = []coresession.TurnEvent{{Started: &started}}
 		return event, nil
 	}
@@ -330,7 +330,7 @@ func (sess *Wire) adapterTurnEvent(dir wire.Direction, line []byte, live bool, a
 		}
 		status = parsedStatus
 	}
-	finished := &coreturns.Finish{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.ThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
+	finished := &coreturns.Finish{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(), TurnID: turnID, ActionID: actionID, Outcome: status, At: at, Source: "adapter"}
 	event.TurnEvents = []coresession.TurnEvent{{Finished: finished}}
 	return event, finished
 }
@@ -351,12 +351,12 @@ func (sess *Wire) applyWireSemantic(gate func() error, dir wire.Direction, line 
 	// native file. Runs outside every session lock, and the callback is the
 	// catalog's nonblocking queue, so recording never stalls.
 	nudgesCatalog := wireNudgesCatalog(sess.session.provider, dir, line)
-	if sess.session.catalogRefresh != nil && nudgesCatalog {
-		if path := sess.session.catalogPathForNudge(line); path != "" {
-			sess.session.catalogRefresh(path)
+	if sess.session.stateOwner.catalogRefresh != nil && nudgesCatalog {
+		if path := sess.session.stateOwner.catalogPathForNudge(line); path != "" {
+			sess.session.stateOwner.catalogRefresh(path)
 		}
 	}
-	sess.session.observeProviderWork(dir, line, live)
+	sess.session.stateOwner.observeProviderWork(dir, line, live)
 	sess.session.applyLiveRuntimeWire(dir, line, at)
 	// An MCP server changing startup state means the cached tool registry is
 	// stale; the next panel fetch re-asks app-server (mcp_inventory.go).

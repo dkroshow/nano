@@ -40,15 +40,15 @@ func (sess *Session) StopDiscardAndRepair(parent context.Context, actionID strin
 }
 
 func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
-	if sess == nil || sess.catalogSources == nil {
+	if sess == nil || sess.stateOwner.catalogSources == nil {
 		return TranscriptRepairResponse{}, errors.New("transcript repair is unavailable")
 	}
 	sess.transcriptRepairMu.Lock()
 	defer sess.transcriptRepairMu.Unlock()
 	if cached, ok := sess.transcriptRepairResults[actionID]; ok {
-		sess.stateMu.Lock()
-		stale := sess.threadID != cached.threadID || sess.attachmentGeneration != cached.attachmentGen
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		stale := sess.stateOwner.threadID != cached.threadID || sess.stateOwner.attachmentGeneration != cached.attachmentGen
+		sess.stateOwner.stateMu.Unlock()
 		if stale {
 			return TranscriptRepairResponse{}, errors.New("transcript repair result belongs to a prior attachment")
 		}
@@ -64,10 +64,10 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 	sess.delivery.sendMu.Lock()
 	defer sess.delivery.sendMu.Unlock()
 
-	sess.stateMu.Lock()
-	threadID := sess.threadID
-	attachmentGeneration := sess.attachmentGeneration
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	threadID := sess.stateOwner.threadID
+	attachmentGeneration := sess.stateOwner.attachmentGeneration
+	sess.stateOwner.stateMu.Unlock()
 	if threadID == "" {
 		return TranscriptRepairResponse{}, errors.New("provider thread is not attached")
 	}
@@ -125,14 +125,14 @@ func (sess *Session) stopDiscardAndRepairWithin(parent context.Context, actionID
 	// A fresh pass proves the file current after the stop. The wait follows
 	// this session's hold, so the recheck after it, whatever the waits found,
 	// names a replaced attachment as stale.
-	caughtUp := sess.catalogSources.AwaitAttachedCurrent(sess.id, true, nil, ctx.Done())
+	caughtUp := sess.stateOwner.catalogSources.AwaitAttachedCurrent(sess.id, true, nil, ctx.Done())
 	var settleErr error
 	if caughtUp {
 		settleErr = sess.delivery.settleSavedPrompts(ctx)
 	}
-	sess.stateMu.Lock()
+	sess.stateOwner.stateMu.Lock()
 	detail := sess.repairableLocked(threadID, attachmentGeneration)
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 	switch {
 	case detail == transcriptRepairStale:
 		response.Status, response.Detail = "stale_attachment", detail
@@ -162,9 +162,9 @@ func waitForTranscriptRepairIdle(ctx context.Context, sess *Session) error {
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		sess.stateMu.Lock()
-		active := sess.workActiveLocked() || sess.turnRestoreInProgress
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		active := sess.stateOwner.workActiveLocked() || sess.stateOwner.turnRestoreInProgress
+		sess.stateOwner.stateMu.Unlock()
 		if !active {
 			return nil
 		}
@@ -181,13 +181,13 @@ const transcriptRepairStale = "attachment changed while repair was running"
 // repairableLocked says why the repair cannot be reported now, or "" when the
 // stopped attachment is unchanged, idle and ready. Callers hold stateMu.
 func (sess *Session) repairableLocked(threadID string, attachmentGeneration int64) string {
-	if sess.threadID != threadID || sess.attachmentGeneration != attachmentGeneration {
+	if sess.stateOwner.threadID != threadID || sess.stateOwner.attachmentGeneration != attachmentGeneration {
 		return transcriptRepairStale
 	}
-	if sess.closed || sess.connectionStatusLocked() != "ready" || sess.workActiveLocked() || sess.turnRestoreInProgress {
+	if sess.stateOwner.closed || sess.stateOwner.connectionStatusLocked() != "ready" || sess.stateOwner.workActiveLocked() || sess.stateOwner.turnRestoreInProgress {
 		return "attachment is not idle and ready"
 	}
-	if len(sess.interactions) != 0 {
+	if len(sess.stateOwner.interactions) != 0 {
 		return "a provider interaction is still pending"
 	}
 	return ""

@@ -19,35 +19,39 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 	}
 
 	codex := sessionWithOwners(&Session{provider: "codex",
-		lifecycleState: testLifecycleSnapshot("ready", false)})
-	codex.seedCodexTurnOverrides(folded, "ignored-legacy")
-	if codex.turnModel != "gpt-5.3-codex" || codex.turnEffort != "high" || codex.turnServiceTier != "priority" {
+		stateOwner: State{
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
+	codex.runtime.seedCodexTurnOverrides(folded, "ignored-legacy")
+	if codex.stateOwner.turnModel != "gpt-5.3-codex" || codex.stateOwner.turnEffort != "high" || codex.stateOwner.turnServiceTier != "priority" {
 		t.Fatalf("codex overrides = %q/%q/%q, want the folded posture seeded",
-			codex.turnModel, codex.turnEffort, codex.turnServiceTier)
+			codex.stateOwner.turnModel, codex.stateOwner.turnEffort, codex.stateOwner.turnServiceTier)
 	}
 
 	legacy := sessionWithOwners(&Session{provider: "codex",
-		lifecycleState: testLifecycleSnapshot("ready", false)})
-	legacy.seedCodexTurnOverrides(nil, "priority")
-	if legacy.turnServiceTier != "priority" {
-		t.Fatalf("legacy tier = %q, want the pre-log record honored on a nil fold", legacy.turnServiceTier)
+		stateOwner: State{
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
+	legacy.runtime.seedCodexTurnOverrides(nil, "priority")
+	if legacy.stateOwner.turnServiceTier != "priority" {
+		t.Fatalf("legacy tier = %q, want the pre-log record honored on a nil fold", legacy.stateOwner.turnServiceTier)
 	}
 
 	cleared := sessionWithOwners(&Session{provider: "codex",
-		turnServiceTier: "stale",
-		lifecycleState:  testLifecycleSnapshot("ready", false)})
-	cleared.seedCodexTurnOverrides(map[string]hostedstore.PostureEntry{}, "stale-record")
-	if cleared.turnServiceTier != "stale" {
-		t.Fatalf("cleared-history tier = %q, want the record ignored once any history exists", cleared.turnServiceTier)
+		stateOwner: State{
+			turnServiceTier: "stale",
+			lifecycleState:  testLifecycleSnapshot("ready", false)}})
+	cleared.runtime.seedCodexTurnOverrides(map[string]hostedstore.PostureEntry{}, "stale-record")
+	if cleared.stateOwner.turnServiceTier != "stale" {
+		t.Fatalf("cleared-history tier = %q, want the record ignored once any history exists", cleared.stateOwner.turnServiceTier)
 	}
 }
 
 // The application sibling supplies real canonical folds. This assertion keeps
 // the private stale-cache replacement check with the session that owns it.
 func TestCanonicalResumeClearsStaleSessionOverrides(t *testing.T) {
-	sess := sessionWithOwners(&Session{turnModel: "stale", turnServiceTier: "stale"})
-	sess.seedCodexCanonicalOverrides(hostedstore.MetadataView{})
-	if sess.turnModel != "" || sess.turnServiceTier != "" {
-		t.Fatalf("Codex resume = %q/%q, want cleared canonical values", sess.turnModel, sess.turnServiceTier)
+	sess := sessionWithOwners(&Session{
+		stateOwner: State{turnModel: "stale", turnServiceTier: "stale"}})
+	sess.runtime.seedCodexCanonicalOverrides(hostedstore.MetadataView{})
+	if sess.stateOwner.turnModel != "" || sess.stateOwner.turnServiceTier != "" {
+		t.Fatalf("Codex resume = %q/%q, want cleared canonical values", sess.stateOwner.turnModel, sess.stateOwner.turnServiceTier)
 	}
 }

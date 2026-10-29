@@ -31,62 +31,62 @@ var providerAdapterFactories = map[model.Provider]providerAdapterFactory{
 	model.ProviderGrok: func(operations providers.Operations) (providers.Adapter, error) { return providergrok.New(operations) },
 }
 
-func (sess *Session) ensureDeliveryCoordinator() error {
+func (sess *Runtime) ensureDeliveryCoordinator() error {
 	return sess.ensureCoreSession()
 }
 
 // requireTransactionalTurnsLocked enforces the boot invariant at runtime
 // boundaries too. Store views are wired once before provider attachment; this
 // check must never mutate them while restore and queue drains run concurrently.
-func (sess *Session) requireTransactionalTurnsLocked() error {
-	if sess.delivery.turns == nil {
+func (sess *Runtime) requireTransactionalTurnsLocked() error {
+	if sess.session.delivery.turns == nil {
 		return errors.New("transactional turns store is unavailable")
 	}
-	if sess.delivery.queuedTurns != nil && sess.delivery.queuedTurns.TransactionStore() != sess.delivery.turns {
+	if sess.session.delivery.queuedTurns != nil && sess.session.delivery.queuedTurns.TransactionStore() != sess.session.delivery.turns {
 		return errors.New("transactional turn queue view is unavailable")
 	}
-	if sess.delivery.sendAttempts != nil && sess.delivery.sendAttempts.TransactionStore() != sess.delivery.turns {
+	if sess.session.delivery.sendAttempts != nil && sess.session.delivery.sendAttempts.TransactionStore() != sess.session.delivery.turns {
 		return errors.New("transactional turn journal view is unavailable")
 	}
 	return nil
 }
 
-func (sess *Session) ensureProviderCoordinator() error {
+func (sess *Runtime) ensureProviderCoordinator() error {
 	return sess.ensureCoreSession()
 }
 
-func (sess *Session) ensureCoreSession() error {
+func (sess *Runtime) ensureCoreSession() error {
 	if sess == nil {
 		return errors.New("session is unavailable")
 	}
 	sess.coreOnce.Do(func() {
 		if sess.providerAdapter == nil {
-			provider := model.Provider(sess.provider)
+			provider := model.Provider(sess.session.provider)
 			adapterFactory, ok := providerAdapterFactories[provider]
 			if !ok {
-				sess.coreErr = fmt.Errorf("provider %q has no adapter", sess.provider)
+				sess.coreErr = fmt.Errorf("provider %q has no adapter", sess.session.provider)
 				return
 			}
 			operationFactory, ok := providerOperationFactories()[provider]
 			if !ok {
-				sess.coreErr = fmt.Errorf("provider %q has no runtime operations", sess.provider)
+				sess.coreErr = fmt.Errorf("provider %q has no runtime operations", sess.session.provider)
 				return
 			}
-			sess.providerAdapter, sess.coreErr = adapterFactory(operationFactory(sess))
+			sess.providerAdapter, sess.coreErr = adapterFactory(operationFactory(sess.session))
 			if sess.coreErr != nil {
 				return
 			}
 		}
 		var canonicalDB = func() *sql.DB {
-			if sess.delivery.queuedTurns != nil && sess.delivery.queuedTurns.Database() != nil {
-				return sess.delivery.queuedTurns.Database()
+			if sess.session.delivery.queuedTurns != nil && sess.session.delivery.queuedTurns.Database() != nil {
+				return sess.session.delivery.queuedTurns.Database()
 			}
-			if sess.metadata != nil {
-				return sess.metadata.CanonicalDatabase()
+			if sess.session.metadata != nil {
+				return sess.session.metadata.CanonicalDatabase()
 			}
 			return nil
 		}()
-		if sess.delivery.turns == nil && canonicalDB != nil {
+		if sess.session.delivery.turns == nil && canonicalDB != nil {
 			promptStore, err := prompts.OpenStore(context.Background(), canonicalDB)
 			if err != nil {
 				sess.coreErr = err
@@ -96,17 +96,17 @@ func (sess *Session) ensureCoreSession() error {
 				sess.coreErr = err
 				return
 			}
-			sess.delivery.turns = promptStore
-			if sess.delivery.queuedTurns != nil {
-				sess.delivery.queuedTurns.BindTransactionStore(promptStore)
+			sess.session.delivery.turns = promptStore
+			if sess.session.delivery.queuedTurns != nil {
+				sess.session.delivery.queuedTurns.BindTransactionStore(promptStore)
 			}
-			if sess.delivery.sendAttempts != nil {
-				sess.delivery.sendAttempts.BindTransactionStore(promptStore)
+			if sess.session.delivery.sendAttempts != nil {
+				sess.session.delivery.sendAttempts.BindTransactionStore(promptStore)
 			}
 		}
-		sess.stateMu.Lock()
-		initial := sess.lifecycleState
-		sess.stateMu.Unlock()
+		sess.session.stateOwner.stateMu.Lock()
+		initial := sess.session.stateOwner.lifecycleState
+		sess.session.stateOwner.stateMu.Unlock()
 		if sess.completedTurns == nil && canonicalDB != nil {
 			// Root compatibility fixtures and older construction sites already
 			// carry the canonical threads handle through a queue or metadata view.
@@ -118,7 +118,7 @@ func (sess *Session) ensureCoreSession() error {
 			}
 			sess.completedTurns = func(context.Context) (*coreturns.Store, error) { return store, nil }
 		}
-		if sess.delivery.turns == nil || sess.completedTurns == nil {
+		if sess.session.delivery.turns == nil || sess.completedTurns == nil {
 			sess.coreErr = errors.New("core prompt or turn store is unavailable")
 			return
 		}
@@ -128,8 +128,8 @@ func (sess *Session) ensureCoreSession() error {
 			return
 		}
 		core, err := coresession.New(coresession.Config{
-			HostedThreadID: sess.hostedThreadID, Wire: sess.providerAdapter, Prompts: sess.delivery.turns, Turns: finishedTurnNotifier{Store: turnStore, session: sess},
-			Outbox: coreOutboxPublisher{session: sess}, Lifecycle: initial, ExternalDrain: true,
+			HostedThreadID: sess.session.hostedThreadID, Wire: sess.providerAdapter, Prompts: sess.session.delivery.turns, Turns: finishedTurnNotifier{Store: turnStore, session: sess.session},
+			Outbox: coreOutboxPublisher{session: sess.session}, Lifecycle: initial, ExternalDrain: true,
 			AsyncError: sess.recordCoreAsyncError,
 		})
 		if err != nil {
@@ -157,8 +157,8 @@ func (n finishedTurnNotifier) Finished(ctx context.Context, finish coreturns.Fin
 	if err != nil {
 		return record, created, err
 	}
-	if n.session.subscriptionSweep != nil {
-		n.session.subscriptionSweep(n.session.hostedThreadID)
+	if n.session.stateOwner.subscriptionSweep != nil {
+		n.session.stateOwner.subscriptionSweep(n.session.hostedThreadID)
 	}
 	// A Claude result may finish members other prompts' proof decided: the
 	// owed member step runs under settleMu, never waiting for it here inside
@@ -171,20 +171,20 @@ func (n finishedTurnNotifier) Finished(ctx context.Context, finish coreturns.Fin
 	return record, created, nil
 }
 
-func (sess *Session) recordCoreAsyncError(_ error) {
-	if sess == nil || sess.projection == nil {
+func (sess *Runtime) recordCoreAsyncError(_ error) {
+	if sess == nil || sess.session.projection == nil {
 		return
 	}
-	sess.projection.RecordDiagnostic(observability.ThreadDiagnostic{
+	sess.session.projection.RecordDiagnostic(observability.ThreadDiagnostic{
 		Code:    "async_session_event_failed",
 		Message: "An asynchronous session event could not be applied.",
 		Source:  "session",
 	}, false)
-	sess.projection.nudgeMetaRefresh()
-	sess.NotifyRuntime()
+	sess.session.projection.nudgeMetaRefresh()
+	sess.session.stateOwner.NotifyRuntime()
 }
 
-func (sess *Session) coreSession() *coresession.Session {
+func (sess *Runtime) coreSession() *coresession.Session {
 	if sess == nil {
 		return nil
 	}
@@ -228,10 +228,10 @@ func codexProviderOperations(sess *Session) providers.Operations {
 			}
 			turnParams, turnFacts := codexTurnParams(sess, request.Text)
 			turnParams["clientUserMessageId"] = clientID
-			causationID := sess.beginTurnCausation(turnFacts)
+			causationID := sess.stateOwner.beginTurnCausation(turnFacts)
 			var result json.RawMessage
-			if err := sess.codex.callForSession(ctx, sess, "turn/start", turnParams, &result); err != nil {
-				sess.abandonTurnCausation(causationID)
+			if err := sess.runtime.codex.callForSession(ctx, sess, "turn/start", turnParams, &result); err != nil {
+				sess.stateOwner.abandonTurnCausation(causationID)
 				return nil, err
 			}
 			return withSubmissionEvent(result, clientID)
@@ -241,7 +241,7 @@ func codexProviderOperations(sess *Session) providers.Operations {
 			if threadID == "" || turnID == "" {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
-			if err := sess.codex.interruptTurn(ctx, sess, threadID, turnID); err != nil {
+			if err := sess.runtime.codex.interruptTurn(ctx, sess, threadID, turnID); err != nil {
 				if reason, raced := interruptRaceReason(err); raced {
 					return providers.InterruptionResult{Reason: reason}, nil
 				}
@@ -252,7 +252,7 @@ func codexProviderOperations(sess *Session) providers.Operations {
 		RespondInteraction: providerInteractionOperation(func(p interact.PendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
 			return interactionDecisionResult(p.Method, decision, p.Params, answers)
 		}, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			return sess.codex.respondToInteraction(p.ID, result, rpcErr)
+			return sess.runtime.codex.respondToInteraction(p.ID, result, rpcErr)
 		}),
 	}
 }
@@ -261,7 +261,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
 		Submit: providerSubmitOperation(sess, func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
-			claude := sess.claudeHandle()
+			claude := sess.runtime.claudeHandle()
 			if claude == nil {
 				return nil, errors.New("session transport is still starting")
 			}
@@ -278,7 +278,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 			})
 		}),
 		Interrupt: func(ctx context.Context, _ providers.InterruptRequest) (providers.InterruptionResult, error) {
-			claude := sess.claudeHandle()
+			claude := sess.runtime.claudeHandle()
 			if claude == nil {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
@@ -288,7 +288,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
 		RespondInteraction: providerInteractionOperation(claudeInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			claude := sess.claudeHandle()
+			claude := sess.runtime.claudeHandle()
 			if claude == nil {
 				return errClaudeControlClosed
 			}
@@ -304,14 +304,14 @@ func grokProviderOperations(sess *Session) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
 		Submit: providerSubmitOperation(sess, func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
-			grok := sess.grokHandle()
+			grok := sess.runtime.grokHandle()
 			if grok == nil {
 				return nil, errors.New("session transport is still starting")
 			}
 			return grok.SendTurn(ctx, request.Text, request.Outbox.ActionID)
 		}),
 		Interrupt: func(_ context.Context, _ providers.InterruptRequest) (providers.InterruptionResult, error) {
-			grok := sess.grokHandle()
+			grok := sess.runtime.grokHandle()
 			if grok == nil {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
@@ -321,7 +321,7 @@ func grokProviderOperations(sess *Session) providers.Operations {
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
 		RespondInteraction: providerInteractionOperation(grokInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			grok := sess.grokHandle()
+			grok := sess.runtime.grokHandle()
 			if grok == nil {
 				return errors.New("grok ACP proxy is not connected")
 			}
@@ -362,7 +362,7 @@ func providerSubmitOperation(sess *Session, send func(context.Context, providers
 				sess.delivery.deliveryExpiries.record(sess.provider)
 			}
 			state := prompts.Uncertain
-			nativeMissing := sess.codexZeroTurnNativeMissing(request.Outbox.ActionID, err)
+			nativeMissing := sess.runtime.codexZeroTurnNativeMissing(request.Outbox.ActionID, err)
 			var rpcErr *protocol.RPCError
 			// A definite refusal parks the prompt: Nano keeps it with its
 			// text for the person's Resend or Discard, since the sender may
@@ -394,7 +394,7 @@ func providerSubmitOperation(sess *Session, send func(context.Context, providers
 		if turnID == "" {
 			return providers.SubmissionResult{State: prompts.Accepted, Receipt: receipt}, nil
 		}
-		binding, supersedesNativeThreadID := sess.submissionBinding(request.Scope, turnID, providerEventIDFromStart(receipt))
+		binding, supersedesNativeThreadID := sess.runtime.submissionBinding(request.Scope, turnID, providerEventIDFromStart(receipt))
 		return providers.SubmissionResult{
 			State: prompts.Accepted, Binding: &binding,
 			SupersedesNativeThreadID: supersedesNativeThreadID, Receipt: receipt,
@@ -406,9 +406,9 @@ func providerSubmitOperation(sess *Session, send func(context.Context, providers
 // took it. A provider can reveal its durable native thread while a submission
 // is in flight, so the binding names that identity rather than the
 // provisional one the caller captured, and reports the one it supersedes.
-func (sess *Session) submissionBinding(scope model.Scope, turnID, eventID string) (prompts.Binding, string) {
+func (sess *Runtime) submissionBinding(scope model.Scope, turnID, eventID string) (prompts.Binding, string) {
 	supersedes := ""
-	if nativeThreadID := sess.ThreadID(); nativeThreadID != "" {
+	if nativeThreadID := sess.session.stateOwner.ThreadID(); nativeThreadID != "" {
 		if scope.NativeThreadID != nil && *scope.NativeThreadID != nativeThreadID {
 			supersedes = *scope.NativeThreadID
 		}
@@ -429,13 +429,13 @@ var errRunningTurnEnded = errors.New("running turn ended")
 // turn and event shape as a started turn's.
 func codexSteer(ctx context.Context, sess *Session, turnID, clientID, text string) (json.RawMessage, error) {
 	params := map[string]any{
-		"threadId": sess.ThreadID(), "expectedTurnId": turnID, "clientUserMessageId": clientID,
+		"threadId": sess.stateOwner.ThreadID(), "expectedTurnId": turnID, "clientUserMessageId": clientID,
 		"input": []map[string]any{{"type": "text", "text": text}},
 	}
 	var result struct {
 		TurnID string `json:"turnId"`
 	}
-	if err := sess.codex.callForSession(ctx, sess, "turn/steer", params, &result); err != nil {
+	if err := sess.runtime.codex.callForSession(ctx, sess, "turn/steer", params, &result); err != nil {
 		var rpcErr *protocol.RPCError
 		if errors.As(err, &rpcErr) && rpcErr.Message == codexNoActiveTurnToSteer {
 			return nil, fmt.Errorf("%w: %w", errRunningTurnEnded, err)
@@ -468,18 +468,18 @@ func claudeSubmissionEventIDForOutbox(entry prompts.OutboxEntry) string {
 	return SubmissionEventID(entry.HostedThreadID, entry.ActionID)
 }
 
-func (sess *Session) deliveryScope() model.Scope {
-	nativeThreadID := sess.ThreadID()
-	return model.Scope{Kind: model.ScopeTurn, Provider: model.Provider(sess.provider), NativeThreadID: &nativeThreadID}
+func (sess *Runtime) deliveryScope() model.Scope {
+	nativeThreadID := sess.session.stateOwner.ThreadID()
+	return model.Scope{Kind: model.ScopeTurn, Provider: model.Provider(sess.session.provider), NativeThreadID: &nativeThreadID}
 }
 
-func (sess *Session) deliverySettings() providers.Settings {
+func (sess *Runtime) deliverySettings() providers.Settings {
 	core := sess.coreSession()
 	if core == nil {
 		return providers.Settings{}
 	}
 	capabilities := core.TurnCapabilities()
-	modelName, effort, serviceTier := sess.turnOptions()
+	modelName, effort, serviceTier := sess.session.stateOwner.turnOptions()
 	var settings providers.Settings
 	if modelName != "" && (capabilities.ModelChange == providers.AtNextTurn || capabilities.ModelChange == providers.InSession) {
 		settings.Model = &modelName
@@ -495,13 +495,13 @@ func (sess *Session) deliverySettings() providers.Settings {
 
 // acceptsRunningTurnInput reports whether the provider takes an ordinary
 // prompt into a working turn. It is false until the core session exists.
-func (sess *Session) acceptsRunningTurnInput() bool {
+func (sess *Runtime) acceptsRunningTurnInput() bool {
 	core := sess.coreSession()
 	return core != nil && core.TurnCapabilities().RunningTurnInput
 }
 
 // CorePromptInFlight reports whether the prompt owner has an active delivery claim.
-func (sess *Session) CorePromptInFlight() bool {
+func (sess *Runtime) CorePromptInFlight() bool {
 	core := sess.coreSession()
 	return core != nil && core.Snapshot().InFlightAction != ""
 }

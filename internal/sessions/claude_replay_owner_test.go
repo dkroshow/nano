@@ -44,14 +44,14 @@ func (h *replayOwnerHarness) resume(t *testing.T) error {
 		}
 	}
 	b := h.base
-	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.metadata, Turns: b.delivery.turns, QueuedTurns: b.delivery.queuedTurns, SendAttempts: b.delivery.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.rememberAttachment, ForgetAttachment: b.forgetAttachment})
+	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.metadata, Turns: b.delivery.turns, QueuedTurns: b.delivery.queuedTurns, SendAttempts: b.delivery.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.stateOwner.rememberAttachment, ForgetAttachment: b.stateOwner.forgetAttachment})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}
 	h.current = sess
 	t.Cleanup(func() {
-		if sess.core != nil {
-			sess.core.Close()
+		if sess.runtime.core != nil {
+			sess.runtime.core.Close()
 		}
 	})
 	c, err := resumeClaudeSession(sess, ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: "native-1", Cwd: b.CWD(), ClaudeBin: "/fake/claude", ClaudeShimWS: h.shim.WSURL(), ClaudeShimSpools: h.dir, ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: b.HostedThreadID(), ShimSessionID: "shim-1"}})
@@ -99,7 +99,7 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 	t.Cleanup(unblock)
 	h.shim.BeforeAttach = func() {
 		blocked := make(chan struct{})
-		h.current.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error { close(blocked); <-release; return nil }})
+		h.current.runtime.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error { close(blocked); <-release; return nil }})
 		<-blocked
 	}
 	err := h.resume(t)
@@ -214,19 +214,19 @@ func TestClaudeReplayDrainFencesSessionRetryAndCompletion(t *testing.T) {
 // This test retains its shorter progress window at the scheduling owner.
 func TestClaudeReplayBackgroundBacklogKeepsProgressWindowAlive(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	if err := sess.ensureCoreSession(); err != nil {
+	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.coreSession().Close)
+	t.Cleanup(sess.runtime.coreSession().Close)
 	previous := claudeShimReplayTimeout
 	claudeShimReplayTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { claudeShimReplayTimeout = previous })
 	tr := &claudeShimTransport{}
 	for i := 0; i < 10; i++ {
-		sess.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error { time.Sleep(30 * time.Millisecond); tr.applied.Add(1); return nil }})
+		sess.runtime.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error { time.Sleep(30 * time.Millisecond); tr.applied.Add(1); return nil }})
 	}
 	start := time.Now()
-	if err := tr.awaitApplied(sess.coreSession()); err != nil {
+	if err := tr.awaitApplied(sess.runtime.coreSession()); err != nil {
 		t.Fatal(err)
 	}
 	if took := time.Since(start); took < 3*claudeShimReplayTimeout {

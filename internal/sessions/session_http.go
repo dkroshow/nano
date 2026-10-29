@@ -157,42 +157,42 @@ func readEventsBefore(memory []wire.Event, spool *wireSpool, beforeSeq int64, li
 // Claude's system.init snapshot is all there is (no request surface without
 // the control protocol).
 func (sess *Session) HandleState(w http.ResponseWriter, r *http.Request) {
-	sess.stateMu.Lock()
+	sess.stateOwner.stateMu.Lock()
 	out := map[string]any{
-		"sessionId": sess.id, "provider": sess.provider, "threadId": sess.threadID,
-		"status": sess.connectionStatusLocked(),
+		"sessionId": sess.id, "provider": sess.provider, "threadId": sess.stateOwner.threadID,
+		"status": sess.stateOwner.connectionStatusLocked(),
 	}
 	// The immutable anchor, and only the anchor (D4): a pane that opens
 	// mid-turn learns when the turn started from the same value the rail reads,
 	// and derives elapsed against its own clock. Omitted when there is none, so
 	// a missing key is honestly "unknown", never epoch 0.
-	if sess.turnStartedAtMs != 0 {
-		out["turnStartedAtMs"] = sess.turnStartedAtMs
+	if sess.stateOwner.turnStartedAtMs != 0 {
+		out["turnStartedAtMs"] = sess.stateOwner.turnStartedAtMs
 	}
-	if sess.lastTurnEndedAt != "" {
-		out["lastTurnEndedAt"] = sess.lastTurnEndedAt
+	if sess.stateOwner.lastTurnEndedAt != "" {
+		out["lastTurnEndedAt"] = sess.stateOwner.lastTurnEndedAt
 	}
 	// turnActive rides too: a pane opened (or reloaded) mid-turn has no wire
 	// events yet, and without this seed it renders an idle composer and no
 	// working surface while the rail — fed by the session summary — blinks
 	// away (observed on the infra sessions, 2026-07-31).
-	out["turnActive"] = sess.workActiveLocked()
-	if sess.spawnError != "" {
-		out["error"] = sess.spawnError
+	out["turnActive"] = sess.stateOwner.workActiveLocked()
+	if sess.stateOwner.spawnError != "" {
+		out["error"] = sess.stateOwner.spawnError
 	}
-	for k, v := range sess.state {
+	for k, v := range sess.stateOwner.state {
 		out[k] = v
 	}
-	threadID := sess.threadID
-	cwd := sess.cwd // the background resume handshake may still be updating it
-	displayName := sess.displayName
-	metadataDegraded := sess.metadataDegraded
-	initRaw := sess.state["init"]
-	sess.stateMu.Unlock()
+	threadID := sess.stateOwner.threadID
+	cwd := sess.stateOwner.cwd // the background resume handshake may still be updating it
+	displayName := sess.stateOwner.displayName
+	metadataDegraded := sess.stateOwner.metadataDegraded
+	initRaw := sess.stateOwner.state["init"]
+	sess.stateOwner.stateMu.Unlock()
 
 	// The same unified projections the summary serves (decision 4), so /state
 	// and /api/sessions cannot disagree about model/effort/permission/tier.
-	out["posture"] = sess.posture()
+	out["posture"] = sess.stateOwner.posture()
 	if sess.metadata != nil {
 		if view, err := sess.metadata.View(sess.hostedThreadID); err == nil {
 			view.Attachment = hostedstore.AttachmentView{State: fmt.Sprint(out["status"]), Provenance: "live_session"}
@@ -238,19 +238,19 @@ func (sess *Session) HandleState(w http.ResponseWriter, r *http.Request) {
 		// buffer is bounded and a late-opened tab cannot replay its way to a
 		// parked request. `controlInit` rides along in the state map above and
 		// carries the model catalog the switcher renders.
-		out["turnOptions"] = sess.turnOptionsPayload()
+		out["turnOptions"] = sess.stateOwner.turnOptionsPayload()
 		out["pendingInteractions"] = sess.delivery.PendingInteractionList()
 		httpapi.WriteJSON(w, out)
 		return
 	}
 	if sess.provider == "grok" {
-		out["turnOptions"] = sess.turnOptionsPayload()
+		out["turnOptions"] = sess.stateOwner.turnOptionsPayload()
 		out["pendingInteractions"] = sess.delivery.PendingInteractionList()
 		httpapi.WriteJSON(w, out)
 		return
 	}
 
-	out["turnOptions"] = sess.turnOptionsPayload()
+	out["turnOptions"] = sess.stateOwner.turnOptionsPayload()
 	// Server-owned pending interactions. The bounded wire buffer means a tab
 	// opened after the request landed cannot find it by replay, so the snapshot
 	// is the truth and the feed event is only the nudge (interactions.go).
@@ -284,29 +284,29 @@ func (sess *Delivery) HandleInterrupt(w http.ResponseWriter, r *http.Request) {
 }
 
 func (sess *Delivery) interruptTurn(ctx context.Context) (map[string]any, error) {
-	sess.session.stateMu.Lock()
-	active := sess.session.workActiveLocked()
-	sess.session.stateMu.Unlock()
-	threadID, turnID := sess.session.activeTurn()
+	sess.session.stateOwner.stateMu.Lock()
+	active := sess.session.stateOwner.workActiveLocked()
+	sess.session.stateOwner.stateMu.Unlock()
+	threadID, turnID := sess.session.stateOwner.activeTurn()
 	if !active {
 		return map[string]any{"interrupted": false, "reason": "no turn in flight"}, nil
 	}
-	if err := sess.session.ensureProviderCoordinator(); err != nil {
+	if err := sess.session.runtime.ensureProviderCoordinator(); err != nil {
 		return nil, err
 	}
-	scope := sess.session.deliveryScope()
+	scope := sess.session.runtime.deliveryScope()
 	if turnID != "" {
 		scope.NativeTurnID = &turnID
 		// Recorded before the provider hears of it, so the turn's end can
 		// never be read as a prompt lost without a Stop.
-		sess.session.stateMu.Lock()
-		if sess.session.stoppedTurns == nil {
-			sess.session.stoppedTurns = make(map[string]bool)
+		sess.session.stateOwner.stateMu.Lock()
+		if sess.session.stateOwner.stoppedTurns == nil {
+			sess.session.stateOwner.stoppedTurns = make(map[string]bool)
 		}
-		sess.session.stoppedTurns[turnID] = true
-		sess.session.stateMu.Unlock()
+		sess.session.stateOwner.stoppedTurns[turnID] = true
+		sess.session.stateOwner.stateMu.Unlock()
 	}
-	result, err := sess.session.core.Interrupt(ctx, providers.InterruptRequest{Scope: scope})
+	result, err := sess.session.runtime.core.Interrupt(ctx, providers.InterruptRequest{Scope: scope})
 	if errors.Is(err, coresession.ErrInterruptNotAccepted) {
 		// The stop button must fail loudly rather than hang. Core kept the
 		// interrupt at the front of the session queue, so it still reaches the
@@ -343,7 +343,7 @@ func interruptRaceReason(err error) (string, bool) {
 
 // HandleTurnOptionsRead serves the effective provider settings for the next turn.
 func (sess *Session) HandleTurnOptionsRead(w http.ResponseWriter, _ *http.Request) {
-	httpapi.WriteJSON(w, sess.turnOptionsPayload())
+	httpapi.WriteJSON(w, sess.stateOwner.turnOptionsPayload())
 }
 
 // HandleTurnOptionsUpdate applies requested provider settings for subsequent turns.
@@ -378,28 +378,28 @@ func (sess *Session) HandleTurnOptionsUpdate(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	priorModel, _, priorTier := sess.turnOptions()
+	priorModel, _, priorTier := sess.stateOwner.turnOptions()
 	validatedUltrafast := false
 	if req.Model != nil || req.ServiceTier != nil {
-		model, _, tier := sess.turnOptions()
+		model, _, tier := sess.stateOwner.turnOptions()
 		if req.ServiceTier != nil {
 			tier = serviceTier
 		}
 		if tier == "" {
-			tier = sess.posture().ServiceTier
+			tier = sess.stateOwner.posture().ServiceTier
 		}
 		if tier == "ultrafast" {
 			validatedUltrafast = true
 			if model == "" {
-				model = sess.posture().Model
+				model = sess.stateOwner.posture().Model
 			}
 			if req.Model != nil {
 				model = strings.TrimSpace(*req.Model)
 				if model == "" {
-					model = sess.model
+					model = sess.stateOwner.model
 				}
 			}
-			if err := sess.codex.ValidateUltrafast(model, tier); err != nil {
+			if err := sess.runtime.codex.ValidateUltrafast(model, tier); err != nil {
 				httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -414,27 +414,27 @@ func (sess *Session) HandleTurnOptionsUpdate(w http.ResponseWriter, r *http.Requ
 			Source: postureSourceOperator, Evidence: postureEvidenceTurnOptions,
 		})
 	}
-	sess.stateMu.Lock()
-	if validatedUltrafast && (sess.turnModel != priorModel || sess.turnServiceTier != priorTier) {
-		sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	if validatedUltrafast && (sess.stateOwner.turnModel != priorModel || sess.stateOwner.turnServiceTier != priorTier) {
+		sess.stateOwner.stateMu.Unlock()
 		httpapi.WriteHTTPError(w, "speed settings changed during capability refresh; try again", http.StatusConflict)
 		return
 	}
 	if req.Model != nil {
-		sess.turnModel = strings.TrimSpace(*req.Model)
-		record(postureFieldModel, sess.turnModel)
+		sess.stateOwner.turnModel = strings.TrimSpace(*req.Model)
+		record(postureFieldModel, sess.stateOwner.turnModel)
 	}
 	if req.Effort != nil {
-		sess.turnEffort = strings.TrimSpace(*req.Effort)
-		record(postureFieldEffort, sess.turnEffort)
+		sess.stateOwner.turnEffort = strings.TrimSpace(*req.Effort)
+		record(postureFieldEffort, sess.stateOwner.turnEffort)
 	}
 	if req.ServiceTier != nil {
-		sess.turnServiceTier = serviceTier
+		sess.stateOwner.turnServiceTier = serviceTier
 		record(postureFieldServiceTier, serviceTier)
 	}
-	sess.stateMu.Unlock()
-	sess.recordPosture(decisions, metadataFreshnessLive)
-	httpapi.WriteJSON(w, sess.turnOptionsPayload())
+	sess.stateOwner.stateMu.Unlock()
+	sess.stateOwner.recordPosture(decisions, metadataFreshnessLive)
+	httpapi.WriteJSON(w, sess.stateOwner.turnOptionsPayload())
 }
 
 // handleClaudeModel is the claude arm of the same endpoint, and its semantics
@@ -458,7 +458,7 @@ func (sess *Session) handleClaudeModelUpdate(w http.ResponseWriter, r *http.Requ
 	}
 	if req.Model != nil {
 		model := strings.TrimSpace(*req.Model)
-		claude := sess.claudeHandle()
+		claude := sess.runtime.claudeHandle()
 		if claude == nil {
 			httpapi.WriteHTTPError(w, "session transport is still starting", http.StatusConflict)
 			return
@@ -466,31 +466,31 @@ func (sess *Session) handleClaudeModelUpdate(w http.ResponseWriter, r *http.Requ
 		decision := hostedstore.PostureEntry{Field: postureFieldModel, Value: model, Source: postureSourceOperator, Evidence: postureEvidenceSetModel}
 		// Persist intent before delivery; the successful provider control reply
 		// below is the causal confirmation rather than a local assignment.
-		sess.recordPosture([]hostedstore.PostureEntry{decision}, metadataFreshnessLive)
-		snapshot := sess.snapshotProviderCausation(map[string]string{postureFieldModel: model})
+		sess.stateOwner.recordPosture([]hostedstore.PostureEntry{decision}, metadataFreshnessLive)
+		snapshot := sess.stateOwner.snapshotProviderCausation(map[string]string{postureFieldModel: model})
 		if err := claude.setModel(r.Context(), model); err != nil {
 			httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		sess.stateMu.Lock()
-		sess.turnModel = model
-		sess.stateMu.Unlock()
-		sess.recordProviderEvidence("claude_set_model", map[string]string{postureFieldModel: model}, metadataFreshnessLive, snapshot)
+		sess.stateOwner.stateMu.Lock()
+		sess.stateOwner.turnModel = model
+		sess.stateOwner.stateMu.Unlock()
+		sess.stateOwner.recordProviderEvidence("claude_set_model", map[string]string{postureFieldModel: model}, metadataFreshnessLive, snapshot)
 	}
-	httpapi.WriteJSON(w, sess.turnOptionsPayload())
+	httpapi.WriteJSON(w, sess.stateOwner.turnOptionsPayload())
 }
 
 // turnOptionsPayload is what the pane's controls render from: the overrides in
 // force plus the thread's own model, so "no override" can be shown as the
 // thread's actual model rather than as a blank.
-func (sess *Session) turnOptionsPayload() map[string]any {
+func (sess *State) turnOptionsPayload() map[string]any {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return map[string]any{
 		"model":       sess.turnModel,
 		"effort":      sess.turnEffort,
 		"serviceTier": sess.turnServiceTier,
-		"summary":     sess.reasoningSummary,
+		"summary":     sess.session.runtime.reasoningSummary,
 		"threadModel": sess.model,
 	}
 }
@@ -499,20 +499,20 @@ func (sess *Session) turnOptionsPayload() map[string]any {
 // It is the only source of the "human typed recently" availability fact;
 // agent-origin prompts never set it, even though they also land as user-role
 // transcript items.
-func (sess *Session) noteHumanPrompt(at time.Time) {
+func (sess *State) noteHumanPrompt(at time.Time) {
 	sess.stateMu.Lock()
 	if at.After(sess.lastHumanPromptAt) {
 		sess.lastHumanPromptAt = at
 	}
 	sess.stateMu.Unlock()
-	if sess.agentExecutions != nil && sess.hostedThreadID != "" {
-		if err := sess.agentExecutions.NoteHumanPrompt(sess.hostedThreadID, at); err != nil {
-			log.Printf("record human prompt time hosted=%s: %v", sess.hostedThreadID, err)
+	if sess.session.agentExecutions != nil && sess.session.hostedThreadID != "" {
+		if err := sess.session.agentExecutions.NoteHumanPrompt(sess.session.hostedThreadID, at); err != nil {
+			log.Printf("record human prompt time hosted=%s: %v", sess.session.hostedThreadID, err)
 		}
 	}
 }
 
-func (sess *Session) humanPromptAt() time.Time {
+func (sess *State) humanPromptAt() time.Time {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return sess.lastHumanPromptAt

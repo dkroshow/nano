@@ -68,10 +68,10 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 			t.Cleanup(sess.Close)
 
 			root := t.TempDir()
-			dir := filepath.Join(root, url.PathEscape(sess.CWD()), sess.ThreadID())
+			dir := filepath.Join(root, url.PathEscape(sess.CWD()), sess.State().ThreadID())
 			if tc.files {
-				writeSettlementFile(t, filepath.Join(dir, "summary.json"), `{"info":{"id":"`+sess.ThreadID()+`","cwd":"`+sess.CWD()+`"}}`)
-				writeSettlementFile(t, filepath.Join(dir, "updates.jsonl"), `{"timestamp":1893456000,"method":"session/update","params":{"sessionId":"`+sess.ThreadID()+`","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"earlier prompt"}},"_meta":{"eventId":"earlier-user-event"}}}`+"\n")
+				writeSettlementFile(t, filepath.Join(dir, "summary.json"), `{"info":{"id":"`+sess.State().ThreadID()+`","cwd":"`+sess.CWD()+`"}}`)
+				writeSettlementFile(t, filepath.Join(dir, "updates.jsonl"), `{"timestamp":1893456000,"method":"session/update","params":{"sessionId":"`+sess.State().ThreadID()+`","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"earlier prompt"}},"_meta":{"eventId":"earlier-user-event"}}}`+"\n")
 			}
 			store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
 			if err != nil {
@@ -98,18 +98,18 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 			if tc.created {
 				if _, err := metadata.AppendEvent(hostedstore.MetadataEvent{HostedThreadID: sess.HostedThreadID(), Field: postureFieldModel, Value: "grok-4.6",
 					Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Evidence: "grok_session_new_response",
-					NativeThreadID: sess.ThreadID(), Freshness: metadataFreshnessLive, SourceEventKey: "test:session-new"}); err != nil {
+					NativeThreadID: sess.State().ThreadID(), Freshness: metadataFreshnessLive, SourceEventKey: "test:session-new"}); err != nil {
 					t.Fatal(err)
 				}
 			}
 			sess.ConfigureRegistration(nil, nil, false, attached)
-			sess.ReserveNativeID(sess.ThreadID())
+			sess.ReserveNativeID(sess.State().ThreadID())
 			if tc.prompted {
-				seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), sess.HostedThreadID(), model.ProviderGrok, sess.ThreadID(), "earlier", "prompt-earlier", "earlier prompt")
+				seedAcceptedTransactionalTurn(t, sess.Delivery().PromptStore(), sess.HostedThreadID(), model.ProviderGrok, sess.State().ThreadID(), "earlier", "prompt-earlier", "earlier prompt")
 			}
 			if tc.parked {
 				text := "parked prompt"
-				if _, _, err := sess.Delivery().PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderGrok, NativeThreadID: sess.ThreadID(),
+				if _, _, err := sess.Delivery().PromptStore().Submit(context.Background(), prompts.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderGrok, NativeThreadID: sess.State().ThreadID(),
 					ActionID: "parked", ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 					t.Fatal(err)
 				}
@@ -154,7 +154,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 					}
 				}
 			})
-			if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.ThreadID(), Cwd: sess.CWD(), GrokBin: provider.Bin()}, nil, func() {}); err != nil {
+			if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.State().ThreadID(), Cwd: sess.CWD(), GrokBin: provider.Bin()}, nil, func() {}); err != nil {
 				t.Fatal(err)
 			}
 

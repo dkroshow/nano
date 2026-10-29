@@ -48,12 +48,12 @@ func applicationRoutes(s *server) []applicationRoute {
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/history", "sessions.conversation.history", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
-				index.HandleConversationHistory(w, r, sess.ThreadID())
+				index.HandleConversationHistory(w, r, sess.State().ThreadID())
 			}(w, r, value)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/transcript", "sessions.conversation.transcript", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
-				index.HandleConversationHistory(w, r, sess.ThreadID())
+				index.HandleConversationHistory(w, r, sess.State().ThreadID())
 			}(w, r, value)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/events", "sessions.conversation.events", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {

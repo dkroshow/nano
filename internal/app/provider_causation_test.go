@@ -63,9 +63,9 @@ func requested(t *testing.T, sess *sessions.Session, store *hostedstore.Metadata
 func startCausationCodex(t *testing.T, sess *sessions.Session) *fakeAppServer {
 	t.Helper()
 	fake := newFakeAppServer(t)
-	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.ThreadID()}})
+	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.State().ThreadID()}})
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "causal-turn"}})
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.State().ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")
@@ -86,13 +86,13 @@ func emitCausation(t *testing.T, sess *sessions.Session, fake *fakeAppServer, pa
 func startCausationResponse(t *testing.T, sess *sessions.Session, request sessions.ProviderRequest, values map[string]any, before func(json.RawMessage)) {
 	t.Helper()
 	fake := newFakeAppServer(t)
-	values["thread"] = map[string]any{"id": sess.ThreadID()}
+	values["thread"] = map[string]any{"id": sess.State().ThreadID()}
 	fake.SetStartResult(values)
 	if before != nil {
 		fake.SetOnStart(before)
 	}
 	request.Provider, request.Mode = "codex", "start"
-	if err := sess.BeginProviderSpawn(request, fake.daemon(), func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(request, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")
@@ -117,7 +117,7 @@ func finishCausationTurn(t *testing.T, sess *sessions.Session, fake *fakeAppServ
 	if err != nil || record.ProviderTurnID == "" {
 		t.Fatalf("accepted turn %q has no provider identity: %+v %v", actionID, record, err)
 	}
-	line, _ := json.Marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": sess.ThreadID(), "turn": map[string]any{"id": record.ProviderTurnID, "status": "completed"}}})
+	line, _ := json.Marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": sess.State().ThreadID(), "turn": map[string]any{"id": record.ProviderTurnID, "status": "completed"}}})
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndDrain(t, line)
 }
 
@@ -434,7 +434,7 @@ func startCausationClaude(t *testing.T, sess *sessions.Session, model string) *p
 			c.Reply(call, map[string]any{})
 		}
 	})
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Model: model, ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Model: model, ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	f := &providerRuntimeFixture{session: sess, claude: <-connected}
@@ -467,7 +467,7 @@ func replayCausationClaude(t *testing.T, sess *sessions.Session, line []byte) *p
 			c.Reply(call, map[string]any{})
 		}
 	})
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: sess.ThreadID(), ClaudeShimWS: shim.WSURL(), ClaudeShimSpools: root, ClaudeBin: "/fake/claude", ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.ThreadID(), ShimSessionID: "shim-1"}}, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: sess.State().ThreadID(), ClaudeShimWS: shim.WSURL(), ClaudeShimSpools: root, ClaudeBin: "/fake/claude", ClaudeAnchor: hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.State().ThreadID(), ShimSessionID: "shim-1"}}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	f := &providerRuntimeFixture{session: sess, claude: <-connected, seq: 1}
@@ -558,7 +558,7 @@ func TestUltrafastSettingEvidenceSettlesOnlyTheRequestedTier(t *testing.T) {
 		t.Fatalf("provider-advertised Ultrafast must be valid canonical intent: %d %s", response.Code, response.Body.String())
 	}
 	sendCausationTurn(t, sess)
-	payload, _ := json.Marshal(map[string]any{"threadId": sess.ThreadID(), "threadSettings": map[string]any{"serviceTier": "ultrafast"}})
+	payload, _ := json.Marshal(map[string]any{"threadId": sess.State().ThreadID(), "threadSettings": map[string]any{"serviceTier": "ultrafast"}})
 	emitCausation(t, sess, fake, payload)
 	f, desired, effective := fieldStrings(t, store, sess.HostedThreadID(), postureFieldServiceTier)
 	if desired != "ultrafast" || effective != "ultrafast" || f.DesiredDisposition != metadataDispositionConfirmed {

@@ -36,7 +36,7 @@ func TestCodexReconnectFleetStorm(t *testing.T) {
 	})
 	for index, sess := range sessions {
 		want := fmt.Sprintf("storm-%03d", index)
-		if sess.ThreadID() != want || sess.HostedThreadID() != "hosted-"+want {
+		if sess.stateOwner.ThreadID() != want || sess.HostedThreadID() != "hosted-"+want {
 			t.Fatalf("identity changed: %+v", sess.Summary())
 		}
 	}
@@ -81,9 +81,9 @@ func TestCodexReconnectPromptRetriesAndDrainsOnce(t *testing.T) {
 	if queued, ok := sess.delivery.queuedTurns.Get("recovery-action"); !ok || queued.State != submissionAccepted {
 		t.Fatalf("submission lost or not accepted: %+v", queued)
 	}
-	sess.setTurnActive(true, "recovered-turn-1", time.Now().UnixMilli(), true)
+	sess.stateOwner.setTurnActive(true, "recovered-turn-1", time.Now().UnixMilli(), true)
 	observeTestTurnCompletion(t, sess, "recovered-turn-1")
-	sess.setTurnActive(false, "", 0, true)
+	sess.stateOwner.setTurnActive(false, "", 0, true)
 	waitTurnSendDone(t, sess, "second-recovery-action")
 	if got := deliveries.Load(); got != 2 {
 		t.Fatalf("two queued prompts produced %d deliveries", got)
@@ -107,7 +107,7 @@ func TestCodexReconnectNoRolloutStopsWithoutLosingIdentity(t *testing.T) {
 		return !daemon.reconnecting[sess.ID()]
 	})
 	time.Sleep(300 * time.Millisecond)
-	if fake.ResumeCount() != 2 || sess.ThreadID() != "missing-rollout" || sess.Summary().Status != "reconnect_failed" {
+	if fake.ResumeCount() != 2 || sess.stateOwner.ThreadID() != "missing-rollout" || sess.Summary().Status != "reconnect_failed" {
 		t.Fatal("missing rollout was retried automatically or changed identity/status")
 	}
 	fake.SetResumeError("")
@@ -129,7 +129,7 @@ func TestCodexReconnectBootTimeoutRecovers(t *testing.T) {
 	waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 1 })
 	fake.SetReplyDelay("thread/resume", 0)
 	waitForClaudeStatus(t, sess, "ready")
-	if fake.ResumeCount() < 2 || sess.ThreadID() != "boot-timeout" {
+	if fake.ResumeCount() < 2 || sess.stateOwner.ThreadID() != "boot-timeout" {
 		t.Fatal("boot timeout did not retry the original thread")
 	}
 }
@@ -161,7 +161,7 @@ func resumeReconnectFixture(t *testing.T, daemon *CodexDaemon, native string, bo
 	if boot {
 		request.BootReattach = &BootControl{}
 	}
-	if err := sess.BeginProviderSpawn(request, daemon, func() {}); err != nil {
+	if err := sess.runtime.BeginProviderSpawn(request, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	return sess

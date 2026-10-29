@@ -507,7 +507,7 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 	}
 	fake := newFakeAppServer(t)
 	fake.SetStartResult(map[string]any{"thread": map[string]any{"id": "temporary-native"}})
-	if err := pending.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
+	if err := pending.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pending.Close)
@@ -531,7 +531,7 @@ func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
 
 	fake := newFakeAppServer(t)
 	fake.SetStartError("handshake failed")
-	if err := pending.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
+	if err := pending.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pending.Close)

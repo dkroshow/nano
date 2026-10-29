@@ -20,7 +20,7 @@ func TestClaudeOwedPromptAttachEnablesSavedCommitSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess.completedTurns = func(context.Context) (*coreturns.Store, error) { return completed, nil }
+	sess.runtime.completedTurns = func(context.Context) (*coreturns.Store, error) { return completed, nil }
 	native, turn := "native-thread", "claude:shim:300"
 	if _, _, err := store.Submit(ctx, prompts.Submission{HostedThreadID: sess.hostedThreadID, Provider: model.ProviderClaude, NativeThreadID: native, ActionID: "person-starter", ProviderText: "person prompt", PresentationText: "person prompt", TextHash: "hash", RequestHash: "hash", Origin: prompts.HumanOrigin}); err != nil {
 		t.Fatal(err)

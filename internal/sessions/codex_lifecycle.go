@@ -82,7 +82,7 @@ func (a codexLifecycleAdapter) Current() (lifecycle.Observation, bool) {
 
 func observeCodexWork(sess *Session, dir wire.Direction, line []byte, live bool) {
 	if live && dir == protocol.Recv {
-		sess.observeCodexTurnInput(line)
+		sess.runtime.observeCodexTurnInput(line)
 	}
 	active, turnID, startedAtMs, ok := codexWorkEvidence(dir, line)
 	if !ok || !live {
@@ -96,13 +96,13 @@ func observeCodexWork(sess *Session, dir wire.Direction, line []byte, live bool)
 	if json.Unmarshal(line, &envelope) != nil {
 		return
 	}
-	if threadID := sess.ThreadID(); envelope.Params.ThreadID != "" && threadID != "" && envelope.Params.ThreadID != threadID {
+	if threadID := sess.stateOwner.ThreadID(); envelope.Params.ThreadID != "" && threadID != "" && envelope.Params.ThreadID != threadID {
 		return
 	}
 	if active && startedAtMs == 0 {
 		startedAtMs = time.Now().UnixMilli()
 	}
-	sess.setTurnActive(active, turnID, startedAtMs, true)
+	sess.stateOwner.setTurnActive(active, turnID, startedAtMs, true)
 }
 
 func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time.Time) {
@@ -128,7 +128,7 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 			if started == 0 {
 				started = at.UnixMilli()
 			}
-			sess.markCompacting(envelope.Method == "item/started", started)
+			sess.stateOwner.markCompacting(envelope.Method == "item/started", started)
 		}
 	case "thread/tokenUsage/updated":
 		sess.setLiveTokenUsageForTurn(wire.String(envelope.Params["turnId"]), envelope.Params["tokenUsage"])
@@ -156,7 +156,7 @@ func codexRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at tim
 
 }
 
-func codexAcceptedEvidence(sess *Session) { sess.startCodexZeroTurnRecovery() }
+func codexAcceptedEvidence(sess *Session) { sess.runtime.startCodexZeroTurnRecovery() }
 
 // codexTurnInput is what one attachment saw of a Codex turn it watched from
 // its start: the client ids of the prompts the turn took, and whether the
@@ -174,7 +174,7 @@ const codexTurnInputCap = 256
 // turn whose start this attachment saw is recorded: Codex echoes each prompt
 // it takes as a userMessage item carrying the prompt's client id, so such a
 // turn ending interrupted without that echo proves Codex dropped the prompt.
-func (sess *Session) observeCodexTurnInput(line []byte) {
+func (sess *Runtime) observeCodexTurnInput(line []byte) {
 	if !bytes.Contains(line, []byte(`"`+codexTurnStartedMethod+`"`)) && !bytes.Contains(line, []byte(`"`+codexTurnCompletedMethod+`"`)) &&
 		!bytes.Contains(line, []byte(`"userMessage"`)) {
 		return // most frames, deltas among them, carry no turn input evidence
@@ -196,50 +196,50 @@ func (sess *Session) observeCodexTurnInput(line []byte) {
 	if json.Unmarshal(line, &frame) != nil {
 		return
 	}
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
 	switch frame.Method {
 	case codexTurnStartedMethod:
 		id := frame.Params.Turn.ID
-		if id == "" || sess.codexTurnInputs[id] != nil {
+		if id == "" || sess.session.stateOwner.codexTurnInputs[id] != nil {
 			return
 		}
-		if sess.codexTurnInputs == nil {
-			sess.codexTurnInputs = make(map[string]*codexTurnInput)
+		if sess.session.stateOwner.codexTurnInputs == nil {
+			sess.session.stateOwner.codexTurnInputs = make(map[string]*codexTurnInput)
 		}
-		if len(sess.codexTurnInputs) >= codexTurnInputCap {
-			for old := range sess.codexTurnInputs {
-				delete(sess.codexTurnInputs, old)
+		if len(sess.session.stateOwner.codexTurnInputs) >= codexTurnInputCap {
+			for old := range sess.session.stateOwner.codexTurnInputs {
+				delete(sess.session.stateOwner.codexTurnInputs, old)
 				break
 			}
 		}
-		sess.codexTurnInputs[id] = &codexTurnInput{clientIDs: map[string]bool{}}
+		sess.session.stateOwner.codexTurnInputs[id] = &codexTurnInput{clientIDs: map[string]bool{}}
 	case "item/started", "item/completed":
 		clientID := frame.Params.Item.ClientID
 		if frame.Params.Item.Type != "userMessage" || clientID == "" {
 			return
 		}
-		if turn := sess.codexTurnInputs[frame.Params.TurnID]; turn != nil {
+		if turn := sess.session.stateOwner.codexTurnInputs[frame.Params.TurnID]; turn != nil {
 			turn.clientIDs[clientID] = true
 		}
 		// An echo is positive proof in any turn, including one this
 		// attachment did not see start.
-		if wait := sess.codexEchoWaits[clientID]; wait != nil && wait.turnID == "" && frame.Params.TurnID != "" {
+		if wait := sess.session.stateOwner.codexEchoWaits[clientID]; wait != nil && wait.turnID == "" && frame.Params.TurnID != "" {
 			wait.turnID = frame.Params.TurnID
 			if wait.uncertain {
-				delete(sess.codexEchoWaits, clientID)
+				delete(sess.session.stateOwner.codexEchoWaits, clientID)
 				echoed := *wait
 				go func() { // off the shared wire reader
 					if sess.bindCodexEcho(echoed) {
 						// Its turn may be saved and ended already, so no
 						// later saved commit would settle it.
-						sess.delivery.SettleWaitingPrompts(context.Background())
+						sess.session.delivery.SettleWaitingPrompts(context.Background())
 					}
 				}()
 			}
 		}
 	case codexTurnCompletedMethod:
-		if turn := sess.codexTurnInputs[frame.Params.Turn.ID]; turn != nil {
+		if turn := sess.session.stateOwner.codexTurnInputs[frame.Params.Turn.ID]; turn != nil {
 			turn.interrupted = frame.Params.Turn.Status == "interrupted"
 		}
 	}
@@ -251,15 +251,15 @@ func (sess *Session) observeCodexTurnInput(line []byte) {
 // this moment; the reset runs in order with the session's wire frames, so no
 // frame from that connection lands after it, and makes the evidence usable
 // again only if no later link loss or handshake advanced the epoch.
-func (sess *Session) forgetCodexTurnInputs() {
-	sess.stateMu.Lock()
-	sess.codexTurnEpoch++
-	epoch := sess.codexTurnEpoch
-	sess.stateMu.Unlock()
+func (sess *Runtime) forgetCodexTurnInputs() {
+	sess.session.stateOwner.stateMu.Lock()
+	sess.session.stateOwner.codexTurnEpoch++
+	epoch := sess.session.stateOwner.codexTurnEpoch
+	sess.session.stateOwner.stateMu.Unlock()
 	forget := func() error {
-		sess.stateMu.Lock()
-		sess.codexTurnInputs, sess.codexTurnInputsEpoch = nil, epoch
-		sess.stateMu.Unlock()
+		sess.session.stateOwner.stateMu.Lock()
+		sess.session.stateOwner.codexTurnInputs, sess.session.stateOwner.codexTurnInputsEpoch = nil, epoch
+		sess.session.stateOwner.stateMu.Unlock()
 		return nil
 	}
 	if core := sess.coreSession(); core != nil {
@@ -288,37 +288,37 @@ const codexEchoWaitCap = 64
 
 // expectCodexEcho starts waiting for a delivery's echo before its provider
 // call, so an echo read before the outcome is recorded is not lost.
-func (sess *Session) expectCodexEcho(wait codexEchoWait) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	if sess.codexEchoWaits == nil {
-		sess.codexEchoWaits = make(map[string]*codexEchoWait)
+func (sess *Runtime) expectCodexEcho(wait codexEchoWait) {
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
+	if sess.session.stateOwner.codexEchoWaits == nil {
+		sess.session.stateOwner.codexEchoWaits = make(map[string]*codexEchoWait)
 	}
-	if len(sess.codexEchoWaits) >= codexEchoWaitCap {
-		for old := range sess.codexEchoWaits {
-			delete(sess.codexEchoWaits, old)
+	if len(sess.session.stateOwner.codexEchoWaits) >= codexEchoWaitCap {
+		for old := range sess.session.stateOwner.codexEchoWaits {
+			delete(sess.session.stateOwner.codexEchoWaits, old)
 			break
 		}
 	}
-	sess.codexEchoWaits[SubmissionEventID(sess.hostedThreadID, wait.actionID)] = &wait
+	sess.session.stateOwner.codexEchoWaits[SubmissionEventID(sess.session.hostedThreadID, wait.actionID)] = &wait
 }
 
 // deliveredCodexEcho takes a delivery's outcome. Only one left uncertain with
 // no binding keeps waiting, and an echo already seen binds it at once.
-func (sess *Session) deliveredCodexEcho(actionID string, unbound bool) {
-	clientID := SubmissionEventID(sess.hostedThreadID, actionID)
-	sess.stateMu.Lock()
-	wait := sess.codexEchoWaits[clientID]
+func (sess *Runtime) deliveredCodexEcho(actionID string, unbound bool) {
+	clientID := SubmissionEventID(sess.session.hostedThreadID, actionID)
+	sess.session.stateOwner.stateMu.Lock()
+	wait := sess.session.stateOwner.codexEchoWaits[clientID]
 	if wait == nil {
-		sess.stateMu.Unlock()
+		sess.session.stateOwner.stateMu.Unlock()
 		return
 	}
 	wait.uncertain = unbound
 	echoed := *wait // the echo handler binds it otherwise, once seen
 	if !unbound || echoed.turnID != "" {
-		delete(sess.codexEchoWaits, clientID)
+		delete(sess.session.stateOwner.codexEchoWaits, clientID)
 	}
-	sess.stateMu.Unlock()
+	sess.session.stateOwner.stateMu.Unlock()
 	if unbound && echoed.turnID != "" {
 		sess.bindCodexEcho(echoed)
 	}
@@ -326,30 +326,30 @@ func (sess *Session) deliveredCodexEcho(actionID string, unbound bool) {
 
 // bindCodexEcho records an echoed prompt as accepted into the turn that took
 // it, exactly as an on-time reply would have, so its saved row can settle it.
-func (sess *Session) bindCodexEcho(wait codexEchoWait) bool {
-	binding, _ := sess.submissionBinding(wait.scope, wait.turnID, SubmissionEventID(sess.hostedThreadID, wait.actionID))
-	record, err := sess.delivery.turns.Accepted(context.Background(), prompts.Acceptance{
+func (sess *Runtime) bindCodexEcho(wait codexEchoWait) bool {
+	binding, _ := sess.submissionBinding(wait.scope, wait.turnID, SubmissionEventID(sess.session.hostedThreadID, wait.actionID))
+	record, err := sess.session.delivery.turns.Accepted(context.Background(), prompts.Acceptance{
 		ActionID: wait.actionID, ClaimToken: wait.claimToken, AttachmentEpoch: wait.claimEpoch, Binding: binding,
 	})
 	if err != nil {
-		log.Printf("bind echoed prompt %s: %v", sess.hostedThreadID, err)
+		log.Printf("bind echoed prompt %s: %v", sess.session.hostedThreadID, err)
 		return false
 	}
-	sess.delivery.publishTransactionalOutbox(record.Outbox)
-	sess.delivery.awaitSavedPrompt(wait.actionID)
+	sess.session.delivery.publishTransactionalOutbox(record.Outbox)
+	sess.session.delivery.awaitSavedPrompt(wait.actionID)
 	return true
 }
 
 // codexTurnDropped reports that this attachment, ready and current, saw
 // turnID from its start end interrupted without taking the prompt with
 // clientID.
-func (sess *Session) codexTurnDropped(turnID, clientID string) bool {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	if sess.codexTurnInputsEpoch != sess.codexTurnEpoch || sess.turnRestoreInProgress ||
-		sess.lifecycleState.State.Connection != lifecycle.Ready {
+func (sess *Runtime) codexTurnDropped(turnID, clientID string) bool {
+	sess.session.stateOwner.stateMu.Lock()
+	defer sess.session.stateOwner.stateMu.Unlock()
+	if sess.session.stateOwner.codexTurnInputsEpoch != sess.session.stateOwner.codexTurnEpoch || sess.session.stateOwner.turnRestoreInProgress ||
+		sess.session.stateOwner.lifecycleState.State.Connection != lifecycle.Ready {
 		return false
 	}
-	turn := sess.codexTurnInputs[turnID]
+	turn := sess.session.stateOwner.codexTurnInputs[turnID]
 	return turn != nil && turn.interrupted && !turn.clientIDs[clientID]
 }

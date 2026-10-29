@@ -79,8 +79,8 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 	})
 
 	sess, attachments := claudeTestSession(t)
-	sess.pendingName = "overnight run"
-	sess.displayName = "overnight run"
+	sess.stateOwner.pendingName = "overnight run"
+	sess.stateOwner.displayName = "overnight run"
 	req := claudeShimSpawnRequest(sess, shim.WSURL())
 	claude, err := startClaudeSession(sess, req)
 	if err != nil {
@@ -583,10 +583,10 @@ func TestClaudeAttachWaitsForReplayProcessing(t *testing.T) {
 	for _, state := range []string{"running", "exited"} {
 		t.Run(state, func(t *testing.T) {
 			sess, _ := claudeTestSession(t)
-			if err := sess.ensureCoreSession(); err != nil {
+			if err := sess.runtime.ensureCoreSession(); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(sess.core.Close)
+			t.Cleanup(sess.runtime.core.Close)
 			blocked, release := make(chan struct{}), make(chan struct{})
 			var releaseOnce sync.Once
 			unblock := func() { releaseOnce.Do(func() { close(release) }) }
@@ -599,7 +599,7 @@ func TestClaudeAttachWaitsForReplayProcessing(t *testing.T) {
 				}
 				// Attach has completed outbox restoration. Hold the processing
 				// loop now, while leaving the socket reader free to receive replay.
-				sess.core.ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
+				sess.runtime.core.ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error {
 					close(blocked)
 					<-release
 					return nil
@@ -677,7 +677,7 @@ func TestClaudeAttachRejectsReplayWhenProcessingLoopClosed(t *testing.T) {
 		}
 		// Outbox restoration created the core before opening this socket.
 		// Received replay cannot be settled if its processor is gone.
-		sess.core.Close()
+		sess.runtime.core.Close()
 		c.Reply(attach, map[string]any{
 			"shimSessionId": "shim-1", "nativeSessionId": "native-1",
 			"state": "running", "lastSeq": 1,
@@ -823,7 +823,7 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 func TestClaudeReattachWithTwoHundredSpooledLinesDoesNotBlockCoreMailbox(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	sess.projection = newBlockedProjection("claude")
-	if err := sess.ensureCoreSession(); err != nil {
+	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
 	owner := newClaudeSession(sess, "native-1")
@@ -841,7 +841,7 @@ func TestClaudeReattachWithTwoHundredSpooledLinesDoesNotBlockCoreMailbox(t *test
 
 	resumed := make(chan error, 1)
 	go func() {
-		resumed <- sess.core.ResumeLegacy(context.Background(), func(context.Context) error {
+		resumed <- sess.runtime.core.ResumeLegacy(context.Background(), func(context.Context) error {
 			transport.markSessionReady()
 			return nil
 		})
@@ -855,7 +855,7 @@ func TestClaudeReattachWithTwoHundredSpooledLinesDoesNotBlockCoreMailbox(t *test
 		t.Fatal("reattach blocked while replaying 200 spooled lines")
 	}
 	closed := make(chan struct{})
-	go func() { sess.core.Close(); close(closed) }()
+	go func() { sess.runtime.core.Close(); close(closed) }()
 	select {
 	case <-closed:
 	case <-time.After(2 * time.Second):

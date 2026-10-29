@@ -247,7 +247,7 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 func (s *Controller) finishHostedTurnSubmission(sess *sessions.Session, record ownedthreads.TurnRecord, created bool, started bool, responseStatus int, reason string, err error) (ownedthreads.TurnRecord, bool, error) {
 	if err != nil {
 		_ = s.Executions.MarkTurnDelivery(record.ID, "", ownedthreads.AgentTurnFailed, &ownedthreads.ExecutionError{Source: "delivery", Message: err.Error()})
-		sess.NotifyRuntime()
+		sess.State().NotifyRuntime()
 		return record, false, err
 	}
 	if responseStatus == http.StatusAccepted && reason == "queued_for_next_turn" {
@@ -263,7 +263,7 @@ func (s *Controller) finishHostedTurnSubmission(sess *sessions.Session, record o
 		}
 		_ = s.Executions.MarkTurnDelivery(record.ID, "", state, &ownedthreads.ExecutionError{Source: "delivery", Code: code, Message: reason})
 		if state == ownedthreads.AgentTurnFailed {
-			sess.NotifyRuntime()
+			sess.State().NotifyRuntime()
 		}
 	}
 	latest, _ := s.Executions.Turn(record.ID)

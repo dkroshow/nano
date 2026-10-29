@@ -46,8 +46,8 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 		t.Fatalf("identity with no saved source: attachments %d, held %d, unresolved %v", attachments, held, unresolved)
 	}
 	fake := newFakeAppServer(t)
-	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.ThreadID(), "path": filepath.Join(root, "2026", "10", "03", "rollout-01a0aaaa-0000-7000-8000-000000000001.jsonl")}})
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}, fake.daemon(), func() {}); err != nil {
+	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.State().ThreadID(), "path": filepath.Join(root, "2026", "10", "03", "rollout-01a0aaaa-0000-7000-8000-000000000001.jsonl")}})
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.State().ThreadID()}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaude(t, "catalog path held", func() bool { _, held, _ := view(); return held == 1 })

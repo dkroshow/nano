@@ -23,11 +23,11 @@ import (
 // 2026-08-06: 14 threads sharing one restart minute). A replayed close leaves
 // the stamp absent, which is the documented post-restart state of this
 // deliberately unpersisted field.
-func (sess *Session) setTurnActive(active bool, turnID string, startedAtMs int64, live bool) {
+func (sess *State) setTurnActive(active bool, turnID string, startedAtMs int64, live bool) {
 	sess.setTurnActiveState(active, turnID, startedAtMs, live, true)
 }
 
-func (sess *Session) beginTurnRestore() {
+func (sess *State) beginTurnRestore() {
 	sess.stateMu.Lock()
 	if !sess.turnRestoreInProgress {
 		sess.turnRestoreInProgress = true
@@ -40,13 +40,13 @@ func (sess *Session) beginTurnRestore() {
 	sess.stateMu.Unlock()
 }
 
-func (sess *Session) cancelTurnRestore() {
+func (sess *State) cancelTurnRestore() {
 	sess.stateMu.Lock()
 	sess.clearTurnRestoreLocked()
 	sess.stateMu.Unlock()
 }
 
-func (sess *Session) clearTurnRestoreLocked() {
+func (sess *State) clearTurnRestoreLocked() {
 	sess.turnRestoreInProgress = false
 	sess.turnRestoreSequence = 0
 	sess.turnRestoreActive = false
@@ -61,11 +61,11 @@ func (sess *Session) clearTurnRestoreLocked() {
 // browser repeatedly promote and demote the restored thread while Nano boots.
 // The attach path calls settleRestoredTurnState once after the complete replay
 // and the shim's current-state snapshot have both landed.
-func (sess *Session) restoreTurnActive(active bool, turnID string, startedAtMs int64) {
+func (sess *State) restoreTurnActive(active bool, turnID string, startedAtMs int64) {
 	sess.setTurnActiveState(active, turnID, startedAtMs, false, false)
 }
 
-func (sess *Session) setTurnActiveState(active bool, turnID string, startedAtMs int64, live, publish bool) {
+func (sess *State) setTurnActiveState(active bool, turnID string, startedAtMs int64, live, publish bool) {
 	sess.stateMu.Lock()
 	restoring := sess.turnRestoreInProgress
 	currentActive, currentID := sess.workActiveLocked(), sess.turnID
@@ -81,7 +81,7 @@ func (sess *Session) setTurnActiveState(active bool, turnID string, startedAtMs 
 	// Claude runs one execution at a time: its result ends it whichever
 	// prompt it answered, and a prompt written mid-turn is often the newer
 	// turn here.
-	if !active && turnID != "" && currentID != "" && turnID != currentID && sess.provider != "claude" {
+	if !active && turnID != "" && currentID != "" && turnID != currentID && sess.session.provider != "claude" {
 		sess.stateMu.Unlock()
 		return
 	}
@@ -126,10 +126,10 @@ func (sess *Session) setTurnActiveState(active bool, turnID string, startedAtMs 
 	}
 	sess.stateMu.Unlock()
 	if changed && publish && !restoring {
-		sess.PublishProjectionRuntime()
+		sess.session.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 		if drain {
-			sess.delivery.kickQueuedTurnDrain()
+			sess.session.delivery.kickQueuedTurnDrain()
 		}
 	}
 }
@@ -137,7 +137,7 @@ func (sess *Session) setTurnActiveState(active bool, turnID string, startedAtMs 
 // settleRestoredTurnState exposes exactly one runtime answer after a Claude
 // replay. It also releases a prompt queued while the replay was draining when
 // the settled state is idle.
-func (sess *Session) settleRestoredTurnState() {
+func (sess *State) settleRestoredTurnState() {
 	sess.stateMu.Lock()
 	if !sess.turnRestoreInProgress {
 		sess.stateMu.Unlock()
@@ -148,7 +148,7 @@ func (sess *Session) settleRestoredTurnState() {
 	sess.publishRestoredTurnState(drain, status)
 }
 
-func (sess *Session) settleRestoredTurnStateLocked() (drain bool, status string) {
+func (sess *State) settleRestoredTurnStateLocked() (drain bool, status string) {
 	_, drain = sess.transitionLifecycleLocked(sess.readyLifecycleEventLocked())
 	if sess.workActiveLocked() {
 		sess.turnID, sess.turnStartedAtMs = sess.turnRestoreID, sess.turnRestoreStartedAtMs
@@ -159,12 +159,12 @@ func (sess *Session) settleRestoredTurnStateLocked() (drain bool, status string)
 	return drain, sess.connectionStatusLocked()
 }
 
-func (sess *Session) publishRestoredTurnState(drain bool, status string) {
-	sess.PublishProjectionRuntime()
+func (sess *State) publishRestoredTurnState(drain bool, status string) {
+	sess.session.PublishProjectionRuntime()
 	sess.NotifyRuntime()
 	sess.updateHostedThread(status, "")
 	if drain {
-		sess.delivery.kickQueuedTurnDrain()
+		sess.session.delivery.kickQueuedTurnDrain()
 	}
 }
 
@@ -175,15 +175,15 @@ func (sess *Session) publishRestoredTurnState(drain bool, status string) {
 // truth: it never fires on an idle session, and it may only move the anchor
 // BACKWARD (D9/D11), so a recovered start can lengthen the reported elapsed
 // but never shorten it.
-func (sess *Session) restoreTurnAnchor(startedAtMs int64) bool {
+func (sess *State) restoreTurnAnchor(startedAtMs int64) bool {
 	return sess.restoreTurnAnchorState(startedAtMs, true)
 }
 
-func (sess *Session) restoreTurnAnchorQuietly(startedAtMs int64) bool {
+func (sess *State) restoreTurnAnchorQuietly(startedAtMs int64) bool {
 	return sess.restoreTurnAnchorState(startedAtMs, false)
 }
 
-func (sess *Session) restoreTurnAnchorState(startedAtMs int64, publish bool) bool {
+func (sess *State) restoreTurnAnchorState(startedAtMs int64, publish bool) bool {
 	if startedAtMs <= 0 {
 		return false
 	}
@@ -205,14 +205,14 @@ func (sess *Session) restoreTurnAnchorState(startedAtMs int64, publish bool) boo
 	}
 	sess.stateMu.Unlock()
 	if restore && publish && !restoring {
-		sess.PublishProjectionRuntime()
+		sess.session.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 	}
 	return restore
 }
 
 // turnAnchor snapshots the live turn's anchor, 0 when there is none.
-func (sess *Session) turnAnchor() int64 {
+func (sess *State) turnAnchor() int64 {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	if sess.turnRestoreInProgress {
@@ -223,7 +223,7 @@ func (sess *Session) turnAnchor() int64 {
 
 // compactingSinceMsLocked is the compaction start the session shows: only a
 // turn in flight can be compacting, whichever path ended the last one.
-func (sess *Session) compactingSinceMsLocked() int64 {
+func (sess *State) compactingSinceMsLocked() int64 {
 	if !sess.workActiveLocked() {
 		return 0
 	}
@@ -233,7 +233,7 @@ func (sess *Session) compactingSinceMsLocked() int64 {
 // markCompacting applies a provider's own compaction signal: a start keeps
 // the first start it saw (startedAtMs), an end clears it. A change reaches
 // every pane's status and the rail.
-func (sess *Session) markCompacting(compacting bool, startedAtMs int64) {
+func (sess *State) markCompacting(compacting bool, startedAtMs int64) {
 	sess.stateMu.Lock()
 	since := sess.compactingSinceMs
 	switch {
@@ -246,14 +246,14 @@ func (sess *Session) markCompacting(compacting bool, startedAtMs int64) {
 	sess.compactingSinceMs = since
 	sess.stateMu.Unlock()
 	if changed {
-		sess.PublishProjectionRuntime()
+		sess.session.PublishProjectionRuntime()
 		sess.NotifyRuntime()
 	}
 }
 
 // activeTurn snapshots the (thread, turn) pair an interrupt would address.
 // An empty turn id means there is nothing to interrupt.
-func (sess *Session) activeTurn() (threadID, turnID string) {
+func (sess *State) activeTurn() (threadID, turnID string) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	if !sess.workActiveLocked() {
@@ -263,21 +263,21 @@ func (sess *Session) activeTurn() (threadID, turnID string) {
 }
 
 // turnOptions snapshots the per-turn overrides the next turn/start will carry.
-func (sess *Session) turnOptions() (model, effort, serviceTier string) {
+func (sess *State) turnOptions() (model, effort, serviceTier string) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return sess.turnModel, sess.turnEffort, sess.turnServiceTier
 }
 
 // NotifyRuntime publishes a change to the attachment runtime view.
-func (sess *Session) NotifyRuntime() {
+func (sess *State) NotifyRuntime() {
 	if sess.runtimeNotify != nil {
 		sess.runtimeNotify()
 	}
 }
 
 // ThreadID reads the attachment’s current native provider identity.
-func (sess *Session) ThreadID() string {
+func (sess *State) ThreadID() string {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return sess.threadID

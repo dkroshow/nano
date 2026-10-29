@@ -142,36 +142,39 @@ func TestGrokLoadReconcilesReplayAgainstRunningPrompt(t *testing.T) {
 	replayedTerminal := []byte(`{"method":"_x.ai/session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"turn_completed","prompt_id":"older-prompt","stop_reason":"end_turn"},"_meta":{"eventId":"old-terminal","isReplay":true}}}`)
 
 	stale := sessionWithOwners(&Session{provider: "grok",
-		state:          map[string]json.RawMessage{},
-		lifecycleState: testLifecycleSnapshot("ready", false)})
+		stateOwner: State{
+			state:          map[string]json.RawMessage{},
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	(&grokSession{sess: stale}).recordWire(protocol.Recv, replayed)
-	if stale.workActiveLocked() {
+	if stale.stateOwner.workActiveLocked() {
 		t.Fatal("historical replay became present-tense activity")
 	}
-	stale.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{}}`))
+	stale.runtime.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{}}`))
 	(&grokSession{sess: stale}).recordWire(protocol.Recv, replayed)
-	if stale.workActiveLocked() || stale.turnID != "" || stale.lastTurnEndedAt != "" {
-		t.Fatalf("late stale replay survived load reconciliation: active=%v id=%q ended=%q", stale.workActiveLocked(), stale.turnID, stale.lastTurnEndedAt)
+	if stale.stateOwner.workActiveLocked() || stale.stateOwner.turnID != "" || stale.stateOwner.lastTurnEndedAt != "" {
+		t.Fatalf("late stale replay survived load reconciliation: active=%v id=%q ended=%q", stale.stateOwner.workActiveLocked(), stale.stateOwner.turnID, stale.stateOwner.lastTurnEndedAt)
 	}
 
 	running := sessionWithOwners(&Session{provider: "grok",
-		state:          map[string]json.RawMessage{},
-		lifecycleState: testLifecycleSnapshot("ready", false)})
+		stateOwner: State{
+			state:          map[string]json.RawMessage{},
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	(&grokSession{sess: running}).recordWire(protocol.Recv, replayed)
-	running.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{"x.ai/runningPromptId":"old-prompt"}}`))
+	running.runtime.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{"x.ai/runningPromptId":"old-prompt"}}`))
 	(&grokSession{sess: running}).recordWire(protocol.Recv, replayedTerminal)
-	if !running.workActiveLocked() || running.turnID != "old-prompt" {
-		t.Fatalf("late replay disturbed live resumed prompt = active %v id %q", running.workActiveLocked(), running.turnID)
+	if !running.stateOwner.workActiveLocked() || running.stateOwner.turnID != "old-prompt" {
+		t.Fatalf("late replay disturbed live resumed prompt = active %v id %q", running.stateOwner.workActiveLocked(), running.stateOwner.turnID)
 	}
 }
 
 func TestGrokLoadDoesNotRestoreSyntheticContinuation(t *testing.T) {
 	sess := sessionWithOwners(&Session{provider: "grok",
-		turnID:         "stale-operator",
-		lifecycleState: testLifecycleSnapshot("ready", true)})
-	sess.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{"x.ai/runningPromptId":"subagent-completed-child-1"}}`))
-	if sess.workActiveLocked() || sess.turnID != "" {
-		t.Fatalf("synthetic continuation restored operator runtime: active=%v turn=%q", sess.workActiveLocked(), sess.turnID)
+		stateOwner: State{
+			turnID:         "stale-operator",
+			lifecycleState: testLifecycleSnapshot("ready", true)}})
+	sess.runtime.reconcileGrokLoadedTurn(json.RawMessage(`{"_meta":{"x.ai/runningPromptId":"subagent-completed-child-1"}}`))
+	if sess.stateOwner.workActiveLocked() || sess.stateOwner.turnID != "" {
+		t.Fatalf("synthetic continuation restored operator runtime: active=%v turn=%q", sess.stateOwner.workActiveLocked(), sess.stateOwner.turnID)
 	}
 }
 
@@ -219,8 +222,9 @@ func TestGrokPromptAcceptanceRequiresMatchingQueueText(t *testing.T) {
 
 func TestGrokWireIngressRejectsMultiplexedChildSession(t *testing.T) {
 	sess := sessionWithOwners(&Session{provider: "grok",
-		threadID:       "parent",
-		lifecycleState: testLifecycleSnapshot("ready", false)})
+		stateOwner: State{
+			threadID:       "parent",
+			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	grok := &grokSession{sess: sess}
 	child := []byte(`{"method":"session/update","params":{"sessionId":"child","update":{"sessionUpdate":"agent_message_chunk"}}}`)
 	if grok.wireBelongsToAttachedSession(child) {
@@ -277,10 +281,11 @@ func TestGrokInteractionSelectsNativeOptions(t *testing.T) {
 
 func TestGrokPermissionRequestUsesExistingInteractionShape(t *testing.T) {
 	sess := sessionWithOwners(&Session{id: "nano",
-		provider:       "grok",
-		threadID:       "s1",
-		interactions:   map[string]interact.PendingInteraction{},
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		provider: "grok",
+		stateOwner: State{
+			threadID:       "s1",
+			interactions:   map[string]interact.PendingInteraction{},
+			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
@@ -312,10 +317,11 @@ func TestGrokPermissionRequestUsesExistingInteractionShape(t *testing.T) {
 // cancels the whole turn (the 2026-08-13 hosted-session failure).
 func TestGrokExitPlanRequestParksPlanApproval(t *testing.T) {
 	sess := sessionWithOwners(&Session{id: "nano",
-		provider:       "grok",
-		threadID:       "s1",
-		interactions:   map[string]interact.PendingInteraction{},
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		provider: "grok",
+		stateOwner: State{
+			threadID:       "s1",
+			interactions:   map[string]interact.PendingInteraction{},
+			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
@@ -343,10 +349,11 @@ func TestGrokExitPlanRequestParksPlanApproval(t *testing.T) {
 
 func TestGrokAskQuestionRequestParksAsUserInput(t *testing.T) {
 	sess := sessionWithOwners(&Session{id: "nano",
-		provider:       "grok",
-		threadID:       "s1",
-		interactions:   map[string]interact.PendingInteraction{},
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		provider: "grok",
+		stateOwner: State{
+			threadID:       "s1",
+			interactions:   map[string]interact.PendingInteraction{},
+			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
@@ -437,11 +444,12 @@ func TestSanitizeGrokWireBoundsKnownSensitiveFields(t *testing.T) {
 
 func TestGrokUnroutedPermissionFailsClosedWithoutParking(t *testing.T) {
 	sess := sessionWithOwners(&Session{id: "nano",
-		provider:       "grok",
-		threadID:       "parent",
-		permissionMode: "bypassPermissions",
-		interactions:   map[string]interact.PendingInteraction{},
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		provider: "grok",
+		stateOwner: State{
+			threadID:       "parent",
+			permissionMode: "bypassPermissions",
+			interactions:   map[string]interact.PendingInteraction{},
+			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}}})
 	grok := &grokSession{sess: sess}
@@ -504,10 +512,11 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess := sessionWithOwners(&Session{provider: "grok",
-		threadID:       "parent-1",
-		state:          map[string]json.RawMessage{},
-		projection:     newDeliveryTestProjection("grok"),
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		projection: newDeliveryTestProjection("grok"),
+		stateOwner: State{
+			threadID:       "parent-1",
+			state:          map[string]json.RawMessage{},
+			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}}})
 	sess.projection.setNativeThreadID("parent-1")

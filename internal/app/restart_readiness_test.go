@@ -54,13 +54,13 @@ func (c *restartAttachedCatalog) BindAttachedSource(owner, provider, nativeID, c
 		if _, already := c.configured.LoadOrStore(owner, true); !already {
 			index := c.CatalogSource
 			sess.ConfigureSavedReaders(func(ctx context.Context, turn string) (liveview.DurableTurnEvidence, bool) {
-				return index.SavedTurnEvidence(ctx, sess.Provider(), sess.ThreadID(), turn)
+				return index.SavedTurnEvidence(ctx, sess.Provider(), sess.State().ThreadID(), turn)
 			},
 				func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
 					if c.window.failSavedRows.Load() {
 						return nil, errors.New("saved rows unreadable")
 					}
-					return index.SavedPromptRows(ctx, sess.ThreadID(), keys)
+					return index.SavedPromptRows(ctx, sess.State().ThreadID(), keys)
 				}, index.SavedPromptRows, index.SavedTurnFinal, func(string) {})
 		}
 	}

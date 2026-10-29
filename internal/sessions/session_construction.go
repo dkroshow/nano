@@ -69,37 +69,39 @@ func New(cfg Config) *Session {
 		invokerHostedThreadID: cfg.InvokerHostedThreadID,
 		invokerNativeThreadID: cfg.InvokerNativeThreadID,
 		invokerProvider:       cfg.InvokerProvider,
-		presentationMode:      cfg.PresentationMode,
-		sidebarPlacement:      cfg.SidebarPlacement,
-		cwd:                   cfg.CWD,
-		permissionMode:        cfg.PermissionMode,
 		createdAt:             cfg.CreatedAt,
 		spawnMode:             cfg.SpawnMode,
-		state:                 map[string]json.RawMessage{},
-		reasoningSummary:      cfg.ReasoningSummary,
 		projection:            cfg.Projection,
-		turnEffort:            cfg.TurnEffort,
-		pendingName:           cfg.PendingName,
-		displayName:           cfg.DisplayName,
 		nameThread:            cfg.NameThread,
 		publishCreationName:   cfg.PublishCreationName,
 		creationName:          cfg.CreationName,
 		metadataName:          cfg.MetadataName,
 		skills:                cfg.Skills,
-		catalogRefresh:        cfg.CatalogRefresh,
-		runtimeNotify:         cfg.RuntimeNotify,
-		rememberAttachment:    cfg.RememberAttachment,
-		forgetAttachment:      cfg.ForgetAttachment,
-		updateTurnAnchor:      cfg.UpdateTurnAnchor,
-		updateShimSession:     cfg.UpdateShimSession,
 		agentExecutions:       cfg.AgentExecutions,
 		metadata:              cfg.Metadata,
-		pendingTurnCausation:  []turnCausationEntry{},
-		lastSettingsEvidence:  map[string]turnCausationEntry{},
 		processStarted:        cfg.ProcessStarted,
-		completedTurns:        cfg.CompletedTurns,
+		stateOwner: State{
+			presentationMode:     cfg.PresentationMode,
+			sidebarPlacement:     cfg.SidebarPlacement,
+			cwd:                  cfg.CWD,
+			permissionMode:       cfg.PermissionMode,
+			state:                map[string]json.RawMessage{},
+			turnEffort:           cfg.TurnEffort,
+			pendingName:          cfg.PendingName,
+			displayName:          cfg.DisplayName,
+			catalogRefresh:       cfg.CatalogRefresh,
+			runtimeNotify:        cfg.RuntimeNotify,
+			rememberAttachment:   cfg.RememberAttachment,
+			forgetAttachment:     cfg.ForgetAttachment,
+			updateTurnAnchor:     cfg.UpdateTurnAnchor,
+			updateShimSession:    cfg.UpdateShimSession,
+			pendingTurnCausation: []turnCausationEntry{},
+			lastSettingsEvidence: map[string]turnCausationEntry{}},
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
+		runtime: Runtime{
+			reasoningSummary: cfg.ReasoningSummary,
+			completedTurns:   cfg.CompletedTurns},
 		delivery: Delivery{
 			turns:            cfg.Turns,
 			appendUnread:     cfg.AppendUnread,
@@ -111,30 +113,32 @@ func New(cfg Config) *Session {
 	}
 	sess.wire.session = sess
 	sess.delivery.session = sess
+	sess.stateOwner.session = sess
+	sess.runtime.session = sess
 	return sess
 }
 
 // ReserveNativeID establishes the pre-publication native identity of a resume.
 func (sess *Session) ReserveNativeID(nativeID string) {
-	sess.threadID = nativeID
-	sess.setProjectionThreadID(nativeID)
+	sess.stateOwner.threadID = nativeID
+	sess.stateOwner.setProjectionThreadID(nativeID)
 }
 
 // InitializeBinding applies the canonical generation before provider activity.
 func (sess *Session) InitializeBinding(generation int64) error {
-	sess.attachmentGeneration = generation
+	sess.stateOwner.attachmentGeneration = generation
 	var err error
-	sess.lifecycleState, err = lifecycle.New(uint64(generation))
+	sess.stateOwner.lifecycleState, err = lifecycle.New(uint64(generation))
 	return err
 }
 
 // ConfigureSavedReaders connects the catalog reads before registration.
 func (sess *Session) ConfigureSavedReaders(turn func(context.Context, string) (liveview.DurableTurnEvidence, bool), prompts SavedPromptReader, nativePrompts savedPromptNativeReader, final savedTurnFinalReader, sweep func(string)) {
-	sess.savedTurn = turn
+	sess.stateOwner.savedTurn = turn
 	sess.delivery.savedPrompts = prompts
 	sess.delivery.savedPromptsIn = nativePrompts
 	sess.delivery.savedTurnFinal = final
-	sess.subscriptionSweep = sweep
+	sess.stateOwner.subscriptionSweep = sweep
 }
 
 // OpenWireSpool opens the attachment's ordered wire log.
@@ -149,41 +153,41 @@ func (sess *Wire) OpenWireSpool(dir string) error {
 
 // ConfigureRegistration connects the progress and catalog owners before publication.
 func (sess *Session) ConfigureRegistration(progress func(observability.RestartStep), failure func(string), background bool, sources AttachedCatalog) {
-	sess.restartProgress = progress
-	sess.restartFailure = failure
-	sess.catalogBackground = background
+	sess.stateOwner.restartProgress = progress
+	sess.stateOwner.restartFailure = failure
+	sess.stateOwner.catalogBackground = background
 	if sources != nil {
-		sess.catalogSources = sources
+		sess.stateOwner.catalogSources = sources
 	}
 }
 
 // DidRegister binds the catalog and hosted runtime after registry publication.
 func (sess *Session) DidRegister() {
-	sess.bindCatalogSource(sess.ThreadID())
-	sess.recordRestartStep(restartRegistered)
+	sess.stateOwner.bindCatalogSource(sess.stateOwner.ThreadID())
+	sess.stateOwner.recordRestartStep(restartRegistered)
 	if sess.agentExecutions != nil {
 		// Presentation is mutable once this attachment is resolvable.
-		sess.stateMu.Lock()
-		presentationMode, status, threadID := sess.presentationMode, sess.connectionStatusLocked(), sess.threadID
-		sess.stateMu.Unlock()
+		sess.stateOwner.stateMu.Lock()
+		presentationMode, status, threadID := sess.stateOwner.presentationMode, sess.stateOwner.connectionStatusLocked(), sess.stateOwner.threadID
+		sess.stateOwner.stateMu.Unlock()
 		if err := sess.agentExecutions.BindSession(sess.hostedThreadID, sess.id, threadID, status, presentationMode); err != nil {
 			log.Printf("bind hosted thread %s: %v", sess.hostedThreadID, err)
 		}
 	}
-	sess.subscriptionSweep(sess.hostedThreadID)
+	sess.stateOwner.subscriptionSweep(sess.hostedThreadID)
 }
 
 // WarmSkills begins the shared cwd read without waiting for a pane request.
-func (sess *Session) WarmSkills() { sess.skills.Current(sess.cwd) }
+func (sess *Session) WarmSkills() { sess.skills.Current(sess.stateOwner.cwd) }
 
 // RecordCreationPosture records the provider values of the admitted creation.
-func (sess *Session) RecordCreationPosture(req ProviderRequest) {
+func (sess *State) RecordCreationPosture(req ProviderRequest) {
 	sess.recordPosture(creationPostureEntries(req), metadataFreshnessLive)
 }
 
 // DiscardSpawnResources releases an unpublished or refused attachment's resources.
 func (sess *Session) DiscardSpawnResources() {
-	sess.releaseCatalogSource()
+	sess.stateOwner.releaseCatalogSource()
 	if sess.wire.spool != nil {
 		if err := sess.wire.spool.close(true); err != nil {
 			log.Printf("close wire spool %s: %v", sess.id, err)

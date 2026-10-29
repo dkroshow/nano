@@ -13,9 +13,9 @@ func TestPostureRejectionFailurePublishesSessionDegradation(t *testing.T) {
 	metadata := &rejectedPostureWrite{}
 	notified := 0
 	sess := New(Config{ID: "nano-1", HostedThreadID: "hosted", Metadata: metadata, RuntimeNotify: func() { notified++ }})
-	sess.recordProviderRejection("test_rejection", providerCausationSnapshot{postureFieldServiceTier: {EventID: 1, Value: "priority"}})
-	if notified != 1 || !sess.metadataDegraded {
-		t.Fatalf("failed provider rejection did not publish degraded state: notifications=%d degraded=%v", notified, sess.metadataDegraded)
+	sess.stateOwner.recordProviderRejection("test_rejection", providerCausationSnapshot{postureFieldServiceTier: {EventID: 1, Value: "priority"}})
+	if notified != 1 || !sess.stateOwner.metadataDegraded {
+		t.Fatalf("failed provider rejection did not publish degraded state: notifications=%d degraded=%v", notified, sess.stateOwner.metadataDegraded)
 	}
 	if len(metadata.events) != 1 || metadata.events[0].CausationEventID == nil || *metadata.events[0].CausationEventID != 1 || metadata.events[0].Disposition != metadataDispositionRejected {
 		t.Fatalf("provider rejection lost its causal request: %+v", metadata.events)

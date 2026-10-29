@@ -18,16 +18,16 @@ func (sess *Session) PublishProjectionRuntime() {
 	if sess.projection == nil {
 		return
 	}
-	sess.stateMu.Lock()
+	sess.stateOwner.stateMu.Lock()
 	runtime := liveview.Runtime{
-		SessionStatus:     sess.connectionStatusLocked(),
-		ThreadStatus:      sess.threadStatusLocked(),
-		TurnActive:        sess.workActiveLocked(),
-		TurnID:            sess.turnID,
-		TurnStartedAtMs:   sess.turnStartedAtMs,
-		CompactingSinceMs: sess.compactingSinceMsLocked(),
-		TokenUsage:        append(json.RawMessage(nil), sess.tokenUsage...),
-		LastError:         sess.lastError,
+		SessionStatus:     sess.stateOwner.connectionStatusLocked(),
+		ThreadStatus:      sess.stateOwner.threadStatusLocked(),
+		TurnActive:        sess.stateOwner.workActiveLocked(),
+		TurnID:            sess.stateOwner.turnID,
+		TurnStartedAtMs:   sess.stateOwner.turnStartedAtMs,
+		CompactingSinceMs: sess.stateOwner.compactingSinceMsLocked(),
+		TokenUsage:        append(json.RawMessage(nil), sess.stateOwner.tokenUsage...),
+		LastError:         sess.stateOwner.lastError,
 		DeliveryExpiries:  sess.delivery.deliveryExpiries.count(sess.provider),
 	}
 	// The transcript's runtime upsert must not interpret hidden disconnected
@@ -35,7 +35,7 @@ func (sess *Session) PublishProjectionRuntime() {
 	if !runtime.TurnActive {
 		runtime.TurnID, runtime.TurnStartedAtMs = "", 0
 	}
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 	sess.projection.updateRuntime(runtime)
 }
 
@@ -52,9 +52,9 @@ func (sess *Session) setLiveTokenUsage(raw json.RawMessage) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return
 	}
-	sess.stateMu.Lock()
-	sess.tokenUsage = append(json.RawMessage(nil), raw...)
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	sess.stateOwner.tokenUsage = append(json.RawMessage(nil), raw...)
+	sess.stateOwner.stateMu.Unlock()
 	sess.projection.updateTokenUsage(raw)
 }
 
@@ -64,50 +64,50 @@ func (sess *Session) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage
 	if usage == nil || turnID == "" {
 		return
 	}
-	sess.stateMu.Lock()
-	if sess.turnTokenUsage == nil {
-		sess.turnTokenUsage = make(map[string]*interact.TokenUsage)
+	sess.stateOwner.stateMu.Lock()
+	if sess.stateOwner.turnTokenUsage == nil {
+		sess.stateOwner.turnTokenUsage = make(map[string]*interact.TokenUsage)
 	}
-	sess.turnTokenUsage[turnID] = usage
-	if len(sess.turnTokenUsage) > liveProjectionStateTurnCap {
-		for id := range sess.turnTokenUsage {
+	sess.stateOwner.turnTokenUsage[turnID] = usage
+	if len(sess.stateOwner.turnTokenUsage) > liveProjectionStateTurnCap {
+		for id := range sess.stateOwner.turnTokenUsage {
 			if id != turnID {
-				delete(sess.turnTokenUsage, id)
+				delete(sess.stateOwner.turnTokenUsage, id)
 				break
 			}
 		}
 	}
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 }
 
 func (sess *Session) completedTokenUsage(turnID string) *interact.TokenUsage {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.turnTokenUsage[turnID]
+	sess.stateOwner.stateMu.Lock()
+	defer sess.stateOwner.stateMu.Unlock()
+	return sess.stateOwner.turnTokenUsage[turnID]
 }
 
 func (sess *Session) setLiveError(message string) {
 	if message == "" {
 		return
 	}
-	sess.stateMu.Lock()
-	sess.lastError = message
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	sess.stateOwner.lastError = message
+	sess.stateOwner.stateMu.Unlock()
 	sess.projection.updateError(message)
 }
 
 // ReconcileDurableTurn settles the session's open turn from its saved status
 // when the live terminal event was lost. It reads only while a turn is open.
 func (sess *Session) ReconcileDurableTurn(ctx context.Context) {
-	if sess == nil || sess.projection == nil || sess.savedTurn == nil {
+	if sess == nil || sess.projection == nil || sess.stateOwner.savedTurn == nil {
 		return
 	}
-	sess.stateMu.Lock()
-	turnID := sess.turnID
-	threadID := sess.threadID
-	generation := sess.attachmentGeneration
-	sessionTurnActive := sess.workActiveLocked()
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	turnID := sess.stateOwner.turnID
+	threadID := sess.stateOwner.threadID
+	generation := sess.stateOwner.attachmentGeneration
+	sessionTurnActive := sess.stateOwner.workActiveLocked()
+	sess.stateOwner.stateMu.Unlock()
 	if turnID == "" {
 		turnID = sess.projection.currentTurnID()
 	}
@@ -121,7 +121,7 @@ func (sess *Session) ReconcileDurableTurn(ctx context.Context) {
 	if !sessionTurnActive && liveTurn.Status != "in_progress" {
 		return
 	}
-	exact, found := sess.savedTurn(ctx, turnID)
+	exact, found := sess.stateOwner.savedTurn(ctx, turnID)
 	if !liveview.DurableTerminalAuthoritative(exact, found, wireEvidenceAtMs) {
 		return
 	}
@@ -134,34 +134,34 @@ func (sess *Session) ReconcileDurableTurn(ctx context.Context) {
 	// handshake cannot observe a terminal projection and then resurrect that
 	// exact turn. The saved end applies only to the attachment that read it,
 	// and only if the turn did no live work while it was read.
-	sess.stateMu.Lock()
-	if sess.attachmentGeneration != generation || threadID != "" && sess.threadID != threadID ||
+	sess.stateOwner.stateMu.Lock()
+	if sess.stateOwner.attachmentGeneration != generation || threadID != "" && sess.stateOwner.threadID != threadID ||
 		!sess.projection.completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
-		sess.workActiveLocked() && sess.turnID != turnID {
-		sess.stateMu.Unlock()
+		sess.stateOwner.workActiveLocked() && sess.stateOwner.turnID != turnID {
+		sess.stateOwner.stateMu.Unlock()
 		return
 	}
 	if threadID == "" {
-		threadID = sess.threadID
+		threadID = sess.stateOwner.threadID
 	}
-	sess.durablyTerminalTurnID = turnID
-	sess.durablyTerminalTurnThreadID = threadID
-	turnActiveChanged := sess.workActiveLocked()
+	sess.stateOwner.durablyTerminalTurnID = turnID
+	sess.stateOwner.durablyTerminalTurnThreadID = threadID
+	turnActiveChanged := sess.stateOwner.workActiveLocked()
 	if turnActiveChanged {
-		sess.transitionLifecycleLocked(lifecycle.EventFinished)
-		sess.turnID = ""
-		sess.turnStartedAtMs = 0
+		sess.stateOwner.transitionLifecycleLocked(lifecycle.EventFinished)
+		sess.stateOwner.turnID = ""
+		sess.stateOwner.turnStartedAtMs = 0
 		if exact.Turn.CompletedAtMs > 0 {
-			sess.lastTurnEndedAt = time.UnixMilli(exact.Turn.CompletedAtMs).UTC().Format(time.RFC3339Nano)
+			sess.stateOwner.lastTurnEndedAt = time.UnixMilli(exact.Turn.CompletedAtMs).UTC().Format(time.RFC3339Nano)
 		}
 	}
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 
 	if !turnActiveChanged {
 		return
 	}
 	sess.PublishProjectionRuntime()
-	sess.NotifyRuntime()
+	sess.stateOwner.NotifyRuntime()
 	sess.delivery.kickQueuedTurnDrain()
 }
 

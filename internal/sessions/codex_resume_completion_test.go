@@ -61,17 +61,17 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	if !dispatcher.SweepTarget(target) {
 		t.Fatal("initialize subscription cursor")
 	}
-	sess.subscriptionSweep = func(string) {
+	sess.stateOwner.subscriptionSweep = func(string) {
 		if !dispatcher.SweepTarget(target) {
 			t.Error("deliver completed-turn subscription")
 		}
 	}
-	if err := sess.ensureCoreSession(); err != nil {
+	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
-	finish := coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: "codex", NativeThreadID: sess.threadID,
+	finish := coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: "codex", NativeThreadID: sess.stateOwner.threadID,
 		TurnID: "turn-live", Outcome: "completed", FinalMessageID: "final-live", At: time.Unix(1787600100, 0), Source: "adapter"}
-	if err := sess.core.Observe(ctx, coresession.AdapterEvent{ProviderTurnID: finish.TurnID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}); err != nil {
+	if err := sess.runtime.core.Observe(ctx, coresession.AdapterEvent{ProviderTurnID: finish.TurnID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}); err != nil {
 		t.Fatal(err)
 	}
 	live, err := completed.After(ctx, sess.hostedThreadID, "", 10)
@@ -84,7 +84,7 @@ func TestCodexForcedResumeRerecordKeepsCompletionIdempotent(t *testing.T) {
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(priorLog) })
 	completedAt := int64(1787600100)
-	sess.delivery.observeCodexResumedTurnFinish(sess.threadID, codexResumeProjectionTurn{ID: "turn-live", Status: "completed", CompletedAt: &completedAt, Items: []any{
+	sess.delivery.observeCodexResumedTurnFinish(sess.stateOwner.threadID, codexResumeProjectionTurn{ID: "turn-live", Status: "completed", CompletedAt: &completedAt, Items: []any{
 		map[string]any{"id": "final-live", "type": "agentMessage", "phase": "final_answer", "text": "done live"},
 	}})
 	feed, err := completed.After(ctx, sess.hostedThreadID, "", 10)

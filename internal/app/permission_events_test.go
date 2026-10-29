@@ -27,7 +27,7 @@ func TestPermissionEventsPersistRequestAndResolutionWithoutCommandText(t *testin
 	fixture, store := permissionTestSession(t, "grok", "bypassPermissions")
 	sess := fixture.session
 	secret := "token-super-secret"
-	params, _ := json.Marshal(map[string]any{"sessionId": sess.ThreadID(), "toolCall": map[string]any{"toolCallId": "call-7", "rawInput": map[string]any{"command": "echo " + secret + "\nrg needle | head"}, "_meta": map[string]any{"x.ai/tool": map[string]any{"name": "run_terminal_command"}}}, "options": []any{map[string]any{"optionId": "allow-once", "kind": "allow_once"}}})
+	params, _ := json.Marshal(map[string]any{"sessionId": sess.State().ThreadID(), "toolCall": map[string]any{"toolCallId": "call-7", "rawInput": map[string]any{"command": "echo " + secret + "\nrg needle | head"}, "_meta": map[string]any{"x.ai/tool": map[string]any{"name": "run_terminal_command"}}}, "options": []any{map[string]any{"optionId": "allow-once", "kind": "allow_once"}}})
 	for range 2 {
 		fixture.grok.Send(map[string]any{"jsonrpc": "2.0", "id": "request-7", "method": "session/request_permission", "params": json.RawMessage(params)})
 		if response := fixture.grok.Response(); len(response.Error) > 0 {
@@ -99,7 +99,7 @@ func TestGrokDefaultPermissionStillParksAndLogs(t *testing.T) {
 func TestPermissionEventsAPIIsPagedByHostedThread(t *testing.T) {
 	fixture, store := permissionTestSession(t, "grok", "")
 	sess := fixture.session
-	fixture.grok.Send(map[string]any{"jsonrpc": "2.0", "id": "request-api", "method": "session/request_permission", "params": map[string]any{"sessionId": sess.ThreadID(), "toolCall": map[string]any{"toolCallId": "call-api", "_meta": map[string]any{"x.ai/tool": map[string]any{"name": "read_file"}}}}})
+	fixture.grok.Send(map[string]any{"jsonrpc": "2.0", "id": "request-api", "method": "session/request_permission", "params": map[string]any{"sessionId": sess.State().ThreadID(), "toolCall": map[string]any{"toolCallId": "call-api", "_meta": map[string]any{"x.ai/tool": map[string]any{"name": "read_file"}}}}})
 	waitForClaude(t, "persisted permission request", func() bool {
 		page, err := fixturePermissionEventsAfter(store, sess.HostedThreadID(), 0, 100)
 		return err == nil && len(page.Events) == 1

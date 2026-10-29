@@ -52,7 +52,7 @@ func (sess *Delivery) recordAgentTurnDelivery(transportActionID string, result j
 	}
 	sess.reconcileAgentOperations()
 	if deliveryErr != nil {
-		sess.session.NotifyRuntime()
+		sess.session.stateOwner.NotifyRuntime()
 	}
 }
 
@@ -112,7 +112,7 @@ func (sess *Delivery) observeAgentExecutionWire(dir wire.Direction, line []byte)
 			}
 		}
 		if status != agentTurnCompleted {
-			sess.session.NotifyRuntime()
+			sess.session.stateOwner.NotifyRuntime()
 		}
 	}
 }
@@ -174,7 +174,7 @@ func (sess *Delivery) observeGrokAgentWire(line []byte) {
 	// already treats both as terminal; the hosted operation must do the same.
 	if !terminalObserved {
 		if promptID, status, _, terminal := grokTerminalFromWire(line); terminal {
-			sess.observeGrokAgentTerminal(sess.session.ThreadID(), promptID, status, status, nil)
+			sess.observeGrokAgentTerminal(sess.session.stateOwner.ThreadID(), promptID, status, status, nil)
 		}
 	}
 }
@@ -198,7 +198,7 @@ func (sess *Delivery) observeGrokAgentTerminal(sessionID, promptID, status, code
 		}
 	}
 	if status != agentTurnCompleted {
-		sess.session.NotifyRuntime()
+		sess.session.stateOwner.NotifyRuntime()
 	}
 }
 
@@ -228,14 +228,14 @@ func (sess *Delivery) observeClaudeAgentResult(line []byte) {
 		// The result names an execution, not the saved consumption of the
 		// prompt: its operation finishes once its own saved row is proven.
 		// Keep the answer for that moment.
-		if err := sess.session.agentExecutions.ObserveCandidate("claude", sess.session.ThreadID(), turnID, itemID, "final_answer", response); err != nil {
+		if err := sess.session.agentExecutions.ObserveCandidate("claude", sess.session.stateOwner.ThreadID(), turnID, itemID, "final_answer", response); err != nil {
 			log.Printf("record Claude agent answer for turn %s: %v", turnID, err)
 		}
-	} else if err := sess.session.agentExecutions.MarkTurnTerminal("claude", sess.session.ThreadID(), turnID, status, executionErr, response, itemID, hostedstore.ResultMeta{}); err != nil {
+	} else if err := sess.session.agentExecutions.MarkTurnTerminal("claude", sess.session.stateOwner.ThreadID(), turnID, status, executionErr, response, itemID, hostedstore.ResultMeta{}); err != nil {
 		log.Printf("record Claude agent terminal turn %s: %v", turnID, err)
 	}
 	if status != agentTurnCompleted {
-		sess.session.NotifyRuntime()
+		sess.session.stateOwner.NotifyRuntime()
 	}
 }
 
@@ -266,10 +266,10 @@ const ClaudeMemberBatch = 32
 // missing, unknown or unreadable stays owed for the next trigger, and the
 // thread keeps its owed hint while any is read. The caller holds settleMu.
 func (sess *Delivery) memberStepLocked(ctx context.Context) {
-	if sess.session.provider != string(model.ProviderClaude) || sess.turns == nil || sess.session.completedTurns == nil || sess.session.agentExecutions == nil {
+	if sess.session.provider != string(model.ProviderClaude) || sess.turns == nil || sess.session.runtime.completedTurns == nil || sess.session.agentExecutions == nil {
 		return
 	}
-	store, err := sess.session.completedTurns(ctx)
+	store, err := sess.session.runtime.completedTurns(ctx)
 	if err != nil {
 		log.Printf("Claude members of %s: turn store unavailable: %v", sess.session.hostedThreadID, err)
 		return
@@ -297,7 +297,7 @@ func (sess *Delivery) memberStepLocked(ctx context.Context) {
 			// step, after a restart as before it.
 			seen = true
 			sess.owedHint.Store(true)
-			answers, current := sess.claudeAnswers(), sess.session.ThreadID()
+			answers, current := sess.claudeAnswers(), sess.session.stateOwner.ThreadID()
 			for _, record := range batch {
 				answers.FinishOwed(ctx, store, record, ClaudeSettlementEntry(record.Outbox, record.NativeThreadID, current, resolve))
 			}
@@ -343,8 +343,8 @@ func (sess *Delivery) claudeAnswers() ClaudeAnswers {
 
 // claudeSavedRows reads saved user rows in one exact native thread.
 func (sess *Delivery) claudeSavedRows(ctx context.Context, native string, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-	if native == sess.session.ThreadID() || sess.savedPromptsIn == nil {
-		if native != sess.session.ThreadID() || sess.savedPrompts == nil {
+	if native == sess.session.stateOwner.ThreadID() || sess.savedPromptsIn == nil {
+		if native != sess.session.stateOwner.ThreadID() || sess.savedPrompts == nil {
 			return nil, history.ErrSavedTranscriptUnavailable
 		}
 		return sess.savedPrompts(ctx, keys)
@@ -410,7 +410,7 @@ func (sess *Delivery) finishesOnSavedProof(provider, turnID string, openOperatio
 	case sess.turns == nil:
 		return false
 	case provider == string(model.ProviderCodex):
-		if !sess.session.acceptsRunningTurnInput() {
+		if !sess.session.runtime.acceptsRunningTurnInput() {
 			return false
 		}
 	case provider != string(model.ProviderClaude):
@@ -442,10 +442,10 @@ func (sess *Delivery) finishesOnSavedProof(provider, turnID string, openOperatio
 // fact arrives second calls this, so an operation missing either stays open.
 func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string) {
 	claude := sess.session.provider == string(model.ProviderClaude)
-	if sess.session.agentExecutions == nil || sess.turns == nil || sess.session.completedTurns == nil || !claude && !sess.session.acceptsRunningTurnInput() {
+	if sess.session.agentExecutions == nil || sess.turns == nil || sess.session.runtime.completedTurns == nil || !claude && !sess.session.runtime.acceptsRunningTurnInput() {
 		return
 	}
-	store, err := sess.session.completedTurns(ctx)
+	store, err := sess.session.runtime.completedTurns(ctx)
 	if err != nil {
 		return
 	}
@@ -467,7 +467,7 @@ func (sess *Delivery) finishJoinedAgentTurns(ctx context.Context, turnID string)
 	// answer.
 	response, itemID, meta := "", "", hostedstore.ResultMeta{}
 	if turn.Outcome == agentTurnCompleted && turn.FinalMessageID != "" {
-		response, meta, _ = sess.session.agentExecutions.SharedTurnResult(sess.session.hostedThreadID, sess.session.provider, sess.session.ThreadID(), turnID, turn.FinalMessageID)
+		response, meta, _ = sess.session.agentExecutions.SharedTurnResult(sess.session.hostedThreadID, sess.session.provider, sess.session.stateOwner.ThreadID(), turnID, turn.FinalMessageID)
 		itemID = turn.FinalMessageID
 	}
 	// Missing wire text cannot hold the operation open indefinitely: its
@@ -502,7 +502,7 @@ func (sess *Delivery) reconcileAgentOperations() {
 			continue
 		}
 		_ = sess.session.agentExecutions.MarkTurnTerminal(
-			sess.session.provider, sess.session.ThreadID(), turn.ID, turn.Status, executionErr,
+			sess.session.provider, sess.session.stateOwner.ThreadID(), turn.ID, turn.Status, executionErr,
 			"", turn.FinalItemID, hostedstore.ResultMeta{},
 		)
 	}
@@ -588,7 +588,7 @@ func codexResumeFinalItemID(turn codexResumeProjectionTurn) string {
 // derives it, with the provider's own completion time; the turn store accepts
 // the same fact twice and refuses a conflicting one.
 func (sess *Delivery) observeCodexResumedTurnFinish(nativeThreadID string, turn codexResumeProjectionTurn) {
-	core := sess.session.coreSession()
+	core := sess.session.runtime.coreSession()
 	if core == nil {
 		log.Printf("codex turn %s of %s ended while Nano was down; no core session records it", turn.ID, sess.session.hostedThreadID)
 		return

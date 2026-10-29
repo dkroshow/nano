@@ -138,9 +138,9 @@ func observeClaudeWork(sess *Session, dir wire.Direction, line []byte, live bool
 		turnID = sess.projection.claudeResultTurn()
 	}
 	if !live {
-		sess.restoreTurnActive(active, turnID, startedAtMs)
+		sess.stateOwner.restoreTurnActive(active, turnID, startedAtMs)
 	} else {
-		sess.setTurnActive(active, turnID, startedAtMs, true)
+		sess.stateOwner.setTurnActive(active, turnID, startedAtMs, true)
 	}
 }
 
@@ -154,7 +154,7 @@ func claudeRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at ti
 		// Claude reports status "compacting" every 30 s while it compacts,
 		// then status null (with compact_result) when it has finished.
 		if status, ok := message["status"]; ok && wire.String(message["subtype"]) == "status" {
-			sess.markCompacting(wire.String(status) == "compacting", at.UnixMilli())
+			sess.stateOwner.markCompacting(wire.String(status) == "compacting", at.UnixMilli())
 		}
 	case "result":
 		if usagePayload := claudeResultUsagePayload(message); usagePayload != nil {
@@ -186,11 +186,11 @@ func claudeResultUsagePayload(message map[string]json.RawMessage) json.RawMessag
 }
 
 func claudeReleaseAcceptedEvidence(sess *Session) {
-	if child := sess.claudeHandle(); child != nil {
+	if child := sess.runtime.claudeHandle(); child != nil {
 		child.releaseTurnIngress()
 	}
 }
 func claudeEvidenceIngressBlocked(sess *Session) bool {
-	child := sess.claudeHandle()
+	child := sess.runtime.claudeHandle()
 	return child != nil && child.turnIngressActive()
 }

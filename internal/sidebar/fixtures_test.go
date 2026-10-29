@@ -353,7 +353,7 @@ func memorySession(t *testing.T, id, provider, native, status, cwd, model string
 	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": native}, "model": model})
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "sidebar-turn"}})
 	daemon := sessions.NewCodexDaemon(fake.WSURL(), "", func() bool { return true })
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: provider, Mode: "resume", ThreadID: native}, daemon, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: provider, Mode: "resume", ThreadID: native}, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)

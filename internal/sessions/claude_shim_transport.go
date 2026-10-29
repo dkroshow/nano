@@ -177,7 +177,7 @@ func startClaudeShimSession(owner *claudeSession, shimURL string, posture claude
 		turnIDSession = owner.sess.id
 	}
 	params := map[string]any{
-		"bin": posture.Bin, "args": posture.Args, "cwd": owner.sess.cwd,
+		"bin": posture.Bin, "args": posture.Args, "cwd": owner.sess.stateOwner.cwd,
 		"turnIdSession": turnIDSession,
 	}
 	if err := tr.call(shimMethodStart, params, &res, claudeShimCallTimeout); err != nil {
@@ -207,11 +207,11 @@ func startClaudeShimSession(owner *claudeSession, shimURL string, posture claude
 // restart) for callers to dispatch on.
 func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan claudeReplayPlan, posture claudeSpawnPosture, stored hostedstore.Attachment) (*claudeSession, error) {
 	fromSeq := plan.FromSeq
-	sess.beginTurnRestore()
+	sess.stateOwner.beginTurnRestore()
 	restoreSettled := false
 	defer func() {
 		if !restoreSettled {
-			sess.cancelTurnRestore()
+			sess.stateOwner.cancelTurnRestore()
 		}
 	}()
 	// supersedes: the id we attached by. The replayed init normally re-derives
@@ -286,12 +286,12 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 	// An empty replay can have no system.init line. The attach response still
 	// carries the native identity required by transactional prompt bindings.
 	if res.NativeSessionID != "" {
-		sess.stateMu.Lock()
-		if sess.threadID == "" {
-			sess.threadID = res.NativeSessionID
+		sess.stateOwner.stateMu.Lock()
+		if sess.stateOwner.threadID == "" {
+			sess.stateOwner.threadID = res.NativeSessionID
 		}
-		sess.stateMu.Unlock()
-		sess.setProjectionThreadID(res.NativeSessionID)
+		sess.stateOwner.stateMu.Unlock()
+		sess.stateOwner.setProjectionThreadID(res.NativeSessionID)
 	}
 	c.tr = tr
 	// Do not let the WebSocket reader project any replay line. It keeps
@@ -352,7 +352,7 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 	// frames are applied asynchronously on the session loop; this ordered
 	// acknowledgement ensures their transcript and wire publication is complete
 	// before attachment settlement, even if the provider has already exited.
-	if core := sess.coreSession(); core != nil {
+	if core := sess.runtime.coreSession(); core != nil {
 		if err := tr.awaitApplied(core); err != nil {
 			return fail(fmt.Errorf("%w: processing acknowledgement failed: %w", errClaudeReplayUnsettled, err))
 		}
@@ -373,9 +373,9 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 			if sess.projection != nil {
 				turnID = sess.projection.ensureClaudeActiveTurn(startedAtMs)
 			}
-			sess.restoreTurnActive(true, turnID, startedAtMs)
+			sess.stateOwner.restoreTurnActive(true, turnID, startedAtMs)
 		} else {
-			sess.restoreTurnActive(false, "", 0)
+			sess.stateOwner.restoreTurnActive(false, "", 0)
 		}
 	}
 	// The browser must see the replay as one reconciliation, not as a live
@@ -388,20 +388,20 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 	}
 	// Recover the spool's unanswered requests before readiness can drain a queue.
 	c.rehydratePending(nil)
-	if !sess.awaitSavedCatchUp(tr.client.Done(), nil) {
-		if sess.ended() {
+	if !sess.stateOwner.awaitSavedCatchUp(tr.client.Done(), nil) {
+		if sess.stateOwner.ended() {
 			return fail(errSpawnSessionClosed)
 		}
 		return fail(fmt.Errorf("%w: shim disconnected while the saved file caught up", errClaudeReplayUnsettled))
 	}
-	sess.stateMu.Lock()
-	epoch, sequence := sess.lifecycleState.Epoch, sess.nextEvidenceSequenceLocked()
-	active, turnID, anchor := sess.turnRestoreActive, sess.turnRestoreID, sess.turnRestoreStartedAtMs
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	epoch, sequence := sess.stateOwner.lifecycleState.Epoch, sess.stateOwner.nextEvidenceSequenceLocked()
+	active, turnID, anchor := sess.stateOwner.turnRestoreActive, sess.stateOwner.turnRestoreID, sess.stateOwner.turnRestoreStartedAtMs
+	sess.stateOwner.stateMu.Unlock()
 	if res.State == "exited" {
 		c.markExited()
 	}
-	restoreSettled = sess.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: res.State, active: active, settled: true}, turnID, anchor)
+	restoreSettled = sess.stateOwner.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: res.State, active: active, settled: true}, turnID, anchor)
 	if !restoreSettled && res.State != "exited" {
 		return fail(fmt.Errorf("%w: claude shim did not supply settled current evidence", errClaudeReplayUnsettled))
 	}
@@ -453,7 +453,7 @@ func (t *claudeShimTransport) awaitApplied(core *coresession.Session) error {
 // Nothing blocks on it and the provider child is untouched.
 func (t *claudeShimTransport) abandonQueued(sess *Session) bool {
 	t.abandon()
-	core := sess.coreSession()
+	core := sess.runtime.coreSession()
 	if core == nil {
 		return true
 	}
@@ -614,25 +614,25 @@ func (t *claudeShimTransport) emitTurnEvent(event wireclaude.Event) {
 	}
 }
 
-func (sess *Session) observeClaudeShimEvent(event wireclaude.Event) {
+func (sess *Runtime) observeClaudeShimEvent(event wireclaude.Event) {
 	sess.observeClaudeShimEventGated(event, nil)
 }
 
 // observeTurnEvent is this connection's turn-event sink: its events share the
 // connection's abandonment gate.
 func (t *claudeShimTransport) observeTurnEvent(event wireclaude.Event) {
-	t.owner.sess.observeClaudeShimEventGated(event, t.queuedWorkAllowed)
+	t.owner.sess.runtime.observeClaudeShimEventGated(event, t.queuedWorkAllowed)
 }
 
-func (sess *Session) observeClaudeShimEventGated(event wireclaude.Event, gate func() error) {
+func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate func() error) {
 	if sess == nil || event.ProviderTurnID == "" && event.Kind != claudeShimResult {
 		return
 	}
 	// A spooled frame carries its own identity to the projection when it is
 	// applied (claudeFrameTurn). Only the acknowledgement of a live send, which
 	// has no spool sequence yet, sets it here, before its own send line.
-	if sess.projection != nil && event.Seq == 0 {
-		sess.projection.setClaudeProviderTurnID(event.ProviderTurnID)
+	if sess.session.projection != nil && event.Seq == 0 {
+		sess.session.projection.setClaudeProviderTurnID(event.ProviderTurnID)
 	}
 	core := sess.coreSession()
 	if core == nil {
@@ -646,7 +646,7 @@ func (sess *Session) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 	var finish *coreturns.Finish
 	switch event.Kind {
 	case claudeShimAccepted:
-		started := coreturns.Start{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(), TurnID: event.ProviderTurnID, At: at, Source: "adapter"}
+		started := coreturns.Start{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(), TurnID: event.ProviderTurnID, At: at, Source: "adapter"}
 		adapterEvent.TurnEvents = []coresession.TurnEvent{{Started: &started}}
 	case claudeShimResult:
 		// The shim tags a result with the prompt it last wrote, which a result
@@ -655,7 +655,7 @@ func (sess *Session) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 		// prompt.
 		adapterEvent.ProviderTurnID = ""
 		status, _ := ClaudeProjectionTerminal(event.Line)
-		finish = &coreturns.Finish{HostedThreadID: sess.hostedThreadID, Provider: sess.provider, NativeThreadID: sess.ThreadID(),
+		finish = &coreturns.Finish{HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: sess.session.stateOwner.ThreadID(),
 			Outcome: status, At: at, Source: "adapter"}
 		adapterEvent.TurnEvents = []coresession.TurnEvent{{Finished: finish}}
 	}
@@ -675,12 +675,12 @@ func (sess *Session) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 		if finish.TurnID = turnID; turnID == "" {
 			return nil // a finish that names no turn finishes nothing
 		}
-		if sess.projection != nil {
-			finish.FinalMessageID = sess.projection.finalAgentItemID(turnID)
+		if sess.session.projection != nil {
+			finish.FinalMessageID = sess.session.projection.finalAgentItemID(turnID)
 		}
 		// The result line is this turn's own usage evidence. A narrowed replay
 		// has no projection turn for the prompt to key live usage by.
-		usage := sess.completedTokenUsage(turnID)
+		usage := sess.session.completedTokenUsage(turnID)
 		var message map[string]json.RawMessage
 		if json.Unmarshal(event.Line, &message) == nil {
 			if lineUsage := normalizeTokenUsage(claudeResultUsagePayload(message)); lineUsage != nil {
@@ -701,19 +701,19 @@ func (sess *Session) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 // with their row's own. named is false when the result names no prompt, as
 // for a turn the harness started; turnID is "" unless exactly one prompt of
 // this thread carries the id.
-func (sess *Session) claudeAnsweredTurn(line []byte) (turnID string, named bool) {
+func (sess *Runtime) claudeAnsweredTurn(line []byte) (turnID string, named bool) {
 	var result struct {
 		UserMessageUUID string `json:"user_message_uuid"`
 	}
 	if json.Unmarshal(line, &result) != nil || result.UserMessageUUID == "" {
 		return "", false
 	}
-	if sess.delivery.turns == nil || sess.hostedThreadID == "" {
+	if sess.session.delivery.turns == nil || sess.session.hostedThreadID == "" {
 		return "", true
 	}
-	records, err := sess.delivery.turns.ByEvent(context.Background(), sess.hostedThreadID, result.UserMessageUUID)
+	records, err := sess.session.delivery.turns.ByEvent(context.Background(), sess.session.hostedThreadID, result.UserMessageUUID)
 	if err != nil {
-		log.Printf("Claude result on %s: its prompt is unreadable: %v", sess.hostedThreadID, err)
+		log.Printf("Claude result on %s: its prompt is unreadable: %v", sess.session.hostedThreadID, err)
 		return "", true
 	}
 	if len(records) != 1 {
@@ -767,7 +767,7 @@ func (t *claudeShimTransport) durableAttachment(nativeThreadID, model string) (h
 	return hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: nativeThreadID,
-		Cwd:            t.owner.sess.cwd,
+		Cwd:            t.owner.sess.stateOwner.cwd,
 		Model:          model,
 		Bin:            t.posture.Bin,
 		Args:           t.posture.Args,
@@ -883,7 +883,7 @@ func (t *claudeShimTransport) onDisconnect(err error) {
 	log.Printf("claude shim connection lost for session %s (%v)", t.owner.sess.id, err)
 	t.owner.exitOnce.Do(func() {
 		close(t.owner.exited)
-		t.owner.sess.observeConnection(lifecycle.EventLinkLost)
+		t.owner.sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 	})
 }
 

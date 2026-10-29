@@ -341,7 +341,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if err := control.CanonicalDatabase().QueryRow(`SELECT desired_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, summary.HostedThreadID, postureFieldServiceTier).Scan(&desired); err != nil || desired != metadataDispositionRequested {
 		t.Fatalf("priority desired metadata = %q, err=%v", desired, err)
 	}
-	if resolved, ok := fixtureOwners(s).hostedController().ResolveHostedRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
+	if resolved, ok := fixtureOwners(s).hostedController().ResolveHostedRecord(sess.State().ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
 		t.Fatalf("resolve human-created native id = %#v, present=%v", resolved, ok)
 	}
 	provider.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-human"}})
@@ -1122,7 +1122,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	}
 
 	sess.ReserveNativeID("native-after-start")
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(sess.Close)
@@ -1356,7 +1356,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 func startFastClaudeFixture(t *testing.T, sess *sessions.Session, includeResult bool) {
 	t.Helper()
 	f := &providerRuntimeFixture{session: sess}
-	provisional := sess.ThreadID()
+	provisional := sess.State().ThreadID()
 	sess.ReserveNativeID("")
 	base := time.Now()
 	ordinal := 0
@@ -1413,7 +1413,7 @@ func startFastClaudeFixture(t *testing.T, sess *sessions.Session, includeResult 
 			c.Reply(call, map[string]any{"turnId": turn})
 		}
 	})
-	if err := sess.BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")

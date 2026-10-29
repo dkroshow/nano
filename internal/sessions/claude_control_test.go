@@ -215,7 +215,7 @@ func TestClaudeInteractionResponseUsesProviderAdapter(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{} })
 	sess, _ := startControlSession(t, shim)
 	sess.delivery.addPendingInteraction(interact.PendingInteraction{
-		ID: "permission-1", Kind: kindToolPermission, ThreadID: sess.ThreadID(),
+		ID: "permission-1", Kind: kindToolPermission, ThreadID: sess.stateOwner.ThreadID(),
 		Params: json.RawMessage(`{"input":{"command":"pwd"}}`), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 
@@ -356,7 +356,7 @@ func TestClaudeSetModelRecordsOnlyWhatTheWireAccepted(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("set model = %d %s", res.Code, res.Body.String())
 	}
-	if model, _, _ := sess.turnOptions(); model != "haiku" {
+	if model, _, _ := sess.stateOwner.turnOptions(); model != "haiku" {
 		t.Fatalf("turnModel = %q, want haiku", model)
 	}
 	frames := controlFramesOf(shim, claudeSubtypeSetModel)

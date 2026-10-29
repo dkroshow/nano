@@ -39,8 +39,8 @@ func (sess *Session) mcpServers(ctx context.Context) (*inspection.MCPInventory, 
 	}
 
 	var raw json.RawMessage
-	params := map[string]any{"threadId": sess.ThreadID(), "detail": mcpInventoryDetail}
-	if err := sess.codex.callForSession(ctx, sess, "mcpServerStatus/list", params, &raw); err != nil {
+	params := map[string]any{"threadId": sess.stateOwner.ThreadID(), "detail": mcpInventoryDetail}
+	if err := sess.runtime.codex.callForSession(ctx, sess, "mcpServerStatus/list", params, &raw); err != nil {
 		return nil, err
 	}
 	inventory := inspection.ProjectMCPInventory(raw)

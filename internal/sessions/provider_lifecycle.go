@@ -50,22 +50,22 @@ func wireNudgesCatalog(provider string, dir wire.Direction, line []byte) bool {
 	return false
 }
 
-func (sess *Session) observeProviderWork(dir wire.Direction, line []byte, live bool) {
-	if observe := lifecycleProviders[sess.provider].observe; observe != nil {
-		observe(sess, dir, line, live)
+func (sess *State) observeProviderWork(dir wire.Direction, line []byte, live bool) {
+	if observe := lifecycleProviders[sess.session.provider].observe; observe != nil {
+		observe(sess.session, dir, line, live)
 	}
 }
 
 // evidenceCoordinates is captured at the provider response's ordered ingress,
 // before a later wire delta can arrive. A snapshot must keep that ordering when
 // replay and identity reconciliation take longer than the provider response.
-func (sess *Session) evidenceCoordinates() (uint64, uint64) {
+func (sess *State) evidenceCoordinates() (uint64, uint64) {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return sess.lifecycleState.Epoch, sess.nextEvidenceSequenceLocked()
 }
 
-func (sess *Session) nextEvidenceSequenceLocked() uint64 {
+func (sess *State) nextEvidenceSequenceLocked() uint64 {
 	if sess.evidenceSequence < sess.lifecycleState.Sequence {
 		sess.evidenceSequence = sess.lifecycleState.Sequence
 	}
@@ -84,7 +84,7 @@ func (sess *Session) nextEvidenceSequenceLocked() uint64 {
 // wait. It reports false, and the caller publishes no readiness, when
 // transport closes or the session ends first. neverPrompted, when set, reads
 // the evidence that the thread was never prompted (catalog_attached.go).
-func (sess *Session) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted func() bool) bool {
+func (sess *State) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted func() bool) bool {
 	sess.recordRestartStep(restartAttached)
 	sess.stateMu.Lock()
 	release, fresh := sess.releaseHandshakeSlot, sess.savedCaughtUp
@@ -96,12 +96,12 @@ func (sess *Session) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted 
 	if sess.catalogSources == nil {
 		return true
 	}
-	if !sess.catalogSources.AwaitAttachedCurrent(sess.id, fresh, neverPrompted, transport) {
+	if !sess.catalogSources.AwaitAttachedCurrent(sess.session.id, fresh, neverPrompted, transport) {
 		return false
 	}
 	for delay := time.Second; ; delay = min(2*delay, 30*time.Second) {
 		ctx, cancel := context.WithTimeout(context.Background(), savedPromptSettleTimeout)
-		err := sess.delivery.settleSavedPrompts(ctx)
+		err := sess.session.delivery.settleSavedPrompts(ctx)
 		cancel()
 		if err == nil {
 			return true
@@ -118,7 +118,7 @@ func (sess *Session) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted 
 }
 
 // ended reports a closed or exited session.
-func (sess *Session) ended() bool {
+func (sess *State) ended() bool {
 	sess.stateMu.Lock()
 	defer sess.stateMu.Unlock()
 	return sess.closed || sess.connectionStatusLocked() == StatusExited
@@ -126,7 +126,7 @@ func (sess *Session) ended() bool {
 
 // settleProviderEvidence combines the response with any strictly newer ordered
 // work delta. Stored anchors can date a validated turn, but never choose work.
-func (sess *Session) settleProviderEvidence(adapter lifecycle.Adapter, turnID string, startedAtMs int64) bool {
+func (sess *State) settleProviderEvidence(adapter lifecycle.Adapter, turnID string, startedAtMs int64) bool {
 	observation, ok := adapter.Current()
 	if !ok {
 		return false

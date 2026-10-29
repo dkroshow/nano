@@ -71,6 +71,6 @@ func appendCallbackFixture(t *testing.T, service *sidebar.CatalogSource, path st
 
 func (s *server) savedPromptsFor(sess *sessions.Session) sessions.SavedPromptReader {
 	return func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-		return s.hostedCatalog().SavedPromptRows(ctx, sess.ThreadID(), keys)
+		return s.hostedCatalog().SavedPromptRows(ctx, sess.State().ThreadID(), keys)
 	}
 }

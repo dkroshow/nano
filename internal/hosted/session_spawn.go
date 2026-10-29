@@ -222,9 +222,9 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 	// seedCodexTurnOverrides and the Claude resume overlay — because what
 	// "re-applying posture" means is provider mechanics.
 	sess.ConfigureSavedReaders(func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
-		return s.Catalog.SavedTurnEvidence(ctx, sess.Provider(), sess.ThreadID(), turnID)
+		return s.Catalog.SavedTurnEvidence(ctx, sess.Provider(), sess.State().ThreadID(), turnID)
 	}, func(ctx context.Context, keys history.SavedUserKeys) ([]history.SavedUserRow, error) {
-		return s.Catalog.SavedPromptRows(ctx, sess.ThreadID(), keys)
+		return s.Catalog.SavedPromptRows(ctx, sess.State().ThreadID(), keys)
 	}, s.Catalog.SavedPromptRows, s.Catalog.SavedTurnFinal, s.SweepSubscriptions)
 	if err := sess.Wire().OpenWireSpool(s.SpoolDir); err != nil {
 		return nil, fmt.Errorf("create wire spool: %w", err)
@@ -250,9 +250,9 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 	}
 
 	if req.Mode != "resume" {
-		sess.RecordCreationPosture(req.ProviderRequest)
+		sess.State().RecordCreationPosture(req.ProviderRequest)
 	}
-	if err := sess.BeginProviderSpawn(req.ProviderRequest, s.Codex, func() { s.discardSpawn(sess) }); err != nil {
+	if err := sess.Runtime().BeginProviderSpawn(req.ProviderRequest, s.Codex, func() { s.discardSpawn(sess) }); err != nil {
 		s.discardSpawn(sess)
 		return nil, err
 	}

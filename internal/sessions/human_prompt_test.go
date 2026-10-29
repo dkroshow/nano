@@ -15,9 +15,9 @@ func TestHumanPromptSessionAdvancesAcrossTrimmedFractions(t *testing.T) {
 		t.Fatal("fixture must reverse chronological order as text")
 	}
 	for _, at := range []time.Time{earlier, later, earlier} {
-		sess.noteHumanPrompt(at)
+		sess.stateOwner.noteHumanPrompt(at)
 	}
-	if got := sess.AvailabilityState().LastHumanPromptAt; !got.Equal(later) {
+	if got := sess.stateOwner.AvailabilityState().LastHumanPromptAt; !got.Equal(later) {
 		t.Fatalf("last human prompt = %s, want %s", got, later)
 	}
 }

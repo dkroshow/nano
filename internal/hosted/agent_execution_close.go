@@ -85,7 +85,7 @@ func (s *Controller) closeAgentSession(sess *sessions.Session) error {
 	var attachment hostedstore.Attachment
 	var remembered bool
 	if s.Attachments != nil {
-		attachment, remembered = s.Attachments.Get(sess.Provider(), sess.ThreadID())
+		attachment, remembered = s.Attachments.Get(sess.Provider(), sess.State().ThreadID())
 	}
 	if remembered && sess.Provider() == "claude" {
 		if err := sess.VerifyClaudeAttachment(attachment.ShimSessionID); err != nil {
@@ -93,7 +93,7 @@ func (s *Controller) closeAgentSession(sess *sessions.Session) error {
 		}
 	}
 	err := sess.CloseWithResult()
-	if !sess.IsClosed() {
+	if !sess.State().IsClosed() {
 		return err
 	}
 	s.Sessions.RemoveCurrentSession(sess)

@@ -33,6 +33,6 @@ func (c *BootControl) holdHandshakeSlot(sess *Session) func() {
 	c.handshakeSlots <- struct{}{}
 	var once sync.Once
 	release := func() { once.Do(func() { <-c.handshakeSlots }) }
-	sess.holdHandshakeRelease(release)
+	sess.stateOwner.holdHandshakeRelease(release)
 	return release
 }

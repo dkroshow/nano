@@ -26,7 +26,7 @@ func TestCodexPriorAttachmentEvidenceCannotResendPrompt(t *testing.T) {
 			return json.RawMessage(`{"turn":{"id":"next"}}`), nil
 		})
 		sess.delivery.savedPrompts = func(context.Context, history.SavedUserKeys) ([]history.SavedUserRow, error) { return nil, nil }
-		native, turn := sess.ThreadID(), "turn-case"
+		native, turn := sess.stateOwner.ThreadID(), "turn-case"
 		if _, _, err := store.Submit(ctx, prompts.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: native, ActionID: "prompt", ProviderText: "same prompt", PresentationText: "same prompt", TextHash: "hash", RequestHash: "hash"}); err != nil {
 			t.Fatal(err)
 		}
@@ -42,10 +42,10 @@ func TestCodexPriorAttachmentEvidenceCannotResendPrompt(t *testing.T) {
 			sess.wire.recordWireLive(protocol.Recv, []byte(`{"method":"turn/completed","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"interrupted"}}}`), true)
 		}
 		play()
-		if err := sess.ensureCoreSession(); err != nil {
+		if err := sess.runtime.ensureCoreSession(); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(sess.coreSession().Close)
+		t.Cleanup(sess.runtime.coreSession().Close)
 		busy := make(chan struct{})
 		t.Cleanup(func() {
 			select {
@@ -54,13 +54,13 @@ func TestCodexPriorAttachmentEvidenceCannotResendPrompt(t *testing.T) {
 				close(busy)
 			}
 		})
-		sess.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error { <-busy; return nil }})
-		sess.forgetCodexTurnInputs()
+		sess.runtime.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error { <-busy; return nil }})
+		sess.runtime.forgetCodexTurnInputs()
 		sess.delivery.SettleWaitingPrompts(ctx)
-		sess.observeConnection(lifecycle.EventLinkLost)
+		sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 		close(busy)
 		play()
-		if err := sess.coreSession().Observe(ctx, coresession.AdapterEvent{}); err != nil {
+		if err := sess.runtime.coreSession().Observe(ctx, coresession.AdapterEvent{}); err != nil {
 			t.Fatal(err)
 		}
 		sess.delivery.SettleWaitingPrompts(ctx)
@@ -82,7 +82,7 @@ func TestCodexEchoBeforeRPCDeadlineOutcomeKeepsPromptBound(t *testing.T) {
 	var sess *Session
 	sess, store := readyTransactionalSendTestSession(t, func(context.Context, string) (json.RawMessage, error) {
 		event := SubmissionEventID(sess.HostedThreadID(), "late")
-		sess.observeCodexTurnInput([]byte(`{"method":"item/started","params":{"threadId":"` + sess.ThreadID() + `","turnId":"turn-late","item":{"id":"late-item","type":"userMessage","clientId":"` + event + `","content":[{"type":"text","text":"late prompt"}]}}}`))
+		sess.runtime.observeCodexTurnInput([]byte(`{"method":"item/started","params":{"threadId":"` + sess.stateOwner.ThreadID() + `","turnId":"turn-late","item":{"id":"late-item","type":"userMessage","clientId":"` + event + `","content":[{"type":"text","text":"late prompt"}]}}}`))
 		return nil, context.DeadlineExceeded
 	})
 	if rec := postTurn(t, sess.Delivery(), context.Background(), "late", "late prompt"); rec.Code != http.StatusAccepted {

@@ -108,7 +108,7 @@ func (s *ViewService) SessionView(id string) SessionView {
 	_, waiting := s.Boot.WaitingHosted(id)
 	if live := s.sessionForHosted(id); live != nil {
 		sum := live.Summary()
-		ready, working := live.ReadyAndWorking()
+		ready, working := live.State().ReadyAndWorking()
 		view.NanoSessionID, view.NativeThreadID, view.Status = sum.ID, sum.ThreadID, sum.Status
 		view.Error, view.TurnActive, view.Waiting = sum.Error, sum.TurnActive, sum.Waiting
 		view.ThreadDiagnostics = sum.ThreadDiagnostics
@@ -202,7 +202,7 @@ func (s *ViewService) TurnView(rec ownedthreads.TurnRecord) TurnView {
 	runtime := s.sessionForHosted(rec.HostedThreadID)
 	if runtime != nil {
 		view.NanoSessionID = runtime.ID()
-		if threadID := runtime.ThreadID(); threadID != "" {
+		if threadID := runtime.State().ThreadID(); threadID != "" {
 			view.NativeThreadID = threadID
 		}
 		if !threadvalues.TurnTerminal(rec.Status) {

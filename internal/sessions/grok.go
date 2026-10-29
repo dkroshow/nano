@@ -273,7 +273,7 @@ func startGrokSession(sess *Session, req ProviderRequest) {
 	go func() {
 		defer req.BootReattach.holdHandshakeSlot(sess)()
 		if grokSessionClosed(sess) {
-			sess.recordRestartFailure("closed")
+			sess.stateOwner.recordRestartFailure("closed")
 			return
 		}
 		err := runGrokHandshake(sess, req)
@@ -281,15 +281,15 @@ func startGrokSession(sess *Session, req ProviderRequest) {
 			err = retryGrokBootLoad(sess, req, err)
 		}
 		if err == nil {
-			sess.recordRestartStep(restartAttached)
+			sess.stateOwner.recordRestartStep(restartAttached)
 		}
 		if err != nil {
 			if errors.Is(err, errSpawnSessionClosed) {
-				sess.recordRestartFailure("closed")
+				sess.stateOwner.recordRestartFailure("closed")
 				return
 			}
 			log.Printf("start grok session %s: %v", sess.id, err)
-			sess.failSpawn(err.Error())
+			sess.stateOwner.failSpawn(err.Error())
 		}
 	}()
 }
@@ -304,7 +304,7 @@ func retryGrokBootLoad(sess *Session, req ProviderRequest, firstErr error) error
 			return err
 		}
 		if attempt == 1 {
-			sess.observeConnection(lifecycle.EventLinkLost)
+			sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 		}
 		if attempt == grokBootLoadAttempts {
 			return err
@@ -336,14 +336,14 @@ func grokBootLoadBackoff(attempt int, control *BootControl) time.Duration {
 }
 
 func grokSessionClosed(sess *Session) bool {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.closed
+	sess.stateOwner.stateMu.Lock()
+	defer sess.stateOwner.stateMu.Unlock()
+	return sess.stateOwner.closed
 }
 
 func runGrokHandshake(sess *Session, req ProviderRequest) error {
-	sess.beginTurnRestore()
-	defer sess.cancelTurnRestore()
+	sess.stateOwner.beginTurnRestore()
+	defer sess.stateOwner.cancelTurnRestore()
 	command := GrokCommand(req)
 	if len(command) == 0 || command[0] == "" {
 		return errors.New("grok executable is not configured")
@@ -363,20 +363,20 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		return fmt.Errorf("start grok ACP proxy: %w", err)
 	}
 
-	sess.stateMu.Lock()
-	if sess.closed {
-		sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	if sess.stateOwner.closed {
+		sess.stateOwner.stateMu.Unlock()
 		_ = client.Close()
 		return errSpawnSessionClosed
 	}
-	sess.grok = grok
+	sess.runtime.grok = grok
 	if req.Mode == "resume" {
-		sess.threadID = req.ThreadID
-		sess.model = req.GrokResumeModel
+		sess.stateOwner.threadID = req.ThreadID
+		sess.stateOwner.model = req.GrokResumeModel
 	}
-	sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Unlock()
 	if req.Mode == "resume" {
-		sess.setProjectionThreadID(req.ThreadID)
+		sess.stateOwner.setProjectionThreadID(req.ThreadID)
 		sess.delivery.restoreSubmissionOutbox()
 	}
 
@@ -393,7 +393,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		return fmt.Errorf("initialize grok ACP: %w", err)
 	}
 	initialize = sanitizeGrokWire(initialize)
-	sess.setState("grokInitialize", initialize)
+	sess.stateOwner.setState("grokInitialize", initialize)
 
 	method, params := GrokSessionRequest(req)
 	sentPosture := map[string]string{}
@@ -405,7 +405,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 			sentPosture[postureFieldEffort] = effort
 		}
 	}
-	causation := sess.snapshotProviderCausation(sentPosture)
+	causation := sess.stateOwner.snapshotProviderCausation(sentPosture)
 	var sessionResult json.RawMessage
 	var responseEpoch, responseSequence uint64
 	loadCtx := ctx
@@ -417,7 +417,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 	if err := client.CallWithWireLog(loadCtx, method, params, &sessionResult, func(dir wire.Direction, line []byte) {
 		// Bind ordering to this request's response, even when load omits its id.
 		if dir == protocol.Recv {
-			responseEpoch, responseSequence = sess.evidenceCoordinates()
+			responseEpoch, responseSequence = sess.stateOwner.evidenceCoordinates()
 		}
 		grok.recordWire(dir, line)
 	}); err != nil {
@@ -425,7 +425,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		return &grokSessionCallError{method: method, err: err}
 	}
 	sessionResult = sanitizeGrokWire(sessionResult)
-	sess.setState("grokSession", sessionResult)
+	sess.stateOwner.setState("grokSession", sessionResult)
 
 	threadID := grokSessionID(sessionResult)
 	if req.Mode == "resume" && threadID != "" && threadID != req.ThreadID {
@@ -440,22 +440,22 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		return fmt.Errorf("%s returned no sessionId", method)
 	}
 	if req.Mode == "resume" {
-		sess.reconcileGrokLoadedTurn(sessionResult)
+		sess.runtime.reconcileGrokLoadedTurn(sessionResult)
 	}
 	providerModel := grokCurrentModel(sessionResult)
 	selectedEffort, effortErr := grokVerifyRequestedEffort(req, sessionResult)
 	model := threadvalues.FirstNonEmpty(providerModel, grokCurrentModel(initialize), req.GrokResumeModel, req.Model)
 
-	sess.stateMu.Lock()
-	if sess.closed {
-		sess.stateMu.Unlock()
+	sess.stateOwner.stateMu.Lock()
+	if sess.stateOwner.closed {
+		sess.stateOwner.stateMu.Unlock()
 		_ = client.Close()
 		return errSpawnSessionClosed
 	}
-	sess.threadID = threadID
-	sess.model = model
-	sess.turnModel = ""
-	sess.stateMu.Unlock()
+	sess.stateOwner.threadID = threadID
+	sess.stateOwner.model = model
+	sess.stateOwner.turnModel = ""
+	sess.stateOwner.stateMu.Unlock()
 	providerPosture := map[string]string{}
 	if providerModel != "" {
 		providerPosture[postureFieldModel] = providerModel
@@ -463,14 +463,14 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 	if selectedEffort != "" {
 		providerPosture[postureFieldEffort] = selectedEffort
 	}
-	sess.recordProviderEvidence("grok_"+strings.ReplaceAll(method, "/", "_")+"_response", providerPosture, metadataFreshnessLive, causation)
+	sess.stateOwner.recordProviderEvidence("grok_"+strings.ReplaceAll(method, "/", "_")+"_response", providerPosture, metadataFreshnessLive, causation)
 	if effortErr != nil {
 		_ = client.Close()
 		return fmt.Errorf("verify %s reasoning effort: %w", method, effortErr)
 	}
-	sess.setProjectionThreadID(threadID)
+	sess.stateOwner.setProjectionThreadID(threadID)
 	sess.applyPendingName(threadID)
-	sess.rememberDurableAttachment(hostedstore.Attachment{
+	sess.stateOwner.rememberDurableAttachment(hostedstore.Attachment{
 		Provider: "grok", NativeThreadID: threadID, Cwd: req.Cwd, Model: model,
 		AttachedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
@@ -483,18 +483,18 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 			grok.mu.Unlock()
 			if !closed {
 				log.Printf("grok ACP proxy for session %s exited", sess.id)
-				sess.observeConnection(lifecycle.EventLinkLost)
+				sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 			}
 		})
 	}()
-	neverPrompted := func() bool { return sess.grokNeverPrompted(ctx) }
-	if req.Mode == "resume" && !sess.awaitSavedCatchUp(client.Done(), neverPrompted) {
-		if sess.ended() {
+	neverPrompted := func() bool { return sess.runtime.grokNeverPrompted(ctx) }
+	if req.Mode == "resume" && !sess.stateOwner.awaitSavedCatchUp(client.Done(), neverPrompted) {
+		if sess.stateOwner.ended() {
 			return errSpawnSessionClosed
 		}
 		return nil // the lost link is already observed
 	}
-	if !sess.settleProviderEvidence(grokLifecycleAdapter{epoch: responseEpoch, sequence: responseSequence, response: sessionResult, nativeID: threadID, settled: true}, grokRunningPromptID(sessionResult), 0) {
+	if !sess.stateOwner.settleProviderEvidence(grokLifecycleAdapter{epoch: responseEpoch, sequence: responseSequence, response: sessionResult, nativeID: threadID, settled: true}, grokRunningPromptID(sessionResult), 0) {
 		log.Printf("grok session %s: %s response did not settle lifecycle evidence", sess.id, method)
 	}
 	sess.delivery.reconcileAgentOperations()
@@ -506,12 +506,12 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 // native session), and the delivery journal of that native session holds no
 // attempt that ever left the queue. A session Nano did not create, or any
 // attempt sent, parked or of unknown outcome, proves nothing.
-func (sess *Session) grokNeverPrompted(ctx context.Context) bool {
-	native := sess.ThreadID()
-	if sess.delivery.turns == nil || sess.metadata == nil || native == "" {
+func (sess *Runtime) grokNeverPrompted(ctx context.Context) bool {
+	native := sess.session.stateOwner.ThreadID()
+	if sess.session.delivery.turns == nil || sess.session.metadata == nil || native == "" {
 		return false
 	}
-	attempts, err := sess.delivery.turns.ListThreadAttempts(ctx, "grok", native)
+	attempts, err := sess.session.delivery.turns.ListThreadAttempts(ctx, "grok", native)
 	if err != nil {
 		return false
 	}
@@ -521,7 +521,7 @@ func (sess *Session) grokNeverPrompted(ctx context.Context) bool {
 		}
 	}
 	for after := int64(0); ; {
-		page, err := sess.metadata.EventsAfter(sess.hostedThreadID, after, 200, hostedstore.MetadataEventFilter{Source: postureSourceProvider})
+		page, err := sess.session.metadata.EventsAfter(sess.session.hostedThreadID, after, 200, hostedstore.MetadataEventFilter{Source: postureSourceProvider})
 		if err != nil || len(page.Events) == 0 {
 			return false
 		}
@@ -670,16 +670,16 @@ func grokRunningPromptID(raw json.RawMessage) string {
 	return wire.String(meta["x.ai/runningPromptId"])
 }
 
-func (sess *Session) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {
+func (sess *Runtime) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {
 	if runningPromptID := grokRunningPromptID(sessionResult); runningPromptID != "" {
 		if grokSyntheticPromptID(runningPromptID) {
 			// A provider-generated child-completion continuation is not an
 			// operator turn. Its terminal is raw-only, so restoring it as active
 			// would create a working state that no admitted event could clear.
-			sess.setTurnActive(false, "", 0, false)
+			sess.session.stateOwner.setTurnActive(false, "", 0, false)
 			return
 		}
-		sess.setTurnActive(true, runningPromptID, 0, false)
+		sess.session.stateOwner.setTurnActive(true, runningPromptID, 0, false)
 		return
 	}
 
@@ -687,14 +687,14 @@ func (sess *Session) reconcileGrokLoadedTurn(sessionResult json.RawMessage) {
 	// process-local state and settle durable operations without inventing a turn
 	// end time. Late replay cannot reassert activity because recordWireLive
 	// excludes Grok replay from present-tense lifecycle evidence.
-	sess.setTurnActive(false, "", 0, false)
-	if sess.agentExecutions != nil && sess.hostedThreadID != "" {
-		err := sess.agentExecutions.MarkSessionTurns(sess.hostedThreadID, agentTurnInterrupted, &threadvalues.ExecutionError{
+	sess.session.stateOwner.setTurnActive(false, "", 0, false)
+	if sess.session.agentExecutions != nil && sess.session.hostedThreadID != "" {
+		err := sess.session.agentExecutions.MarkSessionTurns(sess.session.hostedThreadID, agentTurnInterrupted, &threadvalues.ExecutionError{
 			Source: "transport", Code: "grok_prompt_missing_after_reload",
 			Message: "Grok no longer has the prompt that was unfinished in session replay",
 		})
 		if err != nil {
-			log.Printf("settle missing Grok prompt for hosted thread %s: %v", sess.hostedThreadID, err)
+			log.Printf("settle missing Grok prompt for hosted thread %s: %v", sess.session.hostedThreadID, err)
 		}
 	}
 }
@@ -712,7 +712,7 @@ func (g *grokSession) recordWire(dir wire.Direction, line []byte) {
 		active := g.active
 		candidate := ""
 		if active != nil {
-			candidate = grokAcceptancePromptID(line, active.text, g.sess.ThreadID())
+			candidate = grokAcceptancePromptID(line, active.text, g.sess.stateOwner.ThreadID())
 		}
 		observed := grokPromptIDFromWire(line)
 		_, previouslySeen := g.seenPromptIDs[observed]
@@ -790,7 +790,7 @@ func (g *grokSession) wireBelongsToAttachedSession(line []byte) bool {
 	if !scoped {
 		return true
 	}
-	attached := g.sess.ThreadID()
+	attached := g.sess.stateOwner.ThreadID()
 	// Session creation/load tests have not attached the returned native id
 	// yet. Production parent traffic always has one, so this is only a safe
 	// pre-attachment compatibility path.
@@ -955,7 +955,7 @@ func (g *grokSession) SendTurn(ctx context.Context, text, actionID string) (json
 	go func() {
 		var response grokPromptResponse
 		err := g.client.CallWithWriteAck(context.Background(), "session/prompt", map[string]any{
-			"sessionId": g.sess.ThreadID(),
+			"sessionId": g.sess.stateOwner.ThreadID(),
 			"prompt": []map[string]any{{"type": "text", "text": text,
 				"_meta": map[string]string{"x.nano/submissionId": SubmissionEventID(g.sess.hostedThreadID, actionID)}}},
 		}, &response, func() {
@@ -1042,16 +1042,16 @@ func (g *grokSession) observeResolvedPromptOutcome(promptID string, outcome grok
 			return
 		}
 		detail, _ := json.Marshal(map[string]string{"error": outcome.err.Error()})
-		g.sess.delivery.observeGrokAgentTerminal(g.sess.ThreadID(), promptID, agentTurnFailed, "prompt_error", detail)
+		g.sess.delivery.observeGrokAgentTerminal(g.sess.stateOwner.ThreadID(), promptID, agentTurnFailed, "prompt_error", detail)
 		return
 	}
 	if strings.TrimSpace(outcome.response.StopReason) != "" {
 		status := grokTurnStatus(outcome.response.StopReason)
-		threadID := g.sess.ThreadID()
+		threadID := g.sess.stateOwner.ThreadID()
 		apply := func() {
 			g.sess.delivery.observeGrokAgentTerminal(threadID, promptID, status, outcome.response.StopReason, nil)
 		}
-		core := g.sess.coreSession()
+		core := g.sess.runtime.coreSession()
 		if status != agentTurnCompleted || core == nil {
 			apply()
 			return
@@ -1073,7 +1073,7 @@ func (g *grokSession) observeResolvedPromptOutcome(promptID string, outcome grok
 }
 
 func (g *grokSession) interrupt() error {
-	return g.client.Notify("session/cancel", map[string]any{"sessionId": g.sess.ThreadID()})
+	return g.client.Notify("session/cancel", map[string]any{"sessionId": g.sess.stateOwner.ThreadID()})
 }
 
 // Close closes the provider transport and releases its attachment resources.
@@ -1113,7 +1113,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 	if json.Unmarshal(params, &body) != nil || body.SessionID == "" {
 		return nil, &protocol.RPCError{Code: -32602, Message: "Grok request " + method + " is missing sessionId"}
 	}
-	if current := g.sess.ThreadID(); current != "" && current != body.SessionID {
+	if current := g.sess.stateOwner.ThreadID(); current != "" && current != body.SessionID {
 		log.Printf("Grok request %s for unrouted session %q on %q — rejecting", method, body.SessionID, current)
 		return grokInteractionResult(interact.PendingInteraction{Method: method, Params: params}, decisionDecline, nil)
 	}

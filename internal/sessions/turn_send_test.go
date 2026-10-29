@@ -25,8 +25,8 @@ import (
 
 func observeTestTurnCompletion(t *testing.T, sess *Session, turnID string) {
 	t.Helper()
-	finish := coreturns.Finish{HostedThreadID: sess.HostedThreadID(), Provider: sess.Provider(), NativeThreadID: sess.ThreadID(), TurnID: turnID, Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter"}
-	if err := sess.core.Observe(context.Background(), coresession.AdapterEvent{ProviderTurnID: turnID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}); err != nil {
+	finish := coreturns.Finish{HostedThreadID: sess.HostedThreadID(), Provider: sess.Provider(), NativeThreadID: sess.stateOwner.ThreadID(), TurnID: turnID, Outcome: agentTurnCompleted, At: time.Now(), Source: "adapter"}
+	if err := sess.runtime.core.Observe(context.Background(), coresession.AdapterEvent{ProviderTurnID: turnID, TurnEvents: []coresession.TurnEvent{{Finished: &finish}}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -67,9 +67,10 @@ func readySendTestSession(t *testing.T, store *turns.LegacyJournal, sender func(
 	queue.BindTransactionStore(turnStore)
 	projection := newDeliveryTestProjection("codex")
 	return sessionWithOwners(&Session{id: "nano-session",
-		provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
-		projection:     projection,
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		provider: "codex", hostedThreadID: "hosted-thread",
+		projection: projection,
+		stateOwner: State{threadID: "native-thread",
+			lifecycleState: testLifecycleSnapshot("ready", false)},
 		delivery: Delivery{turns: turnStore, sendAttempts: store, queuedTurns: queue,
 			sendOps: map[string]*turnSendOperation{}, turnSender: sender}})
 }
@@ -92,9 +93,10 @@ func readyTransactionalSendTestSession(t *testing.T, sender func(context.Context
 	projection := newDeliveryTestProjection("codex")
 
 	sess := sessionWithOwners(&Session{
-		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread", threadID: "native-thread",
-		projection:     projection,
-		lifecycleState: testLifecycleSnapshot("ready", false),
+		id: "nano-session", provider: "codex", hostedThreadID: "hosted-thread",
+		projection: projection,
+		stateOwner: State{threadID: "native-thread",
+			lifecycleState: testLifecycleSnapshot("ready", false)},
 		delivery: Delivery{turns: store, sendAttempts: attempts, queuedTurns: queue,
 			sendOps: map[string]*turnSendOperation{}, turnSender: sender},
 	})
@@ -149,7 +151,7 @@ func TestTransactionalRestoreMarksStaleClaimUncertainBeforeReplay(t *testing.T) 
 	if _, claimed, err := store.Claim(context.Background(), turns.ClaimRequest{HostedThreadID: "hosted-thread", Token: "old-claim", AttachmentEpoch: 1, Ready: true}); err != nil || !claimed {
 		t.Fatalf("claim=%v err=%v", claimed, err)
 	}
-	sess.lifecycleState.Epoch = 2
+	sess.stateOwner.lifecycleState.Epoch = 2
 	sess.delivery.restoreSubmissionOutbox()
 	record, attempt, err := store.Get(context.Background(), "stale-action")
 	if err != nil || record.Outbox.State != turns.Uncertain || attempt.State != turns.JournalUnknown {
@@ -190,7 +192,7 @@ func TestTurnSendWhileActiveIsPersistedBeforeAcknowledgement(t *testing.T) {
 		calls.Add(1)
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
+	sess.stateOwner.lifecycleState = testLifecycleSnapshot(sess.stateOwner.connectionStatusLocked(), true)
 
 	rec := postTurn(t, sess.Delivery(), context.Background(), "queued-action", "send this next")
 	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
@@ -299,7 +301,7 @@ func TestQueuedTurnSurvivesStoreReloadAndDrainsOnCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := readySendTestSession(t, attempts, nil)
-	first.lifecycleState = testLifecycleSnapshot(first.connectionStatusLocked(), true)
+	first.stateOwner.lifecycleState = testLifecycleSnapshot(first.stateOwner.connectionStatusLocked(), true)
 	if rec := postTurn(t, first.Delivery(), context.Background(), "queued-restart", "after restart"); rec.Code != http.StatusAccepted {
 		t.Fatalf("queue status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -313,8 +315,8 @@ func TestQueuedTurnSurvivesStoreReloadAndDrainsOnCompletion(t *testing.T) {
 		delivered <- text
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	second.lifecycleState = testLifecycleSnapshot(second.connectionStatusLocked(), true)
-	second.setTurnActive(false, "", 0, true)
+	second.stateOwner.lifecycleState = testLifecycleSnapshot(second.stateOwner.connectionStatusLocked(), true)
+	second.stateOwner.setTurnActive(false, "", 0, true)
 
 	select {
 	case text := <-delivered:
@@ -343,7 +345,7 @@ func TestDuplicateQueuedActionIsStoredOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess := readySendTestSession(t, attempts, nil)
-	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
+	sess.stateOwner.lifecycleState = testLifecycleSnapshot(sess.stateOwner.connectionStatusLocked(), true)
 	for i := 0; i < 2; i++ {
 		if rec := postTurn(t, sess.Delivery(), context.Background(), "same-queued-action", "only once"); rec.Code != http.StatusAccepted {
 			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -366,14 +368,14 @@ func TestQueuedTurnsDrainInSubmissionOrder(t *testing.T) {
 		turnID := fmt.Sprintf("provider-turn-%d", providerCalls.Add(1))
 		return json.RawMessage(`{"turn":{"id":"` + turnID + `"}}`), nil
 	})
-	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
+	sess.stateOwner.lifecycleState = testLifecycleSnapshot(sess.stateOwner.connectionStatusLocked(), true)
 	for i, text := range []string{"first next", "second next"} {
 		if rec := postTurn(t, sess.Delivery(), context.Background(), fmt.Sprintf("ordered-%d", i), text); rec.Code != http.StatusAccepted {
 			t.Fatalf("queue %d status = %d, body = %s", i, rec.Code, rec.Body.String())
 		}
 	}
 
-	sess.setTurnActive(false, "", 0, true)
+	sess.stateOwner.setTurnActive(false, "", 0, true)
 	if got := <-delivered; got != "first next" {
 		t.Fatalf("first delivery = %q", got)
 	}
@@ -391,8 +393,8 @@ func TestQueuedTurnsDrainInSubmissionOrder(t *testing.T) {
 	// Model the provider lifecycle around the first queued turn. The second is
 	// released only by its completion edge.
 	observeTestTurnCompletion(t, sess, "provider-turn-1")
-	sess.setTurnActive(true, "provider-turn-1", time.Now().UnixMilli(), true)
-	sess.setTurnActive(false, "provider-turn-1", 0, true)
+	sess.stateOwner.setTurnActive(true, "provider-turn-1", time.Now().UnixMilli(), true)
+	sess.stateOwner.setTurnActive(false, "provider-turn-1", 0, true)
 	select {
 	case got := <-delivered:
 		if got != "second next" {
@@ -424,7 +426,7 @@ func TestQueuedTurnCanBeCanceledBeforeDelivery(t *testing.T) {
 		calls.Add(1)
 		return json.RawMessage(`{"turn":{"id":"provider-turn"}}`), nil
 	})
-	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
+	sess.stateOwner.lifecycleState = testLifecycleSnapshot(sess.stateOwner.connectionStatusLocked(), true)
 	sess.agentExecutions = &unlinkedPromptExecutions{} // a Discard ends any operation the prompt carries
 	if rec := postTurn(t, sess.Delivery(), context.Background(), "cancel-queued", "never send"); rec.Code != http.StatusAccepted {
 		t.Fatalf("queue status = %d, body = %s", rec.Code, rec.Body.String())
@@ -435,7 +437,7 @@ func TestQueuedTurnCanBeCanceledBeforeDelivery(t *testing.T) {
 	if cancel.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, body = %s", cancel.Code, cancel.Body.String())
 	}
-	sess.setTurnActive(false, "", 0, true)
+	sess.stateOwner.setTurnActive(false, "", 0, true)
 	time.Sleep(10 * time.Millisecond)
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("provider calls = %d, want 0", got)
@@ -468,10 +470,10 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 		waitTurnSendDone(t, sess, "prompt")
 	}
 	claim := func(t *testing.T, sess *Session) turns.Record {
-		if err := sess.ensureDeliveryCoordinator(); err != nil {
+		if err := sess.runtime.ensureDeliveryCoordinator(); err != nil {
 			t.Fatal(err)
 		}
-		record, claimed, err := sess.core.Claim(ctx, sess.lifecycleState.Epoch)
+		record, claimed, err := sess.runtime.core.Claim(ctx, sess.stateOwner.lifecycleState.Epoch)
 		if err != nil || !claimed {
 			t.Fatalf("claim = %v, %v", claimed, err)
 		}
@@ -516,7 +518,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 			sess.delivery.turnSender = func(ctx context.Context, _ string) (json.RawMessage, error) { <-ctx.Done(); return nil, ctx.Err() }
 			deadline, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 			defer cancel()
-			_, _ = sess.core.Deliver(deadline, record, sess.deliveryScope(), sess.deliverySettings(), false)
+			_, _ = sess.runtime.core.Deliver(deadline, record, sess.runtime.deliveryScope(), sess.runtime.deliverySettings(), false)
 		}},
 		{name: "held after a Stop", state: turns.Uncertain, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			deliver(t, sess)
@@ -527,7 +529,7 @@ func TestPromptActionsAreDecidedFromTheStoredState(t *testing.T) {
 			if _, held, err := sess.delivery.PromptStore().HoldUntaken(ctx, "prompt", record.Revision, turns.ReasonStopped); err != nil || !held {
 				t.Fatalf("hold = %v, %v", held, err)
 			}
-			sess.setTurnActive(false, "", 0, true) // the Stop ended the turn
+			sess.stateOwner.setTurnActive(false, "", 0, true) // the Stop ended the turn
 		}},
 		{name: "parked", state: turns.Parked, discard: "allowed", resend: "allowed", ended: turns.Expired, setup: func(t *testing.T, sess *Session) {
 			submit(t, sess)
@@ -678,13 +680,13 @@ func TestQueuedTurnCompletionStillReleasesNext(t *testing.T) {
 		turnID := fmt.Sprintf("instant-turn-%d", providerCalls.Add(1))
 		return json.RawMessage(`{"turn":{"id":"` + turnID + `"}}`), nil
 	})
-	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
+	sess.stateOwner.lifecycleState = testLifecycleSnapshot(sess.stateOwner.connectionStatusLocked(), true)
 	for i, text := range []string{"instant first", "still released"} {
 		if rec := postTurn(t, sess.Delivery(), context.Background(), fmt.Sprintf("instant-%d", i), text); rec.Code != http.StatusAccepted {
 			t.Fatalf("queue %d status = %d, body = %s", i, rec.Code, rec.Body.String())
 		}
 	}
-	sess.setTurnActive(false, "", 0, true)
+	sess.stateOwner.setTurnActive(false, "", 0, true)
 	select {
 	case got := <-delivered:
 		if got != "instant first" {
@@ -695,8 +697,8 @@ func TestQueuedTurnCompletionStillReleasesNext(t *testing.T) {
 	}
 	waitTurnSendDone(t, sess, "instant-0")
 	observeTestTurnCompletion(t, sess, "instant-turn-1")
-	sess.setTurnActive(true, "instant-turn-1", time.Now().UnixMilli(), true)
-	sess.setTurnActive(false, "instant-turn-1", 0, true)
+	sess.stateOwner.setTurnActive(true, "instant-turn-1", time.Now().UnixMilli(), true)
+	sess.stateOwner.setTurnActive(false, "instant-turn-1", 0, true)
 	select {
 	case got := <-delivered:
 		if got != "still released" {
@@ -730,13 +732,13 @@ func TestFailedQueuedDeliveryBecomesParkedAndAllowsFollowingTurn(t *testing.T) {
 		}
 		return json.RawMessage(`{"turn":{"id":"healthy-following-turn"}}`), nil
 	})
-	sess.lifecycleState = testLifecycleSnapshot(sess.connectionStatusLocked(), true)
+	sess.stateOwner.lifecycleState = testLifecycleSnapshot(sess.stateOwner.connectionStatusLocked(), true)
 	for i, text := range []string{"keep failed text", "must not overtake"} {
 		if rec := postTurn(t, sess.Delivery(), context.Background(), fmt.Sprintf("failed-queued-%d", i), text); rec.Code != http.StatusAccepted {
 			t.Fatalf("queue %d status = %d, body = %s", i, rec.Code, rec.Body.String())
 		}
 	}
-	sess.setTurnActive(false, "", 0, true)
+	sess.stateOwner.setTurnActive(false, "", 0, true)
 	deadline := time.Now().Add(time.Second)
 	for {
 		attempt, ok := attempts.Get("failed-queued-0")
@@ -969,9 +971,10 @@ func TestTurnSendAcceptedActionBypassesReadinessGate(t *testing.T) {
 	}
 	var calls atomic.Int32
 	sess := sessionWithOwners(&Session{id: "nano-session",
-		provider:       "codex",
-		threadID:       "native-thread",
-		lifecycleState: testLifecycleSnapshot("starting", false),
+		provider: "codex",
+		stateOwner: State{
+			threadID:       "native-thread",
+			lifecycleState: testLifecycleSnapshot("starting", false)},
 		delivery: Delivery{
 			sendAttempts: store,
 			sendOps:      map[string]*turnSendOperation{},
@@ -1140,11 +1143,11 @@ func TestClaudePromptSentWhileATurnWorksIsDeliveredAtOnce(t *testing.T) {
 	sess.provider = "claude"
 	sess.projection = newDeliveryTestProjection("claude")
 	sess.projection.setNativeThreadID("native-thread")
-	if err := sess.ensureCoreSession(); err != nil {
+	if err := sess.runtime.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.coreSession().Close)
-	sess.setTurnActive(true, "claude:hosted-thread:1", 0, false)
+	t.Cleanup(sess.runtime.coreSession().Close)
+	sess.stateOwner.setTurnActive(true, "claude:hosted-thread:1", 0, false)
 
 	if rec := postTurn(t, sess.Delivery(), ctx, "correction", "Use the other file."); rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -1190,19 +1193,19 @@ func TestCodexPromptJoinsTheWorkingTurnBySteer(t *testing.T) {
 			fake := newFakeAppServer(t)
 			fake.SetSteerError(test.steerErr)
 			fake.SetDropSteer(test.dropped)
-			sess.codex = fake.daemon()
-			if err := sess.ensureCoreSession(); err != nil {
+			sess.runtime.codex = fake.daemon()
+			if err := sess.runtime.ensureCoreSession(); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(sess.coreSession().Close)
+			t.Cleanup(sess.runtime.coreSession().Close)
 			if test.queued {
 				text := "Use the other file."
-				if _, _, err := sess.delivery.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.ThreadID(),
+				if _, _, err := sess.delivery.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.stateOwner.ThreadID(),
 					ActionID: "correction", ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			sess.setTurnActive(true, "turn-running", 0, false)
+			sess.stateOwner.setTurnActive(true, "turn-running", 0, false)
 
 			if !test.queued {
 				rec := postTurn(t, sess.Delivery(), ctx, "correction", "Use the other file.")
@@ -1264,28 +1267,28 @@ func TestQueuedPromptJoinsTheTurnItsThreadReturnsTo(t *testing.T) {
 			}
 			sess := readySendTestSession(t, attempts, nil)
 			fake := newFakeAppServer(t)
-			sess.codex = fake.daemon()
+			sess.runtime.codex = fake.daemon()
 			// The thread is already off working before the core exists, so no
 			// kick from reaching that state can send the prompt queued next:
 			// only the return under test can.
-			sess.setTurnActiveState(true, "turn-running", 0, false, false)
+			sess.stateOwner.setTurnActiveState(true, "turn-running", 0, false, false)
 			if path == "reconnected" {
 				sess.setStatus("reconnecting")
 			} else {
-				sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.ThreadID()})
+				sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.stateOwner.ThreadID()})
 			}
-			if err := sess.ensureCoreSession(); err != nil {
+			if err := sess.runtime.ensureCoreSession(); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(sess.coreSession().Close)
+			t.Cleanup(sess.runtime.coreSession().Close)
 			text := "Use the other file."
-			if _, _, err := sess.delivery.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.ThreadID(),
+			if _, _, err := sess.delivery.PromptStore().Submit(ctx, turns.Submission{HostedThreadID: sess.HostedThreadID(), Provider: model.ProviderCodex, NativeThreadID: sess.stateOwner.ThreadID(),
 				ActionID: "queued", ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text)}); err != nil {
 				t.Fatal(err)
 			}
 
 			if path == "reconnected" {
-				sess.observeConnection(lifecycle.EventReadyWorking)
+				sess.stateOwner.observeConnection(lifecycle.EventReadyWorking)
 			} else if _, ok := sess.delivery.claimPendingInteraction("approval-1"); !ok {
 				t.Fatal("approval not pending")
 			}

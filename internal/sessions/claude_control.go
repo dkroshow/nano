@@ -378,7 +378,7 @@ func (c *claudeSession) initializeControl(ctx context.Context) (*claudeInitState
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return nil, fmt.Errorf("claude initialize: %w", err)
 	}
-	c.sess.setState("controlInit", raw)
+	c.sess.stateOwner.setState("controlInit", raw)
 	return &state, nil
 }
 
@@ -507,7 +507,7 @@ func (c *claudeSession) parkControlRequest(requestID string, request json.RawMes
 	}
 	pending := interact.PendingInteraction{
 		ID: requestID, Method: probe.Subtype, Kind: kind,
-		ThreadID:  c.sess.ThreadID(),
+		ThreadID:  c.sess.stateOwner.ThreadID(),
 		CreatedAt: time.Now().Format(time.RFC3339Nano),
 		Params:    append(json.RawMessage(nil), request...),
 	}
