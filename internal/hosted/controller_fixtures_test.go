@@ -25,14 +25,14 @@ func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{Executions: store, Metadata: control, Queue: queue, Sessions: func() *sessions.Registry { r := sessions.NewRegistry(); return &r }(), Waiting: func(string) string { return "" }, Reattach: func(string) {},
+	c := &Controller{Executions: store, Metadata: control, Queue: queue, Sessions: func() *sessions.Registry { r := sessions.NewRegistry(); return &r }(), Reattach: func(string) {},
 		PromptWithUnreadFooter: func(_ string, text string) (string, error) { return text, nil },
 		NotifyRuntime:          func() {}, RefreshRuntime: func() {}, PublishRelationshipChange: func() {},
 		FeatureFooter:  func(string) (string, bool) { return "", false },
 		CloseLifecycle: func(_ string, close func() error) error { return close() },
 	}
 	c.Views = func() *ViewService {
-		return &ViewService{Executions: store, Metadata: control, Sessions: &sessions.Registry{}, Queue: queue, Waiting: func(string) string { return "" }, ResolveRecord: c.ResolveHostedRecord}
+		return &ViewService{Executions: store, Metadata: control, Sessions: &sessions.Registry{}, Queue: queue, ResolveRecord: c.ResolveHostedRecord}
 	}
 	return c
 }

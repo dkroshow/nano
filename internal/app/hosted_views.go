@@ -15,7 +15,7 @@ func (s *server) hostedViews() *hosted.ViewService {
 	return &hosted.ViewService{Executions: s.agentExecutions, Metadata: s.controlMetadata,
 		ExecutionError: s.executionControlErr, MetadataError: s.controlMetadataErr,
 		Sessions: &s.Registry, Queue: s.queuedTurns, Catalog: s.hostedCatalog(),
-		Waiting:       func(id string) string { _, state := s.boot.waitingHosted(id); return state },
+		Boot:          &s.bootAttachments,
 		ResolveRecord: s.resolveHostedThreadRecord}
 }
 func (s *server) agentSessionView(id string) agentSessionView { return s.hostedViews().SessionView(id) }

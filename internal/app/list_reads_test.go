@@ -21,6 +21,7 @@ import (
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -564,8 +565,8 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 		rebooting := attachmentRecord{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
-		f.server.boot = &bootReattach{pending: map[attachmentKey]bool{rebooting.Key(): true},
-			byHosted: map[string]attachmentRecord{"nht_rebooting": rebooting}}
+		f.server.boot = &bootReattach{}
+		f.server.bootAttachments = sessions.NewBootAttachments([]attachmentRecord{rebooting})
 		var body map[string]any
 		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.handleAgentSessionsList, "/api/v1/hosted-threads") })
 		listed := map[string]string{}

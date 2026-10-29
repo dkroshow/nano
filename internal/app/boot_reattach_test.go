@@ -519,7 +519,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		t.Fatalf("boot registered %v, want %v", got, want)
 	}
 	for _, native := range []string{"child-idle", "child-wake", "child-quiet"} {
-		if state := s.boot.state(attachmentKey{Provider: "codex", NativeThreadID: native}); state != "resting" {
+		if state := s.bootAttachments.State(attachmentKey{Provider: "codex", NativeThreadID: native}); state != "resting" {
 			t.Fatalf("%s after boot = %q, want resting", native, state)
 		}
 	}
@@ -546,7 +546,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 	if _, _, err := s.submitHostedTurnWithOptions("nht_child-wake", "nano:test:idle-wake", "scheduled wake", true); err != nil {
 		t.Fatalf("idle-only wake to a resting thread = %v", err)
 	}
-	if state := s.boot.state(attachmentKey{Provider: "codex", NativeThreadID: "child-quiet"}); state != "resting" {
+	if state := s.bootAttachments.State(attachmentKey{Provider: "codex", NativeThreadID: "child-quiet"}); state != "resting" {
 		t.Fatalf("an unrelated resting thread after the prompts = %q, want resting", state)
 	}
 }
@@ -1607,7 +1607,7 @@ waitingForPublish:
 		}
 	}
 	waitForClaude(t, "the opened thread's registration", func() bool {
-		_, waiting := s.boot.waitingHosted(rec.HostedThreadID)
+		_, waiting := s.bootAttachments.WaitingHosted(rec.HostedThreadID)
 		return waiting == "" && s.SessionForHostedThread(rec.HostedThreadID) != nil
 	})
 	waitForClaude(t, "thread/resume call", func() bool { return daemon.ResumeCount() == 1 })
@@ -1669,7 +1669,7 @@ func TestBootLoopSkipsAThreadForgottenWhileStarting(t *testing.T) {
 	if count != 0 || daemon.ResumeCount() != 0 {
 		t.Fatalf("sessions = %d, provider resumes = %d; want the forgotten thread left alone", count, daemon.ResumeCount())
 	}
-	if _, waiting := s.boot.waitingHosted(rec.HostedThreadID); waiting != "" {
+	if _, waiting := s.bootAttachments.WaitingHosted(rec.HostedThreadID); waiting != "" {
 		t.Fatal("the forgotten thread still reports starting")
 	}
 }

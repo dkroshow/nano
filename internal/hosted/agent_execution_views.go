@@ -105,6 +105,7 @@ func (s *ViewService) SessionView(id string) SessionView {
 		Status:        rec.Status, Error: rec.Error, CreatedAt: rec.CreatedAt,
 		UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
 	}
+	_, waiting := s.Boot.WaitingHosted(id)
 	if live := s.sessionForHosted(id); live != nil {
 		sum := live.Summary()
 		ready, working := live.ReadyAndWorking()
@@ -114,7 +115,7 @@ func (s *ViewService) SessionView(id string) SessionView {
 		view.MetadataDegraded = sum.MetadataDegraded
 		view.Attached = true
 		view.Ready, view.Working = ready, working
-	} else if waiting := s.Waiting(id); waiting != "" {
+	} else if waiting != "" {
 		view.Status = waiting
 	}
 	view.NativeThreadIDProvisional = hostedstore.NativeThreadIDProvisional(view.Provider, view.NativeThreadID)
@@ -159,6 +160,7 @@ func (s *ViewService) DecorateMetadata(metadata hostedstore.MetadataView, attach
 // normalized execution record. It deliberately does not write hosted_threads:
 // attachment liveness is volatile and must not manufacture a metadata revision.
 func (s *ViewService) AttachmentState(id string) hostedstore.AttachmentView {
+	_, waiting := s.Boot.WaitingHosted(id)
 	if live := s.sessionForHosted(id); live != nil {
 		sum := live.Summary()
 		attachment := hostedstore.AttachmentView{State: sum.Status, Provenance: "live_session", Error: sum.Error}
@@ -167,7 +169,7 @@ func (s *ViewService) AttachmentState(id string) hostedstore.AttachmentView {
 		}
 		return attachment
 	}
-	if waiting := s.Waiting(id); waiting != "" {
+	if waiting != "" {
 		return hostedstore.AttachmentView{State: waiting, Provenance: "boot_reattach"}
 	}
 	if s.Executions == nil {

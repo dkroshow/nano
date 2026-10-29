@@ -20,7 +20,7 @@ type ViewService struct {
 	Sessions                      *sessions.Registry
 	Queue                         *prompts.LegacyQueue
 	Catalog                       *threadindex.Service
-	Waiting                       func(string) string
+	Boot                          *sessions.BootAttachments
 	ResolveRecord                 func(string) (ownedthreads.SessionRecord, bool)
 }
 

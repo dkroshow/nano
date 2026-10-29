@@ -25,20 +25,13 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
-// bootReattach is one boot's set of stored attachments that are not live yet.
-// Registration takes minutes for hundreds of threads, so HTTP opens first and
-// the set reports each waiting thread as "starting" while the background loop
-// registers it in sidebar priority (bootOrder), or as "resting" when the loop
-// leaves it for later. A request that needs one waiting thread live registers
-// that thread at once through the same code.
+// bootReattach holds one boot's registration order, per-provider controls and
+// runtime-publication gate. The pending/resting record set belongs to sessions.
 type bootReattach struct {
 	order    []attachmentRecord
 	controls map[string]*sessions.BootControl
 
-	mu       sync.Mutex
-	pending  map[attachmentKey]bool
-	resting  map[attachmentKey]bool // pending, but not queued by the boot loop
-	byHosted map[string]attachmentRecord
+	mu sync.Mutex
 
 	runtimeActive  bool
 	runtimeDirty   bool
@@ -52,19 +45,13 @@ func (s *server) prepareBootReattach() {
 		return
 	}
 	records := s.attachments.DetachedExcept(nil)
+	s.bootAttachments = sessions.NewBootAttachments(records)
 	boot := &bootReattach{
 		controls: map[string]*sessions.BootControl{},
-		pending:  make(map[attachmentKey]bool, len(records)),
-		resting:  map[attachmentKey]bool{},
-		byHosted: make(map[string]attachmentRecord, len(records)),
 	}
 	for i := len(records) - 1; i >= 0; i-- { // oldest attach first: bootOrder's order for ties
 		rec := records[i]
 		boot.order = append(boot.order, rec)
-		boot.pending[rec.Key()] = true
-		if rec.HostedThreadID != "" {
-			boot.byHosted[rec.HostedThreadID] = rec
-		}
 		if boot.controls[rec.Provider] == nil {
 			control := sessions.NewBootControl(sessions.ProviderLifecycleCapabilities(rec.Provider).BootHandshakeLimit)
 			boot.controls[rec.Provider] = control
@@ -72,69 +59,6 @@ func (s *server) prepareBootReattach() {
 	}
 	s.boot = boot
 	s.restart.addThreads(boot.order)
-}
-
-// state reports a stored thread that still waits for its registration:
-// "starting" while the boot loop will register it, "resting" while it waits
-// for something to need it, and "" once settled. Nil-safe: without a boot set
-// nothing waits.
-func (b *bootReattach) state(key attachmentKey) string {
-	if b == nil {
-		return ""
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.stateLocked(key)
-}
-
-func (b *bootReattach) stateLocked(key attachmentKey) string {
-	switch {
-	case !b.pending[key]:
-		return ""
-	case b.resting[key]:
-		return "resting"
-	default:
-		return "starting"
-	}
-}
-
-func (b *bootReattach) waiting(key attachmentKey) bool { return b.state(key) != "" }
-
-// waitingHosted returns a waiting thread's record and state by hosted id.
-func (b *bootReattach) waitingHosted(hostedThreadID string) (attachmentRecord, string) {
-	if b == nil || hostedThreadID == "" {
-		return attachmentRecord{}, ""
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	rec, ok := b.byHosted[hostedThreadID]
-	if !ok {
-		return attachmentRecord{}, ""
-	}
-	return rec, b.stateLocked(rec.Key())
-}
-
-// rest leaves records for something to need them.
-func (b *bootReattach) rest(records []attachmentRecord) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, rec := range records {
-		b.resting[rec.Key()] = true
-	}
-}
-
-// wake ends a thread's rest as its attach begins, so it reports starting.
-func (b *bootReattach) wake(rec attachmentRecord) {
-	b.mu.Lock()
-	delete(b.resting, rec.Key())
-	b.mu.Unlock()
-}
-
-func (b *bootReattach) settle(rec attachmentRecord) {
-	b.mu.Lock()
-	delete(b.pending, rec.Key())
-	delete(b.resting, rec.Key())
-	b.mu.Unlock()
 }
 
 type bootReattachOutcome int
@@ -181,7 +105,7 @@ func (s *server) reattachOnBoot() {
 	order, resting := bootQueue(ordered, func(rec attachmentRecord) bool {
 		return ranks[rec.Key()].visible || s.bootWorkOpen(rec)
 	})
-	boot.rest(resting)
+	s.bootAttachments.Rest(resting)
 	s.restart.rest(resting)
 	log.Printf("boot re-attach: %d threads queued, %d resting until needed", len(order), len(resting))
 	// One queue per provider, each in sidebar priority, so a provider whose
@@ -394,7 +318,7 @@ func (s *server) resumeSpawnLock(provider string) *sync.Mutex {
 // reattachWaitingHosted registers one waiting thread (starting or resting)
 // now, for a request that needs it live. Any other thread is left as it is.
 func (s *server) reattachWaitingHosted(hostedThreadID string) {
-	if rec, state := s.boot.waitingHosted(hostedThreadID); state != "" {
+	if rec, state := s.bootAttachments.WaitingHosted(hostedThreadID); state != "" {
 		s.reattachStored(rec, true)
 	}
 }
@@ -405,7 +329,7 @@ func (s *server) reattachWaitingHosted(hostedThreadID string) {
 // is. The registration runs behind the answer, so a provider stuck in its
 // handshake holds no request.
 func (s *server) handleHostedThreadPrioritize(w http.ResponseWriter, _ *http.Request, record agentSessionRecord) {
-	_, state := s.boot.waitingHosted(record.ID)
+	_, state := s.bootAttachments.WaitingHosted(record.ID)
 	starting := state != ""
 	if starting {
 		go s.reattachWaitingHosted(record.ID)
@@ -419,21 +343,20 @@ func (s *server) handleHostedThreadPrioritize(w http.ResponseWriter, _ *http.Req
 // settled it. Two callers may race here; spawnSession's resume guard lets only
 // the first register, and the second sees the live session.
 func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bool) bootReattachOutcome {
-	boot := s.boot
-	if !boot.waiting(rec.Key()) {
+	if !s.bootAttachments.Waiting(rec.Key()) {
 		return bootReattachSettled
 	}
 	// Settle only after the attempt, so no view sees the thread as neither
 	// starting nor live.
 	defer func() {
-		boot.settle(rec)
+		s.bootAttachments.Settle(rec)
 		if immediateRuntimePublish {
 			s.publishRuntime(false)
 		} else {
 			s.notifyRuntime()
 		}
 	}()
-	boot.wake(rec)
+	s.bootAttachments.Wake(rec)
 	restart := s.restart.thread(rec.Key())
 	restart.at(restartPicked)
 	if _, stored := s.attachments.Get(rec.Provider, rec.NativeThreadID); !stored {
@@ -457,7 +380,7 @@ func (s *server) reattachStored(rec attachmentRecord, immediateRuntimePublish bo
 			ThreadID:            rec.NativeThreadID,
 			HostedThreadID:      rec.HostedThreadID,
 			CodexZeroTurnResume: sessions.ProviderLifecycleCapabilities(rec.Provider).ResumeWithoutTranscript,
-			BootReattach:        boot.controls[rec.Provider],
+			BootReattach:        s.boot.controls[rec.Provider],
 		},
 		InvokerHostedThreadID:   rec.InvokerHostedThreadID,
 		InvokerNativeThreadID:   rec.InvokerNativeThreadID,

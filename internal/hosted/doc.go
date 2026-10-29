@@ -5,7 +5,8 @@
 // Sessions owns live attachment state and provider connections; hosted reads
 // that state through the concrete session registry. The catalog belongs to
 // threadindex, while sidebar composition remains in app until its extraction.
-// Controller.Waiting and Controller.Reattach remain construction-time boot
-// callbacks until the lifecycle landing moves boot ownership down.
+// Sessions also owns the pending/resting boot attachment records. Only
+// Controller.Reattach remains a construction-time callback until the lifecycle
+// landing moves boot orchestration down.
 // App composes shared database migrations; hosted opens its pin database.
 package hosted

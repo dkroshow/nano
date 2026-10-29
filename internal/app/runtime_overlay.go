@@ -111,7 +111,7 @@ func (s *server) detachedRuntimeInfos(records []attachmentRecord) map[attachment
 			mode = canonical
 		}
 		info := runtimeInfo{Detached: true, PresentationMode: mode}
-		info.Status = s.boot.state(rec.Key())
+		info.Status = s.bootAttachments.State(rec.Key())
 		infos[rec.Key()] = info
 	}
 	return infos
@@ -357,7 +357,7 @@ func (s *server) detachedChanges(live map[attachmentKey]bool) ([]attachmentRecor
 	current := make(map[attachmentKey]string, len(records))
 	for _, record := range records {
 		state, _ := json.Marshal(record)
-		current[record.Key()] = string(state) + "|" + s.boot.state(record.Key())
+		current[record.Key()] = string(state) + "|" + s.bootAttachments.State(record.Key())
 	}
 	s.runtimeSnapshotMu.Lock()
 	previous := s.runtimeDetached

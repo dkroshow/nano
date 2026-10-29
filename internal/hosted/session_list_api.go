@@ -30,7 +30,8 @@ func (s *ViewService) HandleSessionsList(w http.ResponseWriter, _ *http.Request)
 	records := s.Executions.ListSessions()
 	items := make([]SessionView, 0, len(records))
 	for _, record := range records {
-		if waiting := s.Waiting(record.ID); record.Status == hostedstore.StatusExited && !attached[record.ID] && waiting == "" {
+		_, waiting := s.Boot.WaitingHosted(record.ID)
+		if record.Status == hostedstore.StatusExited && !attached[record.ID] && waiting == "" {
 			continue
 		}
 		view := s.SessionView(record.ID)

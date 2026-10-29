@@ -193,9 +193,10 @@ type server struct {
 	// interrupted repair reads the configured catalog and writes only beneath
 	// the configured maintenance root; neither path is inferred from another store.
 
-	// boot holds the stored threads this process has not reattached yet
-	// (boot_reattach.go). Set once before HTTP serves.
-	boot *bootReattach
+	// boot holds registration order, handshake controls and publication state.
+	// bootAttachments owns the waiting records. Both are set before HTTP serves.
+	boot            *bootReattach
+	bootAttachments sessionruntime.BootAttachments
 	// restart records this process start for GET /api/v1/restarts
 	// (restart_tracking.go).
 	restart *restartTracker
@@ -922,7 +923,7 @@ func (s *server) detachedViewsOf(records []attachmentRecord) []detachedSessionVi
 	detached := []detachedSessionView{}
 	for _, record := range records {
 		view := detachedSessionView{attachmentRecord: record}
-		if state := s.boot.state(record.Key()); state != "" {
+		if state := s.bootAttachments.State(record.Key()); state != "" {
 			view.Status = state
 		}
 		// These retired JSON fields must never leak back into a hosted

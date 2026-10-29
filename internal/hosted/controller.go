@@ -27,9 +27,9 @@ type Controller struct {
 	Sessions                      *sessions.Registry
 	SendAttempts                  *prompts.LegacyJournal
 	ClaudeShimWS                  string
-	// Waiting and Reattach are construction-time boot actions until the lifecycle
-	// landing moves boot ownership down. They do not expose the app server.
-	Waiting                   func(string) string
+	Boot                          *sessions.BootAttachments
+	// Reattach is a construction-time action until the lifecycle landing moves
+	// boot orchestration down. It does not expose the app server.
 	Reattach                  func(string)
 	Stars                     CloseStars
 	Views                     func() *ViewService

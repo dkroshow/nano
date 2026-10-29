@@ -135,7 +135,7 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	if sub.NextTurn {
 		hash = hostedstore.TurnRequestHash(prompt, true)
 	}
-	waited := s.Waiting(hostedThreadID)
+	_, waited := s.Boot.WaitingHosted(hostedThreadID)
 	s.Reattach(hostedThreadID)
 	_, found := s.Executions.TurnForAction(hostedThreadID, actionID)
 	if !found && s.sessionForHosted(hostedThreadID) == nil {
