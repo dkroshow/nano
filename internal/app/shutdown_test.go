@@ -147,7 +147,7 @@ func TestStoppingNanoRefusesWritesInsideTheSecurityGuards(t *testing.T) {
 	t.Cleanup(func() { _ = authStore.Close() })
 	const remoteHost = "nano.example.ts.net:7690"
 	s := &server{Registry: newSessionRegistry()}
-	app := &application{server: s, remoteAuth: remoteauth.New(authStore, remoteHost)}
+	app := &application{server: fixtureOwners(s), remoteAuth: remoteauth.New(authStore, remoteHost)}
 	local, remote := app.mount()
 	s.stopping.Store(true)
 
