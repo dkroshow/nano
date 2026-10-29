@@ -19,6 +19,7 @@ import (
 	"time"
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
@@ -211,7 +212,7 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 		catalog: f.catalog, Registry: newSessionRegistry(),
 		attachments: attachments, threadStars: stars,
 		controlMetadata: metadata, agentExecutions: executions,
-		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: newMailHub(), mail: newTestAgentMessageStore(t),
+		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: featuremail.NewHub(), mail: newTestAgentMessageStore(t),
 	}, sessions)
 	s.runtime = s
 	nameOwner = s

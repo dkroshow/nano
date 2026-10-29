@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 )
 
@@ -186,7 +187,7 @@ func postTranscriptValidationForTest(t *testing.T, s *server, body string) *http
 
 func TestTranscriptDuplicateIncidentPersistsOnceAcrossRepeatedObservations(t *testing.T) {
 	control := newTestControlMetadata(t)
-	s := &server{controlMetadata: control, transcriptValidations: newTranscriptValidationStore(10), mailEvents: newMailHub()}
+	s := &server{controlMetadata: control, transcriptValidations: newTranscriptValidationStore(10), mailEvents: featuremail.NewHub()}
 
 	first := postTranscriptValidationForTest(t, s, duplicateValidationBody("tab-1:1", "pane-1", "index-first.js"))
 	if first.Code != http.StatusOK {

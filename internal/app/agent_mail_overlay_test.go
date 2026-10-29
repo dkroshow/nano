@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -227,17 +228,17 @@ func jsonNumber(v int64) string {
 
 func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 	s, _, _, sender, recipient, _, _ := stage0Server(t)
-	s.mailEvents = newMailHub()
-	ch := s.mailEvents.subscribe()
-	defer s.mailEvents.unsubscribe(ch)
+	s.mailEvents = featuremail.NewHub()
+	ch := s.mailEvents.Subscribe()
+	defer s.mailEvents.Unsubscribe(ch)
 
-	next := func(stage string) mailDelta {
+	next := func(stage string) featuremail.Delta {
 		select {
 		case delta := <-ch:
 			return delta
 		default:
 			t.Fatalf("no mail event after %s", stage)
-			return mailDelta{}
+			return featuremail.Delta{}
 		}
 	}
 

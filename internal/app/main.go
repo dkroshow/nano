@@ -29,6 +29,7 @@ import (
 	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	feedback "github.com/dkroshow/nano/internal/features/feedback"
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	nanofiles "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
 	hosted "github.com/dkroshow/nano/internal/hosted"
@@ -94,7 +95,7 @@ type server struct {
 	// mailEvents fans per-thread inbox count changes (`mail` SSE events) to
 	// thread-index event subscribers so sidebar badges and open inbox panels
 	// refresh without polling (agent_mail_overlay.go).
-	mailEvents *mailHub
+	mailEvents *featuremail.Hub
 	// sidebar is the server-owned catalog projection. HTTP reads immutable
 	// snapshots from it; catalog and runtime events rebuild it off request paths.
 	sidebar *sidebarMaterializedState
@@ -390,7 +391,7 @@ func construct(cfg config.Config) *application {
 		catalogRefresh:        catalogRefresh,
 		catalogSources:        catalogSources,
 		runtimeEvents:         sidebar.NewRuntimeHub(),
-		mailEvents:            newMailHub(),
+		mailEvents:            featuremail.NewHub(),
 		mail:                  mail,
 		attachments:           attachments,
 		controlMetadata:       controlMetadata,

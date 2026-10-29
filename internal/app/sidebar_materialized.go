@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/catalog"
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -266,7 +267,7 @@ func (m *sidebarMaterializedState) replace(all []sidebar.Thread, query threadind
 	}
 }
 
-func (m *sidebarMaterializedState) applyMailDelta(delta mailDelta) {
+func (m *sidebarMaterializedState) applyMailDelta(delta featuremail.Delta) {
 	if m == nil || len(delta.Counts) == 0 {
 		return
 	}

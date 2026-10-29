@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/catalog"
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
-
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -674,10 +674,10 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	// Mail count changes ride the same stream as a fourth named event. No
 	// connect-time event: the client's initial window fetch carries current
 	// counts on the rows (attachMailOverlay), same as the runtime overlay.
-	var mailEvents <-chan mailDelta
+	var mailEvents <-chan featuremail.Delta
 	if s.mailEvents != nil {
-		ch := s.mailEvents.subscribe()
-		defer s.mailEvents.unsubscribe(ch)
+		ch := s.mailEvents.Subscribe()
+		defer s.mailEvents.Unsubscribe(ch)
 		mailEvents = ch
 	}
 	// The materialized sidebar publishes row/removal/root patches on this
@@ -796,7 +796,7 @@ func writeRuntimeEvent(w io.Writer, delta sidebar.RuntimeDelta) {
 
 // writeMailEvent emits the current inbox counts for each changed hosted
 // thread plus the global summary — last-value-wins state, like runtime.
-func writeMailEvent(w io.Writer, delta mailDelta) {
+func writeMailEvent(w io.Writer, delta featuremail.Delta) {
 	payload, err := json.Marshal(delta)
 	if err != nil {
 		return

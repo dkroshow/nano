@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
@@ -70,7 +71,7 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 	hostedID, _ := rows["related-child"]["hostedThreadId"].(string)
 	events := s.sidebar.events.subscribe()
 	defer s.sidebar.events.unsubscribe(events)
-	s.sidebar.applyMailDelta(mailDelta{Counts: map[string]agentMailCounts{
+	s.sidebar.applyMailDelta(featuremail.Delta{Counts: map[string]agentMailCounts{
 		hostedID: {Total: 2, Unread: 1, Seen: 1},
 	}})
 	select {
@@ -534,7 +535,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 		catalog: svc, Registry: newSessionRegistry(),
 		attachments: attachments, threadStars: stars,
 		controlMetadata: metadata, agentExecutions: executions,
-		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: newMailHub(),
+		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: featuremail.NewHub(),
 		mail: newTestAgentMessageStore(t),
 	}, map[string]*session{
 		"sess-attached": attached, "sess-parent": parentLive, "sess-child": childLive,

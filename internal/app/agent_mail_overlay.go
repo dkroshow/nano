@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/httpapi"
@@ -33,66 +32,6 @@ const (
 	operatorSenderKind = "operator"
 	operatorSenderName = "Operator"
 )
-
-// mailDelta is the SSE payload: the complete current counts for each changed
-// recipient plus the global summary, so a subscriber can patch its state
-// without a follow-up fetch. Conflation merges deltas key-by-key — counts are
-// last-value-wins state, not a log.
-type mailDelta struct {
-	Counts  map[string]agentMailCounts `json:"counts"`
-	Summary agentMailCounts            `json:"summary"`
-}
-
-// mailHub mirrors runtimeHub: single-slot subscribers, merge-on-conflate so a
-// slow subscriber still ends with every thread's latest counts.
-type mailHub struct {
-	mu   sync.Mutex
-	subs map[chan mailDelta]struct{}
-}
-
-func newMailHub() *mailHub {
-	return &mailHub{subs: make(map[chan mailDelta]struct{})}
-}
-
-func (h *mailHub) subscribe() chan mailDelta {
-	ch := make(chan mailDelta, 1)
-	h.mu.Lock()
-	h.subs[ch] = struct{}{}
-	h.mu.Unlock()
-	return ch
-}
-
-func (h *mailHub) unsubscribe(ch chan mailDelta) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if _, ok := h.subs[ch]; ok {
-		delete(h.subs, ch)
-		close(ch)
-	}
-}
-
-func (h *mailHub) notify(delta mailDelta) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for ch := range h.subs {
-		select {
-		case pending := <-ch:
-			merged := mailDelta{Counts: map[string]agentMailCounts{}, Summary: delta.Summary}
-			for id, counts := range pending.Counts {
-				merged.Counts[id] = counts
-			}
-			for id, counts := range delta.Counts {
-				merged.Counts[id] = counts
-			}
-			delta = merged
-		default:
-		}
-		select {
-		case ch <- delta:
-		default:
-		}
-	}
-}
 
 // notifyMailChanged recomputes counts for the affected recipients plus the
 // global summary and fans them to SSE subscribers. Best-effort by design: a
@@ -126,7 +65,7 @@ func (s *server) notifyMailChanged(recipients ...string) {
 		log.Printf("mail change notify: %v", err)
 		return
 	}
-	delta := mailDelta{Counts: map[string]agentMailCounts{}}
+	delta := featuremail.Delta{Counts: map[string]agentMailCounts{}}
 	for _, id := range ids {
 		delta.Counts[id] = all[id] // zero-value counts if the id has no mail
 	}
@@ -138,7 +77,7 @@ func (s *server) notifyMailChanged(recipients ...string) {
 	if s.sidebar != nil {
 		s.sidebar.applyMailDelta(delta)
 	}
-	s.mailEvents.notify(delta)
+	s.mailEvents.Notify(delta)
 }
 
 func (s *server) refreshMailNotice(recipient string) error {
