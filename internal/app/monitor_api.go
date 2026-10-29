@@ -1,12 +1,10 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -64,7 +63,7 @@ func newHostMonitor(healthDir, deploysPath string) *hostMonitor {
 
 // recentDeploys returns the newest deploy records, newest first.
 func (m *hostMonitor) recentDeploys() ([]json.RawMessage, error) {
-	lines, err := tailJSONLines(m.deploysPath, monitorDeploysTail)
+	lines, err := observability.TailJSONLines(m.deploysPath, monitorDeploysTail)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +99,7 @@ func (m *hostMonitor) newestSnapshot() (string, time.Time, error) {
 // recorded it, so agents read delivery lags and overdue counts here as well;
 // null when that run's delivery probe failed.
 func (m *hostMonitor) latestDelivery(file string) (json.RawMessage, error) {
-	lines, err := tailJSONLines(file, monitorSnapshotTail)
+	lines, err := observability.TailJSONLines(file, monitorSnapshotTail)
 	if err != nil || len(lines) == 0 {
 		return nil, err
 	}
@@ -185,42 +184,7 @@ func (m *hostMonitor) run(ctx context.Context) {
 // tailAlerts returns the alert lines in the last monitorAlertsTail bytes of
 // the file, oldest first.
 func (m *hostMonitor) tailAlerts() ([]json.RawMessage, error) {
-	return tailJSONLines(filepath.Join(m.healthDir, monitorAlertsName), monitorAlertsTail)
-}
-
-// tailJSONLines returns the valid JSON lines in the last tail bytes of an
-// append-only ledger, oldest first; a missing file has none. The alert and
-// restart ledgers share it.
-func tailJSONLines(path string, tail int64) ([]json.RawMessage, error) {
-	f, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return []json.RawMessage{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	start := max(0, info.Size()-tail)
-	data := make([]byte, info.Size()-start)
-	if _, err := f.ReadAt(data, start); err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
-	}
-	if start > 0 {
-		if i := bytes.IndexByte(data, '\n'); i >= 0 {
-			data = data[i+1:] // drop the partial first line
-		}
-	}
-	lines := []json.RawMessage{}
-	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
-		if json.Valid(line) {
-			lines = append(lines, json.RawMessage(line))
-		}
-	}
-	return lines, nil
+	return observability.TailJSONLines(filepath.Join(m.healthDir, monitorAlertsName), monitorAlertsTail)
 }
 
 func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
@@ -249,7 +213,7 @@ func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	alerts = alerts[max(0, len(alerts)-monitorAlertsShown):]
-	restarts, err := s.restart.recent(restartsDefaultLimit, false)
+	restarts, err := s.restart.Recent(hosted.DefaultRestartsLimit, false)
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, "monitor_unreadable", err.Error())
 		return

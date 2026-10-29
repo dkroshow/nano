@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sessions"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
@@ -30,13 +31,13 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 		// Whichever path registers a still-starting thread (the boot loop, a
 		// request, a manual resume) is tracked from here, lock wait included.
 		if key := (attachmentKey{Provider: req.Provider, NativeThreadID: req.ThreadID}); req.restart == nil && s.bootAttachments.Waiting(key) {
-			req.restart = s.restart.thread(key)
-			req.restart.at(restartPicked)
+			req.restart = s.restart.Thread(key)
+			req.restart.At(observability.RestartPicked)
 		}
 		lock := s.resumeSpawnLock(req.Provider)
 		lock.Lock()
 		defer lock.Unlock()
-		req.restart.at(restartLock)
+		req.restart.At(observability.RestartLock)
 	}
 	req, err := s.resolveSpawn(req)
 	if err != nil {
@@ -228,7 +229,7 @@ func (s *server) spawnSession(req spawnRequest) (*sessions.Session, error) {
 	// is still in flight has to be able to reach this session, and the card has
 	// to appear at once rather than when the provider answers. Bind: the session
 	// is now visible to the catalog's runtime overlay.
-	sess.ConfigureRegistration(req.restart.at, req.restart.fail, req.catalogBackground, s.catalogSources)
+	sess.ConfigureRegistration(req.restart.At, req.restart.Fail, req.catalogBackground, s.catalogSources)
 	s.RegisterSession(sess)
 	sess.DidRegister()
 

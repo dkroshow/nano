@@ -52,6 +52,9 @@ import (
 // deliveryExpiryWindow keeps a provider marked slow for five minutes after a delivery expires.
 const deliveryExpiryWindow = 5 * time.Minute
 
+// processStarted is the earliest moment this process can name.
+var processStarted = time.Now()
+
 type sessionDefaults struct {
 	cwd              string
 	model            string
@@ -188,7 +191,7 @@ type server struct {
 	bootAttachments sessionruntime.BootAttachments
 	// restart records this process start for GET /api/v1/restarts
 	// (restart_tracking.go).
-	restart *restartTracker
+	restart *hosted.RestartTracker
 	// stopping is set once Nano begins to exit (stop). Every session shares
 	// it, so no provider delivery starts that the exit could cut off.
 	stopping atomic.Bool
@@ -400,7 +403,7 @@ func construct(cfg config.Config) *application {
 	if agentExecutions != nil {
 		agentExecutions.UseSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
 	}
-	s.restart = newRestartTracker(filepath.Join(cfg.Paths.DataDir, restartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
+	s.restart = hosted.NewRestartTracker(filepath.Join(cfg.Paths.DataDir, hosted.RestartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
 	if err := agentapi.SyncMailNotices(s.mail, s.notices); err != nil {
 		log.Fatalf("initialize mail notices: %v", err)
 	}
@@ -512,7 +515,7 @@ func (a *application) run(localHandler, remoteHandler http.Handler) {
 		<-stopSignals
 		started := time.Now()
 		report := s.stop(stopDeliveryWait, stopDeadline)
-		s.restart.writeUnsettled("interrupted", true)
+		s.restart.WriteUnsettled("interrupted", true)
 		log.Printf("nano stopped in %s: %s", time.Since(started).Round(time.Millisecond), report)
 		os.Exit(0)
 	}()
@@ -559,7 +562,7 @@ func (a *application) serve(listener net.Listener, localHandler, remoteHandler h
 	cfg, s := a.config, a.server
 	serveErrors := make(chan error, 3)
 	go func() { serveErrors <- http.Serve(listener, localHandler) }()
-	s.restart.markHTTPOpen()
+	s.restart.MarkHTTPOpen()
 	go func() {
 		s.reattachOnBoot()
 		// Features that prompt hosted threads by themselves start after every

@@ -408,7 +408,7 @@ func TestBootReattachResumesCodexThread(t *testing.T) {
 func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	s.restart = newRestartTracker(filepath.Join(t.TempDir(), restartsFileName), "test-stamp", "boot-test", time.Now())
+	s.restart = hosted.NewRestartTracker(filepath.Join(t.TempDir(), hosted.RestartsFileName), "test-stamp", "boot-test", time.Now())
 	sources := &recordingSources{}
 	s.catalogSources = sources
 	records := map[string]attachmentRecord{}
@@ -420,7 +420,7 @@ func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	s.prepareBootReattach()
-	s.restart.rank(map[attachmentKey]sidebar.BootRank{records["visible"].Key(): {Tier: 0, Visible: true}}, s.boot.order)
+	s.restart.Rank(map[attachmentKey]sidebar.BootRank{records["visible"].Key(): {Tier: 0, Visible: true}}, s.boot.order)
 
 	s.reattachStored(records["visible"], false)
 	s.reattachStored(records["hidden"], false)

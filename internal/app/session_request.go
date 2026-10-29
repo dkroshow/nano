@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
+	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
@@ -30,7 +31,7 @@ type spawnRequest struct {
 	// Prioritized registrations must appear immediately even during fleet boot.
 	immediateRuntimePublish bool `json:"-"`
 	// restart is this thread's entry in the boot's restart record, if any.
-	restart *restartThread `json:"-"`
+	restart *hosted.RestartThread `json:"-"`
 	// catalogBackground queues the catalog holds of a thread the sidebar did
 	// not show at boot behind foreground ones, for a bounded time
 	// (catalog_attached.go).

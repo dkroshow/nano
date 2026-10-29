@@ -99,7 +99,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/connection-test", "connection.test", httpapi.HandleConnectionTest},
 		{http.MethodGet, "/api/v1/monitor", "monitor.read", s.handleMonitor},
 		{http.MethodGet, "/api/v1/monitor/ingest-receipts", "monitor.ingestReceipts", s.handleIngestReceipts},
-		{http.MethodGet, "/api/v1/restarts", "restarts.read", s.handleRestarts},
+		{http.MethodGet, "/api/v1/restarts", "restarts.read", s.restart.HandleRestarts},
 		{http.MethodGet, "/api/v1/heartbeat/attachments", "heartbeat.attachments.list", s.agentController().HandleHeartbeatAttachmentsList},
 		{http.MethodPost, "/api/v1/heartbeat/attachments", "heartbeat.attachments.create", s.agentController().HandleHeartbeatAttachmentCreate},
 		{http.MethodGet, "/api/v1/heartbeat/attachments/{attachmentId}", "heartbeat.attachments.read", s.agentController().HandleHeartbeatAttachmentRead},

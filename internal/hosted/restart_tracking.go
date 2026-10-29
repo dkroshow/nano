@@ -3,7 +3,7 @@
 // reconnect step happened. It exists so restart speed is measured rather than
 // guessed (docs/restart-tracking.md). Ids, fixed codes and millisecond
 // offsets only: no prompt text, titles, paths or error text.
-package app
+package hosted
 
 import (
 	"encoding/json"
@@ -17,13 +17,15 @@ import (
 	"sync"
 	"time"
 
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 const (
-	restartsFileName = "restarts.jsonl"
+	// RestartsFileName is the append-only restart evidence filename.
+	RestartsFileName = "restarts.jsonl"
 	// A boot that has not settled every thread by then is written as it
 	// stands, with the rest marked not_live_at_cap.
 	restartRecordCap = 15 * time.Minute
@@ -36,16 +38,11 @@ const (
 	// this long, so those attaches count.
 	restartRestQuiet = time.Minute
 	// Restart lines carry every thread (~100 KB for 400 threads).
-	restartsReadTail     = 4 << 20
-	restartsDefaultLimit = 5
+	restartsReadTail = 4 << 20
+	// DefaultRestartsLimit bounds the default recent-restart response.
+	DefaultRestartsLimit = 5
 	restartsMaxLimit     = 50
 )
-
-// processStarted is the earliest moment this process can name; restart
-// offsets count from it.
-var processStarted = time.Now()
-
-type restartStep = observability.RestartStep
 
 const (
 	restartStatePending = "pending"
@@ -64,7 +61,8 @@ const (
 	restartLive       = observability.RestartLive
 )
 
-type restartRecord struct {
+// RestartRecord is the content-free evidence for one process boot.
+type RestartRecord struct {
 	V                int                               `json:"v"`
 	RestartID        string                            `json:"restart_id"`
 	Stamp            string                            `json:"stamp"`
@@ -84,7 +82,7 @@ type restartRecord struct {
 	Resting          int                               `json:"resting"`
 	Visible          int                               `json:"visible"`
 	ByProvider       map[string]restartProviderSummary `json:"by_provider"`
-	Threads          []restartThreadRecord             `json:"threads,omitempty"`
+	Threads          []RestartThreadRecord             `json:"threads,omitempty"`
 }
 
 type restartProviderSummary struct {
@@ -103,7 +101,8 @@ type restartStat struct {
 	Max int64 `json:"max"`
 }
 
-type restartThreadRecord struct {
+// RestartThreadRecord holds the recorded attachment stages for one thread.
+type RestartThreadRecord struct {
 	Provider       string `json:"provider"`
 	NativeThreadID string `json:"native_thread_id"`
 	HostedThreadID string `json:"hosted_thread_id,omitempty"`
@@ -122,8 +121,8 @@ type restartThreadRecord struct {
 	Reason       string `json:"reason,omitempty"`
 }
 
-// restartTracker holds this process's record until it is written.
-type restartTracker struct {
+// RestartTracker holds this process's record until it is written.
+type RestartTracker struct {
 	path    string
 	stamp   string
 	bootID  string
@@ -132,8 +131,8 @@ type restartTracker struct {
 	mu          sync.Mutex
 	httpOpen    *int64
 	bootLoop    *int64
-	threads     []*restartThread
-	byKey       map[attachmentKey]*restartThread
+	threads     []*RestartThread
+	byKey       map[hostedstore.AttachmentKey]*RestartThread
 	wake        *time.Timer // the next time the record may be written
 	lastMark    time.Time   // when a mark last changed the record
 	written     bool        // final: no later mark changes the record
@@ -141,26 +140,28 @@ type restartTracker struct {
 	saved       bool // the line is in the file
 }
 
-// restartThread is one stored thread's entry, changed only under the
+// RestartThread is one stored thread's entry, changed only under the
 // tracker's lock. Each timestamp is set at most once; state follows the last
 // of live and failed.
-type restartThread struct {
-	tracker *restartTracker
-	restartThreadRecord
+type RestartThread struct {
+	tracker *RestartTracker
+	RestartThreadRecord
 }
 
-func newRestartTracker(path, stamp, bootID string, started time.Time) *restartTracker {
-	t := &restartTracker{path: path, stamp: stamp, bootID: bootID, started: started, byKey: map[attachmentKey]*restartThread{}}
-	time.AfterFunc(time.Until(started.Add(restartRecordCap)), func() { t.writeUnsettled("not_live_at_cap", false) })
+// NewRestartTracker starts a bounded record for this process boot.
+func NewRestartTracker(path, stamp, bootID string, started time.Time) *RestartTracker {
+	t := &RestartTracker{path: path, stamp: stamp, bootID: bootID, started: started, byKey: map[hostedstore.AttachmentKey]*RestartThread{}}
+	time.AfterFunc(time.Until(started.Add(restartRecordCap)), func() { t.WriteUnsettled("not_live_at_cap", false) })
 	return t
 }
 
-func (t *restartTracker) sinceStart() *int64 {
+func (t *RestartTracker) sinceStart() *int64 {
 	ms := time.Since(t.started).Milliseconds()
 	return &ms
 }
 
-func (t *restartTracker) markHTTPOpen() {
+// MarkHTTPOpen records when the HTTP listener becomes available.
+func (t *RestartTracker) MarkHTTPOpen() {
 	if t == nil {
 		return
 	}
@@ -173,7 +174,8 @@ func (t *restartTracker) markHTTPOpen() {
 
 // addThreads registers the boot's stored threads, before HTTP serves, so a
 // request that attaches one early is tracked too.
-func (t *restartTracker) addThreads(records []attachmentRecord) {
+// AddThreads records the durable attachments selected for this boot.
+func (t *RestartTracker) AddThreads(records []hostedstore.Attachment) {
 	if t == nil {
 		return
 	}
@@ -183,9 +185,9 @@ func (t *restartTracker) addThreads(records []attachmentRecord) {
 		if t.byKey[rec.Key()] != nil {
 			continue
 		}
-		th := &restartThread{tracker: t, restartThreadRecord: restartThreadRecord{
+		th := &RestartThread{tracker: t, RestartThreadRecord: RestartThreadRecord{
 			Provider: rec.Provider, NativeThreadID: rec.NativeThreadID, HostedThreadID: rec.HostedThreadID,
-			Tier: bootTierNames[sidebar.BootTierUnseen], Order: i, State: restartStatePending,
+			Tier: restartBootTierNames[sidebar.BootTierUnseen], Order: i, State: restartStatePending,
 		}}
 		t.threads = append(t.threads, th)
 		t.byKey[rec.Key()] = th
@@ -194,7 +196,8 @@ func (t *restartTracker) addThreads(records []attachmentRecord) {
 
 // rank fixes each thread's sidebar place and the order the boot loop takes,
 // before the loop starts, so requests that jump the queue do not change them.
-func (t *restartTracker) rank(ranks map[attachmentKey]sidebar.BootRank, ordered []attachmentRecord) {
+// Rank applies the sidebar order used by boot scheduling.
+func (t *RestartTracker) Rank(ranks map[hostedstore.AttachmentKey]sidebar.BootRank, ordered []hostedstore.Attachment) {
 	if t == nil {
 		return
 	}
@@ -206,13 +209,14 @@ func (t *restartTracker) rank(ranks map[attachmentKey]sidebar.BootRank, ordered 
 			if !known {
 				r.Tier = sidebar.BootTierUnseen
 			}
-			th.Tier, th.Visible, th.Order = bootTierNames[r.Tier], r.Visible, i
+			th.Tier, th.Visible, th.Order = restartBootTierNames[r.Tier], r.Visible, i
 		}
 	}
 }
 
 // rest marks threads the boot loop leaves resting.
-func (t *restartTracker) rest(records []attachmentRecord) {
+// Rest records attachments deferred until they are requested.
+func (t *RestartTracker) Rest(records []hostedstore.Attachment) {
 	if t == nil {
 		return
 	}
@@ -225,7 +229,8 @@ func (t *restartTracker) rest(records []attachmentRecord) {
 	}
 }
 
-func (t *restartTracker) thread(key attachmentKey) *restartThread {
+// Thread returns the existing progress record for an attachment.
+func (t *RestartTracker) Thread(key hostedstore.AttachmentKey) *RestartThread {
 	if t == nil {
 		return nil
 	}
@@ -234,7 +239,8 @@ func (t *restartTracker) thread(key attachmentKey) *restartThread {
 	return t.byKey[key]
 }
 
-func (t *restartTracker) markBootLoopDone() {
+// MarkBootLoopDone records the end of initial registration.
+func (t *RestartTracker) MarkBootLoopDone() {
 	if t == nil {
 		return
 	}
@@ -248,7 +254,8 @@ func (t *restartTracker) markBootLoopDone() {
 
 // hiddenAtBoot reports a boot thread the sidebar did not show at first sight.
 // Nil-safe: a session outside a boot is never hidden.
-func (th *restartThread) hiddenAtBoot() bool {
+// HiddenAtBoot reports whether the sidebar excluded this thread at boot.
+func (th *RestartThread) HiddenAtBoot() bool {
 	if th == nil {
 		return false
 	}
@@ -259,14 +266,15 @@ func (th *restartThread) hiddenAtBoot() bool {
 
 // at records when this thread reached step. Nil-safe: sessions outside a
 // boot have no entry.
-func (th *restartThread) at(step restartStep) {
+// At records a qualified attachment stage.
+func (th *RestartThread) At(step observability.RestartStep) {
 	if th == nil {
 		return
 	}
 	t := th.tracker
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	field := map[restartStep]**int64{
+	field := map[observability.RestartStep]**int64{
 		restartPicked: &th.PickedMs, restartLock: &th.LockMs, restartRegistered: &th.RegisteredMs,
 		restartAttached: &th.AttachedMs, restartLive: &th.LiveMs,
 	}[step]
@@ -288,7 +296,8 @@ func (th *restartThread) at(step restartStep) {
 // fail records a failure; failed_ms and reason keep the first one. A thread
 // that was live and then fails counts as failed, and one that fails and then
 // becomes live counts as live.
-func (th *restartThread) fail(reason string) {
+// Fail settles an attachment with a content-free reason code.
+func (th *RestartThread) Fail(reason string) {
 	if th == nil {
 		return
 	}
@@ -310,12 +319,12 @@ func (th *restartThread) fail(reason string) {
 // restartSettleGrace since it went live, and, while threads rest, no mark has
 // changed the record for restartRestQuiet.
 // markedLocked notes that a mark just changed the record, then weighs it.
-func (t *restartTracker) markedLocked() {
+func (t *RestartTracker) markedLocked() {
 	t.lastMark = time.Now()
 	t.writeIfSettledLocked()
 }
 
-func (t *restartTracker) writeIfSettledLocked() {
+func (t *RestartTracker) writeIfSettledLocked() {
 	if t.written || t.bootLoop == nil {
 		return
 	}
@@ -354,7 +363,8 @@ func (t *restartTracker) writeIfSettledLocked() {
 // writeUnsettled writes the record as it stands: at the cap, or when Nano
 // stops before the boot settles (interrupted). Threads still pending carry
 // reason.
-func (t *restartTracker) writeUnsettled(reason string, interrupted bool) {
+// WriteUnsettled writes the current record when boot is interrupted or capped.
+func (t *RestartTracker) WriteUnsettled(reason string, interrupted bool) {
 	if t == nil {
 		return
 	}
@@ -371,7 +381,7 @@ func (t *restartTracker) writeUnsettled(reason string, interrupted bool) {
 	t.writeLocked(interrupted)
 }
 
-func (t *restartTracker) writeLocked(interrupted bool) {
+func (t *RestartTracker) writeLocked(interrupted bool) {
 	t.written, t.interrupted = true, interrupted
 	record := t.recordLocked(true)
 	line, err := json.Marshal(record)
@@ -409,21 +419,21 @@ func restartMsText(ms *int64) string {
 // measured between its own two marks.
 var restartStages = []struct {
 	name     string
-	from, to func(*restartThreadRecord) *int64
+	from, to func(*RestartThreadRecord) *int64
 }{
-	{"lock_wait", func(r *restartThreadRecord) *int64 { return r.PickedMs }, func(r *restartThreadRecord) *int64 { return r.LockMs }},
-	{"record", func(r *restartThreadRecord) *int64 { return r.LockMs }, func(r *restartThreadRecord) *int64 { return r.RegisteredMs }},
-	{"reconnect", func(r *restartThreadRecord) *int64 { return r.RegisteredMs }, func(r *restartThreadRecord) *int64 { return r.AttachedMs }},
-	{"registered_to_live", func(r *restartThreadRecord) *int64 { return r.RegisteredMs }, func(r *restartThreadRecord) *int64 { return r.LiveMs }},
-	{"to_live", func(*restartThreadRecord) *int64 { return new(int64) }, func(r *restartThreadRecord) *int64 { return r.LiveMs }},
+	{"lock_wait", func(r *RestartThreadRecord) *int64 { return r.PickedMs }, func(r *RestartThreadRecord) *int64 { return r.LockMs }},
+	{"record", func(r *RestartThreadRecord) *int64 { return r.LockMs }, func(r *RestartThreadRecord) *int64 { return r.RegisteredMs }},
+	{"reconnect", func(r *RestartThreadRecord) *int64 { return r.RegisteredMs }, func(r *RestartThreadRecord) *int64 { return r.AttachedMs }},
+	{"registered_to_live", func(r *RestartThreadRecord) *int64 { return r.RegisteredMs }, func(r *RestartThreadRecord) *int64 { return r.LiveMs }},
+	{"to_live", func(*RestartThreadRecord) *int64 { return new(int64) }, func(r *RestartThreadRecord) *int64 { return r.LiveMs }},
 }
 
 // recordLocked summarizes the tracker as it stands. It is complete only once
 // written with every thread settled. *_live_ms stays null while any counted
 // thread is pending or failed; *_settled_ms is when the last of them became
 // live or failed.
-func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
-	record := restartRecord{
+func (t *RestartTracker) recordLocked(withThreads bool) RestartRecord {
+	record := RestartRecord{
 		V: 1, RestartID: t.bootID, Stamp: t.stamp, StartedAt: t.started.UTC(),
 		HTTPOpenMs: t.httpOpen, BootLoopMs: t.bootLoop, Interrupted: t.interrupted,
 		Complete:     t.written && !t.interrupted && t.bootLoop != nil,
@@ -434,7 +444,7 @@ func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
 		failed, pending bool
 	}
 	var all, Visible span
-	note := func(s *span, th *restartThread) {
+	note := func(s *span, th *RestartThread) {
 		switch th.State {
 		case restartStateLive:
 			s.last = laterMs(s.last, th.LiveMs)
@@ -474,12 +484,12 @@ func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
 			durations[th.Provider] = map[string][]int64{}
 		}
 		for _, stage := range restartStages {
-			if from, to := stage.from(&th.restartThreadRecord), stage.to(&th.restartThreadRecord); from != nil && to != nil && *to >= *from {
+			if from, to := stage.from(&th.RestartThreadRecord), stage.to(&th.RestartThreadRecord); from != nil && to != nil && *to >= *from {
 				durations[th.Provider][stage.name] = append(durations[th.Provider][stage.name], *to-*from)
 			}
 		}
 		if withThreads {
-			record.Threads = append(record.Threads, th.restartThreadRecord)
+			record.Threads = append(record.Threads, th.RestartThreadRecord)
 		}
 	}
 	for _, s := range []struct {
@@ -518,8 +528,9 @@ func laterMs(current, candidate *int64) *int64 {
 
 // handleRestarts answers GET /api/v1/restarts: the newest restarts first,
 // this process's own while it is still unwritten.
-func (s *server) handleRestarts(w http.ResponseWriter, r *http.Request) {
-	limit := restartsDefaultLimit
+// HandleRestarts serves recent restart evidence.
+func (t *RestartTracker) HandleRestarts(w http.ResponseWriter, r *http.Request) {
+	limit := DefaultRestartsLimit
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > restartsMaxLimit {
@@ -528,7 +539,7 @@ func (s *server) handleRestarts(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	restarts, err := s.restart.recent(limit, r.URL.Query().Get("threads") == "1")
+	restarts, err := t.Recent(limit, r.URL.Query().Get("threads") == "1")
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, "restarts_unreadable", err.Error())
 		return
@@ -537,8 +548,9 @@ func (s *server) handleRestarts(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, map[string]any{"restarts": restarts})
 }
 
-func (t *restartTracker) recent(limit int, withThreads bool) ([]restartRecord, error) {
-	out := []restartRecord{}
+// Recent returns bounded completed and current restart records.
+func (t *RestartTracker) Recent(limit int, withThreads bool) ([]RestartRecord, error) {
+	out := []RestartRecord{}
 	if t == nil {
 		return out, nil
 	}
@@ -564,17 +576,19 @@ func (t *restartTracker) recent(limit int, withThreads bool) ([]restartRecord, e
 	return out, nil
 }
 
-func readRestartTail(path string) ([]restartRecord, error) {
-	lines, err := tailJSONLines(path, restartsReadTail)
+func readRestartTail(path string) ([]RestartRecord, error) {
+	lines, err := observability.TailJSONLines(path, restartsReadTail)
 	if err != nil {
 		return nil, err
 	}
-	var records []restartRecord
+	var records []RestartRecord
 	for _, line := range lines {
-		var record restartRecord
+		var record RestartRecord
 		if json.Unmarshal(line, &record) == nil && record.V == 1 {
 			records = append(records, record)
 		}
 	}
 	return records, nil
 }
+
+var restartBootTierNames = [...]string{"starred", "top_level", "nested", "unseen"}
