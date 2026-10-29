@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"errors"
@@ -38,28 +38,29 @@ const (
 
 var errWarmFillInvalid = errors.New("lines and cols must be integers within range")
 
-type warmFill struct{ lines, cols int }
+// WarmFill is the bounded browser geometry used to size a saved transcript tail.
+type WarmFill struct{ lines, cols int }
 
-// parseWarmFill reads a page's window from its stream URL: both absent is the
+// ParseWarmFill reads a page's window from its stream URL: both absent is the
 // default; anything else must be two in-range integers.
-func parseWarmFill(linesRaw, colsRaw string) (warmFill, error) {
+func ParseWarmFill(linesRaw, colsRaw string) (WarmFill, error) {
 	if linesRaw == "" && colsRaw == "" {
-		return warmFill{lines: warmFillLinesDefault, cols: warmFillColsDefault}, nil
+		return WarmFill{lines: warmFillLinesDefault, cols: warmFillColsDefault}, nil
 	}
 	lines, err := strconv.Atoi(linesRaw)
 	if err != nil || lines < warmFillLinesMin || lines > warmFillLinesMax {
-		return warmFill{}, errWarmFillInvalid
+		return WarmFill{}, errWarmFillInvalid
 	}
 	cols, err := strconv.Atoi(colsRaw)
 	if err != nil || cols < warmFillColsMin || cols > warmFillColsMax {
-		return warmFill{}, errWarmFillInvalid
+		return WarmFill{}, errWarmFillInvalid
 	}
-	return warmFill{lines: lines, cols: cols}, nil
+	return WarmFill{lines: lines, cols: cols}, nil
 }
 
 // count is how many of the newest rows of a page (oldest first, as read)
 // fill the window: at least one, every row when they all fit.
-func (f warmFill) count(items []threadindex.TranscriptItem) int {
+func (f WarmFill) count(items []threadindex.TranscriptItem) int {
 	height := 0.0
 	for i := len(items) - 1; i >= 0; i-- {
 		height += estimateRowLines(items[i], f.cols)

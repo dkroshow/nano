@@ -144,7 +144,7 @@ func codexRuntimeEvidence(sess *Session, dir protocol.Direction, line []byte, at
 		if json.Unmarshal(envelope.Params["turn"], &turn) == nil {
 			status := wirevalue.String(turn["status"])
 			turnID := wirevalue.String(turn["id"])
-			sess.projection.UpdateCompletedTurn(turnID, status, wirevalue.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
+			sess.projection.updateCompletedTurn(turnID, status, wirevalue.Int64(turn["durationMs"]), at.UnixMilli(), turn["error"])
 			if status == "interrupted" {
 				// A turn interrupted before it recorded its input saves nothing,
 				// so no saved commit may follow to settle a prompt it dropped.

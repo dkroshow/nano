@@ -31,7 +31,7 @@ func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 	// whenever a later update changes it; the loop's messages carry rows and
 	// live text only. The projection closes a subscription that falls behind,
 	// and the stream ends so the browser reconnects to a fresh status.
-	updates, cancel := sess.projection.Subscribe()
+	updates, cancel := sess.projection.subscribe()
 	defer cancel()
 	pane.Start()
 	defer pane.Stop()
@@ -130,7 +130,7 @@ func (sess *Session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		httpapi.WriteHTTPError(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	updates, cancel := sess.projection.Subscribe()
+	updates, cancel := sess.projection.subscribe()
 	defer cancel()
 	snapshot, err := sess.fileConversationSnapshot(r.Context(), view, "", transcriptFirstPaintRows)
 	if err != nil {

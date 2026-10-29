@@ -178,7 +178,7 @@ func (sess *Session) recordCoreAsyncError(_ error) {
 		Message: "An asynchronous session event could not be applied.",
 		Source:  "session",
 	}, false)
-	sess.projection.NudgeMetaRefresh()
+	sess.projection.nudgeMetaRefresh()
 	sess.NotifyRuntime()
 }
 

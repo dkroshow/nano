@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/dkroshow/nano/internal/sessions"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -21,14 +22,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/interact"
 	liveview "github.com/dkroshow/nano/internal/liveview"
+	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -1451,14 +1451,33 @@ func TestReattachSettlesSavedPromptsAndPublishesOnlyTheRest(t *testing.T) {
 				// What a pane opened now shows: the live text a new loop seeds
 				// from the outbox. A settled prompt is never published again,
 				// so no prompt is shown twice; unsettled prompts show once.
-				sess.AttachLiveText(newLiveTextLoop(h.server, sess))
-				liveTextOf(sess).reset()
-				liveTextOf(sess).seedOutbox()
+				// With no catalog source, joining the real pane cannot settle
+				// a stale prompt and conceal an attach bug. Its wire tail still
+				// exposes each seeded prompt's action identity and text.
+				sess.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, sess))
+				pane := newLiveTextPane(threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
+				liveTextOf(sess).subscribe(pane)
+				select {
+				case <-pane.ready:
+				case <-time.After(3 * time.Second):
+					t.Fatal("outbox pane did not publish its initial tail")
+				}
+				rawMessages := pane.take()
+				liveTextOf(sess).unsubscribe(pane)
 				actions, users := map[string]int{}, map[string]int{}
-				for _, entry := range liveTextOf(sess).visible() {
-					if entry.Kind == "prompt" {
-						actions[entry.ActionID]++
-						users[strings.SplitN(entry.Text, "\n\n", 2)[0]]++
+				for _, raw := range rawMessages {
+					var message liveTextMessage
+					if err := json.Unmarshal(raw, &message); err != nil {
+						t.Fatal(err)
+					}
+					if message.Live == nil {
+						continue
+					}
+					for _, entry := range *message.Live {
+						if entry.Kind == "prompt" {
+							actions[entry.ActionID]++
+							users[strings.SplitN(entry.Text, "\n\n", 2)[0]]++
+						}
 					}
 				}
 				duplicated := false
@@ -1727,7 +1746,7 @@ func TestCodexPromptIsResentOnlyOnProofItsTurnDroppedIt(t *testing.T) {
 			sent := make(chan string, 4)
 			var initial atomic.Bool
 			initial.Store(test.watched)
-			projection := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted")}
+			projection := newLiveProjection("codex", "hosted")
 			sess := h.attach("codex", func(_ context.Context, text string) (json.RawMessage, error) {
 				if initial.Swap(false) {
 					return json.RawMessage(`{"turn":{"id":"turn-case"}}`), nil

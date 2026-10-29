@@ -117,7 +117,7 @@ func grokRuntimeEvidence(sess *Session, dir protocol.Direction, line []byte, at 
 		if json.Unmarshal(usage, &usageBody) == nil {
 			duration = wirevalue.Int64(usageBody["apiDurationMs"])
 		}
-		sess.projection.UpdateCompletedTurn(promptID, status, duration, at.UnixMilli())
+		sess.projection.updateCompletedTurn(promptID, status, duration, at.UnixMilli())
 		return
 	}
 	return

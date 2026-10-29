@@ -11,8 +11,9 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 	for _, provider := range []string{"codex", "claude"} {
 		t.Run(provider+"/projection", func(t *testing.T) {
 			recorder := &projectionTerminalRecorder{}
-			projection := &completedResultProjection{deliveryTestProjection: newDeliveryTestProjection(provider)}
-			projection.resultTurn = "provider-turn"
+			projection := newResultProjection(provider, map[string]string{"provider-turn": "final-item"})
+			projection.SetClaudeResultTurnID("provider-turn")
+			projection.seedResumeTurns("native-thread", []*liveProjectionTurn{{ID: "provider-turn", Status: agentTurnCompleted, FinalItemID: "final-item"}})
 			sess := New(Config{ID: "projection-result", Provider: provider, HostedThreadID: "hosted", Projection: projection, AgentExecutions: recorder})
 			sess.ReserveNativeID("native-thread")
 			if provider == "codex" {
@@ -34,13 +35,6 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 		})
 	}
 }
-
-type completedResultProjection struct{ *deliveryTestProjection }
-
-func (*completedResultProjection) TurnList() []liveProjectionTurn {
-	return []liveProjectionTurn{{ID: "provider-turn", Status: agentTurnCompleted, FinalItemID: "final-item"}}
-}
-func (*completedResultProjection) FinalAgentItemID(string) string { return "final-item" }
 
 type projectionTerminal struct{ provider, native, turn, status, response, item string }
 type projectionTerminalRecorder struct {

@@ -30,7 +30,7 @@ type Config struct {
 	CreatedAt             time.Time
 	SpawnMode             string
 	ReasoningSummary      string
-	Projection            Projection
+	Projection            *LiveProjection
 	TurnEffort            string
 	PendingName           string
 	DisplayName           string
@@ -184,10 +184,10 @@ func (sess *Session) DiscardSpawnResources() {
 }
 
 // AttachLiveText connects the view and its ordered parsed-evidence observer.
-func (sess *Session) AttachLiveText(view LiveText) {
+func (sess *Session) AttachLiveText(view *LiveTextLoop) {
 	sess.liveText = view
 	sess.projection.SetLiveText(view)
 }
 
 // LiveTextService returns the view service for application-owned pane reads.
-func (sess *Session) LiveTextService() LiveText { return sess.liveText }
+func (sess *Session) LiveTextService() *LiveTextLoop { return sess.liveText }

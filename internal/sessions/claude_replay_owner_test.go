@@ -10,7 +10,6 @@ import (
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	"github.com/dkroshow/nano/internal/protocol"
 	fixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 )
 
@@ -21,7 +20,7 @@ type replayOwnerHarness struct {
 	turns         *coreturns.Store
 	dir           string
 	shim          *fixture.SpoolShim
-	projection    func() Projection
+	projection    func() *LiveProjection
 	executions    Executions
 }
 
@@ -33,7 +32,7 @@ func newReplayOwnerHarness(t *testing.T) *replayOwnerHarness {
 		t.Fatal(err)
 	}
 	h := &replayOwnerHarness{base: base, turns: turns, dir: t.TempDir(), shim: fixture.NewSpoolShim(t, nil)}
-	h.projection = func() Projection { return newDeliveryTestProjection("claude") }
+	h.projection = func() *LiveProjection { return newDeliveryTestProjection("claude") }
 	return h
 }
 func (h *replayOwnerHarness) resume(t *testing.T) error {
@@ -71,8 +70,8 @@ func (h *replayOwnerHarness) seed(t *testing.T, action string, backlog int) (str
 	h.shim.Frames = b.Frames
 	fixture.WriteSpool(t, h.dir, b.Key, b.Frames...)
 	seedRecoveryPrompt(t, h.base.turns, b.Key, "native-1", action, turn, "prompt")
-	h.projection = func() Projection {
-		return &resultProjection{newDeliveryTestProjection("claude"), map[string]string{turn: "msg_final:0"}}
+	h.projection = func() *LiveProjection {
+		return newResultProjection("claude", map[string]string{turn: "msg_final:0"})
 	}
 	return turn, start
 }
@@ -142,19 +141,6 @@ func TestClaudeReconnectStalledReplayStopsAndRetrySucceeds(t *testing.T) {
 	}
 }
 
-type admittedResultProjection struct {
-	*resultProjection
-	enter, release chan struct{}
-	once           sync.Once
-}
-
-func (p *admittedResultProjection) ApplyWireLive(dir protocol.Direction, line []byte, at time.Time, live, replay bool, seq ...int64) {
-	if strings.Contains(string(line), `"type":"result"`) {
-		p.once.Do(func() { close(p.enter); <-p.release })
-	}
-	p.resultProjection.ApplyWireLive(dir, line, at, live, replay, seq...)
-}
-
 // The projection consumer blocks after the frame is admitted. The old frame
 // must emit no terminal write after abandonment, and no retry can overtake it.
 func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
@@ -167,8 +153,10 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	unblock := func() { once.Do(func() { close(release) }) }
 	t.Cleanup(unblock)
 	normal := h.projection
-	h.projection = func() Projection {
-		return &admittedResultProjection{resultProjection: normal().(*resultProjection), enter: entered, release: release}
+	h.projection = func() *LiveProjection {
+		p := normal()
+		p.adapter = &gatedLiveAdapter{next: p.adapter, entered: entered, release: release, match: func(line []byte) bool { return strings.Contains(string(line), `"type":"result"`) }}
+		return p
 	}
 	previous := claudeShimReplayTimeout
 	claudeShimReplayTimeout = 300 * time.Millisecond

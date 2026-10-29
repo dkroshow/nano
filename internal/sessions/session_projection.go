@@ -54,7 +54,7 @@ func (sess *Session) setLiveTokenUsage(raw json.RawMessage) {
 	sess.stateMu.Lock()
 	sess.tokenUsage = append(json.RawMessage(nil), raw...)
 	sess.stateMu.Unlock()
-	sess.projection.UpdateTokenUsage(raw)
+	sess.projection.updateTokenUsage(raw)
 }
 
 func (sess *Session) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage) {
@@ -113,7 +113,7 @@ func (sess *Session) ReconcileDurableTurn(ctx context.Context) {
 	if turnID == "" {
 		return
 	}
-	liveTurn, wireEvidenceAtMs, version, retained := sess.projection.RetainedTurnEvidence(turnID)
+	liveTurn, wireEvidenceAtMs, version, retained := sess.projection.retainedTurnEvidence(turnID)
 	if !retained {
 		return
 	}
@@ -135,7 +135,7 @@ func (sess *Session) ReconcileDurableTurn(ctx context.Context) {
 	// and only if the turn did no live work while it was read.
 	sess.stateMu.Lock()
 	if sess.attachmentGeneration != generation || threadID != "" && sess.threadID != threadID ||
-		!sess.projection.CompleteTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
+		!sess.projection.completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
 		sess.workActiveLocked() && sess.turnID != turnID {
 		sess.stateMu.Unlock()
 		return

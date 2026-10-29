@@ -60,12 +60,13 @@ func (*resultRecorder) PersistedTurnForTransportAction(context.Context, string, 
 	return agentTurnRecord{}, false, nil
 }
 
-type resultProjection struct {
-	*deliveryTestProjection
-	finals map[string]string
+func newResultProjection(provider string, finals map[string]string) *LiveProjection {
+	p := newDeliveryTestProjection(provider)
+	for turn, final := range finals {
+		p.turnWorkLocked(turn).finalAnswer = final
+	}
+	return p
 }
-
-func (p *resultProjection) FinalAgentItemID(turn string) string { return p.finals[turn] }
 
 func resultBindingFixture(t *testing.T) (*session, *resultRecorder, *coreturns.Store, []resultPrompt, []resultFrame) {
 	t.Helper()
@@ -77,7 +78,7 @@ func resultBindingFixture(t *testing.T) (*session, *resultRecorder, *coreturns.S
 	recorder := &resultRecorder{}
 	sess.agentExecutions = recorder
 	identities := fixture.ClaudeResultPromptIdentities()
-	sess.projection = &resultProjection{newDeliveryTestProjection("claude"), map[string]string{identities[0].Turn: fixture.ClaudeResultAnswerA, identities[3].Turn: fixture.ClaudeResultAnswerMerged}}
+	sess.projection = newResultProjection("claude", map[string]string{identities[0].Turn: fixture.ClaudeResultAnswerA, identities[3].Turn: fixture.ClaudeResultAnswerMerged})
 	var order []resultPrompt
 	replacements := []string{"{{NATIVE}}", sess.ThreadID()}
 	for _, identity := range identities {

@@ -20,6 +20,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
@@ -39,7 +40,7 @@ type liveTextHarness struct {
 	t          *testing.T
 	srv        *server
 	sess       *session
-	projection *liveProjection
+	projection *sessions.LiveProjection
 	queue      sessionQueue
 	journal    sessionJournal
 	metadata   *controlMetadataStore
@@ -149,7 +150,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	srv.startLiveText(sess)
 	sess.ReserveNativeID(nativeThread)
 	h.srv, h.sess, h.service = srv, sess, service
-	h.projection = cfg.Projection.(*liveProjection)
+	h.projection = cfg.Projection
 	h.queue = cfg.QueuedTurns
 	h.journal = cfg.SendAttempts
 	service.SetTranscriptChanged(func(context.Context, threadindex.TranscriptChange) {
@@ -261,9 +262,7 @@ func (h *liveTextHarness) feed(lines [][]byte) {
 			Type string `json:"type"`
 		}
 		if json.Unmarshal(line, &frame) == nil && frame.Type == "result" {
-			h.projection.mu.Lock()
-			turn := h.projection.claudeTurnID
-			h.projection.mu.Unlock()
+			turn := h.projection.CurrentTurnID()
 			h.projection.SetClaudeResultTurnID(turn)
 		}
 		h.projection.ApplyWireLive(protocol.Recv, line, time.Now(), true, false)
@@ -688,9 +687,13 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 	// counted, so it is not exact.
 	wire := fixtureLines(t, "claude-turn.wire.jsonl")
 	h.feed(wire)
-	h.projection.adapterMu.Lock()
-	h.projection.adapter = newClaudeLiveAdapter()
-	h.projection.adapterMu.Unlock()
+	// Reconstruct the real projection as a reconnect does, retaining the
+	// existing live loop whose saved/live identity boundary this test observes.
+	turn := h.projection.CurrentTurnID()
+	h.projection = sessions.NewLiveProjection("claude", h.sess.HostedThreadID(), false)
+	h.projection.SetNativeThreadID(h.sess.ThreadID())
+	h.projection.SetClaudeProviderTurnID(turn)
+	h.projection.SetLiveText(h.sess.LiveTextService())
 	for _, line := range wire {
 		if strings.HasPrefix(string(line), `{"type": "assistant"`) && strings.Contains(string(line), `"type": "text"`) {
 			h.feed([][]byte{line})
@@ -750,7 +753,7 @@ func TestLiveTextUnsavedReplyStaysUntilNextPrompt(t *testing.T) {
 	turn := fixtureLines(t, "claude-turn.saved.jsonl")
 	reply := "reply:" + fixtureReply
 	unsaved := func(h *liveTextHarness) []browserDiagnosticEvent {
-		return liveTextOf(h.sess).srv.browserDiagnostics.recent(10, "", "", "file.reply.unsaved")
+		return h.srv.browserDiagnostics.recent(10, "", "", "file.reply.unsaved")
 	}
 	finished := func(h *liveTextHarness) func(liveTextMessage) bool {
 		return func(liveTextMessage) bool { return h.view.reply() != nil && h.view.reply().State == "done" }
@@ -883,7 +886,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 			out["conversation "+string(view)] = rec.Body.String()
 		}
 		rec := httptest.NewRecorder()
-		liveTextOf(h.sess).srv.handleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess)
+		h.srv.handleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess)
 		out["session history"] = rec.Body.String()
 		return out
 	}
@@ -1031,7 +1034,7 @@ func TestLiveTextStreamCarriesAgentSubmissionTime(t *testing.T) {
 			liveTextOf(h.sess).unsubscribe(h.pane)
 			store = emptyReader
 			fresh := newFixtureSession(sessionConfig{ID: h.sess.ID(), HostedThreadID: h.sess.HostedThreadID(), Provider: "claude", Projection: h.projection, Turns: h.sess.PromptStore(), AgentExecutions: store}, h.sess.ThreadID())
-			liveTextOf(h.sess).srv.startLiveText(fresh)
+			h.srv.startLiveText(fresh)
 			stream := httptest.NewServer(http.HandlerFunc(fresh.HandleLiveStream))
 			defer stream.Close()
 			client := &http.Client{Timeout: 5 * time.Second}
@@ -1297,24 +1300,6 @@ func TestLiveTextRebuildSendsFreshTail(t *testing.T) {
 	reopened.expect("read error", func(m liveTextMessage) bool { return m.Type == "error" })
 	if !reopened.pane.isClosed() {
 		t.Fatal("the pane stream stayed open after its read failed")
-	}
-}
-
-// One drain applies producer events in arrival order: a reply that began
-// before the next prompt was delivered shows first, and its newer full text
-// replaces its pending update without moving it.
-func TestLiveTextKeepsArrivalOrderInOneDrain(t *testing.T) {
-	var in liveTextInbox
-	in.addReply(liveReplyUpdate{key: "msg_1:0", text: "Ra", turn: "t1", started: true})
-	next := prompts.OutboxEntry{ActionID: "next", Sequence: 2, PresentationText: "next", State: prompts.Delivering}
-	in.events = append(in.events, liveTextEvent{outbox: &next})
-	in.addReply(liveReplyUpdate{key: "msg_1:0", text: "Rain falls.", turn: "t1", done: true, started: true})
-	l := newLiveTextLoop(&server{}, nil)
-	l.reset()
-	l.process(in)
-	live := l.visible()
-	if len(live) != 2 || live[0].ID != "reply:msg_1:0" || live[0].Text != "Rain falls." || live[0].State != "done" || live[1].ID != "prompt:next" {
-		t.Fatalf("live = %+v, want the reply's latest text, then the prompt", live)
 	}
 }
 
@@ -1737,30 +1722,6 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 	}
 	r.save(saved[:aborted+1])
 	r.expect("rebuild tail clears the stopped reply", func(m liveTextMessage) bool { return m.Type == "tail" && r.view.reply() == nil })
-}
-
-// An expired prompt (an old delivered prompt exact identity never settled) is
-// no longer shown. A long-lived thread's outbox held 23, and file-only showed
-// every one as live text below the saved rows. The loop drops an expired
-// prompt as it drops a refused one, whether a fresh loop seeds it or a shown
-// prompt expires later.
-func TestLiveTextShowsNoExpiredPrompt(t *testing.T) {
-	old := prompts.OutboxEntry{ActionID: "agent-old", Sequence: 1, PresentationText: "an old delivered prompt", State: prompts.Expired}
-	pending := prompts.OutboxEntry{ActionID: "human-now", Sequence: 2, PresentationText: "a prompt being delivered", State: prompts.Accepted}
-	var in liveTextInbox
-	in.events = append(in.events, liveTextEvent{outbox: &old}, liveTextEvent{outbox: &pending})
-	l := newLiveTextLoop(&server{}, nil)
-	l.reset()
-	l.process(in)
-	if live := l.visible(); len(live) != 1 || live[0].ID != "prompt:human-now" {
-		t.Fatalf("live = %+v, want only the prompt being delivered", live)
-	}
-	expired := pending
-	expired.State = prompts.Expired
-	l.process(liveTextInbox{events: []liveTextEvent{{outbox: &expired}}})
-	if live := l.visible(); len(live) != 0 {
-		t.Fatalf("live = %+v after the prompt expired, want none", live)
-	}
 }
 
 // Codex drops a person's prompt when its turn is interrupted before Codex

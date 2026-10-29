@@ -1,21 +1,17 @@
-package app
+package sessions
 
 import (
 	"context"
-
 	"log"
-
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
-
-	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // seedOutbox starts a new loop from a read-only snapshot of the outbox, so a
 // queued or parked prompt shows on reopening. Delivery state is never changed.
 // No pane exists yet; each pane joins through a tick that checks them first.
-func (l *liveTextLoop) seedOutbox() {
+func (l *LiveTextLoop) seedOutbox() {
 	if l.sess == nil || l.sess.PromptStore() == nil {
 		return
 	}
@@ -32,7 +28,7 @@ func (l *liveTextLoop) seedOutbox() {
 // applyOutbox applies one outbox change and reports whether a read must check
 // it: a new entry, or a newly learned key. rank is the prompt's delivery rank
 // when known, else -1.
-func (l *liveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
+func (l *LiveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 	if entry.ActionID == "" {
 		return false
 	}
@@ -63,7 +59,7 @@ func (l *liveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 			turn, found, err := l.sess.PersistedOperation(context.Background(), entry.ActionID)
 			if err != nil {
 				log.Printf("live text submission metadata %s: %v", l.hostedID(), err)
-			} else if found && turn.Origin == turnOriginAgent && turn.SenderSubmittedAt != "" {
+			} else if found && turn.Origin == string(prompts.AgentOrigin) && turn.SenderSubmittedAt != "" {
 				current.SenderSubmittedAt = turn.SenderSubmittedAt
 			}
 		}
@@ -88,7 +84,7 @@ func (l *liveTextLoop) applyOutbox(entry prompts.OutboxEntry, rank int) bool {
 // presentPrompt shows a prompt's stored state as the delivery journal does.
 // A delivery that turns slow changes its label with no store change, so the
 // loop presents it again then, once per delivery claim.
-func (l *liveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.OutboxEntry) {
+func (l *LiveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.OutboxEntry) {
 	provider := ""
 	if l.sess != nil {
 		provider = l.sess.Provider()
@@ -96,8 +92,8 @@ func (l *liveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.Outbo
 	newClaim := entry.UpdatedAt != current.outbox.UpdatedAt || current.outbox.State != prompts.Delivering
 	current.outbox = entry
 	current.State = string(entry.State)
-	current.AllowedActions, current.Label = sessions.PromptPresentation(provider, entry)
-	if slow, ok := sessions.SlowDeliveryAt(entry); ok && newClaim && current.Label == "" {
+	current.AllowedActions, current.Label = PromptPresentation(provider, entry)
+	if slow, ok := SlowDeliveryAt(entry); ok && newClaim && current.Label == "" {
 		id := current.ID
 		time.AfterFunc(time.Until(slow), func() {
 			l.post(func(in *liveTextInbox) { in.events = append(in.events, liveTextEvent{slow: id}) })
@@ -108,7 +104,7 @@ func (l *liveTextLoop) presentPrompt(current *liveTextEntry, entry prompts.Outbo
 // learnKey gives a prompt its exact key once the outbox knows it, and reports
 // that a read must check it: a Codex or Grok prompt learns its turn on delivery, and
 // its saved row may already be in the file.
-func (l *liveTextLoop) learnKey(current *liveTextEntry, entry prompts.OutboxEntry) bool {
+func (l *LiveTextLoop) learnKey(current *liveTextEntry, entry prompts.OutboxEntry) bool {
 	learned := false
 	if l.sess != nil && (l.sess.Provider() == "grok" || l.sess.Provider() == "codex") && entry.Binding != nil && entry.Binding.Scope.NativeTurnID != nil && current.turn != *entry.Binding.Scope.NativeTurnID {
 		current.turn = *entry.Binding.Scope.NativeTurnID
@@ -123,7 +119,7 @@ func (l *liveTextLoop) learnKey(current *liveTextEntry, entry prompts.OutboxEntr
 
 // deliveryRank reads the rank delivery claims a queued prompt by, so queued
 // prompts show in the order they will be delivered.
-func (l *liveTextLoop) deliveryRank(actionID string) int {
+func (l *LiveTextLoop) deliveryRank(actionID string) int {
 	if l.sess == nil || l.sess.PromptStore() == nil {
 		return 0
 	}
@@ -139,7 +135,7 @@ func (l *liveTextLoop) deliveryRank(actionID string) int {
 // the UUID Nano stamps on Claude and Grok submissions and sends Codex as its
 // client message id, or, for a Codex prompt delivered without one, the native
 // turn it started.
-func (l *liveTextLoop) promptKey(entry prompts.OutboxEntry) string {
+func (l *LiveTextLoop) promptKey(entry prompts.OutboxEntry) string {
 	if l.sess != nil && l.sess.Provider() == "codex" {
 		switch {
 		case entry.Binding == nil:
@@ -155,7 +151,7 @@ func (l *liveTextLoop) promptKey(entry prompts.OutboxEntry) string {
 		return entry.Binding.EventID
 	}
 	if l.sess != nil && (l.sess.Provider() == "claude" || l.sess.Provider() == "grok") {
-		return sessions.SubmissionEventID(l.sess.HostedThreadID(), entry.ActionID)
+		return SubmissionEventID(l.sess.HostedThreadID(), entry.ActionID)
 	}
 	return ""
 }

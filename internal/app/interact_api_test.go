@@ -13,6 +13,7 @@ import (
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestInteractSystemPromptQueuesIdempotentlyWithNotice(t *testing.T) {
@@ -119,8 +120,8 @@ func TestInteractCompletedTurnFeedCarriesTerminalOutcomeOperationAndUsage(t *tes
 }
 
 func TestInteractLifecycleReportsCoordinatorFacts(t *testing.T) {
-	var projection *liveProjection
-	s, target := interactTestServer(t, true, func(cfg *sessionConfig) { projection = cfg.Projection.(*liveProjection) })
+	var projection *sessions.LiveProjection
+	s, target := interactTestServer(t, true, func(cfg *sessionConfig) { projection = cfg.Projection })
 	projection.RecordDiagnostic(threadDiagnostic{Code: "boot_incomplete_outbox", Message: "synthetic parked prompt", Source: "turn-store-boot", ActionID: "parked"}, true)
 	state, err := interactTestClient(t, s).ReadLifecycle(context.Background(), target)
 	if err != nil || !state.Attached || !state.Ready || !state.Working || !state.TurnActive || state.Availability != availabilityBusy || state.AttachmentState != "live" {

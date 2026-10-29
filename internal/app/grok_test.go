@@ -62,10 +62,10 @@ func TestGrokCompletedPromptNamesItsAnswer(t *testing.T) {
 	at := time.UnixMilli(1000)
 	for index, text := range []string{"hello ", "world"} {
 		line := []byte(`{"method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":` + mustJSONText(text) + `}},"_meta":{"promptId":"p1","eventId":"chunk-` + fmt.Sprint(index) + `","agentTimestampMs":1000}}}`)
-		p.applyWire(protocol.Recv, line, at)
+		applyProjectionWire(p, protocol.Recv, line, at)
 	}
 	terminal := []byte(`{"method":"_x.ai/session_notification","params":{"sessionId":"s1","update":{"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"},"_meta":{"eventId":"s1-2"}}}`)
-	p.applyWire(protocol.Recv, terminal, at)
+	applyProjectionWire(p, protocol.Recv, terminal, at)
 
 	if got := p.FinalAgentItemID("p1"); got == "" {
 		t.Fatal("the completed prompt has no final answer")
@@ -86,7 +86,7 @@ func TestGrokAnswerAfterAToolIsTheFinalAnswer(t *testing.T) {
 		`{"method":"_x.ai/session_notification","params":{"sessionId":"s1","update":{"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"},"_meta":{"eventId":"e5"}}}`,
 	}
 	for _, line := range lines {
-		p.applyWire(protocol.Recv, []byte(line), at)
+		applyProjectionWire(p, protocol.Recv, []byte(line), at)
 	}
 	// The answer is the message after the tool, not the one before it.
 	if got := p.FinalAgentItemID("p1"); got == "" || strings.Contains(got, "e1") {

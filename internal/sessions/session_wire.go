@@ -366,7 +366,7 @@ func (sess *Session) applyWireSemantic(gate func() error, dir protocol.Direction
 		sess.mcp.Invalidate()
 	}
 	if sess.projection != nil && wireNudgesProjectionMeta(sess.provider, dir, line) {
-		sess.projection.NudgeMetaRefresh()
+		sess.projection.nudgeMetaRefresh()
 	}
 	if gate != nil && gate() != nil {
 		return

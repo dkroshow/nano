@@ -1,11 +1,9 @@
-package app
+package sessions
 
 import (
 	"crypto/sha256"
 	"encoding/json"
-
 	"log"
-
 	"slices"
 	"sort"
 	"strings"
@@ -31,8 +29,8 @@ type liveTextPane struct {
 	// A warm pane's window: the fill rule its rows are chosen by, and the
 	// rows the browser already holds, used by its first read and then
 	// dropped (warm_transcripts.go).
-	fill   warmFill
-	marker *warmMarker
+	fill   WarmFill
+	marker *WarmMarker
 
 	// The stream this pane writes to; a warm stream's panes share one.
 	*liveTextQueue
@@ -88,7 +86,7 @@ func newLiveTextPane(query threadindex.TranscriptQuery) *liveTextPane {
 	return &liveTextPane{query: query, liveTextQueue: newLiveTextQueue()}
 }
 
-func (p *liveTextPane) send(message liveTextMessage) {
+func (p *liveTextPane) send(message LiveTextMessage) {
 	message.Ref = p.ref
 	if p.query.View == threadindex.DefaultThreadTranscriptView {
 		message.Rows, message.Turns = enhancedRows(message.Rows), enhancedTurns(message.Turns)
@@ -140,7 +138,7 @@ func (p *liveTextPane) fail(message string) {
 }
 
 func (p *liveTextPane) failLocked(message string) {
-	raw, _ := json.Marshal(liveTextMessage{Type: "error", Ref: p.ref, Error: message})
+	raw, _ := json.Marshal(LiveTextMessage{Type: "error", Ref: p.ref, Error: message})
 	q := p.liveTextQueue
 	if p.warm {
 		p.dropQueuedLocked()
@@ -206,7 +204,7 @@ func (q *liveTextQueue) closeLocked() {
 	}
 }
 
-type liveTextMessage struct {
+type LiveTextMessage struct {
 	Type string `json:"type"`
 	// Ref names the thread of a warm stream's message; Refs, on a warm
 	// stream's set message, every thread it now carries.
@@ -258,7 +256,7 @@ func enhancedTurns(turns []threadindex.TranscriptTurn) []threadindex.TranscriptT
 
 // tail sends a pane its newest page and the live text, as one message the
 // browser swaps in one render.
-func (l *liveTextLoop) tail(pane *liveTextPane, response livePage, saved map[string]bool) {
+func (l *LiveTextLoop) tail(pane *liveTextPane, response livePage, saved map[string]bool) {
 	// Named before the pane's record of shown text is replaced below. A tail
 	// also names every prompt whose saved row is in its page: a browser that
 	// was away while a send of its own was saved gets the row and that word in
@@ -292,7 +290,7 @@ func (l *liveTextLoop) tail(pane *liveTextPane, response livePage, saved map[str
 	}
 	pane.sent = sentFor(live)
 	page, projection := response.Page, response.Projection
-	if marker != nil && marker.key == pane.key {
+	if marker != nil && marker.Key == pane.key {
 		// The browser holds this projection's rows first..last and says what
 		// they are (a digest of their ids, sequences, lengths and truncation).
 		// When the window's rows in that range digest the same, it gets only
@@ -301,19 +299,19 @@ func (l *liveTextLoop) tail(pane *liveTextPane, response livePage, saved map[str
 		// the digests differ, and it gets a tail.
 		var held, rows []threadindex.TranscriptItem
 		for _, item := range response.Items {
-			if item.ProjectedSeq < marker.first || item.ProjectedSeq > marker.last {
+			if item.ProjectedSeq < marker.First || item.ProjectedSeq > marker.Last {
 				rows = append(rows, item)
 			} else {
 				held = append(held, item)
 			}
 		}
-		if warmHeldDigest(held) == marker.digest {
-			pane.send(liveTextMessage{Type: "update", ThreadID: response.ThreadID, Key: pane.key, Rows: nonNilItems(rows),
+		if warmHeldDigest(held) == marker.Digest {
+			pane.send(LiveTextMessage{Type: "update", ThreadID: response.ThreadID, Key: pane.key, Rows: nonNilItems(rows),
 				Turns: response.Turns, Page: &page, Projection: &projection})
 			return
 		}
 	}
-	message := liveTextMessage{Type: "tail", ThreadID: response.ThreadID, Key: pane.key, Rows: nonNilItems(response.Items),
+	message := LiveTextMessage{Type: "tail", ThreadID: response.ThreadID, Key: pane.key, Rows: nonNilItems(response.Items),
 		Turns: response.Turns, Page: &page, Projection: &projection}
 	if !pane.rowsOnly {
 		message.Live, message.Saved = &live, shownSaved
@@ -347,7 +345,7 @@ func (p *liveTextPane) window(response livePage) livePage {
 }
 
 // view is the live text a pane shows: all of it, or none on an agent stream.
-func (l *liveTextLoop) view(pane *liveTextPane) []liveTextEntry {
+func (l *LiveTextLoop) view(pane *liveTextPane) []liveTextEntry {
 	if pane.rowsOnly {
 		return nil
 	}
@@ -376,7 +374,7 @@ func (p *liveTextPane) shown(saved map[string]bool) []string {
 	return ids
 }
 
-func (l *liveTextLoop) updatePane(pane *liveTextPane, response livePage, saved map[string]bool) {
+func (l *LiveTextLoop) updatePane(pane *liveTextPane, response livePage, saved map[string]bool) {
 	if pane.isClosed() {
 		delete(l.panes, pane)
 		return
@@ -424,7 +422,7 @@ func (l *liveTextLoop) updatePane(pane *liveTextPane, response livePage, saved m
 		return
 	}
 	page := response.Page
-	message := liveTextMessage{Type: "update", Key: pane.key, Rows: rows, Removed: removed, Turns: response.Turns, Page: &page}
+	message := LiveTextMessage{Type: "update", Key: pane.key, Rows: rows, Removed: removed, Turns: response.Turns, Page: &page}
 	if liveChanged || len(shownSaved) > 0 {
 		message.Live, message.Saved = &live, shownSaved
 		pane.sent = sentFor(live)
@@ -434,7 +432,7 @@ func (l *liveTextLoop) updatePane(pane *liveTextPane, response livePage, saved m
 
 // sendLiveChanges streams text growth as appends, and any other live-text
 // change as the whole region.
-func (l *liveTextLoop) sendLiveChanges() {
+func (l *LiveTextLoop) sendLiveChanges() {
 	for pane := range l.panes {
 		if pane.isClosed() {
 			delete(l.panes, pane)
@@ -445,7 +443,7 @@ func (l *liveTextLoop) sendLiveChanges() {
 		}
 		live := l.view(pane)
 		if !pane.sent.same(live, false) {
-			pane.send(liveTextMessage{Type: "live", Live: &live})
+			pane.send(LiveTextMessage{Type: "live", Live: &live})
 			pane.sent = sentFor(live)
 			continue
 		}
@@ -455,11 +453,11 @@ func (l *liveTextLoop) sendLiveChanges() {
 				continue
 			}
 			if !strings.HasPrefix(entry.Text, before) {
-				pane.send(liveTextMessage{Type: "live", Live: &live})
+				pane.send(LiveTextMessage{Type: "live", Live: &live})
 				pane.sent = sentFor(live)
 				break
 			}
-			pane.send(liveTextMessage{Type: "append", ID: entry.ID, Append: entry.Text[len(before):]})
+			pane.send(LiveTextMessage{Type: "append", ID: entry.ID, Append: entry.Text[len(before):]})
 			pane.sent.texts[entry.ID] = entry.Text
 		}
 	}

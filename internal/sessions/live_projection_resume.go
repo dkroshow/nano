@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"encoding/json"
@@ -6,8 +6,8 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-// SeedResumeTurns merges the provider's normalized prefix with already-live turns.
-func (p *liveProjection) SeedResumeTurns(id string, seedTurns []*liveProjectionTurn) {
+// seedResumeTurns merges the provider's normalized prefix with already-live turns.
+func (p *LiveProjection) seedResumeTurns(id string, seedTurns []*liveProjectionTurn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if id != "" {

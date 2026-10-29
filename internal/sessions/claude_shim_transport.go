@@ -376,7 +376,7 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 			startedAtMs = stored.TurnStartedAtMs
 			turnID := ""
 			if sess.projection != nil {
-				turnID = sess.projection.EnsureClaudeActiveTurn(startedAtMs)
+				turnID = sess.projection.ensureClaudeActiveTurn(startedAtMs)
 			}
 			sess.restoreTurnActive(true, turnID, startedAtMs)
 		} else {

@@ -3,56 +3,9 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"sync"
 	"testing"
 	"time"
-
-	"github.com/dkroshow/nano/internal/protocol"
 )
-
-// gatedLiveProjection holds the real consumer before applying one wire frame.
-// The provider reader stays free to enqueue the remaining burst behind it.
-type gatedLiveProjection struct {
-	*liveProjection
-	gateMu sync.Mutex
-	next   *projectionGate
-}
-
-type projectionGate struct {
-	entered chan struct{}
-	release chan struct{}
-	once    sync.Once
-}
-
-func (p *gatedLiveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at time.Time, live, replay bool, seq ...int64) {
-	p.gateMu.Lock()
-	gate := p.next
-	p.next = nil
-	p.gateMu.Unlock()
-	if gate != nil {
-		close(gate.entered)
-		<-gate.release
-	}
-	p.liveProjection.ApplyWireLive(dir, line, at, live, replay, seq...)
-}
-
-func holdFirstProviderFrame(t *testing.T, f *providerRuntimeFixture, p *gatedLiveProjection, first []byte) func() {
-	t.Helper()
-	gate := &projectionGate{entered: make(chan struct{}), release: make(chan struct{})}
-	p.gateMu.Lock()
-	p.next = gate
-	p.gateMu.Unlock()
-	release := func() { gate.once.Do(func() { close(gate.release) }) }
-	t.Cleanup(release)
-	f.emit(t, first)
-	select {
-	case <-gate.entered:
-	case <-time.After(3 * time.Second):
-		release()
-		t.Fatal("provider frame did not reach the held projection")
-	}
-	return release
-}
 
 // awaitProviderIngress reads an RPC response behind the burst on the same
 // connection. It proves the reader enqueued those frames while its consumer waits.

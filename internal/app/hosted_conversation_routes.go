@@ -48,3 +48,15 @@ func (s *server) handleHostedThreadInterrupt(w http.ResponseWriter, r *http.Requ
 	}
 	sess.HandleInterrupt(w, r)
 }
+
+// handleHostedThreadLive streams one pane of a file-only thread: its status
+// and pending questions, its rows and its live text, in one ordered event
+// stream. Each pane opens its own.
+func (s *server) handleHostedThreadLive(w http.ResponseWriter, r *http.Request, record agentSessionRecord) {
+	sess := s.hostedSessionForRequest(record.ID)
+	if sess == nil {
+		httpapi.WriteHTTPError(w, "no live session is attached to this thread", http.StatusConflict)
+		return
+	}
+	sess.HandleLiveStream(w, r)
+}

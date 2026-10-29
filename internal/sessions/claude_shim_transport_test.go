@@ -767,11 +767,11 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 	// Make projection consumption slower than socket ingestion. A correct
 	// transport keeps reading and queues ordered notifications until this lock
 	// is released; the old transport blocked its sole reader here.
-	sess.projection.(*blockedProjection).mu.Lock()
+	sess.projection.mu.Lock()
 	locked := true
 	defer func() {
 		if locked {
-			sess.projection.(*blockedProjection).mu.Unlock()
+			sess.projection.mu.Unlock()
 		}
 	}()
 	attached := make(chan struct {
@@ -795,7 +795,7 @@ func TestAttachClaudeSessionDrainsLargeReplayBeforeFollowingLive(t *testing.T) {
 	if wrote != replayCount {
 		t.Fatalf("shim socket stalled after %d replay lines, want all %d drained", wrote, replayCount)
 	}
-	sess.projection.(*blockedProjection).mu.Unlock()
+	sess.projection.mu.Unlock()
 	locked = false
 
 	var result struct {
@@ -880,11 +880,11 @@ func TestClaudeShimNotificationIngestionDoesNotBlockOnProjection(t *testing.T) {
 	}
 
 	tr.onNotify(shimMethodLine, line(1, "first"))
-	sess.projection.(*blockedProjection).mu.Lock()
+	sess.projection.mu.Lock()
 	locked := true
 	defer func() {
 		if locked {
-			sess.projection.(*blockedProjection).mu.Unlock()
+			sess.projection.mu.Unlock()
 		}
 	}()
 	ready := make(chan struct{})
@@ -904,7 +904,7 @@ func TestClaudeShimNotificationIngestionDoesNotBlockOnProjection(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("onNotify blocked behind transcript projection")
 	}
-	sess.projection.(*blockedProjection).mu.Unlock()
+	sess.projection.mu.Unlock()
 	locked = false
 	select {
 	case <-ready:
@@ -941,11 +941,11 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	sess.projection = newBlockedProjection("claude")
 
-	sess.projection.(*blockedProjection).mu.Lock()
+	sess.projection.mu.Lock()
 	locked := true
 	defer func() {
 		if locked {
-			sess.projection.(*blockedProjection).mu.Unlock()
+			sess.projection.mu.Unlock()
 		}
 	}()
 	attached := make(chan struct {
@@ -975,7 +975,7 @@ func TestClaudePromptDuringReplayDrainQueuesThenDelivers(t *testing.T) {
 	// Admission publishes the owner snapshot before acknowledging the prompt,
 	// so it may wait briefly for replay's projection critical section.
 	time.Sleep(20 * time.Millisecond)
-	sess.projection.(*blockedProjection).mu.Unlock()
+	sess.projection.mu.Unlock()
 	locked = false
 	var rec *httptest.ResponseRecorder
 	select {

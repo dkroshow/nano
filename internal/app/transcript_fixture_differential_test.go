@@ -17,7 +17,6 @@ import (
 	"github.com/dkroshow/nano/internal/transcriptparse/codex"
 	"github.com/dkroshow/nano/internal/transcriptparse/grok"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
-	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
 // Fixture views use the production file/store and live conversion paths.
@@ -90,26 +89,6 @@ func fixtureModuleView(t *testing.T, provider, mode string, raw []byte) []fixtur
 		}
 	}
 	return nil
-}
-
-func TestLiveAdaptersReturnTheParserBatch(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "grok"} {
-		t.Run(provider, func(t *testing.T) {
-			var adapter liveAdapter
-			switch provider {
-			case "codex":
-				adapter = newCodexLiveAdapter()
-			case "claude":
-				adapter = newClaudeLiveAdapter()
-			case "grok":
-				adapter = newGrokLiveAdapter()
-			}
-			result := adapter.Apply(protocol.Recv, []byte(`{"not":"a semantic provider frame"}`), time.Unix(200, 0).UTC())
-			if result.Versions.Schema == "" {
-				t.Fatal("adapter discarded the normalized parser batch")
-			}
-		})
-	}
 }
 
 func fixtureConvertedFileView(t *testing.T, provider, mode string, raw []byte) []fixtureDifferentialView {

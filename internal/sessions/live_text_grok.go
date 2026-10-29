@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"encoding/json"
@@ -22,7 +22,7 @@ type grokLiveResponse struct {
 
 // The parser preserves the exact envelope metadata separately from the
 // content observation. Pair them by eventId; replay never starts live text.
-func (l *liveTextLoop) observeGrokBatch(batch model.Batch) {
+func (l *LiveTextLoop) observeGrokBatch(batch model.Batch) {
 	var events []liveTextEvent
 	for _, envelope := range batch.Observations {
 		var meta struct {
@@ -73,7 +73,7 @@ func (l *liveTextLoop) observeGrokBatch(batch model.Batch) {
 	}
 }
 
-func (l *liveTextLoop) endGrokSegment(finished bool) bool {
+func (l *LiveTextLoop) endGrokSegment(finished bool) bool {
 	entry := l.byID[l.grok.segmentID]
 	l.grok.segmentID, l.grok.segmentOpen = "", false
 	if entry == nil || entry.endOrder != 0 {
@@ -87,7 +87,7 @@ func (l *liveTextLoop) endGrokSegment(finished bool) bool {
 	return true // check the final key even if the file applied before it arrived
 }
 
-func (l *liveTextLoop) applyGrokUpdate(u grokLiveUpdate) bool {
+func (l *LiveTextLoop) applyGrokUpdate(u grokLiveUpdate) bool {
 	if u.kind == "turn_completed" {
 		if l.grok.turn != u.turn {
 			return false

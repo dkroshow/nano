@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"context"
@@ -7,15 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-
 	"slices"
 	"sort"
 	"strings"
-
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-
 	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -26,7 +23,7 @@ import (
 // after them supersedes, since an unsaved reply's text stays until the next
 // prompt. Only a prompt proves a later turn: a reply may be a replay. For
 // Claude this is exact, because the file is written and indexed in order.
-func (l *liveTextLoop) proofs(matched map[string]string, ended map[string]bool) (saved, gone map[string]bool) {
+func (l *LiveTextLoop) proofs(matched map[string]string, ended map[string]bool) (saved, gone map[string]bool) {
 	saved, gone = make(map[string]bool), make(map[string]bool)
 	var latest int64
 	for _, entry := range l.entries {
@@ -50,7 +47,7 @@ func (l *liveTextLoop) proofs(matched map[string]string, ended map[string]bool) 
 // Codex Stop leaves no saved reply, so a reload clears the stopped reply's
 // text once the file proves its turn ended; Claude saves a stopped reply and
 // needs none. An agent stream never reloads what the operator sees.
-func (l *liveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPane]bool, responses []threadindex.TranscriptResponse) map[string]bool {
+func (l *LiveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPane]bool, responses []threadindex.TranscriptResponse) map[string]bool {
 	ended := map[string]bool{}
 	if l.sess.Provider() != "codex" {
 		return ended
@@ -79,7 +76,7 @@ func (l *liveTextLoop) reloadEnds(panes []*liveTextPane, joining map[*liveTextPa
 // Codex reply's item id in its turn, and prompt's turn; Grok's newest chunk
 // event id and the Nano submission id. Grok prompts also prove their saved turn
 // in tick. replyMatch takes each reply's key with its turn.
-func (l *liveTextLoop) replyMatch(turns map[string]string) history.TranscriptMatch {
+func (l *LiveTextLoop) replyMatch(turns map[string]string) history.TranscriptMatch {
 	keys := make([]string, 0, len(turns))
 	for key := range turns {
 		keys = append(keys, key)
@@ -99,7 +96,7 @@ func (l *liveTextLoop) replyMatch(turns map[string]string) history.TranscriptMat
 // durable bindings, not live entries: a prompt that already left, or was
 // confirmed before a restart, still claims its row. A turn whose claims cannot
 // be read is left out of this tick's keys: without them its row is unproven.
-func (l *liveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, []string) {
+func (l *LiveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, []string) {
 	if l.sess.PromptStore() == nil {
 		return nil, nil
 	}
@@ -124,7 +121,7 @@ func (l *liveTextLoop) claimedTurnEvents(turns []string) (map[string][]string, [
 	return claimed, proven
 }
 
-func (l *liveTextLoop) promptMatch(keys []string) history.TranscriptMatch {
+func (l *LiveTextLoop) promptMatch(keys []string) history.TranscriptMatch {
 	if l.sess.Provider() == "grok" {
 		return history.TranscriptMatch{Namespace: "nano.submissionId", ItemType: "user_message", Keys: keys}
 	}
@@ -134,17 +131,15 @@ func (l *liveTextLoop) promptMatch(keys []string) history.TranscriptMatch {
 	return history.TranscriptMatch{Namespace: "native.eventId", ItemType: "user_message", Keys: keys}
 }
 
-// liveTextCatalog reads pages of a thread and checks exact keys in one
+// LiveTextCatalog reads pages of a thread and checks exact keys in one
 // catalog transaction.
-type liveTextCatalog interface {
+type LiveTextCatalog interface {
 	LoadTranscripts(context.Context, string, []threadindex.TranscriptQuery, []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error)
 }
 
-var _ liveTextCatalog = (*threadCatalogService)(nil)
-
-func (l *liveTextLoop) read(threadID string, queries []threadindex.TranscriptQuery, match []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
-	catalog, ok := l.srv.catalog.(liveTextCatalog)
-	if !ok {
+func (l *LiveTextLoop) read(threadID string, queries []threadindex.TranscriptQuery, match []history.TranscriptMatch) ([]threadindex.TranscriptResponse, map[string]string, error) {
+	catalog := l.sources.Catalog
+	if catalog == nil {
 		return nil, nil, errors.New("catalog unavailable")
 	}
 	return catalog.LoadTranscripts(context.Background(), threadID, queries, match)
@@ -156,12 +151,12 @@ func notIndexed(err error) bool {
 	return errors.Is(err, errLiveTextNotIndexed) || errors.Is(err, threadindex.ErrCatalogThreadNotFound)
 }
 
-func (l *liveTextLoop) catalogThreadID() (string, error) {
+func (l *LiveTextLoop) catalogThreadID() (string, error) {
 	if l.sess == nil {
 		return "", errLiveTextNotIndexed
 	}
 	native := l.sess.ThreadID()
-	resolver, ok := l.srv.catalog.(threadindex.ReferenceResolver)
+	resolver, ok := l.sources.References, l.sources.References != nil
 	if native == "" || !ok {
 		return "", errLiveTextNotIndexed
 	}
@@ -179,7 +174,7 @@ func (l *liveTextLoop) catalogThreadID() (string, error) {
 // for the same page share one read. Warm panes are due when they join and
 // when their coalesced read comes (warm), never while a pane on screen shows
 // the thread.
-func (l *liveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
+func (l *LiveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	shown := l.shownOnScreen()
 	var panes []*liveTextPane
 	for pane := range l.panes {
@@ -344,7 +339,7 @@ func settledProjection(state string) bool {
 // names a prompt, so a row saved after the page was read names nothing. A
 // Codex prompt with only a turn key is left out: its turn may hold several
 // rows, and the browser's record read covers it.
-func (l *liveTextLoop) promptsSavedIn(rows []threadindex.TranscriptItem) ([]string, error) {
+func (l *LiveTextLoop) promptsSavedIn(rows []threadindex.TranscriptItem) ([]string, error) {
 	if l.sess == nil || l.sess.PromptStore() == nil {
 		return nil, nil
 	}

@@ -208,7 +208,7 @@ func (sess *Session) observeClaudeAgentResult(line []byte) {
 	}
 	// The turn of the prompt the result names (claudeAnsweredTurn), on every
 	// transport; a result naming none completes no operation.
-	turnID := sess.projection.ClaudeResultTurn()
+	turnID := sess.projection.claudeResultTurn()
 	status, detail := ClaudeProjectionTerminal(line)
 	var executionErr *agentExecutionError
 	if status == agentTurnFailed {

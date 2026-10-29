@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sessions"
 	grokfixture "github.com/dkroshow/nano/internal/testsupport/grokserver"
 )
 
 // providerRuntimeFixture drives attachment state through the captured provider protocols.
 type providerRuntimeFixture struct {
 	session      *session
-	projection   *liveProjection
+	projection   *sessions.LiveProjection
 	codex        *fakeAppServer
 	daemon       *codexDaemon
 	claude       *shimConn
@@ -39,17 +40,10 @@ func newProviderRuntimeFixture(t *testing.T, cfg sessionConfig, native, model st
 	return connectProviderRuntimeFixture(t, sess, cfg.Projection, native, model, prepare...)
 }
 
-func connectProviderRuntimeFixture(t *testing.T, sess *session, view sessionProjection, native, model string, prepare ...func(*providerRuntimeFixture)) *providerRuntimeFixture {
+func connectProviderRuntimeFixture(t *testing.T, sess *session, view *sessions.LiveProjection, native, model string, prepare ...func(*providerRuntimeFixture)) *providerRuntimeFixture {
 	t.Helper()
 	f := &providerRuntimeFixture{session: sess}
-	switch value := view.(type) {
-	case *liveProjection:
-		f.projection = value
-	case *gatedLiveProjection:
-		f.projection = value.liveProjection
-	default:
-		t.Fatalf("runtime fixture projection is %T", view)
-	}
+	f.projection = view
 	originalNative := native
 	if native == "" {
 		native = sess.ID() + "-native"

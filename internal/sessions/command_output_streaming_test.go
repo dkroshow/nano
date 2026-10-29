@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"bytes"
@@ -25,8 +25,8 @@ const (
 
 func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextPrompt(t *testing.T) {
 	delivered := make(chan string, 1)
-	p := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted-thread")}
-	f := newProviderRuntimeFixture(t, sessionConfig{ID: "incident-output", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "", func(f *providerRuntimeFixture) {
+	p := newLiveProjection("codex", "hosted-thread")
+	f := newProviderRuntimeFixture(t, Config{ID: "incident-output", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "", func(f *providerRuntimeFixture) {
 		f.send = func(_ context.Context, text string) (json.RawMessage, error) {
 			delivered <- text
 			return json.RawMessage(`{"turn":{"id":"next-provider-turn"}}`), nil
@@ -72,7 +72,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 
 	// The released follow-up can already be active on the real transport.
 	// The incident turn itself must be terminal before that handoff.
-	if turn, _, _, ok := p.RetainedTurnEvidence("stream-turn"); !ok || turn.Status != "completed" {
+	if turn, _, _, ok := p.retainedTurnEvidence("stream-turn"); !ok || turn.Status != "completed" {
 		t.Fatalf("incident turn remained active after final answer and turn completion: %+v", turn)
 	}
 	select {
@@ -85,7 +85,7 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 	}
 
 	waitTurnSendDone(t, sess, "command-output-next")
-	command, output, found := liveReaderItemForTest(p.liveProjection, "incident-command")
+	command, output, found := liveReaderItemForTest(p, "incident-command")
 	if !found {
 		t.Fatal("bounded command is missing")
 	}
@@ -93,19 +93,23 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 		!command.ContentTruncated || command.OriginalBytes <= liveProjectionOutputCap {
 		t.Fatalf("command output bytes=%d marker=%t truncated=%t original=%d", len(output), strings.Contains(output, "live command output truncated"), command.ContentTruncated, command.OriginalBytes)
 	}
-	if final, _, found := liveReaderItemForTest(p.liveProjection, "agent-1"); !found || final.Text != "EXACT FINAL MESSAGE" || !final.Complete ||
-		p.liveProjection.FinalAgentItemID("stream-turn") != "agent-1" {
+	if final, _, found := liveReaderItemForTest(p, "agent-1"); !found || final.Text != "EXACT FINAL MESSAGE" || !final.Complete ||
+		p.FinalAgentItemID("stream-turn") != "agent-1" {
 		t.Fatalf("final message mismatch: present=%t text=%q done=%t", found, final.Text, final.Complete)
 	}
-	p.liveProjection.adapterMu.Lock()
-	semanticFrames := p.liveProjection.adapter.(*codexLiveAdapter).reader.Frame
-	p.liveProjection.adapterMu.Unlock()
+	p.adapterMu.Lock()
+	semanticFrames := parsedAdapter(p).(*codexLiveAdapter).reader.Frame
+	p.adapterMu.Unlock()
 	if semanticFrames >= int64(commandOutputIncidentChunks/2) {
 		t.Fatalf("command deltas were not coalesced before semantic application: frames=%d rawChunks=%d", semanticFrames, commandOutputIncidentChunks)
 	}
 
 	// The public page flushes the spool before its file is inspected.
-	_ = claudeWireEvents(sess)
+	page := httptest.NewRecorder()
+	sess.HandleEventsPage(page, httptest.NewRequest(http.MethodGet, "/events?beforeSeq=9223372036854775807&limit=2000", nil))
+	if page.Code != http.StatusOK {
+		t.Fatalf("wire page = %d %s", page.Code, page.Body.String())
+	}
 	events := readReceivedSpoolFrames(t, spoolDir)
 	if len(events) != len(frames)+1 {
 		t.Fatalf("raw event count=%d, want=%d", len(events), len(frames)+1)
@@ -119,11 +123,11 @@ func TestCommandOutputIncidentDrainsMailboxBoundsPresentationAndReleasesNextProm
 }
 
 func TestQueuedCodexCommandOutputBatchesWithoutCrossingBoundaries(t *testing.T) {
-	p := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted-thread")}
-	f := newProviderRuntimeFixture(t, sessionConfig{ID: "batch-commands", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "")
+	p := newLiveProjection("codex", "hosted-thread")
+	f := newProviderRuntimeFixture(t, Config{ID: "batch-commands", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "")
 	sess := f.session
 	p.adapterMu.Lock()
-	initialFrames := p.adapter.(*codexLiveAdapter).reader.Frame
+	initialFrames := parsedAdapter(p).(*codexLiveAdapter).reader.Frame
 	p.adapterMu.Unlock()
 
 	frames := [][]byte{
@@ -149,14 +153,14 @@ func TestQueuedCodexCommandOutputBatchesWithoutCrossingBoundaries(t *testing.T) 
 
 	outputs := map[string]string{}
 	for _, id := range []string{"command-a", "command-b"} {
-		_, outputs[id], _ = liveReaderItemForTest(p.liveProjection, id)
+		_, outputs[id], _ = liveReaderItemForTest(p, id)
 	}
 	if outputs["command-a"] != "onetwothreefourfive" || outputs["command-b"] != "boundary" {
 		t.Fatalf("command outputs crossed a boundary: %#v", outputs)
 	}
-	p.liveProjection.adapterMu.Lock()
-	semanticFrames := p.liveProjection.adapter.(*codexLiveAdapter).reader.Frame - initialFrames
-	p.liveProjection.adapterMu.Unlock()
+	p.adapterMu.Lock()
+	semanticFrames := parsedAdapter(p).(*codexLiveAdapter).reader.Frame - initialFrames
+	p.adapterMu.Unlock()
 	if semanticFrames != int64(len(frames)-2) {
 		t.Fatalf("semantic frames=%d, want %d after two adjacent pair merges", semanticFrames, len(frames)-2)
 	}
@@ -171,8 +175,8 @@ func TestQueuedCodexCommandOutputBatchesWithoutCrossingBoundaries(t *testing.T) 
 }
 
 func TestCommandOutputBoundedBaselineComparison(t *testing.T) {
-	p := &gatedLiveProjection{liveProjection: newLiveProjection("codex", "hosted-thread")}
-	f := newProviderRuntimeFixture(t, sessionConfig{ID: "baseline-output", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "")
+	p := newLiveProjection("codex", "hosted-thread")
+	f := newProviderRuntimeFixture(t, Config{ID: "baseline-output", Provider: "codex", HostedThreadID: "hosted-thread", Projection: p}, "native-thread", "")
 	first := []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn","item":{"id":"command","type":"commandExecution","command":"baseline","status":"inProgress"}}}`)
 	release := holdFirstProviderFrame(t, f, p, first)
 	defer release()
@@ -192,7 +196,7 @@ func TestCommandOutputBoundedBaselineComparison(t *testing.T) {
 	elapsed := time.Since(started)
 	runtime.ReadMemStats(&after)
 
-	_, output, _ := liveReaderItemForTest(p.liveProjection, "command")
+	_, output, _ := liveReaderItemForTest(p, "command")
 	t.Logf("bounded comparison: elapsed=%s allocated=%d bytes output=%d bytes frames=%d", elapsed, after.TotalAlloc-before.TotalAlloc, len(output), 129)
 	if len(output) > liveProjectionOutputCap || !strings.Contains(output, "live command output truncated") {
 		t.Fatalf("bounded comparison output=%d marker=%t", len(output), strings.Contains(output, "live command output truncated"))
@@ -203,13 +207,12 @@ func TestCommandOutputBoundedBaselineComparison(t *testing.T) {
 // and its tool output. Output deltas read before their item/started carry no
 // turn, so the reader can hold two items for one command; the one holding the
 // longest output is the one under test.
-func liveReaderItemForTest(view sessionProjection, nativeID string) (model.Item, string, bool) {
-	p := view.(*liveProjection)
+func liveReaderItemForTest(p *LiveProjection, nativeID string) (model.Item, string, bool) {
 	p.adapterMu.Lock()
 	defer p.adapterMu.Unlock()
 	var found model.Item
 	output, ok := "", false
-	for _, item := range p.adapter.(*codexLiveAdapter).reader.Items {
+	for _, item := range parsedAdapter(p).(*codexLiveAdapter).reader.Items {
 		if item.NativeItemID != nativeID {
 			continue
 		}

@@ -13,6 +13,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -27,7 +28,7 @@ type claudeHandoff struct {
 	path       string
 	threadID   string
 	session    *session
-	projection *liveProjection
+	projection *sessions.LiveProjection
 	at         time.Time
 	sequence   uint64
 }
@@ -111,12 +112,12 @@ func (h *claudeHandoff) submit(t *testing.T, action, providerTurn, text string) 
 	h.session.PublishLiveOutbox(entry)
 	h.projection.SetClaudeProviderTurnID(providerTurn)
 	eventID := submissionEventID("hosted-handoff", action)
-	h.projection.applyWire(protocol.Send, []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":%q}]}}`, eventID, text)), time.Now())
+	applyProjectionWire(h.projection, protocol.Send, []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":%q}]}}`, eventID, text)), time.Now())
 	return eventID
 }
 
 func (h *claudeHandoff) reply(eventID, text string) {
-	h.projection.applyWire(protocol.Recv, []byte(fmt.Sprintf(`{"type":"assistant","session_id":%q,"uuid":%q,"message":{"id":%q,"role":"assistant","content":[{"type":"text","text":%q}],"stop_reason":"end_turn"}}`,
+	applyProjectionWire(h.projection, protocol.Recv, []byte(fmt.Sprintf(`{"type":"assistant","session_id":%q,"uuid":%q,"message":{"id":%q,"role":"assistant","content":[{"type":"text","text":%q}],"stop_reason":"end_turn"}}`,
 		handoffNative, eventID+"-answer", "msg-"+eventID, text)), time.Now())
 }
 
@@ -126,10 +127,10 @@ func (h *claudeHandoff) stream(id, text string) {
 	for _, line := range []string{messageStart(id),
 		`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}`,
 		textDelta(0, text)} {
-		h.projection.applyWire(protocol.Recv, []byte(line), time.Now())
+		applyProjectionWire(h.projection, protocol.Recv, []byte(line), time.Now())
 	}
 }
 
 func (h *claudeHandoff) finish(text string) {
-	h.projection.applyWire(protocol.Recv, []byte(fmt.Sprintf(`{"type":"result","subtype":"success","is_error":false,"result":%q,"session_id":%q,"duration_ms":1000}`, text, handoffNative)), time.Now())
+	applyProjectionWire(h.projection, protocol.Recv, []byte(fmt.Sprintf(`{"type":"result","subtype":"success","is_error":false,"result":%q,"session_id":%q,"duration_ms":1000}`, text, handoffNative)), time.Now())
 }

@@ -21,7 +21,7 @@ func (sess *Session) PromptStore() *prompts.Store { return sess.turns }
 
 // LiveTurnActive reads the view's active-turn fact without exposing its state.
 func (sess *Session) LiveTurnActive() bool {
-	return sess.projection != nil && sess.projection.TurnActive()
+	return sess.projection != nil && sess.projection.turnActive()
 }
 
 // PersistedOperation reads the hosted operation for one transport action.

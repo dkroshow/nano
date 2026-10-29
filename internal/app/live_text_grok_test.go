@@ -539,19 +539,6 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 	}
 }
 
-// Every provider session gets the loop that owns its file-only pane.
-func TestEveryProviderSessionBuildsLiveTextLoop(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "grok"} {
-		srv := &server{}
-		projection := newLiveProjection(provider)
-		sess := newFixtureSession(sessionConfig{Provider: provider, Projection: projection}, "")
-		srv.startLiveText(sess)
-		if sess.LiveTextService() == nil || projection.liveText != sess.LiveTextService() {
-			t.Fatalf("%s session has no file-only loop", provider)
-		}
-	}
-}
-
 // The session HTTP pane receives saved rows, unsaved text and runtime together.
 func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
 	h := newLiveTextHarnessFor(t, "grok", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})

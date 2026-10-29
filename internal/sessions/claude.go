@@ -941,7 +941,7 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir protocol.Direc
 				log.Printf("Claude result on %s names no prompt while one Nano wrote is unanswered; it finishes no operation (logged once per transcript)", c.sess.hostedThreadID)
 			}
 		case turn.known:
-			c.sess.projection.SetClaudeFrameTurnID(turn.id)
+			c.sess.projection.setClaudeFrameTurnID(turn.id)
 		}
 	}, dir, line, !replaying, replaying, at, seq)
 	if dir == protocol.Recv {

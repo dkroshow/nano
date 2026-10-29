@@ -44,11 +44,11 @@ type Session struct {
 	// absent thread id.
 	spawnMode string
 
-	codex            *CodexDaemon   // codex provider: shared daemon client
-	claude           *claudeSession // claude provider
-	grok             *grokSession   // grok provider: stdio proxy to the durable native leader
-	reasoningSummary string         // codex: turn/start summary level
-	projection       Projection     // normalized live transcript, one per session
+	codex            *CodexDaemon    // codex provider: shared daemon client
+	claude           *claudeSession  // claude provider
+	grok             *grokSession    // grok provider: stdio proxy to the durable native leader
+	reasoningSummary string          // codex: turn/start summary level
+	projection       *LiveProjection // normalized live transcript, one per session
 	completedTurns   func(context.Context) (*coreturns.Store, error)
 	// savedTurn reads the saved status of one turn by exact native turn id,
 	// to settle a live turn whose terminal event was lost.
@@ -304,7 +304,7 @@ type Session struct {
 	state                  map[string]json.RawMessage
 
 	// liveText is set for a provider switched to file-only transcripts.
-	liveText LiveText
+	liveText *LiveTextLoop
 }
 
 // Summary is the public snapshot of an attachment identity, lifecycle, and provider settings.

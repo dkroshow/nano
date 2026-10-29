@@ -8,21 +8,13 @@ import (
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
 )
 
-// retainedTurnProjection supplies a known retained turn at the consumer boundary.
-// These tests exercise the session's terminal guard; view version checks stay in the view tests.
-type retainedTurnProjection struct {
-	*deliveryTestProjection
-	turn liveProjectionTurn
-}
-
-func (p *retainedTurnProjection) RetainedTurnEvidence(id string) (liveProjectionTurn, int64, uint64, bool) {
-	return p.turn, 0, 0, id == p.turn.ID
-}
-func (p *retainedTurnProjection) CompleteTurnUnlessWorked(string, uint64, string, int64, int64) bool {
-	return true
+func retainedTestProjection(turnID string, startedAtMs int64) *LiveProjection {
+	p := newDeliveryTestProjection("codex")
+	p.seedResumeTurns("native-thread", []*liveProjectionTurn{{ID: turnID, Status: "in_progress", StartedAtMs: startedAtMs}})
+	return p
 }
 func durableTurnTestSession(turnID string, startedAtMs int64) *session {
-	p := &retainedTurnProjection{deliveryTestProjection: newDeliveryTestProjection("codex"), turn: liveProjectionTurn{ID: turnID, Status: "in_progress", StartedAtMs: startedAtMs}}
+	p := retainedTestProjection(turnID, startedAtMs)
 	return &session{provider: "codex", threadID: "native-thread", projection: p, turnID: turnID, turnStartedAtMs: startedAtMs, lifecycleState: testLifecycleSnapshot("ready", true)}
 }
 func reconcileWithSavedTurn(sess *session, saved durableTurnEvidence) {
@@ -92,7 +84,7 @@ func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
 	started := time.Date(2026, 9, 11, 3, 0, 0, 0, time.UTC)
 	sess.turnID = "turn-file"
 	sess.lifecycleState = testLifecycleSnapshot("ready", true)
-	sess.projection = &retainedTurnProjection{deliveryTestProjection: newDeliveryTestProjection("codex"), turn: liveProjectionTurn{ID: "turn-file", Status: "in_progress", StartedAtMs: started.UnixMilli()}}
+	sess.projection = retainedTestProjection("turn-file", started.UnixMilli())
 
 	reconcileWithSavedTurn(sess, durableTurnEvidence{
 		Turn: liveProjectionTurn{ID: "turn-file", Status: "completed", StartedAtMs: started.UnixMilli(), CompletedAtMs: started.Add(time.Minute).UnixMilli()},

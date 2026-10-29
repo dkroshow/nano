@@ -97,7 +97,7 @@ type server struct {
 	// snapshots from it; catalog and runtime events rebuild it off request paths.
 	sidebar *sidebarMaterializedState
 	// warm holds the open warm streams and the threads they warm.
-	warm warmTranscripts
+	warm sessionruntime.WarmStreams
 	// mail is the feature-owned durable inbox store. It is separate from the
 	// canonical threads database and owns its generic unread notices.
 	mail              *agentMessageStore

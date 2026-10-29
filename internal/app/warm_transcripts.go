@@ -1,240 +1,15 @@
 package app
 
-// warm_transcripts.go — the warm stream. One stream per browser page carries
-// the saved Enhanced rows of the threads the page shows in its sidebar, so
-// selecting one paints at once; the pane's own stream then takes over. The
-// page names the set in the order it renders it, and the window it draws
-// into (lines x cols); each thread gets the newest rows that fill that window
-// (warm_fill.go). A page that still holds a thread's rows sends a marker for
-// it and gets only the rows it lacks.
-// Each thread is one rows-only pane on its loop (live_text.go): it reads with
-// a pane on screen, or on its own coalesced schedule, and an idle thread
-// costs nothing after its tail. The panes share one queue, so the stream has
-// one backlog; threads join a few at a time, in set order, so the top of the
-// sidebar is ready first and a connect burst stays small.
-
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"hash/fnv"
 	"net/http"
 	"slices"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
-	"github.com/dkroshow/nano/internal/threadindex"
 )
-
-const (
-	// warmSetMax is how many threads one page may ask for; the first are
-	// kept. A sidebar renders fewer rows than this.
-	warmSetMax = 100
-	// warmBudget caps the distinct threads warm across every stream, so
-	// several pages warming different threads cannot multiply the work.
-	warmBudget = 150
-	// warmJoining is how many threads join one stream at once: the next
-	// joins when one of them has sent its first message, or has waited
-	// warmJoinWait without one (a projection still indexing sends nothing).
-	warmJoining  = 4
-	warmJoinWait = 2 * time.Second
-	// warmStreamBacklog is a warm stream's queue limit. The threads joining
-	// at once, each at the largest page the catalog keeps inline (40 rows of
-	// 8 KiB), fit in half of it, so a connect burst never ends the stream.
-	warmStreamBacklog = 4 << 20
-	// warmPageRows is the page a warm pane reads: the same page a pane on
-	// screen reads (TRANSCRIPT_LIMIT in web/src/transcript_query.js), so the
-	// two share one read.
-	warmPageRows = 40
-)
-
-// warmPaneQuery is the page query a warm pane reads: exactly the Enhanced
-// pane's, so the loop keys both to one read.
-func warmPaneQuery() threadindex.TranscriptQuery {
-	return threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, HiddenSpecified: true,
-		HiddenCategories: threadindex.EnhancedHiddenCategories(), Limit: warmPageRows}
-}
-
-// warmMarker is what a page holds of one thread: a projection key, the
-// sequence range of its rows, and a digest of those rows (warmHeldDigest).
-type warmMarker struct {
-	key         string
-	first, last int64
-	digest      string
-}
-
-// warmHeldDigest names a run of rows as a browser holds them: every field
-// the Enhanced view draws, for each row in order, through 64-bit FNV-1a. The
-// browser computes the same over the rows it holds (warm_transcripts.js
-// heldDigest: strings as they are, numbers in decimal, booleans as 1 or 0,
-// an absent value as nothing), so any change to a held row made while the
-// page was away is seen without sending the rows.
-func warmHeldDigest(rows []threadindex.TranscriptItem) string {
-	h := fnv.New64a()
-	flag := func(b bool) int {
-		if b {
-			return 1
-		}
-		return 0
-	}
-	for _, row := range rows {
-		createdAt, originalBytes := "", ""
-		if row.CreatedAt != nil {
-			createdAt = *row.CreatedAt
-		}
-		if row.OriginalBytes != 0 {
-			originalBytes = fmt.Sprint(row.OriginalBytes)
-		}
-		fmt.Fprintf(h, "%s\n%d\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%d\n%d\n%s\n%d\n%s\n",
-			row.ID, row.ProjectedSeq, row.TurnID, row.NativeItemID, row.Type, row.Category, row.Role, row.Status,
-			row.Text, createdAt, row.Phase, flag(row.IsFinalAnswer), flag(row.Sidechain), row.ContentRef,
-			flag(row.ContentTruncated), originalBytes)
-	}
-	return fmt.Sprintf("%016x", h.Sum64())
-}
-
-// warmRequest is what a page asks for on its stream URL.
-type warmRequest struct {
-	set     []string
-	fill    warmFill
-	markers map[string]warmMarker
-}
-
-var errWarmMarkers = errors.New("markers must be a JSON object of thread ref to {key, first, last, digest}")
-
-// warmRetryWait is how long a thread that failed (a read error, a page the
-// stream could not take) stays out before the stream tries it again: long
-// enough that a thread failing every time costs one read in that time.
-const warmRetryWait = 5 * time.Second
-
-func parseWarmRequest(r *http.Request) (warmRequest, error) {
-	q := r.URL.Query()
-	raw := q.Get("set")
-	if raw == "" {
-		raw = q.Get("hints") // a page from before the set, until it reloads
-	}
-	var set []string
-	for _, ref := range strings.Split(raw, ",") {
-		if ref = strings.TrimSpace(ref); ref != "" && !slices.Contains(set, ref) {
-			set = append(set, ref)
-		}
-	}
-	if len(set) > warmSetMax {
-		set = set[:warmSetMax]
-	}
-	fill, err := parseWarmFill(q.Get("lines"), q.Get("cols"))
-	if err != nil {
-		return warmRequest{}, err
-	}
-	markers := make(map[string]warmMarker)
-	if raw := q.Get("markers"); raw != "" {
-		var wire map[string]struct {
-			Key    string `json:"key"`
-			First  int64  `json:"first"`
-			Last   int64  `json:"last"`
-			Digest string `json:"digest"`
-		}
-		if err := json.Unmarshal([]byte(raw), &wire); err != nil {
-			return warmRequest{}, errWarmMarkers
-		}
-		for ref, m := range wire {
-			if m.Key != "" && m.First > 0 && m.Last >= m.First && m.Digest != "" {
-				markers[ref] = warmMarker{key: m.Key, first: m.First, last: m.Last, digest: m.Digest}
-			}
-		}
-	}
-	return warmRequest{set: set, fill: fill, markers: markers}, nil
-}
-
-// warmTranscripts holds every open warm stream and the threads they warm.
-type warmTranscripts struct {
-	mu      sync.Mutex
-	threads map[string]int // hosted thread id: warm streams holding it
-	streams map[*warmStream]bool
-}
-
-// warmStream is one page's warm stream and its counters.
-type warmStream struct {
-	queue    *liveTextQueue
-	openedAt time.Time
-	fill     warmFill
-	refs     atomic.Int64
-	reads    atomic.Int64
-	bytes    atomic.Int64
-	// Tails sent: the connect burst, then one per join, rebuild or gap.
-	tails     atomic.Int64
-	tailBytes atomic.Int64
-}
-
-// warmStreamReport is one warm stream on GET /api/v1/monitor.
-type warmStreamReport struct {
-	OpenedAt  time.Time `json:"openedAt"`
-	Lines     int       `json:"lines"`
-	Cols      int       `json:"cols"`
-	Refs      int64     `json:"refs"`
-	Reads     int64     `json:"reads"`
-	Bytes     int64     `json:"bytes"`
-	Tails     int64     `json:"tails"`
-	TailBytes int64     `json:"tailBytes"`
-}
-
-// admit counts a stream's hold on a thread. A thread already warm costs no
-// budget; a new one is refused once the budget is spent.
-func (w *warmTranscripts) admit(ref string) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.threads[ref] == 0 && len(w.threads) >= warmBudget {
-		return false
-	}
-	if w.threads == nil {
-		w.threads = make(map[string]int)
-	}
-	w.threads[ref]++
-	return true
-}
-
-func (w *warmTranscripts) release(ref string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.threads[ref]--; w.threads[ref] <= 0 {
-		delete(w.threads, ref)
-	}
-}
-
-func (w *warmTranscripts) open(fill warmFill) *warmStream {
-	stream := &warmStream{queue: newLiveTextQueueWithBacklog(warmStreamBacklog), openedAt: time.Now().UTC(), fill: fill}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.streams == nil {
-		w.streams = make(map[*warmStream]bool)
-	}
-	w.streams[stream] = true
-	return stream
-}
-
-func (w *warmTranscripts) close(stream *warmStream) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	delete(w.streams, stream)
-}
-
-func (w *warmTranscripts) report() []warmStreamReport {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	out := make([]warmStreamReport, 0, len(w.streams))
-	for stream := range w.streams {
-		out = append(out, warmStreamReport{OpenedAt: stream.openedAt, Lines: stream.fill.lines, Cols: stream.fill.cols,
-			Refs: stream.refs.Load(), Reads: stream.reads.Load(), Bytes: stream.bytes.Load(),
-			Tails: stream.tails.Load(), TailBytes: stream.tailBytes.Load()})
-	}
-	slices.SortFunc(out, func(a, b warmStreamReport) int { return a.OpenedAt.Compare(b.OpenedAt) })
-	return out
-}
 
 // handleWarmTranscripts streams the set's saved rows. Messages are the
 // file-only pane messages (tail, update, error) tagged with ref, and set,
@@ -243,7 +18,7 @@ func (w *warmTranscripts) report() []warmStreamReport {
 // rows it lacks; any other joining thread gets a tail; one that cannot be
 // warmed gets one error, and is tried again when the sidebar changes.
 func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
-	request, err := parseWarmRequest(r)
+	request, err := sessions.ParseWarmRequest(r)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -259,18 +34,18 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 		defer s.sidebar.events.unsubscribe(ch)
 		sidebarEvents = ch
 	}
-	stream := s.warm.open(request.fill)
-	defer s.warm.close(stream)
+	stream := s.warm.Open(request.Fill)
+	defer s.warm.Close(stream)
 	type member struct {
 		sess     *sessions.Session
-		pane     *liveTextPane
+		pane     *sessions.LiveTextStream
 		joining  bool // its first message is not written yet
 		joinedAt time.Time
 	}
 	members := make(map[string]member)
 	leave := func(ref string, m member) {
-		liveTextOf(m.sess).unsubscribe(m.pane)
-		s.warm.release(ref)
+		m.pane.Stop()
+		s.warm.Release(ref)
 		delete(members, ref)
 	}
 	defer func() {
@@ -287,14 +62,10 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	write := func(raw []byte) bool {
 		n, err := w.Write(append(append([]byte("data: "), raw...), '\n', '\n'))
-		stream.bytes.Add(int64(n))
-		if bytes.HasPrefix(raw, []byte(`{"type":"tail"`)) {
-			stream.tails.Add(1)
-			stream.tailBytes.Add(int64(n))
-		}
+		stream.RecordWrite(raw, n)
 		return err == nil
 	}
-	writeMessage := func(message liveTextMessage) bool {
+	writeMessage := func(message sessions.LiveTextMessage) bool {
 		raw, err := json.Marshal(message)
 		return err == nil && write(raw)
 	}
@@ -313,11 +84,11 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 		}
 		for ref, m := range members {
 			switch {
-			case m.pane.isClosed():
+			case m.pane.IsClosed():
 				// Its own error went out when it failed; the browser dropped
 				// what it held, so a retry starts from nothing.
 				failedAt[ref], told[ref] = now, true
-				delete(request.markers, ref)
+				delete(request.Markers, ref)
 				leave(ref, m)
 			case s.SessionForHostedThread(ref) != m.sess:
 				leave(ref, m)
@@ -325,19 +96,19 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 		}
 		joining := 0
 		for _, m := range members {
-			if m.joining && now.Sub(m.joinedAt) < warmJoinWait {
+			if m.joining && now.Sub(m.joinedAt) < sessions.WarmJoinWait {
 				joining++
-				soonest(warmJoinWait - now.Sub(m.joinedAt))
+				soonest(sessions.WarmJoinWait - now.Sub(m.joinedAt))
 			}
 		}
-		carried := make([]string, 0, len(request.set))
-		for _, ref := range request.set {
-			if _, ok := members[ref]; ok || joining >= warmJoining {
+		carried := make([]string, 0, len(request.Set))
+		for _, ref := range request.Set {
+			if _, ok := members[ref]; ok || joining >= sessions.WarmJoining {
 				carried = append(carried, ref)
 				continue
 			}
-			if failed, ok := failedAt[ref]; ok && now.Sub(failed) < warmRetryWait {
-				soonest(warmRetryWait - now.Sub(failed))
+			if failed, ok := failedAt[ref]; ok && now.Sub(failed) < sessions.WarmRetryWait {
+				soonest(sessions.WarmRetryWait - now.Sub(failed))
 				continue
 			}
 			sess := s.SessionForHostedThread(ref)
@@ -345,39 +116,34 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case sess == nil || sess.LiveTextService() == nil:
 				reason = "no live session holds this thread"
-			case !s.warm.admit(ref):
+			case !s.warm.Admit(ref):
 				reason = "the warm budget is spent"
 			}
 			if reason != "" {
 				// The browser drops the thread on the error, so a later
 				// retry sends a tail, not an update against its marker.
-				delete(request.markers, ref)
+				delete(request.Markers, ref)
 				if !told[ref] {
 					told[ref] = true
-					if !writeMessage(liveTextMessage{Type: "error", Ref: ref, Error: reason}) {
+					if !writeMessage(sessions.LiveTextMessage{Type: "error", Ref: ref, Error: reason}) {
 						return 0, false
 					}
 				}
 				continue
 			}
-			pane := newLiveTextPane(warmPaneQuery())
-			pane.rowsOnly, pane.warm, pane.ref, pane.reads, pane.fill = true, true, ref, &stream.reads, request.fill
-			if marker, ok := request.markers[ref]; ok {
-				pane.marker = &marker
-			}
-			pane.liveTextQueue = stream.queue
+			pane := stream.NewPane(ref, sess.LiveTextService(), request.Markers[ref])
 			members[ref] = member{sess: sess, pane: pane, joining: true, joinedAt: now}
 			joining++
-			soonest(warmJoinWait)
-			liveTextOf(sess).subscribe(pane)
+			soonest(sessions.WarmJoinWait)
+			pane.Start()
 			carried = append(carried, ref)
 		}
-		stream.refs.Store(int64(len(members)))
+		stream.SetRefs(len(members))
 		if sent != nil && slices.Equal(carried, sent) {
 			return wake, true
 		}
 		sent = carried
-		return wake, writeMessage(liveTextMessage{Type: "set", Refs: carried})
+		return wake, writeMessage(sessions.LiveTextMessage{Type: "set", Refs: carried})
 	}
 	// joined notes a thread's first message written, which frees its slot.
 	joined := func(raw []byte) bool {
@@ -417,13 +183,13 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-stream.queue.done:
+		case <-stream.DoneChannel():
 			return // the backlog overflowed; the browser reconnects with its markers
-		case <-stream.queue.ready:
+		case <-stream.ReadyChannel():
 			// A first message frees a joining slot; an error means a pane
 			// failed and leaves on the next update.
 			resettle := false
-			for _, raw := range stream.queue.take() {
+			for _, raw := range stream.Take() {
 				if !write(raw) {
 					return
 				}

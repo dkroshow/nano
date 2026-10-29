@@ -17,6 +17,7 @@ import (
 
 	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/protocol"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestGeneralFileReadIsGlobalAndProtectedProviderFilesAreViewOnly(t *testing.T) {
@@ -156,7 +157,7 @@ func TestGeneralFileWriteConflictForcePermissionsAndNoCreation(t *testing.T) {
 
 // liveEvidenceSession is a Codex session whose live text shows each text as a
 // finished reply, as the wire delivered it.
-func liveEvidenceSession(texts ...string) (*session, *liveProjection) {
+func liveEvidenceSession(texts ...string) (*session, *sessions.LiveProjection) {
 	projection := newLiveProjection("codex")
 	sess := newFixtureSession(sessionConfig{ID: "session-1", Provider: "codex", Projection: projection}, "")
 	sess.AttachLiveText(newLiveTextLoop(&server{}, sess))
@@ -168,12 +169,12 @@ func liveEvidenceSession(texts ...string) (*session, *liveProjection) {
 
 // addLiveEvidence streams one reply: live text shows a reply that started
 // streaming, not one that arrived only finished.
-func addLiveEvidence(projection *liveProjection, text string) {
+func addLiveEvidence(projection *sessions.LiveProjection, text string) {
 	id := "reply-" + sendTextHash(text)
 	for _, method := range []string{"item/started", "item/completed"} {
 		frame, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"turnId": "turn-1",
 			"item": map[string]any{"id": id, "type": "agentMessage", "text": text}}})
-		projection.applyWire(protocol.Recv, frame, time.Now())
+		applyProjectionWire(projection, protocol.Recv, frame, time.Now())
 	}
 }
 

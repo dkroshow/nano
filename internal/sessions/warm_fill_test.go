@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"encoding/json"
@@ -73,7 +73,7 @@ func TestWarmFillCountFillsTheWindow(t *testing.T) {
 		items[i] = rows.item(i)
 	}
 	for _, lines := range []int{10, 30, 60, 98} {
-		fill := warmFill{lines: lines, cols: rows.Rows[0].Cols}
+		fill := WarmFill{lines: lines, cols: rows.Rows[0].Cols}
 		got := fill.count(items)
 		rendered := 0.0
 		need := len(items)
@@ -89,26 +89,26 @@ func TestWarmFillCountFillsTheWindow(t *testing.T) {
 		}
 	}
 	tall := []threadindex.TranscriptItem{{Role: "user", Text: rows.Rows[0].Text}} // 27 rendered lines
-	if got := (warmFill{lines: 20, cols: 118}).count(append([]threadindex.TranscriptItem{items[1], items[2]}, tall...)); got != 1 {
+	if got := (WarmFill{lines: 20, cols: 118}).count(append([]threadindex.TranscriptItem{items[1], items[2]}, tall...)); got != 1 {
 		t.Fatalf("one row taller than the window: sent %d rows, want 1", got)
 	}
-	if got := (warmFill{lines: 5000, cols: 118}).count(items); got != len(items) {
+	if got := (WarmFill{lines: 5000, cols: 118}).count(items); got != len(items) {
 		t.Fatalf("a window taller than every row: sent %d rows, want all %d", got, len(items))
 	}
-	if got := (warmFill{lines: 30, cols: 118}).count(nil); got != 0 {
+	if got := (WarmFill{lines: 30, cols: 118}).count(nil); got != 0 {
 		t.Fatalf("no rows: count %d", got)
 	}
 }
 
 func TestParseWarmFill(t *testing.T) {
-	if fill, err := parseWarmFill("", ""); err != nil || fill != (warmFill{lines: warmFillLinesDefault, cols: warmFillColsDefault}) {
+	if fill, err := ParseWarmFill("", ""); err != nil || fill != (WarmFill{lines: warmFillLinesDefault, cols: warmFillColsDefault}) {
 		t.Fatalf("absent = %+v %v, want the default window", fill, err)
 	}
-	if fill, err := parseWarmFill("45", "120"); err != nil || fill != (warmFill{lines: 45, cols: 120}) {
+	if fill, err := ParseWarmFill("45", "120"); err != nil || fill != (WarmFill{lines: 45, cols: 120}) {
 		t.Fatalf("45x120 = %+v %v", fill, err)
 	}
 	for _, bad := range [][2]string{{"45", ""}, {"", "120"}, {"x", "120"}, {"4", "120"}, {"45", "5000"}, {"-1", "120"}} {
-		if _, err := parseWarmFill(bad[0], bad[1]); err == nil {
+		if _, err := ParseWarmFill(bad[0], bad[1]); err == nil {
 			t.Errorf("lines=%q cols=%q accepted", bad[0], bad[1])
 		}
 	}

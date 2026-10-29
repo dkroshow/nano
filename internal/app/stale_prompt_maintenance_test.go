@@ -42,18 +42,18 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 			setup: func(t *testing.T, h *settlementHarness) {
 				idle = h.attach("codex", nil)
 				idle.AttachLiveText(newLiveTextLoop(h.server, idle))
-				liveTextOf(idle).running = true // the test runs the loop's steps itself
-				liveTextOf(idle).reset()
-				liveTextOf(idle).seedOutbox()
-				if live := liveTextOf(idle).visible(); len(live) == 0 {
+				record, _, err := h.prompts.Get(context.Background(), "running")
+				if err != nil {
+					t.Fatal(err)
+				}
+				idle.LiveTextService().OutboxChanged(record.Outbox)
+				if live := idle.LiveTextService().CurrentTexts(context.Background()); len(live) == 0 {
 					t.Fatal("the open pane shows none of the stale prompts")
 				}
 				seedTestSessionRegistry(&h.server.Registry, map[string]*session{idle.ID(): idle})
 			},
 			after: func(t *testing.T) {
-				l := liveTextOf(idle)
-				l.process(l.inbox)
-				if live := l.visible(); len(live) != 0 {
+				if live := idle.LiveTextService().CurrentTexts(context.Background()); len(live) != 0 {
 					t.Fatalf("live text after expiry = %+v, want none", live)
 				}
 			},

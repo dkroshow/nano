@@ -3,12 +3,13 @@ package app
 // These test-local names refer to the real session boundary. They carry no
 // independent implementation or runtime state.
 import (
+	timemodel "time"
+
 	promptsmodel "github.com/dkroshow/nano/internal/core/prompts"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	interactmodel "github.com/dkroshow/nano/internal/interact"
 	protocolmodel "github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
-	timemodel "time"
 )
 
 var addSavedUserKey = sessions.AddSavedUserKey
@@ -59,8 +60,6 @@ const grokProtocolVersion = sessions.GrokProtocolVersion
 
 var grokSessionRequest = sessions.GrokSessionRequest
 
-type liveTextObserver = sessions.LiveTextObserver
-
 var nativeThreadIDProvisional = sessions.NativeThreadIDProvisional
 var newBootProviderControl = sessions.NewBootControl
 var newClaudeAnswers = sessions.NewClaudeAnswers
@@ -97,10 +96,9 @@ type sessionAvailability = sessions.Availability
 type sessionConfig = sessions.Config
 type sessionExecutions = sessions.Executions
 type sessionJournal = sessions.Journal
-type sessionLiveText = sessions.LiveText
+type sessionLiveText = sessions.LiveTextLoop
 type sessionMetadata = sessions.Metadata
-type sessionPane = sessions.Pane
-type sessionProjection = sessions.Projection
+type sessionPane = sessions.LiveTextStream
 type sessionQueue = sessions.Queue
 type sessionRegistry = sessions.Registry
 
