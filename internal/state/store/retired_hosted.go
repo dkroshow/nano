@@ -18,7 +18,6 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-
 type RetiredHostedRecord struct {
 	HostedThreadID      string `json:"hostedThreadId"`
 	Provider            string `json:"provider"`

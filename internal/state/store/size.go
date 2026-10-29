@@ -7,7 +7,6 @@ import (
 	"os"
 )
 
-
 // SizeReport reports allocation and retained fact counts. It contains no prompt
 // text and makes no retention decision; free pages remain reusable by SQLite.
 type SizeReport struct {

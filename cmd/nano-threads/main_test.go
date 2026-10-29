@@ -22,7 +22,6 @@ import (
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
-
 func TestBackupRestoreCommandPreservesPrivateCanonicalFacts(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

@@ -22,7 +22,6 @@ import (
 // deliberately lives outside history.sqlite: provider history is rebuildable,
 // while a hosted identity and an operator decision are not.
 
-
 const (
 	metadataDispositionRequested = DispositionRequested
 	metadataDispositionConfirmed = DispositionConfirmed

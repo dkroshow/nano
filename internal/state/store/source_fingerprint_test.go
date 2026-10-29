@@ -13,7 +13,6 @@ import (
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
-
 func TestSourceFingerprintsIgnoreObserverWritesAndSQLiteCheckpoints(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

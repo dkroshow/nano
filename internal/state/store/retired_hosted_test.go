@@ -19,7 +19,6 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-
 func retirementFixture(t *testing.T) *sql.DB {
 	t.Helper()
 	ctx := context.Background()

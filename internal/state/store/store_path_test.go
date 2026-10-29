@@ -13,7 +13,6 @@ import (
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
-
 func TestOpenDatabaseSecuresMainAndJournalsBeforeUse(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "threads.sqlite")
 	db, err := statedb.Open(context.Background(), path)

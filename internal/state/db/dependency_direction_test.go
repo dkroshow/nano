@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-
 func TestStateLayerDependencyDirection(t *testing.T) {
 	root := filepath.Clean("../../..")
 	assertNoUpwardImports := func(packagePath string) {

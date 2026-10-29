@@ -213,7 +213,7 @@ func construct(cfg config.Config) *application {
 	if catalogService != nil && controlMetadata != nil {
 		catalogService.SetCreationNameSource(controlMetadata.CreationThreadNames)
 	}
-	s.hostMonitor = observability.NewHostMonitor(filepath.Join(cfg.Paths.DataDir, "health"), filepath.Join(cfg.Paths.DataDir, "deploys.jsonl"), nil)
+	s.hostMonitor = observability.NewHostMonitor(filepath.Join(cfg.Paths.DataDir, "health"), filepath.Join(cfg.Paths.DataDir, "deploys.jsonl"))
 	go s.hostMonitor.Run(context.Background())
 	if usageLimits != nil {
 		s.usageLimitsPoller = newUsageLimitsPoller(usageLimits, codexDaemon, s.defaults, cfg.UsagePollInterval)

@@ -19,7 +19,7 @@ import (
 func TestHostMonitorRecordsStoppedSnapshotsOnceAndTheirReturn(t *testing.T) {
 	now := time.Date(2026, 10, 1, 6, 0, 0, 0, time.UTC)
 	dir := t.TempDir()
-	m := NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"), nil)
+	m := NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))
 	m.now = func() time.Time { return now }
 	alertLines := func() []string {
 		data, err := os.ReadFile(filepath.Join(dir, monitorAlertsName))
@@ -63,7 +63,7 @@ func TestHostMonitorRecordsStoppedSnapshotsOnceAndTheirReturn(t *testing.T) {
 	if err := os.Chtimes(snapshot, now, now); err != nil {
 		t.Fatal(err)
 	}
-	restarted := NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"), nil)
+	restarted := NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))
 	restarted.now = m.now
 	if err := restarted.check(); err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestMonitorDeliveryComesFromTheNewestCompleteSnapshot(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "health-2026-10-01.jsonl"), []byte(c.lines), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		s := &MonitorHandlers{Monitor: NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"), nil), Requests: &RequestTimes{}, Live: func() (int, []ActiveTurn) { return 0, []ActiveTurn{} }, WarmStreams: func() any { return nil }, Restarts: func() (any, error) { return nil, nil }}
+		s := &MonitorHandlers{Monitor: NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl")), Requests: &RequestTimes{}, Live: func() (int, []ActiveTurn) { return 0, []ActiveTurn{} }, WarmStreams: func() any { return nil }, Restarts: func() (any, error) { return nil, nil }}
 		rec := httptest.NewRecorder()
 		s.HandleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
 		var body struct {

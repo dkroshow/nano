@@ -17,7 +17,6 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-
 // Existing delivery fixtures name a queue/journal path. Both now resolve to
 // one disposable SQLite file in that fixture directory, just as startup does.
 var (

@@ -11,7 +11,6 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-
 // RepairCreationNames keeps maintenance and its cache notifications under the execution lock.
 func (s *ExecutionStore) RepairCreationNames(ctx context.Context, request threads.CreationNameRepairRequest, databasePath string, publish func(threads.CreationNameRepairReceipt) error) (threads.CreationNameRepairReceipt, error) {
 	s.mu.Lock()

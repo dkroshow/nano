@@ -5,7 +5,6 @@ import (
 	"database/sql"
 )
 
-
 // MigratePermissionEventSchema owns provider permission event evidence.
 func MigratePermissionEventSchema(tx *sql.Tx, version int) error {
 	if version > 10 {

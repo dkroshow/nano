@@ -56,13 +56,9 @@ type monitorAlert struct {
 	Source string    `json:"source"`
 }
 
-// NewHostMonitor watches the supplied snapshot directory using the supplied clock.
-// A nil clock uses time.Now.
-func NewHostMonitor(healthDir, deploysPath string, now func() time.Time) *HostMonitor {
-	if now == nil {
-		now = time.Now
-	}
-	return &HostMonitor{healthDir: healthDir, deploysPath: deploysPath, now: now}
+// NewHostMonitor watches the supplied snapshot directory.
+func NewHostMonitor(healthDir, deploysPath string) *HostMonitor {
+	return &HostMonitor{healthDir: healthDir, deploysPath: deploysPath, now: time.Now}
 }
 
 // recentDeploys returns the newest deploy records, newest first.

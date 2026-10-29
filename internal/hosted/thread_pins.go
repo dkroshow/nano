@@ -18,6 +18,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/threadindex"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -38,7 +39,7 @@ type PinService struct {
 	ResolveIdentity                          func(context.Context, string) (IdentityResolution, error)
 	ResolveThread                            func(context.Context, string) (string, error)
 	IsAmbiguous                              func(error) bool
-	ReadCandidates                           func(context.Context, string, int) ([]PinCandidate, error)
+	Transcripts                              threadindex.TranscriptCatalog
 	WriteReferenceError                      func(http.ResponseWriter, error)
 	WriteTranscriptError                     func(http.ResponseWriter, error)
 	DefaultCandidateLimit, MaxCandidateLimit int
@@ -437,7 +438,7 @@ func (s *PinService) HandleCandidates(w http.ResponseWriter, r *http.Request, re
 		httpapi.WriteError(w, http.StatusConflict, "thread_not_indexed", "This hosted thread has no indexed transcript yet")
 		return
 	}
-	if s.ReadCandidates == nil {
+	if s.Transcripts == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
 	}
@@ -455,7 +456,7 @@ func (s *PinService) HandleCandidates(w http.ResponseWriter, r *http.Request, re
 		s.WriteReferenceError(w, err)
 		return
 	}
-	messages, err := s.ReadCandidates(r.Context(), threadID, tail)
+	messages, err := s.readCandidates(r.Context(), threadID, tail)
 	if err != nil {
 		s.WriteTranscriptError(w, err)
 		return
@@ -475,4 +476,16 @@ func (s *PinService) HandleCandidates(w http.ResponseWriter, r *http.Request, re
 	writeCatalogJSON(w, http.StatusOK, map[string]any{
 		"hostedThreadId": record.ID, "nativeThreadId": scope.NativeIDs[0], "order": "newest_first", "candidates": out,
 	})
+}
+
+func (s *PinService) readCandidates(ctx context.Context, id string, tail int) ([]PinCandidate, error) {
+	messages, err := threadindex.CollectThreadMessages(ctx, s.Transcripts, id, threadindex.MessagesQuery{Tail: tail, Roles: map[string]bool{threadindex.MessageRoleUser: true, threadindex.MessageRoleAgent: true}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PinCandidate, 0, len(messages))
+	for _, message := range messages {
+		out = append(out, PinCandidate{ItemID: message.ItemID, Role: message.Role, At: message.At, Preview: message.Preview})
+	}
+	return out, nil
 }

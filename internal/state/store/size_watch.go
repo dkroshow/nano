@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-
 // WatchSize reports database growth until cancellation.
 func WatchSize(ctx context.Context, db *sql.DB, path string, interval time.Duration, report func(SizeReport, error)) {
 	ticker := time.NewTicker(interval)

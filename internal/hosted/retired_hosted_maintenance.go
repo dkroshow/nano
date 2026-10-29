@@ -12,7 +12,6 @@ import (
 	state "github.com/dkroshow/nano/internal/state/store"
 )
 
-
 type retiredHostedReceipt struct {
 	state.RetirementReceipt
 	OK          bool                 `json:"ok"`

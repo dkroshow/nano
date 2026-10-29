@@ -20,7 +20,7 @@ import (
 // history, which is read only from its end. Boundary: GET /api/v1/monitor,
 // the monitor's only Nano read.
 func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
-	now := time.Date(2026, 10, 1, 6, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	dir := t.TempDir()
 	snapshot := filepath.Join(dir, "health-2026-10-01.jsonl")
 	// Two snapshot lines in the recorded shape (trimmed); only the newest
@@ -55,7 +55,7 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 	})
 	working := f.session
 	idle := memorySession(t, "idle", "claude", "native-idle", "ready", "/w", "model", now)
-	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: observability.NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"), func() time.Time { return now })}, map[string]*session{working.ID(): working, idle.ID(): idle})
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: observability.NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}, map[string]*session{working.ID(): working, idle.ID(): idle})
 
 	rec := httptest.NewRecorder()
 	s.monitorHandlers().HandleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))

@@ -64,7 +64,15 @@ type AttachmentCoordinator struct {
 
 // NewAttachmentCoordinator binds the owners used for this process's attachments.
 func NewAttachmentCoordinator(sources AttachmentSources) *AttachmentCoordinator {
-	return &AttachmentCoordinator{AttachmentSources: sources}
+	owner := &AttachmentCoordinator{AttachmentSources: sources}
+	if owner.CreationNames == nil {
+		owner.CreationNames = &CreationNames{Metadata: owner.ControlStore(), Executions: owner.Executions, Queue: owner.Queue, Catalog: owner.Catalog, Refresh: owner.NotifyRuntimeRefresh}
+		if owner.Catalog != nil {
+			owner.CreationNames.Reader = owner.Catalog
+			owner.CreationNames.Refs = owner.Catalog
+		}
+	}
+	return owner
 }
 
 func (s *AttachmentCoordinator) creationNameForHosted(id string) string {

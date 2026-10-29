@@ -18,7 +18,6 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-
 func openTestMetadataStore(path string) (*hostedstore.MetadataStore, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

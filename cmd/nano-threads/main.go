@@ -22,7 +22,6 @@ import (
 	"modernc.org/sqlite"
 )
 
-
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
