@@ -21,7 +21,8 @@ func newHostedController(s *server) *hosted.Controller {
 	}
 	return &hosted.Controller{
 		Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, ExecutionError: s.executionControlErr,
-		Attachments: s.attachments, Queue: s.queuedTurns, Runtime: hostedRuntime{server: s}, Stars: stars,
+		Attachments: s.attachments, Queue: s.queuedTurns, Sessions: &s.Registry, SendAttempts: s.sendAttempts, ClaudeShimWS: s.defaults.claudeShimWS,
+		Waiting: func(id string) string { _, state := s.boot.waitingHosted(id); return state }, Reattach: s.reattachWaitingHosted, Stars: stars,
 		Views: s.hostedViews, ResolveIdentity: s.resolveIdentity, PrepareCreation: s.prepareHostedCreation,
 		PromptWithUnreadFooter: s.promptWithUnreadFooter, UnreadFooterUnavailable: errUnreadFooterUnavailable,
 		FeatureFooter: func(action string) (string, bool) {

@@ -11,6 +11,7 @@ import (
 	hostedprompts "github.com/dkroshow/nano/internal/core/prompts"
 	prompts "github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -134,10 +135,10 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	if sub.NextTurn {
 		hash = hostedstore.TurnRequestHash(prompt, true)
 	}
-	waited := s.Runtime.Waiting(hostedThreadID)
-	s.Runtime.Reattach(hostedThreadID)
+	waited := s.Waiting(hostedThreadID)
+	s.Reattach(hostedThreadID)
 	_, found := s.Executions.TurnForAction(hostedThreadID, actionID)
-	if !found && s.Runtime.Admission(hostedThreadID) == nil {
+	if !found && s.sessionForHosted(hostedThreadID) == nil {
 		if requireIdle {
 			return ownedthreads.TurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
 		}
@@ -146,7 +147,7 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	if found {
 		return s.submitExistingHostedTurn(hostedThreadID, actionID, sub, hash)
 	}
-	sess := s.Runtime.Admission(hostedThreadID)
+	sess := s.sessionForHosted(hostedThreadID)
 	if sess == nil {
 		if requireIdle {
 			return ownedthreads.TurnRecord{}, false, &hostedTurnAdmissionError{Reason: "detached"}
@@ -161,8 +162,8 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 			if err != nil {
 				return err
 			}
-			op, responseStatus, reason, err := sess.StartLockedPrepared(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
-			result, replay, err = s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+			op, responseStatus, reason, err := sess.QueueOrStartTurnSendLockedPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, false)
+			result, replay, err = s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 			return err
 		})
 		if reason != "" {
@@ -188,12 +189,12 @@ func (s *Controller) submitHostedTurnFull(hostedThreadID, actionID string, sub h
 	if !created && !s.needsTurnSubmissionReconciliation(record) {
 		return record, true, nil
 	}
-	sess = s.Runtime.Admission(hostedThreadID)
+	sess = s.sessionForHosted(hostedThreadID)
 	if sess == nil {
 		return record, !created, errHostedThreadNotAttached
 	}
-	op, responseStatus, reason, err := sess.StartPrepared(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
-	return s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+	op, responseStatus, reason, err := sess.QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
+	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
 func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, sub hostedTurnSubmission, hash string) (ownedthreads.TurnRecord, bool, error) {
@@ -217,9 +218,9 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 				}
 			}
 		}
-		if sess := s.Runtime.Admission(hostedThreadID); sess != nil {
-			if text, ok := sess.QueuedText(record.TransportActionID); ok && text != "" {
-				sub.Delivered = text
+		if sess := s.sessionForHosted(hostedThreadID); sess != nil {
+			if row, ok := sess.QueuedPrompt(record.TransportActionID); ok && row.Text != "" {
+				sub.Delivered = row.Text
 			}
 		}
 	}
@@ -234,15 +235,15 @@ func (s *Controller) submitExistingHostedTurn(hostedThreadID, actionID string, s
 	if !created && !s.needsTurnSubmissionReconciliation(record) {
 		return record, true, nil
 	}
-	sess := s.Runtime.Admission(hostedThreadID)
+	sess := s.sessionForHosted(hostedThreadID)
 	if sess == nil {
 		return record, true, errHostedThreadNotAttached
 	}
-	op, responseStatus, reason, err := sess.StartPrepared(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
-	return s.finishHostedTurnSubmission(sess, record, created, op, responseStatus, reason, err)
+	op, responseStatus, reason, err := sess.QueueOrStartTurnSendPreparedPresentation(record.TransportActionID, sub.Delivered, sub.Prompt, hash, sub.Origin, sub.NextTurn)
+	return s.finishHostedTurnSubmission(sess, record, created, op != nil, responseStatus, reason, err)
 }
 
-func (s *Controller) finishHostedTurnSubmission(sess AdmissionSession, record ownedthreads.TurnRecord, created bool, started bool, responseStatus int, reason string, err error) (ownedthreads.TurnRecord, bool, error) {
+func (s *Controller) finishHostedTurnSubmission(sess *sessions.Session, record ownedthreads.TurnRecord, created bool, started bool, responseStatus int, reason string, err error) (ownedthreads.TurnRecord, bool, error) {
 	if err != nil {
 		_ = s.Executions.MarkTurnDelivery(record.ID, "", ownedthreads.AgentTurnFailed, &ownedthreads.ExecutionError{Source: "delivery", Message: err.Error()})
 		sess.NotifyRuntime()
@@ -274,12 +275,12 @@ func (s *Controller) needsTurnSubmissionReconciliation(record ownedthreads.TurnR
 	if record.Status != ownedthreads.AgentTurnDeliveryPending {
 		return false
 	}
-	return !s.Runtime.HasDeliveryEvidence(record.HostedThreadID, record.TransportActionID)
+	return !s.sessionForHosted(record.HostedThreadID).HasDeliveryEvidence(record.TransportActionID, s.Queue, s.SendAttempts)
 }
 
 func (s *Controller) turnSubmissionDeliveryUnknown(record ownedthreads.TurnRecord) bool {
 	if record.Status != ownedthreads.AgentTurnDeliveryPending || record.RunID == s.Executions.RunID() {
 		return false
 	}
-	return s.Runtime.DeliveryWasAttempted(record.HostedThreadID, record.TransportActionID)
+	return s.sessionForHosted(record.HostedThreadID).DeliveryWasAttempted(record.TransportActionID, s.SendAttempts)
 }

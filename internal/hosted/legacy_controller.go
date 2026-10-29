@@ -7,6 +7,7 @@ import (
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // HandleLegacyCreate serializes legacy creation with hosted relationship mutations.
@@ -17,7 +18,7 @@ func (s *Controller) HandleLegacyCreate(w http.ResponseWriter, r *http.Request) 
 }
 
 // HandleLegacyClose closes a pinned legacy session under the relationship lock.
-func (s *Controller) HandleLegacyClose(w http.ResponseWriter, _ *http.Request, sess CloseSession) {
+func (s *Controller) HandleLegacyClose(w http.ResponseWriter, _ *http.Request, sess *sessions.Session) {
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
 	if err := s.closeExplicitSession(sess); err != nil {

@@ -1,10 +1,11 @@
 package hosted
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-
+	"github.com/dkroshow/nano/internal/sessions"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -26,7 +27,14 @@ func (s *Controller) cancelQueuedAgentTurn(w http.ResponseWriter, operationID st
 		httpapi.WriteHTTPError(w, "turn operation is not queued", http.StatusConflict)
 		return
 	}
-	conflict, err := s.Runtime.CancelPrompt(rec.HostedThreadID, rec.TransportActionID)
+	var err error
+	if sess := s.sessionForHosted(rec.HostedThreadID); sess != nil {
+		_, err = sess.CancelQueuedTurnAction(rec.TransportActionID, sessions.DiscardedByCaller)
+	} else {
+		_, err = sessions.CancelQueuedTurnStores(s.Queue, s.Executions, rec.TransportActionID, sessions.DiscardedByCaller)
+	}
+	var refused *sessions.PromptActionRefused
+	conflict := errors.Is(err, sessions.ErrQueuedTurnNotFound) || errors.Is(err, sessions.ErrQueuedTurnDelivering) || errors.Is(err, sessions.ErrPromptEnded) || errors.As(err, &refused)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if conflict {

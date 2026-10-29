@@ -13,17 +13,6 @@ import (
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
-type controllerRuntime struct{ ControlRuntime }
-
-func (controllerRuntime) Admission(string) AdmissionSession { return nil }
-func (controllerRuntime) ResolveLiveRecord(string, func(string) (ownedthreads.SessionRecord, bool)) (ownedthreads.SessionRecord, bool) {
-	return ownedthreads.SessionRecord{}, false
-}
-func (controllerRuntime) Waiting(string) string                    { return "" }
-func (controllerRuntime) Reattach(string)                          {}
-func (controllerRuntime) HasDeliveryEvidence(string, string) bool  { return false }
-func (controllerRuntime) DeliveryWasAttempted(string, string) bool { return false }
-
 type emptyViewNames struct{}
 
 func (emptyViewNames) DurableName(string, string) (string, bool) { return "", false }
@@ -43,7 +32,7 @@ func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{Executions: store, Metadata: control, Queue: queue, Runtime: controllerRuntime{},
+	c := &Controller{Executions: store, Metadata: control, Queue: queue, Sessions: func() *sessions.Registry { r := sessions.NewRegistry(); return &r }(), Waiting: func(string) string { return "" }, Reattach: func(string) {},
 		PromptWithUnreadFooter: func(_ string, text string) (string, error) { return text, nil },
 		NotifyRuntime:          func() {}, RefreshRuntime: func() {}, PublishRelationshipChange: func() {},
 		FeatureFooter:  func(string) (string, bool) { return "", false },
@@ -54,37 +43,6 @@ func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller
 	}
 	return c
 }
-
-type guardRuntime struct {
-	ControlRuntime
-	session *guardAdmission
-}
-
-func (a guardRuntime) Admission(string) AdmissionSession        { return a.session }
-func (a guardRuntime) HasDeliveryEvidence(string, string) bool  { return a.session.sent > 0 }
-func (a guardRuntime) DeliveryWasAttempted(string, string) bool { return a.session.sent > 0 }
-
-type guardAdmission struct {
-	store   *hostedstore.ExecutionStore
-	prompts chan string
-	sent    int
-}
-
-func (a *guardAdmission) WithIdleDelivery(_ bool, deliver func() error) (string, error) {
-	return "", deliver()
-}
-func (a *guardAdmission) StartPrepared(action, text, presentation, hash, origin string, next bool) (bool, int, string, error) {
-	a.sent++
-	a.prompts <- text
-	record, _ := a.store.TurnForTransportAction(action)
-	err := a.store.MarkTurnDelivery(record.ID, "provider-turn", ownedthreads.AgentTurnRunning, nil)
-	return true, 0, "", err
-}
-func (a *guardAdmission) StartLockedPrepared(action, text, presentation, hash, origin string, next bool) (bool, int, string, error) {
-	return a.StartPrepared(action, text, presentation, hash, origin, next)
-}
-func (a *guardAdmission) QueuedText(string) (string, bool) { return "", false }
-func (a *guardAdmission) NotifyRuntime()                   {}
 
 // submitHostedTurn is the single ordinary-turn path used by the public route
 // and Nano's notification dispatcher. A persisted pre-delivery operation with

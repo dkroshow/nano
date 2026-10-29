@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 // Explicit operator escape: forget bookkeeping only, never claim termination
@@ -12,15 +13,15 @@ func (s *Controller) forgetUnconfirmedClaude(attachment hostedstore.Attachment, 
 	if attachment.ShimSessionID != shimID || attachment.AttachedAt != attachedAt {
 		return fmt.Errorf("attachment changed; refresh before forgetting")
 	}
-	return s.Runtime.ForgetDetached(attachment.NativeThreadID, func() error {
+	return s.Sessions.ForgetDetachedClaude(attachment.NativeThreadID, func() error {
 		return s.Attachments.ForgetClosed(attachment)
 	})
 }
 
 // All helpers require relationshipMu. Legacy UI endpoints use the hosted
 // lifecycle when possible, including heartbeat pause.
-func (s *Controller) closeExplicitSession(sess CloseSession) error {
-	if !sess.Current() {
+func (s *Controller) closeExplicitSession(sess *sessions.Session) error {
+	if s.Sessions.LookupSession(sess.ID()) != sess {
 		return fmt.Errorf("session attachment changed; refresh before closing")
 	}
 	if s.Executions != nil && sess.HostedThreadID() != "" {
@@ -47,7 +48,7 @@ func (s *Controller) closeExplicitAttachment(attachment hostedstore.Attachment) 
 		}
 	}
 	// A stale detached control must not forget a runtime that has since resumed.
-	live := s.Runtime.AttachmentSession(attachment.Provider, attachment.NativeThreadID)
+	live := s.Sessions.AttachmentSession(attachment.Provider, attachment.NativeThreadID)
 	if live != nil {
 		return s.closeAgentSession(live)
 	}
@@ -55,8 +56,10 @@ func (s *Controller) closeExplicitAttachment(attachment hostedstore.Attachment) 
 }
 
 func (s *Controller) closeDetachedAttachment(attachment hostedstore.Attachment) error {
-	if err := s.Runtime.StopDetached(attachment); err != nil {
-		return fmt.Errorf("Claude stop unconfirmed; attachment retained (heartbeat may be paused): %w", err)
+	if attachment.Provider == "claude" {
+		if err := sessions.CloseDetachedClaude(s.ClaudeShimWS, attachment.ShimSessionID); err != nil {
+			return fmt.Errorf("Claude stop unconfirmed; attachment retained (heartbeat may be paused): %w", err)
+		}
 	}
 	return s.Attachments.ForgetClosed(attachment)
 }

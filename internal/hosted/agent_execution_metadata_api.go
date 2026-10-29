@@ -34,7 +34,9 @@ func (s *Controller) HandlePresentation(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if changed {
-		s.Runtime.SetPresentation(record.ID, rec.PresentationMode)
+		if sess := s.sessionForHosted(record.ID); sess != nil {
+			sess.SetPresentation(rec.PresentationMode)
+		}
 		s.NotifyRuntime()
 	}
 	httpapi.WriteJSON(w, s.Views().SessionView(record.ID))
@@ -75,7 +77,9 @@ func (s *Controller) HandleSidebarPlacement(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if changed {
-		s.Runtime.SetSidebarPlacement(record.ID, rec.SidebarPlacement)
+		if sess := s.sessionForHosted(record.ID); sess != nil {
+			sess.SetSidebarPlacement(rec.SidebarPlacement)
+		}
 		// Placement changes are structural catalog changes, not runtime
 		// overlay fields. Force every open browser to re-read the sidebar
 		// graph so another tab cannot retain the old invoker edge.
@@ -172,8 +176,9 @@ func (s *Controller) HandleDetach(w http.ResponseWriter, _ *http.Request, record
 		httpapi.WriteJSON(w, s.Views().SessionView(record.ID))
 		return
 	}
-	if sess := s.Runtime.CloseSession(record.ID); sess != nil {
-		sess.Detach()
+	if sess := s.sessionForHosted(record.ID); sess != nil {
+		sess.Close()
+		s.Sessions.RemoveSession(sess.ID())
 		s.NotifyRuntime()
 	}
 	// The attachment record survives — that is the difference from close:

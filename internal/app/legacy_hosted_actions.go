@@ -3,10 +3,11 @@ package app
 import (
 	"encoding/json"
 	"errors"
-	"github.com/dkroshow/nano/internal/httpapi"
-	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"log"
 	"net/http"
+
+	"github.com/dkroshow/nano/internal/httpapi"
+	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
 func (s *server) handleSessionCreateAction(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +52,7 @@ func (s *server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleSessionClose(w http.ResponseWriter, r *http.Request, sess *sessionruntime.Session) {
-	s.hostedController().HandleLegacyClose(w, r, hostedCloseSession{server: s, session: sess})
+	s.hostedController().HandleLegacyClose(w, r, sess)
 }
 func (s *server) handleAttachmentScoped(w http.ResponseWriter, r *http.Request) {
 	s.hostedController().HandleAttachmentScoped(w, r)

@@ -105,8 +105,8 @@ func (s *Controller) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	// beginSessionWithInvoker committed hosted_threads and the normalized
 	// execution row in one control.sqlite transaction before this point.  No
 	// provider transport can observe an orphan execution record.
-	s.Runtime.Reattach(record.ID)
-	if live := s.Runtime.Admission(record.ID); live != nil {
+	s.Reattach(record.ID)
+	if live := s.sessionForHosted(record.ID); live != nil {
 		httpapi.WriteJSON(w, s.Views().SessionView(record.ID))
 		return
 	}

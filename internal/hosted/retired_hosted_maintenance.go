@@ -69,7 +69,7 @@ func (s *Controller) retireHostedRecords(ctx context.Context, request state.Reti
 		}
 		// Runtime/attachment edges require a wider operation. Historical duplicate
 		// cleanup must not detach a provider or rewrite an attachment file.
-		return s.Runtime.CheckRetiredReferences(retired, func() error {
+		return s.Sessions.CheckRetiredReferences(retired, func() error {
 			if s.Attachments != nil {
 				return s.Attachments.CheckRetiredReferences(retired)
 			}
