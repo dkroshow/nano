@@ -47,7 +47,7 @@ func bulkCloseRequest(t *testing.T, s *server, rootID, policy string) (int, bulk
 	recorder := httptest.NewRecorder()
 	body := bytes.NewBufferString(`{"starredPolicy":"` + policy + `"}`)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+rootID+"/family/close", body)
-	applicationHandler(s).ServeHTTP(recorder, request)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, request)
 	var response bulkCloseResponse
 	if strings.Contains(recorder.Header().Get("Content-Type"), "application/json") {
 		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
@@ -61,7 +61,7 @@ func bulkClosePreviewRequest(t *testing.T, s *server, rootID string) (int, bulkC
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/"+rootID+"/family/close", nil)
-	applicationHandler(s).ServeHTTP(recorder, request)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, request)
 	var response bulkClosePreview
 	if strings.Contains(recorder.Header().Get("Content-Type"), "application/json") {
 		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
@@ -191,7 +191,7 @@ func TestBulkCloseRequiresAndAppliesExplicitStarPolicy(t *testing.T) {
 	}
 
 	bad := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(bad, httptest.NewRequest(http.MethodPost,
+	applicationHandler(fixtureOwners(s)).ServeHTTP(bad, httptest.NewRequest(http.MethodPost,
 		"/api/v1/hosted-threads/"+root.ID+"/family/close", strings.NewReader(`{}`)))
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("missing star policy status = %d body=%s", bad.Code, bad.Body.String())

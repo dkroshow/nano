@@ -92,7 +92,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	var detail map[string]json.RawMessage
 	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	fixture.emit(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"completed"}}}`))
 	waitReconnectCondition(t, func() bool { return !fixture.session.Summary().TurnActive })
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	detail = nil
 	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
 		t.Fatal(err)
@@ -113,7 +113,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	// Detached (session closed): the field disappears entirely.
 	s.RemoveSession("s1")
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	detail = nil
 	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	var detail map[string]json.RawMessage
 	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestAttachmentDismissNudgesRuntime(t *testing.T) {
 	nudges := s.runtimeEvents.Subscribe()
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/t-1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/t-1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("dismiss status = %d", rec.Code)
 	}
@@ -312,7 +312,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 
 	// Unbind: closing the session nudges the stream.
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d", rec.Code)
 	}

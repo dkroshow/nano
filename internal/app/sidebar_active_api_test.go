@@ -375,7 +375,7 @@ func TestSidebarHistoryPagesInactiveDescendants(t *testing.T) {
 	s, ids := sidebarActiveFixture(t, now)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sidebar/threads/"+ids["parent-old"]+"/history?limit=1", nil)
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("history status = %d body %s", rec.Code, rec.Body.String())
 	}
@@ -399,12 +399,12 @@ func TestSidebarHistoryPagesInactiveDescendants(t *testing.T) {
 		t.Fatalf("history ancestors = %v", ancestors)
 	}
 	unknown := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(unknown, httptest.NewRequest(http.MethodGet, "/api/v1/sidebar/threads/nth_missing/history", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(unknown, httptest.NewRequest(http.MethodGet, "/api/v1/sidebar/threads/nth_missing/history", nil))
 	if unknown.Code != http.StatusNotFound {
 		t.Fatalf("unknown parent = %d", unknown.Code)
 	}
 	bad := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/api/v1/sidebar/threads/"+ids["parent-old"]+"/history?cursor=not-a-cursor", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/api/v1/sidebar/threads/"+ids["parent-old"]+"/history?cursor=not-a-cursor", nil))
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("invalid cursor = %d", bad.Code)
 	}

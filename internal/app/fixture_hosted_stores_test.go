@@ -3,15 +3,17 @@ package app
 import (
 	"context"
 	"database/sql"
+	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"path/filepath"
 	"testing"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	"github.com/dkroshow/nano/internal/edge/stateopen"
+	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"github.com/dkroshow/nano/internal/features/subscriptions"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	statedb "github.com/dkroshow/nano/internal/state/db"
 	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -28,7 +30,7 @@ func newTestAgentExecutionStore(t *testing.T, runID string) *hostedstore.Executi
 }
 
 func newAgentExecutionStore(path, runID string) (*hostedstore.ExecutionStore, error) {
-	control, err := stateopen.OpenMetadata(path)
+	control, err := fixtureOpenMetadata(path)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +39,7 @@ func newAgentExecutionStore(path, runID string) (*hostedstore.ExecutionStore, er
 
 func newTestControlMetadata(t *testing.T) *hostedstore.MetadataStore {
 	t.Helper()
-	store, err := stateopen.OpenMetadata(filepath.Join(t.TempDir(), "control.sqlite"))
+	store, err := fixtureOpenMetadata(filepath.Join(t.TempDir(), "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,4 +173,26 @@ func openThreadRuntimeStores(ctx context.Context, directory, legacyCompleted, ru
 // newControlAgentExecutionStore composes feature admission with durable execution loading.
 func newControlAgentExecutionStore(control *hostedstore.MetadataStore, runID string) (*hostedstore.ExecutionStore, error) {
 	return hostedstore.NewExecutionStore(control, runID, subscriptions.IsFeatureAction)
+}
+
+func fixtureOpenMetadata(path string) (*hostedstore.MetadataStore, error) {
+	db, err := statedb.Open(context.Background(), path)
+	if err != nil {
+		return nil, err
+	}
+	if err = state.MigrateLegacySchema(db, statewiring.Migrations()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	reads, err := statedb.Open(context.Background(), path)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	store, err := hostedstore.NewMetadataStore(db, reads)
+	if err != nil {
+		db.Close()
+		reads.Close()
+	}
+	return store, err
 }

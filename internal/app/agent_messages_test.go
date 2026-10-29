@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -257,7 +256,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 
 func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	control, err := stateopen.OpenMetadata(path)
+	control, err := fixtureOpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +273,7 @@ func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) 
 	if err := control.Close(); err != nil {
 		t.Fatal(err)
 	}
-	control, err = stateopen.OpenMetadata(path)
+	control, err = fixtureOpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +295,7 @@ func TestControlMetadataV15AgentInboxMigrationPreservesHostedRows(t *testing.T) 
 func TestAgentMailStoreCopiesLegacyRowsOnceAndLeavesSource(t *testing.T) {
 	dir := t.TempDir()
 	controlPath := filepath.Join(dir, "control.sqlite")
-	control, err := stateopen.OpenMetadata(controlPath)
+	control, err := fixtureOpenMetadata(controlPath)
 	if err != nil {
 		t.Fatal(err)
 	}

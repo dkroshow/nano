@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/edge/stateopen"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -77,7 +76,7 @@ func TestOperatorEditOnlyWhileUnread(t *testing.T) {
 		payload, _ := json.Marshal(map[string]string{"subject": subject, "body": body})
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/edit", bytes.NewReader(payload))
-		applicationHandler(s).ServeHTTP(rec, req)
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 		return rec
 	}
 
@@ -272,7 +271,7 @@ func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 	// Disposition updates the recipient; feedback stays quiet by default.
 	payload, _ := json.Marshal(map[string]string{"actorThreadRef": recipient.ID, "status": "acted"})
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+message.MessageID+"/status", bytes.NewReader(payload)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+message.MessageID+"/status", bytes.NewReader(payload)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("disposition = %d %s", rec.Code, rec.Body.String())
 	}
@@ -289,7 +288,7 @@ func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 func TestMailSchemaV16RebuildPreservesMailAndAdmitsOperator(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/control.sqlite"
-	store, err := stateopen.OpenMetadata(path)
+	store, err := fixtureOpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +342,7 @@ func TestMailSchemaV16RebuildPreservesMailAndAdmitsOperator(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := stateopen.OpenMetadata(path)
+	reopened, err := fixtureOpenMetadata(path)
 	if err != nil {
 		t.Fatalf("v16→v17 migration failed: %v", err)
 	}

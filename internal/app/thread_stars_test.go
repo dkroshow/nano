@@ -74,7 +74,7 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{"starred":true}`))
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("star status = %d body %s", rec.Code, rec.Body.String())
 	}
@@ -91,7 +91,7 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{"starred":false}`))
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unstar status = %d body %s", rec.Code, rec.Body.String())
 	}
@@ -114,7 +114,7 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{"starred":true}`))
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("star status = %d body %s", rec.Code, rec.Body.String())
 	}
@@ -136,7 +136,7 @@ func TestThreadStarredEndpointRejectsMissingBody(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{}`))
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body %s", rec.Code, rec.Body.String())
 	}

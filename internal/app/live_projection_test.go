@@ -194,7 +194,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	}
 	if rec := assertPrompt("hosted thread GET", func() *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/"+hosted.ID, nil))
+		applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/"+hosted.ID, nil))
 		return rec
 	}); rec.Code != http.StatusOK {
 		t.Fatalf("hosted thread GET = %d: %s", rec.Code, rec.Body.String())
@@ -208,7 +208,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 	}
 	submit := func() *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodPost,
+		applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost,
 			"/api/v1/hosted-threads/"+hosted.ID+"/turns", strings.NewReader(string(body))))
 		return rec
 	}

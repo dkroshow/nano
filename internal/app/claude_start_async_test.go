@@ -154,7 +154,7 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("unconfirmed close status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -167,7 +167,7 @@ func TestCloseDuringClaudeStartClosesTheLateTransport(t *testing.T) {
 	waitForClaudeThreadID(t, sess, "native-1")
 	waitForClaudeStatus(t, sess, "ready")
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body = %s", rec.Code, rec.Body.String())
 	}

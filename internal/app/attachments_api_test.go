@@ -93,7 +93,7 @@ func TestSessionDeleteForgetsAttachment(t *testing.T) {
 	s.RegisterSession(liveSession(t, "sess1", "t-1"))
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/sess1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/sess1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("DELETE code = %d", rec.Code)
 	}
@@ -142,7 +142,7 @@ func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 	s.RegisterSession(liveSession(t, "sess1", "shared")) // codex
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/sess1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/sess1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("DELETE code = %d", rec.Code)
 	}
@@ -164,7 +164,7 @@ func TestAttachmentDismissProviderParam(t *testing.T) {
 	store.Remember(claudeRec)
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared?provider=codex", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared?provider=codex", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("scoped dismiss code = %d", rec.Code)
 	}
@@ -176,7 +176,7 @@ func TestAttachmentDismissProviderParam(t *testing.T) {
 	// Restore the codex record; ambiguous dismissal must preserve both.
 	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared", nil))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("bare dismiss code = %d", rec.Code)
 	}
@@ -192,7 +192,7 @@ func TestAttachmentDismissEndpoint(t *testing.T) {
 	store.Remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/t-1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/t-1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("dismiss code = %d", rec.Code)
 	}
@@ -202,14 +202,14 @@ func TestAttachmentDismissEndpoint(t *testing.T) {
 
 	// Unknown id is a no-op success, not a 404 — a stale client mustn't error.
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/unknown", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/unknown", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("dismiss-unknown code = %d, want 200", rec.Code)
 	}
 
 	// Non-DELETE is rejected.
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/attachments/t-1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/attachments/t-1", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("GET code = %d, want 405", rec.Code)
 	}

@@ -29,7 +29,7 @@ func OpenRuntimeStoresAt(ctx context.Context, paths state.StorePaths, runID stri
 	if _, err := state.PrepareStore(ctx, paths, statewiring.Migrations()); err != nil {
 		return nil, fmt.Errorf("prepare threads store: %w", err)
 	}
-	control, err := OpenMetadata(paths.Destination)
+	control, err := openMetadata(paths.Destination)
 	if err != nil {
 		return nil, err
 	}

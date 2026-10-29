@@ -61,7 +61,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 
 	body := []byte(`{"clientActionId":"assign-audit","assignment":{"assignmentRole":"auditor","focus":"Review the worker","auditTargets":[{"hostedThreadId":"worker-alias","operationId":"` + op1.ID + `"}]}}`)
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/worker-alias/assignment", bytes.NewReader(body)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/worker-alias/assignment", bytes.NewReader(body)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("assignment update = %d %s", rec.Code, rec.Body.String())
 	}
@@ -84,19 +84,19 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 		t.Fatalf("thread list projection = %d %s", listed.Code, listed.Body.String())
 	}
 	detail := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(detail, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/worker-alias", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(detail, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/worker-alias", nil))
 	if detail.Code != http.StatusOK || !bytes.Contains(detail.Body.Bytes(), []byte(`"assignmentRole":"auditor"`)) {
 		t.Fatalf("thread detail projection = %d %s", detail.Code, detail.Body.String())
 	}
 	second := updated.Assignment.EventID
 	// Same action and content is one immutable evidence event.
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewReader(body)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewReader(body)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("assignment retry = %d %s", rec.Code, rec.Body.String())
 	}
 	conflict := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(conflict, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewBufferString(`{"clientActionId":"assign-audit","assignment":{"assignmentRole":"auditor","focus":"Different content","auditTargets":[]}}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(conflict, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewBufferString(`{"clientActionId":"assign-audit","assignment":{"assignmentRole":"auditor","focus":"Different content","auditTargets":[]}}`)))
 	if conflict.Code != http.StatusConflict {
 		t.Fatalf("assignment action conflict = %d %s", conflict.Code, conflict.Body.String())
 	}
@@ -106,7 +106,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	// A new action is an intentional new immutable event, even for identical content.
 	reassert := httptest.NewRecorder()
 	reassertBody := bytes.Replace(body, []byte(`"assign-audit"`), []byte(`"reassert-audit"`), 1)
-	applicationHandler(s).ServeHTTP(reassert, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewReader(reassertBody)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(reassert, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewReader(reassertBody)))
 	if reassert.Code != http.StatusOK {
 		t.Fatalf("reassert = %d %s", reassert.Code, reassert.Body.String())
 	}
@@ -118,7 +118,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 		t.Fatalf("new assignment action reused event %d", second)
 	}
 	oldRetry := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(oldRetry, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewReader(body)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(oldRetry, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewReader(body)))
 	var oldRetryResult struct {
 		AssignmentEventID int64 `json:"assignmentEventId"`
 	}
@@ -155,7 +155,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	}
 
 	clear := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(clear, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewBufferString(`{"clientActionId":"clear-audit","assignment":null}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(clear, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+worker.ID+"/assignment", bytes.NewBufferString(`{"clientActionId":"clear-audit","assignment":null}`)))
 	if clear.Code != http.StatusOK {
 		t.Fatalf("clear = %d %s", clear.Code, clear.Body.String())
 	}
@@ -267,7 +267,7 @@ func TestOrchestrationAssignmentRelationshipReparentsWithoutChangingInvocationLi
 
 	update := httptest.NewRecorder()
 	body := `{"clientActionId":"move-child","assignment":{"assignmentRole":"worker","focus":"Implement the change","relatedHostedThreadId":"new-parent","auditTargets":[]}}`
-	applicationHandler(s).ServeHTTP(update, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(body)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(update, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(body)))
 	if update.Code != http.StatusOK {
 		t.Fatalf("relationship update = %d %s", update.Code, update.Body.String())
 	}
@@ -281,31 +281,31 @@ func TestOrchestrationAssignmentRelationshipReparentsWithoutChangingInvocationLi
 	}
 
 	self := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(self, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(`{"clientActionId":"self","assignment":{"assignmentRole":"worker","focus":"x","relatedHostedThreadId":"child","auditTargets":[]}}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(self, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(`{"clientActionId":"self","assignment":{"assignmentRole":"worker","focus":"x","relatedHostedThreadId":"child","auditTargets":[]}}`)))
 	if self.Code != http.StatusBadRequest || !bytes.Contains(self.Body.Bytes(), []byte("same thread")) {
 		t.Fatalf("self relationship = %d %s", self.Code, self.Body.String())
 	}
 
 	cycle := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(cycle, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/new-parent/assignment", bytes.NewBufferString(`{"clientActionId":"cycle","assignment":{"assignmentRole":"auditor","focus":"review","relatedHostedThreadId":"child","auditTargets":[{"hostedThreadId":"child"}]}}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(cycle, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/new-parent/assignment", bytes.NewBufferString(`{"clientActionId":"cycle","assignment":{"assignmentRole":"auditor","focus":"review","relatedHostedThreadId":"child","auditTargets":[{"hostedThreadId":"child"}]}}`)))
 	if cycle.Code != http.StatusBadRequest || !bytes.Contains(cycle.Body.Bytes(), []byte("cycle")) {
 		t.Fatalf("cycle relationship = %d %s", cycle.Code, cycle.Body.String())
 	}
 
 	moveBack := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(moveBack, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(`{"clientActionId":"move-back","assignment":{"assignmentRole":"worker","focus":"back","relatedHostedThreadId":"original-parent","auditTargets":[]}}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(moveBack, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(`{"clientActionId":"move-back","assignment":{"assignmentRole":"worker","focus":"back","relatedHostedThreadId":"original-parent","auditTargets":[]}}`)))
 	if moveBack.Code != http.StatusOK {
 		t.Fatalf("move back = %d %s", moveBack.Code, moveBack.Body.String())
 	}
 	parentUnderChild := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(parentUnderChild, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/new-parent/assignment", bytes.NewBufferString(`{"clientActionId":"parent-under-child","assignment":{"assignmentRole":"auditor","focus":"review","relatedHostedThreadId":"child","auditTargets":[{"hostedThreadId":"child"}]}}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(parentUnderChild, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/new-parent/assignment", bytes.NewBufferString(`{"clientActionId":"parent-under-child","assignment":{"assignmentRole":"auditor","focus":"review","relatedHostedThreadId":"child","auditTargets":[{"hostedThreadId":"child"}]}}`)))
 	if parentUnderChild.Code != http.StatusOK {
 		t.Fatalf("parent under child = %d %s", parentUnderChild.Code, parentUnderChild.Body.String())
 	}
 	// Retrying old evidence does not apply it again. Although A→B would now be
 	// a cycle, the original action remains a successful idempotent retry.
 	retry := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(retry, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(body)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(retry, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/child/assignment", bytes.NewBufferString(body)))
 	if retry.Code != http.StatusOK {
 		t.Fatalf("historical relationship retry = %d %s", retry.Code, retry.Body.String())
 	}
@@ -344,7 +344,7 @@ func TestAssignmentResolutionFailuresAreVisible(t *testing.T) {
 		t.Fatalf("operation assignment failure hidden: %#v", view)
 	}
 	failed := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(failed, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/worker/assignment", bytes.NewBufferString(`{"clientActionId":"broken-store","assignment":{"assignmentRole":"worker","focus":"x","auditTargets":[]}}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(failed, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/worker/assignment", bytes.NewBufferString(`{"clientActionId":"broken-store","assignment":{"assignmentRole":"worker","focus":"x","auditTargets":[]}}`)))
 	if failed.Code != http.StatusInternalServerError {
 		t.Fatalf("store failure status = %d %s", failed.Code, failed.Body.String())
 	}

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/features/feedback"
 	"github.com/dkroshow/nano/internal/features/heartbeat"
 	"github.com/dkroshow/nano/internal/features/mail"
@@ -28,7 +27,7 @@ func TestFreshStoresKeepSQLiteFilesPrivate(t *testing.T) {
 			case "history":
 				store, err = history.Open(path)
 			case "threads":
-				store, err = stateopen.OpenMetadata(path)
+				store, err = fixtureOpenMetadata(path)
 			case "mail":
 				store, _, err = mail.OpenStore(path, "")
 			case "heartbeat":

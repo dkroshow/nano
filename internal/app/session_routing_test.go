@@ -111,7 +111,7 @@ func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
 	commandDone := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		rec := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost,
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost,
 			"/api/sessions/sess-fast-route/turn-options", strings.NewReader(`{"serviceTier":"priority"}`)))
 		commandDone <- rec
 	}()

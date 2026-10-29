@@ -159,7 +159,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 
 	// The public API is presentation state and must expose the observed fold.
 	api := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(api, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/"+hostedID+"/metadata", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(api, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/"+hostedID+"/metadata", nil))
 	if api.Code != http.StatusOK {
 		t.Fatalf("metadata status = %d: %s", api.Code, api.Body.String())
 	}

@@ -567,7 +567,7 @@ func TestAPIDiscoveryIsGetOnly(t *testing.T) {
 		"openapi":      "/api/v1/openapi.json",
 	} {
 		rec := httptest.NewRecorder()
-		applicationHandler(&server{}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		applicationHandler(fixtureOwners(&server{})).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("%s POST status = %d", name, rec.Code)
 		}

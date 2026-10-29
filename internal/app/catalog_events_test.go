@@ -70,7 +70,7 @@ func TestCatalogEventsStreamDeliversVersionOnConnectAndBump(t *testing.T) {
 func TestCatalogEventsStreamRejectsNonGetAndUnavailable(t *testing.T) {
 	fake := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: newCatalogHub(), version: 1}
 	rec := httptest.NewRecorder()
-	applicationHandler(&server{catalog: fake}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/thread-index/events", nil))
+	applicationHandler(fixtureOwners(&server{catalog: fake})).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/thread-index/events", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST status = %d", rec.Code)
 	}

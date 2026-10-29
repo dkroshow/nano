@@ -17,7 +17,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	"github.com/dkroshow/nano/internal/edge/stateopen"
+
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	state "github.com/dkroshow/nano/internal/state/store"
@@ -155,7 +155,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 			ctx := context.Background()
 			dir := t.TempDir()
 			controlPath := filepath.Join(dir, "control.sqlite")
-			control, err := stateopen.OpenMetadata(controlPath)
+			control, err := fixtureOpenMetadata(controlPath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -220,7 +220,7 @@ func TestThreadRuntimeKeepsCanonicalFactsAfterLegacyChanges(t *testing.T) {
 
 func TestThreadRuntimeMigrationUsesOneCanonicalDatabase(t *testing.T) {
 	dir := t.TempDir()
-	control, err := stateopen.OpenMetadata(filepath.Join(dir, "control.sqlite"))
+	control, err := fixtureOpenMetadata(filepath.Join(dir, "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

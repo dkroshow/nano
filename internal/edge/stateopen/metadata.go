@@ -15,8 +15,8 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-// OpenMetadata opens and migrates the canonical writer and its bounded read pool.
-func OpenMetadata(path string) (*hostedstore.MetadataStore, error) {
+// openMetadata opens and migrates the canonical writer and its bounded read pool.
+func openMetadata(path string) (*hostedstore.MetadataStore, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve control metadata path: %w", err)

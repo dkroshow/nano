@@ -302,7 +302,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 
 	nudges := s.runtimeEvents.Subscribe()
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/worker/assignment", bytes.NewBufferString(`{"clientActionId":"clear-assignment","assignment":null}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/worker/assignment", bytes.NewBufferString(`{"clientActionId":"clear-assignment","assignment":null}`)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("clear assignment = %d %s", rec.Code, rec.Body.String())
 	}
@@ -352,7 +352,7 @@ func TestCatalogDetailNotFoundAndEmptySources(t *testing.T) {
 	fake := &fakeThreadCatalog{loadErr: threadindex.ErrCatalogThreadNotFound}
 	s := &server{catalog: fake}
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/missing", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/missing", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -361,7 +361,7 @@ func TestCatalogDetailNotFoundAndEmptySources(t *testing.T) {
 	fake.loadErr = nil
 	fake.thread = sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "claude", NativeID: "native-1", Kind: "main"}}
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -506,7 +506,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 		t.Helper()
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/sessions/session-1/name", strings.NewReader(`{"name":`+strconv.Quote(name)+`}`))
-		applicationHandler(s).ServeHTTP(rec, req)
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("rename %q status = %d, body = %s", name, rec.Code, rec.Body.String())
 		}
@@ -582,7 +582,7 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/sessions/session-1/name", strings.NewReader(`{"name":"nano api fable"}`))
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("provisional rename status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -1117,7 +1117,7 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 
 	for _, reference := range []string{"native-1", "nat"} {
 		rec := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/"+reference, nil))
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/"+reference, nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("detail %q status = %d body %q", reference, rec.Code, rec.Body.String())
 		}
@@ -1138,7 +1138,7 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/n", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/n", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("ambiguous detail status = %d", rec.Code)
 	}
@@ -1148,7 +1148,7 @@ func TestThreadDetailAndTranscriptResolveReferences(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nowhere", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nowhere", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown detail status = %d", rec.Code)
 	}

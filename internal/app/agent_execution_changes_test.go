@@ -58,7 +58,7 @@ func TestTurnOperationChangesRejectsUnknownInvoker(t *testing.T) {
 	store := newTestAgentExecutionStore(t, "run-1")
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store}
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
 		"/api/v1/turn-operations/changes?invoker=nobody", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("unknown invoker = %d, want 400", rec.Code)

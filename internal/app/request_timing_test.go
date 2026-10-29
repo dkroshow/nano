@@ -46,7 +46,7 @@ func timingServer(t *testing.T, at time.Time, extra func(s *server, mux *http.Se
 	s := &server{Registry: newSessionRegistry(), hostMonitor: observability.NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
 	s.requests = observability.NewRequestTimes(func() time.Time { return clock.Load().(time.Time) })
 	mux := http.NewServeMux()
-	mux.Handle("/", applicationHandler(s))
+	mux.Handle("/", applicationHandler(fixtureOwners(s)))
 	if extra != nil {
 		extra(s, mux)
 	}

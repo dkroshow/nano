@@ -1,4 +1,4 @@
-package app
+package stateopen
 
 import (
 	"context"
@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dkroshow/nano/internal/edge/stateopen"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	state "github.com/dkroshow/nano/internal/state/store"
 )
 
 func TestControlMetadataReadPoolIsBoundedAndReadOnly(t *testing.T) {
-	store := newTestControlMetadata(t)
+	store := testMetadata(t)
 	if store.ReadPool() == nil {
 		t.Fatal("canonical metadata read pool is unavailable")
 	}
@@ -36,7 +36,7 @@ func TestControlMetadataReadPoolIsBoundedAndReadOnly(t *testing.T) {
 }
 
 func TestControlMetadataMigratesInvokerNotificationFlagFromVersionSix(t *testing.T) {
-	store := newTestControlMetadata(t)
+	store := testMetadata(t)
 	if _, err := store.CanonicalDatabase().Exec(`DROP INDEX hosted_threads_notify_invoker`); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestControlMetadataMigratesInvokerNotificationFlagFromVersionSix(t *testing
 
 func TestControlMetadataMigrationAddsBrowserDuplicateIncidentsFromVersion17(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := stateopen.OpenMetadata(path)
+	store, err := openMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestControlMetadataMigrationAddsBrowserDuplicateIncidentsFromVersion17(t *t
 		t.Fatal(err)
 	}
 
-	store, err = stateopen.OpenMetadata(path)
+	store, err = openMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,14 +114,14 @@ func TestControlMetadataMigrationAddsBrowserDuplicateIncidentsFromVersion17(t *t
 	if err := store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='browser_duplicate_incidents'`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	if version != controlSchemaVersion || tables != 1 {
-		t.Fatalf("migration version=%d tables=%d, want %d and 1", version, tables, controlSchemaVersion)
+	if version != state.LegacySchemaVersion || tables != 1 {
+		t.Fatalf("migration version=%d tables=%d, want %d and 1", version, tables, state.LegacySchemaVersion)
 	}
 }
 
 func TestControlMetadataRefusesVersionThreeWithoutDroppingExecutionState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := stateopen.OpenMetadata(path)
+	store, err := openMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestControlMetadataRefusesVersionThreeWithoutDroppingExecutionState(t *test
 		t.Fatal(err)
 	}
 
-	if reopened, err := stateopen.OpenMetadata(path); err == nil {
+	if reopened, err := openMetadata(path); err == nil {
 		reopened.Close()
 		t.Fatal("version 3 migration succeeded without a lossless execution-state importer")
 	} else if !strings.Contains(err.Error(), "schema 3") {
@@ -161,7 +161,7 @@ func TestControlMetadataRefusesVersionThreeWithoutDroppingExecutionState(t *test
 
 func TestControlSchemaVersionSevenMigratesNotificationState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := stateopen.OpenMetadata(path)
+	store, err := openMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestControlSchemaVersionSevenMigratesNotificationState(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = stateopen.OpenMetadata(path)
+	store, err = openMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,4 +209,14 @@ func TestControlSchemaVersionSevenMigratesNotificationState(t *testing.T) {
 			t.Fatalf("migration missing %s.%s", check.table, check.column)
 		}
 	}
+}
+
+func testMetadata(t *testing.T) *hostedstore.MetadataStore {
+	t.Helper()
+	store, err := openMetadata(filepath.Join(t.TempDir(), "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return store
 }

@@ -19,7 +19,7 @@ func TestExplicitCloseSelfPausesHeartbeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/close", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/close", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("close = %d %s", recorder.Code, recorder.Body.String())
 	}

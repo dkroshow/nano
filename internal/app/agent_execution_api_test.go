@@ -63,7 +63,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/agent-sessions/"+clientID+"/turns", bytes.NewReader(body))
-			applicationHandler(s).ServeHTTP(rec, req)
+			applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 			if rec.Code != http.StatusAccepted {
 				t.Fatalf("submit status = %d, body %s", rec.Code, rec.Body.String())
 			}
@@ -80,7 +80,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			// the provider a second time.
 			rec = httptest.NewRecorder()
 			req = httptest.NewRequest(http.MethodPost, "/api/v1/agent-sessions/"+clientID+"/turns", bytes.NewReader(body))
-			applicationHandler(s).ServeHTTP(rec, req)
+			applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("duplicate status = %d, body %s", rec.Code, rec.Body.String())
 			}
@@ -92,7 +92,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 
 			rec = httptest.NewRecorder()
 			req = httptest.NewRequest(http.MethodGet, "/api/v1/turn-operations/"+submitted.ID, nil)
-			applicationHandler(s).ServeHTTP(rec, req)
+			applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("operation status = %d, body %s", rec.Code, rec.Body.String())
 			}
@@ -103,7 +103,7 @@ func TestAgentTurnAPIIsProviderNeutralAndIdempotent(t *testing.T) {
 			}
 
 			cannotCancel := httptest.NewRecorder()
-			applicationHandler(s).ServeHTTP(cannotCancel, httptest.NewRequest(http.MethodDelete,
+			applicationHandler(fixtureOwners(s)).ServeHTTP(cannotCancel, httptest.NewRequest(http.MethodDelete,
 				"/api/v1/turn-operations/"+submitted.ID, nil))
 			if cannotCancel.Code != http.StatusConflict {
 				t.Fatalf("running operation cancel status = %d, body %s", cannotCancel.Code, cannotCancel.Body.String())
@@ -149,7 +149,7 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent-sessions/codex-caller-session/turns", bytes.NewReader(body))
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted && rec.Code != http.StatusOK {
 		t.Fatalf("submit status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -354,7 +354,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	submitted := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(submitted, httptest.NewRequest(http.MethodPost,
+	applicationHandler(fixtureOwners(s)).ServeHTTP(submitted, httptest.NewRequest(http.MethodPost,
 		"/api/v1/hosted-threads/"+summary.ID+"/turns",
 		bytes.NewReader(body)))
 	if submitted.Code != http.StatusAccepted {
@@ -444,7 +444,7 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	// The legacy browser/New Window control path accepts the API-created thread
 	// because creation origin is not represented in the runtime session type.
 	turn := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(turn, httptest.NewRequest(http.MethodPost,
+	applicationHandler(fixtureOwners(s)).ServeHTTP(turn, httptest.NewRequest(http.MethodPost,
 		"/api/sessions/"+sess.ID()+"/turn",
 		bytes.NewReader([]byte(`{"text":"ordinary follow up","clientActionId":"browser-action-1"}`))))
 	if turn.Code != http.StatusOK {
@@ -480,7 +480,7 @@ func TestHostedThreadConversationDefaultsToMessagesAndResolvesCallerAlias(t *tes
 	read := func(path string) (liveview.Snapshot, int) {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		var snapshot liveview.Snapshot
 		if rec.Code == http.StatusOK {
 			if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
@@ -535,7 +535,7 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 	s.defaults.ClaudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agent-sessions/caller-session", nil)
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -577,7 +577,7 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	s.defaults.ClaudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil)
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -614,7 +614,7 @@ func TestLifecycleVerbsKeepSessionAndOperationsAgreeing(t *testing.T) {
 
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: newTestStore(t)}
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/close", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -653,14 +653,14 @@ func TestAgentSessionDetach(t *testing.T) {
 
 	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/detach", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/detach", nil))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("detach with an open operation = %d, want 409", rec.Code)
 	}
 
 	_ = store.MarkSessionTurns(hosted.ID, agentTurnCompleted, nil)
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/detach", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/caller-session/detach", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("detach status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -1450,7 +1450,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 	// attachments, so callers do not need a process-local session id.
 	s.Registry = newSessionRegistry()
 	canceled := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(canceled, httptest.NewRequest(http.MethodDelete, "/api/v1/turn-operations/"+second.ID, nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(canceled, httptest.NewRequest(http.MethodDelete, "/api/v1/turn-operations/"+second.ID, nil))
 	if canceled.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, body %s", canceled.Code, canceled.Body.String())
 	}
@@ -1473,7 +1473,7 @@ func submitHostedTurn(t *testing.T, s *server, threadRef, actionID, prompt strin
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodPost,
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost,
 		"/api/v1/hosted-threads/"+threadRef+"/turns", bytes.NewReader(encoded)))
 	return rec
 }
@@ -1535,7 +1535,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 	put := func(ref, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+ref+"/presentation", strings.NewReader(body))
-		applicationHandler(s).ServeHTTP(rec, req)
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 		return rec
 	}
 
@@ -1578,7 +1578,7 @@ func TestHostedThreadPresentationEndpoint(t *testing.T) {
 		t.Fatal("non-empty tail accepted")
 	}
 	notFound := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(notFound, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/nht_missing/presentation", strings.NewReader(`{"presentationMode":"shared"}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(notFound, httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/nht_missing/presentation", strings.NewReader(`{"presentationMode":"shared"}`)))
 	if notFound.Code != http.StatusNotFound {
 		t.Fatalf("unknown ref = %d", notFound.Code)
 	}
@@ -1601,7 +1601,7 @@ func TestHostedThreadSidebarPlacementEndpoint(t *testing.T) {
 	put := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/hosted-threads/"+hosted.ID+"/sidebar-placement", strings.NewReader(body))
-		applicationHandler(s).ServeHTTP(rec, req)
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 		return rec
 	}
 	if rec := put(`{}`); rec.Code != http.StatusBadRequest {
@@ -1643,7 +1643,7 @@ func TestHostedThreadSubscriptionsEndpoint(t *testing.T) {
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
 	request := func(method, ref, suffix, body string) *httptest.ResponseRecorder {
 		out := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(out, httptest.NewRequest(method, "/api/v1/hosted-threads/"+ref+suffix, strings.NewReader(body)))
+		applicationHandler(fixtureOwners(s)).ServeHTTP(out, httptest.NewRequest(method, "/api/v1/hosted-threads/"+ref+suffix, strings.NewReader(body)))
 		return out
 	}
 	revisionAndAudit := func() (int64, int) {

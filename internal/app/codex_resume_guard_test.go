@@ -149,7 +149,7 @@ func waitSessionStatus(s *server, sessionID string) string {
 func getSessionState(t *testing.T, s *server, sessionID string) map[string]json.RawMessage {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/"+sessionID+"/state", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/"+sessionID+"/state", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("state status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -260,7 +260,7 @@ func TestResumeHappyPathAndCloseDetaches(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -436,7 +436,7 @@ func TestExitedCodexSessionRejectsTurn(t *testing.T) {
 	waitForSessionStatus(t, s, sum.ID, sessionStatusExited)
 
 	turn := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(turn, httptest.NewRequest(http.MethodPost,
+	applicationHandler(fixtureOwners(s)).ServeHTTP(turn, httptest.NewRequest(http.MethodPost,
 		"/api/sessions/"+sum.ID+"/turn", strings.NewReader(`{"text":"must not run"}`)))
 	if turn.Code != http.StatusConflict {
 		t.Fatalf("turn status = %d, body = %s, want 409", turn.Code, turn.Body.String())
@@ -499,7 +499,7 @@ func waitForWireMethod(t *testing.T, s *server, sessionID, method string) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		rec := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/"+sessionID+"/events/page?beforeSeq=999999", nil))
+		applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/"+sessionID+"/events/page?beforeSeq=999999", nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("events page status = %d, body = %s", rec.Code, rec.Body.String())
 		}
@@ -742,7 +742,7 @@ func TestCloseDuringStartHandshakeLeavesNoZombieRouting(t *testing.T) {
 	sum := decodeSummary(t, postStart(t, s))
 
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -779,7 +779,7 @@ func TestCloseDuringResumeHandshakeLeavesNoZombieRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sum.ID, nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body = %s", rec.Code, rec.Body.String())
 	}

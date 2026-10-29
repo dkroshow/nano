@@ -90,7 +90,7 @@ func resolveReference(t *testing.T, s *server, reference string) (int, threadRef
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/thread-references/"+reference, nil)
-	applicationHandler(s).ServeHTTP(rec, req)
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, req)
 	var body threadReferenceResponse
 	if rec.Code == http.StatusOK && json.Unmarshal(rec.Body.Bytes(), &body) != nil {
 		t.Fatalf("invalid response %q", rec.Body.String())

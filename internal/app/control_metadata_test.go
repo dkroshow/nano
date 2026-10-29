@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/edge/stateopen"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -48,7 +47,7 @@ func TestHostedMetadataAPIReadsCanonicalCurrentState(t *testing.T) {
 	}
 	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: store}
 	rec := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("metadata status = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -56,12 +55,12 @@ func TestHostedMetadataAPIReadsCanonicalCurrentState(t *testing.T) {
 		t.Fatalf("metadata body = %s", body)
 	}
 	changes := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(changes, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata/changes?afterRevision=0", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(changes, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata/changes?afterRevision=0", nil))
 	if changes.Code != http.StatusOK || !containsAll(changes.Body.String(), `"hostedThreadId":"nht_api"`, `"serviceTier"`) {
 		t.Fatalf("metadata changes = %d %s", changes.Code, changes.Body.String())
 	}
 	events := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(events, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata/events?after=0&limit=1", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(events, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_api/metadata/events?after=0&limit=1", nil))
 	if events.Code != http.StatusOK || !containsAll(events.Body.String(), `"events"`, `"nextCursor"`, `"serviceTier"`) {
 		t.Fatalf("metadata events = %d %s", events.Code, events.Body.String())
 	}
@@ -79,7 +78,7 @@ func TestHostedMetadataAPIBaseMissingCanonicalRecordReturnsNotFound(t *testing.T
 	}
 	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: metadata}
 	rec := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_missing_metadata/metadata", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_missing_metadata/metadata", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("base metadata missing canonical row = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -112,7 +111,7 @@ func TestHostedMetadataEventsAPIUsesPublicFilteredCursorContract(t *testing.T) {
 	}
 	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: store}
 	rec := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_event_api/metadata/events?after=0&limit=1&field=serviceTier&freshness=live", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_event_api/metadata/events?after=0&limit=1&field=serviceTier&freshness=live", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("events status = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -133,12 +132,12 @@ func TestHostedMetadataEventsAPIUsesPublicFilteredCursorContract(t *testing.T) {
 		t.Fatalf("public event page = %+v", page)
 	}
 	bad := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_event_api/metadata/events?field=not-a-field", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_event_api/metadata/events?field=not-a-field", nil))
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("invalid filter = %d %s", bad.Code, bad.Body.String())
 	}
 	missing := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_missing/metadata/events", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_missing/metadata/events", nil))
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("unknown events = %d %s", missing.Code, missing.Body.String())
 	}
@@ -155,7 +154,7 @@ func TestHostedMetadataAPIDegradedModeDoesNotServePartialCurrent(t *testing.T) {
 	}
 	server := &server{Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: store, controlMetadataErr: "legacy import checksum failed"}
 	rec := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_metadata_degraded/metadata", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_metadata_degraded/metadata", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "legacy import checksum failed") {
 		t.Fatalf("degraded metadata response = %d %s", rec.Code, rec.Body.String())
 	}
@@ -164,7 +163,7 @@ func TestHostedMetadataAPIDegradedModeDoesNotServePartialCurrent(t *testing.T) {
 func TestExecutionControlDegradedModeRejectsHostedMutations(t *testing.T) {
 	server := &server{Registry: newSessionRegistry(), executionControlErr: "control.sqlite is corrupt"}
 	rec := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_unavailable", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_unavailable", nil))
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "control.sqlite is corrupt") {
 		t.Fatalf("execution degraded response = %d %s", rec.Code, rec.Body.String())
 	}
@@ -308,17 +307,17 @@ func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
 	}
 	server := &server{Registry: newSessionRegistry(), agentExecutions: exec, controlMetadata: store}
 	good := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(good, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=2", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(good, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=2", nil))
 	if good.Code != http.StatusOK || !containsAll(good.Body.String(), `"currentRevision":3`, `"refetchRequired":false`) {
 		t.Fatalf("incremental hints %d %s", good.Code, good.Body.String())
 	}
 	bad := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=nope", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=nope", nil))
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("malformed cursor=%d", bad.Code)
 	}
 	unknown := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(unknown, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_unknown/metadata/changes?afterRevision=0", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(unknown, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_unknown/metadata/changes?afterRevision=0", nil))
 	if unknown.Code != http.StatusNotFound {
 		t.Fatalf("unknown hint thread=%d", unknown.Code)
 	}
@@ -326,20 +325,20 @@ func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
 	if err := store.CanonicalDatabase().QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&databasePath); err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := stateopen.OpenMetadata(databasePath)
+	restarted, err := fixtureOpenMetadata(databasePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = restarted.Close() })
 	server.controlMetadata = restarted
 	gap := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(gap, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=0", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(gap, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=0", nil))
 	if gap.Code != http.StatusOK || !strings.Contains(gap.Body.String(), `"refetchRequired":true`) {
 		t.Fatalf("restart gap=%d %s", gap.Code, gap.Body.String())
 	}
 	server.controlMetadataErr = "degraded"
 	degraded := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(degraded, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=0", nil))
+	applicationHandler(fixtureOwners(server)).ServeHTTP(degraded, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_hint/metadata/changes?afterRevision=0", nil))
 	if degraded.Code != http.StatusServiceUnavailable {
 		t.Fatalf("degraded hints=%d", degraded.Code)
 	}
@@ -406,7 +405,7 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 	s := &server{Registry: newSessionRegistry(), agentExecutions: exec, controlMetadata: store}
 	before, _ := store.View("nht_attachment_api")
 	rec := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_attachment_api/metadata", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_attachment_api/metadata", nil))
 	if rec.Code != http.StatusOK || !containsAll(rec.Body.String(), `"attachment":{"state":"detached","provenance":"execution_record"`) {
 		t.Fatalf("detached metadata = %d %s", rec.Code, rec.Body.String())
 	}
@@ -419,7 +418,7 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 
 	s.RegisterSession(live)
 	rec = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_attachment_api/metadata", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads/nht_attachment_api/metadata", nil))
 	if rec.Code != http.StatusOK || !containsAll(rec.Body.String(), `"state":"starting"`, `"provenance":"live_session"`) {
 		t.Fatalf("starting metadata = %d %s", rec.Code, rec.Body.String())
 	}

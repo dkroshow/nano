@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
-	"github.com/dkroshow/nano/internal/edge/stateopen"
+
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
@@ -21,7 +21,7 @@ import (
 func turnMigrationFixture(t *testing.T) (*hostedstore.MetadataStore, prompts.LegacyTurnPaths, []prompts.QueuedTurn, []prompts.SendAttempt) {
 	t.Helper()
 	dir := t.TempDir()
-	control, err := stateopen.OpenMetadata(filepath.Join(dir, "control-copy.sqlite"))
+	control, err := fixtureOpenMetadata(filepath.Join(dir, "control-copy.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestThreadsStorePublicationKeepsOriginalUntilAllRecordsReconcile(t *testing
 		t.Fatalf("canonical mode: %v %v", info, err)
 	}
 	// Metadata's application wrapper must accept the migrated schema unchanged.
-	view, err := stateopen.OpenMetadata(paths.Destination)
+	view, err := fixtureOpenMetadata(paths.Destination)
 	if err != nil {
 		t.Fatal(err)
 	}

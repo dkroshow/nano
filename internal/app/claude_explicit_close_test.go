@@ -37,7 +37,7 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 				query.Del("expectedShimSessionId")
 			}
 			w := httptest.NewRecorder()
-			applicationHandler(s).ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?"+query.Encode(), nil))
+			applicationHandler(fixtureOwners(s)).ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?"+query.Encode(), nil))
 			_, retained := store.Get("claude", "native-1")
 			if scenario == "forget" || scenario == "missing_identity" {
 				if w.Code != 200 || retained || !strings.Contains(w.Body.String(), `"processState":"unknown"`) {
@@ -74,7 +74,7 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 			s.defaults.ClaudeShimWS = shim.WSURL()
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?provider=claude", nil)
-			applicationHandler(s).ServeHTTP(w, r)
+			applicationHandler(fixtureOwners(s)).ServeHTTP(w, r)
 			_, retained := store.Get("claude", "native-1")
 			if outcome == "success" {
 				if w.Code != 200 || retained {
@@ -188,7 +188,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 				case "attachment":
 					method, path = http.MethodDelete, "/api/attachments/native-1?provider=claude"
 				}
-				applicationHandler(s).ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+				applicationHandler(fixtureOwners(s)).ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
 				return w
 			}
 			w := request()
@@ -241,7 +241,7 @@ func TestClaudeExplicitConcurrentClosesSendOneStop(t *testing.T) {
 	results := make(chan int, 2)
 	request := func() {
 		w := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/attachments/cs_provisional?provider=claude", nil))
+		applicationHandler(fixtureOwners(s)).ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/attachments/cs_provisional?provider=claude", nil))
 		results <- w.Code
 	}
 	go request()

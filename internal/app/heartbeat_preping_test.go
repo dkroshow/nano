@@ -92,7 +92,7 @@ func TestHeartbeatScriptAPIIsReadOnly(t *testing.T) {
 		httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/scripts/"+script.ID+"/revisions", bytes.NewBufferString(`{}`)),
 	} {
 		recorder := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(recorder, request)
+		applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, request)
 		if recorder.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("%s = %d %s", request.URL.Path, recorder.Code, recorder.Body.String())
 		}

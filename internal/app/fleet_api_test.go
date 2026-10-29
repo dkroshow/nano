@@ -269,7 +269,7 @@ func TestFleetChangesUnavailableWithoutWatcher(t *testing.T) {
 
 	s := &server{}
 	recorder = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/fleet/changes", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/fleet/changes", nil))
 	if recorder.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST status = %d", recorder.Code)
 	}

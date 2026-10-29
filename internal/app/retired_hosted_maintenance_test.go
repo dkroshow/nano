@@ -13,7 +13,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
-	"github.com/dkroshow/nano/internal/edge/stateopen"
+
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	state "github.com/dkroshow/nano/internal/state/store"
 	"github.com/dkroshow/nano/internal/threads"
@@ -29,7 +29,7 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 	t.Helper()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "nano_threads.sqlite")
-	control, err := stateopen.OpenMetadata(path)
+	control, err := fixtureOpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}

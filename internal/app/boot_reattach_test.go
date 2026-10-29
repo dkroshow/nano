@@ -1349,7 +1349,7 @@ func TestOpeningAStartingThreadRegistersItFirst(t *testing.T) {
 	daemon.SetReplyDelay("thread/resume", 10*time.Second)
 	updates := s.runtimeEvents.Subscribe()
 	defer s.runtimeEvents.Unsubscribe(updates)
-	handler := applicationHandler(s)
+	handler := applicationHandler(fixtureOwners(s))
 	prioritize := func() string {
 		t.Helper()
 		recorder := httptest.NewRecorder()

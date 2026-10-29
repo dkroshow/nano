@@ -1,4 +1,4 @@
-package app
+package statestore
 
 import (
 	"context"
@@ -8,21 +8,29 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
-	state "github.com/dkroshow/nano/internal/state/store"
+	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
 func TestThreadsSizeWatchReportsGrowthAndStops(t *testing.T) {
-	db, path, err := testTurnDatabase(t, filepath.Join(t.TempDir(), "fixture"))
+	path := filepath.Join(t.TempDir(), "nano_threads.sqlite")
+	_, err := PrepareStore(context.Background(), StorePaths{Destination: path, BackupRoot: filepath.Join(t.TempDir(), "backups")}, testMigrations())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := statedb.Open(context.Background(), path)
+	if err == nil {
+		t.Cleanup(func() { db.Close() })
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	rows := make(chan state.SizeReport, 8)
+	rows := make(chan SizeReport, 8)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		state.WatchSize(ctx, db, path, 10*time.Millisecond, func(size state.SizeReport, err error) {
+		watchSize(ctx, db, path, 10*time.Millisecond, func(size SizeReport, err error) {
 			if err == nil {
 				select {
 				case rows <- size:
@@ -31,7 +39,7 @@ func TestThreadsSizeWatchReportsGrowthAndStops(t *testing.T) {
 			}
 		})
 	}()
-	var before state.SizeReport
+	var before SizeReport
 	select {
 	case before = <-rows:
 	case <-time.After(time.Second):

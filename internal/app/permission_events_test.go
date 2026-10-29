@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dkroshow/nano/internal/edge/stateopen"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
@@ -113,7 +112,7 @@ func TestPermissionEventsAPIIsPagedByHostedThread(t *testing.T) {
 	}
 	server := &server{Registry: newSessionRegistry(), controlMetadata: store, agentExecutions: executions}
 	rec := httptest.NewRecorder()
-	applicationHandler(server).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
+	applicationHandler(fixtureOwners(server)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
 		"/api/v1/hosted-threads/"+sess.HostedThreadID()+"/permission-events?limit=1", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"eventKind":"requested"`) || !strings.Contains(rec.Body.String(), `"nextCursor":`) {
 		t.Fatalf("permission events API = %d %s", rec.Code, rec.Body.String())
@@ -122,7 +121,7 @@ func TestPermissionEventsAPIIsPagedByHostedThread(t *testing.T) {
 
 func TestControlSchemaTenMigratesPermissionAuditTable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	store, err := stateopen.OpenMetadata(path)
+	store, err := fixtureOpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +131,7 @@ func TestControlSchemaTenMigratesPermissionAuditTable(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = stateopen.OpenMetadata(path)
+	store, err = fixtureOpenMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}

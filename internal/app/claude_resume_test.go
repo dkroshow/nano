@@ -381,7 +381,7 @@ func TestClaudeHistoricalHostedResumeCompletesNewPrompt(t *testing.T) {
 	}
 
 	turn := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(turn, httptest.NewRequest(http.MethodPost, "/api/sessions/"+sum.ID+"/turn", strings.NewReader(`{"text":"`+prompt+`","clientActionId":"historical-resume-prompt"}`)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(turn, httptest.NewRequest(http.MethodPost, "/api/sessions/"+sum.ID+"/turn", strings.NewReader(`{"text":"`+prompt+`","clientActionId":"historical-resume-prompt"}`)))
 	if turn.Code != http.StatusOK {
 		t.Fatalf("turn status = %d, body = %s", turn.Code, turn.Body.String())
 	}

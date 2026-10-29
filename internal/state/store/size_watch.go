@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// WatchSize reports database growth until cancellation.
-func WatchSize(ctx context.Context, db *sql.DB, path string, interval time.Duration, report func(SizeReport, error)) {
+// watchSize reports database growth until cancellation.
+func watchSize(ctx context.Context, db *sql.DB, path string, interval time.Duration, report func(SizeReport, error)) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -27,7 +27,7 @@ func WatchSize(ctx context.Context, db *sql.DB, path string, interval time.Durat
 
 // StartSizeWatch reports canonical file sizes once per hour.
 func StartSizeWatch(db *sql.DB, path string) {
-	go WatchSize(context.Background(), db, path, time.Hour, func(size SizeReport, err error) {
+	go watchSize(context.Background(), db, path, time.Hour, func(size SizeReport, err error) {
 		if err != nil {
 			log.Printf("threads size watch: %v", err)
 			return

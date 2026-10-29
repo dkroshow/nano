@@ -501,7 +501,7 @@ func TestThreadMessagesRejectsInvalidQueryAndSurfacesBackendErrors(t *testing.T)
 	assertCatalogErrorCode(t, recorder, "catalog_unavailable")
 
 	recorder = httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/threads/nth_one/messages", nil))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/threads/nth_one/messages", nil))
 	if recorder.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST status = %d", recorder.Code)
 	}

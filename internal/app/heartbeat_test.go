@@ -259,7 +259,7 @@ func TestAnyHostedAgentCanPauseAndResumeWithAuditedReasons(t *testing.T) {
 			"actor":  map[string]any{"kind": "hosted-thread", "hostedThreadId": manager.ID},
 		})
 		recorder := httptest.NewRecorder()
-		applicationHandler(s).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments/"+attachment.ID+"/"+action, bytes.NewReader(body)))
+		applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments/"+attachment.ID+"/"+action, bytes.NewReader(body)))
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("%s = %d %s", action, recorder.Code, recorder.Body.String())
 		}
@@ -280,7 +280,7 @@ func TestHeartbeatAttachmentAPIRequiresReasonAndRejectsClosedTarget(t *testing.T
 	}
 	missingReason := `{"actor":{"kind":"hosted-thread","hostedThreadId":"` + manager.ID + `"}}`
 	recorder := httptest.NewRecorder()
-	applicationHandler(s).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments/"+attachment.ID+"/pause", strings.NewReader(missingReason)))
+	applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments/"+attachment.ID+"/pause", strings.NewReader(missingReason)))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("pause without reason = %d %s", recorder.Code, recorder.Body.String())
 	}
