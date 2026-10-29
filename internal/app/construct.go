@@ -203,9 +203,6 @@ func construct(cfg config.Config) *application {
 		Registry:              sessionruntime.NewRegistry(),
 	}
 	s.deliveryExpiries = sessionruntime.NewDeliveryExpiries(deliveryExpiryWindow, s.Registry.PublishProviderRuntime)
-	if agentExecutions != nil {
-		agentExecutions.UseSavedResults(s.attachmentCoordinator().SavedOperationResult, s.attachmentCoordinator().SavedOperationResultFinished)
-	}
 	s.restart = hostedmodel.NewRestartTracker(filepath.Join(cfg.Paths.DataDir, hostedmodel.RestartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
 	if err := agentapi.SyncMailNotices(s.mail, s.notices); err != nil {
 		log.Fatalf("initialize mail notices: %v", err)
@@ -265,6 +262,10 @@ func construct(cfg config.Config) *application {
 	}
 	if s.historicalClaude != nil && catalog != nil {
 		go s.historicalClaude.WarmCatalog(context.Background(), s.hostedCatalog())
+	}
+	// The coordinator captures these stores, so bind it after construction finishes.
+	if agentExecutions != nil {
+		agentExecutions.UseSavedResults(s.attachmentCoordinator().SavedOperationResult, s.attachmentCoordinator().SavedOperationResultFinished)
 	}
 	// Every stored attachment comes back as a live session so a deploy restart
 	// never leaves threads detached (boot_reattach.go). HTTP opens first; until
