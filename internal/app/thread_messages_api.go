@@ -23,7 +23,7 @@ import (
 // preferring the live session, then the durable execution record. The second
 // return is false when no hosted record exists at all.
 func (s *server) hostedThreadNativeID(hostedID string) (string, bool) {
-	if live, ok := s.liveHostedSession(hostedID); ok {
+	if live, ok := s.LiveHostedSummary(hostedID, s.agentExecutions.SessionNeedsAttention); ok {
 		return live.ThreadID, true
 	}
 	if s.agentExecutions == nil {

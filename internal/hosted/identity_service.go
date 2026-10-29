@@ -4,14 +4,15 @@ import (
 	"context"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
 // CatalogIdentity contains only the saved identity facts used by hosted resolution.
 type CatalogIdentity struct{ ID, Provider, NativeID, HostedThreadID, Name, UpdatedAt string }
 
-// LiveIdentity contains the current attachment facts used by hosted resolution.
-type LiveIdentity struct{ ID, Provider, ThreadID, HostedThreadID, Name, CreatedAt, LastTurnEndedAt string }
+// liveIdentity contains the current attachment facts used by hosted resolution.
+type liveIdentity struct{ ID, Provider, ThreadID, HostedThreadID, Name, CreatedAt, LastTurnEndedAt string }
 
 // IdentityCatalog supplies catalogue reads after the app composes its overlays.
 type IdentityCatalog interface {
@@ -27,14 +28,6 @@ type IdentityCatalog interface {
 	DurableName(string, string) (string, bool)
 }
 
-// IdentityLive reads attachment identity without exposing live session state or locks.
-type IdentityLive interface {
-	// HostedIdentity reads the live attachment of a hosted thread.
-	HostedIdentity(string) (LiveIdentity, bool)
-	// Identities reads the current attachment identities.
-	Identities() []LiveIdentity
-}
-
 // IdentityService resolves hosted identities using canonical stores and bounded read inputs.
 // The caller supplies a snapshot of these dependencies for each request.
 type IdentityService struct {
@@ -42,7 +35,7 @@ type IdentityService struct {
 	Metadata      *hostedstore.MetadataStore
 	MetadataError string
 	Catalog       IdentityCatalog
-	Live          IdentityLive
+	Sessions      *sessions.Registry
 	CatalogErrors CatalogErrors
 }
 
@@ -58,17 +51,30 @@ func (s *IdentityService) controlStore() *hostedstore.MetadataStore {
 	}
 	return nil
 }
-func (s *IdentityService) liveIdentities() []LiveIdentity {
-	if s.Live == nil {
+func (s *IdentityService) liveIdentities() []liveIdentity {
+	if s.Sessions == nil {
 		return nil
 	}
-	return s.Live.Identities()
-}
-func (s *IdentityService) liveHostedSession(id string) (LiveIdentity, bool) {
-	if s.Live == nil {
-		return LiveIdentity{}, false
+	needsAttention := map[string]bool{}
+	if s.Executions != nil {
+		needsAttention = s.Executions.SessionsNeedingAttention()
 	}
-	return s.Live.HostedIdentity(id)
+	summaries := s.Sessions.VolatileSummaries(needsAttention)
+	result := make([]liveIdentity, 0, len(summaries))
+	for _, summary := range summaries {
+		result = append(result, identityFromSession(summary))
+	}
+	return result
+}
+func (s *IdentityService) liveHostedSession(id string) (liveIdentity, bool) {
+	if s.Sessions == nil {
+		return liveIdentity{}, false
+	}
+	summary, ok := s.Sessions.LiveHostedSummary(id, s.Executions.SessionNeedsAttention)
+	return identityFromSession(summary), ok
+}
+func identityFromSession(summary sessions.Summary) liveIdentity {
+	return liveIdentity{ID: summary.ID, Name: summary.Name, Provider: summary.Provider, ThreadID: summary.ThreadID, HostedThreadID: summary.HostedThreadID, CreatedAt: summary.CreatedAt, LastTurnEndedAt: summary.LastTurnEndedAt}
 }
 func (s *IdentityService) catalogRowsForNative(ctx context.Context, native, provider string) ([]CatalogIdentity, error) {
 	return s.Catalog.NativeIdentities(ctx, native, provider)

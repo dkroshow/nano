@@ -204,7 +204,7 @@ func historicalReferenceTarget(row CatalogIdentity, hostedID string) threadRefer
 	}
 }
 
-func (s *IdentityService) liveNativeSession(nativeID string) *LiveIdentity {
+func (s *IdentityService) liveNativeSession(nativeID string) *liveIdentity {
 	for _, summary := range s.liveIdentities() {
 		if summary.ThreadID == nativeID {
 			return &summary

@@ -104,13 +104,15 @@ func (s *ViewService) SessionView(id string) SessionView {
 		Status:        rec.Status, Error: rec.Error, CreatedAt: rec.CreatedAt,
 		UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
 	}
-	if sum, attached := s.Sessions.Session(id); attached {
+	if live := s.sessionForHosted(id); live != nil {
+		sum := live.Summary()
+		ready, working := live.ReadyAndWorking()
 		view.NanoSessionID, view.NativeThreadID, view.Status = sum.ID, sum.ThreadID, sum.Status
 		view.Error, view.TurnActive, view.Waiting = sum.Error, sum.TurnActive, sum.Waiting
 		view.ThreadDiagnostics = sum.ThreadDiagnostics
 		view.MetadataDegraded = sum.MetadataDegraded
 		view.Attached = true
-		view.Ready, view.Working = sum.Ready, sum.Working
+		view.Ready, view.Working = ready, working
 	} else if waiting := s.Waiting(id); waiting != "" {
 		view.Status = waiting
 	}
@@ -158,7 +160,9 @@ func (s *ViewService) DecorateMetadata(metadata hostedstore.MetadataView, attach
 // normalized execution record. It deliberately does not write hosted_threads:
 // attachment liveness is volatile and must not manufacture a metadata revision.
 func (s *ViewService) AttachmentState(id string) hostedstore.AttachmentView {
-	if attachment, attached := s.Sessions.Attachment(id); attached {
+	if live := s.sessionForHosted(id); live != nil {
+		sum := live.Summary()
+		attachment := hostedstore.AttachmentView{State: sum.Status, Provenance: "live_session", Error: sum.Error}
 		if attachment.State == "" {
 			attachment.State = "attached"
 		}
@@ -194,14 +198,14 @@ func (s *ViewService) TurnView(rec ownedthreads.TurnRecord) TurnView {
 		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt, Revision: rec.Revision,
 		Interactions: []interactmodel.PendingInteraction{},
 	}
-	runtime, attached := s.Sessions.Turn(rec.HostedThreadID, !threadvalues.TurnTerminal(rec.Status))
-	if attached {
-		view.NanoSessionID = runtime.ID
-		if threadID := runtime.ThreadID; threadID != "" {
+	runtime := s.sessionForHosted(rec.HostedThreadID)
+	if runtime != nil {
+		view.NanoSessionID = runtime.ID()
+		if threadID := runtime.ThreadID(); threadID != "" {
 			view.NativeThreadID = threadID
 		}
 		if !threadvalues.TurnTerminal(rec.Status) {
-			for _, interaction := range runtime.Interactions {
+			for _, interaction := range runtime.PendingInteractionList() {
 				if interaction.TurnID == "" || rec.ProviderTurnID == "" || interaction.TurnID == rec.ProviderTurnID {
 					view.Interactions = append(view.Interactions, interaction)
 				}
@@ -209,7 +213,7 @@ func (s *ViewService) TurnView(rec ownedthreads.TurnRecord) TurnView {
 		}
 	}
 	if rec.Status == ownedthreads.AgentTurnQueued {
-		view.QueuePosition = s.Sessions.QueuePosition(rec.HostedThreadID, rec.TransportActionID)
+		view.QueuePosition = s.sessionForHosted(rec.HostedThreadID).QueuePositionOr(rec.TransportActionID, s.Queue)
 	}
 	if s.Metadata != nil && s.MetadataError == "" {
 		assignment, err := s.Metadata.OperationOrchestrationAssignment(rec.AssignmentEventID)

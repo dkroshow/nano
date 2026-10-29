@@ -1,10 +1,9 @@
-// Package hosted owns hosted identity resolution, admission facts and durable
-// control adapters. The adapters use the canonical records in threads and the
-// core stores; they do not create a second durable owner.
+// Package hosted owns hosted identity resolution, admission and control,
+// their HTTP views, and pin storage. Shared metadata, execution and attachment
+// adapters live in hosted/store over the existing canonical records.
 //
-// Sessions own live attachment state and provider connections. The catalog and
-// sidebar stay in app, which supplies their read projections at hosted's query
-// boundaries. App opens the shared control database and composes its migrations;
-// hosted opens its pin database and checks metadata integrity through the shared
-// state wiring helpers.
+// Sessions owns live attachment state and provider connections; hosted reads
+// that state through the concrete session registry. The catalog belongs to
+// threadindex, while sidebar composition remains in app until its extraction.
+// App composes shared database migrations; hosted opens its pin database.
 package hosted

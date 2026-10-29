@@ -15,7 +15,7 @@ type availabilityView = hosted.AvailabilityView
 func (s *server) hostedViews() *hosted.ViewService {
 	return &hosted.ViewService{Executions: s.agentExecutions, Metadata: s.controlMetadata,
 		ExecutionError: s.executionControlErr, MetadataError: s.controlMetadataErr,
-		Sessions: hostedViewSessions{server: s}, Names: hostedViewNames{server: s},
+		Sessions: &s.Registry, Queue: s.queuedTurns, Names: hostedViewNames{server: s},
 		Waiting:       func(id string) string { _, state := s.boot.waitingHosted(id); return state },
 		ResolveRecord: s.resolveHostedThreadRecord}
 }
@@ -61,62 +61,6 @@ func (s *server) handleTurnOperationChanges(w http.ResponseWriter, r *http.Reque
 }
 func (s *server) handleTurnOperationsCollection(w http.ResponseWriter, r *http.Request) {
 	s.hostedViews().HandleOperationsCollection(w, r)
-}
-
-type hostedViewSessions struct{ server *server }
-
-func (a hostedViewSessions) Session(id string) (hosted.SessionSnapshot, bool) {
-	sess := a.server.SessionForHostedThread(id)
-	if sess == nil {
-		return hosted.SessionSnapshot{}, false
-	}
-	sum := sess.Summary()
-	ready, working := sess.ReadyAndWorking()
-	return hosted.SessionSnapshot{ID: sum.ID, ThreadID: sum.ThreadID, Status: sum.Status, Error: sum.Error,
-		TurnActive: sum.TurnActive, Waiting: sum.Waiting, MetadataDegraded: sum.MetadataDegraded,
-		ThreadDiagnostics: sum.ThreadDiagnostics, Ready: ready, Working: working}, true
-}
-func (a hostedViewSessions) Turn(id string, interactions bool) (hosted.TurnSnapshot, bool) {
-	sess := a.server.SessionForHostedThread(id)
-	if sess == nil {
-		return hosted.TurnSnapshot{}, false
-	}
-	snapshot := hosted.TurnSnapshot{ID: sess.ID(), ThreadID: sess.ThreadID()}
-	if interactions {
-		snapshot.Interactions = sess.PendingInteractionList()
-	}
-	return snapshot, true
-}
-func (a hostedViewSessions) Attachment(id string) (hostedstore.AttachmentView, bool) {
-	sess := a.server.SessionForHostedThread(id)
-	if sess == nil {
-		return hostedstore.AttachmentView{}, false
-	}
-	sum := sess.Summary()
-	return hostedstore.AttachmentView{State: sum.Status, Provenance: "live_session", Error: sum.Error}, true
-}
-func (a hostedViewSessions) Availability(id string) (hosted.AvailabilitySnapshot, bool) {
-	sess := a.server.SessionForHostedThread(id)
-	if sess == nil {
-		return hosted.AvailabilitySnapshot{}, false
-	}
-	state := sess.AvailabilityState()
-	pending := sess.CorePromptInFlight()
-	queued := sess.QueuedPromptCount()
-	return hosted.AvailabilitySnapshot{Status: state.Status, Active: state.Active, Waiting: state.Waiting, Permission: state.Permission,
-		LastHumanPromptAt: state.LastHumanPromptAt, PromptInFlight: pending, QueuedPrompts: queued}, true
-}
-func (a hostedViewSessions) HostedIDs() []string {
-	sessions := a.server.SnapshotSessions()
-	ids := make([]string, 0, len(sessions))
-	for _, sess := range sessions {
-		ids = append(ids, sess.HostedThreadID())
-	}
-	return ids
-}
-func (a hostedViewSessions) QueuePosition(id, action string) int {
-	sess := a.server.SessionForHostedThread(id)
-	return sess.QueuePositionOr(action, a.server.queuedTurns)
 }
 
 type hostedViewNames struct{ server *server }

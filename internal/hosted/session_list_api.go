@@ -22,8 +22,10 @@ func (s *ViewService) HandleSessionsList(w http.ResponseWriter, _ *http.Request)
 	// record is left out before its view costs any reads; the store keeps
 	// every record a thread ever had.
 	attached := make(map[string]bool)
-	for _, id := range s.Sessions.HostedIDs() {
-		attached[id] = true
+	if s.Sessions != nil {
+		for _, live := range s.Sessions.SnapshotSessions() {
+			attached[live.HostedThreadID()] = true
+		}
 	}
 	records := s.Executions.ListSessions()
 	items := make([]SessionView, 0, len(records))

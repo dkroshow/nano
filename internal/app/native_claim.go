@@ -25,7 +25,7 @@ func (s *server) transferNativeClaim(targetHostedID, provider, nativeID string) 
 		return err
 	}
 	if owner != "" && owner != targetHostedID {
-		if _, live := s.liveHostedSession(owner); live {
+		if _, live := s.LiveHostedSummary(owner, s.agentExecutions.SessionNeedsAttention); live {
 			return errNativeClaimLive
 		}
 	}

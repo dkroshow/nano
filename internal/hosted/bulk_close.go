@@ -158,8 +158,12 @@ func (s *Controller) currentRelationshipTree(rootID string) ([]relationshipTreeM
 }
 
 func (s *Controller) bulkCloseMemberWorking(record ownedthreads.SessionRecord) bool {
-	summary, live := s.Views().Sessions.Session(record.ID)
-	return live && summary.TurnActive && !summary.Waiting
+	live := s.Views().sessionForHosted(record.ID)
+	if live == nil {
+		return false
+	}
+	summary := live.Summary()
+	return summary.TurnActive && !summary.Waiting
 }
 
 // HandleBulkClosePreview serves the bounded hosted relationship-tree close preview.

@@ -7,6 +7,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 const (
@@ -53,7 +54,16 @@ func (s *ViewService) AvailabilityFor(hostedThreadID string, now time.Time) Avai
 		return view
 	}
 	view.Facts.LastHumanMessageAt = record.LastHumanPromptAt
-	state, attached := s.Sessions.Availability(hostedThreadID)
+	live := s.sessionForHosted(hostedThreadID)
+	attached := live != nil
+	var state sessions.Availability
+	var pending bool
+	var queued int
+	if attached {
+		state = live.AvailabilityState()
+		pending = live.CorePromptInFlight()
+		queued = live.QueuedPromptCount()
+	}
 	if !attached && record.Status == hostedstore.StatusExited {
 		view.State, view.Facts.Attachment, view.Facts.SessionStatus = availabilityUnreachable, "exited", record.Status
 		view.Reasons = append(view.Reasons, "exited")
@@ -81,8 +91,7 @@ func (s *ViewService) AvailabilityFor(hostedThreadID string, now time.Time) Avai
 	permission, lastHuman := state.Permission, state.LastHumanPromptAt
 	view.Facts.SessionStatus = status
 	view.Facts.TurnActive = active
-	pending := state.PromptInFlight
-	view.Facts.QueuedPrompts = state.QueuedPrompts
+	view.Facts.QueuedPrompts = queued
 	view.Facts.PendingInteraction = waiting
 	if !lastHuman.IsZero() && (view.Facts.LastHumanMessageAt == "" || lastHuman.Format(time.RFC3339Nano) > view.Facts.LastHumanMessageAt) {
 		view.Facts.LastHumanMessageAt = lastHuman.UTC().Format(time.RFC3339Nano)

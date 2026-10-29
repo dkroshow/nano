@@ -336,7 +336,7 @@ func (s *IdentityService) catalogNameForNative(ctx context.Context, provider, na
 	return ""
 }
 
-func identityFromLive(live LiveIdentity) identityCandidate {
+func identityFromLive(live liveIdentity) identityCandidate {
 	updated := threadvalues.ParseTimestamp(live.LastTurnEndedAt)
 	if updated.IsZero() {
 		updated = threadvalues.ParseTimestamp(live.CreatedAt)

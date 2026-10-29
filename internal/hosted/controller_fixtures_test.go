@@ -9,6 +9,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedprompts "github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -22,19 +23,6 @@ func (controllerRuntime) Waiting(string) string                    { return "" }
 func (controllerRuntime) Reattach(string)                          {}
 func (controllerRuntime) HasDeliveryEvidence(string, string) bool  { return false }
 func (controllerRuntime) DeliveryWasAttempted(string, string) bool { return false }
-
-type emptyViewSessions struct{ ViewSessions }
-
-func (emptyViewSessions) Session(string) (SessionSnapshot, bool) { return SessionSnapshot{}, false }
-func (emptyViewSessions) Turn(string, bool) (TurnSnapshot, bool) { return TurnSnapshot{}, false }
-func (emptyViewSessions) Attachment(string) (hostedstore.AttachmentView, bool) {
-	return hostedstore.AttachmentView{}, false
-}
-func (emptyViewSessions) Availability(string) (AvailabilitySnapshot, bool) {
-	return AvailabilitySnapshot{}, false
-}
-func (emptyViewSessions) HostedIDs() []string              { return nil }
-func (emptyViewSessions) QueuePosition(string, string) int { return 0 }
 
 type emptyViewNames struct{}
 
@@ -62,7 +50,7 @@ func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller
 		CloseLifecycle: func(_ string, close func() error) error { return close() },
 	}
 	c.Views = func() *ViewService {
-		return &ViewService{Executions: store, Metadata: control, Sessions: emptyViewSessions{}, Names: emptyViewNames{}, Waiting: func(string) string { return "" }, ResolveRecord: c.ResolveHostedRecord}
+		return &ViewService{Executions: store, Metadata: control, Sessions: &sessions.Registry{}, Queue: queue, Names: emptyViewNames{}, Waiting: func(string) string { return "" }, ResolveRecord: c.ResolveHostedRecord}
 	}
 	return c
 }
