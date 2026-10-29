@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dkroshow/nano/internal/sidebar"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 

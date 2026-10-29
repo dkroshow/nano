@@ -83,7 +83,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			if fleet == nil || fleet.Label != tc.want {
 				t.Fatalf("fleet = %#v, want %q", fleet, tc.want)
 			}
-			if pane := liveStatusForTest(t,fixture.session).Runtime.ThreadStatus; pane != tc.want {
+			if pane := liveStatusForTest(t, fixture.session).Runtime.ThreadStatus; pane != tc.want {
 				t.Fatalf("pane = %q, rail = %q", pane, fleet.Label)
 			}
 			// The pane, the session list and the runtime overlay the sidebar

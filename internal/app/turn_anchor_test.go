@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	"github.com/dkroshow/nano/internal/sidebar"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 // The claude anchor's whole point is surviving a nano restart, which means

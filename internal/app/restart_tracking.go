@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/observability"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 const (
