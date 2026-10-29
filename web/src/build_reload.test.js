@@ -9,8 +9,8 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { tick } from 'svelte'
 import { render, cleanup, fireEvent } from '@testing-library/svelte'
-import ThreadPaneView from './lib/ThreadPaneView.svelte'
-import NewVersionNote from './lib/NewVersionNote.svelte'
+import ThreadPaneView from './lib/panes/ThreadPaneView.svelte'
+import NewVersionNote from './lib/status/NewVersionNote.svelte'
 import { createBuildReload, DISCARD_AND_RELOAD } from './build_reload.svelte.js'
 import { app } from './app.svelte.js'
 import {

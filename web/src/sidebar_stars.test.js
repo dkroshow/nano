@@ -8,13 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/svelte'
 import { tick } from 'svelte'
 import App from './App.svelte'
-import CompactThreadRow from './lib/CompactThreadRow.svelte'
+import CompactThreadRow from './lib/explorer/CompactThreadRow.svelte'
 import { app } from './app.svelte.js'
 import { explorer } from './explorer.svelte.js'
 import { DEFAULT_VIEW } from './explorer_query.js'
-import { projectSidebar } from './lib/sidebar_projection.js'
+import { projectSidebar } from './lib/explorer/sidebar_projection.js'
 import { __resetPanesForTest } from './panes.svelte.js'
-import { workerDisclosure } from './lib/worker_disclosure.svelte.js'
+import { workerDisclosure } from './lib/explorer/worker_disclosure.svelte.js'
 
 class MockEventSource {
   addEventListener() {}

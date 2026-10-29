@@ -14,7 +14,7 @@
     toggleSidebar,
     toggleThreadExplorer,
   } from './app.svelte.js'
-  import { viewport } from './lib/viewport.svelte.js'
+  import { viewport } from './lib/panes/viewport.svelte.js'
   import {
     addStreamOpenListener,
     bootstrapSidebar,
@@ -25,9 +25,9 @@
   } from './explorer.svelte.js'
   import { createBuildReload } from './build_reload.svelte.js'
   import { connection, startConnectionChecks } from './connection.svelte.js'
-  import ConnectionStatus from './lib/ConnectionStatus.svelte'
-  import NewVersionNote from './lib/NewVersionNote.svelte'
-  import { startWarmTranscripts, warmSetChanged } from './lib/warm_transcripts.js'
+  import ConnectionStatus from './lib/status/ConnectionStatus.svelte'
+  import NewVersionNote from './lib/status/NewVersionNote.svelte'
+  import { startWarmTranscripts, warmSetChanged } from './lib/transcript/warm_transcripts.js'
   import { applyView, collapseWorkerGroups, SORT_MODES, viewIsNarrowed } from './explorer_local.js'
   import {
     addPane,
@@ -45,42 +45,42 @@
     sectionSidebar,
     sidebarCounts,
     suppressBackgroundRows,
-  } from './lib/sidebar_projection.js'
+  } from './lib/explorer/sidebar_projection.js'
   import {
     allWorkerGroupsExpanded,
     setAllWorkerGroups,
     workerDisclosure,
     workerGroupKeys,
-  } from './lib/worker_disclosure.svelte.js'
-  import { handleThreadShortcut } from './lib/keyboard.js'
+  } from './lib/explorer/worker_disclosure.svelte.js'
+  import { handleThreadShortcut } from './lib/panes/keyboard.js'
   import {
     actualSidebarRows,
     compareSidebarRows,
     expectedCompactSidebarRows,
     expectedExplorerSidebarRows,
-  } from './lib/sidebar_validator.js'
-  import CompactThreadRow from './lib/CompactThreadRow.svelte'
-  import PanesContainer from './lib/PanesContainer.svelte'
-  import NewSessionModal from './lib/NewSessionModal.svelte'
-  import SettingsMenu from './lib/SettingsMenu.svelte'
-  import NetworkMeter from './lib/NetworkMeter.svelte'
-  import { networkMeterEnabled } from './lib/network_meter.js'
-  import UsageLimits from './lib/UsageLimits.svelte'
-  import UsageDetail from './lib/UsageDetail.svelte'
-  import GlobalMail from './lib/GlobalMail.svelte'
-  import ThreadExplorer from './lib/ThreadExplorer.svelte'
-  import ExplorerStatus from './lib/ExplorerStatus.svelte'
-  import ExplorerFilters from './lib/ExplorerFilters.svelte'
-  import ThreadQuickDetail from './lib/ThreadQuickDetail.svelte'
-  import DescendantCloseDialog from './lib/DescendantCloseDialog.svelte'
-  import BulkCloseDialog from './lib/BulkCloseDialog.svelte'
+  } from './lib/explorer/sidebar_validator.js'
+  import CompactThreadRow from './lib/explorer/CompactThreadRow.svelte'
+  import PanesContainer from './lib/panes/PanesContainer.svelte'
+  import NewSessionModal from './lib/composer/NewSessionModal.svelte'
+  import SettingsMenu from './lib/status/SettingsMenu.svelte'
+  import NetworkMeter from './lib/status/NetworkMeter.svelte'
+  import { networkMeterEnabled } from './lib/status/network_meter.js'
+  import UsageLimits from './lib/status/UsageLimits.svelte'
+  import UsageDetail from './lib/status/UsageDetail.svelte'
+  import GlobalMail from './lib/mail/GlobalMail.svelte'
+  import ThreadExplorer from './lib/explorer/ThreadExplorer.svelte'
+  import ExplorerStatus from './lib/explorer/ExplorerStatus.svelte'
+  import ExplorerFilters from './lib/explorer/ExplorerFilters.svelte'
+  import ThreadQuickDetail from './lib/explorer/ThreadQuickDetail.svelte'
+  import DescendantCloseDialog from './lib/explorer/DescendantCloseDialog.svelte'
+  import BulkCloseDialog from './lib/explorer/BulkCloseDialog.svelte'
   import {
     MIN_SIDEBAR_WIDTH,
     clampSidebarWidth,
     loadSidebarWidth,
     saveSidebarWidth,
     sidebarWidthLimit,
-  } from './lib/sidebar_width.js'
+  } from './lib/panes/sidebar_width.js'
 
   let newWindowOpen = $state(false)
   let sidebarWidth = $state(loadSidebarWidth())

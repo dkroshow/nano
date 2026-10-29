@@ -11,7 +11,7 @@ import {
 } from './app.svelte.js'
 import { activeTab, __resetPanesForTest, panes } from './panes.svelte.js'
 import { explorer } from './explorer.svelte.js'
-import { fileReferenceLinks } from './lib/file_references.js'
+import { fileReferenceLinks } from './lib/transcript/file_references.js'
 
 const native = '11111111-2222-4333-8444-555555555555'
 const session = {

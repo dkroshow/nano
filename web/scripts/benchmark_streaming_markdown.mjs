@@ -1,7 +1,7 @@
 import { performance } from 'node:perf_hooks'
 import { JSDOM } from 'jsdom'
-import { messageBodyHtml } from '../src/lib/message_body.js'
-import { createStreamingMarkdownSurface } from '../src/lib/streaming_markdown.js'
+import { messageBodyHtml } from '../src/lib/transcript/message_body.js'
+import { createStreamingMarkdownSurface } from '../src/lib/transcript/streaming_markdown.js'
 
 const TARGET_BYTES = 100 * 1024
 const SAMPLE_COUNT = 120

@@ -9,9 +9,9 @@ import { tick } from 'svelte'
 import App from './App.svelte'
 import { app } from './app.svelte.js'
 import { explorer } from './explorer.svelte.js'
-import { __resetThreadNavForTest, TAB_WALK_TIMEOUT_MS } from './lib/keyboard.js'
+import { __resetThreadNavForTest, TAB_WALK_TIMEOUT_MS } from './lib/panes/keyboard.js'
 import { __resetPanesForTest, activeTab, openThreadTab, tabTarget } from './panes.svelte.js'
-import { closeQuickDetail, openQuickDetail } from './lib/quick_detail.svelte.js'
+import { closeQuickDetail, openQuickDetail } from './lib/explorer/quick_detail.svelte.js'
 import { dropSessionStore } from './state.svelte.js'
 
 class MockEventSource {

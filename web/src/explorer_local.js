@@ -1,4 +1,4 @@
-import { turnState } from './lib/lifecycle_state.js'
+import { turnState } from './lib/shared/lifecycle_state.js'
 // Local view pipeline over the in-memory thread window. The dataset (one
 // fetched window of the catalog) is held whole in the browser, so sorting,
 // facet selections, date ranges, and facet counts are all computed here —

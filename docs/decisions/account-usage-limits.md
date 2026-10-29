@@ -5,8 +5,8 @@ Nano reads account-wide subscription usage ("how much of my weekly limit have
 I burned?") for Codex, Claude, and Grok on a single five-minute timer, serves the
 current reading at `GET /api/v1/usage-limits`, serves history plus a call log
 at `GET /api/v1/usage-limits/detail`, and renders both in the sidebar rail
-(`web/src/lib/UsageLimits.svelte`) with a detail modal
-(`web/src/lib/UsageDetail.svelte`).
+(`web/src/lib/status/UsageLimits.svelte`) with a detail modal
+(`web/src/lib/status/UsageDetail.svelte`).
 
 The three providers publish this in different places.
 
@@ -138,5 +138,5 @@ option, not adopted.
 - `usage_limits_claude.go` — the OAuth endpoint and its failure taxonomy
 - `usage_limits_grok.go` — ACP billing probe, normalization, and failure taxonomy
 - `usage_limits_detail.go` — in-memory call log, history query, `/detail`
-- `web/src/lib/UsageLimits.svelte` — the always-visible rail strip (weekly, plus Grok monthly)
-- `web/src/lib/UsageDetail.svelte` — modal: step charts, resets, call log
+- `web/src/lib/status/UsageLimits.svelte` — the always-visible rail strip (weekly, plus Grok monthly)
+- `web/src/lib/status/UsageDetail.svelte` — modal: step charts, resets, call log

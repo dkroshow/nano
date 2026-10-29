@@ -1,11 +1,11 @@
 import { TRANSCRIPT_CATEGORIES } from './transcript_query.js'
-import { fmtTurnDuration } from './lib/duration_format.js'
+import { fmtTurnDuration } from './lib/shared/duration_format.js'
 
 const CATEGORY_LABELS = new Map(TRANSCRIPT_CATEGORIES.map((category) => [category.key, category.label]))
 
 export const TRANSCRIPT_AUTO_PAGE_THRESHOLD = 120
 
-// Markdown rendering moved to lib/markdown.js + lib/message_body.js — the one
+// Markdown rendering moved to lib/transcript/markdown.js + lib/transcript/message_body.js — the one
 // display engine shared with the live conversation view (the operator 2026-07-23). Its
 // unsafe-link filtering carried over there.
 

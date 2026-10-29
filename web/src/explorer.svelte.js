@@ -8,11 +8,11 @@
 // module never reads provider files or invents metadata defaults.
 
 import { buildWindowQuery, mergePages, DEFAULT_FETCH, DEFAULT_VIEW } from './explorer_query.js'
-import { reopenIfClosed } from './lib/stream_reopen.js'
+import { reopenIfClosed } from './lib/shared/stream_reopen.js'
 import { loadTranscript, closeTranscript, nudgeTabHistories, nudgeTranscriptTail } from './transcript_store.svelte.js'
-import { applyMailDelta, resetMailCounts } from './lib/mail.svelte.js'
+import { applyMailDelta, resetMailCounts } from './lib/mail/mail.svelte.js'
 import { dispatchTranscriptAuditRequest } from './transcript_audit_events.js'
-import { railLink } from './lib/freshness.js'
+import { railLink } from './lib/status/freshness.js'
 import { noteNanoContact } from './connection.svelte.js'
 
 // Fallback poll cadence — used ONLY while the SSE stream is broken. A healthy
@@ -51,7 +51,7 @@ class ExplorerState {
   detailState = $state('idle') // idle | loading | error
   detailError = $state(null)
   refreshRequested = $state(false) // transient feedback for the manual refresh button
-  link = $state({ epoch: 0, up: true }) // the catalog stream's freshness (lib/freshness.js railLink)
+  link = $state({ epoch: 0, up: true }) // the catalog stream's freshness (lib/status/freshness.js railLink)
 }
 
 export const explorer = new ExplorerState()
@@ -868,7 +868,7 @@ function onStreamOpen() {
   streamOpen = true
   const afterDrop = !explorer.link.up
   explorer.link = railLink(explorer.link, 'opened')
-  // After a drop every shown row is last-seen (lib/freshness.js) until a read
+  // After a drop every shown row is last-seen (lib/status/freshness.js) until a read
   // started now replaces it: the active sidebar below, the window when the rail
   // holds one, and each history scope that has rows to show, whatever its last
   // read did (a failed or unanswered read keeps its rows on screen).

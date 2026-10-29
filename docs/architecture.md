@@ -130,6 +130,11 @@ the binary is self-contained and a UI change needs a rebuild of both. In
 development `npm --prefix web run dev` serves the source on :5173 and
 proxies `/api` and `/events` to a running server.
 
+Components and supporting logic are grouped by responsibility under
+[`web/src/lib`](../web/src/lib/README.md): transcript, explorer, panes, composer,
+mail, status and shared helpers. Tests and fixtures live beside their owning
+area. App-level stores and server-event coordination remain in `web/src/`.
+
 The page is a sidebar of threads and a set of panes. The sidebar is built
 once at boot from the catalog, runtime, hosted metadata, stars and mail, and
 updated by events; `GET /api/v1/sidebar/threads` returns that materialized

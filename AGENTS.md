@@ -37,7 +37,7 @@ gofmt -l . && go vet ./... && go test -timeout 30m ./... && npm --prefix web tes
   with `// @vitest-environment jsdom` as its first line; everything else runs
   on Node. `web/src/test_setup.js` shims `localStorage`. Stub `EventSource`
   and `fetch` before rendering anything that mounts a session store or
-  durable history (see `web/src/lib/thread_pane_view.test.js`). The
+  durable history (see `web/src/lib/panes/thread_pane_view.test.js`). The
   `resolve.conditions: ['browser']` setting in `web/vite.config.js` is
   guarded by `process.env.VITEST`; do not unguard it.
 - **Test at the owner, once.** The live-text loop owns the saved/live

@@ -20,7 +20,7 @@ import {
   setRuntimePosition,
 } from './explorer.svelte.js'
 import { buildWindowQuery } from './explorer_query.js'
-import { setThreadReferenceNavigator } from './lib/thread_references.js'
+import { setThreadReferenceNavigator } from './lib/transcript/thread_references.js'
 import {
   activeTab,
   adoptSessionTabs,
@@ -772,7 +772,7 @@ export async function openSession(id, { requireFresh = false, writeReference = t
 }
 
 // openSidebarRow stages one projected sidebar row, routing on the descriptor
-// the projection built (lib/sidebar_projection.js). The row's own click handler
+// the projection built (lib/explorer/sidebar_projection.js). The row's own click handler
 // and the keyboard shortcuts share it, so a thread opens identically however it
 // was picked.
 export function openSidebarRow(click) {

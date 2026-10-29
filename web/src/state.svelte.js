@@ -1,4 +1,4 @@
-import { promptAllowed } from './lib/lifecycle_state.js'
+import { promptAllowed } from './lib/shared/lifecycle_state.js'
 // Per-session client state. The server owns provider parsing and publishes a
 // file transcript; this store keeps status, delivery controls and the raw
 // Event Feed separately.
@@ -7,7 +7,7 @@ import { untrack } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { recordBrowserDiagnostic } from './browser_diagnostics.js'
 import { readAPIError } from './api_error.js'
-import { loadQueue, queueEntry, queueKey, saveQueue } from './lib/turn_queue.js'
+import { loadQueue, queueEntry, queueKey, saveQueue } from './lib/composer/turn_queue.js'
 import {
   forgetUnsent,
   loadUnsent,
@@ -17,7 +17,7 @@ import {
   readUnsent,
   retryDelayMs,
   unsentStep,
-} from './lib/pending_sends.js'
+} from './lib/composer/pending_sends.js'
 import { applyRuntimeStatus } from './live_projection.js'
 import { connection, noteNanoContact, onReachable } from './connection.svelte.js'
 
@@ -171,12 +171,12 @@ function createSessionStore(id, initialSummary = null) {
 		metadataUnavailable: Boolean(initialSummary?.metadataUnavailable),
 		metadataDegraded: Boolean(initialSummary?.metadataDegraded),
     interrupting: false,
-    // Sends Nano never acknowledged (lib/pending_sends.js), shown with Resend
+    // Sends Nano never acknowledged (lib/composer/pending_sends.js), shown with Resend
     // and Discard. Every other prompt, and its state, comes on the pane's
     // stream from Nano.
     unsent: [],
     // This tab's sends the stream has not listed yet, shown in the transcript
-    // as delivering from the moment they are sent (lib/pending_sends.js echo).
+    // as delivering from the moment they are sent (lib/composer/pending_sends.js echo).
     echoes: [],
     // POSTs in flight; their text is in storage until Nano answers.
     sending: 0,
@@ -245,7 +245,7 @@ function createSessionStore(id, initialSummary = null) {
   // Actions whose POST is still waiting: a second Resend click must not race it.
   const postsInFlight = new Set()
   // This tab's copy of each send it touched, kept by unsentStep
-  // (lib/pending_sends.js); store.unsent is the shown ones.
+  // (lib/composer/pending_sends.js); store.unsent is the shown ones.
   const copies = new Map()
   // The front copy's next automatic post, and when it is due (the row's
   // countdown reads the same time the timer was set from).

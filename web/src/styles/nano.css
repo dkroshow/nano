@@ -2513,7 +2513,7 @@ button.chip-action:hover { color: var(--text); border-color: var(--border2); }
    above 700px with a mouse matches none of it, which is what keeps the desktop
    layout pixel-identical.
 
-   Three decisions CSS cannot make live in lib/viewport.svelte.js instead,
+   Three decisions CSS cannot make live in lib/panes/viewport.svelte.js instead,
    because they are about which subtree mounts rather than how it paints: the
    workspace renders one pane, the rail becomes a drawer, and Enter stops
    sending. Those gates use the same 700px. */

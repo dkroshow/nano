@@ -35,8 +35,8 @@ whenever suppression actually hides it. An existing thread is flipped with
 background" / "Bring to sidebar"); nano_threads.sqlite is the single durable
 authority for the mode.
 
-Implementation: `web/src/lib/thread_nav.js` (pure ordering and target rules) +
-`web/src/lib/keyboard.js` (walk state, timeout, the one `<svelte:window>`
+Implementation: `web/src/lib/panes/thread_nav.js` (pure ordering and target rules) +
+`web/src/lib/panes/keyboard.js` (walk state, timeout, the one `<svelte:window>`
 handler in `App.svelte`). Keyboard and click share one open path
 (`openSidebarRow` in `app.svelte.js`).
 

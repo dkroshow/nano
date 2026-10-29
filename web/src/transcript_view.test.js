@@ -14,7 +14,7 @@ import {
   transcriptItemKind,
   turnDurationsByFinalItem,
 } from './transcript_view.js'
-import senderFooterFixture from './lib/fixtures/sender-footer.json'
+import senderFooterFixture from './lib/transcript/fixtures/sender-footer.json'
 import { ENHANCED_HIDDEN_CATEGORIES } from './transcript_query.js'
 
 afterEach(() => vi.restoreAllMocks())

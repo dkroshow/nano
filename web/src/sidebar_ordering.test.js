@@ -12,7 +12,7 @@ import { app } from './app.svelte.js'
 import { __resetSidebarBootstrapForTest, explorer, loadDataset, scheduleActiveRefresh } from './explorer.svelte.js'
 import { DEFAULT_VIEW } from './explorer_query.js'
 import { __resetPanesForTest } from './panes.svelte.js'
-import { resetWorkerDisclosure, workerDisclosure } from './lib/worker_disclosure.svelte.js'
+import { resetWorkerDisclosure, workerDisclosure } from './lib/explorer/worker_disclosure.svelte.js'
 
 class MockEventSource {
   constructor(url) {
