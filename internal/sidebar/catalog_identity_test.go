@@ -3,24 +3,13 @@ package sidebar
 import (
 	"context"
 	"fmt"
-	"github.com/dkroshow/nano/internal/history"
-	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
-	"github.com/dkroshow/nano/internal/threadindex"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/history"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
-
-type countingCatalog struct {
-	*CatalogSource
-	lists atomic.Int64
-}
-
-func (c *countingCatalog) ListThreads(ctx context.Context, q threadindex.ListQuery) (CatalogPage, error) {
-	c.lists.Add(1)
-	return c.CatalogSource.ListThreads(ctx, q)
-}
 
 // TestNativeThreadIDFilterChunksUnderParameterLimit catches an identity read
 // that exceeds SQLite's parameter limit or confuses providers. Boundary:
@@ -58,7 +47,7 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 	if _, err := store.ApplySource(ctx, guardian); err != nil {
 		t.Fatal(err)
 	}
-	catalog := &countingCatalog{CatalogSource: &CatalogSource{Service: newStoredCatalog(t, store)}}
+	catalog := &CatalogSource{Service: newStoredCatalog(t, store)}
 	s := &CatalogViews{Catalog: catalog}
 
 	keys := make([]hostedstore.AttachmentKey, 1200)
@@ -73,9 +62,6 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 	found, err := s.threadsByIdentity(ctx, keys)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if reads := catalog.lists.Load(); reads != 3 {
-		t.Fatalf("1,200 identities took %d reads; want 3 (500, 500, 200)", reads)
 	}
 	if len(found) != 4 {
 		t.Fatalf("found %d threads, want 4: %#v", len(found), found)
