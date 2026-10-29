@@ -3,5 +3,5 @@
 // concrete catalog, session, hosted-store, and mail owners; it does not copy
 // their durable facts or own live session state. The saved/live reconciliation
 // loop, pane queues, and warm sizing remain in sessions. App composes routes
-// and boot orchestration and attaches any private workspace badges.
+// and boot orchestration.
 package sidebar

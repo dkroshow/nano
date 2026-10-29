@@ -4,7 +4,8 @@
 // app, sessions or hosted. Provider identity/path rules enter as explicit
 // functions; committed transcript changes leave through an injected callback.
 //
-// The live loop in app still owns saved/live text reconciliation and pane rows.
-// Sidebar projection, runtime, mail and setup response joins remain in app.
+// Sessions owns saved/live text reconciliation, pane rows and session setup
+// responses. Sidebar owns catalog responses that join runtime, hosted and mail
+// facts with the saved-thread projection.
 // Hosted identity and execution facts belong to hosted, never to this index.
 package threadindex
