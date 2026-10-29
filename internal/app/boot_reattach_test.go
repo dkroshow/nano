@@ -1221,7 +1221,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	if err := s.agentExecutions.BindSession(sender.ID, "nano-boot-sender", "sender-native", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	s.catalog = renamedCatalog{name: "Boot sender"}
+	s.catalog = fixtureNamedCatalog(t, "codex", "sender-native", "Boot sender")
 
 	turn := httptest.NewRecorder()
 	s.handleAgentTurnSubmit(turn, httptest.NewRequest(http.MethodPost,

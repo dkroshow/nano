@@ -13,13 +13,6 @@ import (
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
-type emptyViewNames struct{}
-
-func (emptyViewNames) DurableName(string, string) (string, bool) { return "", false }
-func (emptyViewNames) DurableNameRef(string, string) (hostedstore.MetadataName, bool) {
-	return hostedstore.MetadataName{}, false
-}
-
 func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller {
 	t.Helper()
 	control := store.Control()
@@ -39,7 +32,7 @@ func testController(t *testing.T, store *hostedstore.ExecutionStore) *Controller
 		CloseLifecycle: func(_ string, close func() error) error { return close() },
 	}
 	c.Views = func() *ViewService {
-		return &ViewService{Executions: store, Metadata: control, Sessions: &sessions.Registry{}, Queue: queue, Names: emptyViewNames{}, Waiting: func(string) string { return "" }, ResolveRecord: c.ResolveHostedRecord}
+		return &ViewService{Executions: store, Metadata: control, Sessions: &sessions.Registry{}, Queue: queue, Waiting: func(string) string { return "" }, ResolveRecord: c.ResolveHostedRecord}
 	}
 	return c
 }

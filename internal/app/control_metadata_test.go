@@ -5,12 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-
 	"net/http"
 	"net/http/httptest"
-
 	"path/filepath"
-
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -345,19 +342,14 @@ func TestMetadataChangesAPIReportsGapsAndDegradedState(t *testing.T) {
 	}
 }
 
-type hostedMetadataNameCatalog struct {
-	*fakeThreadCatalog
-	ref *history.ThreadNameRef
-}
-
-func (c *hostedMetadataNameCatalog) ThreadNameRefFor(context.Context, string, string) (*history.ThreadNameRef, bool) {
-	return c.ref, c.ref != nil
-}
-
 func TestHostedMetadataNameUsesThreadNameProvenance(t *testing.T) {
 	for _, provenance := range []history.ThreadNameProvenance{history.ThreadNameManual, history.ThreadNameHistoricalImport} {
 		t.Run(string(provenance), func(t *testing.T) {
-			server := &server{catalog: &hostedMetadataNameCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, ref: &history.ThreadNameRef{Value: "durable name", Provenance: provenance}}}
+			catalog, saved := fixtureIdentityCatalogStore(t, nil)
+			if _, err := saved.SyncThreadNames(context.Background(), []history.ThreadNameRecord{{Provider: history.ProviderCodex, NativeThreadID: "native-name", Name: "durable name", Provenance: provenance}}); err != nil {
+				t.Fatal(err)
+			}
+			server := &server{catalog: catalog}
 			view := server.decorateHostedMetadata(hostedMetadataView{Provider: "codex", NativeThreadID: "native-name"}, hostedAttachmentView{State: "ready", Provenance: "live_session"})
 			if view.Name.Value != "durable name" || view.Name.Provenance != string(provenance) {
 				t.Fatalf("hosted name provenance = %+v", view.Name)

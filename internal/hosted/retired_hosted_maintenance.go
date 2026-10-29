@@ -87,7 +87,7 @@ func (s *Controller) retireHostedRecords(ctx context.Context, request state.Reti
 				return fmt.Errorf("native identity %s did not resolve to its surviving owner", target.NativeThreadID)
 			}
 			// Names are a separate read-only overlay and do not enter the transaction.
-			if name, ok := s.Views().Names.DurableName(resolved.Provider, resolved.NativeThreadID); ok {
+			if name, ok := s.Views().durableThreadName(resolved.Provider, resolved.NativeThreadID); ok {
 				resolved.DisplayName = name
 			}
 			resolutions = append(resolutions, resolved)

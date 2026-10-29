@@ -1,6 +1,7 @@
 package hosted
 
 import (
+	"context"
 	"time"
 
 	"github.com/dkroshow/nano/internal/features/subscriptions"
@@ -146,12 +147,10 @@ func (s *ViewService) SessionView(id string) SessionView {
 // name provenance.  Neither changes the hosted revision.
 func (s *ViewService) DecorateMetadata(metadata hostedstore.MetadataView, attachment hostedstore.AttachmentView) *hostedstore.MetadataView {
 	metadata.Attachment = attachment
-	if name, ok := s.Names.DurableNameRef(metadata.Provider, metadata.NativeThreadID); ok {
-		metadata.Name = name
-	} else if name, ok := s.Names.DurableName(metadata.Provider, metadata.NativeThreadID); ok {
-		// Compatibility for a catalog implementation that exposes the older
-		// value-only seam. The production catalog implements ThreadNameRefFor.
-		metadata.Name = hostedstore.MetadataName{Value: name, Provenance: "manual"}
+	if s.Catalog != nil && metadata.NativeThreadID != "" {
+		if ref, ok := s.Catalog.ThreadNameRefFor(context.Background(), metadata.Provider, metadata.NativeThreadID); ok && ref != nil && ref.Value != "" {
+			metadata.Name = hostedstore.MetadataName{Value: ref.Value, Provenance: string(ref.Provenance)}
+		}
 	}
 	return &metadata
 }

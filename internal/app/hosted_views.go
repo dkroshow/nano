@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/hosted"
-	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 type agentSessionView = hosted.SessionView
@@ -15,7 +14,7 @@ type availabilityView = hosted.AvailabilityView
 func (s *server) hostedViews() *hosted.ViewService {
 	return &hosted.ViewService{Executions: s.agentExecutions, Metadata: s.controlMetadata,
 		ExecutionError: s.executionControlErr, MetadataError: s.controlMetadataErr,
-		Sessions: &s.Registry, Queue: s.queuedTurns, Names: hostedViewNames{server: s},
+		Sessions: &s.Registry, Queue: s.queuedTurns, Catalog: s.hostedCatalog(),
 		Waiting:       func(id string) string { _, state := s.boot.waitingHosted(id); return state },
 		ResolveRecord: s.resolveHostedThreadRecord}
 }
@@ -61,13 +60,4 @@ func (s *server) handleTurnOperationChanges(w http.ResponseWriter, r *http.Reque
 }
 func (s *server) handleTurnOperationsCollection(w http.ResponseWriter, r *http.Request) {
 	s.hostedViews().HandleOperationsCollection(w, r)
-}
-
-type hostedViewNames struct{ server *server }
-
-func (a hostedViewNames) DurableName(provider, native string) (string, bool) {
-	return a.server.durableThreadName(provider, native)
-}
-func (a hostedViewNames) DurableNameRef(provider, native string) (hostedstore.MetadataName, bool) {
-	return a.server.durableThreadNameRef(provider, native)
 }

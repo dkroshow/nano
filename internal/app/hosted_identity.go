@@ -14,11 +14,8 @@ func (s *server) hostedIdentity() *hosted.IdentityService {
 	if s == nil {
 		return &hosted.IdentityService{}
 	}
-	var catalog hosted.IdentityCatalog
-	if s.catalog != nil {
-		catalog = hostedIdentityCatalog{server: s}
-	}
-	return &hosted.IdentityService{Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, Catalog: catalog, Sessions: &s.Registry, CatalogErrors: hosted.CatalogErrors{NotFound: threadindex.ErrCatalogThreadNotFound, Unavailable: threadindex.ErrThreadCatalogUnavailable, InvalidCursor: threadindex.ErrInvalidThreadCatalogCursor}}
+
+	return &hosted.IdentityService{Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, Catalog: s.hostedCatalog(), Sessions: &s.Registry, CatalogErrors: hosted.CatalogErrors{NotFound: threadindex.ErrCatalogThreadNotFound, Unavailable: threadindex.ErrThreadCatalogUnavailable, InvalidCursor: threadindex.ErrInvalidThreadCatalogCursor}}
 }
 func (s *server) handleIdentityResolve(w http.ResponseWriter, r *http.Request) {
 	s.hostedIdentity().HandleIdentityResolve(w, r)

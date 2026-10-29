@@ -219,7 +219,7 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 		}
 	})
 	sess = runtimeFixture.session
-	s := testServerWithSessions(&server{agentExecutions: store, controlMetadata: control, catalog: renamedCatalog{name: "Worker sender"}, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
+	s := testServerWithSessions(&server{agentExecutions: store, controlMetadata: control, catalog: fixtureNamedCatalog(t, "codex", "native-worker", "Worker sender"), Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 	const prompt = "  Exact caller prompt: do not alter it.  "
 	rec := httptest.NewRecorder()
 	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)

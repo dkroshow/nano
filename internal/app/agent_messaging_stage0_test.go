@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/interact"
 )
@@ -63,7 +61,7 @@ func stage0Server(t *testing.T, seed ...func(*agentExecutionStore, agentSessionR
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn"}})
 	fake.OnTurnStart = func(prompt string) { prompts <- prompt }
 	daemon := fake.daemon()
-	s := &server{agentExecutions: store, controlMetadata: control, mail: mail, notices: notices, catalog: renamedCatalog{name: "Claude sender"}, queuedTurns: queue, sendAttempts: attempts, turns: turnStore}
+	s := &server{agentExecutions: store, controlMetadata: control, mail: mail, notices: notices, catalog: fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Claude sender"), queuedTurns: queue, sendAttempts: attempts, turns: turnStore}
 	sess := newSession(sessionConfig{ID: "nano-worker", Provider: "codex", HostedThreadID: worker.ID, CreatedAt: time.Now(), Projection: projection, AgentExecutions: store, QueuedTurns: queue, SendAttempts: attempts, Turns: turnStore, Metadata: control, AppendUnread: notices.Append, NanoStopping: &s.stopping})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
@@ -321,7 +319,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 		t.Fatalf("restore pending delivery = %v", err)
 	}
 	// Simulate a rename: the footer Nano would compose now differs.
-	s.catalog = renamedCatalog{name: "Renamed Sender"}
+	s.catalog = fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Renamed Sender")
 	rec = httptest.NewRecorder()
 	s.handleAgentTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusOK {
@@ -339,30 +337,6 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	}
 }
 
-type renamedCatalog struct{ name string }
-
-func (c renamedCatalog) ThreadNameFor(context.Context, string, string) (string, bool) {
-	return c.name, true
-}
-
-func (renamedCatalog) ListThreads(context.Context, threadindex.ListQuery) (catalogPage, error) {
-	return catalogPage{}, nil
-}
-
-func (renamedCatalog) LoadThread(context.Context, string) (catalogThread, error) {
-	return catalogThread{}, nil
-}
-
-func (renamedCatalog) IndexStatus(context.Context) (threadindex.IndexStatus, error) {
-	return threadindex.IndexStatus{}, nil
-}
-
-func (renamedCatalog) RequestRefresh() bool { return false }
-
-// Catches: the newest human prompt time losing to an older one when the older
-// one's fraction ends in zeros. RFC3339Nano trims them, so as text ".2374Z"
-// sorts after the later ".237401Z". Boundary: the session's note, in memory and
-// in the durable copy a reload reads. The session sibling checks its in-memory note.
 func TestLastHumanPromptMovesForwardAcrossTrimmedFractions(t *testing.T) {
 	s, _, _, _, worker, _, _ := stage0Server(t)
 	earlier := time.Date(2026, 10, 15, 12, 0, 4, 237400000, time.UTC)

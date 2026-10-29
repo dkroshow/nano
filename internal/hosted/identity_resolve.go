@@ -350,7 +350,7 @@ func identityFromLive(live liveIdentity) identityCandidate {
 	}
 }
 
-func identityFromCatalog(row CatalogIdentity) identityCandidate {
+func identityFromCatalog(row catalogIdentity) identityCandidate {
 	name := row.Name
 	updated := row.UpdatedAt
 	return identityCandidate{

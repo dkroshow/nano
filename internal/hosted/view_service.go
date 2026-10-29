@@ -1,21 +1,17 @@
 package hosted
 
 import (
+	"context"
+
 	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
-// ViewNames supplies the independent durable-name overlay for hosted metadata.
-type ViewNames interface {
-	// DurableName reads the value-only name contract.
-	DurableName(string, string) (string, bool)
-	// DurableNameRef reads the name and its provenance.
-	DurableNameRef(string, string) (hostedstore.MetadataName, bool)
-}
-
-// ViewService assembles hosted read views from canonical facts and bounded runtime reads.
+// ViewService assembles hosted read views from canonical stores, saved names
+// and the concrete session registry.
 // The app supplies current dependency references for each read.
 type ViewService struct {
 	Executions                    *hostedstore.ExecutionStore
@@ -23,7 +19,7 @@ type ViewService struct {
 	ExecutionError, MetadataError string
 	Sessions                      *sessions.Registry
 	Queue                         *prompts.LegacyQueue
-	Names                         ViewNames
+	Catalog                       *threadindex.Service
 	Waiting                       func(string) string
 	ResolveRecord                 func(string) (ownedthreads.SessionRecord, bool)
 }
@@ -33,4 +29,11 @@ func (s *ViewService) sessionForHosted(id string) *sessions.Session {
 		return nil
 	}
 	return s.Sessions.SessionForHostedThread(id)
+}
+
+func (s *ViewService) durableThreadName(provider, native string) (string, bool) {
+	if s.Catalog == nil || native == "" {
+		return "", false
+	}
+	return s.Catalog.ThreadNameFor(context.Background(), provider, native)
 }

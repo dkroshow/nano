@@ -60,7 +60,7 @@ func newThreadReferenceServer(t *testing.T, rows []catalogThread) (*server, *age
 		t.Fatal(err)
 	}
 	return &server{
-		catalog:         &fakeThreadCatalog{page: catalogPage{Items: rows}},
+		catalog:         fixtureIdentityCatalog(t, rows),
 		agentExecutions: store,
 		Registry:        newSessionRegistry(),
 	}, store

@@ -42,10 +42,10 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 				wantName, wantResolvedName, wantCode := "Source sender", "Source sender", ""
 				switch scenario {
 				case "source name overrides catalog":
-					s.catalog = renamedCatalog{name: "Old catalog name"}
+					s.catalog = fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Old catalog name")
 				case "catalog fallback":
 					s.RemoveSession(live.ID())
-					s.catalog = renamedCatalog{name: "Catalog sender"}
+					s.catalog = fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Catalog sender")
 					wantName, wantResolvedName = "Catalog sender", "Catalog sender"
 				case "no hosted record":
 					sender.ID = "nht_00000000000000000000000000000000"
@@ -71,12 +71,12 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					liveConfig.Provider = "codex"
 					live = newFixtureSession(liveConfig, sender.NativeThreadID)
 					s.RegisterSession(live)
-					s.catalog = renamedCatalog{name: "Catalog sender"}
+					s.catalog = fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Catalog sender")
 					wantCode = "sender_identity_incomplete"
 				case "native mismatch":
 					live = newFixtureSession(liveConfig, identityNativeNew)
 					s.RegisterSession(live)
-					s.catalog = renamedCatalog{name: "Catalog sender"}
+					s.catalog = fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Catalog sender")
 					wantCode = "sender_identity_incomplete"
 				}
 				if scenario == "source name only" {

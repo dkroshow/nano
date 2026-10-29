@@ -26,11 +26,11 @@ func TestIdentityResolveUnknownRefIs404(t *testing.T) {
 }
 
 func TestIdentityResolveNameNativeAndHosted(t *testing.T) {
-	row := CatalogIdentity{
+	row := catalogIdentity{
 		ID: "nth_named", Provider: "codex", NativeID: identityNativeOld,
 		Name: namedCatalog("graph classifier"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z"),
 	}
-	s, store := newIdentityService(t, []CatalogIdentity{row})
+	s, store := newIdentityService(t, []catalogIdentity{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
 
 	want := IdentityResolution{
@@ -49,7 +49,7 @@ func TestIdentityResolveNameNativeAndHosted(t *testing.T) {
 }
 
 func TestIdentityResolveDuplicateNamesPickMostRecentlyUpdated(t *testing.T) {
-	s, _ := newIdentityService(t, []CatalogIdentity{
+	s, _ := newIdentityService(t, []catalogIdentity{
 		{
 			ID: "nth_older", Provider: "codex", NativeID: identityNativeOld,
 			Name: namedCatalog("shared name"), UpdatedAt: identityStamp("2026-01-01T00:00:00Z"),
@@ -70,11 +70,11 @@ func TestIdentityResolveDuplicateNamesPickMostRecentlyUpdated(t *testing.T) {
 }
 
 func TestIdentityResolveSurvivesResumeRebind(t *testing.T) {
-	row := CatalogIdentity{
+	row := catalogIdentity{
 		ID: "nth_resume", Provider: "codex", NativeID: identityNativeOld,
 		Name: namedCatalog("resume me"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z"),
 	}
-	s, store := newIdentityService(t, []CatalogIdentity{row})
+	s, store := newIdentityService(t, []catalogIdentity{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
 	if err := store.BindSession(record.ID, "nano-resume", identityNativeOld, "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
@@ -89,11 +89,11 @@ func TestIdentityResolveSurvivesResumeRebind(t *testing.T) {
 }
 
 func TestIdentityResolveFollowsClaudeRespawn(t *testing.T) {
-	row := CatalogIdentity{
+	row := catalogIdentity{
 		ID: "nth_claude", Provider: "claude", NativeID: identityNativeOld,
 		Name: namedCatalog("claude owner"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z"),
 	}
-	s, store := newIdentityService(t, []CatalogIdentity{row})
+	s, store := newIdentityService(t, []catalogIdentity{row})
 	record := createIdentityHosted(t, store, "claude", identityNativeOld)
 	if err := store.BindSession(record.ID, "nano-respawn", identityNativeNew, "ready", ownedthreads.PresentationShared); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestIdentityResolveLabelsClaudeProvisionalUntilProviderUUIDArrives(t *testi
 }
 
 func TestIdentityResolveResultsAreNotStored(t *testing.T) {
-	s, store := newIdentityService(t, []CatalogIdentity{{
+	s, store := newIdentityService(t, []catalogIdentity{{
 		Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("cached"),
 	}})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)

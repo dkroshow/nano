@@ -1,10 +1,12 @@
 package hosted
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/history"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -17,22 +19,20 @@ func TestThreadReferenceRejectsTruncatedNativeUUID(t *testing.T) {
 }
 
 func TestThreadReferenceCatalogCompatibilityInputResolvesExactRow(t *testing.T) {
-	row := CatalogIdentity{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}
-	s, _ := newReferenceService(t, nil)
-	fake := s.Catalog.(*identityFixtureCatalog)
-	fake.thread = row
+	row := catalogIdentity{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}
+	s, _ := newReferenceService(t, []catalogIdentity{row})
 
 	status, body := resolveReference(t, s, row.ID)
 	if status != http.StatusOK || body.State != "resolved" || body.Target == nil || body.Target.Route != "historical" {
 		t.Fatalf("response = %d %#v", status, body)
 	}
-	if fake.loadID != row.ID || body.Target.CatalogThreadID != row.ID || body.Target.NativeThreadID != threadReferenceUUID {
-		t.Fatalf("catalog target = %#v, loadID = %q", body.Target, fake.loadID)
+	if body.Target.CatalogThreadID != row.ID || body.Target.NativeThreadID != threadReferenceUUID {
+		t.Fatalf("catalog target = %#v", body.Target)
 	}
 }
 
 func TestThreadReferenceSameProviderDuplicateCatalogRowsUseCurrentOwner(t *testing.T) {
-	rows := []CatalogIdentity{
+	rows := []catalogIdentity{
 		{ID: "nth_first", Provider: "codex", NativeID: threadReferenceUUID},
 		{ID: "nth_second", Provider: "codex", NativeID: threadReferenceUUID},
 	}
@@ -58,8 +58,8 @@ func TestThreadReferenceResultsAreNotStored(t *testing.T) {
 }
 
 func TestThreadReferenceNativeHistoricalFallbackAndHostedDirect(t *testing.T) {
-	row := CatalogIdentity{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}
-	s, store := newReferenceService(t, []CatalogIdentity{row})
+	row := catalogIdentity{ID: "nth_exact", Provider: "codex", NativeID: threadReferenceUUID}
+	s, store := newReferenceService(t, []catalogIdentity{row})
 	s.Executions, _ = newControlAgentExecutionStore(store.Control(), "empty-reader")
 	record := createReferenceHostedRecord(t, store, threadReferenceUUID)
 
@@ -115,16 +115,29 @@ func TestThreadReferenceCrossProviderNativeCollisionDoesNotGuess(t *testing.T) {
 
 func TestThreadReferenceUnresolvedSchemaDistinguishesIndexing(t *testing.T) {
 	unknown := "99999999-2222-4333-8444-555555555555"
-	s, _ := newReferenceService(t, nil)
-	s.Catalog.(*identityFixtureCatalog).status = "scanning"
+	s, _, saved := newIdentityFixture(t, nil)
+	setIdentityIndexState(t, saved, "scanning")
 
 	status, body := resolveReference(t, s, unknown)
 	if status != http.StatusOK || body.State != "unresolved" || body.Reason != "not_indexed" || body.Target != nil {
 		t.Fatalf("indexing response = %d %#v", status, body)
 	}
-	s.Catalog.(*identityFixtureCatalog).status = "ready"
+	setIdentityIndexState(t, saved, "ready")
 	status, body = resolveReference(t, s, unknown)
 	if status != http.StatusOK || body.State != "unresolved" || body.Reason != "unknown" || body.Target != nil {
 		t.Fatalf("unknown response = %d %#v", status, body)
+	}
+}
+
+func setIdentityIndexState(t *testing.T, saved *history.Store, state history.IndexStateName) {
+	t.Helper()
+	roots, err := saved.ListRoots(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range roots {
+		if err := saved.SetIndexState(context.Background(), root.ID, state, nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

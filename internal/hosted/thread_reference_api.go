@@ -80,7 +80,8 @@ func (s *IdentityService) resolveThreadReferenceTarget(ctx context.Context, refe
 // Catalog ids are already Nano-owned identities, so a direct detail lookup is
 // both exact and more reliable than trying to reconstruct a native lineage.
 func (s *IdentityService) resolveCatalogThreadReference(ctx context.Context, catalogID string) (threadReferenceResponse, error) {
-	row, err := s.Catalog.LoadIdentity(ctx, catalogID)
+	saved, err := s.Catalog.LoadThread(ctx, catalogID)
+	row := s.catalogIdentity(saved)
 	if err != nil && errors.Is(err, s.CatalogErrors.NotFound) {
 		return threadReferenceResponse{Reference: catalogID, State: "unresolved", Reason: "unknown"}, nil
 	}
@@ -197,7 +198,7 @@ func resolvedThreadReference(reference string, target threadReferenceTarget) thr
 	return threadReferenceResponse{Reference: reference, State: "resolved", Target: &target}
 }
 
-func historicalReferenceTarget(row CatalogIdentity, hostedID string) threadReferenceTarget {
+func historicalReferenceTarget(row catalogIdentity, hostedID string) threadReferenceTarget {
 	return threadReferenceTarget{
 		Route: "historical", HostedThreadID: hostedID, CatalogThreadID: row.ID,
 		Provider: row.Provider, NativeThreadID: row.NativeID,

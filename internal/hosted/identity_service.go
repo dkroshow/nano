@@ -3,38 +3,26 @@ package hosted
 import (
 	"context"
 
+	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/threadindex"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
-// CatalogIdentity contains only the saved identity facts used by hosted resolution.
-type CatalogIdentity struct{ ID, Provider, NativeID, HostedThreadID, Name, UpdatedAt string }
+// catalogIdentity contains only the saved identity facts used by hosted resolution.
+type catalogIdentity struct{ ID, Provider, NativeID, HostedThreadID, Name, UpdatedAt string }
 
 // liveIdentity contains the current attachment facts used by hosted resolution.
 type liveIdentity struct{ ID, Provider, ThreadID, HostedThreadID, Name, CreatedAt, LastTurnEndedAt string }
 
-// IdentityCatalog supplies catalogue reads after the app composes its overlays.
-type IdentityCatalog interface {
-	// NativeIdentities reads exact native matches within an optional provider scope.
-	NativeIdentities(context.Context, string, string) ([]CatalogIdentity, error)
-	// NamedIdentities reads exact display-name matches.
-	NamedIdentities(context.Context, string) ([]CatalogIdentity, error)
-	// LoadIdentity reads the exact catalog identity.
-	LoadIdentity(context.Context, string) (CatalogIdentity, error)
-	// IsIndexing reports whether discovery can still produce an unresolved reference.
-	IsIndexing(context.Context) bool
-	// DurableName reads the authoritative name for a provider-scoped native identity.
-	DurableName(string, string) (string, bool)
-}
-
-// IdentityService resolves hosted identities using canonical stores and bounded read inputs.
-// The caller supplies a snapshot of these dependencies for each request.
+// IdentityService resolves hosted identities through their concrete owners:
+// canonical hosted stores, saved catalog rows and the live session registry.
 type IdentityService struct {
 	Executions    *hostedstore.ExecutionStore
 	Metadata      *hostedstore.MetadataStore
 	MetadataError string
-	Catalog       IdentityCatalog
+	Catalog       *threadindex.Service
 	Sessions      *sessions.Registry
 	CatalogErrors CatalogErrors
 }
@@ -76,25 +64,56 @@ func (s *IdentityService) liveHostedSession(id string) (liveIdentity, bool) {
 func identityFromSession(summary sessions.Summary) liveIdentity {
 	return liveIdentity{ID: summary.ID, Name: summary.Name, Provider: summary.Provider, ThreadID: summary.ThreadID, HostedThreadID: summary.HostedThreadID, CreatedAt: summary.CreatedAt, LastTurnEndedAt: summary.LastTurnEndedAt}
 }
-func (s *IdentityService) catalogRowsForNative(ctx context.Context, native, provider string) ([]CatalogIdentity, error) {
-	return s.Catalog.NativeIdentities(ctx, native, provider)
+func (s *IdentityService) catalogRowsForNative(ctx context.Context, native, provider string) ([]catalogIdentity, error) {
+	page, err := s.Catalog.ListThreads(ctx, threadindex.ListQuery{ThreadID: native, IncludeSubagents: true, IncludeGuardians: true, IncludeProgrammatic: true, Archived: string(history.ArchivedInclude), Limit: threadindex.MaxThreadCatalogLimit})
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]catalogIdentity, 0, len(page.Items))
+	for _, row := range page.Items {
+		if row.NativeID == native && (provider == "" || row.Provider == provider) {
+			rows = append(rows, s.catalogIdentity(row))
+		}
+	}
+	return rows, nil
 }
-func (s *IdentityService) namedCatalogThreads(ctx context.Context, name string) ([]CatalogIdentity, error) {
+func (s *IdentityService) namedCatalogThreads(ctx context.Context, name string) ([]catalogIdentity, error) {
 	if s.Catalog == nil {
 		return nil, nil
 	}
-	return s.Catalog.NamedIdentities(ctx, name)
+	saved, err := s.Catalog.NamedThreads(ctx, name)
+	rows := make([]catalogIdentity, 0, len(saved))
+	for _, row := range saved {
+		rows = append(rows, s.catalogIdentity(row))
+	}
+	return rows, err
 }
 func (s *IdentityService) catalogIsIndexing(ctx context.Context) bool {
-	return s.Catalog.IsIndexing(ctx)
+	status, err := s.Catalog.IndexStatus(ctx)
+	return err == nil && (status.State == "starting" || status.State == "scanning")
 }
 func (s *IdentityService) durableThreadName(provider, native string) (string, bool) {
-	if s.Catalog == nil {
+	if s.Catalog == nil || native == "" {
 		return "", false
 	}
-	return s.Catalog.DurableName(provider, native)
+	return s.Catalog.ThreadNameFor(context.Background(), provider, native)
 }
-func (s *IdentityService) catalogHostedThreadRecord(row CatalogIdentity) (ownedthreads.SessionRecord, bool) {
+func (s *IdentityService) catalogIdentity(row threadindex.Thread) catalogIdentity {
+	result := catalogIdentity{ID: row.ID, Provider: row.Provider, NativeID: row.NativeID}
+	if s.Executions != nil {
+		if record, ok := s.Executions.SessionForNative(row.Provider, row.NativeID); ok {
+			result.HostedThreadID = record.ID
+		}
+	}
+	if row.Name != nil {
+		result.Name = row.Name.Value
+	}
+	if row.UpdatedAt != nil {
+		result.UpdatedAt = *row.UpdatedAt
+	}
+	return result
+}
+func (s *IdentityService) catalogHostedThreadRecord(row catalogIdentity) (ownedthreads.SessionRecord, bool) {
 	if s.Executions == nil {
 		return ownedthreads.SessionRecord{}, false
 	}

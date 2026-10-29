@@ -2,13 +2,20 @@ package hosted
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/setup"
+	statedb "github.com/dkroshow/nano/internal/state/db"
+	"github.com/dkroshow/nano/internal/threadindex"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -18,52 +25,69 @@ const (
 	threadReferenceUUID = "11111111-2222-4333-8444-555555555555"
 )
 
-type identityFixtureCatalog struct {
-	items  []CatalogIdentity
-	thread CatalogIdentity
-	loadID string
-	status string
+func newIdentityService(t *testing.T, rows []catalogIdentity) (*IdentityService, *hostedstore.ExecutionStore) {
+	service, store, _ := newIdentityFixture(t, rows)
+	return service, store
 }
-
-func (c *identityFixtureCatalog) NativeIdentities(_ context.Context, native, provider string) ([]CatalogIdentity, error) {
-	rows := []CatalogIdentity{}
-	for _, row := range c.items {
-		if row.NativeID == native && (provider == "" || provider == row.Provider) {
-			rows = append(rows, row)
-		}
-	}
-	return rows, nil
-}
-func (c *identityFixtureCatalog) NamedIdentities(_ context.Context, name string) ([]CatalogIdentity, error) {
-	rows := []CatalogIdentity{}
-	for _, row := range c.items {
-		if row.Name == name {
-			rows = append(rows, row)
-		}
-	}
-	return rows, nil
-}
-func (c *identityFixtureCatalog) LoadIdentity(_ context.Context, id string) (CatalogIdentity, error) {
-	c.loadID = id
-	return c.thread, nil
-}
-func (c *identityFixtureCatalog) IsIndexing(context.Context) bool {
-	return c.status == "starting" || c.status == "scanning"
-}
-func (c *identityFixtureCatalog) DurableName(provider, native string) (string, bool) {
-	return "", false
-}
-func newIdentityService(t *testing.T, rows []CatalogIdentity) (*IdentityService, *hostedstore.ExecutionStore) {
+func newIdentityFixture(t *testing.T, rows []catalogIdentity) (*IdentityService, *hostedstore.ExecutionStore, *history.Store) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	migrateTestControl(t, control)
-	store, err := newControlAgentExecutionStore(control, "identity-test")
+	executions, err := newControlAgentExecutionStore(control, "identity-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &IdentityService{Executions: store, Catalog: &identityFixtureCatalog{items: rows}, CatalogErrors: CatalogErrors{NotFound: errors.New("catalog thread not found")}}, store
+	path := filepath.Join(t.TempDir(), "catalog.sqlite")
+	saved, err := history.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = saved.Close() })
+	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	catalog, err := threadindex.New(context.Background(), saved, threadindex.Options{Roots: []history.SourceRoot{root}, DisableWatcher: true, NativeIDProvisional: sessions.NativeThreadIDProvisional, ClaudeProjectSlug: setup.ClaudeProjectSlug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(catalog.Close)
+	db, err := sql.Open("sqlite", statedb.URI(path, "rw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	names := []history.ThreadNameRecord{}
+	for i, row := range rows {
+		source := root
+		source.Provider = history.Provider(row.Provider)
+		source.Path = filepath.Join(root.Path, fmt.Sprint(i))
+		if row.Provider == "claude" {
+			source.Kind = history.RootClaudeProjects
+		}
+		persisted, err := saved.EnsureRoot(context.Background(), source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := row.ID
+		if id == "" {
+			id = fmt.Sprintf("nth_fixture_%d", i)
+		}
+		var updated any
+		if row.UpdatedAt != "" {
+			updated = row.UpdatedAt
+		}
+		_, err = db.Exec(`INSERT INTO threads(id,source_root_id,provider,native_thread_id,kind,updated_at,metadata_json,source_status) VALUES(?,?,?,?,?,?,?,?)`, id, persisted.ID, row.Provider, row.NativeID, "interactive", updated, `{}`, "present")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.Name != "" {
+			names = append(names, history.ThreadNameRecord{Provider: history.Provider(row.Provider), NativeThreadID: row.NativeID, Name: row.Name, Provenance: history.ThreadNameManual})
+		}
+	}
+	if _, err = saved.SyncThreadNames(context.Background(), names); err != nil {
+		t.Fatal(err)
+	}
+	return &IdentityService{Executions: executions, Catalog: catalog, CatalogErrors: CatalogErrors{NotFound: threadindex.ErrCatalogThreadNotFound}}, executions, saved
 }
-func newReferenceService(t *testing.T, rows []CatalogIdentity) (*IdentityService, *hostedstore.ExecutionStore) {
+func newReferenceService(t *testing.T, rows []catalogIdentity) (*IdentityService, *hostedstore.ExecutionStore) {
 	return newIdentityService(t, rows)
 }
 func createIdentityHosted(t *testing.T, store *hostedstore.ExecutionStore, provider, native string) ownedthreads.SessionRecord {
@@ -104,6 +128,7 @@ func resolveReference(t *testing.T, s *IdentityService, ref string) (int, thread
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/thread-references/"+ref, nil)
 	request.SetPathValue("reference", ref)
 	s.HandleThreadReference(response, request)
+
 	var body threadReferenceResponse
 	if response.Code == http.StatusOK && json.Unmarshal(response.Body.Bytes(), &body) != nil {
 		t.Fatalf("invalid response %q", response.Body.String())

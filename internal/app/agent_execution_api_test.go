@@ -1469,10 +1469,10 @@ func submitHostedTurn(t *testing.T, s *server, threadRef, actionID, prompt strin
 // that may be starting, detached, or otherwise identity-incomplete.
 func confirmedTestSender(t *testing.T, s *server, provider string) string {
 	t.Helper()
-	if s.catalog == nil {
-		s.catalog = renamedCatalog{name: "API test sender"}
-	}
 	id := "test-sender-" + hostedstore.AgentHash([]byte(t.Name()))[:16]
+	if s.catalog == nil {
+		s.catalog = fixtureNamedCatalog(t, provider, "native-"+id, "API test sender")
+	}
 	sender, _, err := fixtureBeginSession(s.agentExecutions, id, id, provider, presentationShared)
 	if err != nil {
 		t.Fatal(err)
