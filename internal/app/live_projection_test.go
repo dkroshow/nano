@@ -64,10 +64,11 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 		return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: turnID, Status: "completed", CompletedAtMs: started + 1}}, turnID == "turn-1"
 	}, nil, nil, nil, nil)
 	s := testServerWithSessions(&server{catalog: &fakeMessagesCatalog{}, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
+	fixtureOwners(
 
-	// Transcript notifications use the catalog's nth_ identity, while hosted
-	// sessions retain the provider-native thread identity.
-	s.attachmentCoordinator().ConfirmDurableThread(context.Background(), threadindex.TranscriptChange{
+		// Transcript notifications use the catalog's nth_ identity, while hosted
+		// sessions retain the provider-native thread identity.
+		s).attachmentCoordinator().ConfirmDurableThread(context.Background(), threadindex.TranscriptChange{
 		ThreadID: "nth_1", Provider: "codex", NativeThreadID: "native-thread",
 	})
 
@@ -166,7 +167,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 
 	service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 		callbacks.Add(1)
-		server.attachmentCoordinator().ConfirmDurableThread(ctx, change)
+		fixtureOwners(server).attachmentCoordinator().ConfirmDurableThread(ctx, change)
 	})
 	for worker := 0; worker < transcriptChangeWorkerCount; worker++ {
 		select {

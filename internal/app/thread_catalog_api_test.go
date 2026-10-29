@@ -170,7 +170,7 @@ func TestThreadUsageEndpoints(t *testing.T) {
 	fake := &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}}
 	s := &server{catalog: fake}
 	mux := http.NewServeMux()
-	mountRoutes(mux, applicationRoutes(s))
+	mountRoutes(mux, applicationRoutes(fixtureOwners(s)))
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1/usage", nil))
@@ -292,7 +292,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	}
 
 	assigned := readCatalog()
-	hosted := s.hostedViews().SessionView(worker.ID)
+	hosted := fixtureOwners(s).hostedViews().SessionView(worker.ID)
 	if !reflect.DeepEqual(assigned.Assignment, hosted.Assignment) || assigned.Assignment == nil || assigned.Assignment.AssignmentRole != "worker" {
 		t.Fatalf("catalog assignment = %#v, hosted assignment = %#v", assigned.Assignment, hosted.Assignment)
 	}

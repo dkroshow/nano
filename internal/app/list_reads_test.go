@@ -348,8 +348,8 @@ func TestRuntimeEventReadsNoControlStoreRows(t *testing.T) {
 	// Prime the initial snapshot before measuring the two publisher calls.
 	f.server.notifyRuntime()
 	statements := f.countControlStatements(t, func() {
-		f.server.attachmentCoordinator().NotifyRuntime()
-		f.server.attachmentCoordinator().NotifyRuntimeRefresh()
+		fixtureOwners(f.server).attachmentCoordinator().NotifyRuntime()
+		fixtureOwners(f.server).attachmentCoordinator().NotifyRuntimeRefresh()
 	})
 	if statements != 0 {
 		t.Fatalf("two runtime events read %d control-store statements for %d live sessions; want 0", statements, len(f.server.SnapshotSessions()))
@@ -510,7 +510,9 @@ func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 		rebooting := hostedstore.Attachment{Provider: "codex", NativeThreadID: "rebooting", HostedThreadID: "nht_rebooting"}
 		f.server.bootAttachments = sessions.NewBootAttachments([]hostedstore.Attachment{rebooting})
 		var body map[string]any
-		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.hostedViews().HandleSessionsList, "/api/v1/hosted-threads") })
+		statements := f.countControlStatements(t, func() {
+			body = f.get(t, fixtureOwners(f.server).hostedViews().HandleSessionsList, "/api/v1/hosted-threads")
+		})
 		listed := map[string]string{}
 		items, _ := body["items"].([]any)
 		for _, item := range items {
@@ -566,7 +568,7 @@ func TestAvailabilityReadsOnlyItsThreadsPrompts(t *testing.T) {
 			submit(fmt.Sprintf("nht_other_%03d", i), fmt.Sprintf("native-other-%03d", i), fmt.Sprintf("other-%03d", i))
 		}
 		rows.Store(0)
-		queued = s.hostedViews().AvailabilityFor(worker.ID, time.Now().UTC()).Facts.QueuedPrompts
+		queued = fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, time.Now().UTC()).Facts.QueuedPrompts
 		return rows.Load(), queued
 	}
 	smallRows, smallQueued := measure(5)
@@ -677,7 +679,7 @@ func TestThreadListPagesKeepLimitAndLoseNoThread(t *testing.T) {
 func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T) {
 	s, _, sess, sender, worker, _, provider := stage0Server(t)
 	ctx, now := context.Background(), time.Now().UTC()
-	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.QueuedPrompts != 0 {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.QueuedPrompts != 0 {
 		t.Fatalf("nothing queued = %+v", v)
 	}
 	submit := func(hosted, native, action string) {
@@ -690,7 +692,7 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 		submit(worker.ID, "native-worker", "mine-1")
 		submit(worker.ID, "native-worker", "mine-2")
 		submit(sender.ID, "native-sender", "theirs-1")
-		if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Facts.QueuedPrompts != 2 ||
+		if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Facts.QueuedPrompts != 2 ||
 			len(v.Reasons) != 1 || v.Reasons[0] != "queued_backlog" {
 			t.Fatalf("own backlog = %+v", v)
 		}
@@ -700,7 +702,7 @@ func TestAvailabilityQueuedBacklogCountsOnlyTheThreadsQueuedPrompts(t *testing.T
 	}); err != nil || reason != "" {
 		t.Fatalf("fixture delivery lock: %s %v", reason, err)
 	}
-	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" || v.Facts.QueuedPrompts != 2 {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" || v.Facts.QueuedPrompts != 2 {
 		t.Fatalf("active with backlog = %+v", v)
 	}
 }

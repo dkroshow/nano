@@ -101,7 +101,7 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 func retirementHTTP(t *testing.T, s *server, body string) (retiredHostedReceipt, int) {
 	t.Helper()
 	w := httptest.NewRecorder()
-	s.hostedController().HandleRetirement(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
+	fixtureOwners(s).hostedController().HandleRetirement(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
 	var result retiredHostedReceipt
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -246,7 +246,7 @@ func TestRetiredHostedHTTPRequiresExplicitBoundedRequest(t *testing.T) {
 	f := newRetirementServer(t)
 	for _, body := range []string{`{}`, `{"apply":true}`, `{"apply":true,"outboxDisposition":"repoint"}`, `{"apply":false,"outboxDisposition":"guess"}`, `{"apply":false,"outboxDisposition":"repoint","hostedIds":["anything"]}`, `{"apply":false,"outboxDisposition":"repoint"} {}`} {
 		w := httptest.NewRecorder()
-		f.server.hostedController().HandleRetirement(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
+		fixtureOwners(f.server).hostedController().HandleRetirement(w, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted-records", strings.NewReader(body)))
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("accepted %s: %d %s", body, w.Code, w.Body.String())
 		}

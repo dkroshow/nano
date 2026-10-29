@@ -36,7 +36,7 @@ func reconnectServer(t *testing.T, shimURL string, stale bool) (*server, string)
 	}
 	store.Remember(record)
 	seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
-	stored, _ := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID)
+	stored, _ := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID)
 	return s, stored.HostedThreadID
 }
 
@@ -329,7 +329,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			}
 
 			response := httptest.NewRecorder()
-			s.hostedController().HandleLegacyCreate(response, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
+			fixtureOwners(s).hostedController().HandleLegacyCreate(response, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
 			if test.ok {
 				if response.Code != http.StatusOK {
 					t.Fatalf("resume = %d %s", response.Code, response.Body.String())
@@ -342,7 +342,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			if starts, closes := len(shim.CallsOf(shimMethodStart)), len(shim.CallsOf(shimMethodClose)); starts != 0 || closes != 0 {
 				t.Fatalf("unprovable recovery made %d starts and %d closes", starts, closes)
 			}
-			if _, ok := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
+			if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
 				t.Fatal("unprovable recovery removed the retryable record")
 			}
 		})
@@ -431,7 +431,7 @@ func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
 	if starts := len(shim.CallsOf(shimMethodStart)); starts != 0 {
 		t.Fatalf("ingestion timeout started %d replacement children", starts)
 	}
-	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
+	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", claudeResumeThreadID); !ok {
 		t.Fatal("ingestion timeout removed the retryable record")
 	}
 }
@@ -515,7 +515,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	shim.BeforeAttach = nil
 	attaches := len(shim.CallsOf(shimMethodAttach))
 	retry := httptest.NewRecorder()
-	s.hostedController().HandleLegacyCreate(retry, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
+	fixtureOwners(s).hostedController().HandleLegacyCreate(retry, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
 	if retry.Code == http.StatusOK || !strings.Contains(retry.Body.String(), "still draining") {
 		t.Fatalf("overlapping retry = %d %s, want a draining refusal", retry.Code, retry.Body.String())
 	}

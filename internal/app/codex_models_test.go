@@ -33,7 +33,7 @@ func TestPinnedCodexModelsPreviewAsSelected(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-			s.attachmentCoordinator().HandleSpawnPreview(rec, req)
+			fixtureOwners(s).attachmentCoordinator().HandleSpawnPreview(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 			}
@@ -76,7 +76,7 @@ func TestCodexModelCatalogRefreshDiscoversAccountUpgrade(t *testing.T) {
 	fake.Mu.Unlock()
 	s := &server{codex: d}
 	rec := httptest.NewRecorder()
-	s.attachmentCoordinator().HandleCodexModels(rec, httptest.NewRequest(http.MethodGet, "/api/codex/models?refresh=true", nil))
+	fixtureOwners(s).attachmentCoordinator().HandleCodexModels(rec, httptest.NewRequest(http.MethodGet, "/api/codex/models?refresh=true", nil))
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("ultrafast")) {
 		t.Fatalf("refreshed catalog = %d %s", rec.Code, rec.Body)
 	}

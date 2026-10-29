@@ -23,7 +23,7 @@ func operatorSendForTest(t *testing.T, s *server, recipient threads.SessionRecor
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
 	var message featuremail.Message
 	if rec.Code == http.StatusCreated || rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), &message); err != nil {
@@ -50,13 +50,13 @@ func TestOperatorSendIdentityAndExclusivity(t *testing.T) {
 	// Exactly one identity per send: both and neither are rejected.
 	both, _ := json.Marshal(agentMessageSendRequest{ClientMessageID: "op-2", Operator: true, SenderThreadRef: sender.ID, Body: "x"})
 	rec = httptest.NewRecorder()
-	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(both)), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(both)), recipient)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "sender_required") {
 		t.Fatalf("both identities = %d %s", rec.Code, rec.Body.String())
 	}
 	neither, _ := json.Marshal(agentMessageSendRequest{ClientMessageID: "op-3", Body: "x"})
 	rec = httptest.NewRecorder()
-	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(neither)), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(neither)), recipient)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "sender_required") {
 		t.Fatalf("no identity = %d %s", rec.Code, rec.Body.String())
 	}
@@ -165,7 +165,7 @@ func TestGlobalMailListingOrderFiltersAndPaging(t *testing.T) {
 
 	list := func(query string) map[string]json.RawMessage {
 		rec := httptest.NewRecorder()
-		s.agentController().HandleAgentMessagesGlobal(rec, httptest.NewRequest(http.MethodGet, "/api/v1/agent-messages"+query, nil))
+		fixtureOwners(s).agentController().HandleAgentMessagesGlobal(rec, httptest.NewRequest(http.MethodGet, "/api/v1/agent-messages"+query, nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("global list %q = %d %s", query, rec.Code, rec.Body.String())
 		}
@@ -251,7 +251,7 @@ func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	s.agentController().HandleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("inbox read = %d", rec.Code)
 	}
@@ -262,7 +262,7 @@ func TestMailHubNotifiesOnSendReadAndDisposition(t *testing.T) {
 
 	// A peek must not notify.
 	rec = httptest.NewRecorder()
-	s.agentController().HandleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadInbox(rec, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
 	select {
 	case delta := <-ch:
 		t.Fatalf("peek produced a mail event: %+v", delta)

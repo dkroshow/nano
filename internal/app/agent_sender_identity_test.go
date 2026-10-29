@@ -103,7 +103,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					persistedName = ""
 				}
 				if route == "attribution" {
-					got, err := s.hostedController().TurnAttributionFor(sender)
+					got, err := fixtureOwners(s).hostedController().TurnAttributionFor(sender)
 					if wantCode != "" {
 						if err == nil {
 							t.Fatalf("incomplete identity accepted: %+v", got)
@@ -122,7 +122,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 				if route == "turn" {
 					body, _ := json.Marshal(map[string]string{"clientActionId": "identity-check", "prompt": "Review", "senderThreadRef": sender.ID})
 					response = httptest.NewRecorder()
-					s.hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(body)), worker.ID)
+					fixtureOwners(s).hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(body)), worker.ID)
 				} else {
 					var message featuremail.Message
 					response, message = sendAgentMessageForTest(t, s, worker, sender.ID, "identity-check", "Review", "Review", nil)
@@ -183,7 +183,7 @@ func TestAgentSenderCannotOverrideResolvedName(t *testing.T) {
 			if route == "turn" {
 				body["clientActionId"], body["prompt"] = "caller-name", "Review"
 				encoded, _ := json.Marshal(body)
-				s.hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(encoded)), recipient.ID)
+				fixtureOwners(s).hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(encoded)), recipient.ID)
 				if response.Code != http.StatusAccepted {
 					t.Fatalf("caller name admission=%d %s", response.Code, response.Body)
 				}
@@ -195,7 +195,7 @@ func TestAgentSenderCannotOverrideResolvedName(t *testing.T) {
 			} else {
 				body["clientMessageId"], body["body"] = "caller-name", "Review"
 				encoded, _ := json.Marshal(body)
-				s.agentController().HandleHostedThreadMessageSend(response, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
+				fixtureOwners(s).agentController().HandleHostedThreadMessageSend(response, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
 			}
 			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_message_request") {
 				t.Fatalf("caller name admission=%d %s", response.Code, response.Body)

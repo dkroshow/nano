@@ -32,7 +32,7 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 	} {
 		t.Run(test.provider+"/"+test.path, func(t *testing.T) {
 			h := newSettlementHarness(t, test.provider)
-			op, store := h.savedResultOperation(t, "new", h.server.attachmentCoordinator().SavedOperationResult)
+			op, store := h.savedResultOperation(t, "new", fixtureOwners(h.server).attachmentCoordinator().SavedOperationResult)
 			h.server.agentExecutions = store
 			turn, item := h.fixture.turns["new"], test.item
 			var err error
@@ -67,7 +67,7 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 			request := httptest.NewRequest("GET", "/api/v1/turn-operations/"+op.ID, nil)
 			request.SetPathValue("operationId", op.ID)
 			response := httptest.NewRecorder()
-			h.server.hostedViews().HandleOperationRead(response, request)
+			fixtureOwners(h.server).hostedViews().HandleOperationRead(response, request)
 			var result hostedmodel.TurnView
 			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 				t.Fatal(err)
@@ -92,7 +92,7 @@ func TestOperationResultWaitsForTheSavedFinalMessage(t *testing.T) {
 	read := make(chan error, 1)
 	var first atomic.Bool
 	op, store := h.savedResultOperation(t, "late", func(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
-		text, id, err := h.server.attachmentCoordinator().SavedOperationResult(ctx, rec)
+		text, id, err := fixtureOwners(h.server).attachmentCoordinator().SavedOperationResult(ctx, rec)
 		if first.CompareAndSwap(false, true) {
 			read <- err
 		}
@@ -177,7 +177,7 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 					return err == nil && len(rows) == prompts && rows[0].TurnStatus == history.TurnCompleted
 				})
 			}
-			op, store := h.savedResultOperation(t, test.prompt, h.server.attachmentCoordinator().SavedOperationResult)
+			op, store := h.savedResultOperation(t, test.prompt, fixtureOwners(h.server).attachmentCoordinator().SavedOperationResult)
 			if test.expired {
 				if _, expired, err := h.prompts.Expire(context.Background(), test.prompt, time.Now().Add(time.Hour)); err != nil || !expired {
 					t.Fatalf("expire prompt: expired=%v err=%v", expired, err)
@@ -199,7 +199,7 @@ func TestOperationResultAfterItsWaitTakesOnlyTheExactSavedAnswer(t *testing.T) {
 			if err := restarted.BindSession(op.HostedThreadID, "next-session", h.fixture.native, "ready", presentationShared); err != nil {
 				t.Fatal(err)
 			}
-			restarted.UseSavedResults(h.server.attachmentCoordinator().SavedOperationResult, nil)
+			restarted.UseSavedResults(fixtureOwners(h.server).attachmentCoordinator().SavedOperationResult, nil)
 			waitForCatalogWithin(t, 3*time.Second, func() bool { rec, _ := restarted.Turn(op.ID); return threads.TurnTerminal(rec.Status) })
 			result, _ := restarted.Turn(op.ID)
 			if result.Status != test.status || result.FinalResponse != test.response || result.FinalItemID != test.item ||

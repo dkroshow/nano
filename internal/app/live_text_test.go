@@ -719,7 +719,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				var settledCommits atomic.Int32
 				h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 					sess.NotifySavedTranscript()
-					h.srv.attachmentCoordinator().ConfirmDurableThread(ctx, change)
+					fixtureOwners(h.srv).attachmentCoordinator().ConfirmDurableThread(ctx, change)
 					settledCommits.Add(1)
 				})
 				sent := make(chan string, 4)
@@ -1176,9 +1176,9 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
 	seedBootAttachments(t, srv)
 	writeClaudeTestSpool(t, srv.defaults.ClaudeShimSpools, hosted, spool...)
-	h.service.SetTranscriptChanged(srv.attachmentCoordinator().ConfirmDurableThread)
-	srv.attachmentCoordinator().PrepareBoot()
-	srv.attachmentCoordinator().ReattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
+	h.service.SetTranscriptChanged(fixtureOwners(srv).attachmentCoordinator().ConfirmDurableThread)
+	fixtureOwners(srv).attachmentCoordinator().PrepareBoot()
+	fixtureOwners(srv).attachmentCoordinator().ReattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
 	fresh := srv.SessionForThread("claude", native)
 	if fresh == nil || fresh == h.sess || fresh.LiveTextService() == h.sess.LiveTextService() {
 		t.Fatal("boot did not construct a fresh session and live-text loop")

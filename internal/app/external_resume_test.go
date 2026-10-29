@@ -129,7 +129,7 @@ func (f *externalResumeFixture) filenameIdentity(t *testing.T) {
 func postExternalResume(s *server, provider, nativeID string) *httptest.ResponseRecorder {
 	body := `{"provider":"` + provider + `","mode":"resume","threadId":"` + nativeID + `"}`
 	rec := httptest.NewRecorder()
-	s.hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
+	fixtureOwners(s).hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
 	return rec
 }
 
@@ -192,7 +192,7 @@ func TestExternalResumePreviewIsReadOnly(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"provider":"codex","mode":"resume","threadId":"` + nativeID + `"}`
-	s.attachmentCoordinator().HandleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(body)))
+	fixtureOwners(s).attachmentCoordinator().HandleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(body)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -260,7 +260,7 @@ func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testin
 			if s.attachmentsControl != nil {
 				s.attachmentsControl.Catalog = catalog.index.Service
 			}
-			resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
+			resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -333,7 +333,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 		s.attachmentsControl.Catalog = catalog.index.Service
 	}
 
-	firstResolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	firstResolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	first := spawnedSummary(t, postExternalResume(s, "claude", nativeID))
 	waitForSessionStatus(t, s, first.ID, sessionStatusExited)
 
-	retry, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
+	retry, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})
 	if err != nil {
 		t.Fatal(err)
 	}

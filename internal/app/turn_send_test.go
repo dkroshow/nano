@@ -966,14 +966,14 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	}
 	completed := hostedmodel.NewCompletedTurnStore(h.queue.Database())
 	h.server.turns, h.server.agentExecutions, h.server.completedTurns, h.server.controlMetadata = h.prompts, executions, hostedmodel.NewCompletedTurnSource(completed), executions.Control()
-	h.server.attachmentCoordinator().Turns = h.server.turns
-	h.server.attachmentCoordinator().Executions = h.server.agentExecutions
-	h.server.attachmentCoordinator().CompletedTurns = h.server.completedTurns
-	h.server.attachmentCoordinator().Metadata = h.server.controlMetadata
-	executions.UseSavedResults(h.server.attachmentCoordinator().SavedOperationResult, h.server.attachmentCoordinator().SavedOperationResultFinished)
+	fixtureOwners(h.server).attachmentCoordinator().Turns = h.server.turns
+	fixtureOwners(h.server).attachmentCoordinator().Executions = h.server.agentExecutions
+	fixtureOwners(h.server).attachmentCoordinator().CompletedTurns = h.server.completedTurns
+	fixtureOwners(h.server).attachmentCoordinator().Metadata = h.server.controlMetadata
+	executions.UseSavedResults(fixtureOwners(h.server).attachmentCoordinator().SavedOperationResult, fixtureOwners(h.server).attachmentCoordinator().SavedOperationResultFinished)
 	client := &feedSubscriptionClient{s: h.server}
 	dispatcher := subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
-	h.server.agentController().StartSubscriptions(dispatcher)
+	fixtureOwners(h.server).agentController().StartSubscriptions(dispatcher)
 	op, _, err := fixtureBeginTurn(executions, child.ID, "exited", "hash-exited")
 	if err != nil {
 		t.Fatal(err)
@@ -1009,7 +1009,7 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.server.attachmentCoordinator().ConfirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
+	fixtureOwners(h.server).attachmentCoordinator().ConfirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
 	if finished, _ := executions.Turn(op.ID); finished.Status != agentTurnCompleted || finished.FinalItemID != "exited-final:0" || finished.FinalResponse != "answered after all" {
 		t.Fatalf("operation after the commit = %+v; want its saved answer", finished)
 	}
@@ -1041,10 +1041,10 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 		t.Fatal(err)
 	}
 	h.server.turns, h.server.completedTurns, h.server.controlMetadata = h.prompts, hostedmodel.NewCompletedTurnSource(completed), h.control
-	h.server.attachmentCoordinator().Turns = h.server.turns
-	h.server.attachmentCoordinator().Executions = h.server.agentExecutions
-	h.server.attachmentCoordinator().CompletedTurns = h.server.completedTurns
-	h.server.attachmentCoordinator().Metadata = h.server.controlMetadata
+	fixtureOwners(h.server).attachmentCoordinator().Turns = h.server.turns
+	fixtureOwners(h.server).attachmentCoordinator().Executions = h.server.agentExecutions
+	fixtureOwners(h.server).attachmentCoordinator().CompletedTurns = h.server.completedTurns
+	fixtureOwners(h.server).attachmentCoordinator().Metadata = h.server.controlMetadata
 	h.server.agentExecutions = newTestAgentExecutionStore(t, "run")
 	turnOf := map[string]string{"answered": "claude:shim:701", "twin-a": "claude:shim:703", "twin-b": "claude:shim:703", "unsaved": "claude:shim:702"}
 	for _, action := range []string{"answered", "twin-a", "twin-b", "unsaved"} {
@@ -1076,7 +1076,7 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 	feed := func(cursor string) interact.CompletedTurnPage {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		h.server.attachmentCoordinator().CompletedFeed().HandleCompletedTurns(rec, httptest.NewRequest(http.MethodGet, "/completed-turns?after="+cursor, nil), "hosted")
+		fixtureOwners(h.server).attachmentCoordinator().CompletedFeed().HandleCompletedTurns(rec, httptest.NewRequest(http.MethodGet, "/completed-turns?after="+cursor, nil), "hosted")
 		var page interact.CompletedTurnPage
 		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &page) != nil {
 			t.Fatalf("feed = %d %s", rec.Code, rec.Body.String())
@@ -1193,7 +1193,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	} else {
 		// One reader behind, under an upgrade whose marker this file lacks.
 		reader(strings.Replace(current, "claude-reader-v36", "claude-reader-v35", 1))
-		h.service.SetTranscriptChanged(h.server.attachmentCoordinator().ConfirmDurableThread)
+		h.service.SetTranscriptChanged(fixtureOwners(h.server).attachmentCoordinator().ConfirmDurableThread)
 	}
 
 	// Nano starts: the operation store reloads and reads not-saved answers.
@@ -1206,7 +1206,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	var reads atomic.Int32
 	store.UseSavedResults(func(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
 		defer reads.Add(1)
-		return h.server.attachmentCoordinator().SavedOperationResult(ctx, rec)
+		return fixtureOwners(h.server).attachmentCoordinator().SavedOperationResult(ctx, rec)
 	}, nil)
 	waitForCatalogWithin(t, time.Minute, func() bool { return reads.Load() >= 1 })
 	if got, _ := store.Turn(op.ID); got.Status != agentTurnFailed {
@@ -1215,7 +1215,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	if upgrade == "re-read" {
 		reader(current)
 		waitForCatalogWithin(t, time.Minute, func() bool {
-			h.server.attachmentCoordinator().ConfirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
+			fixtureOwners(h.server).attachmentCoordinator().ConfirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
 			got, _ := store.Turn(op.ID)
 			return got.Status == agentTurnCompleted
 		})
@@ -1249,7 +1249,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		}
 		t.Cleanup(service.Close)
 		h.service, h.server.catalog = service, service
-		service.SetTranscriptChanged(h.server.attachmentCoordinator().ConfirmDurableThread)
+		service.SetTranscriptChanged(fixtureOwners(h.server).attachmentCoordinator().ConfirmDurableThread)
 		waitForCatalogWithin(t, time.Minute, func() bool {
 			got, _ := store.Turn(op.ID)
 			return got.Status == agentTurnCompleted
@@ -1622,7 +1622,7 @@ func TestSavedCommitSettlesPromptsWithoutReattach(t *testing.T) {
 			h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 				running.Add(1)
 				defer running.Add(-1)
-				h.server.attachmentCoordinator().ConfirmDurableThread(ctx, change)
+				fixtureOwners(h.server).attachmentCoordinator().ConfirmDurableThread(ctx, change)
 				finished.Add(1)
 			})
 			settles := func(action string) {
@@ -2237,7 +2237,7 @@ func TestSharedTurnEndedWhileDownGivesEveryProvenOperationItsFinalAnswer(t *test
 		}
 		ops = append(ops, op)
 	}
-	s.attachmentCoordinator().ReattachOnBoot()
+	fixtureOwners(s).attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	waitForClaude(t, "the reattached session", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)
@@ -2329,7 +2329,7 @@ func TestCorrectionInAPersonsTurnDoesNotFinishWithoutItsOwnRow(t *testing.T) {
 	if err := s.agentExecutions.MarkTurnDelivery(op.ID, "turn-human", agentTurnRunning, nil); err != nil {
 		t.Fatal(err)
 	}
-	s.attachmentCoordinator().ReattachOnBoot()
+	fixtureOwners(s).attachmentCoordinator().ReattachOnBoot()
 	var sess *session
 	waitForClaude(t, "the reattached turn to be active", func() bool {
 		sess = s.SessionForHostedThread(rec.HostedThreadID)

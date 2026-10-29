@@ -2,7 +2,6 @@ package app
 
 import (
 	"io"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -83,8 +82,7 @@ type server struct {
 	// every hosted thread: stable identities, action-correlated turns and results.
 	agentExecutions *hostedstore.ExecutionStore
 	// agent owns feature HTTP adaptation and completion-hook publication.
-	agent     *agentapi.Controller
-	agentOnce sync.Once
+	agent *agentapi.Controller
 	// heartbeat owns the default-off wall-clock nudge scheduler and its
 	// sibling SQLite evidence; see docs/decisions/nano-heartbeat.md.
 	heartbeat      *featureheartbeat.Service
@@ -130,8 +128,6 @@ type server struct {
 	hostMonitor        *observability.HostMonitor
 	requests           observability.RequestTimes
 	hostedControl      *hostedmodel.Controller
-	hostedControlOnce  sync.Once
-	attachmentOnce     sync.Once
 	attachmentsControl *hostedmodel.AttachmentCoordinator
 	bootAttachments    sessionruntime.BootAttachments
 	// restart records this process start for GET /api/v1/restarts

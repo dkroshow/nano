@@ -13,7 +13,9 @@ import (
 )
 
 func (s *server) hostedController() *hostedmodel.Controller {
-	s.hostedControlOnce.Do(func() { s.hostedControl = newHostedController(s) })
+	if s.hostedControl == nil {
+		panic("hosted controller used before construction")
+	}
 	return s.hostedControl
 }
 

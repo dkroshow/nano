@@ -192,8 +192,8 @@ func TestStoredLegacyNotificationModesLoseCoalescingAndAcknowledgement(t *testin
 // session, the core turn store and the running dispatcher.
 func TestCompletionSubscriptionReactsToFinishedTurnsWithoutPolling(t *testing.T) {
 	s, daemon, rec, client, dispatcher := subscribedCodexServer(t, `[{"id":"turn-live","status":"inProgress","startedAt":1787600000}]`)
-	s.agentController().StartSubscriptions(dispatcher)
-	s.attachmentCoordinator().ReattachWaitingHosted(rec.HostedThreadID)
+	fixtureOwners(s).agentController().StartSubscriptions(dispatcher)
+	fixtureOwners(s).attachmentCoordinator().ReattachWaitingHosted(rec.HostedThreadID)
 	waitForClaude(t, "the live turn", func() bool {
 		sess := s.SessionForHostedThread(rec.HostedThreadID)
 		if sess == nil {
@@ -225,7 +225,7 @@ type preparingSubscriptionClient struct {
 }
 
 func (c *preparingSubscriptionClient) SubmitPrompt(ctx context.Context, request interact.SubmitPromptRequest) (interact.Turn, error) {
-	c.s.attachmentCoordinator().ReattachWaitingHosted(request.ThreadRef)
+	fixtureOwners(c.s).attachmentCoordinator().ReattachWaitingHosted(request.ThreadRef)
 	return c.feedSubscriptionClient.SubmitPrompt(ctx, request)
 }
 
@@ -253,13 +253,14 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	store.Remember(parentRec)
 	store.Remember(childRec)
 	seedBootAttachments(t, s)
-	s.attachmentCoordinator().PrepareBoot()
+	fixtureOwners(s).attachmentCoordinator().PrepareBoot()
 	client := &preparingSubscriptionClient{feedSubscriptionClient{s: s}}
 	dispatcher := subscriptions.NewDispatcher(s.agentExecutions.Control().CanonicalDatabase(), client, nil, nil)
-	s.agentController().StartSubscriptions(dispatcher)
-	dispatcher.Sweep("") // the child's cursor starts where a running Nano would have it
+	fixtureOwners(s).agentController().StartSubscriptions(dispatcher)
+	dispatcher.Sweep("")
+	fixtureOwners( // the child's cursor starts where a running Nano would have it
 
-	s.attachmentCoordinator().ReattachWaitingHosted(child.ID)
+		s).attachmentCoordinator().ReattachWaitingHosted(child.ID)
 	waitForClaude(t, "the child's live turn", func() bool {
 		sess := s.SessionForHostedThread(child.ID)
 		if sess == nil {

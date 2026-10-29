@@ -66,21 +66,21 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 	records := fmt.Sprintf(`[{"hostedThreadId":%q,"provider":"codex","nativeThreadId":"native-repair","name":"repaired name","source":"creation_request"}]`, hosted.ID)
 
 	preview := httptest.NewRecorder()
-	s.creationNames().HandleRepair(preview, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":false,"records":`+records+`}`)))
+	fixtureOwners(s).creationNames().HandleRepair(preview, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":false,"records":`+records+`}`)))
 	var receipt creationNameRepairHTTPReceipt
 	if err := json.Unmarshal(preview.Body.Bytes(), &receipt); err != nil || preview.Code != http.StatusOK || !receipt.OK || receipt.Preview.Missing != 1 {
 		t.Fatalf("preview = %d %+v, %v", preview.Code, receipt, err)
 	}
 
 	unguarded := httptest.NewRecorder()
-	s.creationNames().HandleRepair(unguarded, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":true,"records":`+records+`}`)))
+	fixtureOwners(s).creationNames().HandleRepair(unguarded, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":true,"records":`+records+`}`)))
 	if unguarded.Code != http.StatusBadRequest {
 		t.Fatalf("unguarded apply = %d %s", unguarded.Code, unguarded.Body)
 	}
 
 	unrecoverable := httptest.NewRecorder()
 	unrecoverableBody := fmt.Sprintf(`{"apply":false,"unrecoverable":[{"hostedThreadId":%q,"provider":"codex","nativeThreadId":"native-repair","reason":"no creation record"}]}`, hosted.ID)
-	s.creationNames().HandleRepair(unrecoverable, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(unrecoverableBody)))
+	fixtureOwners(s).creationNames().HandleRepair(unrecoverable, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(unrecoverableBody)))
 	if err := json.Unmarshal(unrecoverable.Body.Bytes(), &receipt); err != nil || unrecoverable.Code != http.StatusOK || len(receipt.Preview.Unrecoverable) != 1 || receipt.Preview.Unrecoverable[0].State != "no_recoverable_name" {
 		t.Fatalf("unrecoverable preview = %d %+v, %v", unrecoverable.Code, receipt, err)
 	}
@@ -93,7 +93,7 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 		t.Fatal(err)
 	}
 	applyBody := fmt.Sprintf(`{"apply":true,"expectedFingerprint":%q,"records":%s}`, guarded.Preview.Fingerprint, records)
-	s.creationNames().HandleRepair(apply, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(applyBody)))
+	fixtureOwners(s).creationNames().HandleRepair(apply, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(applyBody)))
 	if err := json.Unmarshal(apply.Body.Bytes(), &receipt); err != nil || apply.Code != http.StatusOK || !receipt.OK || !receipt.Applied {
 		t.Fatalf("apply = %d %+v, %v", apply.Code, receipt, err)
 	}
@@ -102,7 +102,7 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 		t.Fatalf("applied repair projection = %+v, found=%v", ref, ok)
 	}
 	idempotent := httptest.NewRecorder()
-	s.creationNames().HandleRepair(idempotent, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":false,"records":`+records+`}`)))
+	fixtureOwners(s).creationNames().HandleRepair(idempotent, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":false,"records":`+records+`}`)))
 	if err := json.Unmarshal(idempotent.Body.Bytes(), &receipt); err != nil || idempotent.Code != http.StatusOK || !receipt.OK || receipt.Preview.Existing != 1 {
 		t.Fatalf("post-apply preview = %d %+v, %v", idempotent.Code, receipt, err)
 	}
@@ -115,7 +115,7 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 		return name == "operator rename"
 	})
 	nowNamed := httptest.NewRecorder()
-	s.creationNames().HandleRepair(nowNamed, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":false,"records":`+records+`}`)))
+	fixtureOwners(s).creationNames().HandleRepair(nowNamed, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":false,"records":`+records+`}`)))
 	if nowNamed.Code != http.StatusConflict {
 		t.Fatalf("named target preview = %d %s", nowNamed.Code, nowNamed.Body)
 	}

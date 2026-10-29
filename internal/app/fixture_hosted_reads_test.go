@@ -54,7 +54,7 @@ func fixtureWaitTurn(store *hostedstore.ExecutionStore, ctx context.Context, id 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/operations/%s?afterRevision=%d&waitMs=%d", id, revision, wait.Milliseconds()), nil).WithContext(ctx)
 	request.SetPathValue("operationId", id)
-	(&server{agentExecutions: store, Registry: newSessionRegistry()}).hostedViews().HandleOperationRead(response, request)
+	fixtureOwners((&server{agentExecutions: store, Registry: newSessionRegistry()})).hostedViews().HandleOperationRead(response, request)
 	if response.Code == http.StatusNotFound {
 		return threads.TurnRecord{}, false
 	}

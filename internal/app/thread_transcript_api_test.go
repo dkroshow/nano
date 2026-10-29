@@ -52,7 +52,7 @@ func TestTranscriptNestedRouteAndQueryContract(t *testing.T) {
 	}}
 	server := &server{catalog: fake}
 	mux := http.NewServeMux()
-	mountRoutes(mux, applicationRoutes(server))
+	mountRoutes(mux, applicationRoutes(fixtureOwners(server)))
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet,
 		"/api/v1/threads/nth_one/transcript?limit=999&view=readable&before=opaque", nil))

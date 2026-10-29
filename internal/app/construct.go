@@ -263,7 +263,10 @@ func construct(cfg config.Config) *application {
 	if s.historicalClaude != nil && catalog != nil {
 		go s.historicalClaude.WarmCatalog(context.Background(), s.hostedCatalog())
 	}
-	// The coordinator captures these stores, so bind it after construction finishes.
+	// Owners capture complete sources once, after every store has been opened.
+	s.attachmentsControl = newAttachmentCoordinator(s)
+	s.hostedControl = newHostedController(s)
+	s.agent = newAgentController(s)
 	if agentExecutions != nil {
 		agentExecutions.UseSavedResults(s.attachmentCoordinator().SavedOperationResult, s.attachmentCoordinator().SavedOperationResultFinished)
 	}
@@ -274,7 +277,6 @@ func construct(cfg config.Config) *application {
 	if err := s.sidebarOwner().StartSidebarMaterializer(context.Background(), time.Now()); err != nil {
 		log.Printf("sidebar materialization unavailable: %v", err)
 	}
-	_ = s.agentController()
 	if catalogService != nil {
 		catalogService.SetTranscriptRepairPriority(s.attachmentCoordinator().TranscriptRepairPriority)
 		catalogService.SetTranscriptChanged(s.attachmentCoordinator().ConfirmDurableThread)

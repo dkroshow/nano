@@ -108,7 +108,7 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", claudeModelFlag, "legacy-model", "--permission-mode", "bypassPermissions"},
 	})
 	s := &server{defaults: config.SessionDefaults{CWD: legacyCwd, ClaudeBin: "/claude"}, attachments: attachments, controlMetadata: metadata}
-	resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
+	resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 		t.Fatalf("API display model = %s, want observed fold", got)
 	}
 
-	resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
+	resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-historical"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,10 +276,10 @@ func TestCanonicalResumeProjectionPreservesDesiredIntent(t *testing.T) {
 			}
 			owner := &server{controlMetadata: metadata}
 			req := hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "canonical-native", Model: "stale", HostedThreadID: hostedID}}
-			if err := owner.attachmentCoordinator().ApplyCanonicalResumeMetadata(&req); err != nil {
+			if err := fixtureOwners(owner).attachmentCoordinator().ApplyCanonicalResumeMetadata(&req); err != nil {
 				t.Fatal(err)
 			}
-			resolved, err := owner.attachmentCoordinator().ResolveClaudeResume(req)
+			resolved, err := fixtureOwners(owner).attachmentCoordinator().ResolveClaudeResume(req)
 			if err != nil {
 				t.Fatal(err)
 			}

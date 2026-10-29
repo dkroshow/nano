@@ -202,7 +202,7 @@ func TestStoppingNanoRefusesRequireIdleSubmissions(t *testing.T) {
 		"prompt": "continue", "clientActionId": "nano:heartbeat:stop:1", "origin": "system", "requireIdle": true,
 	})
 	recorder := httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", strings.NewReader(string(body))), target.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", strings.NewReader(string(body))), target.ID)
 	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), "notReady") {
 		t.Fatalf("requireIdle during stop = %d %s, want 409 notReady", recorder.Code, recorder.Body.String())
 	}

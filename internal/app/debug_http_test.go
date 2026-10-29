@@ -136,7 +136,7 @@ func TestLocalListenerRejectsCrossSiteProfilingReads(t *testing.T) {
 }
 
 func TestApplicationRoutesOmitRawProviderRPC(t *testing.T) {
-	for _, route := range applicationRoutes(&server{}) {
+	for _, route := range applicationRoutes(fixtureOwners(&server{})) {
 		if route.Path == "/api/sessions/{sessionId}/rpc" {
 			t.Fatal("raw provider RPC remains reachable")
 		}

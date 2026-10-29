@@ -92,7 +92,7 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	s, store, _, sender, worker, prompts, _ := stage0Server(t)
 	body := `{"clientActionId":"ask-1","prompt":"Please review the parser.","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
@@ -136,7 +136,7 @@ func TestAgentPromptCarriesSenderFooterAndAttribution(t *testing.T) {
 	}
 	// Replay with the same id is idempotent (200, same operation).
 	rec = httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("replay = %d %s", rec.Code, rec.Body.String())
 	}
@@ -173,7 +173,7 @@ func TestAgentPromptRejectsMissingUnresolvedOrIncompleteSenderBeforeArtifacts(t 
 				test.prepare(s, sender)
 			}
 			rec := httptest.NewRecorder()
-			s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(test.body)), worker.ID)
+			fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(test.body)), worker.ID)
 			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), test.code) {
 				t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 			}
@@ -255,11 +255,11 @@ func TestQueueDeliversHumanBeforeAgentBeforeSystem(t *testing.T) {
 func TestAvailabilityFromHardFacts(t *testing.T) {
 	s, store, sess, _, worker, prompts, fake := stage0Server(t)
 	now := time.Now().UTC()
-	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable {
 		t.Fatalf("idle = %+v", v)
 	}
 	(&providerRuntimeFixture{session: sess, codex: fake}).activate(t)
-	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityBusy || v.Reasons[0] != "turn_active" {
 		t.Fatalf("active = %+v", v)
 	}
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"status":"completed"}}}`))
@@ -268,7 +268,7 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	}
 	<-prompts
 	(&providerRuntimeFixture{session: sess, codex: fake}).emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"native-worker","turn":{"id":"provider-turn","status":"completed"}}}`))
-	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.LastHumanMessageAt == "" {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityAvailable || v.Facts.LastHumanMessageAt == "" {
 		t.Fatalf("recent human remains diagnostic only = %+v", v)
 	}
 	// Durable copy survives a reload.
@@ -283,7 +283,7 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	// Pending interaction holds the thread.
 	fake.EmitNotification(map[string]any{"id": "req-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": sess.ThreadID()}})
 	waitForClaude(t, "pending permissions", func() bool { return len(sess.PendingInteractionList()) == 1 })
-	if v := s.hostedViews().AvailabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
 		t.Fatalf("pending interaction = %+v", v)
 	}
 	response := httptest.NewRecorder()
@@ -293,10 +293,10 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	}
 	// Detached and unknown threads are unreachable.
 	s.RemoveSession(sess.ID())
-	if v := s.hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityUnreachable || v.Facts.Attachment != "detached" {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now); v.State != availabilityUnreachable || v.Facts.Attachment != "detached" {
 		t.Fatalf("detached = %+v", v)
 	}
-	if v := s.hostedViews().AvailabilityFor("nht_missing", now); v.State != availabilityUnreachable || v.Facts.Attachment != "deleted" {
+	if v := fixtureOwners(s).hostedViews().AvailabilityFor("nht_missing", now); v.State != availabilityUnreachable || v.Facts.Attachment != "deleted" {
 		t.Fatalf("missing = %+v", v)
 	}
 	_ = store
@@ -307,7 +307,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	(&providerRuntimeFixture{session: sess, codex: fake}).activate(t) // force queueing so the text persists without delivery
 	body := `{"clientActionId":"ask-2","prompt":"Q","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
@@ -323,7 +323,7 @@ func TestRetryReplaysPersistedFooterAfterRename(t *testing.T) {
 	// Simulate a rename: the footer Nano would compose now differs.
 	s.catalog = fixtureNamedCatalog(t, sender.Provider, sender.NativeThreadID, "Renamed Sender")
 	rec = httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/x", bytes.NewBufferString(body)), worker.ID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("retry after rename = %d %s", rec.Code, rec.Body.String())
 	}

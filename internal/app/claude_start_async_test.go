@@ -20,7 +20,7 @@ func postClaudeStart(t *testing.T, s *server) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	body := `{"provider":"claude","mode":"start","cwd":"` + t.TempDir() + `"}`
-	s.hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
+	fixtureOwners(s).hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
 	return rec
 }
 

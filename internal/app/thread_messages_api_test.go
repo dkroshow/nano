@@ -106,7 +106,7 @@ func messagesRequest(t *testing.T, s *server, target string) *httptest.ResponseR
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	mux := http.NewServeMux()
-	mountRoutes(mux, applicationRoutes(s))
+	mountRoutes(mux, applicationRoutes(fixtureOwners(s)))
 	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
 	return recorder
 }

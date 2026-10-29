@@ -178,7 +178,7 @@ func TestSessionsRouteDegradedModeKeepsReadsButRejectsNewHostedSession(t *testin
 		t.Fatalf("degraded GET status = %d", get.Code)
 	}
 	post := httptest.NewRecorder()
-	server.hostedController().HandleLegacyCreate(post, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"provider":"codex","mode":"start"}`)))
+	fixtureOwners(server).hostedController().HandleLegacyCreate(post, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"provider":"codex","mode":"start"}`)))
 	if post.Code != http.StatusServiceUnavailable || !strings.Contains(post.Body.String(), "control.sqlite is corrupt") {
 		t.Fatalf("degraded POST = %d %s", post.Code, post.Body.String())
 	}
@@ -353,7 +353,7 @@ func TestHostedMetadataNameUsesThreadNameProvenance(t *testing.T) {
 				t.Fatal(err)
 			}
 			server := &server{catalog: catalog}
-			view := server.hostedViews().DecorateMetadata(hostedstore.MetadataView{Provider: "codex", NativeThreadID: "native-name"}, hostedstore.AttachmentView{State: "ready", Provenance: "live_session"})
+			view := fixtureOwners(server).hostedViews().DecorateMetadata(hostedstore.MetadataView{Provider: "codex", NativeThreadID: "native-name"}, hostedstore.AttachmentView{State: "ready", Provenance: "live_session"})
 			if view.Name.Value != "durable name" || view.Name.Provenance != string(provenance) {
 				t.Fatalf("hosted name provenance = %+v", view.Name)
 			}
@@ -429,21 +429,21 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, live, "ready")
-	if got := s.hostedViews().AttachmentState("nht_attachment_api"); got.State != "ready" || got.Provenance != "live_session" {
+	if got := fixtureOwners(s).hostedViews().AttachmentState("nht_attachment_api"); got.State != "ready" || got.Provenance != "live_session" {
 		t.Fatalf("ready attachment = %+v", got)
 	}
 	s.RemoveSession(live.ID())
 	if err := exec.UpdateSession("nht_attachment_api", "", "", sessionStatusExited, "provider failed"); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.hostedViews().AttachmentState("nht_attachment_api"); got.State != sessionStatusExited || got.Error != "provider failed" {
+	if got := fixtureOwners(s).hostedViews().AttachmentState("nht_attachment_api"); got.State != sessionStatusExited || got.Error != "provider failed" {
 		t.Fatalf("exited attachment = %+v", got)
 	}
 	after, _ := store.View("nht_attachment_api")
 	if before.Revision != after.Revision {
 		t.Fatalf("attachment read advanced metadata revision %d→%d", before.Revision, after.Revision)
 	}
-	if got := s.hostedViews().AttachmentState("missing"); got.State != "unavailable" {
+	if got := fixtureOwners(s).hostedViews().AttachmentState("missing"); got.State != "unavailable" {
 		t.Fatalf("unavailable attachment = %+v", got)
 	}
 }

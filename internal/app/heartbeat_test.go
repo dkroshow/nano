@@ -231,7 +231,7 @@ func TestHeartbeatPublicSubmissionAddsOnlyHeartbeatFooter(t *testing.T) {
 		"prompt": "continue", "clientActionId": "nano:heartbeat:hba_test:500", "origin": "system", "requireIdle": true,
 	})
 	recorder := httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", bytes.NewReader(body)), target.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target.ID+"/turns", bytes.NewReader(body)), target.ID)
 	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -292,7 +292,7 @@ func TestHeartbeatAttachmentAPIRequiresReasonAndRejectsClosedTarget(t *testing.T
 		"actor": map[string]any{"kind": "hosted-thread", "hostedThreadId": manager.ID},
 	})
 	recorder = httptest.NewRecorder()
-	s.agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
+	fixtureOwners(s).agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("closed target attach = %d %s", recorder.Code, recorder.Body.String())
 	}

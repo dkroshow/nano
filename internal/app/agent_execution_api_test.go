@@ -233,11 +233,11 @@ func TestAgentSessionCreateRejectsInvalidPresentationBeforeProviderWork(t *testi
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent-sessions", bytes.NewReader([]byte(`{
     "clientSessionId":"caller-session","provider":"codex","presentationMode":"invisible"
   }`)))
-	s.hostedController().HandleCreate(rec, req)
+	fixtureOwners(s).hostedController().HandleCreate(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid presentation status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := (&server{agentExecutions: store, Registry: newSessionRegistry()}).hostedController().ResolveHostedRecord("caller-session"); ok {
+	if _, ok := fixtureOwners((&server{agentExecutions: store, Registry: newSessionRegistry()})).hostedController().ResolveHostedRecord("caller-session"); ok {
 		t.Fatal("invalid request was persisted")
 	}
 }
@@ -254,7 +254,7 @@ func TestAgentCreatedHostedThreadRequiresKnownInvoker(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			s.hostedController().HandleCreate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(body))))
+			fixtureOwners(s).hostedController().HandleCreate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(body))))
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 			}
@@ -285,7 +285,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	}
 
 	created := httptest.NewRecorder()
-	s.hostedController().HandleLegacyCreate(created, httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader([]byte(`{
+	fixtureOwners(s).hostedController().HandleLegacyCreate(created, httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader([]byte(`{
 	      "provider":"codex","mode":"start","presentationMode":"shared","serviceTier":"priority"
     }`))))
 	if created.Code != http.StatusOK {
@@ -317,7 +317,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatalf("human session assignment = %#v, err=%v", assignment, err)
 	}
 	listed := httptest.NewRecorder()
-	s.hostedViews().HandleSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
+	fixtureOwners(s).hostedViews().HandleSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
 	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte(summary.HostedThreadID)) {
 		t.Fatalf("hosted-thread list status = %d, body %s", listed.Code, listed.Body.String())
 	}
@@ -340,7 +340,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	if err := control.CanonicalDatabase().QueryRow(`SELECT desired_disposition FROM thread_metadata_current WHERE hosted_thread_id=? AND field=?`, summary.HostedThreadID, postureFieldServiceTier).Scan(&desired); err != nil || desired != metadataDispositionRequested {
 		t.Fatalf("priority desired metadata = %q, err=%v", desired, err)
 	}
-	if resolved, ok := s.hostedController().ResolveHostedRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
+	if resolved, ok := fixtureOwners(s).hostedController().ResolveHostedRecord(sess.ThreadID()); !ok || resolved.ID != summary.HostedThreadID {
 		t.Fatalf("resolve human-created native id = %#v, present=%v", resolved, ok)
 	}
 	provider.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-human"}})
@@ -397,7 +397,7 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	}
 
 	created := httptest.NewRecorder()
-	s.hostedController().HandleCreate(created, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(`{
+	fixtureOwners(s).hostedController().HandleCreate(created, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader([]byte(`{
       "clientSessionId":"api-created","provider":"codex","mode":"start","presentationMode":"shared",
       "invokerThreadRef":"parent-native"
     }`))))
@@ -419,7 +419,7 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
       "clientSessionId":"api-created","provider":"codex","mode":"start","presentationMode":"shared",
       "invokerThreadRef":"` + parent.ID + `"
     }`)
-	s.hostedController().HandleCreate(duplicate, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader(duplicateBody)))
+	fixtureOwners(s).hostedController().HandleCreate(duplicate, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads", bytes.NewReader(duplicateBody)))
 	if duplicate.Code != http.StatusOK {
 		t.Fatalf("normalized invoker retry status = %d, body %s", duplicate.Code, duplicate.Body.String())
 	}
@@ -539,7 +539,7 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
+	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
 		t.Fatal("detached attachment survived delete")
 	}
 	if _, ok := store.Session(hosted.ID); ok {
@@ -581,7 +581,7 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("close status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
+	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
 		t.Fatal("attachment survived close")
 	}
 	session, ok := store.Session(hosted.ID)
@@ -664,7 +664,7 @@ func TestAgentSessionDetach(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("detach status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := s.attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
+	if _, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor("claude", "native-1"); ok {
 		t.Fatal("Claude detach retained a dead shim attachment")
 	}
 	session, ok := store.Session(hosted.ID)
@@ -707,8 +707,8 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{"nano-1": sess})
 	oldRecord, _ := store.Turn(old.ID)
 	currentRecord, _ := store.Turn(current.ID)
-	oldView := s.hostedViews().TurnView(oldRecord)
-	currentView := s.hostedViews().TurnView(currentRecord)
+	oldView := fixtureOwners(s).hostedViews().TurnView(oldRecord)
+	currentView := fixtureOwners(s).hostedViews().TurnView(currentRecord)
 	if len(oldView.Interactions) != 0 || len(currentView.Interactions) != 1 || currentView.Interactions[0].ID != "1" {
 		t.Fatalf("interaction scopes = old:%#v current:%#v", oldView.Interactions, currentView.Interactions)
 	}
@@ -1460,7 +1460,7 @@ func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {
 		t.Fatalf("canceled operation = %#v", canceledView)
 	}
 	firstRecord, _ := executions.Turn(first.ID)
-	if got := s.hostedViews().TurnView(firstRecord).QueuePosition; got != 1 {
+	if got := fixtureOwners(s).hostedViews().TurnView(firstRecord).QueuePosition; got != 1 {
 		t.Fatalf("first queue position after cancel = %d", got)
 	}
 }
@@ -1811,7 +1811,7 @@ func TestDiscardedPromptEndsTheOperationThatSentIt(t *testing.T) {
 				if test.byCaller {
 					request := httptest.NewRequest(http.MethodDelete, "/api/v1/turn-operations/"+op.ID, nil)
 					request.SetPathValue("operationId", op.ID)
-					s.hostedController().HandleOperationCancel(rec, request)
+					fixtureOwners(s).hostedController().HandleOperationCancel(rec, request)
 				} else {
 					sess.HandleTurnDeliveryCancel(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/"+sess.ID()+"/turn-delivery/"+action, nil), action)
 				}

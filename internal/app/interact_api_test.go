@@ -56,7 +56,7 @@ func TestInteractTurnSubmitRejectsInvalidOriginBoundaries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+target+"/turns", strings.NewReader(test.body))
 			response := httptest.NewRecorder()
-			s.hostedController().HandleTurnSubmit(response, request, target)
+			fixtureOwners(s).hostedController().HandleTurnSubmit(response, request, target)
 			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), test.want) {
 				t.Fatalf("response = %d %q, want 400 containing %q", response.Code, response.Body.String(), test.want)
 			}

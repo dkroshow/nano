@@ -44,7 +44,7 @@ func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient thre
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	s.agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
 	var message featuremail.Message
 	if rec.Code == http.StatusCreated || rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), &message); err != nil {
@@ -91,17 +91,17 @@ func TestAgentInboxPeekSeenLintAndRecipientBoundary(t *testing.T) {
 	_, message := sendAgentMessageForTest(t, s, recipient, sender.ID, "finding-1", "Finding", "Please inspect", []featuremail.Ref{{Kind: "issue.ref", ID: "sample-task"}})
 
 	peek := httptest.NewRecorder()
-	s.agentController().HandleHostedThreadInbox(peek, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadInbox(peek, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
 	if peek.Code != http.StatusOK || !strings.Contains(peek.Body.String(), `"status":"unread"`) {
 		t.Fatalf("peek = %d %s", peek.Code, peek.Body.String())
 	}
 	wrong := httptest.NewRecorder()
-	s.agentController().HandleHostedThreadInbox(wrong, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+sender.ID, nil), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadInbox(wrong, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+sender.ID, nil), recipient)
 	if wrong.Code != http.StatusForbidden || !strings.Contains(wrong.Body.String(), "not_recipient") {
 		t.Fatalf("wrong actor = %d %s", wrong.Code, wrong.Body.String())
 	}
 	read := httptest.NewRecorder()
-	s.agentController().HandleHostedThreadInbox(read, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
+	fixtureOwners(s).agentController().HandleHostedThreadInbox(read, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID, nil), recipient)
 	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), `"status":"seen"`) {
 		t.Fatalf("read = %d %s", read.Code, read.Body.String())
 	}
@@ -447,7 +447,7 @@ func TestUnreadFooterOnAgentHumanAndSystemPrompts(t *testing.T) {
 		_, _ = sendAgentMessageForTest(t, s, recipient, sender.ID, "mail-agent", "Mail", "Unread", nil)
 		body := `{"clientActionId":"agent-turn","prompt":"Review","senderThreadRef":"` + sender.ID + `"}`
 		rec := httptest.NewRecorder()
-		s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
+		fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
 		if rec.Code != http.StatusAccepted {
 			t.Fatalf("submit=%d %s", rec.Code, rec.Body.String())
 		}
@@ -528,7 +528,7 @@ func TestPromptUsesNoticeSnapshotWithoutReadingMailStore(t *testing.T) {
 	}
 	body := `{"clientActionId":"notice-snapshot","prompt":"Deliver without a mail read","senderThreadRef":"` + sender.ID + `"}`
 	rec := httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/turns", strings.NewReader(body)), recipient.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit=%d %s", rec.Code, rec.Body.String())
 	}

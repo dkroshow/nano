@@ -11,7 +11,7 @@ import (
 // measure the browser's cache instead of the connection.
 func TestConnectionTestServesFixedUncacheableBytes(t *testing.T) {
 	mux := http.NewServeMux()
-	mountRoutes(mux, applicationRoutes(&server{}))
+	mountRoutes(mux, applicationRoutes(fixtureOwners(&server{})))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/connection-test", nil))
 	if rec.Code != http.StatusOK || rec.Body.Len() != 64<<10 || rec.Header().Get("Cache-Control") != "no-store" {

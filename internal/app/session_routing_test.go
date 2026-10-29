@@ -164,7 +164,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 	for provider, want := range map[string]string{
 		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
 	} {
-		resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
+		resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: "native-" + provider}})
 		if err != nil {
 			t.Fatalf("resolve %s resume: %v", provider, err)
 		}
@@ -182,7 +182,7 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
+	resolved, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: "native-explicit", HostedThreadID: "nht_explicit"}})
 	if err != nil {
 		t.Fatalf("resolve explicit resume: %v", err)
 	}

@@ -77,7 +77,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	}
 	srv := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{sess.ID(): sess})
 	for repeat := 0; repeat < 2; repeat++ {
-		if state := srv.hostedViews().AvailabilityFor(hosted.ID, time.Now()).State; state == availabilityAvailable {
+		if state := fixtureOwners(srv).hostedViews().AvailabilityFor(hosted.ID, time.Now()).State; state == availabilityAvailable {
 			t.Fatal("reconnecting thread was available to feature clients")
 		}
 		if response := postTurn(t, sess, context.Background(), fmt.Sprintf("later-%d", repeat), "do not deliver"); response.Code != http.StatusConflict {
@@ -183,7 +183,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 		t.Fatalf("terminal admission: %d", response.Code)
 	}
 	server := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*session{sess.ID(): sess})
-	view := server.hostedViews().AvailabilityFor(hosted.ID, time.Now())
+	view := fixtureOwners(server).hostedViews().AvailabilityFor(hosted.ID, time.Now())
 	if view.State != availabilityUnreachable || len(view.Reasons) != 1 || view.Reasons[0] != "reconnect_failed" {
 		t.Fatalf("availability: %+v", view)
 	}

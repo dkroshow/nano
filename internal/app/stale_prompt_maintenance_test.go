@@ -154,7 +154,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				t.Helper()
 				encoded, _ := json.Marshal(body)
 				rec := httptest.NewRecorder()
-				h.server.attachmentCoordinator().HandleStalePrompts(rec, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/stale-prompts", bytes.NewReader(encoded)))
+				fixtureOwners(h.server).attachmentCoordinator().HandleStalePrompts(rec, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/stale-prompts", bytes.NewReader(encoded)))
 				var receipt stalePromptReceipt
 				if err := json.Unmarshal(rec.Body.Bytes(), &receipt); err != nil {
 					t.Fatalf("body %s: %v", rec.Body.String(), err)

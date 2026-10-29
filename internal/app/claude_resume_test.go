@@ -130,7 +130,7 @@ func postClaudeResume(t *testing.T, s *server, body string) *httptest.ResponseRe
 	_ = json.Unmarshal([]byte(body), &request)
 	seedHostedAttachmentFixture(t, s, request.Provider, request.ThreadID)
 	rec := httptest.NewRecorder()
-	s.hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
+	fixtureOwners(s).hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
 	return rec
 }
 
@@ -159,7 +159,7 @@ func ensureClaudeTestSpool(t *testing.T, s *server, provider, hostedID string) {
 
 func seedHostedAttachmentFixture(t *testing.T, s *server, provider, nativeID string) {
 	t.Helper()
-	record, ok := s.attachmentCoordinator().AttachmentFor(provider, nativeID)
+	record, ok := fixtureOwners(s).attachmentCoordinator().AttachmentFor(provider, nativeID)
 	if ok && record.HostedThreadID != "" {
 		ensureClaudeTestSpool(t, s, provider, record.HostedThreadID)
 	}
@@ -319,7 +319,7 @@ func TestClaudeHistoricalHostedResumePreviewRebuildsTransportBaseline(t *testing
 	s, _ := claudeResumeServer(t, "")
 	hostedID := seedHistoricalHostedClaudeWithoutAttachment(t, s)
 	rec := httptest.NewRecorder()
-	s.attachmentCoordinator().HandleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(claudeResumeThreadID))))
+	fixtureOwners(s).attachmentCoordinator().HandleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(claudeResumeThreadID))))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -811,7 +811,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 					t.Fatal(err)
 				}
 				preview := httptest.NewRecorder()
-				s.attachmentCoordinator().HandleSpawnPreview(preview, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(handle))))
+				fixtureOwners(s).attachmentCoordinator().HandleSpawnPreview(preview, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(handle))))
 				after, err := os.ReadFile(storePath)
 				if err != nil {
 					t.Fatal(err)
@@ -1153,12 +1153,12 @@ func TestClaudeResumeAttachedElsewhereIsPlainError(t *testing.T) {
 // Public resume separately requires a canonical owner before reaching this seam.
 func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	_, err := s.attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
+	_, err := fixtureOwners(s).attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID}})
 	if err == nil || !strings.Contains(err.Error(), "no attachment record") {
 		t.Fatalf("err = %v, want a refusal to guess the cwd", err)
 	}
 	cwd := t.TempDir()
-	req, err := s.attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
+	req, err := fixtureOwners(s).attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: cwd}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1175,7 +1175,7 @@ func TestClaudeResumeTransportWithoutAttachment(t *testing.T) {
 // Canonical posture passes into the provider builder after ownership resolves.
 func TestClaudeResumeTransportWithoutAttachmentCarriesPosture(t *testing.T) {
 	s, _ := claudeResumeServer(t, "")
-	req, err := s.attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
+	req, err := fixtureOwners(s).attachmentCoordinator().ResolveClaudeResume(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: t.TempDir(),
 		Model: "claude-opus-4-1", PermissionMode: "bypassPermissions", Effort: "high"},
 	})
 	if err != nil {
@@ -1206,7 +1206,7 @@ func TestClaudeResumeRefusesMissingWorkingDirectory(t *testing.T) {
 	gone := filepath.Join(t.TempDir(), "deleted-project")
 	seedCanonicalResumeOwner(t, s, "claude", claudeResumeThreadID, gone)
 
-	_, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
+	_, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: claudeResumeThreadID, Cwd: gone}})
 	if err == nil {
 		t.Fatal("resume into a missing directory succeeded")
 	}

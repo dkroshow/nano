@@ -79,7 +79,7 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 		t.Fatalf("assignment mutation result = %#v, err=%v", updateResult, err)
 	}
 	listed := httptest.NewRecorder()
-	s.hostedViews().HandleSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
+	fixtureOwners(s).hostedViews().HandleSessionsList(listed, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-threads", nil))
 	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte(`"assignmentRole":"auditor"`)) {
 		t.Fatalf("thread list projection = %d %s", listed.Code, listed.Body.String())
 	}
@@ -145,11 +145,11 @@ func TestOrchestrationAssignmentLifecycleSnapshotsAndProjections(t *testing.T) {
 	if queued.AssignmentEventID == nil || *queued.AssignmentEventID != reassertResult.AssignmentEventID {
 		t.Fatalf("queued snapshot = %#v", queued)
 	}
-	if view := s.hostedViews().TurnView(op1); view.Assignment == nil || view.Assignment.EventID != first.EventID {
+	if view := fixtureOwners(s).hostedViews().TurnView(op1); view.Assignment == nil || view.Assignment.EventID != first.EventID {
 		t.Fatalf("operation projection = %#v", view.Assignment)
 	}
 	bulk := httptest.NewRecorder()
-	s.hostedViews().HandleOperationsCollection(bulk, httptest.NewRequest(http.MethodGet, "/api/v1/turn-operations?ids="+op1.ID+","+op2.ID, nil))
+	fixtureOwners(s).hostedViews().HandleOperationsCollection(bulk, httptest.NewRequest(http.MethodGet, "/api/v1/turn-operations?ids="+op1.ID+","+op2.ID, nil))
 	if bulk.Code != http.StatusOK || !bytes.Contains(bulk.Body.Bytes(), []byte(`"assignmentRole":"worker"`)) || !bytes.Contains(bulk.Body.Bytes(), []byte(`"assignmentRole":"auditor"`)) {
 		t.Fatalf("bulk projection = %d %s", bulk.Code, bulk.Body.String())
 	}
@@ -225,7 +225,7 @@ func TestOrchestrationAssignmentDoesNotMutateCallerPrompt(t *testing.T) {
 	s := testServerWithSessions(&server{agentExecutions: store, controlMetadata: control, catalog: fixtureNamedCatalog(t, "codex", "native-worker", "Worker sender"), Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 	const prompt = "  Exact caller prompt: do not alter it.  "
 	rec := httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/worker/turns", bytes.NewBufferString(`{"clientActionId":"prompt-1","prompt":"  Exact caller prompt: do not alter it.  ","senderThreadRef":"worker"}`)), worker.ID)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("submit = %d %s", rec.Code, rec.Body.String())
 	}
@@ -337,10 +337,10 @@ func TestAssignmentResolutionFailuresAreVisible(t *testing.T) {
 	if assignment, err := control.CurrentOrchestrationAssignment(worker.ID); err == nil || assignment != nil {
 		t.Fatalf("closed DB current assignment = %#v, %v", assignment, err)
 	}
-	if view := s.hostedViews().SessionView(worker.ID); !view.AssignmentUnavailable {
+	if view := fixtureOwners(s).hostedViews().SessionView(worker.ID); !view.AssignmentUnavailable {
 		t.Fatalf("thread assignment failure hidden: %#v", view)
 	}
-	if view := s.hostedViews().TurnView(op); !view.AssignmentUnavailable {
+	if view := fixtureOwners(s).hostedViews().TurnView(op); !view.AssignmentUnavailable {
 		t.Fatalf("operation assignment failure hidden: %#v", view)
 	}
 	failed := httptest.NewRecorder()

@@ -153,7 +153,7 @@ func TestSpawnSessionCommitsPriorityBeforeImmediateThreadStartAndSettles(t *test
 		received <- struct{}{}
 	})
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestRunCodexHandshakeAcceptsGranularApprovalPolicy(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.SetStartResult(map[string]any{"model": "gpt-test", "approvalPolicy": map[string]any{"granular": map[string]any{"filesystem": "on-request"}}, "thread": map[string]any{"id": "thread-granular", "cwd": t.TempDir()}})
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD}})
+	sess, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestCodexTypedStartRejectionSettlesCreationWithoutEffectiveValue(t *testing
 	fake := newFakeAppServer(t)
 	fake.SetStartError("policy rejected start")
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestCodexTransportFailureLeavesCreationPending(t *testing.T) {
 	fake := newFakeAppServer(t)
 	fake.SetDropStart(true)
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir()}, codex: fake.daemon(), spoolDir: t.TempDir(), Registry: newSessionRegistry(), agentExecutions: executions, controlMetadata: control}
-	sess, err := s.attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
+	sess, err := fixtureOwners(s).attachmentCoordinator().Spawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start", Cwd: s.defaults.CWD, ServiceTier: "priority"}})
 	if err != nil {
 		t.Fatal(err)
 	}

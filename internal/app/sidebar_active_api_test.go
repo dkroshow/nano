@@ -49,7 +49,7 @@ func TestSidebarActiveRejectsSnapshotRoute(t *testing.T) {
 	s := &server{Registry: newSessionRegistry()}
 	rec := httptest.NewRecorder()
 	mux := http.NewServeMux()
-	mountRoutes(mux, applicationRoutes(s))
+	mountRoutes(mux, applicationRoutes(fixtureOwners(s)))
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/fleet/snapshot", nil))
 	if rec.Code == http.StatusOK && strings.Contains(rec.Body.String(), `"snapshot"`) {
 		t.Fatalf("snapshot route still present: %s", rec.Body.String())

@@ -38,15 +38,14 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s.attachmentCoordinator().PrepareBoot()
+	fixtureOwners(s).attachmentCoordinator().PrepareBoot()
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
 	threads := []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred", UpdatedAt: &updated}, HostedThreadID: "nht_starred", Starred: true}}
 	materializeBootSidebar(t, s, threads, now)
 	s.restart.MarkHTTPOpen()
 	s.attachments.Forget("codex", "forgotten")
-
-	s.attachmentCoordinator().ReattachOnBoot()
+	fixtureOwners(s).attachmentCoordinator().ReattachOnBoot()
 
 	var record hostedmodel.RestartRecord
 	waitForClaude(t, "the written restart record", func() bool {

@@ -101,7 +101,7 @@ func newPinFixture(t *testing.T) *pinFixture {
 		catalog: newStoredCatalog(t, store), threadPins: pins,
 	}
 	mux := http.NewServeMux()
-	mountRoutes(mux, applicationRoutes(s))
+	mountRoutes(mux, applicationRoutes(fixtureOwners(s)))
 	return &pinFixture{server: s, mux: mux, store: store, root: root, executions: executions, hosted: hosted, pinsPath: pinsPath}
 }
 
@@ -322,7 +322,7 @@ func TestThreadPinsSurviveNativeReplacementAndReopen(t *testing.T) {
 	t.Cleanup(func() { _ = reopened.Close() })
 	// Remount the handlers with the reopened store, as a new process does.
 	f.mux = http.NewServeMux()
-	mountRoutes(f.mux, applicationRoutes(f.server))
+	mountRoutes(f.mux, applicationRoutes(fixtureOwners(f.server)))
 	code, raw := f.do(t, http.MethodGet, "/api/v1/hosted-threads/"+pinNativeB+"/pins", nil)
 	list := decodePinJSON[threadPinListResponse](t, raw)
 	if code != http.StatusOK || list.Count != 3 || list.Pins[0].PinID != earlier.PinID || list.Pins[2].PinID != old.PinID {

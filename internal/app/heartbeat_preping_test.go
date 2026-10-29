@@ -109,7 +109,7 @@ func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
 		"authority": "Operator approved", "actor": map[string]any{"kind": "operator", "name": "Operator"},
 	})
 	recorder := httptest.NewRecorder()
-	s.agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
+	fixtureOwners(s).agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bytes.NewReader(body)))
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("attach = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -120,7 +120,7 @@ func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
 
 	bad := bytes.NewBufferString(`{"targetHostedThreadId":"` + target.ID + `","cadenceMinutes":1,"prompt":"x","prePing":{"scriptId":"hbs_x","revision":1},"actor":{"kind":"operator"}}`)
 	recorder = httptest.NewRecorder()
-	s.agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bad))
+	fixtureOwners(s).agentController().HandleHeartbeatAttachmentCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/heartbeat/attachments", bad))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("raw script reference = %d %s", recorder.Code, recorder.Body.String())
 	}

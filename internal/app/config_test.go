@@ -18,7 +18,7 @@ func TestCodexStartWithoutSandboxGetsPermissiveDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &server{defaults: config.SessionDefaults{CWD: t.TempDir(), Sandbox: cfg.Sandbox, Approval: cfg.Approval}}
-	req, err := s.attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start"}})
+	req, err := fixtureOwners(s).attachmentCoordinator().ResolveSpawn(hostedmodel.SpawnRequest{ProviderRequest: providerRequest{Provider: "codex", Mode: "start"}})
 	if err != nil {
 		t.Fatal(err)
 	}

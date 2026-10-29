@@ -107,7 +107,7 @@ func (s *server) submitHostedTurnWithOptions(id, action, prompt string, idle boo
 		return threads.TurnRecord{}, false, err
 	}
 	response := httptest.NewRecorder()
-	s.hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+id+"/turns", strings.NewReader(string(raw))), id)
+	fixtureOwners(s).hostedController().HandleTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+id+"/turns", strings.NewReader(string(raw))), id)
 	if response.Code >= 400 {
 		return threads.TurnRecord{}, false, errors.New(response.Body.String())
 	}
@@ -132,7 +132,7 @@ func (s *server) retireHostedRecords(ctx context.Context, request state.Retireme
 		return retiredHostedReceipt{Error: err.Error()}
 	}
 	response := httptest.NewRecorder()
-	s.hostedController().HandleRetirement(response, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted", strings.NewReader(string(raw))).WithContext(ctx))
+	fixtureOwners(s).hostedController().HandleRetirement(response, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/retired-hosted", strings.NewReader(string(raw))).WithContext(ctx))
 	var receipt retiredHostedReceipt
 	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
 		receipt.Error = err.Error()

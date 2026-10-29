@@ -86,7 +86,7 @@ func newRestartWindow(t *testing.T) *restartWindow {
 	w.failReads = catalogReadFailure{t: t, path: w.path, catalog: w.catalog}
 	t.Cleanup(func() { w.failReads.Store(false) })
 	s.catalog, s.catalogSources = failingSavedRows{w.catalog, &w.failSavedRows}, w.attached
-	w.catalog.SetTranscriptChanged(s.attachmentCoordinator().ConfirmDurableThread)
+	w.catalog.SetTranscriptChanged(fixtureOwners(s).attachmentCoordinator().ConfirmDurableThread)
 	store.Remember(rec)
 	seedBootAttachments(t, s)
 	w.rec = fixtureAttachmentRecords(store)[0]
@@ -218,8 +218,8 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 					w.fake.SetResumeError("no rollout found for thread id " + native)
 				}
 				go func() {
-					w.s.attachmentCoordinator().ReattachOnBoot()
-					w.s.attachmentCoordinator().ReattachWaitingHosted(hosted) // no work open, so it rests until needed
+					fixtureOwners(w.s).attachmentCoordinator().ReattachOnBoot()
+					fixtureOwners(w.s).attachmentCoordinator().ReattachWaitingHosted(hosted) // no work open, so it rests until needed
 				}()
 				waitForClaude(t, "the boot shell", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
@@ -248,14 +248,14 @@ func TestRestartWindowNeverResendsAndSendsTheQueuedPromptOnce(t *testing.T) {
 				if test.failing {
 					w.fake.SetResumeResult(map[string]any{"model": "gpt-test", "thread": map[string]any{"id": native, "cwd": "/tmp", "path": w.path, "turns": json.RawMessage(resumeTurns)}})
 				}
-				go w.s.attachmentCoordinator().ReattachOnBoot()
+				go fixtureOwners(w.s).attachmentCoordinator().ReattachOnBoot()
 				waitForClaude(t, "the boot shell", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
 					return sess != nil && sess.PromptStore() != nil
 				})
 			default:
-				w.s.attachmentCoordinator().ReattachOnBoot()
-				w.s.attachmentCoordinator().ReattachWaitingHosted(hosted) // no work open, so it rests until needed
+				fixtureOwners(w.s).attachmentCoordinator().ReattachOnBoot()
+				fixtureOwners(w.s).attachmentCoordinator().ReattachWaitingHosted(hosted) // no work open, so it rests until needed
 				waitForClaude(t, "the first attachment", func() bool {
 					sess = w.s.SessionForHostedThread(hosted)
 					return sess != nil && sess.Summary().Status == "ready"

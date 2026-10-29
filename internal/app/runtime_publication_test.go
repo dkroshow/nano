@@ -141,7 +141,7 @@ func blockBootRegistration(t *testing.T, s *server) func() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coordinator := s.attachmentCoordinator()
+	coordinator := fixtureOwners(s).attachmentCoordinator()
 	coordinator.Metadata = metadata
 	gate.armed.Store(true)
 	var once sync.Once

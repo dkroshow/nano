@@ -28,7 +28,7 @@ func TestFeedbackKeepsTheSavingTabsEvidenceForTheThread(t *testing.T) {
 		browserDiagnostics: newBrowserDiagnosticStore(100), feedback: store,
 	}
 	f := &pinFixture{server: s, mux: http.NewServeMux()}
-	mountRoutes(f.mux, applicationRoutes(s))
+	mountRoutes(f.mux, applicationRoutes(fixtureOwners(s)))
 
 	code, raw := f.do(t, http.MethodPost, "/api/v1/browser-diagnostics", map[string]any{"events": []map[string]any{
 		// A replay re-adds an evicted older event after a newer one.

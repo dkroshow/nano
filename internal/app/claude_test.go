@@ -25,7 +25,7 @@ func TestClaudePreviewUsesResolvedBinary(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-	s.attachmentCoordinator().HandleSpawnPreview(rec, req)
+	fixtureOwners(s).attachmentCoordinator().HandleSpawnPreview(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
@@ -57,7 +57,7 @@ func TestClaudePreviewPassesExactPinnedModels(t *testing.T) {
 			body, _ := json.Marshal(map[string]string{"provider": "claude", "model": model})
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-			s.attachmentCoordinator().HandleSpawnPreview(rec, req)
+			fixtureOwners(s).attachmentCoordinator().HandleSpawnPreview(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 			}
@@ -87,7 +87,7 @@ func TestClaudeBypassPermissionsDoesNotApplyAllowedToolsDefault(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-	s.attachmentCoordinator().HandleSpawnPreview(rec, req)
+	fixtureOwners(s).attachmentCoordinator().HandleSpawnPreview(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}

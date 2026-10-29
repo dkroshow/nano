@@ -8,7 +8,7 @@ import (
 )
 
 func TestApplicationRoutesMapEachPatternToOneOperation(t *testing.T) {
-	routes := applicationRoutes(&server{})
+	routes := applicationRoutes(fixtureOwners(&server{}))
 	seen := map[string]string{}
 	for _, route := range routes {
 		if route.Method == "" || route.Path == "" || route.Operation == "" || route.Handler == nil {

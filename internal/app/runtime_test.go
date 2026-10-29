@@ -146,8 +146,9 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 // a dead session lingering in the map must not read as attached, and must not
 // hide the detached record behind it.
 func TestRuntimeForThreeStates(t *testing.T) {
-	// A nil runtime hub leaves the application publisher inert.
-	(&server{}).attachmentCoordinator().NotifyRuntime()
+	fixtureOwners(
+		// A nil runtime hub leaves the application publisher inert.
+		(&server{})).attachmentCoordinator().NotifyRuntime()
 	attachments := newTestStore(t)
 	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "codex-detached", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "claude-detached", Cwd: "/b", AttachedAt: "2026-07-27T11:00:00Z"})
