@@ -79,7 +79,7 @@ Filtering belongs to a **view of the stream**, not loss of the child's identity.
 
 The source file decoder has no equivalent attached-session predicate in `emitGrokUpdate`; it relies on file ownership. Unexpected foreign-session rows in a native file need a diagnostic rather than silent reassignment.
 
-[Ingress and replay: grok.go](../../internal/sessions/grok.go), [session predicate: grok.go](../../internal/sessions/grok.go), [current live conversion](../../internal/app/live_parse_grok.go).
+[Ingress and replay: grok.go](../../internal/sessions/grok.go), [session predicate: grok.go](../../internal/sessions/grok.go), [current live conversion](../../internal/sessions/live_parse_grok.go).
 
 ## Reverse requests and answers
 

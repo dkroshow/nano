@@ -26,32 +26,33 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 		t.Fatal(err)
 	}
 
-	catalog := &fakeThreadCatalog{names: map[string]string{}}
-	server := &server{catalog: catalog}
+	if err := executions.BindSession(hosted.ID, "nano", "native-after-restart", "ready", presentationShared); err != nil {
+		t.Fatal(err)
+	}
+	catalog := fixtureIdentityCatalog(t, nil)
+	catalog.SetCreationNameSource(control.CreationThreadNames)
+	server := &server{catalog: catalog, controlMetadata: control}
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "creation-name", Provider: "claude", HostedThreadID: hosted.ID, CreationName: func() string {
 		name, _ := control.CreationName(hosted.ID)
 		return name
-	}, NameThread: server.assignSpawnName, PublishCreationName: func(provider, nativeID, name string) {
-		if err := catalog.PublishCreationNames(context.Background(), []creationNameProjectionRecord{{
-			Provider: provider, NativeThreadID: nativeID, Name: name,
-		}}); err != nil {
-			t.Fatal(err)
-		}
-	}}, "native-after-restart", "")
+	}, NameThread: server.assignSpawnName, PublishCreationName: server.publishCreationName}, "native-after-restart", "")
 	sess := fixture.session
-	key := "claude\x00native-after-restart"
-	if got := catalog.names[key]; got != "creation name" {
+	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-after-restart"); got != "creation name" {
 		t.Fatalf("bind name = %q, want creation name", got)
 	}
-	if got := catalog.nameSources[key]; got != history.ThreadNameCreation {
-		t.Fatalf("bind provenance = %q, want creation", got)
+	if ref, _ := catalog.ThreadNameRefFor(context.Background(), "claude", "native-after-restart"); ref == nil || ref.Provenance != history.ThreadNameCreation {
+		t.Fatalf("bind provenance = %+v, want creation", ref)
 	}
 
 	if err := catalog.AssignThreadName("claude", "native-after-restart", "operator rename"); err != nil {
 		t.Fatal(err)
 	}
+	waitForCatalog(t, func() bool {
+		name, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-after-restart")
+		return name == "operator rename"
+	})
 	emitClaudeInit(t, sess, fixture.claude, fixture.seq+1, "native-after-restart", "")
-	if got := catalog.names[key]; got != "operator rename" {
+	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-after-restart"); got != "operator rename" {
 		t.Fatalf("later bind restored %q over operator rename", got)
 	}
 }

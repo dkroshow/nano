@@ -12,6 +12,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
@@ -32,7 +33,7 @@ type CreationNames struct {
 	Queue      *prompts.LegacyQueue
 	Reader     CreationNameReader
 	Refs       CreationNameRefReader
-	Projector  CreationNameProjector
+	Catalog    *threadindex.Service
 	Refresh    func()
 }
 
@@ -120,13 +121,13 @@ func (s *CreationNames) repairCreationNames(r *http.Request, request threads.Cre
 		}
 	}
 	publish := func(receipt threads.CreationNameRepairReceipt) error {
-		projector, ok := s.Projector, s.Projector != nil
+		projector, ok := s.Catalog, s.Catalog != nil
 		if !ok {
 			return errors.New("creation names were recorded but the derived names projection is unavailable")
 		}
-		projections := make([]CreationNameProjection, 0, len(receipt.Preview.Records))
+		projections := make([]threadindex.CreationNameRecord, 0, len(receipt.Preview.Records))
 		for _, record := range receipt.Preview.Records {
-			projections = append(projections, CreationNameProjection{Provider: record.Provider, NativeThreadID: record.NativeThreadID, Name: record.Name})
+			projections = append(projections, threadindex.CreationNameRecord{Provider: record.Provider, NativeThreadID: record.NativeThreadID, Name: record.Name})
 		}
 		if err := projector.PublishCreationNames(r.Context(), projections); err != nil {
 			return fmt.Errorf("creation names were recorded but could not be published: %w", err)

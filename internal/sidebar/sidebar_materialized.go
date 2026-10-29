@@ -460,7 +460,7 @@ func sidebarResponsesEqual(left, right sidebarActiveResponse) bool {
 
 // sidebarComparable drops the index time, which no sidebar row shows: about
 // two thirds of sidebar events changed only that, and each made every open
-// page rebuild its  A full read still returns the current value.
+// page rebuild its sidebar. A full read still returns the current value.
 func sidebarComparable(row sidebarThread) sidebarThread {
 	row.Source.LastIndexedAt = ""
 	return row
@@ -695,7 +695,7 @@ func (s *Controller) StartSidebarMaterializer(ctx context.Context, now time.Time
 		rebuild := func(reason string) {
 			start := time.Now()
 			if rebuildErr := s.materializeSidebar(ctx, start); rebuildErr != nil {
-				log.Printf("sidebar %s Rebuild: %v", reason, rebuildErr)
+				log.Printf("sidebar %s rebuild: %v", reason, rebuildErr)
 				return
 			}
 			pacer.rebuilt(start)

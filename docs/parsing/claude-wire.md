@@ -72,7 +72,7 @@ Counts below describe only `testdata/live_projection/claude.jsonl`: 14 lines, in
 | Malformed line | 1 | Test fixture | Adapter returns no change | File path emits malformed evidence |
 
 The table describes the old adapter separately from other handlers. The current
-live conversion is [live_parse_claude.go](../../internal/app/live_parse_claude.go) over the
+live conversion is [live_parse_claude.go](../../internal/sessions/live_parse_claude.go) over the
 module. Historical line references below come from the original study; inspect
 the deleted parser with the retired parser. “No live item”
 does not mean transport bytes vanish: Nano records raw wire events. The old

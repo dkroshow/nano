@@ -145,23 +145,6 @@ func (f *fakeThreadCatalog) ThreadNameRefFor(_ context.Context, provider, native
 	return &history.ThreadNameRef{Value: name, Provenance: provenance}, true
 }
 
-func (f *fakeThreadCatalog) PublishCreationNames(_ context.Context, records []creationNameProjectionRecord) error {
-	if f.names == nil {
-		f.names = map[string]string{}
-	}
-	if f.nameSources == nil {
-		f.nameSources = map[string]history.ThreadNameProvenance{}
-	}
-	for _, record := range records {
-		key := record.Provider + "\x00" + record.NativeThreadID
-		if f.names[key] == "" {
-			f.names[key] = record.Name
-			f.nameSources[key] = history.ThreadNameCreation
-		}
-	}
-	return nil
-}
-
 func (f *fakeThreadCatalog) LoadThreadUsage(_ context.Context, id string, afterOrdinal, limit int) (history.ThreadUsagePage, error) {
 	in := int64(11)
 	return history.ThreadUsagePage{

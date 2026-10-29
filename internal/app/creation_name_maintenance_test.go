@@ -59,7 +59,8 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog := &fakeThreadCatalog{names: map[string]string{}}
+	catalog := fixtureIdentityCatalog(t, nil)
+	catalog.SetCreationNameSource(control.CreationThreadNames)
 	s := &server{controlMetadata: control, agentExecutions: executions, queuedTurns: queue, catalog: catalog}
 	records := fmt.Sprintf(`[{"hostedThreadId":%q,"provider":"codex","nativeThreadId":"native-repair","name":"repaired name","source":"creation_request"}]`, hosted.ID)
 
@@ -108,6 +109,10 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 	if err := catalog.AssignThreadName("codex", "native-repair", "operator rename"); err != nil {
 		t.Fatal(err)
 	}
+	waitForCatalog(t, func() bool {
+		name, _ := catalog.ThreadNameFor(context.Background(), "codex", "native-repair")
+		return name == "operator rename"
+	})
 	nowNamed := httptest.NewRecorder()
 	s.handleCreationNameRepair(nowNamed, httptest.NewRequest(http.MethodPost, "/api/v1/maintenance/creation-names", strings.NewReader(`{"apply":false,"records":`+records+`}`)))
 	if nowNamed.Code != http.StatusConflict {

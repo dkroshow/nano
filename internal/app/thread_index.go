@@ -39,13 +39,6 @@ func (s *threadCatalogService) NamedThreads(ctx context.Context, name string) ([
 	rows, e := s.Service.NamedThreads(ctx, name)
 	return catalogRows(rows), e
 }
-func (s *threadCatalogService) PublishCreationNames(ctx context.Context, records []creationNameProjectionRecord) error {
-	rows := make([]threadindex.CreationNameRecord, len(records))
-	for i, r := range records {
-		rows[i] = threadindex.CreationNameRecord{Provider: r.Provider, NativeThreadID: r.NativeThreadID, Name: r.Name}
-	}
-	return s.Service.PublishCreationNames(ctx, rows)
-}
 func catalogRows(rows []threadindex.Thread) []sidebar.Thread {
 	if rows == nil {
 		return nil

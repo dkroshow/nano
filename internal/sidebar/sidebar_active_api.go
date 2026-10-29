@@ -757,7 +757,7 @@ func sidebarIndependentlyActive(thread Thread) bool {
 	}
 	// Provider transcripts can still look working or needs-you after Nano has
 	// explicitly closed their hosted record. That durable close wins for the
-	// active  Stars remain a separate operator fact above this branch.
+	// active sidebar. Stars remain a separate operator fact above this branch.
 	if thread.Fleet != nil && thread.HostedStatus != sessions.StatusExited {
 		switch thread.Fleet.Label {
 		case fleetWorking, fleetNeedsYou:
