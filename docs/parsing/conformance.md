@@ -364,7 +364,7 @@ the old Codex text helper.
 HISTORY-EVIDENCE-1: file ingestion retains the existing Dev view's source-only
 record links as history rows, separate from model Items. Record positions also
 keep a terminal event out of an older page snapshot. The constructed fixtures
-in [the catalog service tests](../../internal/app/thread_catalog_service_test.go)
+in [the catalog service tests](../../internal/threadindex/thread_catalog_service_test.go)
 (`TestTranscriptDevEvidencePreservesExactNativeTextAndRejectsReplacement` and
 `TestThreadTranscriptFixedSnapshotBodyAndETagStableAcrossAppend`) exercise
 native whitespace, invalid UTF-8, exact numeric text, replacement rejection,

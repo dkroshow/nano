@@ -105,7 +105,7 @@ Turn usage lives in `turn_completed.usage`, already at native-prompt grain. Pres
 
 `-32601` is the billing compatibility guard. JSON-RPC prompt errors establish failure when tied to a native prompt. EOF, disconnect and timeout can leave execution unknown because the leader survives. Do not turn a client transport error into provider failure. Exact arbitrary provider error codes and error-data variants are open coverage, not a closed enumerated contract.
 
-[Billing decoder: usage_limits_grok.go:95](../../internal/app/usage_limits_grok.go), [numeric variants: usage_limits_grok.go:236](../../internal/app/usage_limits_grok.go).
+[Billing decoder: usage_limits_grok.go:95](../../internal/usageclients/usage_limits_grok.go), [numeric variants: usage_limits_grok.go:236](../../internal/usageclients/usage_limits_grok.go).
 
 ## Retention and open coverage
 
