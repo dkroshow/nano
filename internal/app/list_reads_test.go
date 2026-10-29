@@ -68,7 +68,7 @@ func (c *countingCatalog) ThreadNameFor(ctx context.Context, provider, nativeThr
 
 func (c *countingCatalog) calls() int64 { return c.lists.Load() + c.names.Load() }
 
-func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
+func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixture {
 	t.Helper()
 	now := time.Now().UTC().Truncate(time.Second)
 	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
@@ -216,10 +216,12 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 	}, sessions)
 	nameOwner = s
 	s.sidebar = sidebar.New(sidebar.Sources{Catalog: f.catalog.Service, Registry: &s.Registry, Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, Attachments: s.attachments, Boot: &s.bootAttachments, Stars: s.threadStars, Mail: s.mail, MailError: s.mailErr, RuntimeEvents: s.runtimeEvents})
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
-		t.Fatal(err)
+	if followChanges {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
+			t.Fatal(err)
+		}
 	}
 	f.server = s
 	return f
@@ -329,9 +331,12 @@ func (f *budgetFixture) sidebarURL() string {
 // event: rebuilding a full summary, four control-store statements, for every
 // live session on every bind, unbind and turn flip. Boundary: the runtime delta
 // that notifyRuntime and notifyRuntimeRefresh publish, with 40 extra live
-// hosted sessions.
+// hosted sessions. The asynchronous sidebar consumer is outside this publisher
+// measurement: notifyRuntimeRefresh deliberately asks that consumer to read.
 func TestRuntimeEventReadsNoControlStoreRows(t *testing.T) {
-	f := newBudgetFixture(t, 40)
+	f := newBudgetFixture(t, 40, false)
+	// Prime the initial snapshot before measuring the two publisher calls.
+	f.server.notifyRuntime()
 	statements := f.countControlStatements(t, func() {
 		f.server.notifyRuntime()
 		f.server.notifyRuntimeRefresh()
@@ -349,7 +354,7 @@ func TestRuntimeEventReadsNoControlStoreRows(t *testing.T) {
 // must not change.
 func TestThreadListStatementsDoNotGrowWithLiveSessions(t *testing.T) {
 	measure := func(extra int) (catalogCalls, statements int64, rows int) {
-		f := newBudgetFixture(t, extra)
+		f := newBudgetFixture(t, extra, true)
 		before := f.catalog.calls()
 		var body map[string]any
 		statements = f.countControlStatements(t, func() { body = f.get(t, f.server.handleCatalogThreads, f.threadsURL()) })
@@ -374,7 +379,7 @@ func TestThreadListStatementsDoNotGrowWithLiveSessions(t *testing.T) {
 // change.
 func TestSessionsListStatementsDoNotGrowWithSessions(t *testing.T) {
 	measure := func(extra int) (statements, catalogCalls int64) {
-		f := newBudgetFixture(t, extra)
+		f := newBudgetFixture(t, extra, true)
 		before := f.catalog.calls()
 		statements = f.countControlStatements(t, func() { f.get(t, f.server.handleSessionsList, "/api/sessions") })
 		return statements, f.catalog.calls() - before
@@ -473,7 +478,7 @@ func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
 // /api/v1/sidebar/threads on the budget fixture, compared row by row with
 // testdata/list_responses.golden (NANO_UPDATE_FIXTURES=1 rewrites it).
 func TestListResponsesShowEachRowsFacts(t *testing.T) {
-	f := newBudgetFixture(t, 4)
+	f := newBudgetFixture(t, 4, true)
 	var lines []string
 	add := func(kind string, rows any, paths ...string) {
 		list, _ := rows.([]any)
@@ -548,7 +553,7 @@ func rowFacts(row map[string]any, paths ...string) string {
 // starting, and no other exited record.
 func TestAgentSessionsListSkipsExitedRecords(t *testing.T) {
 	measure := func(exited int) (int64, map[string]string) {
-		f := newBudgetFixture(t, 4)
+		f := newBudgetFixture(t, 4, true)
 		executions := f.server.agentExecutions
 		for i := 0; i < exited; i++ {
 			id := fmt.Sprintf("nht_exited_%03d", i)
@@ -710,7 +715,7 @@ func TestThreadListPagesKeepLimitAndLoseNoThread(t *testing.T) {
 		return union
 	}
 
-	budget := newBudgetFixture(t, 4)
+	budget := newBudgetFixture(t, 4, true)
 	window := "/api/v1/threads?updatedFrom=" + url.QueryEscape(budget.now.Add(-30*24*time.Hour).Format(time.RFC3339))
 	for _, limit := range []int{1, 3} {
 		if paged := pageAll(budget, window, limit); !reflect.DeepEqual(paged, whole(budget, window)) {

@@ -125,6 +125,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			peerEnded := make(chan struct{})
+			initializeReplied := make(chan struct{}, 1)
 			provider := grokfixture.NewServer(t, func(c *grokfixture.Conn) {
 				defer close(peerEnded)
 				for {
@@ -135,6 +136,10 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 					switch call.Method {
 					case "initialize":
 						c.Reply(call, map[string]any{"protocolVersion": 1})
+						select {
+						case initializeReplied <- struct{}{}:
+						default:
+						}
 					case "session/load":
 						c.Reply(call, json.RawMessage(raw))
 						if tc.exits {
@@ -172,6 +177,13 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				// Close in the phase under test, once initialize has answered and the
 				// handshake waits for the saved file. Under load the fake app-server can
 				// still be answering initialize a second in, and a close then ends it.
+				// Process startup is fixture setup. Start the existing state-check
+				// window only after the peer has actually answered initialize.
+				select {
+				case <-initializeReplied:
+				case <-peerEnded:
+					t.Fatal("fake app-server exited before initialize completed")
+				}
 				waitForClaude(t, "the fake app-server to answer initialize", func() bool {
 					rec := httptest.NewRecorder()
 					sess.HandleState(rec, httptest.NewRequest(http.MethodGet, "/state", nil))
