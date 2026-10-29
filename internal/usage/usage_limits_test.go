@@ -1,4 +1,4 @@
-package app
+package usage
 
 import (
 	"database/sql"
@@ -11,7 +11,7 @@ import (
 
 func TestUsageOffSwitchOpensNoStore(t *testing.T) {
 	dir := t.TempDir()
-	store, path, err := openUsageLimits(false, filepath.Join(dir, "history.sqlite"))
+	store, path, err := OpenConfigured(false, filepath.Join(dir, "usage-limits.sqlite"))
 	if err != nil || store != nil || path != "" {
 		t.Fatalf("disabled usage = store=%v path=%q err=%v", store, path, err)
 	}
@@ -45,9 +45,9 @@ func TestNextAlignedTickLandsOnWallClockBoundaries(t *testing.T) {
 		{"a boundary a full second away is kept", at(16, 29, 59), 5 * time.Minute, at(16, 30, 0)},
 	}
 	for _, tc := range cases {
-		got := nextAlignedTick(tc.now, tc.interval)
+		got := NextAlignedTick(tc.now, tc.interval)
 		if !got.Equal(tc.want) {
-			t.Errorf("%s: nextAlignedTick(%s, %s) = %s, want %s",
+			t.Errorf("%s: NextAlignedTick(%s, %s) = %s, want %s",
 				tc.name, tc.now.Format("15:04:05"), tc.interval,
 				got.Format("15:04:05"), tc.want.Format("15:04:05"))
 		}
@@ -59,7 +59,7 @@ func TestNextAlignedTickFollowsTheLocalClockInHalfHourZones(t *testing.T) {
 	// on :02:30, :07:30 … instead of on the clock's own five-minute marks.
 	ist := time.FixedZone("IST", 5*3600+30*60)
 	now := time.Date(2026, 8, 6, 16, 27, 13, 0, ist)
-	got := nextAlignedTick(now, 5*time.Minute)
+	got := NextAlignedTick(now, 5*time.Minute)
 	want := time.Date(2026, 8, 6, 16, 30, 0, 0, ist)
 	if !got.Equal(want) {
 		t.Errorf("got %s, want %s", got.Format("15:04:05"), want.Format("15:04:05"))
@@ -77,7 +77,7 @@ func TestNextAlignedTickIsAlwaysInTheFuture(t *testing.T) {
 		for _, iv := range []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour} {
 			for sec := 0; sec < 3600; sec += 37 {
 				now := time.Date(2026, 8, 6, 0, 0, 0, 0, zone).Add(time.Duration(sec) * time.Second)
-				next := nextAlignedTick(now, iv)
+				next := NextAlignedTick(now, iv)
 				if !next.After(now) {
 					t.Fatalf("offset %d, interval %s, now %s: next %s is not in the future",
 						offsetMin, iv, now, next)
@@ -92,21 +92,21 @@ func TestNextAlignedTickIsAlwaysInTheFuture(t *testing.T) {
 }
 
 func TestObserveCarriesReadingsThroughANotice(t *testing.T) {
-	store, err := newUsageLimitsStore(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
+	store, err := Open(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
 
-	store.observe(&usageProviderSnapshot{
+	store.Observe(&ProviderSnapshot{
 		Provider:   "claude",
 		ObservedAt: time.Now().UTC(),
-		Buckets:    []usageBucket{{Key: "weekly", Label: "week", UsedPercent: 78}},
+		Buckets:    []Bucket{{Key: "weekly", Label: "week", UsedPercent: 78}},
 	})
-	store.observe((&usageProviderSnapshot{Provider: "claude"}).
+	store.Observe((&ProviderSnapshot{Provider: "claude"}).
 		Wait("waiting for a Claude session to refresh the token"))
 
-	got := store.snapshot()[0]
+	got := store.Snapshot()[0]
 	if got.Error != "" {
 		t.Errorf("a notice must not populate Error: %q", got.Error)
 	}
@@ -119,12 +119,12 @@ func TestObserveCarriesReadingsThroughANotice(t *testing.T) {
 	}
 
 	// A later success clears the notice.
-	store.observe(&usageProviderSnapshot{
+	store.Observe(&ProviderSnapshot{
 		Provider:   "claude",
 		ObservedAt: time.Now().UTC(),
-		Buckets:    []usageBucket{{Key: "weekly", Label: "week", UsedPercent: 79}},
+		Buckets:    []Bucket{{Key: "weekly", Label: "week", UsedPercent: 79}},
 	})
-	if n := store.snapshot()[0].Notice; n != "" {
+	if n := store.Snapshot()[0].Notice; n != "" {
 		t.Errorf("recovery left a notice behind: %q", n)
 	}
 }
@@ -133,16 +133,16 @@ func TestSnapshotSurvivesRestart(t *testing.T) {
 	// A restart during an outage used to blank the strip: the carried-forward
 	// reading lived only in memory even though the readings were on disk.
 	path := filepath.Join(t.TempDir(), "usage-limits.sqlite")
-	first, err := newUsageLimitsStore(path)
+	first, err := Open(path)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	observedAt := time.Now().UTC().Add(-20 * time.Minute)
-	first.observe(&usageProviderSnapshot{
+	first.Observe(&ProviderSnapshot{
 		Provider:   "claude",
 		PlanType:   "max",
 		ObservedAt: observedAt,
-		Buckets: []usageBucket{{
+		Buckets: []Bucket{{
 			Key: "weekly", Label: "week", Group: "weekly", UsedPercent: 78,
 			WindowMinutes: 10080, ResetsAt: time.Now().Add(48 * time.Hour).Unix(),
 			Severity: "warning",
@@ -150,13 +150,13 @@ func TestSnapshotSurvivesRestart(t *testing.T) {
 	})
 	first.Close()
 
-	second, err := newUsageLimitsStore(path)
+	second, err := Open(path)
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}
 	defer second.Close()
 
-	got := second.snapshot()
+	got := second.Snapshot()
 	if len(got) != 1 || len(got[0].Buckets) != 1 {
 		t.Fatalf("snapshot was not seeded from history: %+v", got)
 	}
@@ -174,9 +174,9 @@ func TestSnapshotSurvivesRestart(t *testing.T) {
 	}
 
 	// Seeding must not make the next unchanged reading append a duplicate.
-	second.observe(&usageProviderSnapshot{
+	second.Observe(&ProviderSnapshot{
 		Provider: "claude", ObservedAt: time.Now().UTC(),
-		Buckets: []usageBucket{{Key: "weekly", Label: "week", UsedPercent: 78, Severity: "warning"}},
+		Buckets: []Bucket{{Key: "weekly", Label: "week", UsedPercent: 78, Severity: "warning"}},
 	})
 	var n int
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM usage_limit_observations`).Scan(&n); err != nil {
@@ -188,7 +188,7 @@ func TestSnapshotSurvivesRestart(t *testing.T) {
 }
 
 func TestObserveAppendsOnlyOnChange(t *testing.T) {
-	store, err := newUsageLimitsStore(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
+	store, err := Open(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -202,25 +202,25 @@ func TestObserveAppendsOnlyOnChange(t *testing.T) {
 		}
 		return n
 	}
-	snap := func(pct float64) *usageProviderSnapshot {
-		return &usageProviderSnapshot{
+	snap := func(pct float64) *ProviderSnapshot {
+		return &ProviderSnapshot{
 			Provider:   "codex",
 			ObservedAt: time.Now().UTC(),
-			Buckets:    []usageBucket{{Key: "codex:primary", Label: "week", UsedPercent: pct}},
+			Buckets:    []Bucket{{Key: "codex:primary", Label: "week", UsedPercent: pct}},
 		}
 	}
 
-	store.observe(snap(92))
+	store.Observe(snap(92))
 	if rows() != 1 {
 		t.Fatalf("first observation wrote %d rows", rows())
 	}
 	// An unchanged reading is the common case — the poller fires every few
 	// minutes and the percentage moves far more slowly than that.
-	store.observe(snap(92))
+	store.Observe(snap(92))
 	if rows() != 1 {
 		t.Errorf("unchanged reading appended a row: %d total", rows())
 	}
-	store.observe(snap(93))
+	store.Observe(snap(93))
 	if rows() != 2 {
 		t.Errorf("changed reading did not append: %d total", rows())
 	}
@@ -228,7 +228,7 @@ func TestObserveAppendsOnlyOnChange(t *testing.T) {
 
 func TestObserveRetriesUnchangedReadingAfterWriteFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage-limits.sqlite")
-	store, err := newUsageLimitsStore(path)
+	store, err := Open(path)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -256,19 +256,19 @@ func TestObserveRetriesUnchangedReadingAfterWriteFailure(t *testing.T) {
 		t.Fatalf("acquire write lock: %v", err)
 	}
 
-	reading := &usageProviderSnapshot{
+	reading := &ProviderSnapshot{
 		Provider:   "codex",
 		ObservedAt: time.Now().UTC(),
-		Buckets:    []usageBucket{{Key: "weekly", Label: "week", UsedPercent: 42}},
+		Buckets:    []Bucket{{Key: "weekly", Label: "week", UsedPercent: 42}},
 	}
-	store.observe(reading)
+	store.Observe(reading)
 	if err := lockTx.Rollback(); err != nil {
 		t.Fatalf("release write lock: %v", err)
 	}
 
 	// The value has not changed, but the previous attempt did not commit. It
 	// therefore still needs to be written rather than suppressed as a duplicate.
-	store.observe(reading)
+	store.Observe(reading)
 	var rows int
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM usage_limit_observations WHERE provider = 'codex'`).Scan(&rows); err != nil {
 		t.Fatalf("count retried rows: %v", err)
@@ -279,7 +279,7 @@ func TestObserveRetriesUnchangedReadingAfterWriteFailure(t *testing.T) {
 }
 
 func TestObserveIgnoresDriftingResetTime(t *testing.T) {
-	store, err := newUsageLimitsStore(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
+	store, err := Open(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -290,10 +290,10 @@ func TestObserveIgnoresDriftingResetTime(t *testing.T) {
 	// percentage never moves. That must not append a row each time.
 	base := time.Now().Unix() + 7*24*3600
 	for i := 0; i < 4; i++ {
-		store.observe(&usageProviderSnapshot{
+		store.Observe(&ProviderSnapshot{
 			Provider:   "codex",
 			ObservedAt: time.Now().UTC(),
-			Buckets: []usageBucket{{
+			Buckets: []Bucket{{
 				Key: "codex_bengalfox:primary", Label: "Spark",
 				UsedPercent: 0, ResetsAt: base + int64(i)*300,
 			}},
@@ -310,29 +310,29 @@ func TestObserveIgnoresDriftingResetTime(t *testing.T) {
 
 func TestChangeDetectionSurvivesRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage-limits.sqlite")
-	reading := func() *usageProviderSnapshot {
-		return &usageProviderSnapshot{
+	reading := func() *ProviderSnapshot {
+		return &ProviderSnapshot{
 			Provider:   "claude",
 			ObservedAt: time.Now().UTC(),
-			Buckets:    []usageBucket{{Key: "weekly", Label: "week", UsedPercent: 54, Severity: "normal"}},
+			Buckets:    []Bucket{{Key: "weekly", Label: "week", UsedPercent: 54, Severity: "normal"}},
 		}
 	}
 
-	first, err := newUsageLimitsStore(path)
+	first, err := Open(path)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	first.observe(reading())
+	first.Observe(reading())
 	first.Close()
 
 	// A restart must not re-append an unchanged reading: the dedup state is
 	// rebuilt from the newest stored row rather than starting empty.
-	second, err := newUsageLimitsStore(path)
+	second, err := Open(path)
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}
 	defer second.Close()
-	second.observe(reading())
+	second.Observe(reading())
 
 	var n int
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM usage_limit_observations`).Scan(&n); err != nil {
@@ -345,7 +345,7 @@ func TestChangeDetectionSurvivesRestart(t *testing.T) {
 	// A real change after the restart must still land.
 	changed := reading()
 	changed.Buckets[0].UsedPercent = 55
-	second.observe(changed)
+	second.Observe(changed)
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM usage_limit_observations`).Scan(&n); err != nil {
 		t.Fatalf("count: %v", err)
 	}
@@ -355,23 +355,23 @@ func TestChangeDetectionSurvivesRestart(t *testing.T) {
 }
 
 func TestObserveCarriesLastGoodReadingThroughAnError(t *testing.T) {
-	store, err := newUsageLimitsStore(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
+	store, err := Open(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
 
-	store.observe(&usageProviderSnapshot{
+	store.Observe(&ProviderSnapshot{
 		Provider:   "claude",
 		PlanType:   "max",
 		ObservedAt: time.Now().UTC(),
-		Buckets:    []usageBucket{{Key: "weekly", Label: "week", UsedPercent: 53}},
+		Buckets:    []Bucket{{Key: "weekly", Label: "week", UsedPercent: 53}},
 	})
 	// A failed poll must not blank the bars: an empty strip reads as "no usage
 	// at all", which is the opposite of what a transport failure means.
-	store.observe(&usageProviderSnapshot{Provider: "claude", Error: "token expired"})
+	store.Observe(&ProviderSnapshot{Provider: "claude", Error: "token expired"})
 
-	got := store.snapshot()
+	got := store.Snapshot()
 	if len(got) != 1 {
 		t.Fatalf("want 1 provider, got %d", len(got))
 	}
@@ -387,27 +387,27 @@ func TestObserveCarriesLastGoodReadingThroughAnError(t *testing.T) {
 }
 
 func TestObserveKeepsErrorDetailAndClearsOnRecovery(t *testing.T) {
-	store, err := newUsageLimitsStore(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
+	store, err := Open(filepath.Join(t.TempDir(), "usage-limits.sqlite"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
 
-	good := func() *usageProviderSnapshot {
-		return &usageProviderSnapshot{
+	good := func() *ProviderSnapshot {
+		return &ProviderSnapshot{
 			Provider:   "claude",
 			ObservedAt: time.Now().UTC(),
-			Buckets:    []usageBucket{{Key: "weekly", Label: "week", UsedPercent: 54}},
+			Buckets:    []Bucket{{Key: "weekly", Label: "week", UsedPercent: 54}},
 		}
 	}
-	store.observe(good())
+	store.Observe(good())
 
-	failed := (&usageProviderSnapshot{Provider: "claude"}).
+	failed := (&ProviderSnapshot{Provider: "claude"}).
 		Fail("Claude rejected the login token — run any Claude Code session",
 			errGetReturned401)
-	store.observe(failed)
+	store.Observe(failed)
 
-	got := store.snapshot()[0]
+	got := store.Snapshot()[0]
 	// The visible message is written for a human; the technical cause rides
 	// along for the tooltip rather than replacing it.
 	if got.Error != "Claude rejected the login token — run any Claude Code session" {
@@ -419,8 +419,8 @@ func TestObserveKeepsErrorDetailAndClearsOnRecovery(t *testing.T) {
 
 	// A later success must clear both, or the rail keeps shouting after the
 	// problem is gone.
-	store.observe(good())
-	got = store.snapshot()[0]
+	store.Observe(good())
+	got = store.Snapshot()[0]
 	if got.Error != "" || got.ErrorDetail != "" {
 		t.Errorf("recovery left error state behind: %q / %q", got.Error, got.ErrorDetail)
 	}

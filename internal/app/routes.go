@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/dkroshow/nano/internal/usage"
 	"net/http"
 	"sort"
 	"strings"
@@ -19,6 +20,7 @@ type applicationRoute struct {
 
 func applicationRoutes(s *server) []applicationRoute {
 	index := threadindex.NewHandlers(s.catalog)
+	accountUsage := &usage.Handlers{Store: s.usageLimits, Poller: s.usageLimitsPoller}
 	sessionRoute := func(operation func(http.ResponseWriter, *http.Request, *sessions.Session)) http.HandlerFunc {
 		return s.sessionOperation(operation)
 	}
@@ -120,8 +122,8 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/turn-operations/changes", "turnOperations.changes", s.handleTurnOperationChanges},
 		{http.MethodGet, "/api/v1/turn-operations/{operationId}", "turnOperations.read", s.handleTurnOperationRead},
 		{http.MethodDelete, "/api/v1/turn-operations/{operationId}", "turnOperations.cancel", s.handleTurnOperationCancel},
-		{http.MethodGet, "/api/v1/usage-limits", "usageLimits.read", s.handleUsageLimits},
-		{http.MethodGet, "/api/v1/usage-limits/detail", "usageLimits.detail", s.handleUsageLimitsDetail},
+		{http.MethodGet, "/api/v1/usage-limits", "usageLimits.read", accountUsage.HandleSummary},
+		{http.MethodGet, "/api/v1/usage-limits/detail", "usageLimits.detail", accountUsage.HandleDetail},
 		{http.MethodGet, "/api/v1/browser-diagnostics", "browserDiagnostics.list", s.handleBrowserDiagnosticsList},
 		{http.MethodPost, "/api/v1/browser-diagnostics", "browserDiagnostics.record", s.handleBrowserDiagnosticsRecord},
 		{http.MethodGet, "/api/v1/feedback", "feedback.list", s.agentController().HandleFeedbackList},

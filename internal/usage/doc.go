@@ -1,5 +1,5 @@
 // Package usage polls registered account-usage sources, retains normalized
-// observations, and serves read models. It owns no provider client.
+// observations, and serves their HTTP read models. It owns no provider client.
 //
 // Nano registers three outbound reads when usage is enabled:
 //   - Codex: account/rateLimits/read on the local supervised app-server.

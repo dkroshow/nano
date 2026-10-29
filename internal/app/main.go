@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/dkroshow/nano/internal/historical"
+	"github.com/dkroshow/nano/internal/usage"
 	"io"
 	"io/fs"
 	"log"
@@ -148,10 +149,10 @@ type server struct {
 	// usageLimits polls all three providers' account-wide subscription usage and
 	// keeps the append-on-change history (usage_limits.go). Nil when its store
 	// is unavailable, which serves an empty strip rather than failing a page.
-	usageLimits *usageLimitsStore
+	usageLimits *usage.Store
 	// usageLimitsPoller is retained so the Codex push notification can nudge an
 	// out-of-band refresh. Nil whenever usageLimits is.
-	usageLimitsPoller  *usageLimitsPoller
+	usageLimitsPoller  *usage.Poller
 	hostMonitor        *hostMonitor
 	requests           observability.RequestTimes
 	hostedControl      *hosted.Controller
@@ -257,7 +258,7 @@ func construct(cfg config.Config) *application {
 	var turnStore *prompts.Store
 	var agentExecutions *agentExecutionStore
 	var mail *featuremail.Store
-	var usageLimits *usageLimitsStore
+	var usageLimits *usage.Store
 	if catalogPath != "" {
 		attachPath := cfg.Paths.Attachments
 		store, err := hostedstore.NewAttachmentStore(attachPath)
@@ -311,7 +312,7 @@ func construct(cfg config.Config) *application {
 		// thing here that cannot be rebuilt from provider files, and
 		// history.sqlite's delete-and-rebuild guarantee depends on holding
 		// nothing of that kind. See usage_limits.go.
-		usageStore, usagePath, err := openUsageLimitsAt(cfg.UsageEnabled, cfg.Paths.UsageDB)
+		usageStore, usagePath, err := usage.OpenConfigured(cfg.UsageEnabled, cfg.Paths.UsageDB)
 		if err != nil {
 			log.Printf("usage limits unavailable (%s): %v", usagePath, err)
 		} else if usageStore != nil {
@@ -384,7 +385,7 @@ func construct(cfg config.Config) *application {
 	go s.hostMonitor.run(context.Background())
 	if usageLimits != nil {
 		s.usageLimitsPoller = newUsageLimitsPoller(usageLimits, codexDaemon, s.defaults, cfg.UsagePollInterval)
-		go s.usageLimitsPoller.run(context.Background())
+		go s.usageLimitsPoller.Run(context.Background())
 	}
 	if catalogStore != nil {
 		if providerHomes, err := configuredProviderHomes(); err != nil {

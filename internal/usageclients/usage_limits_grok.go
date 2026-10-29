@@ -1,4 +1,4 @@
-package app
+package usageclients
 
 // usage_limits_grok.go — Grok's account-usage extension.
 //
@@ -13,14 +13,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dkroshow/nano/internal/config"
-	"github.com/dkroshow/nano/internal/hosted"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/usage"
 	protocol "github.com/dkroshow/nano/internal/wire/codex"
 )
 
@@ -50,15 +50,15 @@ var newGrokUsageClient = func(command []string, cwd string) grokUsageClient {
 	return client
 }
 
-// fetchGrokUsage reads the subscription window through the real Grok leader.
+// FetchGrokUsage reads the subscription window through the real Grok leader.
 // One deadline covers process start, ACP initialization, and billing. Closing
 // the client also kills and reaps the short-lived stdio child.
-func fetchGrokUsage(ctx context.Context, defaults config.SessionDefaults) *usageProviderSnapshot {
-	out := &usageProviderSnapshot{Provider: "grok", Buckets: []usageBucket{}}
-	request := hosted.SpawnRequest{ProviderRequest: sessions.ProviderRequest{Mode: "start", Cwd: defaults.CWD, GrokBin: sessions.ResolveGrokBin(defaults.GrokBin),
-		GrokLeaderSocket: defaults.GrokLeaderSocket},
+func FetchGrokUsage(ctx context.Context, defaults config.SessionDefaults) *usage.ProviderSnapshot {
+	out := &usage.ProviderSnapshot{Provider: "grok", Buckets: []usage.Bucket{}}
+	request := sessions.ProviderRequest{Mode: "start", Cwd: defaults.CWD, GrokBin: sessions.ResolveGrokBin(defaults.GrokBin),
+		GrokLeaderSocket: defaults.GrokLeaderSocket,
 	}
-	command := sessions.GrokCommand(request.ProviderRequest)
+	command := sessions.GrokCommand(request)
 	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
 		return out.Fail("Grok executable is not configured", nil)
 	}
@@ -96,8 +96,8 @@ func fetchGrokUsage(ctx context.Context, defaults config.SessionDefaults) *usage
 // grokUsageFromBilling keeps financial fields out of Nano. It reads only the
 // subscription tier and the one included-credit usage window; prepaid balance,
 // on-demand fields, and auto-top-up are intentionally ignored.
-func grokUsageFromBilling(raw json.RawMessage, observedAt time.Time) *usageProviderSnapshot {
-	out := &usageProviderSnapshot{Provider: "grok", Buckets: []usageBucket{}}
+func grokUsageFromBilling(raw json.RawMessage, observedAt time.Time) *usage.ProviderSnapshot {
+	out := &usage.ProviderSnapshot{Provider: "grok", Buckets: []usage.Bucket{}}
 	var response map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &response); err != nil {
 		return out.Fail("Grok returned an unreadable usage response", fmt.Errorf("decode billing response: %w", err))
@@ -132,7 +132,7 @@ func grokUsageFromBilling(raw json.RawMessage, observedAt time.Time) *usageProvi
 		}
 		resetAt, _ := time.Parse(time.RFC3339Nano, period.End)
 		out.ObservedAt = observedAt
-		out.Buckets = append(out.Buckets, usageBucket{
+		out.Buckets = append(out.Buckets, usage.Bucket{
 			Key: "grok:primary", Label: label, Group: group, UsedPercent: min(100, max(0, percent)),
 			WindowMinutes: minutes, ResetsAt: resetAt.Unix(), Primary: true,
 		})
@@ -146,7 +146,7 @@ func grokUsageFromBilling(raw json.RawMessage, observedAt time.Time) *usageProvi
 	}
 	if usedPresent && limitPresent && limit > 0 && used >= 0 {
 		out.ObservedAt = observedAt
-		out.Buckets = append(out.Buckets, usageBucket{
+		out.Buckets = append(out.Buckets, usage.Bucket{
 			Key: "grok:primary", Label: "month", Group: "monthly",
 			UsedPercent: min(100, used/limit*100), WindowMinutes: grokMonthlyMinutes,
 			ResetsAt: grokBillingResetAt(config), Primary: true,
