@@ -1,4 +1,3 @@
-// Package schema owns the hosted permission and native-recovery table schemas.
 package schema
 
 import (
