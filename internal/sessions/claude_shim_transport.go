@@ -205,19 +205,19 @@ func startClaudeShimSession(owner *claudeSession, shimURL string, posture claude
 // Returns errShimSessionAttached (another nano holds it) or
 // errShimSessionNotFound (the shim never knew it, or lost it with its own
 // restart) for callers to dispatch on.
-func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan claudeReplayPlan, posture claudeSpawnPosture, stored hostedstore.Attachment) (*claudeSession, error) {
+func attachClaudeSession(providerRuntime *Runtime, shimURL, nativeSessionID string, plan claudeReplayPlan, posture claudeSpawnPosture, stored hostedstore.Attachment) (*claudeSession, error) {
 	fromSeq := plan.FromSeq
-	sess.state.beginTurnRestore()
+	providerRuntime.state.beginTurnRestore()
 	restoreSettled := false
 	defer func() {
 		if !restoreSettled {
-			sess.state.cancelTurnRestore()
+			providerRuntime.state.cancelTurnRestore()
 		}
 	}()
 	// supersedes: the id we attached by. The replayed init normally re-derives
 	// the same one and nothing is retired; a shim that answered with a different
 	// session would leave the requested record stale, so drop it then.
-	c := newClaudeSession(sess, nativeSessionID)
+	c := newClaudeSession(providerRuntime, nativeSessionID)
 	// Captured before the attach: the replay re-derives identity and rewrites
 	// this record (captureInit), and nothing downstream of that point can still
 	// see what the previous nano wrote. persistedAnchor starts at the stored
@@ -228,10 +228,10 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 	c.persistedAnchor.Store(stored.TurnStartedAtMs)
 	// Recreate action-bearing submitted rows before shim replay so replayed user
 	// evidence promotes those rows in place rather than painting a duplicate.
-	sess.state.restoreSubmissionOutbox()
+	providerRuntime.state.restoreSubmissionOutbox()
 	// A failed attach whose last admitted frame never acknowledged is still
 	// running on its session loop; a second generation must not overlap it.
-	if err := claudeDrainSettled(sess); err != nil {
+	if err := claudeDrainSettled(providerRuntime); err != nil {
 		return nil, err
 	}
 	tr, err := dialClaudeShim(c, shimURL, posture)
@@ -286,8 +286,8 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 	// An empty replay can have no system.init line. The attach response still
 	// carries the native identity required by transactional prompt bindings.
 	if res.NativeSessionID != "" {
-		sess.state.adoptNativeThreadID(res.NativeSessionID)
-		sess.state.setProjectionThreadID(res.NativeSessionID)
+		providerRuntime.state.adoptNativeThreadID(res.NativeSessionID)
+		providerRuntime.state.setProjectionThreadID(res.NativeSessionID)
 	}
 	c.tr = tr
 	// Do not let the WebSocket reader project any replay line. It keeps
@@ -306,7 +306,7 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 	// From here frames are queued on the session loop; every failure must
 	// also stop them.
 	fail := func(err error) (*claudeSession, error) {
-		if !tr.abandonQueued(sess) {
+		if !tr.abandonQueued(providerRuntime) {
 			err = fmt.Errorf("%w (its abandoned replay is still draining; retries wait for it)", err)
 		}
 		return nil, err
@@ -334,7 +334,7 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 		return nil, errSpawnSessionClosed
 	}
 	log.Printf("claude session %s attached to shim session %s (native %s, state %s, lastSeq %d, fromSeq %d)",
-		sess.identity.id, res.ShimSessionID, res.NativeSessionID, res.State, res.LastSeq, fromSeq)
+		providerRuntime.identity.id, res.ShimSessionID, res.NativeSessionID, res.State, res.LastSeq, fromSeq)
 	// Hand the session back only once the replay has landed: the caller then
 	// sees identity (thread id, model, ready) already re-derived from the
 	// replayed init line, exactly as a fresh start would leave it.
@@ -348,7 +348,7 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 	// frames are applied asynchronously on the session loop; this ordered
 	// acknowledgement ensures their transcript and wire publication is complete
 	// before attachment settlement, even if the provider has already exited.
-	if core := sess.coreSession(); core != nil {
+	if core := providerRuntime.coreSession(); core != nil {
 		if err := tr.awaitApplied(core); err != nil {
 			return fail(fmt.Errorf("%w: processing acknowledgement failed: %w", errClaudeReplayUnsettled, err))
 		}
@@ -366,12 +366,12 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 		if *res.TurnActive {
 			startedAtMs = stored.TurnStartedAtMs
 			turnID := ""
-			if sess.view.liveProjection() != nil {
-				turnID = sess.view.liveProjection().ensureClaudeActiveTurn(startedAtMs)
+			if providerRuntime.view.liveProjection() != nil {
+				turnID = providerRuntime.view.liveProjection().ensureClaudeActiveTurn(startedAtMs)
 			}
-			sess.state.restoreTurnActive(true, turnID, startedAtMs)
+			providerRuntime.state.restoreTurnActive(true, turnID, startedAtMs)
 		} else {
-			sess.state.restoreTurnActive(false, "", 0)
+			providerRuntime.state.restoreTurnActive(false, "", 0)
 		}
 	}
 	// The browser must see the replay as one reconciliation, not as a live
@@ -384,17 +384,17 @@ func attachClaudeSession(sess *Runtime, shimURL, nativeSessionID string, plan cl
 	}
 	// Recover the spool's unanswered requests before readiness can drain a queue.
 	c.rehydratePending(nil)
-	if !sess.state.awaitSavedCatchUp(tr.client.Done(), nil) {
-		if sess.state.ended() {
+	if !providerRuntime.state.awaitSavedCatchUp(tr.client.Done(), nil) {
+		if providerRuntime.state.ended() {
 			return fail(errSpawnSessionClosed)
 		}
 		return fail(fmt.Errorf("%w: shim disconnected while the saved file caught up", errClaudeReplayUnsettled))
 	}
-	epoch, sequence, active, turnID, anchor := sess.state.restoreEvidence()
+	epoch, sequence, active, turnID, anchor := providerRuntime.state.restoreEvidence()
 	if res.State == "exited" {
 		c.markExited()
 	}
-	restoreSettled = sess.state.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: res.State, active: active, settled: true}, turnID, anchor)
+	restoreSettled = providerRuntime.state.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: res.State, active: active, settled: true}, turnID, anchor)
 	if !restoreSettled && res.State != "exited" {
 		return fail(fmt.Errorf("%w: claude shim did not supply settled current evidence", errClaudeReplayUnsettled))
 	}
@@ -444,9 +444,9 @@ func (t *claudeShimTransport) awaitApplied(core *coresession.Session) error {
 // If not, a frame is still applying: the thread is marked draining until the
 // loop acknowledges, and every attach refuses meanwhile (claudeDrainSettled).
 // Nothing blocks on it and the provider child is untouched.
-func (t *claudeShimTransport) abandonQueued(sess *Runtime) bool {
+func (t *claudeShimTransport) abandonQueued(providerRuntime *Runtime) bool {
 	t.abandon()
-	core := sess.coreSession()
+	core := providerRuntime.coreSession()
 	if core == nil {
 		return true
 	}
@@ -457,7 +457,7 @@ func (t *claudeShimTransport) abandonQueued(sess *Runtime) bool {
 		return true
 	}
 	done := make(chan struct{})
-	key := claudeDrainKey(sess)
+	key := claudeDrainKey(providerRuntime)
 	claudeDrains.Store(key, done)
 	go func() {
 		_ = core.Observe(context.Background(), coresession.AdapterEvent{})
@@ -471,17 +471,17 @@ func (t *claudeShimTransport) abandonQueued(sess *Runtime) bool {
 // acknowledged by their session loop, keyed by hosted thread.
 var claudeDrains sync.Map
 
-func claudeDrainKey(sess *Runtime) string {
-	if sess.identity.hostedThreadID != "" {
-		return sess.identity.hostedThreadID
+func claudeDrainKey(providerRuntime *Runtime) string {
+	if providerRuntime.identity.hostedThreadID != "" {
+		return providerRuntime.identity.hostedThreadID
 	}
-	return "session:" + sess.identity.id
+	return "session:" + providerRuntime.identity.id
 }
 
 // claudeDrainSettled refuses, without waiting, an attach that would overlap an
 // abandoned drain. The refusal is no-fallback: the original child exists.
-func claudeDrainSettled(sess *Runtime) error {
-	if _, draining := claudeDrains.Load(claudeDrainKey(sess)); draining {
+func claudeDrainSettled(providerRuntime *Runtime) error {
+	if _, draining := claudeDrains.Load(claudeDrainKey(providerRuntime)); draining {
 		return fmt.Errorf("%w: a previous attach's abandoned replay is still draining", errClaudeReplayUnsettled)
 	}
 	return nil

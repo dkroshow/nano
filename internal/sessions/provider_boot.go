@@ -26,13 +26,13 @@ func NewBootControl(limit int) *BootControl {
 // holdHandshakeSlot takes one of the provider's boot handshake slots for
 // sess's attach and returns its release. The slot goes back once: when the
 // attach starts waiting for its saved catch-up, or when it ends.
-func (c *BootControl) holdHandshakeSlot(sess *Runtime) func() {
+func (c *BootControl) holdHandshakeSlot(providerRuntime *Runtime) func() {
 	if c == nil || c.handshakeSlots == nil {
 		return func() {}
 	}
 	c.handshakeSlots <- struct{}{}
 	var once sync.Once
 	release := func() { once.Do(func() { <-c.handshakeSlots }) }
-	sess.state.holdHandshakeRelease(release)
+	providerRuntime.state.holdHandshakeRelease(release)
 	return release
 }

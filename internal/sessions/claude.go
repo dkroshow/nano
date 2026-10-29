@@ -379,12 +379,12 @@ func ResolveClaudeBin(configured string) string {
 // startClaudeSession begins streaming a hosted session's wire into the
 // Session's event buffer. The session id arrives asynchronously on the
 // system.init line.
-func startClaudeSession(sess *Runtime, req ProviderRequest) (*claudeSession, error) {
+func startClaudeSession(providerRuntime *Runtime, req ProviderRequest) (*claudeSession, error) {
 	if req.ClaudeBin == "" {
 		req.ClaudeBin = ResolveClaudeBin("")
 	}
 	posture := claudeSpawnPosture{Bin: req.ClaudeBin, Args: ClaudeArgs(req)}
-	return openClaudeSession(sess, req.ClaudeShimWS, posture, "", sess.state.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
+	return openClaudeSession(providerRuntime, req.ClaudeShimWS, posture, "", providerRuntime.state.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
 }
 
 // resumeClaudeSession re-attaches a detached claude session, walking the
@@ -399,7 +399,7 @@ func startClaudeSession(sess *Runtime, req ProviderRequest) (*claudeSession, err
 //     conversation from the native transcript but not a turn in flight;
 //  3. someone else holds the session → refuse. Falling back here would spawn a
 //     second child racing the first over one transcript.
-func resumeClaudeSession(sess *Runtime, req ProviderRequest) (*claudeSession, error) {
+func resumeClaudeSession(providerRuntime *Runtime, req ProviderRequest) (*claudeSession, error) {
 	posture := claudeSpawnPosture{Bin: req.ClaudeBin, Args: req.ClaudeArgs}
 	// Identity at spawn, the codex idiom (codex.go's pre-claim): take the thread
 	// id before any wire traffic, whichever rung ends up hosting the session.
@@ -412,36 +412,36 @@ func resumeClaudeSession(sess *Runtime, req ProviderRequest) (*claudeSession, er
 	// would match no thread at all: no dual-attachment guard, no runtime
 	// overlay, no tab identity. captureInit replaces this with the real id when
 	// it lands.
-	sess.state.setNativeThreadID(req.ThreadID)
-	sess.state.setProjectionThreadID(req.ThreadID)
+	providerRuntime.state.setNativeThreadID(req.ThreadID)
+	providerRuntime.state.setProjectionThreadID(req.ThreadID)
 	// A normal resume knows its real id before any wire traffic, so write a
 	// dialog-supplied name now. A never-prompted child carries only a provisional
 	// shim handle: keep its restored New Window title pending until the first
 	// turn's init supplies the native id, or we would persist the name under an
 	// identity the catalog will immediately retire.
 	if !req.ClaudeAnchor.Provisional() {
-		sess.state.applyPendingName(req.ThreadID)
+		providerRuntime.state.applyPendingName(req.ThreadID)
 	}
 	if shimURL := strings.TrimSpace(req.ClaudeShimWS); shimURL != "" {
 		// The replay floor comes from durable prompt facts and the shim's
 		// spool, never from the stored turn anchor (claude_replay_floor.go).
-		plan, err := sess.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
+		plan, err := providerRuntime.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
 		if err != nil && plan.Resolved != "" {
 			// The spool proves which session the provisional handle's own
 			// prompts landed in. That pair is recorded before any frame is
 			// admitted or any rung chosen, and the resume continues as that
 			// native; if it cannot be recorded, nothing proceeds.
-			anchor, adoptErr := sess.state.adoptResolvedClaudeNative(req.ThreadID, plan.Resolved, req.ClaudeAnchor)
+			anchor, adoptErr := providerRuntime.state.adoptResolvedClaudeNative(req.ThreadID, plan.Resolved, req.ClaudeAnchor)
 			if adoptErr != nil {
 				return nil, adoptErr
 			}
 			req.ThreadID, req.ClaudeAnchor = plan.Resolved, anchor
-			plan, err = sess.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
+			plan, err = providerRuntime.planClaudeReplay(context.Background(), req.ClaudeShimSpools, req.ThreadID, req.ClaudeAnchor)
 		}
 		if err != nil {
 			plan = claudeReplayPlan{FromSeq: claudeShimTailSeq, Err: err, SpoolBytes: plan.SpoolBytes}
 		}
-		c, err := attachClaudeSession(sess, shimURL, req.ThreadID, plan, posture, req.ClaudeAnchor)
+		c, err := attachClaudeSession(providerRuntime, shimURL, req.ThreadID, plan, posture, req.ClaudeAnchor)
 		if err == nil {
 			return c, nil
 		}
@@ -472,8 +472,8 @@ func resumeClaudeSession(sess *Runtime, req ProviderRequest) (*claudeSession, er
 				// Only positive evidence that nothing was ever handed to the
 				// provider lets the caller retire the record: a prompt that
 				// was or may have been delivered keeps it for recovery.
-				if delivered, proofErr := sess.provisionalMayHaveDelivered(context.Background(), req.ThreadID); delivered || proofErr != nil {
-					return nil, fmt.Errorf("%w: claude thread %s may have been prompted under %s and its child is gone (%v): %v", errClaudeRecoveryUnproven, sess.identity.hostedThreadID, req.ThreadID, proofErr, err)
+				if delivered, proofErr := providerRuntime.provisionalMayHaveDelivered(context.Background(), req.ThreadID); delivered || proofErr != nil {
+					return nil, fmt.Errorf("%w: claude thread %s may have been prompted under %s and its child is gone (%v): %v", errClaudeRecoveryUnproven, providerRuntime.identity.hostedThreadID, req.ThreadID, proofErr, err)
 				}
 				return nil, fmt.Errorf("%w: %v", errClaudeProvisionalGone, err)
 			}
@@ -508,8 +508,8 @@ func resumeClaudeSession(sess *Runtime, req ProviderRequest) (*claudeSession, er
 	posture.Args = claudeResumeArgs(posture.Args, req.ThreadID)
 	// Only this rung spawns from argv, so only this rung applies canonical
 	// desired intent (a shim attach above re-joins the live child as-is).
-	posture.Args = applyClaudeResumeOverlay(posture.Args, sess.identity.metadata, sess.identity.hostedThreadID)
-	return openClaudeSession(sess, req.ClaudeShimWS, posture, req.ThreadID, sess.state.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
+	posture.Args = applyClaudeResumeOverlay(posture.Args, providerRuntime.identity.metadata, providerRuntime.identity.hostedThreadID)
+	return openClaudeSession(providerRuntime, req.ClaudeShimWS, posture, req.ThreadID, providerRuntime.state.snapshotProviderCausation(claudeOutboundFacts(posture.Args)))
 }
 
 // errClaudeProvisionalGone: a never-prompted thread's shim child is gone, and a
@@ -611,10 +611,10 @@ func requireResumeCwd(req ProviderRequest) error {
 // openClaudeSession starts a child (openClaudeTransport picks how) and hands
 // the wired-up session back. supersedes names the native session id this child
 // replaces (a `--resume` target), empty for a fresh start.
-func openClaudeSession(sess *Runtime, shimURL string, posture claudeSpawnPosture, supersedes string, causation providerCausationSnapshot) (*claudeSession, error) {
-	sess.state.beginTurnRestore()
-	defer sess.state.cancelTurnRestore()
-	c := newClaudeSession(sess, supersedes, causation)
+func openClaudeSession(providerRuntime *Runtime, shimURL string, posture claudeSpawnPosture, supersedes string, causation providerCausationSnapshot) (*claudeSession, error) {
+	providerRuntime.state.beginTurnRestore()
+	defer providerRuntime.state.cancelTurnRestore()
+	c := newClaudeSession(providerRuntime, supersedes, causation)
 	tr, err := openClaudeTransport(c, shimURL, posture)
 	if err != nil {
 		return nil, err
@@ -631,9 +631,9 @@ func openClaudeSession(sess *Runtime, shimURL string, posture claudeSpawnPosture
 	}
 	// A fresh child needs no init frame, but any output that raced transport
 	// setup must settle with readiness instead of being dropped while starting.
-	epoch, sequence, active, turnID, anchor, ended := sess.state.claudeReadyEvidence(c.exited)
+	epoch, sequence, active, turnID, anchor, ended := providerRuntime.state.claudeReadyEvidence(c.exited)
 	if !ended {
-		sess.state.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: "running", active: active, settled: true}, turnID, anchor)
+		providerRuntime.state.settleProviderEvidence(claudeLifecycleAdapter{epoch: epoch, sequence: sequence, state: "running", active: active, settled: true}, turnID, anchor)
 	}
 	go c.startControlChannel()
 	return c, nil
@@ -741,13 +741,13 @@ var errSpawnSessionClosed = errors.New("session closed while its transport was s
 // newClaudeSession builds the session shell every transport is wired into. The
 // control correlator exists from this moment so a control_response arriving
 // while the transport is still being wired up has somewhere to land.
-func newClaudeSession(sess *Runtime, supersedes string, causation ...providerCausationSnapshot) *claudeSession {
+func newClaudeSession(providerRuntime *Runtime, supersedes string, causation ...providerCausationSnapshot) *claudeSession {
 	var snapshot providerCausationSnapshot
 	if len(causation) > 0 {
 		snapshot = causation[0]
 	}
 	return &claudeSession{
-		sess:          sess,
+		sess:          providerRuntime,
 		initCausation: snapshot,
 		exited:        make(chan struct{}),
 		supersedes:    supersedes,

@@ -202,22 +202,22 @@ func unavailableProviderResume(context.Context, providers.ResumeRequest) (provid
 	return providers.Attachment{}, errors.New("provider resume must run through the attachment coordinator")
 }
 
-func codexProviderOperations(sess *Runtime) providers.Operations {
+func codexProviderOperations(providerRuntime *Runtime) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
-		Submit: sess.delivery.providerSubmitOperation(func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
+		Submit: providerRuntime.delivery.providerSubmitOperation(func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
 			// Codex saves this id on the prompt's user item, so each prompt
 			// keeps its own identity even when several share one turn.
 			clientID := SubmissionEventID(request.Outbox.HostedThreadID, request.Outbox.ActionID)
 			if request.RunningTurnID != "" {
-				return codexSteer(ctx, sess, request.RunningTurnID, clientID, request.Text)
+				return codexSteer(ctx, providerRuntime, request.RunningTurnID, clientID, request.Text)
 			}
-			turnParams, turnFacts := codexTurnParams(sess, request.Text)
+			turnParams, turnFacts := codexTurnParams(providerRuntime, request.Text)
 			turnParams["clientUserMessageId"] = clientID
-			causationID := sess.state.beginTurnCausation(turnFacts)
+			causationID := providerRuntime.state.beginTurnCausation(turnFacts)
 			var result json.RawMessage
-			if err := sess.codex.callForSession(ctx, sess, "turn/start", turnParams, &result); err != nil {
-				sess.state.abandonTurnCausation(causationID)
+			if err := providerRuntime.codex.callForSession(ctx, providerRuntime, "turn/start", turnParams, &result); err != nil {
+				providerRuntime.state.abandonTurnCausation(causationID)
 				return nil, err
 			}
 			return withSubmissionEvent(result, clientID)
@@ -227,7 +227,7 @@ func codexProviderOperations(sess *Runtime) providers.Operations {
 			if threadID == "" || turnID == "" {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
-			if err := sess.codex.interruptTurn(ctx, sess, threadID, turnID); err != nil {
+			if err := providerRuntime.codex.interruptTurn(ctx, providerRuntime, threadID, turnID); err != nil {
 				if reason, raced := interruptRaceReason(err); raced {
 					return providers.InterruptionResult{Reason: reason}, nil
 				}
@@ -238,16 +238,16 @@ func codexProviderOperations(sess *Runtime) providers.Operations {
 		RespondInteraction: providerInteractionOperation(func(p interact.PendingInteraction, decision string, answers json.RawMessage) (any, *protocol.RPCError) {
 			return interactionDecisionResult(p.Method, decision, p.Params, answers)
 		}, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			return sess.codex.respondToInteraction(p.ID, result, rpcErr)
+			return providerRuntime.codex.respondToInteraction(p.ID, result, rpcErr)
 		}),
 	}
 }
 
-func claudeProviderOperations(sess *Runtime) providers.Operations {
+func claudeProviderOperations(providerRuntime *Runtime) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
-		Submit: sess.delivery.providerSubmitOperation(func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
-			claude := sess.state.claudeHandle()
+		Submit: providerRuntime.delivery.providerSubmitOperation(func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
+			claude := providerRuntime.state.claudeHandle()
 			if claude == nil {
 				return nil, errors.New("session transport is still starting")
 			}
@@ -264,7 +264,7 @@ func claudeProviderOperations(sess *Runtime) providers.Operations {
 			})
 		}),
 		Interrupt: func(ctx context.Context, _ providers.InterruptRequest) (providers.InterruptionResult, error) {
-			claude := sess.state.claudeHandle()
+			claude := providerRuntime.state.claudeHandle()
 			if claude == nil {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
@@ -274,7 +274,7 @@ func claudeProviderOperations(sess *Runtime) providers.Operations {
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
 		RespondInteraction: providerInteractionOperation(claudeInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			claude := sess.state.claudeHandle()
+			claude := providerRuntime.state.claudeHandle()
 			if claude == nil {
 				return errClaudeControlClosed
 			}
@@ -286,18 +286,18 @@ func claudeProviderOperations(sess *Runtime) providers.Operations {
 	}
 }
 
-func grokProviderOperations(sess *Runtime) providers.Operations {
+func grokProviderOperations(providerRuntime *Runtime) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
-		Submit: sess.delivery.providerSubmitOperation(func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
-			grok := sess.state.grokHandle()
+		Submit: providerRuntime.delivery.providerSubmitOperation(func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
+			grok := providerRuntime.state.grokHandle()
 			if grok == nil {
 				return nil, errors.New("session transport is still starting")
 			}
 			return grok.SendTurn(ctx, request.Text, request.Outbox.ActionID)
 		}),
 		Interrupt: func(_ context.Context, _ providers.InterruptRequest) (providers.InterruptionResult, error) {
-			grok := sess.state.grokHandle()
+			grok := providerRuntime.state.grokHandle()
 			if grok == nil {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
@@ -307,7 +307,7 @@ func grokProviderOperations(sess *Runtime) providers.Operations {
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
 		RespondInteraction: providerInteractionOperation(grokInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			grok := sess.state.grokHandle()
+			grok := providerRuntime.state.grokHandle()
 			if grok == nil {
 				return errors.New("grok ACP proxy is not connected")
 			}
@@ -413,15 +413,15 @@ var errRunningTurnEnded = errors.New("running turn ended")
 // codexSteer delivers a prompt into the running turn. expectedTurnId makes
 // Codex refuse rather than join a different turn. The receipt has the same
 // turn and event shape as a started turn's.
-func codexSteer(ctx context.Context, sess *Runtime, turnID, clientID, text string) (json.RawMessage, error) {
+func codexSteer(ctx context.Context, providerRuntime *Runtime, turnID, clientID, text string) (json.RawMessage, error) {
 	params := map[string]any{
-		"threadId": sess.state.ThreadID(), "expectedTurnId": turnID, "clientUserMessageId": clientID,
+		"threadId": providerRuntime.state.ThreadID(), "expectedTurnId": turnID, "clientUserMessageId": clientID,
 		"input": []map[string]any{{"type": "text", "text": text}},
 	}
 	var result struct {
 		TurnID string `json:"turnId"`
 	}
-	if err := sess.codex.callForSession(ctx, sess, "turn/steer", params, &result); err != nil {
+	if err := providerRuntime.codex.callForSession(ctx, providerRuntime, "turn/steer", params, &result); err != nil {
 		var rpcErr *protocol.RPCError
 		if errors.As(err, &rpcErr) && rpcErr.Message == codexNoActiveTurnToSteer {
 			return nil, fmt.Errorf("%w: %w", errRunningTurnEnded, err)

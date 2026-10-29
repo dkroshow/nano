@@ -1558,13 +1558,13 @@ func (delivery *Delivery) HandleTurnDeliveryResend(w http.ResponseWriter, _ *htt
 // ambient config, but the execution profile exists only in the per-thread
 // config supplied and confirmed at start or resume. Omitting the optional turn
 // override preserves that confirmed thread-scoped profile.
-func codexTurnParams(sess *Runtime, text string) (map[string]any, map[string]string) {
+func codexTurnParams(providerRuntime *Runtime, text string) (map[string]any, map[string]string) {
 	params := map[string]any{
-		"threadId": sess.state.ThreadID(),
+		"threadId": providerRuntime.state.ThreadID(),
 		"input":    []map[string]any{{"type": "text", "text": text}},
 	}
-	model, effort, serviceTier := sess.state.turnOptions()
-	for k, v := range CodexTurnOverrides(model, effort, serviceTier, sess.reasoningSummary) {
+	model, effort, serviceTier := providerRuntime.state.turnOptions()
+	for k, v := range CodexTurnOverrides(model, effort, serviceTier, providerRuntime.reasoningSummary) {
 		params[k] = v
 	}
 	facts := map[string]string{}
