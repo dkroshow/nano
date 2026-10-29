@@ -2,11 +2,13 @@ package app
 
 import (
 	"sync"
+
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 // pausedAttachedCatalog controls the readiness fact consumed by sessions without controlling the index's private worker.
 type pausedAttachedCatalog struct {
-	*threadCatalogService
+	*sidebar.CatalogSource
 	mu     sync.Mutex
 	paused chan struct{}
 }
@@ -30,5 +32,5 @@ func (c *pausedAttachedCatalog) AwaitAttachedCurrent(owner string, fresh bool, n
 			return false
 		}
 	}
-	return c.threadCatalogService.AwaitAttachedCurrent(owner, fresh, neverPrompted, cancel)
+	return c.CatalogSource.AwaitAttachedCurrent(owner, fresh, neverPrompted, cancel)
 }

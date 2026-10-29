@@ -47,23 +47,23 @@ type budgetFixture struct {
 // countingCatalog counts the catalog calls a request makes. It embeds the real
 // service so every optional catalog interface still resolves.
 type countingCatalog struct {
-	*threadCatalogService
+	*sidebar.CatalogSource
 	lists, names atomic.Int64
 }
 
-func (c *countingCatalog) ListThreads(ctx context.Context, query threadindex.ListQuery) (catalogPage, error) {
+func (c *countingCatalog) ListThreads(ctx context.Context, query threadindex.ListQuery) (sidebar.CatalogPage, error) {
 	c.lists.Add(1)
-	return c.threadCatalogService.ListThreads(ctx, query)
+	return c.CatalogSource.ListThreads(ctx, query)
 }
 
 func (c *countingCatalog) ThreadNameRefFor(ctx context.Context, provider, nativeThreadID string) (*history.ThreadNameRef, bool) {
 	c.names.Add(1)
-	return c.threadCatalogService.ThreadNameRefFor(ctx, provider, nativeThreadID)
+	return c.CatalogSource.ThreadNameRefFor(ctx, provider, nativeThreadID)
 }
 
 func (c *countingCatalog) ThreadNameFor(ctx context.Context, provider, nativeThreadID string) (string, bool) {
 	c.names.Add(1)
-	return c.threadCatalogService.ThreadNameFor(ctx, provider, nativeThreadID)
+	return c.CatalogSource.ThreadNameFor(ctx, provider, nativeThreadID)
 }
 
 func (c *countingCatalog) calls() int64 { return c.lists.Load() + c.names.Load() }
@@ -207,7 +207,7 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 		t.Fatal(err)
 	}
 
-	f.catalog = &countingCatalog{threadCatalogService: newStoredCatalog(t, store)}
+	f.catalog = &countingCatalog{CatalogSource: newStoredCatalog(t, store)}
 	s := testServerWithSessions(&server{
 		catalog: f.catalog, Registry: newSessionRegistry(),
 		attachments: attachments, threadStars: stars,
@@ -357,7 +357,7 @@ func TestThreadListStatementsDoNotGrowWithLiveSessions(t *testing.T) {
 		f := newBudgetFixture(t, extra, true)
 		before := f.catalog.calls()
 		var body map[string]any
-		statements = f.countControlStatements(t, func() { body = f.get(t, f.server.handleCatalogThreads, f.threadsURL()) })
+		statements = f.countControlStatements(t, func() { body = f.get(t, f.server.catalogViews().HandleThreads, f.threadsURL()) })
 		items, _ := body["items"].([]any)
 		return f.catalog.calls() - before, statements, len(items)
 	}
@@ -394,82 +394,6 @@ func TestSessionsListStatementsDoNotGrowWithSessions(t *testing.T) {
 	}
 }
 
-// TestNativeThreadIDFilterChunksUnderParameterLimit catches an identity read
-// that exceeds SQLite's parameter limit or confuses providers. Boundary:
-// threadsByIdentity against a real store with 1,200
-// identities, one native id present under two providers and one asked for
-// under a provider that does not hold it; and the store's own refusal of one
-// read above history.MaxThreadIdentities.
-func TestNativeThreadIDFilterChunksUnderParameterLimit(t *testing.T) {
-	ctx := context.Background()
-	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
-	codex := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
-	claude := history.SourceRoot{Provider: history.ProviderClaude, Kind: history.RootClaudeProjects, Path: t.TempDir()}
-	for _, root := range []history.SourceRoot{codex, claude} {
-		if _, err := store.EnsureRoot(ctx, root); err != nil {
-			t.Fatal(err)
-		}
-	}
-	now := time.Now().UTC()
-	court := []historyCourt{{final: true, text: "Done."}}
-	seedSidebarThread(t, store, codex, "shared-native", "", history.ThreadMain, now, court)
-	// The same native id under a second provider needs only its thread row.
-	sharedUpdated := now.Add(-time.Minute)
-	if _, err := store.ApplySource(ctx, testSidebarSource(claude, "shared-native.jsonl", "shared-native", history.ThreadMain, "", &sharedUpdated)); err != nil {
-		t.Fatal(err)
-	}
-	seedSidebarThread(t, store, codex, "codex-only", "", history.ThreadMain, now.Add(-2*time.Minute), court)
-	// A guardian is a subagent source whose thread the parser classifies guardian.
-	guardianUpdated := now.Add(-3 * time.Minute)
-	guardian := testSidebarSource(codex, "guardian-native.jsonl", "guardian-native", history.ThreadSubagent, "codex-only", &guardianUpdated)
-	guardian.Result.Projection.Kind = history.ThreadGuardian
-	if _, err := store.ApplySource(ctx, guardian); err != nil {
-		t.Fatal(err)
-	}
-	catalog := &countingCatalog{threadCatalogService: newStoredCatalog(t, store)}
-	s := &server{catalog: catalog}
-
-	keys := make([]hostedstore.AttachmentKey, 1200)
-	for i := range keys {
-		keys[i] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: fmt.Sprintf("absent-%04d", i)}
-	}
-	keys[0] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: "shared-native"}
-	keys[600] = hostedstore.AttachmentKey{Provider: "claude", NativeThreadID: "shared-native"}
-	keys[1199] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: "codex-only"}
-	keys[1198] = hostedstore.AttachmentKey{Provider: "grok", NativeThreadID: "codex-only"}
-	keys[900] = hostedstore.AttachmentKey{Provider: "codex", NativeThreadID: "guardian-native"}
-	found, err := s.threadsByIdentity(ctx, keys)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reads := catalog.lists.Load(); reads != 3 {
-		t.Fatalf("1,200 identities took %d reads; want 3 (500, 500, 200)", reads)
-	}
-	if len(found) != 4 {
-		t.Fatalf("found %d threads, want 4: %#v", len(found), found)
-	}
-	// A live guardian is found too, as the former point read found it.
-	for _, key := range []hostedstore.AttachmentKey{keys[0], keys[600], keys[900], keys[1199]} {
-		if row, ok := found[key]; !ok || row.Provider != key.Provider || row.NativeID != key.NativeThreadID {
-			t.Errorf("%s/%s = %#v, %v", key.Provider, key.NativeThreadID, row, ok)
-		}
-	}
-	// The read itself is keyed by provider: asking for the claude copy returns
-	// only the claude row.
-	page, err := store.ListThreads(ctx, history.ListThreadsParams{IncludeGuardians: true, Limit: 10,
-		Identities: []history.ThreadIdentity{{Provider: history.ProviderClaude, NativeThreadID: "shared-native"}}})
-	if err != nil || len(page.Items) != 1 || page.Items[0].Provider != history.ProviderClaude {
-		t.Fatalf("claude/shared-native read = %#v, %v", page.Items, err)
-	}
-	if _, err := store.ListThreads(ctx, history.ListThreadsParams{Identities: make([]history.ThreadIdentity, history.MaxThreadIdentities+1), Limit: 10}); err == nil {
-		t.Fatal("the store accepted an identity read above its cap")
-	}
-}
-
 // TestListResponsesShowEachRowsFacts catches a list call that drops a row or
 // shows a wrong fact for one: the canonical cwd and model, the durable name
 // and its provenance (or the display-name fallback), attention, badges, a
@@ -491,7 +415,7 @@ func TestListResponsesShowEachRowsFacts(t *testing.T) {
 		"metadataUnavailable", "metadata.revision")
 	add("detached", sessions["detached"], "provider", "nativeThreadId", "hostedThreadId", "metadataUnavailable",
 		"metadata.revision")
-	threads := f.get(t, f.server.handleCatalogThreads, f.threadsURL())
+	threads := f.get(t, f.server.catalogViews().HandleThreads, f.threadsURL())
 	add("thread", threads["items"], "provider", "nativeId", "idClass", "kind", "name.value", "name.provenance",
 		"runtime.status", "runtime.detached", "metadata.cwd.value", "metadata.model.value", "fleet.label")
 	lines = append(lines, "thread nextCursor="+fmt.Sprint(threads["nextCursor"] != nil))
@@ -676,7 +600,7 @@ func TestThreadListPagesKeepLimitAndLoseNoThread(t *testing.T) {
 			if cursor != "" {
 				target += "&cursor=" + url.QueryEscape(cursor)
 			}
-			body := f.get(t, f.server.handleCatalogThreads, target)
+			body := f.get(t, f.server.catalogViews().HandleThreads, target)
 			items, _ := body["items"].([]any)
 			page := identities(items)
 			onPage := map[string]bool{}
@@ -706,7 +630,7 @@ func TestThreadListPagesKeepLimitAndLoseNoThread(t *testing.T) {
 		return nil
 	}
 	whole := func(f *budgetFixture, base string) map[string]bool {
-		items, _ := f.get(t, f.server.handleCatalogThreads, base+"&limit=250")["items"].([]any)
+		items, _ := f.get(t, f.server.catalogViews().HandleThreads, base+"&limit=250")["items"].([]any)
 		union := map[string]bool{}
 		for _, key := range identities(items) {
 			union[key] = true

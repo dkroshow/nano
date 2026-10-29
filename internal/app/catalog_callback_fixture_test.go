@@ -10,12 +10,13 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const transcriptChangeWorkerCount = 2
 
-func queuedCatalogFixture(t *testing.T, provider string, nativeIDs []string) (*threadCatalogService, []string) {
+func queuedCatalogFixture(t *testing.T, provider string, nativeIDs []string) (*sidebar.CatalogSource, []string) {
 	t.Helper()
 	root := t.TempDir()
 	paths := make([]string, len(nativeIDs))
@@ -54,7 +55,7 @@ func queuedCatalogFixture(t *testing.T, provider string, nativeIDs []string) (*t
 	})
 	return service, paths
 }
-func appendCallbackFixture(t *testing.T, service *threadCatalogService, path string) {
+func appendCallbackFixture(t *testing.T, service *sidebar.CatalogSource, path string) {
 	t.Helper()
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {

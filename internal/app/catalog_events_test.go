@@ -13,7 +13,7 @@ import (
 	"github.com/dkroshow/nano/internal/catalog"
 )
 
-// fakeStreamCatalog is a threadCatalog that also exposes the SSE stream surface,
+// fakeStreamCatalog is a sidebar.CatalogReader that also exposes the SSE stream surface,
 // backed by a real catalogHub so tests can drive bumps.
 type fakeStreamCatalog struct {
 	*fakeThreadCatalog
@@ -36,7 +36,7 @@ func (f *fakeStreamCatalog) CatalogVersion(context.Context) (int64, error) {
 func TestCatalogEventsStreamDeliversVersionOnConnectAndBump(t *testing.T) {
 	hub := newCatalogHub()
 	fake := &fakeStreamCatalog{fakeThreadCatalog: &fakeThreadCatalog{}, hub: hub, version: 5}
-	srv := httptest.NewServer(http.HandlerFunc((&server{catalog: fake}).handleCatalogIndexEvents))
+	srv := httptest.NewServer(http.HandlerFunc((&server{catalog: fake}).catalogViews().HandleEvents))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,7 +77,7 @@ func TestCatalogEventsStreamRejectsNonGetAndUnavailable(t *testing.T) {
 
 	// A catalog without the stream surface reports unavailable, not a panic.
 	rec = httptest.NewRecorder()
-	(&server{catalog: &fakeThreadCatalog{}}).handleCatalogIndexEvents(rec, httptest.NewRequest(http.MethodGet, "/api/v1/thread-index/events", nil))
+	(&server{catalog: &fakeThreadCatalog{}}).catalogViews().HandleEvents(rec, httptest.NewRequest(http.MethodGet, "/api/v1/thread-index/events", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no-stream status = %d", rec.Code)
 	}

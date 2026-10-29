@@ -84,7 +84,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 			}
 			t.Cleanup(catalog.Close)
 			catalog.SetTranscriptChanged(func(context.Context, threadindex.TranscriptChange) {})
-			attached := &pausedAttachedCatalog{threadCatalogService: catalog}
+			attached := &pausedAttachedCatalog{CatalogSource: catalog}
 			if tc.exits {
 				release := attached.pause()
 				t.Cleanup(release)

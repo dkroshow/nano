@@ -52,7 +52,7 @@ func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing
 // runtime source is nil.
 func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	fake := &fakeThreadCatalog{
-		page: catalogPage{Items: []sidebar.Thread{
+		page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:01Z")}},
 			{Thread: threadindex.Thread{ID: "nth_2", Provider: "claude", NativeID: "native-idle", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		}},
@@ -76,7 +76,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	var list struct {
 		Items []map[string]json.RawMessage `json:"items"`
 	}
@@ -129,7 +129,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	fake.page.Items[0].Runtime = nil
 	s.RegisterSession(fixture.session)
 	rec = httptest.NewRecorder()
-	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	list.Items = nil
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
@@ -249,7 +249,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	s := newResumeTestServer(t, fakeCodex.WSURL())
 	s.catalog = catalogFixture
 
-	srv := httptest.NewServer(http.HandlerFunc(s.handleCatalogIndexEvents))
+	srv := httptest.NewServer(http.HandlerFunc(s.catalogViews().HandleEvents))
 	defer srv.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -16,11 +16,12 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type externalResumeFixture struct {
-	index                                   *threadCatalogService
+	index                                   *sidebar.CatalogSource
 	store                                   *history.Store
 	root                                    history.SourceRoot
 	path, provider, native, cwd, permission string

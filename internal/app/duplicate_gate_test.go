@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -107,7 +108,7 @@ func TestDuplicateGateCheckerReportsMissingAndRepeatedRows(t *testing.T) {
 
 type gateCatalog struct {
 	store   *history.Store
-	service *threadCatalogService
+	service *sidebar.CatalogSource
 	server  *server
 	roots   map[history.Provider]string
 }

@@ -159,8 +159,10 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/search/messages", "search.messages", index.HandleConversationSearchMessages},
 		{http.MethodGet, "/api/v1/search/status", "search.status", index.HandleConversationSearchStatus},
 		{http.MethodGet, "/api/v1/usage/threads", "usage.threads", index.HandleThreadUsageList},
-		{http.MethodGet, "/api/v1/threads", "threads.list", s.handleCatalogThreads},
-		{http.MethodGet, "/api/v1/threads/{threadId}", "threads.read", func(w http.ResponseWriter, r *http.Request) { s.handleCatalogThreadRead(w, r, r.PathValue("threadId")) }},
+		{http.MethodGet, "/api/v1/threads", "threads.list", s.catalogViews().HandleThreads},
+		{http.MethodGet, "/api/v1/threads/{threadId}", "threads.read", func(w http.ResponseWriter, r *http.Request) {
+			s.catalogViews().HandleThread(w, r, r.PathValue("threadId"))
+		}},
 		{http.MethodGet, "/api/v1/threads/{threadId}/transcript/body/{itemId}", "threads.transcript.body", func(w http.ResponseWriter, r *http.Request) {
 			index.HandleThreadTranscriptBody(w, r, r.PathValue("threadId"), r.PathValue("itemId"))
 		}},
@@ -179,7 +181,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodDelete, "/api/v1/threads/{threadId}/name", "threads.name.clear", index.HandleThreadNameClear},
 		{http.MethodGet, "/api/v1/thread-index/status", "threadIndex.status", index.HandleCatalogIndexStatus},
 		{http.MethodPost, "/api/v1/thread-index/refresh", "threadIndex.refresh", index.HandleCatalogRefresh},
-		{http.MethodGet, "/api/v1/thread-index/events", "threadIndex.events", s.handleCatalogIndexEvents},
+		{http.MethodGet, "/api/v1/thread-index/events", "threadIndex.events", s.catalogViews().HandleEvents},
 		{http.MethodGet, "/api/v1/fleet/changes", "fleet.changes", s.sidebarOwner().HandleFleetChanges},
 		{http.MethodGet, "/api/v1/sidebar/threads", "sidebar.threads", s.sidebarOwner().HandleSidebarThreads},
 		{http.MethodGet, "/api/v1/sidebar/threads/{threadId}/history", "sidebar.threadHistory", s.sidebarOwner().HandleSidebarThreadHistory},

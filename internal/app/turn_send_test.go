@@ -28,6 +28,7 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcript"
@@ -277,7 +278,7 @@ type settlementHarness struct {
 	fixture settlementFixture
 	// historyPath is the catalog's database file.
 	historyPath string
-	service     *threadCatalogService
+	service     *sidebar.CatalogSource
 	server      *server
 	prompts     *prompts.Store
 	queue       *prompts.LegacyQueue

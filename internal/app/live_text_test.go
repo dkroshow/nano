@@ -22,6 +22,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -46,7 +47,7 @@ type liveTextHarness struct {
 	queue      sessionQueue
 	journal    sessionJournal
 	metadata   *hostedstore.MetadataStore
-	service    *threadCatalogService
+	service    *sidebar.CatalogSource
 	store      *history.Store
 	file       string
 	// held keeps catalog apply notices from the loop.

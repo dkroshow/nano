@@ -54,7 +54,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			}
 			sess.PublishProjectionRuntime()
 			fake := &fakeFleetCatalog{
-				fakeThreadCatalog: fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
+				fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
 				// Deliberately contradict idle and waiting lifecycle states. Hosted
 				// rows must never take their label from provider transcript prose.
 				courts: map[string]catalog.FleetCourtMessage{"nth_hosted": {
@@ -122,7 +122,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			t.Fatal(err)
 		}
 		fake := &fakeFleetCatalog{
-			fakeThreadCatalog: fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
+			fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
 			courts: map[string]catalog.FleetCourtMessage{"nth_hosted": {
 				ItemType: "user_message", Head: "continue", Tail: "continue", LastActivity: now,
 			}},
@@ -175,7 +175,7 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 		return &at
 	}
 	fake := &fakeFleetCatalog{
-		fakeThreadCatalog: fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{
+		fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_working", Provider: "codex", NativeID: "native-working", Kind: "main", UpdatedAt: updated(4)}},
 			{Thread: threadindex.Thread{ID: "nth_needs", Provider: "codex", NativeID: "native-needs", Kind: "main", UpdatedAt: updated(3)}},
 			{Thread: threadindex.Thread{ID: "nth_old", Provider: "codex", NativeID: "native-old", Kind: "main", UpdatedAt: updated(2)}},
@@ -229,7 +229,7 @@ func TestCatalogRowsCarryFleetState(t *testing.T) {
 // and never the memory rows, whose evidence is not in SQLite at all.
 func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 	fake := &fakeFleetCatalog{
-		fakeThreadCatalog: fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{
+		fakeThreadCatalog: fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_one", Provider: "codex", NativeID: "native-one", Kind: "main", UpdatedAt: strPtr("2026-08-01T12:00:00Z")}},
 		}}},
 		courtErr: errors.New("sqlite unavailable"),
@@ -248,7 +248,7 @@ func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 	}
 
 	// A catalog with no court surface at all behaves the same way.
-	plain := &server{catalog: &fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{
+	plain := &server{catalog: &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
 		{Thread: threadindex.Thread{ID: "nth_one", Provider: "codex", NativeID: "native-one", Kind: "main"}},
 	}}}}
 	if state := fleetRow(t, listCatalog(t, plain, "/api/v1/threads")[0]); state != nil {

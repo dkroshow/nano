@@ -17,14 +17,13 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type fakeThreadCatalog struct {
-	page      catalogPage
+	page      sidebar.CatalogPage
 	thread    sidebar.Thread
 	status    threadindex.IndexStatus
 	listQuery threadindex.ListQuery
@@ -51,14 +50,14 @@ type fakeThreadCatalog struct {
 	nameSources     map[string]history.ThreadNameProvenance
 }
 
-func (f *fakeThreadCatalog) ListThreads(_ context.Context, q threadindex.ListQuery) (catalogPage, error) {
+func (f *fakeThreadCatalog) ListThreads(_ context.Context, q threadindex.ListQuery) (sidebar.CatalogPage, error) {
 	if len(q.Identities) > 0 {
 		f.identityQueries = append(f.identityQueries, q)
 		if f.hasErr != nil {
-			return catalogPage{}, f.hasErr
+			return sidebar.CatalogPage{}, f.hasErr
 		}
 		if f.rescueErr != nil {
-			return catalogPage{}, f.rescueErr
+			return sidebar.CatalogPage{}, f.rescueErr
 		}
 		var items []sidebar.Thread
 		for _, key := range q.Identities {
@@ -68,20 +67,20 @@ func (f *fakeThreadCatalog) ListThreads(_ context.Context, q threadindex.ListQue
 				items = append(items, sidebar.Thread{Thread: threadindex.Thread{ID: "nth_" + key.NativeThreadID, Provider: string(key.Provider), NativeID: key.NativeThreadID}})
 			}
 		}
-		return catalogPage{Items: items}, nil
+		return sidebar.CatalogPage{Items: items}, nil
 	}
 	// The rescue reuses the list path; a threadId + limit-1 query is its
 	// signature, and the test asserts the rest of the widening on the record.
 	if q.ThreadID != "" && q.Limit == 1 {
 		f.rescueQueries = append(f.rescueQueries, q)
 		if f.rescueErr != nil {
-			return catalogPage{}, f.rescueErr
+			return sidebar.CatalogPage{}, f.rescueErr
 		}
 		row, ok := f.rescued[q.ThreadID]
 		if !ok {
-			return catalogPage{}, nil
+			return sidebar.CatalogPage{}, nil
 		}
-		return catalogPage{Items: []sidebar.Thread{row}}, nil
+		return sidebar.CatalogPage{Items: []sidebar.Thread{row}}, nil
 	}
 	f.listQuery = q
 	return f.page, f.listErr
@@ -212,21 +211,21 @@ func TestThreadUsageEndpoints(t *testing.T) {
 func TestCatalogListContractAndQuery(t *testing.T) {
 	value := "high"
 	evidence := "native_durable"
-	fake := &fakeThreadCatalog{page: catalogPage{
+	fake := &fakeThreadCatalog{page: sidebar.CatalogPage{
 		Items:          []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "subagent", ParentNativeID: "native-parent", Metadata: threadindex.Metadata{Effort: threadindex.Value{State: "known", Value: &value, Evidence: &evidence}}}}},
 		CatalogVersion: 7,
 	}}
 	s := &server{catalog: fake}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/threads?threadId=native-1&includeSubagents=true&includeGuardians=true&includeProgrammatic=true&archived=only&limit=999&cursor=opaque", nil)
-	s.handleCatalogThreads(rec, req)
+	s.catalogViews().HandleThreads(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if fake.listQuery.ThreadID != "native-1" || !fake.listQuery.IncludeSubagents || !fake.listQuery.IncludeGuardians || !fake.listQuery.IncludeProgrammatic || fake.listQuery.Archived != "only" || fake.listQuery.Limit != 250 || fake.listQuery.Cursor != "opaque" {
 		t.Fatalf("query = %#v", fake.listQuery)
 	}
-	var body catalogPage
+	var body sidebar.CatalogPage
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +243,7 @@ func TestCatalogListContractAndQuery(t *testing.T) {
 	conditional := httptest.NewRecorder()
 	conditionalRequest := httptest.NewRequest(http.MethodGet, "/api/v1/threads?threadId=native-1", nil)
 	conditionalRequest.Header.Set("If-None-Match", etag)
-	s.handleCatalogThreads(conditional, conditionalRequest)
+	s.catalogViews().HandleThreads(conditional, conditionalRequest)
 	if conditional.Code != http.StatusNotModified || conditional.Body.Len() != 0 {
 		t.Fatalf("conditional catalog response = %d body %q", conditional.Code, conditional.Body.String())
 	}
@@ -272,17 +271,17 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	if err := control.ClaimNativeID(worker.ID, "claude", "claude-native", false); err != nil {
 		t.Fatal(err)
 	}
-	fake := &fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread", Metadata: threadindex.Metadata{}}}}}}
+	fake := &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "claude-native", Kind: "thread", Metadata: threadindex.Metadata{}}}}}}
 	s := &server{catalog: fake, agentExecutions: store, controlMetadata: control, runtimeEvents: sidebar.NewRuntimeHub(), Registry: newSessionRegistry()}
 
 	readCatalog := func() sidebar.Thread {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+		s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("catalog status = %d %s", rec.Code, rec.Body.String())
 		}
-		var page catalogPage
+		var page sidebar.CatalogPage
 		if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
 			t.Fatal(err)
 		}
@@ -341,7 +340,7 @@ func TestCatalogListRejectsInvalidQuery(t *testing.T) {
 		"/api/v1/threads?threadId=" + strings.Repeat("a", 256+1),
 	} {
 		rec := httptest.NewRecorder()
-		s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
+		s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d", target, rec.Code)
 		}
@@ -408,7 +407,7 @@ func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	(&server{}).handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	(&server{}).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unavailable status = %d", rec.Code)
 	}
@@ -418,7 +417,7 @@ func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
 func TestCatalogBackendErrorsDoNotLeak(t *testing.T) {
 	s := &server{catalog: &fakeThreadCatalog{listErr: errors.New("private parser detail")}}
 	rec := httptest.NewRecorder()
-	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -430,7 +429,7 @@ func TestCatalogBackendErrorsDoNotLeak(t *testing.T) {
 func TestCatalogInvalidCursorReturnsBadRequest(t *testing.T) {
 	s := &server{catalog: &fakeThreadCatalog{listErr: threadindex.ErrInvalidThreadCatalogCursor}}
 	rec := httptest.NewRecorder()
-	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads?cursor=bad", nil))
+	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads?cursor=bad", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
@@ -442,7 +441,7 @@ func TestCatalogFrontendContractFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var page catalogPage
+	var page sidebar.CatalogPage
 	if err := json.Unmarshal(raw, &page); err != nil {
 		t.Fatal(err)
 	}
@@ -493,7 +492,13 @@ func TestCatalogFrontendDetailFixture(t *testing.T) {
 func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	catalog := &fakeThreadCatalog{}
 	var s *server
-	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "session-1", Provider: "claude", HostedThreadID: "name-api", CreatedAt: time.Now(), NameThread: func(provider, native, name string) { s.assignSpawnName(provider, native, name) }})
+	cfg := runtimeFixtureConfig(t, sessionConfig{ID: "session-1", Provider: "claude", HostedThreadID: "name-api", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
+		func() {
+			if err := catalog.AssignThreadNameIfEmpty(provider, native, name); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}})
 	sess := configuredFixtureSession(t, cfg, "", "starting", "")
 	s = testServerWithSessions(&server{catalog: catalog, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 
@@ -565,7 +570,13 @@ func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 		Cwd: "/w", AttachedAt: "2026-08-06T10:00:00Z",
 	})
 	var s *server
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "session-1", Provider: "claude", CreatedAt: time.Now(), NameThread: func(provider, native, name string) { s.assignSpawnName(provider, native, name) }}, "cs_shim", "")
+	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "session-1", Provider: "claude", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
+		func() {
+			if err := catalog.AssignThreadNameIfEmpty(provider, native, name); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}}, "cs_shim", "")
 	sess := fixture.session
 	s = testServerWithSessions(&server{catalog: catalog, attachments: store, Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 
@@ -617,7 +628,7 @@ func memorySession(t *testing.T, id, provider, threadID, status, cwd, model stri
 func memoryRowServer(t *testing.T) *server {
 	t.Helper()
 	fake := &fakeThreadCatalog{
-		page: catalogPage{Items: []sidebar.Thread{
+		page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-indexed", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:01Z")}},
 			{Thread: threadindex.Thread{ID: "nth_2", Provider: "claude", NativeID: "native-onpage", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		}},
@@ -661,7 +672,7 @@ func memoryRowServer(t *testing.T) *server {
 func listCatalog(t *testing.T, s *server, target string) []map[string]json.RawMessage {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("%s status = %d, body = %s", target, rec.Code, rec.Body.String())
 	}
@@ -818,7 +829,7 @@ func TestCatalogMemoryRowsSuppressedOnProbeFailure(t *testing.T) {
 func rescueServer(t *testing.T) *server {
 	t.Helper()
 	fake := &fakeThreadCatalog{
-		page: catalogPage{Items: []sidebar.Thread{
+		page: sidebar.CatalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-visible", Kind: "main", Interaction: "interactive", UpdatedAt: strPtr("2026-07-28T12:00:02Z")}},
 		}},
 		indexed: map[string]bool{"codex/native-visible": true, "claude/native-prog": true},
@@ -951,7 +962,7 @@ func TestCatalogLivenessRescueDegradesOnError(t *testing.T) {
 
 func TestCatalogWorkerIncludesSupervisorOutsideWindow(t *testing.T) {
 	fake := &fakeThreadCatalog{
-		page: catalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "agent-worker", Kind: "subagent", ParentNativeID: "parent-session"}}}},
+		page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_worker", Provider: "claude", NativeID: "agent-worker", Kind: "subagent", ParentNativeID: "parent-session"}}}},
 		rescued: map[string]sidebar.Thread{
 			"parent-session": {Thread: threadindex.Thread{ID: "nth_parent", Provider: "claude", NativeID: "parent-session", Kind: "main"}},
 		},
@@ -982,7 +993,7 @@ func TestCatalogInvocationIncludesCrossProviderParentOutsideWindow(t *testing.T)
 		t.Fatal(err)
 	}
 	fake := &fakeThreadCatalog{
-		page: catalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"}}}},
+		page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"}}}},
 		rescued: map[string]sidebar.Thread{
 			"native-parent": {Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
 		},
@@ -1009,7 +1020,7 @@ func TestCatalogStandaloneDoesNotRescueImmutableInvoker(t *testing.T) {
 	if _, _, _, err := store.SetSidebarPlacement(child.ID, sidebarPlacementStandalone); err != nil {
 		t.Fatal(err)
 	}
-	fake := &fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "grok", NativeID: "native-child", Kind: "main"}}}}, rescued: map[string]sidebar.Thread{
+	fake := &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "grok", NativeID: "native-child", Kind: "main"}}}}, rescued: map[string]sidebar.Thread{
 		"native-parent": {Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
 	}}
 	s := &server{catalog: fake, Registry: newSessionRegistry(), agentExecutions: store, controlMetadata: control}
@@ -1046,7 +1057,7 @@ func TestCatalogMutableRelationshipIncludesCurrentParentOutsideWindow(t *testing
 		t.Fatal(err)
 	}
 	fake := &fakeThreadCatalog{
-		page: catalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "codex", NativeID: "native-child", Kind: "main"}}}},
+		page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_child", Provider: "codex", NativeID: "native-child", Kind: "main"}}}},
 		rescued: map[string]sidebar.Thread{
 			"native-original": {Thread: threadindex.Thread{ID: "nth_original", Provider: "codex", NativeID: "native-original", Kind: "main"}},
 			"native-new":      {Thread: threadindex.Thread{ID: "nth_new", Provider: "claude", NativeID: "native-new", Kind: "main"}},

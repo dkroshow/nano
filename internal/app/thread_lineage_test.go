@@ -2,7 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -97,7 +101,7 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 	}
 	hosted("w-invoker", "w-invoker", &invokerParent)
 
-	catalog := &countingCatalog{threadCatalogService: newStoredCatalog(t, store)}
+	catalog := &countingCatalog{CatalogSource: newStoredCatalog(t, store)}
 	s := &server{catalog: catalog, Registry: newSessionRegistry(), controlMetadata: metadata, agentExecutions: executions}
 	f := &lineageFixture{budget: &budgetFixture{server: s, catalog: catalog, now: now}}
 	from := now.Add(-2 * 24 * time.Hour)
@@ -111,9 +115,25 @@ func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {
 
 func (f *lineageFixture) parents(t *testing.T) []string {
 	t.Helper()
+	rec := httptest.NewRecorder()
+	target := "/api/v1/threads?limit=250&includeSubagents=true&updatedFrom=" + url.QueryEscape(f.budget.now.Add(-2*24*time.Hour).Format(time.RFC3339))
+	f.budget.server.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	var page sidebar.CatalogPage
+	if rec.Code != http.StatusOK {
+		t.Fatalf("lineage response = %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	initial := map[string]bool{}
+	for _, row := range f.page {
+		initial[row.ID] = true
+	}
 	var out []string
-	for _, row := range f.budget.server.lineageParentRows(context.Background(), threadindex.ListQuery{}, f.page) {
-		out = append(out, row.Provider+"/"+row.NativeID)
+	for _, row := range page.Items {
+		if !initial[row.ID] {
+			out = append(out, row.Provider+"/"+row.NativeID)
+		}
 	}
 	return out
 }
@@ -123,7 +143,7 @@ func (f *lineageFixture) parents(t *testing.T) []string {
 // the invoker, a standalone thread stops, a hosted invoker is followed, a
 // provider-native parent is followed once for two workers, a parent already on
 // the page is not repeated, and a parent's own parent is found, in the order
-// the one-row-at-a-time walk produced. Boundary: lineageParentRows over a
+// the one-row-at-a-time walk produced. Boundary: the visible full-list response over a
 // real store.
 func TestLineageParentsKeepPrecedenceAndOrder(t *testing.T) {
 	f := newLineageFixture(t, 0)
@@ -136,7 +156,7 @@ func TestLineageParentsKeepPrecedenceAndOrder(t *testing.T) {
 // TestLineageStatementsBoundedByDepth catches per-row work in the lineage
 // pass: every returned row read its hosted record and its assignment, and
 // every parent was a separate catalog read, and every live session is a
-// returned row. Boundary: lineageParentRows over the same two-level page with
+// returned row. Boundary: the visible full-list response over the same two-level page with
 // 5 and with 50 extra workers (each with its own parent outside the page);
 // control-store statements and catalog reads must not change.
 func TestLineageStatementsBoundedByDepth(t *testing.T) {

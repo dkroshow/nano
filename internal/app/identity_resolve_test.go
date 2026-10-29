@@ -98,11 +98,11 @@ func TestIdentityResolveFollowsRename(t *testing.T) {
 		t.Fatalf("old name = %d %#v (%s)", status, body, raw)
 	}
 
-	if err := s.catalog.(*threadCatalogService).AssignThreadName("codex", identityNativeOld, "new name"); err != nil {
+	if err := s.catalog.(*sidebar.CatalogSource).AssignThreadName("codex", identityNativeOld, "new name"); err != nil {
 		t.Fatal(err)
 	}
 	waitForCatalog(t, func() bool {
-		name, _ := s.catalog.(*threadCatalogService).ThreadNameFor(context.Background(), "codex", identityNativeOld)
+		name, _ := s.catalog.(*sidebar.CatalogSource).ThreadNameFor(context.Background(), "codex", identityNativeOld)
 		return name == "new name"
 	})
 	status, _, raw = resolveIdentity(t, s, "old%20name")
@@ -131,11 +131,11 @@ func TestIdentityResolveLivePendingName(t *testing.T) {
 }
 
 // fixtureIdentityCatalog retains the real name and exact-row query boundaries.
-func fixtureIdentityCatalog(t *testing.T, rows []sidebar.Thread) *threadCatalogService {
+func fixtureIdentityCatalog(t *testing.T, rows []sidebar.Thread) *sidebar.CatalogSource {
 	service, _ := fixtureIdentityCatalogStore(t, rows)
 	return service
 }
-func fixtureIdentityCatalogStore(t *testing.T, rows []sidebar.Thread) (*threadCatalogService, *history.Store) {
+func fixtureIdentityCatalogStore(t *testing.T, rows []sidebar.Thread) (*sidebar.CatalogSource, *history.Store) {
 	t.Helper()
 	directory := t.TempDir()
 	path := filepath.Join(directory, "catalog.sqlite")
@@ -187,6 +187,6 @@ func fixtureIdentityCatalogStore(t *testing.T, rows []sidebar.Thread) (*threadCa
 	}
 	return service, saved
 }
-func fixtureNamedCatalog(t *testing.T, provider, native, name string) *threadCatalogService {
+func fixtureNamedCatalog(t *testing.T, provider, native, name string) *sidebar.CatalogSource {
 	return fixtureIdentityCatalog(t, []sidebar.Thread{{Thread: threadindex.Thread{Provider: provider, NativeID: native, Name: namedCatalog(name)}}})
 }

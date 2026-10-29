@@ -144,7 +144,7 @@ func TestThreadStarredEndpointRejectsMissingBody(t *testing.T) {
 
 func strPtr(value string) *string { return &value }
 
-func starEndpointCatalog(t *testing.T, identity ...string) (*threadCatalogService, string) {
+func starEndpointCatalog(t *testing.T, identity ...string) (*sidebar.CatalogSource, string) {
 	provider, native := "codex", "native-1"
 	if len(identity) == 2 {
 		provider, native = identity[0], identity[1]

@@ -10,6 +10,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -38,7 +39,7 @@ func claudeCatalogUserRow(nativeID, timestamp, prompt string) string {
 	return fmt.Sprintf("{\"type\":\"user\",\"sessionId\":%q,\"timestamp\":%q,\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":%q}]}}\n", nativeID, timestamp, prompt)
 }
 
-func newStoredCatalog(t *testing.T, store *history.Store) *threadCatalogService {
+func newStoredCatalog(t *testing.T, store *history.Store) *sidebar.CatalogSource {
 	t.Helper()
 	service, err := newThreadCatalogService(context.Background(), store, threadindex.Options{Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}}, DisableWatcher: true})
 	if err != nil {
@@ -48,7 +49,7 @@ func newStoredCatalog(t *testing.T, store *history.Store) *threadCatalogService 
 	return service
 }
 
-func newAttachmentNameCatalog(t *testing.T, metadata *hostedstore.MetadataStore) *threadCatalogService {
+func newAttachmentNameCatalog(t *testing.T, metadata *hostedstore.MetadataStore) *sidebar.CatalogSource {
 	t.Helper()
 	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
 	if err != nil {

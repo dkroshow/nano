@@ -15,6 +15,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
@@ -26,7 +27,7 @@ type restartWindow struct {
 	s        *server
 	fake     *fakeAppServer
 	rec      hostedstore.Attachment
-	catalog  *threadCatalogService
+	catalog  *sidebar.CatalogSource
 	attached *pausedAttachedCatalog
 	t        *testing.T
 	path     string
@@ -39,7 +40,7 @@ type restartWindow struct {
 
 // failingSavedRows is the catalog with a settlement read that can fail.
 type failingSavedRows struct {
-	*threadCatalogService
+	*sidebar.CatalogSource
 	fail *atomic.Bool
 }
 
@@ -47,7 +48,7 @@ func (c failingSavedRows) LoadSavedUserRows(ctx context.Context, threadID string
 	if c.fail.Load() {
 		return nil, errors.New("saved rows unreadable")
 	}
-	return c.threadCatalogService.LoadSavedUserRows(ctx, threadID, keys)
+	return c.CatalogSource.LoadSavedUserRows(ctx, threadID, keys)
 }
 
 func newRestartWindow(t *testing.T) *restartWindow {
@@ -81,7 +82,7 @@ func newRestartWindow(t *testing.T) *restartWindow {
 		id, err := w.catalog.ResolveThreadReference(ctx, rec.NativeThreadID)
 		return err == nil && id != ""
 	})
-	w.attached = &pausedAttachedCatalog{threadCatalogService: w.catalog}
+	w.attached = &pausedAttachedCatalog{CatalogSource: w.catalog}
 	w.failReads = catalogReadFailure{t: t, path: w.path, catalog: w.catalog}
 	t.Cleanup(func() { w.failReads.Store(false) })
 	s.catalog, s.catalogSources = failingSavedRows{w.catalog, &w.failSavedRows}, w.attached
@@ -99,7 +100,7 @@ func (w *restartWindow) pause() func() { return w.attached.pause() }
 type catalogReadFailure struct {
 	t       *testing.T
 	path    string
-	catalog *threadCatalogService
+	catalog *sidebar.CatalogSource
 }
 
 func (f *catalogReadFailure) Store(fail bool) {

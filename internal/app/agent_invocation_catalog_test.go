@@ -28,17 +28,17 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	catalog := &fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{
+	catalog := &fakeThreadCatalog{page: sidebar.CatalogPage{Items: []sidebar.Thread{
 		{Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
 		{Thread: threadindex.Thread{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"}},
 	}}}
 	s := &server{catalog: catalog, Registry: newSessionRegistry(), agentExecutions: store}
 	rec := httptest.NewRecorder()
-	s.handleCatalogThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("catalog status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	var page catalogPage
+	var page sidebar.CatalogPage
 	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}

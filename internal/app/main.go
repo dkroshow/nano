@@ -63,7 +63,7 @@ type server struct {
 	defaults           config.SessionDefaults
 	codex              *sessionruntime.CodexDaemon
 	spoolDir           string
-	catalog            threadCatalog
+	catalog            sidebar.CatalogReader
 
 	// catalogRefresh is the thread catalog's nonblocking hint for one known
 	// native file, handed to each spawned session so hosted-session wire
@@ -197,7 +197,7 @@ type application struct {
 	absCwd          string
 	serverLog       io.Closer
 	catalogStore    *history.Store
-	catalogService  *threadCatalogService
+	catalogService  *sidebar.CatalogSource
 	remoteAuthStore *remoteauth.Store
 	remoteAuth      *remoteauth.Authenticator
 }
@@ -228,7 +228,7 @@ func construct(cfg config.Config) *application {
 		log.Fatalf("remote authentication unavailable: %v", err)
 	}
 	remoteAuth := remoteauth.New(remoteAuthStore, cfg.RemoteAuthHost)
-	var catalog threadCatalog
+	var catalog sidebar.CatalogReader
 	var catalogRefresh func(string)
 	var catalogSources sessionruntime.AttachedCatalog
 	if catalogService != nil {
@@ -678,7 +678,7 @@ func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintln(w, "ok")
 }
 
-func openThreadCatalog(path, namesPath string, noWatch bool) (*history.Store, *threadCatalogService, string, error) {
+func openThreadCatalog(path, namesPath string, noWatch bool) (*history.Store, *sidebar.CatalogSource, string, error) {
 	absolute, err := canonicalProspectivePath(path)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("resolve thread catalog database: %w", err)

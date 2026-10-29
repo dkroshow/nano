@@ -22,8 +22,7 @@ func (s *server) attachmentCoordinator() *hostedmodel.AttachmentCoordinator {
 		}
 		reader, _ := s.catalog.(hostedmodel.CreationNameReader)
 		refs, _ := s.catalog.(hostedmodel.CreationNameRefReader)
-		projector, _ := s.catalog.(hostedmodel.CreationNameProjector)
-		sources.CreationNames = &hostedmodel.CreationNames{Metadata: metadata, Executions: s.agentExecutions, Queue: s.queuedTurns, Reader: reader, Refs: refs, Projector: projector, Refresh: func() { s.attachmentCoordinator().NotifyRuntimeRefresh() }}
+		sources.CreationNames = &hostedmodel.CreationNames{Metadata: metadata, Executions: s.agentExecutions, Queue: s.queuedTurns, Reader: reader, Refs: refs, Catalog: s.hostedCatalog(), Refresh: func() { s.attachmentCoordinator().NotifyRuntimeRefresh() }}
 		s.attachmentsControl = hostedmodel.NewAttachmentCoordinator(sources)
 	})
 	return s.attachmentsControl

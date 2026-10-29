@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testing.T) {
@@ -37,7 +37,7 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "creation-name", Provider: "claude", HostedThreadID: hosted.ID, CreationName: func() string {
 		name, _ := control.CreationName(hosted.ID)
 		return name
-	}, NameThread: server.assignSpawnName, PublishCreationName: server.publishCreationName}, "native-after-restart", "")
+	}, NameThread: func(provider,native,name string) { if err := catalog.AssignThreadNameIfEmpty(provider,native,name); err!=nil { t.Fatal(err) } }, PublishCreationName: server.publishCreationName}, "native-after-restart", "")
 	sess := fixture.session
 	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-after-restart"); got != "creation name" {
 		t.Fatalf("bind name = %q, want creation name", got)
