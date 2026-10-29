@@ -98,9 +98,8 @@ func TestDurableFileTurnDoesNotWriteCompletedTurnFeed(t *testing.T) {
 	}
 }
 
-// The attachment checks belong with the session; the sibling application test
-// retains the cases that exercise real live-view work counters.
-func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
+// Attachment replacement and live-work cases share the same reconciliation test.
+func checkSavedAttachmentReplacement(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		change func(*session)

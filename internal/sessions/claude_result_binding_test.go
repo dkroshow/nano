@@ -221,7 +221,7 @@ func TestClaudeDirectChildResultBindsToThePromptClaudeAnswered(t *testing.T) {
 	old := log.Writer()
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(old) })
-	sess.projection.SetClaudeProviderTurnID(order[3].turn)
+	sess.projection.setClaudeProviderTurnID(order[3].turn)
 	if _, err := owner.sendTurnWithEventID("prompt D", order[3].event); err != nil {
 		t.Fatal(err)
 	}

@@ -1785,7 +1785,9 @@ func TestCodexPromptIsResentOnlyOnProofItsTurnDroppedIt(t *testing.T) {
 				switch f {
 				case stop:
 					// The person stops the turn the pane shows working.
-					waitForCatalogWithin(t, 10*time.Second, func() bool { return sess.Summary().TurnActive && runtime.projection.CurrentTurnID() == turn })
+					waitForCatalogWithin(t, 10*time.Second, func() bool {
+						return sess.Summary().TurnActive && liveStatusForTest(t, runtime.session).Runtime.TurnID == turn
+					})
 					rec := httptest.NewRecorder()
 					sess.HandleInterrupt(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/x/interrupt", nil))
 					if rec.Code != http.StatusOK || h.interrupts.Load() != 1 {

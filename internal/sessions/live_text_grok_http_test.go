@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"bufio"
@@ -22,7 +22,7 @@ import (
 // applied before the assertion, including intermediate appends and handoffs.
 type grokHTTPViewer struct {
 	t               *testing.T
-	messages        chan liveTextMessage
+	messages        chan LiveTextMessage
 	status          *liveTextStatus
 	view            *livePaneView
 	replies         map[string]string // stable live id -> scrubbed saved segment text
@@ -37,25 +37,25 @@ func openGrokHTTP(t *testing.T, h *liveTextHarness) *grokHTTPViewer {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { response.Body.Close(); stream.Close() })
-	v := &grokHTTPViewer{t: t, messages: make(chan liveTextMessage, 128), view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}, replies: map[string]string{}}
+	v := &grokHTTPViewer{t: t, messages: make(chan LiveTextMessage, 128), view: &livePaneView{expectSaved: map[string]string{}, neverSaved: map[string]bool{}}, replies: map[string]string{}}
 	go func() {
 		defer close(v.messages)
 		scanner := bufio.NewScanner(response.Body)
 		scanner.Buffer(make([]byte, 4096), 1<<20)
 		for scanner.Scan() {
 			if data, ok := strings.CutPrefix(scanner.Text(), "data: "); ok {
-				var m liveTextMessage
+				var m LiveTextMessage
 				if json.Unmarshal([]byte(data), &m) == nil {
 					v.messages <- m
 				}
 			}
 		}
 	}()
-	v.expect("initial tail", func(m liveTextMessage) bool { return m.Type == "tail" })
+	v.expect("initial tail", func(m LiveTextMessage) bool { return m.Type == "tail" })
 	return v
 }
 
-func (v *grokHTTPViewer) expect(what string, until func(liveTextMessage) bool) {
+func (v *grokHTTPViewer) expect(what string, until func(LiveTextMessage) bool) {
 	v.t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
@@ -142,13 +142,13 @@ func TestGrokFileLiveHTTPChunkStarts(t *testing.T) {
 				h.feed(frames[:2])
 				for i, text := range []string{"First ", "First re", "First reply", "First reply."} {
 					h.feed(frames[i+2 : i+3])
-					v.expect("reply chunk", func(liveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == text })
+					v.expect("reply chunk", func(LiveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == text })
 					if got := h.catalogReads.Load() - reads; got != 1 {
 						t.Fatalf("reply chunk %d catalog reads=%d, want 1 (new segment only)", i+1, got)
 					}
 				}
 				h.feed(frames[len(frames)-1:])
-				v.expect("segment ended", func(liveTextMessage) bool { return v.view.reply() != nil && v.view.reply().State == "done" })
+				v.expect("segment ended", func(LiveTextMessage) bool { return v.view.reply() != nil && v.view.reply().State == "done" })
 				if got := h.catalogReads.Load() - reads; got != 2 {
 					t.Fatalf("segment end catalog reads=%d, want 2 (creation and end)", got)
 				}
@@ -164,11 +164,11 @@ func TestGrokFileLiveHTTPChunkStarts(t *testing.T) {
 					p["_meta"].(map[string]any)["isReplay"] = true
 					line, _ = json.Marshal(msg)
 				}
-				h.projection.ApplyWireLive(protocol.Recv, line, time.Now(), true, false)
+				h.projection.applyWireLive(protocol.Recv, line, time.Now(), true, false)
 			}
 			// An outbox change follows all frames and is the stream's ordered barrier.
 			h.sess.PublishLiveOutbox(prompts.OutboxEntry{ActionID: "barrier", PresentationText: "Barrier.", State: prompts.Uncertain})
-			v.expect("ordered barrier", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:barrier") })
+			v.expect("ordered barrier", func(LiveTextMessage) bool { return containsEntry(v.view.live, "prompt:barrier") })
 			reply := v.view.reply()
 			if mode == "thinking then reply" {
 				want := "reply:" + grokFixtureThread + "-1283963"
@@ -180,7 +180,7 @@ func TestGrokFileLiveHTTPChunkStarts(t *testing.T) {
 			}
 			if mode != "thinking then reply" {
 				h.save(fixtureLines(t, "grok-turns.saved.jsonl")[:4])
-				v.expect("saved-only reply after recovery", func(liveTextMessage) bool { return v.hasReply("First reply.") })
+				v.expect("saved-only reply after recovery", func(LiveTextMessage) bool { return v.hasReply("First reply.") })
 				if v.view.reply() != nil {
 					t.Fatal("recovery streamed a partial reply beside its saved row")
 				}
@@ -207,10 +207,10 @@ func (v *grokHTTPViewer) barrier(h *liveTextHarness) {
 	action := fmt.Sprintf("http-barrier-%d", h.barriers)
 	e := prompts.OutboxEntry{ActionID: action, PresentationText: "Barrier.", State: prompts.Uncertain}
 	h.sess.PublishLiveOutbox(e)
-	v.expect("ordered barrier", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:"+action) })
+	v.expect("ordered barrier", func(LiveTextMessage) bool { return containsEntry(v.view.live, "prompt:"+action) })
 	e.State = prompts.Refused
 	h.sess.PublishLiveOutbox(e)
-	v.expect("barrier removed", func(liveTextMessage) bool { return !containsEntry(v.view.live, "prompt:"+action) })
+	v.expect("barrier removed", func(LiveTextMessage) bool { return !containsEntry(v.view.live, "prompt:"+action) })
 }
 
 func capturedGrokPrompt(h *liveTextHarness, n int, turn, key string) prompts.OutboxEntry {
@@ -245,7 +245,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 					e := capturedGrokPrompt(h, 1, "", "")
 					e.State = state
 					h.sess.PublishLiveOutbox(e)
-					v.expect("stuck prompt state", func(liveTextMessage) bool {
+					v.expect("stuck prompt state", func(LiveTextMessage) bool {
 						return len(v.view.live) == 1 && v.view.live[0].State == string(state) && v.view.live[0].ActionID == "action-1"
 					})
 				}
@@ -255,7 +255,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				e := capturedGrokPrompt(h, 1, "", "")
 				e.State = prompts.Refused
 				h.sess.PublishLiveOutbox(e)
-				v.expect("refused prompt", func(liveTextMessage) bool { return len(v.view.live) == 0 })
+				v.expect("refused prompt", func(LiveTextMessage) bool { return len(v.view.live) == 0 })
 				if _, err := h.sess.PromptStore().Cancel(context.Background(), "action-1"); err != nil {
 					t.Fatal(err)
 				}
@@ -265,7 +265,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 					t.Fatal(err)
 				}
 				h.sess.PublishLiveOutbox(record.Outbox)
-				v.expect("resend action", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:action-2") })
+				v.expect("resend action", func(LiveTextMessage) bool { return containsEntry(v.view.live, "prompt:action-2") })
 				// This harness's prompt store is separate from its control
 				// metadata store, so use the journal's ordinary direct read.
 				// The harness routes journal reads to its prompt database.
@@ -303,7 +303,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 					e = capturedGrokPrompt(h, 1, turn, "")
 				}
 				h.sess.PublishLiveOutbox(e)
-				v.expect("old prompt", func(liveTextMessage) bool { return containsEntry(v.view.live, "prompt:action-1") })
+				v.expect("old prompt", func(LiveTextMessage) bool { return containsEntry(v.view.live, "prompt:action-1") })
 				// The file binds the prompt's turn only when its first output arrives.
 				if mode == "old binding after save" {
 					h.hold()
@@ -314,7 +314,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 					e = capturedGrokPrompt(h, 1, turn, "")
 					h.sess.PublishLiveOutbox(e)
 				}
-				v.expect("old prompt turn handoff", func(liveTextMessage) bool { return len(v.view.live) == 0 && len(v.view.rows) > 0 })
+				v.expect("old prompt turn handoff", func(LiveTextMessage) bool { return len(v.view.live) == 0 && len(v.view.rows) > 0 })
 				return
 			case "task-completed turn":
 				// Constructed wire envelopes from actual saved rows; ids,
@@ -360,24 +360,24 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 			id := "prompt:" + e.ActionID
 			v.view.expectSaved[id] = e.PresentationText
 			h.sess.PublishLiveOutbox(e)
-			v.expect("prompt live", func(liveTextMessage) bool { return containsEntry(v.view.live, id) })
+			v.expect("prompt live", func(LiveTextMessage) bool { return containsEntry(v.view.live, id) })
 			h.save(rows[:1])
-			v.expect("prompt saved", func(liveTextMessage) bool { return !containsEntry(v.view.live, id) })
+			v.expect("prompt saved", func(LiveTextMessage) bool { return !containsEntry(v.view.live, id) })
 			h.feed(frames[:4])
-			v.expect("reply prefix", func(liveTextMessage) bool { return v.view.reply() != nil && len(v.view.reply().Text) > 5 })
+			v.expect("reply prefix", func(LiveTextMessage) bool { return v.view.reply() != nil && len(v.view.reply().Text) > 5 })
 			savedBeforeFinal := mode == "early saved notice overlaps until segment end" || mode == "saved commit before final chunk; notice after segment end"
 			if mode == "saved commit before final chunk; notice after segment end" {
 				// Commit the real final row after the preceding live chunk,
 				// but keep its apply notice behind the segment-end read.
 				h.feed(frames[4:5])
-				v.expect("pre-final reply", func(liveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == "First reply" })
+				v.expect("pre-final reply", func(LiveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == "First reply" })
 				h.hold()
 				h.save(rows[1:])
 				waitGrokRows(t, h, 3)
 				h.feed(frames[5 : len(frames)-1])
-				v.expect("final chunk stays live before segment end", func(liveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == text })
+				v.expect("final chunk stays live before segment end", func(LiveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == text })
 				h.feed(frames[len(frames)-1:])
-				v.expect("segment-end read hands over before apply notice", func(m liveTextMessage) bool {
+				v.expect("segment-end read hands over before apply notice", func(m LiveTextMessage) bool {
 					return v.hasReply(text) && !containsEntry(v.view.live, first) && slices.Contains(m.Saved, first)
 				})
 				h.release()
@@ -392,16 +392,16 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				// alias for the live prefix. The segment-end read settles it.
 				v.allowEarlySaved = true
 				h.save(rows[1:])
-				v.expect("saved reply before final chunk", func(liveTextMessage) bool { return v.hasReply(text) })
+				v.expect("saved reply before final chunk", func(LiveTextMessage) bool { return v.hasReply(text) })
 				if !containsEntry(v.view.live, first) {
 					t.Fatal("early save removed text without exact proof")
 				}
 				h.feed(frames[4 : len(frames)-1])
-				v.expect("early save still overlaps after final chunk", func(liveTextMessage) bool {
+				v.expect("early save still overlaps after final chunk", func(LiveTextMessage) bool {
 					return v.hasReply(text) && v.view.reply() != nil && v.view.reply().Text == text
 				})
 				h.feed(frames[len(frames)-1:])
-				v.expect("segment end settles early save", func(m liveTextMessage) bool {
+				v.expect("segment end settles early save", func(m LiveTextMessage) bool {
 					return v.hasReply(text) && !containsEntry(v.view.live, first) && slices.Contains(m.Saved, first)
 				})
 				v.allowEarlySaved = false
@@ -409,7 +409,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				h.feed(frames[4:])
 			}
 			if !savedBeforeFinal {
-				v.expect("ended full reply", func(liveTextMessage) bool {
+				v.expect("ended full reply", func(LiveTextMessage) bool {
 					return v.view.reply() != nil && v.view.reply().State == "done" && v.view.reply().Text == text
 				})
 			}
@@ -437,7 +437,7 @@ func TestGrokFileLiveHTTPHandoffs(t *testing.T) {
 				h.save(rows[1:])
 			}
 			if !savedBeforeFinal {
-				v.expect("saved reply handoff", func(liveTextMessage) bool { return v.hasReply(text) && !containsEntry(v.view.live, first) })
+				v.expect("saved reply handoff", func(LiveTextMessage) bool { return v.hasReply(text) && !containsEntry(v.view.live, first) })
 			}
 			rec := httptest.NewRecorder()
 			h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
@@ -492,7 +492,7 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 			wire := grokWireTurns(t)[0]
 			h.feed(wire[:4])
 			first := "reply:" + grokFixtureThread + "-1283963"
-			v.expect("first segment", func(liveTextMessage) bool { return containsEntry(v.view.live, first) })
+			v.expect("first segment", func(LiveTextMessage) bool { return containsEntry(v.view.live, first) })
 			for _, line := range frames {
 				var m map[string]any
 				json.Unmarshal(line, &m)
@@ -513,7 +513,7 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 			}
 			second := "reply:" + grokFixtureThread + "-1283965"
 			h.feed(wire[4:])
-			v.expect("two segments", func(liveTextMessage) bool {
+			v.expect("two segments", func(LiveTextMessage) bool {
 				return len(v.view.live) == 2 && v.view.live[0].ID == first && v.view.live[0].State == "done" && v.view.live[1].ID == second && v.view.live[1].Text == "ply."
 			})
 			// The captured final-chunk row proves only the second constructed segment.
@@ -527,14 +527,14 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 			v.view.neverSaved["unsaved:"+first] = true
 			v.replies[first] = "no saved row for this constructed segment"
 			h.save([][]byte{saved[0], saved[1], final, saved[3]})
-			v.expect("second segment handed over", func(liveTextMessage) bool {
+			v.expect("second segment handed over", func(LiveTextMessage) bool {
 				return v.hasReply("ply.") && containsEntry(v.view.live, first) && !containsEntry(v.view.live, second)
 			})
 			next := capturedGrokPrompt(h, 2, "88ce28f6-903f-56ee-b7ac-f9c8426e4262", "11111111-aaaa-4aaa-8aaa-000000000002")
 			h.sess.PublishLiveOutbox(next)
 			v.barrier(h)
 			h.save(saved[4:5])
-			v.expect("unsaved segment superseded", func(liveTextMessage) bool { return len(v.view.live) == 0 })
+			v.expect("unsaved segment superseded", func(LiveTextMessage) bool { return len(v.view.live) == 0 })
 		})
 	}
 }
@@ -544,7 +544,7 @@ func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
 	h := newLiveTextHarnessFor(t, "grok", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	h.save(fixtureLines(t, "grok-turns.saved.jsonl")[:1])
 	waitGrokRows(t, h, 1)
-	h.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-http"})
+	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready", TurnActive: true, TurnID: "turn-http"})
 	v := openGrokHTTP(t, h)
 	if len(v.view.rows) != 1 || v.view.rows[0].Text != "Neutral prompt 1." {
 		t.Fatalf("saved HTTP rows = %#v", v.view.rows)
@@ -553,12 +553,12 @@ func TestGrokSessionHTTPHasOneFileTranscriptSource(t *testing.T) {
 		t.Fatalf("initial working status = %#v", v.status)
 	}
 	h.feed(grokWireTurns(t)[0][:3])
-	v.expect("unsaved reply", func(liveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == "First " })
+	v.expect("unsaved reply", func(LiveTextMessage) bool { return v.view.reply() != nil && v.view.reply().Text == "First " })
 	if len(v.view.rows) != 1 {
 		t.Fatalf("saved HTTP rows after live text = %#v", v.view.rows)
 	}
-	h.projection.UpdateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
-	v.expect("stopped status", func(m liveTextMessage) bool { return m.Status != nil && !m.Status.Runtime.TurnActive })
+	h.projection.updateRuntime(liveProjectionRuntime{SessionStatus: "ready"})
+	v.expect("stopped status", func(m LiveTextMessage) bool { return m.Status != nil && !m.Status.Runtime.TurnActive })
 	rec := httptest.NewRecorder()
 	h.sess.HandleConversationView(rec, httptest.NewRequest(http.MethodGet, "/conversation?view=messages", nil), conversationViewMessages)
 	var snapshot liveProjectionSnapshot

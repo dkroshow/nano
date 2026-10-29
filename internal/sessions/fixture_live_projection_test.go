@@ -1,8 +1,9 @@
 package sessions
 
 import (
-	"github.com/dkroshow/nano/internal/protocol"
 	"time"
+
+	"github.com/dkroshow/nano/internal/protocol"
 )
 
 func newLiveProjection(provider string, ids ...string) *LiveProjection {
@@ -13,13 +14,13 @@ func newLiveProjection(provider string, ids ...string) *LiveProjection {
 	return NewLiveProjection(provider, id, false)
 }
 func projectionStateForTest(p *LiveProjection) liveProjectionSnapshot {
-	status := p.Status()
+	status := p.status()
 	p.mu.Lock()
 	native := p.nativeThread
 	p.mu.Unlock()
-	return liveProjectionSnapshot{NativeThreadID: native, Turns: p.TurnList(), Runtime: status.Runtime, Interactions: status.Interactions}
+	return liveProjectionSnapshot{NativeThreadID: native, Turns: p.turnList(), Runtime: status.Runtime, Interactions: status.Interactions}
 }
 
 func (p *LiveProjection) applyWire(dir protocol.Direction, line []byte, at time.Time) {
-	p.ApplyWireLive(dir, line, at, true, false)
+	p.applyWireLive(dir, line, at, true, false)
 }

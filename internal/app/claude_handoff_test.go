@@ -12,7 +12,6 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -31,6 +30,9 @@ type claudeHandoff struct {
 	projection *sessions.LiveProjection
 	at         time.Time
 	sequence   uint64
+	runtime    *providerRuntimeFixture
+	t          *testing.T
+	turn       string
 }
 
 // newClaudeHandoff starts the catalog over a Claude session that already has
@@ -38,7 +40,7 @@ type claudeHandoff struct {
 // session does.
 func newClaudeHandoff(t *testing.T) *claudeHandoff {
 	t.Helper()
-	h := &claudeHandoff{at: time.Now().UTC().Add(-time.Hour)}
+	h := &claudeHandoff{at: time.Now().UTC().Add(-time.Hour), t: t}
 	var file strings.Builder
 	h.writeSavedTurn(&file, "saved-prompt-0", "earlier prompt", "earlier answer")
 	h.catalog = newGateCatalog(t, nil, nil)
@@ -48,8 +50,8 @@ func newClaudeHandoff(t *testing.T) *claudeHandoff {
 	h.threadID = h.catalog.threadID(t, handoffNative, 2)
 
 	h.projection = newLiveProjection("claude", "hosted-handoff")
-	h.projection.SetNativeThreadID(handoffNative)
-	h.session = newFixtureSession(sessionConfig{ID: "session-handoff", Provider: "claude", HostedThreadID: "hosted-handoff", Projection: h.projection}, handoffNative)
+	h.runtime = newProviderRuntimeFixture(t, sessionConfig{ID: "session-handoff", Provider: "claude", HostedThreadID: "hosted-handoff", Projection: h.projection}, handoffNative, "")
+	h.session = h.runtime.session
 	server := h.catalog.server
 	seedTestSessionRegistry(&server.Registry, map[string]*session{h.session.ID(): h.session})
 	h.session.ConfigureSavedReaders(func(ctx context.Context, turnID string) (durableTurnEvidence, bool) {
@@ -110,15 +112,15 @@ func (h *claudeHandoff) submit(t *testing.T, action, providerTurn, text string) 
 		}},
 	}
 	h.session.PublishLiveOutbox(entry)
-	h.projection.SetClaudeProviderTurnID(providerTurn)
+	h.turn = providerTurn
 	eventID := submissionEventID("hosted-handoff", action)
-	applyProjectionWire(h.projection, protocol.Send, []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":%q}]}}`, eventID, text)), time.Now())
+	h.runtime.emitDirectionAtAndWait(t, "send", []byte(fmt.Sprintf(`{"type":"user","uuid":%q,"message":{"role":"user","content":[{"type":"text","text":%q}]}}`, eventID, text)), time.Now(), h.turn)
 	return eventID
 }
 
 func (h *claudeHandoff) reply(eventID, text string) {
-	applyProjectionWire(h.projection, protocol.Recv, []byte(fmt.Sprintf(`{"type":"assistant","session_id":%q,"uuid":%q,"message":{"id":%q,"role":"assistant","content":[{"type":"text","text":%q}],"stop_reason":"end_turn"}}`,
-		handoffNative, eventID+"-answer", "msg-"+eventID, text)), time.Now())
+	h.runtime.emitAtAndWait(h.t, []byte(fmt.Sprintf(`{"type":"assistant","session_id":%q,"uuid":%q,"message":{"id":%q,"role":"assistant","content":[{"type":"text","text":%q}],"stop_reason":"end_turn"}}`,
+		handoffNative, eventID+"-answer", "msg-"+eventID, text)), time.Now(), h.turn)
 }
 
 // stream sends an unsaved reply as the CLI streams it: a message start, then
@@ -127,10 +129,10 @@ func (h *claudeHandoff) stream(id, text string) {
 	for _, line := range []string{messageStart(id),
 		`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}`,
 		textDelta(0, text)} {
-		applyProjectionWire(h.projection, protocol.Recv, []byte(line), time.Now())
+		h.runtime.emitAtAndWait(h.t, []byte(line), time.Now(), h.turn)
 	}
 }
 
 func (h *claudeHandoff) finish(text string) {
-	applyProjectionWire(h.projection, protocol.Recv, []byte(fmt.Sprintf(`{"type":"result","subtype":"success","is_error":false,"result":%q,"session_id":%q,"duration_ms":1000}`, text, handoffNative)), time.Now())
+	h.runtime.emitAtAndWait(h.t, []byte(fmt.Sprintf(`{"type":"result","subtype":"success","is_error":false,"result":%q,"session_id":%q,"duration_ms":1000}`, text, handoffNative)), time.Now(), h.turn)
 }

@@ -121,7 +121,7 @@ func (sess *Session) setProjectionThreadID(id string) {
 	}
 	sess.stateMu.Unlock()
 	if sess.projection != nil {
-		sess.projection.SetNativeThreadID(id)
+		sess.projection.setNativeThreadID(id)
 	}
 	sess.bindCatalogSource(id)
 }
@@ -227,7 +227,7 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir proto
 			}
 			sess.applyWireSemantic(gate, dir, frame, live, replay, at, sequence...)
 			if terminal != nil && sess.projection != nil {
-				terminal.FinalMessageID = sess.projection.FinalAgentItemID(terminal.TurnID)
+				terminal.FinalMessageID = sess.projection.finalAgentItemID(terminal.TurnID)
 				if usage := sess.completedTokenUsage(terminal.TurnID); usage != nil {
 					terminal.Usage = coreturns.Usage{InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens, OutputTokens: usage.OutputTokens}
 				}
@@ -245,7 +245,7 @@ func (sess *Session) recordWireWith(gate func() error, prepare func(), dir proto
 		if gate == nil && prepare == nil && live && !replay && sess.provider == "codex" &&
 			dir == protocol.Recv && sess.projection != nil {
 			if delta, ok := parseQueuedCodexDelta(frame); ok &&
-				(delta.method != "item/agentMessage/delta" || !sess.projection.DropsLiveTextDeltas()) {
+				(delta.method != "item/agentMessage/delta" || !sess.projection.dropsLiveTextDeltas()) {
 				delta.at = at
 				delta.event = evt
 				delta.wireSeq = sequence
@@ -347,7 +347,7 @@ func (sess *Session) applyWireSemantic(gate func() error, dir protocol.Direction
 	// the same projection order, and a slow/raw-feed tab cannot affect the
 	// transcript reducer.
 	if sess.projection != nil {
-		sess.projection.ApplyWireLive(dir, line, at, live, replay, wireSeq...)
+		sess.projection.applyWireLive(dir, line, at, live, replay, wireSeq...)
 	}
 	// Wire-native catalog freshness: turn edges hint the session's known
 	// native file. Runs outside every session lock, and the callback is the

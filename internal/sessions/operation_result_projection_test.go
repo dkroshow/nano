@@ -12,7 +12,7 @@ func TestOperationResultRecordsSavedFinalInsteadOfWireOrOwnerText(t *testing.T) 
 		t.Run(provider+"/projection", func(t *testing.T) {
 			recorder := &projectionTerminalRecorder{}
 			projection := newResultProjection(provider, map[string]string{"provider-turn": "final-item"})
-			projection.SetClaudeResultTurnID("provider-turn")
+			projection.setClaudeResultTurnID("provider-turn")
 			projection.seedResumeTurns("native-thread", []*liveProjectionTurn{{ID: "provider-turn", Status: agentTurnCompleted, FinalItemID: "final-item"}})
 			sess := New(Config{ID: "projection-result", Provider: provider, HostedThreadID: "hosted", Projection: projection, AgentExecutions: recorder})
 			sess.ReserveNativeID("native-thread")

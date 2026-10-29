@@ -1135,7 +1135,7 @@ func TestClaudePromptSentWhileATurnWorksIsDeliveredAtOnce(t *testing.T) {
 	})
 	sess.provider = "claude"
 	sess.projection = newDeliveryTestProjection("claude")
-	sess.projection.SetNativeThreadID("native-thread")
+	sess.projection.setNativeThreadID("native-thread")
 	if err := sess.ensureCoreSession(); err != nil {
 		t.Fatal(err)
 	}

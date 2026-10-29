@@ -27,12 +27,13 @@ import (
 func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing.T) {
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "notification", Provider: "claude"}, "notification-native", "claude-test")
 	sess := fixture.session
+	observer := observeProjection(t, sess)
 	fixture.emitAt(t, []byte(`{"type":"stream_event","event":{"type":"message_start","message":{"id":"notification-turn"}}}`), time.Time{}, "claude:notification:1")
 	waitReconnectCondition(t, func() bool { return sess.Summary().TurnActive })
 	if sum := sess.Summary(); !sum.TurnActive || sum.TurnStartedAtMs == 0 {
 		t.Fatalf("execution evidence summary = %+v, want an anchored active turn", sum)
 	}
-	snapshot := projectionStateForTest(fixture.projection)
+	snapshot := observer.Snapshot()
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Status != "in_progress" || !snapshot.Runtime.TurnActive {
 		t.Fatalf("execution evidence projection = turns %+v runtime %+v", snapshot.Turns, snapshot.Runtime)
 	}

@@ -13,11 +13,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	filemodel "github.com/dkroshow/nano/internal/files"
-	"github.com/dkroshow/nano/internal/protocol"
-	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestGeneralFileReadIsGlobalAndProtectedProviderFilesAreViewOnly(t *testing.T) {
@@ -157,24 +154,25 @@ func TestGeneralFileWriteConflictForcePermissionsAndNoCreation(t *testing.T) {
 
 // liveEvidenceSession is a Codex session whose live text shows each text as a
 // finished reply, as the wire delivered it.
-func liveEvidenceSession(texts ...string) (*session, *sessions.LiveProjection) {
+func liveEvidenceSession(t *testing.T, texts ...string) (*session, *providerRuntimeFixture) {
 	projection := newLiveProjection("codex")
-	sess := newFixtureSession(sessionConfig{ID: "session-1", Provider: "codex", Projection: projection}, "")
+	runtime := newProviderRuntimeFixture(t, sessionConfig{ID: "session-1", Provider: "codex", Projection: projection}, "file-native", "")
+	sess := runtime.session
 	sess.AttachLiveText(newLiveTextLoop(&server{}, sess))
 	for _, text := range texts {
-		addLiveEvidence(projection, text)
+		addLiveEvidence(t, runtime, text)
 	}
-	return sess, projection
+	return sess, runtime
 }
 
 // addLiveEvidence streams one reply: live text shows a reply that started
 // streaming, not one that arrived only finished.
-func addLiveEvidence(projection *sessions.LiveProjection, text string) {
+func addLiveEvidence(t *testing.T, runtime *providerRuntimeFixture, text string) {
 	id := "reply-" + sendTextHash(text)
 	for _, method := range []string{"item/started", "item/completed"} {
-		frame, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"turnId": "turn-1",
+		frame, _ := json.Marshal(map[string]any{"method": method, "params": map[string]any{"threadId": runtime.session.ThreadID(), "turnId": "turn-1",
 			"item": map[string]any{"id": id, "type": "agentMessage", "text": text}}})
-		applyProjectionWire(projection, protocol.Recv, frame, time.Now())
+		runtime.emitAndWait(t, frame)
 	}
 }
 
@@ -190,7 +188,7 @@ func TestGeneralFileResolutionUsesOnlyCurrentThreadLiveEvidence(t *testing.T) {
 		}
 		writeTestFile(t, path, path+"\n")
 	}
-	sess, projection := liveEvidenceSession("See " + first)
+	sess, projection := liveEvidenceSession(t, "See "+first)
 	server := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"session-1": sess})
 
 	path, by, err := server.resolveGeneralFile(context.Background(), filepath.ToSlash(relative), "", "", "session-1")
@@ -198,7 +196,7 @@ func TestGeneralFileResolutionUsesOnlyCurrentThreadLiveEvidence(t *testing.T) {
 		t.Fatalf("live evidence = %q, %q, %v", path, by, err)
 	}
 
-	addLiveEvidence(projection, "Also "+second)
+	addLiveEvidence(t, projection, "Also "+second)
 	_, _, err = server.resolveGeneralFile(context.Background(), filepath.ToSlash(relative), "", "", "session-1")
 	if err == nil || err.Code != "ambiguous_path" || len(err.Candidates) != 2 {
 		t.Fatalf("ambiguous evidence = %#v", err)
@@ -219,7 +217,7 @@ func TestGeneralFileEvidenceUsesPathBoundariesAndDedupesSymlinkAliases(t *testin
 	if err := os.Symlink(target, alias); err != nil {
 		t.Fatal(err)
 	}
-	sess, _ := liveEvidenceSession("real " + target + " alias " + alias + " false " + filepath.Join(root, "notreports", "pulse.md"))
+	sess, _ := liveEvidenceSession(t, "real "+target+" alias "+alias+" false "+filepath.Join(root, "notreports", "pulse.md"))
 	server := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"session-1": sess})
 
 	path, _, err := server.resolveGeneralFile(context.Background(), "reports/pulse.md", "", "", "session-1")
@@ -405,7 +403,7 @@ func TestGeneralFileEvidenceOutranksAnAmbiguousFilesystemGuess(t *testing.T) {
 		}
 		writeTestFile(t, path, path+"\n")
 	}
-	sess, _ := liveEvidenceSession("wrote " + far)
+	sess, _ := liveEvidenceSession(t, "wrote "+far)
 	server := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"session-1": sess})
 
 	path, by, err := server.resolveGeneralFile(context.Background(), "docs/notes.md", docDir, "", "session-1")

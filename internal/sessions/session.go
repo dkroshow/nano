@@ -296,7 +296,7 @@ type Session struct {
 	// wire buffer is bounded, so a tab opened after the request landed could
 	// never rediscover it by replay (interactions.go).
 	interactions map[string]pendingInteraction
-	// Status classifiers reject every provider interaction before it enters the
+	// status classifiers reject every provider interaction before it enters the
 	// visible pending-card state. rejectedInteractionSeq tells the dispatcher
 	// that the otherwise-hidden abnormal attempt must fail closed.
 	autoRejectInteractions bool

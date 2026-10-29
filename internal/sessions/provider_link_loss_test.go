@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 )
 
 func TestProviderLinkLossDoesNotCompleteProjectedTurn(t *testing.T) {
-	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "link-loss", Provider: "codex"}, "native-link-loss", "model")
+	fixture := newProviderRuntimeFixture(t, Config{ID: "link-loss", Provider: "codex"}, "native-link-loss", "model")
 	sess := fixture.session
 	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"native-link-loss","turn":{"id":"accepted","status":"inProgress"}}}`))
 	waitReconnectCondition(t, func() bool { return len(projectionStateForTest(fixture.projection).Turns) == 1 })

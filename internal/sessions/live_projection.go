@@ -144,15 +144,15 @@ func NewLiveProjection(provider, hostedThreadID string, dropLiveTextDeltas bool)
 	return projection
 }
 
-// SetNativeThreadID sets the native identity represented by the view.
-func (p *LiveProjection) SetNativeThreadID(id string) {
+// setNativeThreadID sets the native identity represented by the view.
+func (p *LiveProjection) setNativeThreadID(id string) {
 	p.mu.Lock()
 	p.nativeThread = id
 	p.mu.Unlock()
 }
 
-// SetClaudeProviderTurnID sets the provider identity of the current Claude turn.
-func (p *LiveProjection) SetClaudeProviderTurnID(id string) {
+// setClaudeProviderTurnID sets the provider identity of the current Claude turn.
+func (p *LiveProjection) setClaudeProviderTurnID(id string) {
 	if p == nil || p.provider != "claude" || id == "" {
 		return
 	}
@@ -173,9 +173,9 @@ func (p *LiveProjection) setClaudeFrameTurnID(id string) {
 	p.mu.Unlock()
 }
 
-// SetClaudeResultTurnID names the turn of the result about to be applied,
+// setClaudeResultTurnID names the turn of the result about to be applied,
 // "" when it names none.
-func (p *LiveProjection) SetClaudeResultTurnID(id string) {
+func (p *LiveProjection) setClaudeResultTurnID(id string) {
 	if p == nil || p.provider != "claude" {
 		return
 	}
@@ -194,8 +194,8 @@ func (p *LiveProjection) claudeResultTurn() string {
 	return p.claudeResultTurnID
 }
 
-// CurrentTurnID reads the current projected turn identity.
-func (p *LiveProjection) CurrentTurnID() string {
+// currentTurnID reads the current projected turn identity.
+func (p *LiveProjection) currentTurnID() string {
 	if p == nil {
 		return ""
 	}
@@ -232,10 +232,10 @@ func (p *LiveProjection) ensureClaudeActiveTurn(startedAtMs int64) string {
 	return id
 }
 
-// ApplyWireLive keeps replay provenance separate from live browser emission.
+// applyWireLive keeps replay provenance separate from live browser emission.
 // Only the Claude shim's re-attach spool sets replay; other non-live
 // observations remain ordinary.
-func (p *LiveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at time.Time, live, replay bool, _ ...int64) {
+func (p *LiveProjection) applyWireLive(dir protocol.Direction, line []byte, at time.Time, live, replay bool, _ ...int64) {
 	if p.dropLiveTextDeltas && p.provider == "codex" && dir == protocol.Recv {
 		if turn, hidden := codexAgentTextDelta(line); hidden {
 			// Hidden text is still the turn's live work.
@@ -435,8 +435,8 @@ func (p *LiveProjection) upsertTurnLocked(turn *liveProjectionTurn) {
 	}
 }
 
-// UpdateRuntime publishes the attachment’s runtime view.
-func (p *LiveProjection) UpdateRuntime(runtime liveProjectionRuntime) {
+// updateRuntime publishes the attachment’s runtime view.
+func (p *LiveProjection) updateRuntime(runtime liveProjectionRuntime) {
 	runtime = liveview.CloneRuntime(runtime)
 	p.mu.Lock()
 	if liveview.RuntimeEqual(p.runtime, runtime) {
@@ -465,8 +465,8 @@ func (p *LiveProjection) updateTokenUsage(raw json.RawMessage) {
 	p.mu.Unlock()
 }
 
-// UpdateError records the latest live error.
-func (p *LiveProjection) UpdateError(message string) {
+// updateError records the latest live error.
+func (p *LiveProjection) updateError(message string) {
 	message = threads.TruncateText(message, 4<<10)
 	p.mu.Lock()
 	if p.runtime.LastError == message {
@@ -546,9 +546,9 @@ func (p *LiveProjection) latestTerminalTurnID() string {
 	return ""
 }
 
-// FinalAgentItemID names a turn's final answer by source id, the identity
+// finalAgentItemID names a turn's final answer by source id, the identity
 // records outside this projection use; saved history carries the same one.
-func (p *LiveProjection) FinalAgentItemID(turnID string) string {
+func (p *LiveProjection) finalAgentItemID(turnID string) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.finalAnswerIDLocked(turnID)
@@ -563,8 +563,8 @@ func (p *LiveProjection) finalAnswerIDLocked(turnID string) string {
 	return ""
 }
 
-// TurnList copies the projection's turns, oldest first.
-func (p *LiveProjection) TurnList() []liveProjectionTurn {
+// turnList copies the projection's turns, oldest first.
+func (p *LiveProjection) turnList() []liveProjectionTurn {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	turns := make([]liveProjectionTurn, 0, len(p.turnOrder))
@@ -581,8 +581,8 @@ func cloneRuntimePtr(runtime liveProjectionRuntime) *liveProjectionRuntime {
 	return &out
 }
 
-// UpsertInteraction records a pending provider interaction.
-func (p *LiveProjection) UpsertInteraction(interaction interactmodel.PendingInteraction) {
+// upsertInteraction records a pending provider interaction.
+func (p *LiveProjection) upsertInteraction(interaction interactmodel.PendingInteraction) {
 	interaction = liveview.CloneInteraction(interaction)
 	p.mu.Lock()
 	if _, exists := p.interactions[interaction.ID]; !exists {
@@ -598,8 +598,8 @@ func (p *LiveProjection) UpsertInteraction(interaction interactmodel.PendingInte
 	p.mu.Unlock()
 }
 
-// RemoveInteraction removes a resolved interaction from the view.
-func (p *LiveProjection) RemoveInteraction(id string) {
+// removeInteraction removes a resolved interaction from the view.
+func (p *LiveProjection) removeInteraction(id string) {
 	if id == "" {
 		return
 	}
@@ -630,9 +630,9 @@ func (p *LiveProjection) interactionsLocked() []interactmodel.PendingInteraction
 	return interactions
 }
 
-// Status is the thread's runtime and pending questions at the current
+// status is the thread's runtime and pending questions at the current
 // revision, without rows: what a file-only pane's stream carries.
-func (p *LiveProjection) Status() liveTextStatus {
+func (p *LiveProjection) status() liveTextStatus {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return liveTextStatus{Epoch: p.epoch, Revision: p.revision, Runtime: liveview.CloneRuntime(p.runtime), Interactions: p.interactionsLocked()}
@@ -803,8 +803,8 @@ func (p *LiveProjection) providerName() string {
 	return p.provider
 }
 
-// DropsLiveTextDeltas reports whether live text delta publication is disabled.
-func (p *LiveProjection) DropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
+// dropsLiveTextDeltas reports whether live text delta publication is disabled.
+func (p *LiveProjection) dropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
 
 // SetLiveText connects the observer of ordered parsed evidence.
 func (p *LiveProjection) setLiveText(observer *LiveTextLoop) { p.liveText = observer }

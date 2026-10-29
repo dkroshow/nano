@@ -315,7 +315,7 @@ func (f *providerRuntimeFixture) activate(t *testing.T) {
 }
 func (f *providerRuntimeFixture) finishTurn(t *testing.T) {
 	if f.session.Provider() == "codex" {
-		turn := f.projection.CurrentTurnID()
+		turn := f.projection.currentTurnID()
 		f.emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"`+f.session.ThreadID()+`","turn":{"id":"`+turn+`","status":"completed"}}}`))
 	} else {
 		f.emitAndWait(t, []byte(`{"type":"result","subtype":"success","is_error":false}`))

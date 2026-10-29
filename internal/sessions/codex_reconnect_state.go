@@ -47,7 +47,7 @@ func (sess *Session) codexZeroTurnEvidence(refusedAction string) bool {
 			}
 		}
 	}
-	return sess.projection == nil || len(sess.projection.TurnList()) == 0
+	return sess.projection == nil || len(sess.projection.turnList()) == 0
 }
 
 func (sess *Session) codexZeroTurnNativeMissing(actionID string, err error) bool {

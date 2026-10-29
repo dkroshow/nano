@@ -55,7 +55,6 @@ func stage0Server(t *testing.T, seed ...func(*agentExecutionStore, agentSessionR
 	queue.BindTransactionStore(turnStore)
 	attempts.BindTransactionStore(turnStore)
 	projection := newLiveProjection("codex", worker.ID)
-	projection.SetNativeThreadID("native-worker")
 	notices := interact.NewNotices()
 	fake := newFakeAppServer(t)
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn"}})

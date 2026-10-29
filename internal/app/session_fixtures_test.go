@@ -99,7 +99,6 @@ type sessionExecutions = sessions.Executions
 type sessionJournal = sessions.Journal
 type sessionLiveText = sessions.LiveTextLoop
 type sessionMetadata = sessions.Metadata
-type sessionPane = sessions.LiveTextStream
 type sessionQueue = sessions.Queue
 type sessionRegistry = sessions.Registry
 

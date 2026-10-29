@@ -35,7 +35,7 @@ func (sess *Session) PublishProjectionRuntime() {
 		runtime.TurnID, runtime.TurnStartedAtMs = "", 0
 	}
 	sess.stateMu.Unlock()
-	sess.projection.UpdateRuntime(runtime)
+	sess.projection.updateRuntime(runtime)
 }
 
 func (sess *Session) applyLiveRuntimeWire(dir protocol.Direction, line []byte, at time.Time) {
@@ -92,7 +92,7 @@ func (sess *Session) setLiveError(message string) {
 	sess.stateMu.Lock()
 	sess.lastError = message
 	sess.stateMu.Unlock()
-	sess.projection.UpdateError(message)
+	sess.projection.updateError(message)
 }
 
 // ReconcileDurableTurn settles the session's open turn from its saved status
@@ -108,7 +108,7 @@ func (sess *Session) ReconcileDurableTurn(ctx context.Context) {
 	sessionTurnActive := sess.workActiveLocked()
 	sess.stateMu.Unlock()
 	if turnID == "" {
-		turnID = sess.projection.CurrentTurnID()
+		turnID = sess.projection.currentTurnID()
 	}
 	if turnID == "" {
 		return

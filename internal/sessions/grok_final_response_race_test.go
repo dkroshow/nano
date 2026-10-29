@@ -37,7 +37,7 @@ func grokRaceSession(t *testing.T, withCore bool) (*session, *grokTerminalRecord
 	sess.hostedThreadID = "hosted"
 	sess.agentExecutions = store
 	sess.projection = newDeliveryTestProjection("grok")
-	sess.projection.SetNativeThreadID("native-thread")
+	sess.projection.setNativeThreadID("native-thread")
 	if withCore {
 		if err := sess.ensureCoreSession(); err != nil {
 			t.Fatal(err)

@@ -16,7 +16,7 @@ import (
 
 // HandleLiveStream is a file-only pane's one stream.
 func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
-	pane, err := sess.liveText.RequestPane(r)
+	pane, err := sess.liveText.requestPane(r)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -26,7 +26,7 @@ func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteHTTPError(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	// Status has one writer, this handler. It subscribes to the projection
+	// status has one writer, this handler. It subscribes to the projection
 	// before it reads the status it sends first, then sends the status again
 	// whenever a later update changes it; the loop's messages carry rows and
 	// live text only. The projection closes a subscription that falls behind,
@@ -42,7 +42,7 @@ func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 		_, err := fmt.Fprintf(w, "data: %s\n\n", raw)
 		return err == nil
 	}
-	status := sess.projection.Status()
+	status := sess.projection.status()
 	writeStatus := func() bool {
 		raw, err := json.Marshal(struct {
 			Type   string          `json:"type"`
@@ -60,15 +60,15 @@ func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-pane.DoneChannel():
+		case <-pane.doneChannel():
 			// A failed read leaves its error message to deliver.
-			for _, raw := range pane.Take() {
+			for _, raw := range pane.take() {
 				write(raw)
 			}
 			flusher.Flush()
 			return
-		case <-pane.ReadyChannel():
-			for _, raw := range pane.Take() {
+		case <-pane.readyChannel():
+			for _, raw := range pane.take() {
 				if !write(raw) {
 					return
 				}
@@ -113,7 +113,7 @@ func (sess *Session) fileConversationSnapshot(ctx context.Context, view conversa
 	if err != nil {
 		return liveProjectionSnapshot{}, err
 	}
-	status := sess.projection.Status()
+	status := sess.projection.status()
 	return liveProjectionSnapshot{Version: liveProjectionVersion, Provider: sess.provider, NativeThreadID: sess.ThreadID(),
 		Epoch: status.Epoch, Revision: status.Revision, Items: items, Turns: []liveProjectionTurn{},
 		Runtime: status.Runtime, Interactions: status.Interactions, Page: page}, nil
@@ -137,7 +137,7 @@ func (sess *Session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	pane := sess.liveText.RowsPane(view)
+	pane := sess.liveText.rowsPane(view)
 	pane.Start()
 	defer pane.Stop()
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -160,11 +160,11 @@ func (sess *Session) handleFileConversationEvents(w http.ResponseWriter, r *http
 		select {
 		case <-r.Context().Done():
 			return
-		case <-pane.DoneChannel():
+		case <-pane.doneChannel():
 			return
-		case <-pane.ReadyChannel():
+		case <-pane.readyChannel():
 			changed := false
-			for _, raw := range pane.Take() {
+			for _, raw := range pane.take() {
 				var message struct {
 					Type string `json:"type"`
 				}

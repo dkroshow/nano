@@ -1,10 +1,15 @@
 package app
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dkroshow/nano/internal/liveview"
@@ -47,16 +52,65 @@ type liveTextMessage struct {
 const liveTextWarmDelay = time.Second
 const projectionTurnUpsert = liveview.TurnUpsertOp
 
+// liveTextPane receives the real session HTTP stream. Status has its own
+// tests; this fixture queues only the row/live messages the pane applies.
 type liveTextPane struct {
-	*sessions.LiveTextStream
-	query    threadindex.TranscriptQuery
-	rowsOnly bool
-	ready    <-chan struct{}
-	done     <-chan struct{}
+	query   threadindex.TranscriptQuery
+	ready   chan struct{}
+	done    chan struct{}
+	cancel  context.CancelFunc
+	mu      sync.Mutex
+	queued  [][]byte
+	partial []byte
+	header  http.Header
 }
 
-func newLiveTextPane(q threadindex.TranscriptQuery) *liveTextPane { return &liveTextPane{query: q} }
-func (p *liveTextPane) take() [][]byte                            { return p.Take() }
+func newLiveTextPane(q threadindex.TranscriptQuery) *liveTextPane {
+	return &liveTextPane{query: q, ready: make(chan struct{}, 1), done: make(chan struct{}), header: make(http.Header)}
+}
+func (p *liveTextPane) Header() http.Header { return p.header }
+func (p *liveTextPane) WriteHeader(int)     {}
+func (p *liveTextPane) Flush()              {}
+func (p *liveTextPane) Write(data []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.partial = append(p.partial, data...)
+	for {
+		end := bytes.Index(p.partial, []byte("\n\n"))
+		if end < 0 {
+			break
+		}
+		frame := string(p.partial[:end])
+		p.partial = append([]byte(nil), p.partial[end+2:]...)
+		if raw, ok := strings.CutPrefix(frame, "data: "); ok {
+			var head struct {
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal([]byte(raw), &head); err != nil {
+				return 0, err
+			}
+			if head.Type != "status" {
+				p.queued = append(p.queued, []byte(raw))
+				select {
+				case p.ready <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
+	return len(data), nil
+}
+func (p *liveTextPane) take() [][]byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := p.queued
+	p.queued = nil
+	select {
+	case <-p.ready:
+	default:
+	}
+	return out
+}
 func (p *liveTextPane) isClosed() bool {
 	select {
 	case <-p.done:
@@ -65,34 +119,34 @@ func (p *liveTextPane) isClosed() bool {
 		return false
 	}
 }
-
-type testLiveTextLoop struct{ *sessions.LiveTextLoop }
-
-func liveTextOf(s *session) *testLiveTextLoop { return &testLiveTextLoop{s.LiveTextService()} }
-func (l *testLiveTextLoop) subscribe(p *liveTextPane) {
-	if p.rowsOnly {
-		p.LiveTextStream = l.RowsPane(liveview.Messages)
-	} else {
-		q := url.Values{"view": {p.query.View}}
-		if p.query.Limit > 0 {
-			q.Set("limit", strconv.Itoa(p.query.Limit))
-		}
-		if p.query.Before != "" {
-			q.Set("before", p.query.Before)
-		}
-		if p.query.HiddenSpecified {
-			q.Set("hide", strings.Join(p.query.HiddenCategories, ","))
-		}
-		var err error
-		p.LiveTextStream, err = l.RequestPane(httptest.NewRequest("GET", "/?"+q.Encode(), nil))
-		if err != nil {
-			panic(err)
-		}
+func (p *liveTextPane) Stop() {
+	if p.cancel != nil {
+		p.cancel()
 	}
-	p.ready, p.done = p.ReadyChannel(), p.DoneChannel()
-	p.Start()
 }
-func (l *testLiveTextLoop) unsubscribe(p *liveTextPane) { p.Stop() }
+
+type testLiveTextLoop struct{ sess *session }
+
+func liveTextOf(s *session) *testLiveTextLoop { return &testLiveTextLoop{sess: s} }
+func (l *testLiveTextLoop) subscribe(p *liveTextPane) {
+	q := url.Values{"view": {p.query.View}}
+	if p.query.Limit > 0 {
+		q.Set("limit", strconv.Itoa(p.query.Limit))
+	}
+	if p.query.Before != "" {
+		q.Set("before", p.query.Before)
+	}
+	if p.query.HiddenSpecified {
+		q.Set("hide", strings.Join(p.query.HiddenCategories, ","))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancel = cancel
+	go func() {
+		defer close(p.done)
+		l.sess.HandleLiveStream(p, httptest.NewRequest("GET", "/?"+q.Encode(), nil).WithContext(ctx))
+	}()
+}
+func (l *testLiveTextLoop) unsubscribe(p *liveTextPane) { p.Stop(); <-p.done }
 func newLiveTextLoop(s *server, sess *session) *sessions.LiveTextLoop {
 	if sess != nil {
 		s.startLiveText(sess)

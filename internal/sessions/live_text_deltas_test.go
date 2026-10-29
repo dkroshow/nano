@@ -38,7 +38,7 @@ func liveTextDeltaAgentTexts(t *testing.T, p *LiveProjection) []string {
 func runLiveTextDeltaTurn(t *testing.T, drop bool, deltas [][]byte, tail ...[]byte) *LiveProjection {
 	t.Helper()
 	p := newLiveProjection("codex", "hosted", "nano")
-	p.SetNativeThreadID("native-thread")
+	p.setNativeThreadID("native-thread")
 	p.dropLiveTextDeltas = drop
 	p.applyWire(protocol.Recv, []byte(liveTextDeltaTurnStarted), time.Now())
 	p.applyWire(protocol.Recv, []byte(liveTextDeltaItemStarted), time.Now())
@@ -117,7 +117,7 @@ func TestCodexAgentTextDeltaClassifierScope(t *testing.T) {
 	}
 
 	p := newLiveProjection("codex", "hosted", "nano")
-	p.SetNativeThreadID("native-thread")
+	p.setNativeThreadID("native-thread")
 	p.dropLiveTextDeltas = true
 	p.applyWire(protocol.Recv, []byte(liveTextDeltaTurnStarted), time.Now())
 	p.applyWire(protocol.Recv, []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"stream-turn","item":{"id":"agent-1","type":"agentMessage","text":"already here"}}}`), time.Now())
@@ -127,9 +127,9 @@ func TestCodexAgentTextDeltaClassifierScope(t *testing.T) {
 
 	claude := newLiveProjection("claude", "hosted", "nano")
 	claude.dropLiveTextDeltas = true
-	claude.SetClaudeProviderTurnID("claude-turn")
+	claude.setClaudeProviderTurnID("claude-turn")
 	claude.applyWire(protocol.Recv, []byte(`{"type":"assistant","session_id":"native","message":{"id":"msg_1","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}}`), time.Now())
-	if claude.FinalAgentItemID("claude-turn") == "" {
+	if claude.finalAgentItemID("claude-turn") == "" {
 		t.Fatal("claude projection affected by the Codex-only switch")
 	}
 }
@@ -194,7 +194,7 @@ func TestDropLiveTextDeltasKeepsRawWireAndObservers(t *testing.T) {
 	if texts := liveTextDeltaAgentTexts(t, projection); len(texts) != 1 || texts[0] != "Hello world" {
 		t.Fatalf("projection agent rows = %q", texts)
 	}
-	if got := projection.FinalAgentItemID("stream-turn"); got != "agent-1" {
+	if got := projection.finalAgentItemID("stream-turn"); got != "agent-1" {
 		t.Fatalf("turn completion named answer %q, want agent-1", got)
 	}
 
@@ -244,7 +244,7 @@ func TestQueuedCodexTextDeltasBatchAcrossMailboxWithoutCrossingControl(t *testin
 	}
 
 	want := newLiveProjection("codex", "hosted-thread")
-	want.SetNativeThreadID("native-thread")
+	want.setNativeThreadID("native-thread")
 	base := time.Now()
 	for index, frame := range frames {
 		want.applyWire(protocol.Recv, frame, base.Add(time.Duration(index)*time.Millisecond))
@@ -263,7 +263,7 @@ func TestQueuedCodexTextDeltasBatchAcrossMailboxWithoutCrossingControl(t *testin
 	awaitProviderFrame(t, f, frames[len(frames)-1])
 
 	if got, unbatched := liveTextDeltaAgentTexts(t, p), liveTextDeltaAgentTexts(t, want); !reflect.DeepEqual(got, unbatched) ||
-		p.FinalAgentItemID("stream-turn") != want.FinalAgentItemID("stream-turn") {
+		p.finalAgentItemID("stream-turn") != want.finalAgentItemID("stream-turn") {
 		t.Fatalf("batched text %q differs from unbatched %q", got, unbatched)
 	}
 	if len(receivedProviderFrames(sess)) != len(frames) {

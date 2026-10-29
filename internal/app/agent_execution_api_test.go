@@ -129,7 +129,6 @@ func TestBindingPersistFailureMarksAgentDeliveryUnknown(t *testing.T) {
 	queue.BindTransactionStore(turnStore)
 	attempts.BindTransactionStore(turnStore)
 	projection := newLiveProjection("codex", hosted.ID)
-	projection.SetNativeThreadID("codex-native")
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, CreatedAt: time.Now(), Projection: projection, AgentExecutions: store, Turns: turnStore, QueuedTurns: queue, SendAttempts: attempts}, "codex-native", "")
 	sess := fixture.session
 	fixture.codex.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "provider-turn-bind-fail"}})
@@ -1148,6 +1147,7 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	}
 	projection := newLiveProjection("claude")
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-1", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.Control(), Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_fast_start", "starting", "")
+	observer := observeProjection(t, sess)
 
 	s := testServerWithSessions(&server{
 		Registry: newSessionRegistry(), agentExecutions: executions,
@@ -1176,14 +1176,14 @@ func TestFreshClaudeTurnBindsBeforeFastNativeCompletion(t *testing.T) {
 	// finishes only on its own prompt's saved proof, which this fixture never
 	// writes, so it stays running.
 	waitForCatalogWithin(t, 5*time.Second, func() bool {
-		turns := projectionStateForTest(projection).Turns
+		turns := observer.Snapshot().Turns
 		return len(turns) == 1 && turns[0].Status == agentTurnCompleted
 	})
 	latest, _ := executions.Turn(operation.ID)
 	if latest.ProviderTurnID != "shim-turn-fast-1" || latest.NativeThreadID != "native-fast-start" || latest.Status != agentTurnRunning {
 		t.Fatalf("bound public operation = %#v", latest)
 	}
-	snapshot := projectionStateForTest(projection)
+	snapshot := observer.Snapshot()
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].ID != "shim-turn-fast-1" || snapshot.Turns[0].Status != agentTurnCompleted {
 		t.Fatalf("Claude projection turns = %#v", snapshot.Turns)
 	}
@@ -1247,6 +1247,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	}
 	projection := newLiveProjection("claude")
 	sess := configuredFixtureSession(t, sessionConfig{ID: "nano-output-first", Provider: "claude", HostedThreadID: hosted.ID, PresentationMode: presentationBackground, Projection: projection, AgentExecutions: executions, Metadata: executions.Control(), Turns: turnStore, SendAttempts: attempts, QueuedTurns: queue}, "cs_output_first", "starting", "")
+	observer := observeProjection(t, sess)
 
 	s := testServerWithSessions(&server{
 		Registry: newSessionRegistry(), agentExecutions: executions,
@@ -1288,7 +1289,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	startedDeadline := time.Now().Add(time.Second)
 	var snapshot liveProjectionSnapshot
 	for time.Now().Before(startedDeadline) {
-		snapshot = projectionStateForTest(projection)
+		snapshot = observer.Snapshot()
 		if len(snapshot.Turns) == 1 && snapshot.Turns[0].StartedAtMs != 0 {
 			break
 		}
@@ -1331,7 +1332,7 @@ func TestFreshClaudeDurableCompletionDoesNotSettleAcceptedPrompt(t *testing.T) {
 	}
 	// Claude saved turns share no id with the live turn, so a catalog change
 	// never settles it; only the live result does.
-	snapshot = projectionStateForTest(projection)
+	snapshot = observer.Snapshot()
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].ID != "shim-turn-fast-1" || snapshot.Turns[0].Status != "in_progress" {
 		t.Fatalf("a catalog change settled the live Claude turn: %#v", snapshot.Turns)
 	}

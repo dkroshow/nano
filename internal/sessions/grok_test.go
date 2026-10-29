@@ -503,7 +503,7 @@ func TestGrokPhase0WireFixtureKeepsEveryRawFrame(t *testing.T) {
 		projection:     newDeliveryTestProjection("grok"),
 		subs:           map[chan wireEvent]struct{}{},
 		lifecycleState: testLifecycleSnapshot("ready", false)}
-	sess.projection.SetNativeThreadID("parent-1")
+	sess.projection.setNativeThreadID("parent-1")
 	g := &grokSession{sess: sess, seenPromptIDs: map[string]struct{}{}}
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
 	for _, line := range lines {

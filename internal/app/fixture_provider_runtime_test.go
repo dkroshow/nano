@@ -210,6 +210,9 @@ func connectProviderRuntimeFixture(t *testing.T, sess *session, view *sessions.L
 
 func (f *providerRuntimeFixture) emit(t *testing.T, line []byte) { f.emitAt(t, line, time.Time{}, "") }
 func (f *providerRuntimeFixture) emitAt(t *testing.T, line []byte, at time.Time, turn string) {
+	f.emitDirectionAt(t, "recv", line, at, turn)
+}
+func (f *providerRuntimeFixture) emitDirectionAt(t *testing.T, dir string, line []byte, at time.Time, turn string) {
 	t.Helper()
 	if f.codex != nil {
 		f.codex.EmitRawThreadNotification(f.session.ThreadID(), line)
@@ -221,7 +224,7 @@ func (f *providerRuntimeFixture) emitAt(t *testing.T, line []byte, at time.Time,
 		f.grok.Send(frame)
 	} else {
 		f.seq++
-		params := map[string]any{"shimSessionId": "shim-1", "seq": f.seq, "dir": "recv", "line": string(line), "turnId": turn}
+		params := map[string]any{"shimSessionId": "shim-1", "seq": f.seq, "dir": dir, "line": string(line), "turnId": turn}
 		if !at.IsZero() {
 			params["ts"] = at.Format(time.RFC3339Nano)
 		}
@@ -281,6 +284,9 @@ func (f *providerRuntimeFixture) emitAndWait(t *testing.T, line []byte) {
 }
 
 func (f *providerRuntimeFixture) emitAtAndWait(t *testing.T, line []byte, at time.Time, turn string) {
+	f.emitDirectionAtAndWait(t, "recv", line, at, turn)
+}
+func (f *providerRuntimeFixture) emitDirectionAtAndWait(t *testing.T, dir string, line []byte, at time.Time, turn string) {
 	t.Helper()
 	var expected any
 	if err := json.Unmarshal(line, &expected); err != nil {
@@ -301,7 +307,7 @@ func (f *providerRuntimeFixture) emitAtAndWait(t *testing.T, line []byte, at tim
 		return n
 	}
 	before := count()
-	f.emitAt(t, line, at, turn)
+	f.emitDirectionAt(t, dir, line, at, turn)
 	waitForClaude(t, "wire frame application", func() bool { return count() > before })
 }
 
@@ -316,7 +322,7 @@ func (f *providerRuntimeFixture) activate(t *testing.T) {
 }
 func (f *providerRuntimeFixture) finishTurn(t *testing.T) {
 	if f.session.Provider() == "codex" {
-		turn := f.projection.CurrentTurnID()
+		turn := liveStatusForTest(t, f.session).Runtime.TurnID
 		f.emitAndWait(t, []byte(`{"method":"turn/completed","params":{"threadId":"`+f.session.ThreadID()+`","turn":{"id":"`+turn+`","status":"completed"}}}`))
 	} else {
 		f.emitAndWait(t, []byte(`{"type":"result","subtype":"success","is_error":false}`))

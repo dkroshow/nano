@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/protocol"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -22,13 +21,6 @@ import (
 type liveFixtureLine struct {
 	Dir string          `json:"dir"`
 	Msg json.RawMessage `json:"msg"`
-}
-
-// projectionStateForTest is the projection's native thread, turns, runtime and
-// pending questions, as one snapshot without rows.
-func projectionStateForTest(view *sessions.LiveProjection) liveProjectionSnapshot {
-	status := view.Status()
-	return liveProjectionSnapshot{Turns: view.TurnList(), Runtime: status.Runtime, Interactions: status.Interactions}
 }
 
 // savedTurnTestCatalog answers the saved-turn read with one fixed turn and
@@ -83,7 +75,6 @@ func TestCompletedProviderUserMessageDoesNotSettleThePrompt(t *testing.T) {
 	turnStore := mustBindTransactionalTurnStore(t, queue, store)
 	seedAcceptedTransactionalTurn(t, turnStore, "hosted-thread", model.ProviderCodex, "native-thread", "action-wire-confirm", "turn-1", "ship it now")
 	projection := newLiveProjection("codex", "hosted-thread")
-	projection.SetNativeThreadID("native-thread")
 	f := newProviderRuntimeFixture(t, sessionConfig{ID: "session-wire-confirm", Provider: "codex", HostedThreadID: "hosted-thread", Projection: projection, Turns: turnStore, QueuedTurns: queue, SendAttempts: store}, "native-thread", "")
 
 	started := []byte(`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"provider-user-1","type":"userMessage","content":[{"type":"text","text":"ship it now"}]}}}`)
@@ -322,7 +313,6 @@ func (c *savedHistoryCatalog) ResolveThreadReference(_ context.Context, referenc
 func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	nativeThreadID := "native-thread"
 	p := newLiveProjection("codex", "hosted-thread")
-	p.SetNativeThreadID(nativeThreadID)
 	fake := &savedHistoryCatalog{fakeTranscriptCatalog: &fakeTranscriptCatalog{response: threadindex.TranscriptResponse{
 		ThreadID: "nth-owner",
 		Items:    []threadindex.TranscriptItem{{ID: "durable-0", OwnerItemID: "retained-0", ProjectedSeq: 1, TurnID: "turn-0"}},
@@ -383,55 +373,4 @@ func durableTurnTestSession(t *testing.T, turnID string, startedAtMs int64, drop
 		f.resumeResult = map[string]any{"thread": map[string]any{"id": "native-thread", "turns": []any{map[string]any{"id": turnID, "status": "inProgress", "startedAt": startedAtMs / 1000}}}}
 	})
 	return f.session, p
-}
-
-// A saved completion ends the open turn only if the turn did no live work
-// since it or while it was read, on the attachment and native thread that
-// read it. Otherwise an old completion would mark a working thread idle and
-// release the next queued prompt early (the drain sends only to an idle
-// thread). Replayed old output is not new work. Boundary: reconcileDurableTurn
-// with the saved read standing in for the catalog.
-func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
-	started := time.Now().Add(-time.Minute)
-	saved := durableTurnEvidence{Turn: liveProjectionTurn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}
-	views := map[*session]*sessions.LiveProjection{}
-	work := func(sess *session, at time.Time) {
-		applyProjectionWire(views[sess], protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"cmd-`+fmt.Sprint(at.UnixNano())+`","type":"commandExecution","command":"ls","status":"completed"}}}`), at)
-	}
-	for _, tc := range []struct {
-		name    string
-		before  func(*session)
-		during  func(*session)
-		working bool
-	}{
-		{"live work after the saved completion", func(sess *session) { work(sess, started.Add(2*time.Second)) }, nil, true},
-		{"same-turn live work during the read", nil, func(sess *session) { work(sess, started.Add(time.Second/2)) }, true},
-		// Hiding Codex text deltas hides text, not the work they are.
-		{"same-turn hidden text delta during the read", nil, func(sess *session) {
-			applyProjectionWire(views[sess], protocol.Recv, []byte(`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer-1","delta":"still working"}}`), started.Add(time.Second/2))
-		}, true},
-		{"replayed old output during the read", nil, func(sess *session) {
-			views[sess].ApplyWireLive(protocol.Recv, []byte(`{"method":"item/completed","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer-1","type":"agentMessage","phase":"final_answer","text":"done"}}}`), time.Now(), false, true)
-		}, false},
-		{"nothing since the saved completion", nil, nil, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			sess, p := durableTurnTestSession(t, "turn-1", started.UnixMilli(), tc.name == "same-turn hidden text delta during the read")
-			views[sess] = p
-			if tc.before != nil {
-				tc.before(sess)
-			}
-			sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (durableTurnEvidence, bool) {
-				if tc.during != nil {
-					tc.during(sess)
-				}
-				return saved, turnID == saved.Turn.ID
-			}, nil, nil, nil, nil)
-			sess.ReconcileDurableTurn(context.Background())
-			working := sess.Summary().TurnActive
-			if working != tc.working {
-				t.Fatalf("working after the saved completion = %v, want %v", working, tc.working)
-			}
-		})
-	}
 }

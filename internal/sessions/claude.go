@@ -934,7 +934,7 @@ func (c *claudeSession) deliverLineLocked(tr claudeTransport, dir protocol.Direc
 			// On every transport a result's turn is the prompt it names, never
 			// a frame tag or the prompt last sent.
 			id, named := c.sess.claudeAnsweredTurn(line)
-			c.sess.projection.SetClaudeResultTurnID(id)
+			c.sess.projection.setClaudeResultTurnID(id)
 			native := c.sess.ThreadID()
 			if c.noteAnswered(line) && !named && c.unnamedLoggedFor != native {
 				c.unnamedLoggedFor = native
@@ -1469,7 +1469,7 @@ func (c *claudeSession) sendTurnWithEventID(text, eventID string, contexts ...co
 	}
 	turnID := ""
 	if c.sess.projection != nil {
-		turnID = c.sess.projection.CurrentTurnID()
+		turnID = c.sess.projection.currentTurnID()
 	}
 	c.releaseTurnIngressLocked()
 	c.turnIngressMu.Unlock()

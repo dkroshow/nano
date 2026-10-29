@@ -2,9 +2,12 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"strings"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/sessions"
 )
 
 func TestAsyncTurnStoreFailureReachesTheThreadDiagnostics(t *testing.T) {
@@ -47,7 +50,19 @@ func TestLiveTextDeltasEnvironmentSwitch(t *testing.T) {
 		t.Fatal("NANO_LIVE_TEXT_DELTAS=off not honored")
 	}
 	s := &server{dropLiveTextDeltas: liveTextDeltasDisabled()}
-	if !s.newSessionProjection("codex", "hosted").DropsLiveTextDeltas() {
-		t.Fatal("server setting did not reach the session projection")
+	p := s.newSessionProjection("codex", "hosted")
+	runtime := newProviderRuntimeFixture(t, sessionConfig{ID: "delta-switch", Provider: "codex", HostedThreadID: "hosted", Projection: p}, "native-thread", "")
+	runtime.session.AttachLiveText(sessions.NewLiveTextLoop(sessions.LiveTextSources{}, runtime.session))
+	for _, line := range []string{
+		`{"method":"turn/started","params":{"threadId":"native-thread","turn":{"id":"turn-1"}}}`,
+		`{"method":"item/started","params":{"threadId":"native-thread","turnId":"turn-1","item":{"id":"answer","type":"agentMessage","text":""}}}`,
+		`{"method":"item/agentMessage/delta","params":{"threadId":"native-thread","turnId":"turn-1","itemId":"answer","delta":"hidden-text"}}`,
+	} {
+		runtime.emitAndWait(t, []byte(line))
+	}
+	for _, text := range runtime.session.LiveTextService().CurrentTexts(context.Background()) {
+		if strings.Contains(text, "hidden-text") {
+			t.Fatal("server setting did not reach the session projection")
+		}
 	}
 }

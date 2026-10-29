@@ -1,4 +1,4 @@
-package app
+package sessions
 
 import (
 	"encoding/json"
@@ -47,7 +47,7 @@ func BenchmarkCodexResumeConsumers(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := newLiveProjection("codex")
 		changed := make(chan struct{}, 1)
-		sess := newSession(sessionConfig{ID: "benchmark", Provider: "codex", HostedThreadID: "benchmark", Projection: p, Turns: store, QueuedTurns: queue, SendAttempts: journal, RuntimeNotify: func() {
+		sess := New(Config{ID: "benchmark", Provider: "codex", HostedThreadID: "benchmark", Projection: p, Turns: store, QueuedTurns: queue, SendAttempts: journal, RuntimeNotify: func() {
 			select {
 			case changed <- struct{}{}:
 			default:
@@ -70,7 +70,7 @@ func BenchmarkCodexResumeConsumers(b *testing.B) {
 			}
 		}
 		deadline.Stop()
-		if len(p.TurnList()) == 0 {
+		if len(p.turnList()) == 0 {
 			b.Fatal("resume skipped the real projection")
 		}
 		b.StopTimer()

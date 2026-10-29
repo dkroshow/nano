@@ -637,7 +637,7 @@ func (sess *Session) observeClaudeShimEventGated(event claudeShimEvent, gate fun
 	// applied (claudeFrameTurn). Only the acknowledgement of a live send, which
 	// has no spool sequence yet, sets it here, before its own send line.
 	if sess.projection != nil && event.Seq == 0 {
-		sess.projection.SetClaudeProviderTurnID(event.ProviderTurnID)
+		sess.projection.setClaudeProviderTurnID(event.ProviderTurnID)
 	}
 	core := sess.coreSession()
 	if core == nil {
@@ -681,7 +681,7 @@ func (sess *Session) observeClaudeShimEventGated(event claudeShimEvent, gate fun
 			return nil // a finish that names no turn finishes nothing
 		}
 		if sess.projection != nil {
-			finish.FinalMessageID = sess.projection.FinalAgentItemID(turnID)
+			finish.FinalMessageID = sess.projection.finalAgentItemID(turnID)
 		}
 		// The result line is this turn's own usage evidence. A narrowed replay
 		// has no projection turn for the prompt to key live usage by.

@@ -21,16 +21,16 @@ func (s *LiveTextStream) Start() { s.loop.subscribe(s.pane) }
 func (s *LiveTextStream) Stop() { s.loop.unsubscribe(s.pane) }
 
 // DoneChannel closes when the pane stream ends.
-func (s *LiveTextStream) DoneChannel() <-chan struct{} { return s.pane.done }
+func (s *LiveTextStream) doneChannel() <-chan struct{} { return s.pane.done }
 
 // ReadyChannel signals that pane bytes are available.
-func (s *LiveTextStream) ReadyChannel() <-chan struct{} { return s.pane.ready }
+func (s *LiveTextStream) readyChannel() <-chan struct{} { return s.pane.ready }
 
 // Take takes the pane’s pending encoded bytes.
-func (s *LiveTextStream) Take() [][]byte { return s.pane.take() }
+func (s *LiveTextStream) take() [][]byte { return s.pane.take() }
 
-// RequestPane creates a pane for the validated request parameters.
-func (l *LiveTextLoop) RequestPane(r *http.Request) (*LiveTextStream, error) {
+// requestPane creates a pane for the validated request parameters.
+func (l *LiveTextLoop) requestPane(r *http.Request) (*LiveTextStream, error) {
 	query, err := threadindex.ParseTranscriptListQuery(r)
 	if err != nil {
 		return nil, err
@@ -38,8 +38,8 @@ func (l *LiveTextLoop) RequestPane(r *http.Request) (*LiveTextStream, error) {
 	return &LiveTextStream{loop: l, pane: newLiveTextPane(query)}, nil
 }
 
-// RowsPane creates a saved-row pane for a conversation view.
-func (l *LiveTextLoop) RowsPane(view conversationView) *LiveTextStream {
+// rowsPane creates a saved-row pane for a conversation view.
+func (l *LiveTextLoop) rowsPane(view conversationView) *LiveTextStream {
 	query := threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 1}
 	if view == conversationViewFull {
 		query.View, query.HiddenSpecified = threadindex.DevThreadTranscriptView, true
