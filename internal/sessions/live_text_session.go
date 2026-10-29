@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -85,4 +86,18 @@ func (l *LiveTextLoop) conversationItems(ctx context.Context, view liveview.View
 	}
 	page := &liveview.Page{HasMoreBefore: response.Page.HasMoreBefore, NextBeforeCursor: response.Page.NextBeforeCursor, Source: "file"}
 	return items, page, response.Projection.Key, nil
+}
+
+// PublishLiveOutbox keeps the optional view notification behind its session owner.
+func (sess *Session) PublishLiveOutbox(entries ...prompts.OutboxEntry) {
+	if sess.liveText != nil {
+		sess.liveText.outboxChanged(entries...)
+	}
+}
+
+// NotifySavedTranscript notifies the live view that its saved transcript changed.
+func (sess *Session) NotifySavedTranscript() {
+	if sess.liveText != nil {
+		sess.liveText.applied()
+	}
 }

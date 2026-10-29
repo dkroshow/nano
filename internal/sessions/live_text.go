@@ -11,6 +11,7 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/diagnostics"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
@@ -588,4 +589,15 @@ func (l *LiveTextLoop) hostedID() string {
 		return ""
 	}
 	return l.sess.HostedThreadID()
+}
+
+// LiveTextSources identifies the existing saved-read and diagnostic owners.
+type LiveTextSources struct {
+	Catalog     *threadindex.Service
+	Diagnostics *diagnostics.Store
+}
+
+// NewLiveTextLoop constructs the ordered saved/live view for one attachment.
+func NewLiveTextLoop(sources LiveTextSources, sess *Session) *LiveTextLoop {
+	return &LiveTextLoop{sources: sources, sess: sess, wake: make(chan struct{}, 1)}
 }
