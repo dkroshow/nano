@@ -187,10 +187,10 @@ func connectProviderRuntimeFixture(t *testing.T, sess *session, view *sessions.L
 		if err := sess.BeginProviderSpawn(providerRequest{Provider: "grok", Mode: "resume", ThreadID: native, Cwd: t.TempDir(), GrokBin: provider.Bin(), GrokLeaderSocket: "fixture-only"}, nil, func() {}); err != nil {
 			t.Fatal(err)
 		}
-		// Give the fixture process the same setup budget as the provider handshake.
+		// Bound fixture startup separately from the provider handshake.
 		select {
 		case f.grok = <-connected:
-		case <-time.After(30 * time.Second):
+		case <-time.After(5 * time.Second):
 			t.Fatalf("Grok fixture did not connect: %+v", sess.Summary())
 		}
 	default:

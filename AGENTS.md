@@ -71,8 +71,9 @@ gofmt -l . && go vet ./... && go test -timeout 30m ./... && npm --prefix web tes
 ## Never
 
 - Never commit secrets, tokens, real session files or personal paths.
-- Never weaken, skip or delete a test to get green. A failing test is either
-  a real bug to fix or a useless test to remove, with the reason stated.
+- Never weaken or delete a test merely to get green; follow docs/principles.md
+  by fixing a flaky blocking test within an hour or skipping it unconditionally
+  at its start with the reason, keeping its name and tracking the fix.
 - Never claim tests passed when they did not run or did not pass. Report the
   exact command and result.
 - Never widen scope. Do what was asked; name anything else you noticed.
