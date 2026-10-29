@@ -10,7 +10,7 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
-// ResolveSpawn fills flag defaults and absolutizes cwd — the single place
+// resolveSpawn fills flag defaults and absolutizes cwd — the single place
 // spawn parameters get resolved, shared by Spawn and the preview
 // endpoint so the previewed JSON matches what a real spawn would send. Resume
 // intentionally avoids applying start defaults for either provider; otherwise
@@ -133,7 +133,7 @@ func (s *AttachmentCoordinator) resolveSpawn(req SpawnRequest) (SpawnRequest, er
 	return req, nil
 }
 
-// ApplyCanonicalResumeMetadata overlays the recoverable provider settings for
+// applyCanonicalResumeMetadata overlays the recoverable provider settings for
 // an already-hosted thread.  The JSON attachment remains useful for transport
 // handles (Claude argv, shim ids and replay anchors), but it must never be
 // consulted for model, effort, permission, service tier or cwd once a hosted
@@ -243,7 +243,7 @@ func (s *AttachmentCoordinator) resolveCodexResume(req SpawnRequest) (SpawnReque
 	return req, nil
 }
 
-// ResolveClaudeResume resolves a claude resume from evidence, not defaults. The
+// resolveClaudeResume resolves a claude resume from evidence, not defaults. The
 // attachment record left behind by the session being resumed carries recovery
 // handles (binary + argv). Cwd and provider settings for hosted threads come
 // only from canonical control.sqlite metadata.

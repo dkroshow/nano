@@ -127,7 +127,7 @@ func (s *AttachmentCoordinator) setAttachmentShimSession(provider, nativeThreadI
 	s.Attachments.SetShimSession(provider, nativeThreadID, shimSessionID)
 }
 
-// AttachmentFor looks up a durable attachment; nil store (feature off) simply
+// attachmentFor looks up a durable attachment; nil store (feature off) simply
 // reports none, which callers must treat as "no evidence", never as an error.
 func (s *AttachmentCoordinator) attachmentFor(provider, nativeThreadID string) (hostedstore.Attachment, bool) {
 	if s.Attachments == nil {

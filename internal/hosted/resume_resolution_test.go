@@ -339,7 +339,7 @@ func TestTransferNativeClaimConflictsWhenOwnerIsLiveAttached(t *testing.T) {
 	s := newTestAttachmentOwner(AttachmentSources{Metadata: store.Control(), Executions: store, Registry: registry})
 
 	if err := s.TransferNativeClaim(challenger.ID, "claude", revivedNativeID); !errors.Is(err, errNativeClaimLive) {
-		t.Fatalf("transfer err = %v, want hosted.ErrNativeClaimLive", err)
+		t.Fatalf("transfer err = %v, want errNativeClaimLive", err)
 	}
 	if got := activeOwner(t, store.Control(), "claude", revivedNativeID); got != owner.ID {
 		t.Fatalf("active owner moved to %q", got)

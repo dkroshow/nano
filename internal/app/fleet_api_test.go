@@ -70,7 +70,7 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			// The feed and catalog share this composed row's lifecycle label;
 			// the pane below independently observes the same session state.
 			rows := []sidebar.Thread{{Thread: fake.page.Items[0].Thread}}
-			s.sidebarOwner().ComposeCatalogThreads(context.Background(), rows, s.sidebarOwner().SidebarRuntimeSnapshot(), false)
+			fixtureOwners(s).sidebarOwner().ComposeCatalogThreads(context.Background(), rows, fixtureOwners(s).sidebarOwner().SidebarRuntimeSnapshot(), false)
 			if rows[0].Fleet == nil || rows[0].Fleet.Label != tc.want {
 				t.Fatalf("composed feed row = %+v, want %s", rows[0].Fleet, tc.want)
 			}
@@ -253,7 +253,7 @@ func TestCatalogFleetStateDegradesWithoutLosingMemoryRows(t *testing.T) {
 // running.
 func TestFleetChangesUnavailableWithoutWatcher(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	(&server{}).sidebarOwner().HandleFleetChanges(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/fleet/changes", nil))
+	fixtureOwners(&server{}).sidebarOwner().HandleFleetChanges(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/fleet/changes", nil))
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d", recorder.Code)
 	}

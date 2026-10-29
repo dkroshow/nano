@@ -203,7 +203,7 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 	if followChanges {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
-		if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
+		if err := fixtureOwners(s).sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -359,7 +359,9 @@ func TestSessionsListStatementsDoNotGrowWithSessions(t *testing.T) {
 	measure := func(extra int) (int64, int) {
 		f := newBudgetFixture(t, extra, true)
 		var body map[string]any
-		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.sidebarOwner().SessionsHandler(f.server.defaults), "/api/sessions") })
+		statements := f.countControlStatements(t, func() {
+			body = f.get(t, fixtureOwners(f.server).sidebarOwner().SessionsHandler(f.server.defaults), "/api/sessions")
+		})
 		items, _ := body["sessions"].([]any)
 		return statements, len(items)
 	}
@@ -389,7 +391,7 @@ func TestListResponsesShowEachRowsFacts(t *testing.T) {
 			lines = append(lines, kind+" "+rowFacts(row.(map[string]any), paths...))
 		}
 	}
-	sessions := f.get(t, f.server.sidebarOwner().SessionsHandler(f.server.defaults), "/api/sessions")
+	sessions := f.get(t, fixtureOwners(f.server).sidebarOwner().SessionsHandler(f.server.defaults), "/api/sessions")
 	add("session", sessions["sessions"], "id", "threadId", "status", "cwd", "model", "needsAttention",
 		"metadataUnavailable", "metadata.revision")
 	add("detached", sessions["detached"], "provider", "nativeThreadId", "hostedThreadId", "metadataUnavailable",
@@ -398,7 +400,7 @@ func TestListResponsesShowEachRowsFacts(t *testing.T) {
 	add("thread", threads["items"], "provider", "nativeId", "idClass", "kind", "name.value", "name.provenance",
 		"runtime.status", "runtime.detached", "metadata.cwd.value", "metadata.model.value", "fleet.label")
 	lines = append(lines, "thread nextCursor="+fmt.Sprint(threads["nextCursor"] != nil))
-	sidebar := f.get(t, f.server.sidebarOwner().HandleSidebarThreads, f.sidebarURL())
+	sidebar := f.get(t, fixtureOwners(f.server).sidebarOwner().HandleSidebarThreads, f.sidebarURL())
 	add("sidebar", sidebar["items"], "provider", "nativeId", "idClass", "name.value", "name.provenance", "runtime.status",
 		"sidebar.active", "sidebar.depth", "fleet.label")
 	roots, _ := sidebar["roots"].([]any)

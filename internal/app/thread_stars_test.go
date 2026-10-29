@@ -37,7 +37,7 @@ func TestAttachStarredOverlayMarksMatchingRows(t *testing.T) {
 		{Thread: threadindex.Thread{ID: "nth_b", Provider: "claude", NativeID: "native-b"}},
 	}
 	for i := range threads {
-		s.sidebarOwner().StarThread(&threads[i])
+		fixtureOwners(s).sidebarOwner().StarThread(&threads[i])
 	}
 	if !threads[0].Starred || threads[1].Starred {
 		t.Fatalf("overlay = %+v", threads)
@@ -57,7 +57,7 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
+	if err := fixtureOwners(s).sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
 		t.Fatal(err)
 	}
 	body = getSidebarActive(t, s, now)

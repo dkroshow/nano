@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/config"
+	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // The real construction boundary must retain every owner opened before HTTP.
@@ -39,6 +41,15 @@ func TestConstructedServerReportsCompletedBoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := construct(cfg)
+	// A sidebar captured before the stores opened silently loses star overlays.
+	if err := fixtureSetStarred(t, app.server.threadStars, "codex", "boot-star", true); err != nil {
+		t.Fatal(err)
+	}
+	row := sidebar.Thread{Thread: threadindex.Thread{Provider: "codex", NativeID: "boot-star"}}
+	app.server.sidebarOwner().StarThread(&row)
+	if !row.Starred {
+		t.Fatal("constructed sidebar did not retain the opened star store")
+	}
 	local, remote := app.mount()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -188,7 +188,7 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
+	if err := fixtureOwners(s).sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
 		t.Fatal(err)
 	}
 	return s, ids, store
@@ -294,7 +294,7 @@ func getSidebarActive(t *testing.T, s *server, now time.Time) map[string]any {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sidebar/threads?updatedFrom="+now.Add(-30*24*time.Hour).Format(time.RFC3339), nil)
-	s.sidebarOwner().HandleSidebarThreads(rec, req)
+	fixtureOwners(s).sidebarOwner().HandleSidebarThreads(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("sidebar active status = %d body %s", rec.Code, rec.Body.String())
 	}
@@ -365,7 +365,7 @@ func TestSidebarHostedRecordsPicksTheNewerRecordAcrossTrimmedFractions(t *testin
 		t.Fatal(err)
 	}
 	s := &server{agentExecutions: store}
-	records, found := s.sidebarOwner().SidebarHostedRecords([]sidebar.Thread{{Thread: threadindex.Thread{Provider: "codex", NativeID: "native-1"}}})
+	records, found := fixtureOwners(s).sidebarOwner().SidebarHostedRecords([]sidebar.Thread{{Thread: threadindex.Thread{Provider: "codex", NativeID: "native-1"}}})
 	if !found[0] || records[0].ID != "nht_newer" {
 		t.Fatalf("sidebar record = %q (found %v), want the newer nht_newer", records[0].ID, found[0])
 	}
@@ -455,11 +455,11 @@ func materializeBootSidebar(t *testing.T, s *server, threads []sidebar.Thread, n
 	s.sidebar = nil
 	if s.attachmentsControl != nil {
 		s.attachmentsControl.Catalog = s.hostedCatalog()
-		s.attachmentsControl.Runtime = s.sidebarOwner()
+		s.attachmentsControl.Runtime = fixtureOwners(s).sidebarOwner()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
+	if err := fixtureOwners(s).sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -264,6 +264,7 @@ func construct(cfg config.Config) *application {
 		go s.historicalClaude.WarmCatalog(context.Background(), s.hostedCatalog())
 	}
 	// Owners capture complete sources once, after every store has been opened.
+	s.sidebar = newSidebarController(s)
 	s.attachmentsControl = newAttachmentCoordinator(s)
 	s.hostedControl = newHostedController(s)
 	s.agent = newAgentController(s)

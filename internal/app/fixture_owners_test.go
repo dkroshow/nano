@@ -9,6 +9,9 @@ var fixtureOwnersMu sync.Mutex
 func fixtureOwners(s *server) *server {
 	fixtureOwnersMu.Lock()
 	defer fixtureOwnersMu.Unlock()
+	if s.sidebar == nil {
+		s.sidebar = newSidebarController(s)
+	}
 	if s.attachmentsControl == nil {
 		s.attachmentsControl = newAttachmentCoordinator(s)
 	}

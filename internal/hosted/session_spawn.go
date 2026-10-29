@@ -16,7 +16,7 @@ import (
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
-// Spawn registers a session shell and hands it back as soon as the
+// spawn registers a session shell and hands it back as soon as the
 // request itself is known to be good — the provider handshake runs behind it.
 //
 // Validation stays synchronous, so a bad cwd or an already-attached thread is

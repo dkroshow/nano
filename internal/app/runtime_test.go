@@ -438,7 +438,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	}
 	// Published by a star update (already current for its own change), the
 	// re-attach still needs the sidebar rebuilt.
-	s.sidebarOwner().PublishRuntimeDelta(true, true)
+	fixtureOwners(s).sidebarOwner().PublishRuntimeDelta(true, true)
 	if reattach := <-browser; !emptyRefresh(reattach) {
 		t.Fatalf("33 re-attaches = refresh:%v rows %d sessions %d removed detached %d, want an empty refresh marker",
 			reattach.Refresh, len(reattach.Rows), len(reattach.Sessions), len(reattach.RemovedDetached))
@@ -447,7 +447,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 		id := fmt.Sprintf("s-%d", i)
 		s.RegisterSession(memorySession(t, id, "codex", fmt.Sprintf("burst-%02d", i), "ready", "/w", "gpt-5.6-sol", now))
 	}
-	s.sidebarOwner().PublishRuntimeDelta(false, false)
+	fixtureOwners(s).sidebarOwner().PublishRuntimeDelta(false, false)
 	if burst := <-browser; !emptyRefresh(burst) {
 		t.Fatalf("burst event = refresh:%v Rebuild:%v rows %d sessions %d, want an empty refresh marker", burst.Refresh, burst.Rebuild, len(burst.Rows), len(burst.Sessions))
 	}
@@ -588,7 +588,7 @@ func TestRuntimeSnapshotWaitsForTheExecutionStoreOnce(t *testing.T) {
 	}
 	<-held // time the snapshot only once the store is busy
 	started := time.Now()
-	snapshot := s.sidebarOwner().SidebarRuntimeSnapshot()
+	snapshot := fixtureOwners(s).sidebarOwner().SidebarRuntimeSnapshot()
 	took := time.Since(started)
 	close(stop)
 	writers.Wait()
@@ -597,7 +597,7 @@ func TestRuntimeSnapshotWaitsForTheExecutionStoreOnce(t *testing.T) {
 		rows[i].Provider = "codex"
 		rows[i].NativeID = fmt.Sprintf("codex-thread-%d", i)
 	}
-	s.sidebarOwner().ComposeCatalogThreads(context.Background(), rows, snapshot, true)
+	fixtureOwners(s).sidebarOwner().ComposeCatalogThreads(context.Background(), rows, snapshot, true)
 	for i, row := range rows {
 		if row.Runtime == nil || !row.Runtime.Detached {
 			t.Fatalf("snapshot row %d lost its detached overlay: %+v", i, row.Runtime)
@@ -644,7 +644,7 @@ func runtimeSnapshotForTest(t *testing.T, s *server) sidebar.RuntimeDelta {
 	}
 	ch := s.runtimeEvents.Subscribe()
 	defer s.runtimeEvents.Unsubscribe(ch)
-	s.sidebarOwner().PublishRuntimeDelta(false, false)
+	fixtureOwners(s).sidebarOwner().PublishRuntimeDelta(false, false)
 	select {
 	case delta := <-ch:
 		return delta
@@ -658,7 +658,7 @@ func runtimeSnapshotForTest(t *testing.T, s *server) sidebar.RuntimeDelta {
 func runtimeForTest(t *testing.T, s *server, provider, native string) (sidebar.RuntimeInfo, bool) {
 	t.Helper()
 	row := sidebar.Thread{Thread: threadindex.Thread{Provider: provider, NativeID: native}}
-	s.sidebarOwner().AttachRuntimeOverlay(&row)
+	fixtureOwners(s).sidebarOwner().AttachRuntimeOverlay(&row)
 	if row.Runtime == nil {
 		return sidebar.RuntimeInfo{}, false
 	}

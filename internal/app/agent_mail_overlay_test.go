@@ -147,7 +147,7 @@ func TestAgentMailCountsAndCatalogOverlay(t *testing.T) {
 	}
 
 	rows := []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_x"}, HostedThreadID: recipient.ID}, {Thread: threadindex.Thread{ID: "nth_y"}}}
-	s.sidebarOwner().AttachMailOverlay(rows)
+	fixtureOwners(s).sidebarOwner().AttachMailOverlay(rows)
 	if rows[0].Mail == nil || rows[0].Mail.Total != 3 || rows[0].Mail.Seen != 2 {
 		t.Fatalf("mail overlay = %+v", rows[0].Mail)
 	}

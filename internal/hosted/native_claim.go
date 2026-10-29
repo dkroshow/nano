@@ -34,7 +34,7 @@ func (s *AttachmentCoordinator) TransferNativeClaim(targetHostedID, provider, na
 	return control.TransferNativeClaim(targetHostedID, provider, nativeID, sessions.NativeThreadIDProvisional(provider, nativeID))
 }
 
-// ResolveResumeHostedIdentity is a read-only routing decision. An exact active
+// resolveResumeHostedIdentity is a read-only routing decision. An exact active
 // claim still wins. A conversation with no Nano history may proceed only after
 // prepareExternalResume verifies current provider-owned source evidence; the
 // actual registration remains an explicit spawn-time transaction, never a
@@ -113,7 +113,7 @@ func (s *AttachmentCoordinator) inheritResumePosture(hostedID, provider, nativeI
 	return nil
 }
 
-// RepairCanonicalNativeIdentity repairs a claim and its missing resume settings.
+// repairCanonicalNativeIdentity repairs a claim and its missing resume settings.
 func (s *AttachmentCoordinator) repairCanonicalNativeIdentity(provider, nativeID, targetHostedID string) error {
 	if s == nil || s.ControlStore() == nil {
 		return errHostedControlUnavailable

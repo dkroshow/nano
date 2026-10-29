@@ -254,7 +254,7 @@ func (s *AttachmentCoordinator) resumeSpawnLock(provider string) *sync.Mutex {
 	}
 }
 
-// ReattachWaitingHosted registers one waiting thread (starting or resting)
+// reattachWaitingHosted registers one waiting thread (starting or resting)
 // now, for a request that needs it live. Any other thread is left as it is.
 func (s *AttachmentCoordinator) reattachWaitingHosted(hostedThreadID string) {
 	if s == nil || s.Boot == nil {

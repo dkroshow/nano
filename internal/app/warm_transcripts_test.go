@@ -29,7 +29,7 @@ type warmReader struct {
 // (lines, cols, markers) ride along.
 func openWarm(t *testing.T, srv *server, set []string, extra url.Values) *warmReader {
 	t.Helper()
-	ts := httptest.NewServer(http.HandlerFunc(srv.sidebarOwner().HandleWarmTranscripts))
+	ts := httptest.NewServer(http.HandlerFunc(fixtureOwners(srv).sidebarOwner().HandleWarmTranscripts))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(func() { cancel(); ts.Close() })
 	query := url.Values{"set": {strings.Join(set, ",")}}
@@ -371,7 +371,7 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 			t.Fatalf("turn %s is not one of the window's rows' turns", turn.ID)
 		}
 	}
-	if report := h.srv.sidebarOwner().WarmReport(); len(report) == 0 || report[len(report)-1].Lines != 5 || report[len(report)-1].Cols != 20 {
+	if report := fixtureOwners(h.srv).sidebarOwner().WarmReport(); len(report) == 0 || report[len(report)-1].Lines != 5 || report[len(report)-1].Cols != 20 {
 		t.Fatalf("monitor report = %+v, want the stream's 5 x 20 window", report)
 	}
 
