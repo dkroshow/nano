@@ -27,6 +27,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
@@ -489,7 +490,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		value := now.Add(-ago).Format(time.RFC3339Nano)
 		return &value
 	}
-	threads := []catalogThread{
+	threads := []sidebar.Thread{
 		{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred-idle", UpdatedAt: updated(40 * 24 * time.Hour)}, HostedThreadID: "nht_starred-idle", Starred: true},
 		{Thread: threadindex.Thread{ID: "nth_root", Provider: "codex", NativeID: "root-idle", UpdatedAt: updated(time.Hour)}, HostedThreadID: "nht_root-idle"},
 		{Thread: threadindex.Thread{ID: "nth_child", Provider: "codex", NativeID: "child-idle", UpdatedAt: updated(time.Minute)}, HostedThreadID: "nht_child-idle"},
@@ -859,7 +860,7 @@ func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.
 	s.prepareBootReattach()
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
-	threads := []catalogThread{
+	threads := []sidebar.Thread{
 		{Thread: threadindex.Thread{ID: "nth_codex_visible", Provider: "codex", NativeID: "codex-visible", UpdatedAt: &updated}, Starred: true},
 		{Thread: threadindex.Thread{ID: "nth_claude_visible", Provider: "claude", NativeID: claudeResumeThreadID, UpdatedAt: &updated}, Starred: true},
 	}

@@ -30,7 +30,7 @@ func TestAttachStarredOverlayMarksMatchingRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &server{threadStars: store}
-	threads := []catalogThread{
+	threads := []sidebar.Thread{
 		{Thread: threadindex.Thread{ID: "nth_a", Provider: "codex", NativeID: "native-a"}},
 		{Thread: threadindex.Thread{ID: "nth_b", Provider: "claude", NativeID: "native-b"}},
 	}
@@ -63,7 +63,7 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 
 func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	store := openTestThreadStars(t)
-	catalog := &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Title: strPtr("Pinned")}}}
+	catalog := &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Title: strPtr("Pinned")}}}
 	s := &server{catalog: catalog, threadStars: store, Registry: newSessionRegistry()}
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{"starred":true}`))
@@ -72,7 +72,7 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("star status = %d body %s", rec.Code, rec.Body.String())
 	}
-	var starred catalogThread
+	var starred sidebar.Thread
 	if err := json.Unmarshal(rec.Body.Bytes(), &starred); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 	ch := hub.Subscribe()
 	t.Cleanup(func() { hub.Unsubscribe(ch) })
 	s := &server{
-		catalog:       &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
+		catalog:       &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
 		threadStars:   store,
 		runtimeEvents: hub,
 		Registry:      newSessionRegistry(),
@@ -123,7 +123,7 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 
 func TestThreadStarredEndpointRejectsMissingBody(t *testing.T) {
 	s := &server{
-		catalog:     &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
+		catalog:     &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
 		threadStars: openTestThreadStars(t),
 	}
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{}`))

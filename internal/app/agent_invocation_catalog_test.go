@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -27,7 +28,7 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	catalog := &fakeThreadCatalog{page: catalogPage{Items: []catalogThread{
+	catalog := &fakeThreadCatalog{page: catalogPage{Items: []sidebar.Thread{
 		{Thread: threadindex.Thread{ID: "nth_parent", Provider: "codex", NativeID: "native-parent", Kind: "main"}},
 		{Thread: threadindex.Thread{ID: "nth_child", Provider: "claude", NativeID: "native-child", Kind: "main"}},
 	}}}

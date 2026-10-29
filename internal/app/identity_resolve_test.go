@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -33,7 +34,7 @@ const (
 	identityNativeNew = "22222222-aaaa-4bbb-8ccc-dddddddddddd"
 )
 
-func newIdentityServer(t *testing.T, rows []catalogThread) (*server, *agentExecutionStore) {
+func newIdentityServer(t *testing.T, rows []sidebar.Thread) (*server, *agentExecutionStore) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	migrateTestControl(t, control)
@@ -85,8 +86,8 @@ func resolveIdentity(t *testing.T, s *server, ref string) (int, identityResolveR
 }
 
 func TestIdentityResolveFollowsRename(t *testing.T) {
-	row := catalogThread{Thread: threadindex.Thread{ID: "nth_renamed", Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("old name"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z")}}
-	s, store := newIdentityServer(t, []catalogThread{row})
+	row := sidebar.Thread{Thread: threadindex.Thread{ID: "nth_renamed", Provider: "codex", NativeID: identityNativeOld, Name: namedCatalog("old name"), UpdatedAt: identityStamp("2026-08-20T12:00:00Z")}}
+	s, store := newIdentityServer(t, []sidebar.Thread{row})
 	record := createIdentityHosted(t, store, "codex", identityNativeOld)
 
 	status, body, raw := resolveIdentity(t, s, "old%20name")
@@ -127,11 +128,11 @@ func TestIdentityResolveLivePendingName(t *testing.T) {
 }
 
 // fixtureIdentityCatalog retains the real name and exact-row query boundaries.
-func fixtureIdentityCatalog(t *testing.T, rows []catalogThread) *threadCatalogService {
+func fixtureIdentityCatalog(t *testing.T, rows []sidebar.Thread) *threadCatalogService {
 	service, _ := fixtureIdentityCatalogStore(t, rows)
 	return service
 }
-func fixtureIdentityCatalogStore(t *testing.T, rows []catalogThread) (*threadCatalogService, *history.Store) {
+func fixtureIdentityCatalogStore(t *testing.T, rows []sidebar.Thread) (*threadCatalogService, *history.Store) {
 	t.Helper()
 	directory := t.TempDir()
 	path := filepath.Join(directory, "catalog.sqlite")
@@ -184,5 +185,5 @@ func fixtureIdentityCatalogStore(t *testing.T, rows []catalogThread) (*threadCat
 	return service, saved
 }
 func fixtureNamedCatalog(t *testing.T, provider, native, name string) *threadCatalogService {
-	return fixtureIdentityCatalog(t, []catalogThread{{Thread: threadindex.Thread{Provider: provider, NativeID: native, Name: namedCatalog(name)}}})
+	return fixtureIdentityCatalog(t, []sidebar.Thread{{Thread: threadindex.Thread{Provider: provider, NativeID: native, Name: namedCatalog(name)}}})
 }

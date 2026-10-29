@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type externalResumeVerifyingCatalog struct {
@@ -38,7 +38,7 @@ func externalResumeCatalog(t *testing.T, provider, nativeID, cwd string) *fakeTh
 		evidence := string(history.EvidenceNativeDurable)
 		return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
 	}
-	row := catalogThread{Thread: threadindex.Thread{ID: "nth_external", Provider: provider, NativeID: nativeID, Kind: "main", Metadata: threadindex.Metadata{
+	row := sidebar.Thread{Thread: threadindex.Thread{ID: "nth_external", Provider: provider, NativeID: nativeID, Kind: "main", Metadata: threadindex.Metadata{
 		CWD: known(cwd), Model: known("gpt-external"), Effort: known("high"),
 		Priority: known("priority"), Permission: known("never"),
 	}, Source: threadindex.SourceSummary{Status: string(history.SourcePresent)}}}
@@ -49,7 +49,7 @@ func externalResumeCatalog(t *testing.T, provider, nativeID, cwd string) *fakeTh
 	}}
 	return &fakeThreadCatalog{
 		thread:  detail,
-		rescued: map[string]catalogThread{nativeID: row},
+		rescued: map[string]sidebar.Thread{nativeID: row},
 	}
 }
 
@@ -480,7 +480,7 @@ func TestExternalResumeRejectsStaleCatalogWhenCurrentSourceChanged(t *testing.T)
 func TestExternalResumeRejectsUnknownNativeIDWithoutRegistration(t *testing.T) {
 	fake := newFakeAppServer(t)
 	s := newResumeTestServer(t, fake.WSURL())
-	s.catalog = &fakeThreadCatalog{rescued: map[string]catalogThread{}}
+	s.catalog = &fakeThreadCatalog{rescued: map[string]sidebar.Thread{}}
 	rec := postExternalResume(s, "codex", "0199a213-abcd-7000-8000-unknown")
 	if rec.Code == http.StatusOK || !strings.Contains(strings.ToLower(rec.Body.String()), "not found") {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())

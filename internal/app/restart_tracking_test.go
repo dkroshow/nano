@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/lifecycle"
+	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 // A restart used to leave only a log line with its total time, so nobody could
@@ -42,7 +42,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	s.prepareBootReattach()
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
-	threads := []catalogThread{{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred", UpdatedAt: &updated}, HostedThreadID: "nht_starred", Starred: true}}
+	threads := []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred", UpdatedAt: &updated}, HostedThreadID: "nht_starred", Starred: true}}
 	s.attachRuntimeOverlayBatch(context.Background(), threads, s.sidebarRuntimeSnapshot())
 	query := sidebarDefaultQuery(now)
 	active, nodes := projectSidebar(threads, query, 1)

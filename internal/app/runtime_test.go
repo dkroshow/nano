@@ -50,11 +50,11 @@ func TestClaudeProviderExecutionEvidenceTracksNotificationStartedTurn(t *testing
 // runtime source is nil.
 func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	fake := &fakeThreadCatalog{
-		page: catalogPage{Items: []catalogThread{
+		page: catalogPage{Items: []sidebar.Thread{
 			{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:01Z")}},
 			{Thread: threadindex.Thread{ID: "nth_2", Provider: "claude", NativeID: "native-idle", Kind: "main", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		}},
-		thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"}},
+		thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"}},
 	}
 	s := &server{catalog: fake, Registry: newSessionRegistry()}
 	s.runtime = s
@@ -203,7 +203,7 @@ func TestDetachedOverlayJSON(t *testing.T) {
 	attachments := newTestStore(t)
 	attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: "native-1", Cwd: "/a", AttachedAt: "2026-07-27T10:00:00Z"})
 	s := &server{
-		catalog:     &fakeThreadCatalog{thread: catalogThread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}}},
+		catalog:     &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Kind: "main"}}},
 		attachments: attachments,
 		Registry:    newSessionRegistry(),
 	}

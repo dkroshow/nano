@@ -17,6 +17,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
+
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
@@ -24,7 +25,7 @@ import (
 
 type threadCatalog interface {
 	ListThreads(context.Context, threadindex.ListQuery) (catalogPage, error)
-	LoadThread(context.Context, string) (catalogThread, error)
+	LoadThread(context.Context, string) (sidebar.Thread, error)
 	IndexStatus(context.Context) (threadindex.IndexStatus, error)
 	RequestRefresh() bool
 }
@@ -142,7 +143,7 @@ func (s *server) listCatalogPage(ctx context.Context, query threadindex.ListQuer
 		return catalogPage{}, err
 	}
 	if page.Items == nil {
-		page.Items = []catalogThread{}
+		page.Items = []sidebar.Thread{}
 	}
 	// Runtime rows take their place in the durable list order, so pages walk
 	// one ordered stream and the cursor may point at any row. A runtime row at
@@ -193,7 +194,7 @@ func (s *server) listCatalogPage(ctx context.Context, query threadindex.ListQuer
 }
 
 // listKey is a row's place in the list order the store pages by.
-func listKey(row catalogThread) history.ThreadCursor {
+func listKey(row sidebar.Thread) history.ThreadCursor {
 	key := history.ThreadCursor{ID: row.ID}
 	if row.UpdatedAt != nil {
 		if at, err := time.Parse(time.RFC3339Nano, *row.UpdatedAt); err == nil {
@@ -236,7 +237,7 @@ const (
 	archivedIncludeFilter = string(history.ArchivedInclude)
 )
 
-func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQuery, page []catalogThread, live []sessions.Summary) []catalogThread {
+func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQuery, page []sidebar.Thread, live []sessions.Summary) []sidebar.Thread {
 	if query.Archived == archivedOnlyFilter {
 		return nil
 	}
@@ -269,7 +270,7 @@ func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQu
 	if err != nil {
 		log.Printf("catalog runtime rows for %d threads: %v", len(wanted), err)
 	}
-	var rows []catalogThread
+	var rows []sidebar.Thread
 	for _, sess := range live {
 		if query.ThreadID != "" && sess.ThreadID != query.ThreadID {
 			continue
@@ -293,8 +294,8 @@ func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQu
 // filter widened, in one read per history.MaxThreadIdentities keys. One thread
 // can sit under two roots; the first row in list order wins, as the former
 // one-row point read did.
-func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (map[attachmentKey]catalogThread, error) {
-	found := make(map[attachmentKey]catalogThread, len(keys))
+func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (map[attachmentKey]sidebar.Thread, error) {
+	found := make(map[attachmentKey]sidebar.Thread, len(keys))
 	for start := 0; start < len(keys); start += history.MaxThreadIdentities {
 		query := threadindex.ListQuery{
 			Identities:       catalogIdentities(keys[start:min(start+history.MaxThreadIdentities, len(keys))]),
@@ -333,7 +334,7 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 // a memory row is attached by construction, and a session still starting has no
 // native id for the (provider, nativeId) lookup to match. The later overlay pass
 // leaves a stamped row alone.
-func memoryThreadRow(sess sessions.Summary) catalogThread {
+func memoryThreadRow(sess sessions.Summary) sidebar.Thread {
 	createdAt := sess.CreatedAt
 	runtime := sessionRuntimeInfo(sess)
 	var name *threadindex.ThreadName
@@ -342,7 +343,7 @@ func memoryThreadRow(sess sessions.Summary) catalogThread {
 			Value: sess.Name, Provenance: "manual", Evidence: threadindex.ThreadNameEvidence,
 		}
 	}
-	return catalogThread{Thread: threadindex.Thread{ID: memoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: memoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: threadindex.Metadata{
+	return sidebar.Thread{Thread: threadindex.Thread{ID: memoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: memoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: threadindex.Metadata{
 		CWD: runtimeCatalogValue(sess.Cwd),
 		// The posture cells serve the same unified projection as the
 		// summary and /state (posture_view.go, decision 4) — which is what
@@ -379,7 +380,7 @@ func unknownCatalogValue() threadindex.Value {
 // level at a time with one hosted-record read, one assignment read and one
 // identity read per level, never per row, and returns parents in the order a
 // one-row walk finds them.
-func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQuery, page []catalogThread) []catalogThread {
+func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQuery, page []sidebar.Thread) []sidebar.Thread {
 	if query.ThreadID != "" {
 		return nil
 	}
@@ -389,7 +390,7 @@ func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQu
 			covered[attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
 		}
 	}
-	var parents []catalogThread
+	var parents []sidebar.Thread
 	for level := page; len(level) > 0; {
 		var wanted []attachmentKey
 		for _, key := range s.lineageParentKeys(level) {
@@ -417,7 +418,7 @@ func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQu
 // lineageParentKeys returns each row's supervisor, in row order. A current
 // related-thread assignment wins, then a standalone thread stops, then the
 // hosted invoker, then a subagent's provider-native parent.
-func (s *server) lineageParentKeys(rows []catalogThread) []attachmentKey {
+func (s *server) lineageParentKeys(rows []sidebar.Thread) []attachmentKey {
 	records, found := s.sidebarHostedRecords(rows)
 	var assignments map[string]*orchestrationAssignmentView
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
@@ -458,7 +459,7 @@ func (s *server) lineageParentKeys(rows []catalogThread) []attachmentKey {
 // hosted-thread identity overlay onto one catalog thread. Invocation lineage
 // is deliberately separate from provider-native parentNativeId: an ordinary
 // Codex hosted thread may have invoked a Claude or Grok hosted thread.
-func (s *server) attachRuntimeOverlay(thread *catalogThread) {
+func (s *server) attachRuntimeOverlay(thread *sidebar.Thread) {
 	if s.runtime != nil {
 		if info, ok := s.runtime.RuntimeFor(thread.Provider, thread.NativeID); ok {
 			thread.Runtime = &info
@@ -481,7 +482,7 @@ func (s *server) attachRuntimeOverlay(thread *catalogThread) {
 	s.applyHostedCatalogAssignment(thread, record.ID)
 }
 
-func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID string) {
+func (s *server) applyHostedCatalogMetadata(thread *sidebar.Thread, hostedID string) {
 	setUnknown := func() {
 		thread.Metadata.CWD = unknownCatalogValue()
 		thread.Metadata.Model = unknownCatalogValue()
@@ -513,7 +514,7 @@ func (s *server) applyHostedCatalogMetadata(thread *catalogThread, hostedID stri
 	thread.Metadata.Permission = canonical(hostedstore.PostureFieldPermissionMode)
 }
 
-func (s *server) applyHostedCatalogAssignment(thread *catalogThread, hostedID string) {
+func (s *server) applyHostedCatalogAssignment(thread *sidebar.Thread, hostedID string) {
 	thread.Assignment = nil
 	thread.AssignmentUnavailable = false
 	if s.controlMetadata == nil || s.controlMetadataErr != "" {
@@ -528,7 +529,7 @@ func (s *server) applyHostedCatalogAssignment(thread *catalogThread, hostedID st
 	thread.Assignment = assignment
 }
 
-func (s *server) catalogHostedThreadRecord(thread catalogThread) (agentSessionRecord, bool) {
+func (s *server) catalogHostedThreadRecord(thread sidebar.Thread) (agentSessionRecord, bool) {
 	if s.agentExecutions == nil {
 		return agentSessionRecord{}, false
 	}
@@ -545,7 +546,7 @@ func (s *server) catalogHostedThreadRecord(thread catalogThread) (agentSessionRe
 //
 // Best-effort by design: a failed classification
 // leaves those rows' field absent rather than failing the page.
-func (s *server) attachFleetStates(ctx context.Context, threads []catalogThread) {
+func (s *server) attachFleetStates(ctx context.Context, threads []sidebar.Thread) {
 	courts, err := s.fleetCourts(ctx, threads)
 	now := time.Now()
 	for i := range threads {
@@ -557,7 +558,7 @@ func (s *server) attachFleetStates(ctx context.Context, threads []catalogThread)
 }
 
 // fleetCourts reads the saved-file evidence of the rows Nano does not hold.
-func (s *server) fleetCourts(ctx context.Context, threads []catalogThread) (map[string]fleetCourtMessage, error) {
+func (s *server) fleetCourts(ctx context.Context, threads []sidebar.Thread) (map[string]fleetCourtMessage, error) {
 	source, ok := s.catalog.(catalog.FleetCourtSource)
 	if !ok {
 		return nil, errors.New("catalog has no fleet court read")
@@ -609,7 +610,7 @@ func (s *server) handleCatalogThreadRead(w http.ResponseWriter, r *http.Request,
 	}
 	s.attachRuntimeOverlay(&thread)
 	s.starThread(&thread)
-	mailRow := []catalogThread{thread}
+	mailRow := []sidebar.Thread{thread}
 	s.attachMailOverlay(mailRow)
 	thread.Mail = mailRow[0].Mail
 	if thread.Provider == "codex" && s.historicalCodex != nil {
@@ -821,45 +822,8 @@ func writeFleetEvent(w io.Writer, transition fleetTransition) {
 	fmt.Fprintf(w, "event: fleet\ndata: %s\n\n", payload)
 }
 
-type catalogThread struct {
-	threadindex.Thread
-	HostedThreadID        string `json:"hostedThreadId,omitempty"`
-	HostedStatus          string `json:"hostedStatus,omitempty"`
-	InvokerHostedThreadID string `json:"invokerHostedThreadId,omitempty"`
-	InvokerNativeThreadID string `json:"invokerNativeThreadId,omitempty"`
-	InvokerProvider       string `json:"invokerProvider,omitempty"`
-	SidebarPlacement      string `json:"sidebarPlacement,omitempty"`
-	Transient             bool   `json:"transient,omitempty"`
-	// Runtime is the volatile hosted-session overlay, stamped at response time
-	// from the session registry (runtime.go) — never stored in SQLite, never
-	// part of catalog_version. Absent = no nano session attached.
-	Runtime *sidebar.RuntimeInfo `json:"runtime,omitempty"`
-	// Assignment is the current canonical hosted-thread assignment. It is a
-	// read-time overlay beside hosted identity, never catalog storage.
-	Assignment            *orchestrationAssignmentView `json:"assignment,omitempty"`
-	AssignmentUnavailable bool                         `json:"assignmentUnavailable,omitempty"`
-	// CurrentResolution is the passive, current-environment provider setup. It
-	// is attached only by the detail endpoint; list responses stay fast.
-	CurrentResolution *currentResolution `json:"currentResolution,omitempty"`
-	// Fleet is the read-time fleet-state classification (fleet_status.go): whose
-	// court the ball is in and whether the loop is still alive. Computed per
-	// response from the projected messages, never stored in SQLite and never
-	// part of catalog_version. Absent when the catalog cannot classify the row.
-	Fleet *fleetState `json:"fleet,omitempty"`
-	// court is the saved-file evidence Fleet was computed from, kept so the
-	// fleet feed can re-evaluate the time bound without reading it again.
-	court fleetCourtMessage
-	// Starred is an operator pin overlay. It is stored in a sibling
-	// SQLite file, never in the catalog, and stamped at response time.
-	Starred bool `json:"starred"`
-	// Mail is the durable-inbox count overlay: total, unread, and
-	// read-but-undispositioned mail for the row's hosted thread. Read-time only,
-	// from control.sqlite; absent without a hosted identity or without mail.
-	Mail *agentMailCounts `json:"mail,omitempty"`
-}
-
 type catalogPage struct {
-	Items          []catalogThread `json:"items"`
-	NextCursor     *string         `json:"nextCursor"`
-	CatalogVersion int64           `json:"catalogVersion"`
+	Items          []sidebar.Thread `json:"items"`
+	NextCursor     *string          `json:"nextCursor"`
+	CatalogVersion int64            `json:"catalogVersion"`
 }

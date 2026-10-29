@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 type fakePassiveCodex struct {
@@ -304,7 +304,7 @@ func TestReadCodexResolutionTargetUsesSessionMetadata(t *testing.T) {
 	}
 	later := "/catalog/latest-turn"
 	sources := []threadindex.SourceDetail{{Path: path}}
-	thread := catalogThread{Thread: threadindex.Thread{Metadata: threadindex.Metadata{CWD: threadindex.Value{State: "known", Value: &later}}, Sources: &sources}}
+	thread := sidebar.Thread{Thread: threadindex.Thread{Metadata: threadindex.Metadata{CWD: threadindex.Value{State: "known", Value: &later}}, Sources: &sources}}
 	target := readCodexResolutionTarget(thread)
 	if target.CWD != "/recorded/session" || target.ModelProvider != "openai" || target.ApprovalsReviewer != "auto_review" {
 		t.Fatalf("target = %#v", target)
@@ -331,9 +331,9 @@ func TestNonProjectRootMarkersIgnoreProjectLayer(t *testing.T) {
 	}
 }
 
-func testCodexCatalogThread(cwd, model string) catalogThread {
+func testCodexCatalogThread(cwd, model string) sidebar.Thread {
 	evidence := "session_meta"
-	return catalogThread{Thread: threadindex.Thread{Provider: "codex", Metadata: threadindex.Metadata{
+	return sidebar.Thread{Thread: threadindex.Thread{Provider: "codex", Metadata: threadindex.Metadata{
 		CWD:    threadindex.Value{State: "known", Value: &cwd, Evidence: &evidence},
 		Model:  threadindex.Value{State: "known", Value: &model, Evidence: &evidence},
 		Effort: threadindex.Value{State: "unknown"},

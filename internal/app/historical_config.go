@@ -16,6 +16,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -24,22 +25,6 @@ const (
 	historicalResolutionTTL   = 15 * time.Minute
 	defaultProjectDocMaxBytes = 32 << 10
 )
-
-type resolvedValue struct {
-	State  string `json:"state"`
-	Source string `json:"source,omitempty"`
-	Value  any    `json:"value,omitempty"`
-}
-
-type currentResolution struct {
-	State           string                   `json:"state"`
-	ResolverVersion string                   `json:"resolverVersion"`
-	ResolvedAt      string                   `json:"resolvedAt,omitempty"`
-	TargetCWD       string                   `json:"targetCwd,omitempty"`
-	Stale           bool                     `json:"stale,omitempty"`
-	Values          map[string]resolvedValue `json:"values"`
-	Diagnostics     []string                 `json:"diagnostics"`
-}
 
 type resolvedInstructionSource struct {
 	Path      string `json:"path"`
@@ -141,7 +126,7 @@ func newHistoricalConfigResolver(codex codexPassiveCaller, store *history.Store,
 	}
 }
 
-func (r *historicalConfigResolver) Resolve(ctx context.Context, thread catalogThread) currentResolution {
+func (r *historicalConfigResolver) Resolve(ctx context.Context, thread sidebar.Thread) inspection.CurrentResolution {
 	target := readCodexResolutionTarget(thread)
 	cwd := target.CWD
 	if cwd == "" {
@@ -158,9 +143,9 @@ func (r *historicalConfigResolver) Resolve(ctx context.Context, thread catalogTh
 
 	snapshot, stale, err := r.workspace(ctx, cwd)
 	if err != nil {
-		return currentResolution{
+		return inspection.CurrentResolution{
 			State: "failed", ResolverVersion: historicalResolverVersion, TargetCWD: cwd,
-			Values: map[string]resolvedValue{}, Diagnostics: []string{err.Error()},
+			Values: map[string]inspection.ResolvedValue{}, Diagnostics: []string{err.Error()},
 		}
 	}
 	resolution := overlayThreadResolution(thread, snapshot, stale, target.ModelProvider, target.ApprovalsReviewer)
@@ -168,10 +153,10 @@ func (r *historicalConfigResolver) Resolve(ctx context.Context, thread catalogTh
 	return resolution
 }
 
-func unavailableResolution(cwd, diagnostic string) currentResolution {
-	return currentResolution{
+func unavailableResolution(cwd, diagnostic string) inspection.CurrentResolution {
+	return inspection.CurrentResolution{
 		State: "unavailable", ResolverVersion: historicalResolverVersion, TargetCWD: cwd,
-		Values: map[string]resolvedValue{}, Diagnostics: []string{diagnostic},
+		Values: map[string]inspection.ResolvedValue{}, Diagnostics: []string{diagnostic},
 	}
 }
 
@@ -603,17 +588,17 @@ func intConfig(config map[string]json.RawMessage, key string, fallback int) int 
 func observeGit(ctx context.Context, cwd string) resolvedGit { return inspection.ObserveGit(ctx, cwd) }
 
 func overlayThreadResolution(
-	thread catalogThread,
+	thread sidebar.Thread,
 	snapshot codexWorkspaceSnapshot,
 	stale bool,
 	recordedProvider,
 	recordedReviewer string,
-) currentResolution {
-	values := map[string]resolvedValue{
+) inspection.CurrentResolution {
+	values := map[string]inspection.ResolvedValue{
 		"cwd": knownResolved(snapshot.TargetCWD, "thread_session_meta"),
 		// config/read does not expose the app-server's runtime workspace-root
 		// materialization. Do not turn that absence into a false "none" claim.
-		"workspaceRoots":     resolvedValue{State: "unknown", Source: "offline_resolver_limit"},
+		"workspaceRoots":     inspection.ResolvedValue{State: "unknown", Source: "offline_resolver_limit"},
 		"instructionSources": knownResolved(snapshot.Instructions, "resolved_now"),
 		"skills":             knownResolved(snapshot.Skills, "resolved_now"),
 		"mcpServers":         knownResolved(snapshot.MCPServers, "current_config"),
@@ -648,7 +633,7 @@ func overlayThreadResolution(
 	}
 	values["serviceTier"] = resolvedServiceTier(snapshot.Config, model)
 	if snapshot.Git.Root == "" {
-		values["git"] = resolvedValue{State: "unsupported", Source: "resolved_now"}
+		values["git"] = inspection.ResolvedValue{State: "unsupported", Source: "resolved_now"}
 	} else {
 		values["git"] = knownResolved(snapshot.Git, "resolved_now")
 	}
@@ -657,14 +642,14 @@ func overlayThreadResolution(
 	if stale {
 		state = "stale"
 	}
-	return currentResolution{
+	return inspection.CurrentResolution{
 		State: state, ResolverVersion: historicalResolverVersion,
 		ResolvedAt: snapshot.ResolvedAt.Format(time.RFC3339Nano), TargetCWD: snapshot.TargetCWD,
 		Stale: stale, Values: values, Diagnostics: append([]string{}, snapshot.Diagnostics...),
 	}
 }
 
-func readCodexResolutionTarget(thread catalogThread) codexResolutionTarget {
+func readCodexResolutionTarget(thread sidebar.Thread) codexResolutionTarget {
 	fallback := knownCatalogValue(thread.Metadata.CWD)
 	if thread.Sources == nil {
 		return codexResolutionTarget{CWD: fallback}
@@ -760,24 +745,24 @@ func knownCatalogValue(value threadindex.Value) string {
 	return inspection.KnownMetadataValue(value.State, value.Value)
 }
 
-func preferRecorded(recorded threadindex.Value, configured json.RawMessage) resolvedValue {
+func preferRecorded(recorded threadindex.Value, configured json.RawMessage) inspection.ResolvedValue {
 	if value := knownCatalogValue(recorded); value != "" {
 		return knownResolved(value, "thread_persisted")
 	}
 	return rawResolved(configured, "current_config")
 }
 
-func knownResolved(value any, source string) resolvedValue {
-	return resolvedValue{State: "known", Source: source, Value: value}
+func knownResolved(value any, source string) inspection.ResolvedValue {
+	return inspection.ResolvedValue{State: "known", Source: source, Value: value}
 }
 
-func rawResolved(raw json.RawMessage, source string) resolvedValue {
+func rawResolved(raw json.RawMessage, source string) inspection.ResolvedValue {
 	if len(raw) == 0 || string(raw) == "null" {
-		return resolvedValue{State: "unknown", Source: source}
+		return inspection.ResolvedValue{State: "unknown", Source: source}
 	}
 	var value any
 	if json.Unmarshal(raw, &value) != nil {
-		return resolvedValue{State: "unknown", Source: source}
+		return inspection.ResolvedValue{State: "unknown", Source: source}
 	}
 	return knownResolved(value, source)
 }
@@ -816,7 +801,7 @@ func (r *historicalConfigResolver) savePersisted(ctx context.Context, snapshot c
 	})
 }
 
-func resolvedModelFor(value resolvedValue, models []resolvedModel) resolvedModel {
+func resolvedModelFor(value inspection.ResolvedValue, models []resolvedModel) resolvedModel {
 	if value.State == "known" {
 		name, _ := value.Value.(string)
 		for _, model := range models {
@@ -833,7 +818,7 @@ func resolvedModelFor(value resolvedValue, models []resolvedModel) resolvedModel
 	return resolvedModel{}
 }
 
-func resolvedServiceTier(config map[string]json.RawMessage, model resolvedModel) resolvedValue {
+func resolvedServiceTier(config map[string]json.RawMessage, model resolvedModel) inspection.ResolvedValue {
 	tier := rawResolved(config["service_tier"], "current_config")
 	if tier.State != "known" {
 		return tier
@@ -843,14 +828,14 @@ func resolvedServiceTier(config map[string]json.RawMessage, model resolvedModel)
 		return tier
 	}
 	if !configFeatureEnabled(config["features"], "fast_mode") {
-		return resolvedValue{State: "unsupported", Source: "codex-0.144-fast-mode-rule"}
+		return inspection.ResolvedValue{State: "unsupported", Source: "codex-0.144-fast-mode-rule"}
 	}
 	for _, supported := range model.ServiceTierIDs {
 		if supported == name {
 			return tier
 		}
 	}
-	return resolvedValue{State: "unsupported", Source: "codex-0.144-model-capability"}
+	return inspection.ResolvedValue{State: "unsupported", Source: "codex-0.144-model-capability"}
 }
 
 func configFeatureEnabled(raw json.RawMessage, name string) bool {

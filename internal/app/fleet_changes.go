@@ -21,13 +21,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 const (
@@ -243,7 +245,7 @@ func (w *fleetWatcher) run(ctx context.Context, sidebar *sidebarMaterializedStat
 // resync labels the materialized rows at now and publishes the labels that
 // moved. Re-evaluating every row, not only the changed ones, is what lets an
 // abandoned prompt leave working once it passes the bound.
-func (w *fleetWatcher) resync(threads []catalogThread, now time.Time) {
+func (w *fleetWatcher) resync(threads []sidebar.Thread, now time.Time) {
 	w.mu.Lock()
 	previous, seeded := w.observed, w.seeded
 	observed := make(map[string]string, len(threads))
@@ -253,13 +255,13 @@ func (w *fleetWatcher) resync(threads []catalogThread, now time.Time) {
 		id := thread.ID
 		held := nanoHolds(thread)
 		var label string
-		if prior, ok := w.read[id]; ok && !held && prior.court == thread.court {
+		if prior, ok := w.read[id]; ok && !held && prior.court == thread.Court {
 			label = prior.label
 		} else {
-			label = threadFleetState(thread, thread.court, now).Label
+			label = threadFleetState(thread, thread.Court, now).Label
 		}
-		if !held && thread.court.ItemType != fleetUserMessageType {
-			read[id] = fleetCourtRead{court: thread.court, label: label}
+		if !held && thread.Court.ItemType != fleetUserMessageType {
+			read[id] = fleetCourtRead{court: thread.Court, label: label}
 		}
 		observed[id] = label
 		if before := previous[id]; seeded && before != label {

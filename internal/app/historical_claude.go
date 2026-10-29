@@ -17,6 +17,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -82,7 +83,7 @@ func newHistoricalClaudeResolver(store *history.Store, claudeBin string) *histor
 	}
 }
 
-func (r *historicalClaudeResolver) Resolve(ctx context.Context, thread catalogThread) currentResolution {
+func (r *historicalClaudeResolver) Resolve(ctx context.Context, thread sidebar.Thread) inspection.CurrentResolution {
 	target := readClaudeResolutionTarget(thread)
 	if target.CWD == "" {
 		return unavailableClaudeResolution("", "The Claude transcript does not record a working directory.")
@@ -98,9 +99,9 @@ func (r *historicalClaudeResolver) Resolve(ctx context.Context, thread catalogTh
 
 	snapshot, stale, err := r.workspace(ctx, cwd)
 	if err != nil {
-		return currentResolution{
+		return inspection.CurrentResolution{
 			State: "failed", ResolverVersion: historicalClaudeResolverVersion, TargetCWD: cwd,
-			Values: map[string]resolvedValue{}, Diagnostics: []string{err.Error()},
+			Values: map[string]inspection.ResolvedValue{}, Diagnostics: []string{err.Error()},
 		}
 	}
 	resolution := overlayClaudeThreadResolution(thread, snapshot, stale, target)
@@ -108,10 +109,10 @@ func (r *historicalClaudeResolver) Resolve(ctx context.Context, thread catalogTh
 	return resolution
 }
 
-func unavailableClaudeResolution(cwd, diagnostic string) currentResolution {
-	return currentResolution{
+func unavailableClaudeResolution(cwd, diagnostic string) inspection.CurrentResolution {
+	return inspection.CurrentResolution{
 		State: "unavailable", ResolverVersion: historicalClaudeResolverVersion, TargetCWD: cwd,
-		Values: map[string]resolvedValue{}, Diagnostics: []string{diagnostic},
+		Values: map[string]inspection.ResolvedValue{}, Diagnostics: []string{diagnostic},
 	}
 }
 
@@ -198,12 +199,12 @@ func (r *historicalClaudeResolver) resolveWorkspace(ctx context.Context, cwd str
 }
 
 func overlayClaudeThreadResolution(
-	thread catalogThread,
+	thread sidebar.Thread,
 	snapshot claudeWorkspaceSnapshot,
 	stale bool,
 	target claudeResolutionTarget,
-) currentResolution {
-	values := map[string]resolvedValue{
+) inspection.CurrentResolution {
+	values := map[string]inspection.ResolvedValue{
 		"cwd":                knownResolved(snapshot.TargetCWD, "thread_transcript"),
 		"instructionSources": knownResolved(snapshot.Instructions, "documented_rules_now"),
 		"configSources":      knownResolved(snapshot.ConfigSources, "present_now"),
@@ -225,12 +226,12 @@ func overlayClaudeThreadResolution(
 	values["currentClaudeVersion"] = stringResolved(snapshot.CLIVersion, "claude_binary_path")
 	values["entrypoint"] = stringResolved(target.Entrypoint, "thread_transcript")
 	if snapshot.Settings.AutoMemoryEnabled == nil {
-		values["autoMemoryEnabled"] = resolvedValue{State: "unknown", Source: "file_settings_now"}
+		values["autoMemoryEnabled"] = inspection.ResolvedValue{State: "unknown", Source: "file_settings_now"}
 	} else {
 		values["autoMemoryEnabled"] = knownResolved(*snapshot.Settings.AutoMemoryEnabled, "file_settings_now")
 	}
 	if snapshot.Git.Root == "" {
-		values["git"] = resolvedValue{State: "unsupported", Source: "resolved_now"}
+		values["git"] = inspection.ResolvedValue{State: "unsupported", Source: "resolved_now"}
 	} else {
 		values["git"] = knownResolved(snapshot.Git, "resolved_now")
 	}
@@ -239,28 +240,28 @@ func overlayClaudeThreadResolution(
 	if stale {
 		state = "stale"
 	}
-	return currentResolution{
+	return inspection.CurrentResolution{
 		State: state, ResolverVersion: historicalClaudeResolverVersion,
 		ResolvedAt: snapshot.ResolvedAt.Format(time.RFC3339Nano), TargetCWD: snapshot.TargetCWD,
 		Stale: stale, Values: values, Diagnostics: append([]string{}, snapshot.Diagnostics...),
 	}
 }
 
-func catalogResolved(value threadindex.Value, source string) resolvedValue {
+func catalogResolved(value threadindex.Value, source string) inspection.ResolvedValue {
 	if known := knownCatalogValue(value); known != "" {
 		return knownResolved(known, source)
 	}
-	return resolvedValue{State: value.State, Source: source}
+	return inspection.ResolvedValue{State: value.State, Source: source}
 }
 
-func stringResolved(value, source string) resolvedValue {
+func stringResolved(value, source string) inspection.ResolvedValue {
 	if strings.TrimSpace(value) == "" {
-		return resolvedValue{State: "unknown", Source: source}
+		return inspection.ResolvedValue{State: "unknown", Source: source}
 	}
 	return knownResolved(value, source)
 }
 
-func readClaudeResolutionTarget(thread catalogThread) claudeResolutionTarget {
+func readClaudeResolutionTarget(thread sidebar.Thread) claudeResolutionTarget {
 	target := claudeResolutionTarget{
 		CWD:        knownCatalogValue(thread.Metadata.CWD),
 		Entrypoint: knownCatalogValue(thread.Metadata.Origin),

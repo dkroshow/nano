@@ -80,7 +80,7 @@ func (h *sidebarHub) notify(delta sidebarDelta) {
 type sidebarMaterializedState struct {
 	updateMu     sync.Mutex
 	mu           sync.RWMutex
-	all          []catalogThread
+	all          []sidebar.Thread
 	defaultQuery threadindex.ListQuery
 	active       sidebarActiveResponse
 	nodes        []*sidebarNode
@@ -103,10 +103,10 @@ func newSidebarMaterializedState() *sidebarMaterializedState {
 
 // rows returns a copy of every materialized thread, and whether the sidebar
 // has been built.
-func (m *sidebarMaterializedState) rows() ([]catalogThread, bool) {
+func (m *sidebarMaterializedState) rows() ([]sidebar.Thread, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return append([]catalogThread(nil), m.all...), m.ready
+	return append([]sidebar.Thread(nil), m.all...), m.ready
 }
 
 // marker is the refresh marker a stream sends on connect: the current
@@ -148,7 +148,7 @@ func (m *sidebarMaterializedState) activeSnapshot(query threadindex.ListQuery, u
 		m.mu.RUnlock()
 		return result, nil
 	}
-	all := append([]catalogThread(nil), m.all...)
+	all := append([]sidebar.Thread(nil), m.all...)
 	version := m.version
 	revision := m.revision
 	m.mu.RUnlock()
@@ -173,7 +173,7 @@ func (m *sidebarMaterializedState) historySnapshot(query threadindex.ListQuery, 
 		nodes = m.nodes
 		m.mu.RUnlock()
 	} else {
-		all := append([]catalogThread(nil), m.all...)
+		all := append([]sidebar.Thread(nil), m.all...)
 		m.mu.RUnlock()
 		_, nodes = projectSidebar(all, query, version)
 	}
@@ -225,7 +225,7 @@ func sidebarDefaultQuery(now time.Time) threadindex.ListQuery {
 	return query
 }
 
-func (s *server) composeCatalogThreads(ctx context.Context, threads []catalogThread, runtime sidebarRuntimeSnapshot, fleetReady bool) {
+func (s *server) composeCatalogThreads(ctx context.Context, threads []sidebar.Thread, runtime sidebarRuntimeSnapshot, fleetReady bool) {
 	for i := range threads {
 		threads[i].Mail = nil
 	}
@@ -237,7 +237,7 @@ func (s *server) composeCatalogThreads(ctx context.Context, threads []catalogThr
 	s.attachMailOverlay(threads)
 }
 
-func (m *sidebarMaterializedState) replace(all []catalogThread, query threadindex.ListQuery, active sidebarActiveResponse, nodes []*sidebarNode, version int64) {
+func (m *sidebarMaterializedState) replace(all []sidebar.Thread, query threadindex.ListQuery, active sidebarActiveResponse, nodes []*sidebarNode, version int64) {
 	m.mu.Lock()
 	wasReady := m.ready
 	previous := m.active
@@ -277,7 +277,7 @@ func (m *sidebarMaterializedState) applyMailDelta(delta mailDelta) {
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]catalogThread(nil), m.all...)
+	all := append([]sidebar.Thread(nil), m.all...)
 	query := m.defaultQuery
 	version := m.version
 	m.mu.RUnlock()
@@ -319,7 +319,7 @@ func (m *sidebarMaterializedState) applyRuntimeDelta(delta sidebar.RuntimeDelta)
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]catalogThread(nil), m.all...)
+	all := append([]sidebar.Thread(nil), m.all...)
 	query := m.defaultQuery
 	version := m.version
 	m.mu.RUnlock()
@@ -350,7 +350,7 @@ func (m *sidebarMaterializedState) applyStar(provider, nativeID string, starred 
 		m.mu.RUnlock()
 		return false
 	}
-	all := append([]catalogThread(nil), m.all...)
+	all := append([]sidebar.Thread(nil), m.all...)
 	query := m.defaultQuery
 	version := m.version
 	m.mu.RUnlock()
@@ -369,7 +369,7 @@ func (m *sidebarMaterializedState) applyStar(provider, nativeID string, starred 
 	return true
 }
 
-func (m *sidebarMaterializedState) applyCatalogRows(rows []catalogThread, version int64) {
+func (m *sidebarMaterializedState) applyCatalogRows(rows []sidebar.Thread, version int64) {
 	if m == nil || len(rows) == 0 {
 		return
 	}
@@ -380,7 +380,7 @@ func (m *sidebarMaterializedState) applyCatalogRows(rows []catalogThread, versio
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]catalogThread(nil), m.all...)
+	all := append([]sidebar.Thread(nil), m.all...)
 	query := m.defaultQuery
 	m.mu.RUnlock()
 	positions := make(map[string]int, len(all))
@@ -449,7 +449,7 @@ func sidebarComparableRows(rows []sidebarThread) []sidebarThread {
 	return out
 }
 
-func projectSidebar(all []catalogThread, query threadindex.ListQuery, version int64) (sidebarActiveResponse, []*sidebarNode) {
+func projectSidebar(all []sidebar.Thread, query threadindex.ListQuery, version int64) (sidebarActiveResponse, []*sidebarNode) {
 	full := indexSidebarThreads(all)
 	selected := map[string]bool{}
 	for _, node := range full.order {
@@ -467,7 +467,7 @@ func projectSidebar(all []catalogThread, query threadindex.ListQuery, version in
 			cursor = full.byID[cursor.parentID]
 		}
 	}
-	population := make([]catalogThread, 0, len(selected))
+	population := make([]sidebar.Thread, 0, len(selected))
 	for _, thread := range all {
 		if selected[thread.ID] {
 			population = append(population, thread)
@@ -496,7 +496,7 @@ func projectSidebar(all []catalogThread, query threadindex.ListQuery, version in
 	}, nodes
 }
 
-func sidebarThreadInPopulation(thread catalogThread, query threadindex.ListQuery) bool {
+func sidebarThreadInPopulation(thread sidebar.Thread, query threadindex.ListQuery) bool {
 	if thread.Transient || thread.Runtime != nil || thread.Starred {
 		return true
 	}
@@ -513,7 +513,7 @@ func sidebarThreadInPopulation(thread catalogThread, query threadindex.ListQuery
 	return true
 }
 
-func assembleSidebarThreads(threads []catalogThread) []*sidebarNode {
+func assembleSidebarThreads(threads []sidebar.Thread) []*sidebarNode {
 	index := indexSidebarThreads(threads)
 	breakSidebarCycles(index)
 	for _, node := range index.order {
@@ -768,7 +768,7 @@ func (m *sidebarMaterializedState) advanceWindow(now time.Time) {
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]catalogThread(nil), m.all...)
+	all := append([]sidebar.Thread(nil), m.all...)
 	version := m.version
 	m.mu.RUnlock()
 	query := sidebarDefaultQuery(now)

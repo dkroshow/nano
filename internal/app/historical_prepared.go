@@ -6,12 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/dkroshow/nano/internal/inspection"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 // ResolvePrepared keeps Codex thread detail a read path. It returns a
 // persisted or memory snapshot immediately and refreshes missing/stale work in
 // the background.
-func (r *historicalConfigResolver) ResolvePrepared(_ context.Context, thread catalogThread) currentResolution {
+func (r *historicalConfigResolver) ResolvePrepared(_ context.Context, thread sidebar.Thread) inspection.CurrentResolution {
 	target, targetPending := r.preparedTarget(thread)
 	cwd := target.CWD
 	if cwd == "" {
@@ -32,9 +35,9 @@ func (r *historicalConfigResolver) ResolvePrepared(_ context.Context, thread cat
 		if refreshErr != "" {
 			diagnostics = append(diagnostics, "Current setup refresh failed: "+refreshErr)
 		}
-		return currentResolution{
+		return inspection.CurrentResolution{
 			State: "resolving", ResolverVersion: historicalResolverVersion, TargetCWD: cwd,
-			Values: map[string]resolvedValue{}, Diagnostics: diagnostics,
+			Values: map[string]inspection.ResolvedValue{}, Diagnostics: diagnostics,
 		}
 	}
 	resolution := overlayThreadResolution(thread, snapshot, stale || targetPending, target.ModelProvider, target.ApprovalsReviewer)
@@ -101,7 +104,7 @@ func (r *historicalConfigResolver) refreshWorkspaceAsync(cwd string) {
 	}()
 }
 
-func (r *historicalConfigResolver) preparedTarget(thread catalogThread) (codexResolutionTarget, bool) {
+func (r *historicalConfigResolver) preparedTarget(thread sidebar.Thread) (codexResolutionTarget, bool) {
 	key := threadResolutionTargetKey(thread)
 	r.mu.Lock()
 	if target, ok := r.targets[key]; ok {
@@ -130,7 +133,7 @@ func (r *historicalConfigResolver) preparedTarget(thread catalogThread) (codexRe
 	return fallback, true
 }
 
-func threadResolutionTargetKey(thread catalogThread) string {
+func threadResolutionTargetKey(thread sidebar.Thread) string {
 	if thread.ID != "" {
 		return thread.ID
 	}
@@ -138,7 +141,7 @@ func threadResolutionTargetKey(thread catalogThread) string {
 }
 
 // ResolvePrepared is Claude's filesystem-only equivalent.
-func (r *historicalClaudeResolver) ResolvePrepared(_ context.Context, thread catalogThread) currentResolution {
+func (r *historicalClaudeResolver) ResolvePrepared(_ context.Context, thread sidebar.Thread) inspection.CurrentResolution {
 	target := readClaudeResolutionTarget(thread)
 	if target.CWD == "" {
 		return unavailableClaudeResolution("", "The Claude transcript does not record a working directory.")
@@ -158,9 +161,9 @@ func (r *historicalClaudeResolver) ResolvePrepared(_ context.Context, thread cat
 		if refreshErr != "" {
 			diagnostics = append(diagnostics, "Current setup refresh failed: "+refreshErr)
 		}
-		return currentResolution{
+		return inspection.CurrentResolution{
 			State: "resolving", ResolverVersion: historicalClaudeResolverVersion, TargetCWD: cwd,
-			Values: map[string]resolvedValue{}, Diagnostics: diagnostics,
+			Values: map[string]inspection.ResolvedValue{}, Diagnostics: diagnostics,
 		}
 	}
 	resolution := overlayClaudeThreadResolution(thread, snapshot, stale, target)

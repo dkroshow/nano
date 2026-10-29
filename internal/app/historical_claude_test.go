@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/threadindex"
-
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 func TestHistoricalClaudeResolverSharesWorkspaceAndSeparatesEvidence(t *testing.T) {
@@ -180,17 +180,17 @@ func TestHistoricalClaudeResolverDoesNotRunForMissingCWD(t *testing.T) {
 	}
 	defer store.Close()
 	resolver := newHistoricalClaudeResolver(store, "/missing/claude")
-	resolution := resolver.Resolve(context.Background(), catalogThread{Thread: threadindex.Thread{Provider: "claude"}})
+	resolution := resolver.Resolve(context.Background(), sidebar.Thread{Thread: threadindex.Thread{Provider: "claude"}})
 	if resolution.State != "unavailable" {
 		t.Fatalf("resolution state = %s", resolution.State)
 	}
 }
 
-func testClaudeCatalogThread(cwd, model, permission, sourcePath string) catalogThread {
+func testClaudeCatalogThread(cwd, model, permission, sourcePath string) sidebar.Thread {
 	evidence := "native_durable"
 	providerVersion := "2.1.207"
 	sources := []threadindex.SourceDetail{{Path: sourcePath}}
-	return catalogThread{Thread: threadindex.Thread{Provider: "claude", ProviderVersion: &providerVersion, Metadata: threadindex.Metadata{
+	return sidebar.Thread{Thread: threadindex.Thread{Provider: "claude", ProviderVersion: &providerVersion, Metadata: threadindex.Metadata{
 		CWD:        threadindex.Value{State: "known", Value: &cwd, Evidence: &evidence},
 		Model:      threadindex.Value{State: "known", Value: &model, Evidence: &evidence},
 		Effort:     threadindex.Value{State: "unknown"},

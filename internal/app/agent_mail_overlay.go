@@ -17,7 +17,6 @@
 package app
 
 import (
-	"github.com/dkroshow/nano/internal/httpapi"
 	"log"
 	"net/http"
 	"strconv"
@@ -25,6 +24,8 @@ import (
 	"sync"
 
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
+	"github.com/dkroshow/nano/internal/httpapi"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 const (
@@ -167,7 +168,7 @@ func (s *server) syncMailNotices() error {
 // attachMailOverlay stamps inbox counts on every catalog row with a hosted
 // identity — one batched query per page, read-time only, absent when a row has
 // no hosted thread or no mail.
-func (s *server) attachMailOverlay(threads []catalogThread) {
+func (s *server) attachMailOverlay(threads []sidebar.Thread) {
 	if s.mail == nil || s.mailErr != "" {
 		return
 	}

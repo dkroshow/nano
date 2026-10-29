@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 // The integration fixture decodes the public wire contract independently of
@@ -52,7 +54,7 @@ func TestNativeRecoveryRetiredAliasKeepsHistoricalRouteWhileReplacementLive(t *t
 	}
 }
 
-func newThreadReferenceServer(t *testing.T, rows []catalogThread) (*server, *agentExecutionStore) {
+func newThreadReferenceServer(t *testing.T, rows []sidebar.Thread) (*server, *agentExecutionStore) {
 	t.Helper()
 	control := newTestControlMetadata(t)
 	store, err := newControlAgentExecutionStore(control, "reference-test")

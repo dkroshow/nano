@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/catalog"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 const (
@@ -22,7 +23,7 @@ type fleetCourtMessage = catalog.FleetCourtMessage
 // Nano holds takes its session's lifecycle label; only a thread Nano does not
 // hold falls back to its saved file, where an unanswered prompt is working for
 // at most catalog.WorkingSilenceBound.
-func threadFleetState(thread catalogThread, court fleetCourtMessage, now time.Time) *fleetState {
+func threadFleetState(thread sidebar.Thread, court fleetCourtMessage, now time.Time) *fleetState {
 	if nanoHolds(thread) {
 		return liveFleetState(thread)
 	}
@@ -32,13 +33,13 @@ func threadFleetState(thread catalogThread, court fleetCourtMessage, now time.Ti
 // nanoHolds reports whether Nano's own lifecycle owns a row's turn state: a
 // hosted thread, a live attachment, or a memory row. A hosted thread with no
 // live session is idle; its saved file never overrides Nano's record.
-func nanoHolds(thread catalogThread) bool {
+func nanoHolds(thread sidebar.Thread) bool {
 	return thread.HostedThreadID != "" || thread.Transient || thread.Runtime != nil && thread.Runtime.Attached
 }
 
 // liveFleetState copies the label the session published on its runtime
 // overlay, the same value the pane reads.
-func liveFleetState(thread catalogThread) *fleetState {
+func liveFleetState(thread sidebar.Thread) *fleetState {
 	label := fleetIdle
 	if thread.Runtime != nil && thread.Runtime.Attached {
 		label = thread.Runtime.ThreadStatus

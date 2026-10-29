@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -143,7 +144,7 @@ func TestAgentMailCountsAndCatalogOverlay(t *testing.T) {
 		t.Fatalf("sender unexpectedly received disposition feedback: %+v", got)
 	}
 
-	rows := []catalogThread{{Thread: threadindex.Thread{ID: "nth_x"}, HostedThreadID: recipient.ID}, {Thread: threadindex.Thread{ID: "nth_y"}}}
+	rows := []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_x"}, HostedThreadID: recipient.ID}, {Thread: threadindex.Thread{ID: "nth_y"}}}
 	s.attachMailOverlay(rows)
 	if rows[0].Mail == nil || rows[0].Mail.Total != 3 || rows[0].Mail.Seen != 2 {
 		t.Fatalf("mail overlay = %+v", rows[0].Mail)

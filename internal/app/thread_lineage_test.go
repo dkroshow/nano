@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -18,7 +19,7 @@ import (
 // invoker, a provider-native parent) and two levels deep.
 type lineageFixture struct {
 	budget *budgetFixture
-	page   []catalogThread
+	page   []sidebar.Thread
 }
 
 func newLineageFixture(t *testing.T, extraWorkers int) *lineageFixture {

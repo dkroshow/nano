@@ -7,6 +7,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -30,11 +31,11 @@ func (s *threadCatalogService) ListThreads(ctx context.Context, q threadindex.Li
 	p, e := s.Service.ListThreads(ctx, q)
 	return catalogPage{Items: catalogRows(p.Items), NextCursor: p.NextCursor, CatalogVersion: p.CatalogVersion}, e
 }
-func (s *threadCatalogService) LoadThread(ctx context.Context, id string) (catalogThread, error) {
+func (s *threadCatalogService) LoadThread(ctx context.Context, id string) (sidebar.Thread, error) {
 	t, e := s.Service.LoadThread(ctx, id)
-	return catalogThread{Thread: t}, e
+	return sidebar.Thread{Thread: t}, e
 }
-func (s *threadCatalogService) NamedThreads(ctx context.Context, name string) ([]catalogThread, error) {
+func (s *threadCatalogService) NamedThreads(ctx context.Context, name string) ([]sidebar.Thread, error) {
 	rows, e := s.Service.NamedThreads(ctx, name)
 	return catalogRows(rows), e
 }
@@ -45,18 +46,18 @@ func (s *threadCatalogService) PublishCreationNames(ctx context.Context, records
 	}
 	return s.Service.PublishCreationNames(ctx, rows)
 }
-func catalogRows(rows []threadindex.Thread) []catalogThread {
+func catalogRows(rows []threadindex.Thread) []sidebar.Thread {
 	if rows == nil {
 		return nil
 	}
-	out := make([]catalogThread, len(rows))
+	out := make([]sidebar.Thread, len(rows))
 	for i, r := range rows {
-		out[i] = catalogThread{Thread: r}
+		out[i] = sidebar.Thread{Thread: r}
 	}
 	return out
 }
-func mapCatalogThread(t history.Thread, sources *[]threadindex.SourceDetail) catalogThread {
-	return catalogThread{Thread: threadindex.MapThread(t, sources)}
+func mapCatalogThread(t history.Thread, sources *[]threadindex.SourceDetail) sidebar.Thread {
+	return sidebar.Thread{Thread: threadindex.MapThread(t, sources)}
 }
 func writeCatalogBackendError(w http.ResponseWriter, err error) {
 	threadindex.WriteCatalogBackendError(w, err)

@@ -56,7 +56,7 @@ type sidebarBlock struct {
 }
 
 type sidebarThread struct {
-	catalogThread
+	sidebar.Thread
 	Sidebar sidebarBlock `json:"sidebar"`
 }
 
@@ -71,7 +71,7 @@ type sidebarActiveResponse struct {
 }
 
 type sidebarNode struct {
-	thread      catalogThread
+	thread      sidebar.Thread
 	independent bool
 	structural  bool
 	included    bool
@@ -188,7 +188,7 @@ func (s *server) sidebarGraphCatalog() (sidebarGraphSource, error) {
 	return source, nil
 }
 
-func (s *server) loadSidebarPopulation(ctx context.Context, query threadindex.ListQuery, runtime sidebarRuntimeSnapshot, now time.Time) (history.SidebarGraph, []catalogThread, error) {
+func (s *server) loadSidebarPopulation(ctx context.Context, query threadindex.ListQuery, runtime sidebarRuntimeSnapshot, now time.Time) (history.SidebarGraph, []sidebar.Thread, error) {
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
 		return history.SidebarGraph{}, nil, err
@@ -211,7 +211,7 @@ func (s *server) loadSidebarPopulation(ctx context.Context, query threadindex.Li
 	for _, row := range graph.Rows {
 		seen[row.Thread.ID] = true
 	}
-	var threads []catalogThread
+	var threads []sidebar.Thread
 	for {
 		threads = s.graphRowsToThreads(graph.Rows, now)
 		// Hosted identity and assignment edges are needed to discover missing
@@ -276,12 +276,12 @@ func (s *server) sidebarRescueKeys() []history.SidebarGraphKey {
 	return keys
 }
 
-func (s *server) graphRowsToThreads(rows []history.SidebarGraphRow, now time.Time) []catalogThread {
-	out := make([]catalogThread, 0, len(rows))
+func (s *server) graphRowsToThreads(rows []history.SidebarGraphRow, now time.Time) []sidebar.Thread {
+	out := make([]sidebar.Thread, 0, len(rows))
 	for _, row := range rows {
 		thread := mapCatalogThread(row.Thread, nil)
 		court := fleetCourtFromHistory(row.Court)
-		thread.court = court
+		thread.Court = court
 		thread.Fleet = court.State(thread.ID, now)
 		out = append(out, thread)
 	}
@@ -296,7 +296,7 @@ func fleetCourtFromHistory(record history.FleetCourtMessage) fleetCourtMessage {
 	return court
 }
 
-func (s *server) attachRuntimeOverlayBatch(ctx context.Context, threads []catalogThread, runtime sidebarRuntimeSnapshot) {
+func (s *server) attachRuntimeOverlayBatch(ctx context.Context, threads []sidebar.Thread, runtime sidebarRuntimeSnapshot) {
 	hostedIDs := make([]string, 0, len(threads))
 	hostedRecords, hostedRecordOK := s.sidebarHostedRecords(threads)
 	for i := range threads {
@@ -394,7 +394,7 @@ func (s *server) volatileSessionSummaries() []sessions.Summary {
 }
 
 // sidebarHostedRecords resolves one batch of catalog references through the hosted owner.
-func (s *server) sidebarHostedRecords(threads []catalogThread) ([]agentSessionRecord, []bool) {
+func (s *server) sidebarHostedRecords(threads []sidebar.Thread) ([]agentSessionRecord, []bool) {
 	refs := make([]recordReference, len(threads))
 	for i, thread := range threads {
 		refs[i] = recordReference{HostedThreadID: thread.HostedThreadID, Provider: thread.Provider, NativeThreadID: thread.NativeID}
@@ -435,7 +435,7 @@ func uniqueStrings(ids []string) []string {
 	return out
 }
 
-func (s *server) assembleSidebarGraph(ctx context.Context, graph history.SidebarGraph, threads []catalogThread, runtime sidebarRuntimeSnapshot) ([]*sidebarNode, int64) {
+func (s *server) assembleSidebarGraph(ctx context.Context, graph history.SidebarGraph, threads []sidebar.Thread, runtime sidebarRuntimeSnapshot) ([]*sidebarNode, int64) {
 	memoryRows := s.memorySidebarThreadRows(threads, runtime.summaries)
 	if len(memoryRows) > 0 {
 		s.attachRuntimeOverlayBatch(ctx, memoryRows, runtime)
@@ -449,7 +449,7 @@ func (s *server) assembleSidebarGraph(ctx context.Context, graph history.Sidebar
 // live native identity was requested explicitly, so an absent row is not
 // indexed and needs a transient memory row. This avoids one catalog point
 // query per newly starting session on every sidebar request.
-func (s *server) memorySidebarThreadRows(durable []catalogThread, live []sessions.Summary) []catalogThread {
+func (s *server) memorySidebarThreadRows(durable []sidebar.Thread, live []sessions.Summary) []sidebar.Thread {
 	if len(live) == 0 {
 		return nil
 	}
@@ -459,7 +459,7 @@ func (s *server) memorySidebarThreadRows(durable []catalogThread, live []session
 			onPage[attachmentKey{Provider: item.Provider, NativeThreadID: item.NativeID}] = true
 		}
 	}
-	rows := make([]catalogThread, 0)
+	rows := make([]sidebar.Thread, 0)
 	for _, sess := range live {
 		if sess.ThreadID != "" && onPage[attachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}] {
 			continue
@@ -469,8 +469,8 @@ func (s *server) memorySidebarThreadRows(durable []catalogThread, live []session
 	return rows
 }
 
-func (s *server) missingSidebarParents(threads []catalogThread) []history.SidebarGraphKey {
-	index := map[string]catalogThread{}
+func (s *server) missingSidebarParents(threads []sidebar.Thread) []history.SidebarGraphKey {
+	index := map[string]sidebar.Thread{}
 	for _, thread := range threads {
 		for _, key := range sidebarIdentityKeys(thread) {
 			index[key] = thread
@@ -510,7 +510,7 @@ type sidebarIndex struct {
 	order []*sidebarNode
 }
 
-func indexSidebarThreads(threads []catalogThread) *sidebarIndex {
+func indexSidebarThreads(threads []sidebar.Thread) *sidebarIndex {
 	index := &sidebarIndex{byID: map[string]*sidebarNode{}, byKey: map[string]*sidebarNode{}, order: make([]*sidebarNode, 0, len(threads))}
 	for _, thread := range threads {
 		if _, ok := index.byID[thread.ID]; ok {
@@ -531,7 +531,7 @@ func indexSidebarThreads(threads []catalogThread) *sidebarIndex {
 	return index
 }
 
-func sidebarIdentityKeys(thread catalogThread) []string {
+func sidebarIdentityKeys(thread sidebar.Thread) []string {
 	keys := []string{thread.ID}
 	if thread.HostedThreadID != "" {
 		keys = append(keys, "hosted:"+thread.HostedThreadID)
@@ -542,7 +542,7 @@ func sidebarIdentityKeys(thread catalogThread) []string {
 	return keys
 }
 
-func sidebarParentKeys(thread catalogThread) []string {
+func sidebarParentKeys(thread sidebar.Thread) []string {
 	keys := []string{}
 	push := func(key string) {
 		if key != "" {
@@ -587,7 +587,7 @@ func parseSidebarKey(key string) (provider, native, hosted string) {
 	return provider, native, ""
 }
 
-func resolveSidebarParent(thread catalogThread, index *sidebarIndex) *sidebarNode {
+func resolveSidebarParent(thread sidebar.Thread, index *sidebarIndex) *sidebarNode {
 	for _, key := range sidebarParentKeys(thread) {
 		if node := index.byKey[key]; node != nil {
 			return node
@@ -743,7 +743,7 @@ func findSidebarNode(nodes []*sidebarNode, ref string) *sidebarNode {
 	return nil
 }
 
-func sidebarIndependentlyActive(thread catalogThread) bool {
+func sidebarIndependentlyActive(thread sidebar.Thread) bool {
 	if thread.Transient {
 		return true
 	}
@@ -773,7 +773,7 @@ func sidebarIndependentlyActive(thread catalogThread) bool {
 	return false
 }
 
-func resolveThreadRoleCatalog(thread catalogThread) string {
+func resolveThreadRoleCatalog(thread sidebar.Thread) string {
 	if thread.AssignmentUnavailable {
 		return ""
 	}
@@ -805,7 +805,7 @@ func sidebarThreadFromNode(node *sidebarNode) sidebarThread {
 	}
 	thread := node.thread
 	return sidebarThread{
-		catalogThread: thread,
+		Thread: thread,
 		Sidebar: sidebarBlock{
 			ParentID: parent, RootID: node.rootID, AncestorIDs: ancestors, ChildrenIDs: children,
 			Depth: node.depth, Active: node.independent && node.included, Structural: node.structural,
@@ -815,7 +815,7 @@ func sidebarThreadFromNode(node *sidebarNode) sidebarThread {
 	}
 }
 
-func sidebarSortPrimitives(thread catalogThread) sidebarSort {
+func sidebarSortPrimitives(thread sidebar.Thread) sidebarSort {
 	title := strings.ToLower(sidebarTitle(thread))
 	project := ""
 	if thread.Metadata.CWD.State == string(history.MetadataKnown) && thread.Metadata.CWD.Value != nil {
@@ -828,7 +828,7 @@ func sidebarSortPrimitives(thread catalogThread) sidebarSort {
 	}
 }
 
-func sidebarTitle(thread catalogThread) string {
+func sidebarTitle(thread sidebar.Thread) string {
 	if thread.Name != nil && thread.Name.Value != "" {
 		return thread.Name.Value
 	}
@@ -841,7 +841,7 @@ func sidebarTitle(thread catalogThread) string {
 	return ""
 }
 
-func sidebarLivenessRank(thread catalogThread) int {
+func sidebarLivenessRank(thread sidebar.Thread) int {
 	if sidebarSelfWork(thread) {
 		return 0
 	}
@@ -854,7 +854,7 @@ func sidebarLivenessRank(thread catalogThread) int {
 	return 3
 }
 
-func sidebarSelfWork(thread catalogThread) bool {
+func sidebarSelfWork(thread sidebar.Thread) bool {
 	return thread.Fleet != nil && thread.Fleet.Label == fleetWorking
 }
 
@@ -880,7 +880,7 @@ func parseCatalogTimePtr(value *string) *time.Time {
 	return &parsed
 }
 
-func sidebarUpdatedAfter(a, b catalogThread) bool {
+func sidebarUpdatedAfter(a, b sidebar.Thread) bool {
 	ta := parseCatalogTimePtr(a.UpdatedAt)
 	tb := parseCatalogTimePtr(b.UpdatedAt)
 	switch {

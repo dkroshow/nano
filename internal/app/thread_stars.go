@@ -13,14 +13,14 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-func (s *server) starThread(thread *catalogThread) {
+func (s *server) starThread(thread *sidebar.Thread) {
 	if s == nil || s.threadStars == nil || thread == nil {
 		return
 	}
 	thread.Starred = s.threadStars.IsStarred(thread.Provider, thread.NativeID)
 }
 
-func (s *server) attachStarredOverlay(threads []catalogThread) {
+func (s *server) attachStarredOverlay(threads []sidebar.Thread) {
 	for i := range threads {
 		s.starThread(&threads[i])
 	}
