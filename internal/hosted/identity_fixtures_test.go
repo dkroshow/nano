@@ -49,6 +49,15 @@ func newIdentityFixture(t *testing.T, rows []catalogIdentity) (*IdentityService,
 		t.Fatal(err)
 	}
 	t.Cleanup(catalog.Close)
+	// Startup writes ready asynchronously. Wait for that write before a test
+	// injects another index state, or startup can overwrite its scanning state.
+	waitForOwnerCatalog(t, func() bool {
+		status, err := saved.IndexStatus(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(status.Roots) == 1 && status.Roots[0].State == history.IndexReady
+	})
 	db, err := sql.Open("sqlite", statedb.URI(path, "rw"))
 	if err != nil {
 		t.Fatal(err)

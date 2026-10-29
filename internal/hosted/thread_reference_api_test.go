@@ -135,6 +135,9 @@ func setIdentityIndexState(t *testing.T, saved *history.Store, state history.Ind
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(roots) == 0 {
+		t.Fatal("identity fixture has no registered catalog roots")
+	}
 	for _, root := range roots {
 		if err := saved.SetIndexState(context.Background(), root.ID, state, nil); err != nil {
 			t.Fatal(err)
