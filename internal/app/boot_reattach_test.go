@@ -1202,7 +1202,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	waitForSessionStatus(t, server, restarted.ID(), "ready")
 	callbackDone := make(chan struct{})
 	service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
-		server.confirmDurableThread(ctx, change)
+		server.attachmentCoordinator().ConfirmDurableThread(ctx, change)
 		close(callbackDone)
 	})
 	select {
@@ -1517,7 +1517,7 @@ func (c *feedSubscriptionClient) SubscribeCompletedTurns(_ context.Context, requ
 	c.mu.Unlock()
 	recorder := httptest.NewRecorder()
 	target := "/api/v1/hosted-threads/" + request.ThreadRef + "/completed-turns?after=" + url.QueryEscape(request.Cursor) + "&limit=" + strconv.Itoa(max(request.Limit, 1))
-	c.s.handleCompletedTurns(recorder, httptest.NewRequest(http.MethodGet, target, nil), request.ThreadRef)
+	c.s.attachmentCoordinator().CompletedFeed().HandleCompletedTurns(recorder, httptest.NewRequest(http.MethodGet, target, nil), request.ThreadRef)
 	var page interact.CompletedTurnPage
 	if recorder.Code != http.StatusOK {
 		return page, fmt.Errorf("completed-turn feed = %d %s", recorder.Code, recorder.Body.String())

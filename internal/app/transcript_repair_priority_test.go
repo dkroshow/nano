@@ -21,13 +21,13 @@ func TestTranscriptRepairPriorityUsesFreshVisibleValidation(t *testing.T) {
 	server := testServerWithSessions(&server{transcriptValidations: store, Registry: newSessionRegistry()}, map[string]*session{
 		"attached": newFixtureSession(sessionConfig{ID: "attached", Provider: "codex"}, "native-attached"),
 	})
-	if got := server.transcriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-open"}); got != 0 {
+	if got := server.attachmentCoordinator().TranscriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-open"}); got != 0 {
 		t.Fatalf("open priority=%d", got)
 	}
-	if got := server.transcriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-attached"}); got != 1 {
+	if got := server.attachmentCoordinator().TranscriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-attached"}); got != 1 {
 		t.Fatalf("attached priority=%d", got)
 	}
-	if got := server.transcriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-other"}); got != 2 {
+	if got := server.attachmentCoordinator().TranscriptRepairPriority(history.TranscriptParserBackfillCandidate{Provider: history.ProviderCodex, NativeThreadID: "native-other"}); got != 2 {
 		t.Fatalf("ordinary priority=%d", got)
 	}
 }

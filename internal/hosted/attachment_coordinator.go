@@ -13,6 +13,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
@@ -22,6 +23,7 @@ import (
 // AttachmentSources supplies the concrete owners used to register attachments.
 // SweepSubscriptions publishes completion changes to the subscription owner.
 type AttachmentSources struct {
+	Validations                   *observability.ValidationStore
 	Defaults                      config.SessionDefaults
 	Codex                         *sessions.CodexDaemon
 	SpoolDir                      string

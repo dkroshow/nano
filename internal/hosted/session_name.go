@@ -1,4 +1,4 @@
-package app
+package hosted
 
 import (
 	"encoding/json"
@@ -13,10 +13,10 @@ import (
 // handleSessionName renames a live session before or after its native thread
 // is indexed. A fresh Claude session has no native id until its first turn, so
 // its validated name remains pending until applyPendingName can persist it.
-func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
+// HandleSessionName renames a live or provisional attachment through the session owner.
+func (s *AttachmentCoordinator) HandleSessionName(w http.ResponseWriter, r *http.Request, sess *sessions.Session, namer threadindex.Namer) {
 	w.Header().Set("Cache-Control", "private, no-store")
-	namer, ok := s.catalog.(threadindex.Namer)
-	if s.catalog == nil || !ok {
+	if namer == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
 	}
@@ -39,7 +39,7 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// exactly this value when the provider announces its identity.
 	provider, nativeID, staged := sess.StageNameBeforeBinding(name)
 	if staged {
-		s.attachmentCoordinator().NotifyRuntimeRefresh()
+		s.NotifyRuntimeRefresh()
 		httpapi.WriteJSON(w, sess.Summary())
 		return
 	}
@@ -53,12 +53,12 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 	// Nano restart in this window keeps the rename. captureInit updates threadID
 	// under stateMu before it consumes pendingName, so an unchanged threadID
 	// proves the staged value will still be picked up.
-	if rec, ok := s.attachmentCoordinator().AttachmentFor(provider, nativeID); ok && rec.Provisional() {
+	if rec, ok := s.AttachmentFor(provider, nativeID); ok && rec.Provisional() {
 		var staged bool
 		nativeID, staged = sess.StageProvisionalName(nativeID, name)
 		if staged {
-			s.attachmentCoordinator().SetAttachmentPendingName(provider, nativeID, name)
-			s.attachmentCoordinator().NotifyRuntimeRefresh()
+			s.SetAttachmentPendingName(provider, nativeID, name)
+			s.NotifyRuntimeRefresh()
 			httpapi.WriteJSON(w, sess.Summary())
 			return
 		}
@@ -70,6 +70,6 @@ func (s *server) handleSessionName(w http.ResponseWriter, r *http.Request, sess 
 		return
 	}
 	sess.SetDisplayName(name)
-	s.attachmentCoordinator().NotifyRuntimeRefresh()
+	s.NotifyRuntimeRefresh()
 	httpapi.WriteJSON(w, sess.Summary())
 }

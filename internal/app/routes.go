@@ -33,7 +33,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/healthz", "health.read", s.handleHealth},
 		{http.MethodGet, "/api/sessions", "sessions.list", s.handleSessionsList},
 		{http.MethodPost, "/api/sessions", "sessions.create", s.hostedController().HandleLegacyCreate},
-		{http.MethodPost, "/api/sessions/preview", "sessions.preview", s.handleSpawnPreview},
+		{http.MethodPost, "/api/sessions/preview", "sessions.preview", s.attachmentCoordinator().HandleSpawnPreview},
 		{http.MethodDelete, "/api/sessions/{sessionId}", "sessions.close", sessionRoute(s.hostedController().HandleLegacyClose)},
 		{http.MethodGet, "/api/sessions/{sessionId}/events", "sessions.events.stream", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleEvents(w, r) })},
 		{http.MethodGet, "/api/sessions/{sessionId}/events/page", "sessions.events.page", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
@@ -43,10 +43,14 @@ func applicationRoutes(s *server) []applicationRoute {
 			value.HandleConversation(w, r)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/history", "sessions.conversation.history", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			s.handleConversationHistory(w, r, value)
+			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
+				index.HandleConversationHistory(w, r, sess.ThreadID())
+			}(w, r, value)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/transcript", "sessions.conversation.transcript", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			s.handleConversationHistory(w, r, value)
+			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
+				index.HandleConversationHistory(w, r, sess.ThreadID())
+			}(w, r, value)
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/conversation/events", "sessions.conversation.events", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleConversationEvents(w, r)
@@ -69,7 +73,10 @@ func applicationRoutes(s *server) []applicationRoute {
 		})},
 		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleSkills(w, r) })},
 		{http.MethodPut, "/api/sessions/{sessionId}/name", "sessions.name.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			s.handleSessionName(w, r, value)
+			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
+				namer, _ := s.catalog.(threadindex.Namer)
+				s.attachmentCoordinator().HandleSessionName(w, r, sess, namer)
+			}(w, r, value)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/turn", "sessions.turn.submit", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleTurn(w, r) })},
 		{http.MethodGet, "/api/sessions/{sessionId}/turn-delivery", "sessions.turnDelivery.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
@@ -94,13 +101,13 @@ func applicationRoutes(s *server) []applicationRoute {
 			value.HandleInterrupt(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/transcript-repair", "sessions.transcript.repair", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			s.handleTranscriptRepair(w, r, value)
+			value.HandleTranscriptRepair(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/interactions/{requestId}", "sessions.interactions.answer", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleInteraction(w, r, r.PathValue("requestId"))
 		})},
-		{http.MethodGet, "/api/codex/models", "models.codex.list", s.handleCodexModels},
-		{http.MethodGet, "/api/grok/models", "models.grok.list", s.handleGrokModels},
+		{http.MethodGet, "/api/codex/models", "models.codex.list", s.attachmentCoordinator().HandleCodexModels},
+		{http.MethodGet, "/api/grok/models", "models.grok.list", s.attachmentCoordinator().HandleGrokModels},
 		{http.MethodDelete, "/api/attachments/{nativeThreadId}", "attachments.forget", s.hostedController().HandleAttachmentScoped},
 		{http.MethodGet, "/api/v1/build", "build.read", handleBuildInfo},
 		{http.MethodGet, "/api/v1/connection-test", "connection.test", httpapi.HandleConnectionTest},
@@ -173,7 +180,9 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/threads/{threadId}/transcript", "threads.transcript", func(w http.ResponseWriter, r *http.Request) {
 			index.HandleThreadTranscript(w, r, r.PathValue("threadId"))
 		}},
-		{http.MethodGet, "/api/v1/threads/{threadId}/messages", "threads.messages", func(w http.ResponseWriter, r *http.Request) { s.handleThreadMessages(w, r, r.PathValue("threadId")) }},
+		{http.MethodGet, "/api/v1/threads/{threadId}/messages", "threads.messages", func(w http.ResponseWriter, r *http.Request) {
+			s.catalogViews().HandleMessages(w, r, r.PathValue("threadId"))
+		}},
 		{http.MethodPut, "/api/v1/threads/{threadId}/starred", "threads.starred", func(w http.ResponseWriter, r *http.Request) {
 			s.sidebarOwner().HandleThreadStarred(w, r, r.PathValue("threadId"))
 		}},
@@ -232,7 +241,7 @@ func hostedThreadRoutes(s *server, prefix string) []applicationRoute {
 			s.hostedController().HandleTurnSubmit(w, r, record.ID)
 		})},
 		{http.MethodGet, prefix + "/{threadRef}/completed-turns", "hostedThreads.completedTurns", h(func(w http.ResponseWriter, r *http.Request, record threads.SessionRecord) {
-			s.handleCompletedTurns(w, r, record.ID)
+			s.attachmentCoordinator().CompletedFeed().HandleCompletedTurns(w, r, record.ID)
 		})},
 		{http.MethodGet, prefix + "/{threadRef}/conversation", "hostedThreads.conversation", h(s.hostedController().HandleHostedThreadConversation)},
 		{http.MethodGet, prefix + "/{threadRef}/conversation/events", "hostedThreads.conversation.events", h(s.hostedController().HandleHostedThreadConversationEvents)},

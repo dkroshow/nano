@@ -192,7 +192,7 @@ func TestExternalResumePreviewIsReadOnly(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"provider":"codex","mode":"resume","threadId":"` + nativeID + `"}`
-	s.handleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(body)))
+	s.attachmentCoordinator().HandleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(body)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, body = %s", rec.Code, rec.Body.String())
 	}

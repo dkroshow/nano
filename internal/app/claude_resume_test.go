@@ -319,7 +319,7 @@ func TestClaudeHistoricalHostedResumePreviewRebuildsTransportBaseline(t *testing
 	s, _ := claudeResumeServer(t, "")
 	hostedID := seedHistoricalHostedClaudeWithoutAttachment(t, s)
 	rec := httptest.NewRecorder()
-	s.handleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(claudeResumeThreadID))))
+	s.attachmentCoordinator().HandleSpawnPreview(rec, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(claudeResumeThreadID))))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -811,7 +811,7 @@ func TestClaudeResumeAdoptsTheSpoolProvenNativeOfAProvisionalThread(t *testing.T
 					t.Fatal(err)
 				}
 				preview := httptest.NewRecorder()
-				s.handleSpawnPreview(preview, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(handle))))
+				s.attachmentCoordinator().HandleSpawnPreview(preview, httptest.NewRequest(http.MethodPost, "/api/sessions/preview", strings.NewReader(resumeBody(handle))))
 				after, err := os.ReadFile(storePath)
 				if err != nil {
 					t.Fatal(err)

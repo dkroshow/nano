@@ -4,6 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/dkroshow/nano/internal/catalog"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/historical"
@@ -14,23 +22,18 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"github.com/dkroshow/nano/internal/threads"
-	"io"
-	"log"
-	"net/http"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 )
 
 // CatalogViews owns full-list and per-thread visible projections and their event stream.
 type CatalogViews struct {
-	Catalog          CatalogReader
-	Runtime          *Controller
-	HistoricalCodex  *historical.CodexResolver
-	HistoricalClaude *historical.ClaudeResolver
-	MailEvents       *featuremail.Hub
-	Audits           *observability.AuditHub
+	NativeID          func(string) (string, bool)
+	IsHostedReference func(string) bool
+	Catalog           CatalogReader
+	Runtime           *Controller
+	HistoricalCodex   *historical.CodexResolver
+	HistoricalClaude  *historical.ClaudeResolver
+	MailEvents        *featuremail.Hub
+	Audits            *observability.AuditHub
 }
 
 // CatalogReader reads saved rows before the visible projection is assembled.

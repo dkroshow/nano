@@ -67,7 +67,7 @@ func TestLiveProjectionCatalogChangeResolvesNativeSessionIdentity(t *testing.T) 
 
 	// Transcript notifications use the catalog's nth_ identity, while hosted
 	// sessions retain the provider-native thread identity.
-	s.confirmDurableThread(context.Background(), threadindex.TranscriptChange{
+	s.attachmentCoordinator().ConfirmDurableThread(context.Background(), threadindex.TranscriptChange{
 		ThreadID: "nth_1", Provider: "codex", NativeThreadID: "native-thread",
 	})
 
@@ -166,7 +166,7 @@ func TestTranscriptChangeParserRecoveryLoadKeepsControlPromptAndIdempotent(t *te
 
 	service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 		callbacks.Add(1)
-		server.confirmDurableThread(ctx, change)
+		server.attachmentCoordinator().ConfirmDurableThread(ctx, change)
 	})
 	for worker := 0; worker < transcriptChangeWorkerCount; worker++ {
 		select {
@@ -268,6 +268,10 @@ type savedHistoryCatalog struct {
 	*fakeTranscriptCatalog
 }
 
+func (c *savedHistoryCatalog) ResolveThreadReference(_ context.Context, reference string) (string, error) {
+	return "nth-owner", nil
+}
+
 func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	nativeThreadID := "native-thread"
 	p := newLiveProjection("codex", "hosted-thread")
@@ -279,8 +283,8 @@ func TestConversationHistoryReadsSavedRowsWithoutACut(t *testing.T) {
 	}}}
 	sess := newFixtureSession(sessionConfig{Provider: "codex", Projection: p}, nativeThreadID)
 	recorder := httptest.NewRecorder()
-	(&server{catalog: fake}).handleConversationHistory(recorder,
-		httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session/conversation/history", nil), sess)
+	threadindex.NewHandlers(fake).HandleConversationHistory(recorder,
+		httptest.NewRequest(http.MethodGet, "/api/v1/sessions/session/conversation/history", nil), sess.ThreadID())
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}

@@ -1009,7 +1009,7 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.server.confirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
+	h.server.attachmentCoordinator().ConfirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
 	if finished, _ := executions.Turn(op.ID); finished.Status != agentTurnCompleted || finished.FinalItemID != "exited-final:0" || finished.FinalResponse != "answered after all" {
 		t.Fatalf("operation after the commit = %+v; want its saved answer", finished)
 	}
@@ -1076,7 +1076,7 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 	feed := func(cursor string) interact.CompletedTurnPage {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		h.server.handleCompletedTurns(rec, httptest.NewRequest(http.MethodGet, "/completed-turns?after="+cursor, nil), "hosted")
+		h.server.attachmentCoordinator().CompletedFeed().HandleCompletedTurns(rec, httptest.NewRequest(http.MethodGet, "/completed-turns?after="+cursor, nil), "hosted")
 		var page interact.CompletedTurnPage
 		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &page) != nil {
 			t.Fatalf("feed = %d %s", rec.Code, rec.Body.String())
@@ -1193,7 +1193,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	} else {
 		// One reader behind, under an upgrade whose marker this file lacks.
 		reader(strings.Replace(current, "claude-reader-v36", "claude-reader-v35", 1))
-		h.service.SetTranscriptChanged(h.server.confirmDurableThread)
+		h.service.SetTranscriptChanged(h.server.attachmentCoordinator().ConfirmDurableThread)
 	}
 
 	// Nano starts: the operation store reloads and reads not-saved answers.
@@ -1215,7 +1215,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	if upgrade == "re-read" {
 		reader(current)
 		waitForCatalogWithin(t, time.Minute, func() bool {
-			h.server.confirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
+			h.server.attachmentCoordinator().ConfirmDurableThread(ctx, threadindex.TranscriptChange{ThreadID: threadID, Provider: "claude", NativeThreadID: native})
 			got, _ := store.Turn(op.ID)
 			return got.Status == agentTurnCompleted
 		})
@@ -1249,7 +1249,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 		}
 		t.Cleanup(service.Close)
 		h.service, h.server.catalog = service, service
-		service.SetTranscriptChanged(h.server.confirmDurableThread)
+		service.SetTranscriptChanged(h.server.attachmentCoordinator().ConfirmDurableThread)
 		waitForCatalogWithin(t, time.Minute, func() bool {
 			got, _ := store.Turn(op.ID)
 			return got.Status == agentTurnCompleted
@@ -1622,7 +1622,7 @@ func TestSavedCommitSettlesPromptsWithoutReattach(t *testing.T) {
 			h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 				running.Add(1)
 				defer running.Add(-1)
-				h.server.confirmDurableThread(ctx, change)
+				h.server.attachmentCoordinator().ConfirmDurableThread(ctx, change)
 				finished.Add(1)
 			})
 			settles := func(action string) {
@@ -1931,7 +1931,7 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 		passes++
 		passCtx := context.WithValue(context.Background(), passKey{}, passes)
 		done := make(chan struct{})
-		go func() { h.server.confirmDurableItems(passCtx, sess); close(done) }()
+		go func() { sessions.ReconcileSavedTranscript(passCtx, sess); close(done) }()
 		return done
 	}
 	done1 := pass()
@@ -1957,18 +1957,18 @@ func TestOverlappingSettlementPassesLeaveNothingWaiting(t *testing.T) {
 	// any later commit, which would otherwise drop a restored mark again.
 	sess.RequestMemberStep() // clear the completed member hint without altering prompt waits
 	beforeWaitingRead := reads.Load()
-	h.server.confirmDurableItems(ctx, sess)
+	sessions.ReconcileSavedTranscript(ctx, sess)
 	if got := reads.Load(); got != beforeWaitingRead {
 		t.Fatalf("the overlapping passes left prompt waits: the next idle commit read saved prompts %d times", got-beforeWaitingRead)
 	}
 	// The pass that finished each owed completion still saw it; one more
 	// commit reads that none is left. After that, nothing waits.
-	h.server.confirmDurableItems(ctx, sess)
+	sessions.ReconcileSavedTranscript(ctx, sess)
 	if owing, err := h.prompts.Owing(ctx, "hosted", []string{"old", "new", "running"}); err != nil || len(owing) != 0 {
 		t.Fatalf("owed after the overlap = %v, %v; want every completion finished", owing, err)
 	}
 	before := reads.Load()
-	h.server.confirmDurableItems(context.Background(), sess)
+	sessions.ReconcileSavedTranscript(context.Background(), sess)
 	if got := reads.Load(); got != before {
 		t.Fatalf("an idle commit after the overlap read saved prompts %d times", got-before)
 	}

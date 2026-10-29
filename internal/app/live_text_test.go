@@ -445,13 +445,13 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	h.barrier()
 	reads := func() map[string]string {
 		out := map[string]string{}
-		for _, view := range []liveview.View{conversationViewMessages, conversationViewFull} {
+		for _, view := range []liveview.View{liveview.Messages, liveview.Full} {
 			rec := httptest.NewRecorder()
 			h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view="+string(view), nil), view)
 			out["conversation "+string(view)] = rec.Body.String()
 		}
 		rec := httptest.NewRecorder()
-		h.srv.handleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess)
+		threadindex.NewHandlers(h.srv.catalog).HandleConversationHistory(rec, httptest.NewRequest("GET", "/conversation/history", nil), h.sess.ThreadID())
 		out["session history"] = rec.Body.String()
 		return out
 	}
@@ -487,13 +487,13 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	// continues from it.
 	cursor := liveStatusForTest(t, h.sess)
 	rec := httptest.NewRecorder()
-	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
+	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), liveview.Messages)
 	var snapshot liveview.Snapshot
 	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil || snapshot.Epoch != cursor.Epoch || snapshot.Revision != cursor.Revision {
 		t.Fatalf("snapshot cursor = %s/%d (%v), want the status cursor %s/%d", snapshot.Epoch, snapshot.Revision, err, cursor.Epoch, cursor.Revision)
 	}
 	stream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.sess.HandleConversationEventsView(w, r, conversationViewMessages)
+		h.sess.HandleConversationEventsView(w, r, liveview.Messages)
 	}))
 	defer stream.Close()
 	response, err := http.Get(stream.URL)
@@ -526,7 +526,7 @@ func TestLiveTextNeverReachesAgentReads(t *testing.T) {
 	// A failed read is an error to agents, never an empty transcript.
 	h.store.Close()
 	rec = httptest.NewRecorder()
-	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), conversationViewMessages)
+	h.sess.HandleConversationView(rec, httptest.NewRequest("GET", "/conversation?view=messages", nil), liveview.Messages)
 	if rec.Code == 200 {
 		t.Fatalf("conversation read after a store failure = 200 %s, want an error", rec.Body.String())
 	}
@@ -719,7 +719,7 @@ func TestLiveTextCodexPromptAnInterruptedTurnDroppedIsResentUnlessStopped(t *tes
 				var settledCommits atomic.Int32
 				h.service.SetTranscriptChanged(func(ctx context.Context, change threadindex.TranscriptChange) {
 					sess.NotifySavedTranscript()
-					h.srv.confirmDurableThread(ctx, change)
+					h.srv.attachmentCoordinator().ConfirmDurableThread(ctx, change)
 					settledCommits.Add(1)
 				})
 				sent := make(chan string, 4)
@@ -1176,7 +1176,7 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
 	seedBootAttachments(t, srv)
 	writeClaudeTestSpool(t, srv.defaults.ClaudeShimSpools, hosted, spool...)
-	h.service.SetTranscriptChanged(srv.confirmDurableThread)
+	h.service.SetTranscriptChanged(srv.attachmentCoordinator().ConfirmDurableThread)
 	srv.attachmentCoordinator().PrepareBoot()
 	srv.attachmentCoordinator().ReattachWaitingHosted(hosted) // reattachStored -> spawnSession -> startLiveText -> attachClaudeSession
 	fresh := srv.SessionForThread("claude", native)
@@ -1250,3 +1250,7 @@ type journalReadMetadata struct {
 }
 
 func (m journalReadMetadata) ReadPool() *sql.DB { return m.db }
+
+func (s *server) newSessionProjection(provider, hostedThreadID string) *sessions.LiveProjection {
+	return sessions.NewLiveProjection(provider, hostedThreadID, s.dropLiveTextDeltas)
+}

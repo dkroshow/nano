@@ -3,10 +3,11 @@ package app
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/config"
 )
 
 // The New Window UI selects models from model/list, then shows this exact
@@ -32,7 +33,7 @@ func TestPinnedCodexModelsPreviewAsSelected(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-			s.handleSpawnPreview(rec, req)
+			s.attachmentCoordinator().HandleSpawnPreview(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 			}
@@ -75,7 +76,7 @@ func TestCodexModelCatalogRefreshDiscoversAccountUpgrade(t *testing.T) {
 	fake.Mu.Unlock()
 	s := &server{codex: d}
 	rec := httptest.NewRecorder()
-	s.handleCodexModels(rec, httptest.NewRequest(http.MethodGet, "/api/codex/models?refresh=true", nil))
+	s.attachmentCoordinator().HandleCodexModels(rec, httptest.NewRequest(http.MethodGet, "/api/codex/models?refresh=true", nil))
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("ultrafast")) {
 		t.Fatalf("refreshed catalog = %d %s", rec.Code, rec.Body)
 	}

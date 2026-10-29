@@ -3,10 +3,11 @@ package app
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/config"
 )
 
 func TestClaudePreviewUsesResolvedBinary(t *testing.T) {
@@ -24,7 +25,7 @@ func TestClaudePreviewUsesResolvedBinary(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-	s.handleSpawnPreview(rec, req)
+	s.attachmentCoordinator().HandleSpawnPreview(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
@@ -56,7 +57,7 @@ func TestClaudePreviewPassesExactPinnedModels(t *testing.T) {
 			body, _ := json.Marshal(map[string]string{"provider": "claude", "model": model})
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-			s.handleSpawnPreview(rec, req)
+			s.attachmentCoordinator().HandleSpawnPreview(rec, req)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 			}
@@ -86,7 +87,7 @@ func TestClaudeBypassPermissionsDoesNotApplyAllowedToolsDefault(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions/preview", bytes.NewReader(body))
-	s.handleSpawnPreview(rec, req)
+	s.attachmentCoordinator().HandleSpawnPreview(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
