@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +58,13 @@ func TestCodexFastModeDoesNotWaitBehindMetadataReader(t *testing.T) {
 // the session-scoped router. A slow registry projection must not keep the
 // global session-map mutex that the command router needs to find its target.
 func TestCodexFastModeDoesNotWaitBehindSessionRegistryProjection(t *testing.T) {
-	metadata := newTestControlMetadata(t)
+	directory := t.TempDir()
+	stores, err := openThreadRuntimeStores(context.Background(), directory, filepath.Join(directory, "completed.sqlite"), "routing-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := stores.Control
+	t.Cleanup(func() { _ = metadata.Close() })
 	if err := metadata.EnsureHostedThread("nht_fast_route", "codex", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}

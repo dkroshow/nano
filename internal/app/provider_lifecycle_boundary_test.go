@@ -11,7 +11,7 @@ import (
 
 func TestLifecycleMovedFunctionsHaveNoProviderDispatch(t *testing.T) {
 	functions := map[string][]string{
-		"boot_reattach.go":                                {"reattachOnBoot"},
+		"../hosted/boot_reattach.go":                      {"ReattachOnBoot"},
 		"../sessions/codex.go":                            {"startCodexZeroTurnRecovery"},
 		"../sessions/codex_reconnect_state.go":            {"codexZeroTurnNativeMissing"},
 		"../hosted/store/hosted_native_recovery_store.go": {"NativeRecoveryResumeGuard"},
@@ -25,7 +25,7 @@ func TestLifecycleMovedFunctionsHaveNoProviderDispatch(t *testing.T) {
 		"../sessions/session_registry.go":                 {"SessionForThread"},
 		"../sidebar/runtime_projection.go":                nil,
 		"../sidebar/runtime_hub.go":                       nil,
-		"runtime_overlay.go":                              nil,
+		"../hosted/runtime_overlay.go":                    nil,
 	}
 	for path, names := range functions {
 		fset := token.NewFileSet()
