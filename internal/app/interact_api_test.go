@@ -135,7 +135,7 @@ func TestInteractLifecycleReportsCoordinatorFacts(t *testing.T) {
 func interactTestClient(t *testing.T, s *server) *interact.HTTPClient {
 	t.Helper()
 	mux := http.NewServeMux()
-	mountRoutes(mux, hostedThreadRoutes(s, "/api/v1/hosted-threads"))
+	mountRoutes(mux, hostedThreadRoutes(fixtureOwners(s), "/api/v1/hosted-threads"))
 	httpServer := httptest.NewServer(mux)
 	t.Cleanup(httpServer.Close)
 	return interact.NewHTTPClient(httpServer.URL, httpServer.Client())
