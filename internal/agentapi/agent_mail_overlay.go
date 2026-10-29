@@ -38,7 +38,7 @@ const (
 // failed read logs and drops the event — the durable store already committed,
 // and the client's next full fetch repairs any missed badge.
 // NotifyMailChanged refreshes unread notices and publishes committed inbox counts.
-func (s *Controller) NotifyMailChanged(recipients ...string) {
+func (s *Controller) notifyMailChanged(recipients ...string) {
 	if s == nil || s.mail == nil {
 		return
 	}

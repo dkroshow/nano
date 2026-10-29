@@ -43,7 +43,7 @@ type WarmFill struct{ lines, cols int }
 
 // ParseWarmFill reads a page's window from its stream URL: both absent is the
 // default; anything else must be two in-range integers.
-func ParseWarmFill(linesRaw, colsRaw string) (WarmFill, error) {
+func parseWarmFill(linesRaw, colsRaw string) (WarmFill, error) {
 	if linesRaw == "" && colsRaw == "" {
 		return WarmFill{lines: warmFillLinesDefault, cols: warmFillColsDefault}, nil
 	}

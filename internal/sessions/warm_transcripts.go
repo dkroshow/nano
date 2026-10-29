@@ -108,7 +108,7 @@ func ParseWarmRequest(r *http.Request) (WarmRequest, error) {
 	if len(set) > warmSetMax {
 		set = set[:warmSetMax]
 	}
-	fill, err := ParseWarmFill(q.Get("lines"), q.Get("cols"))
+	fill, err := parseWarmFill(q.Get("lines"), q.Get("cols"))
 	if err != nil {
 		return WarmRequest{}, err
 	}

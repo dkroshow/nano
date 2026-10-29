@@ -263,7 +263,7 @@ func (s *Controller) sidebarRescueKeys() []history.SidebarGraphKey {
 		}
 	}
 	if s.threadStars != nil {
-		for _, key := range s.threadStars.StarredIdentities() {
+		for _, key := range s.threadStars.starredIdentities() {
 			add(key.Provider, key.NativeThreadID)
 		}
 	}

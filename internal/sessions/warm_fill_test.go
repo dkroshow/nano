@@ -101,14 +101,14 @@ func TestWarmFillCountFillsTheWindow(t *testing.T) {
 }
 
 func TestParseWarmFill(t *testing.T) {
-	if fill, err := ParseWarmFill("", ""); err != nil || fill != (WarmFill{lines: warmFillLinesDefault, cols: warmFillColsDefault}) {
+	if fill, err := parseWarmFill("", ""); err != nil || fill != (WarmFill{lines: warmFillLinesDefault, cols: warmFillColsDefault}) {
 		t.Fatalf("absent = %+v %v, want the default window", fill, err)
 	}
-	if fill, err := ParseWarmFill("45", "120"); err != nil || fill != (WarmFill{lines: 45, cols: 120}) {
+	if fill, err := parseWarmFill("45", "120"); err != nil || fill != (WarmFill{lines: 45, cols: 120}) {
 		t.Fatalf("45x120 = %+v %v", fill, err)
 	}
 	for _, bad := range [][2]string{{"45", ""}, {"", "120"}, {"x", "120"}, {"4", "120"}, {"45", "5000"}, {"-1", "120"}} {
-		if _, err := ParseWarmFill(bad[0], bad[1]); err == nil {
+		if _, err := parseWarmFill(bad[0], bad[1]); err == nil {
 			t.Errorf("lines=%q cols=%q accepted", bad[0], bad[1])
 		}
 	}

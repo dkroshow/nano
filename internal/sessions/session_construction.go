@@ -186,7 +186,7 @@ func (sess *Session) DiscardSpawnResources() {
 // AttachLiveText connects the view and its ordered parsed-evidence observer.
 func (sess *Session) AttachLiveText(view *LiveTextLoop) {
 	sess.liveText = view
-	sess.projection.SetLiveText(view)
+	sess.projection.setLiveText(view)
 }
 
 // LiveTextService returns the view service for application-owned pane reads.

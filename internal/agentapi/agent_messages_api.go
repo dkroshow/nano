@@ -128,7 +128,7 @@ func (s *Controller) HandleHostedThreadMessageSend(w http.ResponseWriter, r *htt
 		return
 	}
 	if created {
-		s.NotifyMailChanged(recipient.ID)
+		s.notifyMailChanged(recipient.ID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if created {
@@ -214,7 +214,7 @@ func (s *Controller) HandleHostedThreadInbox(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if marked > 0 {
-		s.NotifyMailChanged(recipient.ID)
+		s.notifyMailChanged(recipient.ID)
 	}
 	next := opts.Since
 	if len(items) > 0 {
@@ -337,7 +337,7 @@ func (s *Controller) HandleAgentMessageDisposition(w http.ResponseWriter, r *htt
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "status_persistence_failed", err.Error())
 		return
 	}
-	s.NotifyMailChanged(actor.ID, message.Sender.HostedThreadID)
+	s.notifyMailChanged(actor.ID, message.Sender.HostedThreadID)
 	httpapi.WriteJSON(w, map[string]any{"message": message, "feedback": feedback})
 }
 
@@ -377,6 +377,6 @@ func (s *Controller) handleAgentMessageEdit(w http.ResponseWriter, r *http.Reque
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "edit_persistence_failed", err.Error())
 		return
 	}
-	s.NotifyMailChanged(message.Recipient.HostedThreadID)
+	s.notifyMailChanged(message.Recipient.HostedThreadID)
 	httpapi.WriteJSON(w, message)
 }

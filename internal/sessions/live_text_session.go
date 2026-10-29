@@ -50,12 +50,12 @@ func (l *LiveTextLoop) RowsPane(view conversationView) *LiveTextStream {
 }
 
 // WriteBackendError writes a transcript backend failure to the HTTP response.
-func (l *LiveTextLoop) WriteBackendError(w http.ResponseWriter, err error) {
+func (l *LiveTextLoop) writeBackendError(w http.ResponseWriter, err error) {
 	threadindex.WriteTranscriptBackendError(w, err)
 }
 
 // ConversationItems reads a bounded page of conversation items.
-func (l *LiveTextLoop) ConversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
+func (l *LiveTextLoop) conversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
 	catalog, ok := l.sources.Transcripts, l.sources.Transcripts != nil
 	if !ok {
 		return nil, nil, "", errors.New("catalog unavailable")

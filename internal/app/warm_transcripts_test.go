@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -138,7 +138,7 @@ func TestWarmStreamRidesScreenReadsAndCoalesces(t *testing.T) {
 	reads = h.catalogReads.Load()
 	warm.quiet("the thread is idle")
 	for range 5 {
-		h.sess.LiveTextService().Applied()
+		h.sess.NotifySavedTranscript()
 	}
 	warm.quiet("nothing changed")
 	if got := h.catalogReads.Load() - reads; got != 1 {

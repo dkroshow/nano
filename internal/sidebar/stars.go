@@ -112,7 +112,7 @@ func (s *Stars) SetStarred(provider, nativeID string, starred bool) error {
 	provider = strings.TrimSpace(provider)
 	nativeID = strings.TrimSpace(nativeID)
 	if provider == "" || nativeID == "" {
-		return ErrStarIdentityMissing
+		return errStarIdentityMissing
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,7 +163,7 @@ func (s *Stars) UnstarMany(identities []hostedstore.AttachmentKey) error {
 		provider := strings.TrimSpace(identity.Provider)
 		nativeID := strings.TrimSpace(identity.NativeThreadID)
 		if provider == "" || nativeID == "" {
-			return ErrStarIdentityMissing
+			return errStarIdentityMissing
 		}
 		if _, err := tx.Exec(`DELETE FROM thread_stars WHERE provider = ? AND native_thread_id = ?`, provider, nativeID); err != nil {
 			return err
@@ -180,10 +180,10 @@ func (s *Stars) UnstarMany(identities []hostedstore.AttachmentKey) error {
 }
 
 // ErrStarIdentityMissing reports an incomplete identity supplied to a pin mutation.
-var ErrStarIdentityMissing = errors.New("thread has no provider-native id to star")
+var errStarIdentityMissing = errors.New("thread has no provider-native id to star")
 
 // StarredIdentities lists the current provider-native pins.
-func (s *Stars) StarredIdentities() []hostedstore.AttachmentKey {
+func (s *Stars) starredIdentities() []hostedstore.AttachmentKey {
 	if s == nil {
 		return nil
 	}

@@ -34,7 +34,7 @@ func MemoryThreadRow(sess sessions.Summary) Thread {
 			Value: sess.Name, Provenance: "manual", Evidence: threadindex.ThreadNameEvidence,
 		}
 	}
-	return Thread{Thread: threadindex.Thread{ID: MemoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: MemoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: threadindex.Metadata{
+	return Thread{Thread: threadindex.Thread{ID: memoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: memoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: threadindex.Metadata{
 		CWD: runtimeCatalogValue(sess.Cwd),
 		// The posture cells serve the same unified projection as the
 		// summary and /state (posture_view.go, decision 4) — which is what
@@ -192,9 +192,9 @@ func (s *Controller) fleetCourts(ctx context.Context, threads []Thread) (map[str
 
 const (
 	// MemoryThreadIDPrefix distinguishes not-yet-indexed rows.
-	MemoryThreadIDPrefix = "mem_"
+	memoryThreadIDPrefix = "mem_"
 	// MemoryThreadKind is the catalog kind of a live-only row.
-	MemoryThreadKind        = "thread"
+	memoryThreadKind        = "thread"
 	memoryThreadInteraction = "unclassified"
 	runtimeEvidence         = "runtime"
 )

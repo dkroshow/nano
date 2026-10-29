@@ -271,9 +271,9 @@ func (p *LiveProjection) ApplyWireLive(dir protocol.Direction, line []byte, at t
 	p.adapterMu.Lock()
 	batch := p.adapter.Apply(dir, line, at)
 	if p.liveText != nil {
-		p.liveText.ObserveBatch(batch, providerTurnID)
+		p.liveText.observeBatch(batch, providerTurnID)
 		if claudeTurnClosed {
-			p.liveText.TurnEnded(providerTurnID)
+			p.liveText.turnEnded(providerTurnID)
 		}
 	}
 	// Taken before adapterMu is released, so frames record in parse order.
@@ -807,7 +807,7 @@ func (p *LiveProjection) providerName() string {
 func (p *LiveProjection) DropsLiveTextDeltas() bool { return p.dropLiveTextDeltas }
 
 // SetLiveText connects the observer of ordered parsed evidence.
-func (p *LiveProjection) SetLiveText(observer *LiveTextLoop) { p.liveText = observer }
+func (p *LiveProjection) setLiveText(observer *LiveTextLoop) { p.liveText = observer }
 
 // turnActive reports whether the projected turn is active.
 func (p *LiveProjection) turnActive() bool {

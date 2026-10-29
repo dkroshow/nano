@@ -46,7 +46,7 @@ func TestStalePromptMaintenanceSettlesFirstThenExpiresTheRest(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				idle.LiveTextService().OutboxChanged(record.Outbox)
+				idle.PublishLiveOutbox(record.Outbox)
 				if live := idle.LiveTextService().CurrentTexts(context.Background()); len(live) == 0 {
 					t.Fatal("the open pane shows none of the stale prompts")
 				}

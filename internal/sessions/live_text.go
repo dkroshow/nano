@@ -155,7 +155,7 @@ type awaitedReply struct {
 // ObserveBatch takes the live adapter's parsed changes for one frame. Only
 // top-level assistant text with an exact native id becomes live text; a
 // provisional block index never matches a saved row.
-func (l *LiveTextLoop) ObserveBatch(batch model.Batch, turn string) {
+func (l *LiveTextLoop) observeBatch(batch model.Batch, turn string) {
 	if l == nil {
 		return
 	}
@@ -207,7 +207,7 @@ func (l *LiveTextLoop) ObserveBatch(batch model.Batch, turn string) {
 }
 
 // TurnEnded observes completion of a provider turn.
-func (l *LiveTextLoop) TurnEnded(turn string) {
+func (l *LiveTextLoop) turnEnded(turn string) {
 	if l == nil || turn == "" {
 		return
 	}
@@ -217,7 +217,7 @@ func (l *LiveTextLoop) TurnEnded(turn string) {
 // OutboxChanged posts outbox changes together, so a pane sees them in one
 // change: a resent prompt replaces the one it retires with no moment showing
 // neither.
-func (l *LiveTextLoop) OutboxChanged(entries ...prompts.OutboxEntry) {
+func (l *LiveTextLoop) outboxChanged(entries ...prompts.OutboxEntry) {
 	if l == nil || len(entries) == 0 {
 		return
 	}
@@ -229,7 +229,7 @@ func (l *LiveTextLoop) OutboxChanged(entries ...prompts.OutboxEntry) {
 }
 
 // Applied notifies the view that saved transcript evidence changed.
-func (l *LiveTextLoop) Applied() {
+func (l *LiveTextLoop) applied() {
 	if l == nil {
 		return
 	}

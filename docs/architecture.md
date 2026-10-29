@@ -14,9 +14,13 @@ uses `internal/config` to parse every flag into one `Config` value before it ope
 store or a listener, builds the HTTP router (`routes.go`), and composes the
 session registry from `internal/sessions`. That package owns live attachments,
 provider connections, lifecycle application, prompt delivery and ordered wire
-events. `internal/hosted` owns hosted identity, admission and durable control adapters.
-The app composes its bounded runtime actions, catalog and sidebar projections,
-and the live-text loop that reconciles saved rows with streamed output.
+events, live projection and the loop that reconciles saved rows with streamed
+output. `internal/hosted` owns hosted identity, admission and control;
+`internal/hosted/store` supplies the shared durable adapters over canonical
+records. `internal/sidebar` owns the visible-thread projection, fleet changes,
+stars and browser warm streams. `internal/agentapi` adapts the existing feature
+stores and schedulers to HTTP. App constructs these concrete owners and
+composes routes and boot scheduling.
 
 `internal/` also holds the packages the server is built from. Each package's doc
 comment states what it may depend on, and import tests hold the direction
@@ -24,13 +28,17 @@ for the parsing module, the state layer and lifecycle.
 
 | Package | Owns |
 | --- | --- |
-| `hosted` | Hosted identity/control APIs, admission ordering, metadata and execution adapters over the canonical thread/prompt/turn stores, and transcript pins. Sessions retain live state; catalog and sidebar projections are supplied by app. |
-| `sessions` | Live attachment state and its registry, provider wiring, lifecycle application, prompt delivery and wire ordering. It consumes owner services through explicit inputs and small interfaces; it never imports `app`. |
+| `hosted` | Hosted identity/control APIs, admission ordering and transcript pins. It reads concrete session state and the catalog; it owns no second durable record set. |
+| `hosted/store` | Shared metadata, execution and attachment adapters over the canonical thread/prompt/turn stores. Hosted and sessions use the same records. |
+| `sessions` | Live attachment state and its registry, provider wiring, lifecycle application, prompt delivery, wire ordering, live projection and saved/live reconciliation. It also owns pane queues, warm sizing and pending/resting boot attachment facts; it never imports `app` or `sidebar`. |
+| `sidebar` | Visible-thread materialization, fleet transitions, operator stars, runtime/list overlays and browser warm-stream membership. It consumes concrete catalog, session and feature owners; it does not own saved/live reconciliation. |
+| `agentapi` | HTTP and application adapters for mail, heartbeat, feedback and completion subscriptions. Their feature packages retain the stores and schedulers; the adapter imports no app or liveview implementation. |
+| `liveview` | Shared live-view values only; no loop, session state or orchestration. |
 | `providers`, `providers/{codex,claude,grok}` | The five turn operations and capability declaration of each provider adapter. Adapters take values and return normalized evidence; they never see the app. |
 | `wire`, `wire/{codex,claude,grok}` | The live connection to each runtime: Codex JSON-RPC over WebSocket, the Claude shim's framed stdio, Grok's ACP process. |
 | `transcriptparse` | Pure readers of provider transcript bytes, file and wire, for all three providers (below). No Nano dependency. |
 | `history` | Discovery and read-only projection of the native session files under `~/.codex`, `~/.claude` and `~/.grok`. |
-| `threadindex` | Saved-thread catalog orchestration, provider-file ingestion, name projection, bounded transcript reads and their HTTP API. It consumes explicit provider path functions; app keeps runtime, hosted, mail and setup overlays and the combined event stream. |
+| `threadindex` | Saved-thread catalog orchestration, provider-file ingestion, name projection, bounded transcript reads and their HTTP API. It consumes explicit provider path functions; sidebar composes runtime, hosted and mail overlays; app composes the combined event stream and setup routes. |
 | `catalog` | The kqueue watcher over held files, the FSEvents trigger that finds sessions Nano did not start, the conflated index-change stream, and the fleet read models the sidebar and Thread Explorer share. |
 | `threads` | Durable hosted-thread state: identity, metadata, execution sessions, operations, attachment generations. |
 | `core/prompts`, `core/turns`, `core/session` | Durable prompt delivery through provider acceptance; the per-turn record and usage; the mutable runtime of one hosted thread. |
@@ -135,9 +143,9 @@ Components and supporting logic are grouped by responsibility under
 mail, status and shared helpers. Tests and fixtures live beside their owning
 area. App-level stores and server-event coordination remain in `web/src/`.
 
-The page is a sidebar of threads and a set of panes. The sidebar is built
-once at boot from the catalog, runtime, hosted metadata, stars and mail, and
-updated by events; `GET /api/v1/sidebar/threads` returns that materialized
+The page is a sidebar of threads and a set of panes. The sidebar controller
+builds its projection at boot from the catalog, runtime, hosted metadata,
+stars and mail, and updates it from events; `GET /api/v1/sidebar/threads` returns that materialized
 state and never joins the sources per request. Historical rows load only when
 the operator opens the Thread Explorer. Each pane holds its own event stream
 and renders the one fleet state the server computes (`idle`, `needs_you`,

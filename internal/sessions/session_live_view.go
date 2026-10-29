@@ -101,7 +101,7 @@ func (sess *Session) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 // fileConversationItems reads a file-only thread's saved rows for agents, in
 // the conversation item shape. Live text never appears here.
 func (sess *Session) fileConversationItems(ctx context.Context, view conversationView, before string, limit int) ([]liveProjectionItem, *liveProjectionPage, string, error) {
-	return sess.liveText.ConversationItems(ctx, view, before, limit)
+	return sess.liveText.conversationItems(ctx, view, before, limit)
 }
 
 // fileConversationSnapshot is the agent snapshot of a file-only thread: saved
