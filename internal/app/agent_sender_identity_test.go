@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 )
 
 func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
@@ -120,7 +122,7 @@ func TestAgentSenderUsesResolvedIdentity(t *testing.T) {
 					response = httptest.NewRecorder()
 					s.handleAgentTurnSubmit(response, httptest.NewRequest(http.MethodPost, "/turns", bytes.NewReader(body)), worker.ID)
 				} else {
-					var message agentMessageView
+					var message featuremail.Message
 					response, message = sendAgentMessageForTest(t, s, worker, sender.ID, "identity-check", "Review", "Review", nil)
 					if wantCode == "" && response.Code == http.StatusCreated {
 						if message.Sender.Name != persistedName || message.Sender.HostedThreadID != sender.ID || message.Sender.NativeThreadID != sender.NativeThreadID || message.Sender.Provider != sender.Provider {

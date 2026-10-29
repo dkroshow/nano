@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 )
@@ -26,7 +27,7 @@ type agentMessageSendRequest struct {
 	Subject             string            `json:"subject,omitempty"`
 	Body                string            `json:"body"`
 	Delivery            string            `json:"delivery,omitempty"`
-	Refs                []agentMessageRef `json:"refs,omitempty"`
+	Refs                []featuremail.Ref `json:"refs,omitempty"`
 	DispositionFeedback bool              `json:"dispositionFeedback,omitempty"`
 }
 
@@ -42,7 +43,7 @@ func (s *server) agentInboxAvailable(w http.ResponseWriter) bool {
 	return false
 }
 
-func validAgentMessageRef(ref agentMessageRef) bool {
+func validAgentMessageRef(ref featuremail.Ref) bool {
 	return len(ref.Kind) <= 64 && len(ref.ID) > 0 && len(ref.ID) <= 200 && agentMessageRefKindPattern.MatchString(ref.Kind)
 }
 
@@ -70,15 +71,15 @@ func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Re
 		httpapi.WriteError(w, http.StatusBadRequest, "delivery_mode_unavailable", "V1 supports inbox delivery only")
 		return
 	}
-	if len(req.Subject) > maxAgentMessageSubjectBytes {
+	if len(req.Subject) > featuremail.MaxSubjectBytes {
 		httpapi.WriteError(w, http.StatusBadRequest, "subject_too_long", "subject must be at most 120 UTF-8 bytes")
 		return
 	}
-	if len(req.Body) == 0 || len(req.Body) > maxAgentMessageBodyBytes || strings.TrimSpace(req.Body) == "" {
+	if len(req.Body) == 0 || len(req.Body) > featuremail.MaxBodyBytes || strings.TrimSpace(req.Body) == "" {
 		httpapi.WriteError(w, http.StatusBadRequest, "body_invalid", "body must be 1-16384 UTF-8 bytes and contain non-whitespace text")
 		return
 	}
-	if len(req.Refs) > maxAgentMessageRefs {
+	if len(req.Refs) > featuremail.MaxRefs {
 		httpapi.WriteError(w, http.StatusBadRequest, "refs_invalid", "at most 16 refs are allowed")
 		return
 	}
@@ -89,10 +90,10 @@ func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
-	refs := normalizedAgentMessageRefs(req.Refs)
-	var create agentMessageCreate
+	refs := featuremail.NormalizeRefs(req.Refs)
+	var create featuremail.Create
 	if req.Operator {
-		create = agentMessageCreate{ClientMessageID: req.ClientMessageID, SenderKey: operatorSenderKey,
+		create = featuremail.Create{ClientMessageID: req.ClientMessageID, SenderKey: operatorSenderKey,
 			SenderKind: operatorSenderKind, Origin: operatorSenderKind, SenderName: operatorSenderName,
 			RecipientHostedID: recipient.ID, Subject: req.Subject, Body: req.Body,
 			Refs: refs, DispositionFeedback: req.DispositionFeedback, CreatedAt: time.Now().UTC()}
@@ -107,15 +108,15 @@ func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Re
 			httpapi.WriteError(w, http.StatusBadRequest, "sender_identity_incomplete", err.Error())
 			return
 		}
-		create = agentMessageCreate{ClientMessageID: req.ClientMessageID, SenderKey: sender.ID, SenderKind: "thread", Origin: "agent",
+		create = featuremail.Create{ClientMessageID: req.ClientMessageID, SenderKey: sender.ID, SenderKind: "thread", Origin: "agent",
 			SenderHostedID: sender.ID, SenderNativeID: attribution.SenderNativeThreadID, SenderProvider: attribution.SenderProvider,
 			SenderName: attribution.SenderName, RecipientHostedID: recipient.ID, Subject: req.Subject, Body: req.Body,
 			Refs: refs, DispositionFeedback: req.DispositionFeedback, CreatedAt: time.Now().UTC()}
 	}
-	create.RequestHash = agentMessageRequestHashWithFeedback(recipient.ID, create.Subject, create.Body, refs, create.DispositionFeedback, "")
+	create.RequestHash = featuremail.RequestHashWithFeedback(recipient.ID, create.Subject, create.Body, refs, create.DispositionFeedback, "")
 	message, created, err := s.mail.CreateMessage(create)
 	if err != nil {
-		var typed *agentMessageStoreError
+		var typed *featuremail.StoreError
 		if errors.As(err, &typed) {
 			httpapi.WriteError(w, http.StatusConflict, typed.Code, typed.Detail)
 			return
@@ -133,9 +134,9 @@ func (s *server) handleHostedThreadMessageSend(w http.ResponseWriter, r *http.Re
 	_ = json.NewEncoder(w).Encode(message)
 }
 
-func parseAgentMessageListOptions(r *http.Request) (agentMessageListOptions, error) {
+func parseAgentMessageListOptions(r *http.Request) (featuremail.ListOptions, error) {
 	query := r.URL.Query()
-	opts := agentMessageListOptions{Limit: 50}
+	opts := featuremail.ListOptions{Limit: 50}
 	if raw := strings.TrimSpace(query.Get("since")); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || value < 0 {
@@ -155,7 +156,7 @@ func parseAgentMessageListOptions(r *http.Request) (agentMessageListOptions, err
 		for _, status := range strings.Split(raw, ",") {
 			status = strings.TrimSpace(status)
 			switch status {
-			case agentMessageUnread, agentMessageSeen, agentMessageActed, agentMessageDeclined, agentMessageDeferred:
+			case featuremail.Unread, featuremail.Seen, featuremail.Acted, featuremail.Declined, featuremail.Deferred:
 			default:
 				return opts, errors.New("status filter is invalid")
 			}
@@ -167,7 +168,7 @@ func parseAgentMessageListOptions(r *http.Request) (agentMessageListOptions, err
 	}
 	if raw := strings.TrimSpace(query.Get("ref")); raw != "" {
 		kind, id, ok := strings.Cut(raw, ":")
-		ref := agentMessageRef{Kind: strings.TrimSpace(kind), ID: strings.TrimSpace(id)}
+		ref := featuremail.Ref{Kind: strings.TrimSpace(kind), ID: strings.TrimSpace(id)}
 		if !ok || !validAgentMessageRef(ref) {
 			return opts, errors.New("ref must be kind:id with a dotted client namespace")
 		}
@@ -257,7 +258,7 @@ func (s *server) handleAgentMessageRead(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	detail, err := s.mail.MessageDetail(messageID)
-	if errors.Is(err, errAgentMessageNotFound) {
+	if errors.Is(err, featuremail.ErrNotFound) {
 		httpapi.WriteError(w, http.StatusNotFound, "message_not_found", "message not found")
 		return
 	}
@@ -292,11 +293,11 @@ func (s *server) handleAgentMessageDisposition(w http.ResponseWriter, r *http.Re
 		return
 	}
 	req.ActorThreadRef, req.Status = strings.TrimSpace(req.ActorThreadRef), strings.TrimSpace(req.Status)
-	if req.Status != agentMessageActed && req.Status != agentMessageDeclined && req.Status != agentMessageDeferred {
+	if req.Status != featuremail.Acted && req.Status != featuremail.Declined && req.Status != featuremail.Deferred {
 		httpapi.WriteError(w, http.StatusBadRequest, "status_invalid", "status must be acted, declined, or deferred")
 		return
 	}
-	if len(req.Note) > maxAgentMessageNoteBytes {
+	if len(req.Note) > featuremail.MaxNoteBytes {
 		httpapi.WriteError(w, http.StatusBadRequest, "status_note_too_long", "note must be at most 500 UTF-8 bytes")
 		return
 	}
@@ -311,12 +312,12 @@ func (s *server) handleAgentMessageDisposition(w http.ResponseWriter, r *http.Re
 		native = ""
 	}
 	message, feedback, err := s.mail.DispositionMessage(messageID, actor.ID, name, native, req.Status, req.Note, time.Now().UTC())
-	if errors.Is(err, errAgentMessageNotFound) || errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, featuremail.ErrNotFound) || errors.Is(err, sql.ErrNoRows) {
 		httpapi.WriteError(w, http.StatusNotFound, "message_not_found", "message not found")
 		return
 	}
 	if err != nil {
-		var typed *agentMessageStoreError
+		var typed *featuremail.StoreError
 		if errors.As(err, &typed) {
 			status := http.StatusConflict
 			if typed.Code == "not_recipient" {
@@ -346,21 +347,21 @@ func (s *server) handleAgentMessageEdit(w http.ResponseWriter, r *http.Request, 
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_edit_request", "invalid message edit request")
 		return
 	}
-	if len(req.Subject) > maxAgentMessageSubjectBytes {
+	if len(req.Subject) > featuremail.MaxSubjectBytes {
 		httpapi.WriteError(w, http.StatusBadRequest, "subject_too_long", "subject must be at most 120 UTF-8 bytes")
 		return
 	}
-	if len(req.Body) == 0 || len(req.Body) > maxAgentMessageBodyBytes || strings.TrimSpace(req.Body) == "" {
+	if len(req.Body) == 0 || len(req.Body) > featuremail.MaxBodyBytes || strings.TrimSpace(req.Body) == "" {
 		httpapi.WriteError(w, http.StatusBadRequest, "body_invalid", "body must be 1-16384 UTF-8 bytes and contain non-whitespace text")
 		return
 	}
 	message, err := s.mail.EditMessage(messageID, req.Subject, req.Body, time.Now().UTC())
-	if errors.Is(err, errAgentMessageNotFound) {
+	if errors.Is(err, featuremail.ErrNotFound) {
 		httpapi.WriteError(w, http.StatusNotFound, "message_not_found", "message not found")
 		return
 	}
 	if err != nil {
-		var typed *agentMessageStoreError
+		var typed *featuremail.StoreError
 		if errors.As(err, &typed) {
 			httpapi.WriteError(w, http.StatusConflict, typed.Code, typed.Detail)
 			return

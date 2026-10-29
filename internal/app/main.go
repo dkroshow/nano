@@ -27,7 +27,9 @@ import (
 	"github.com/dkroshow/nano/internal/config"
 	"github.com/dkroshow/nano/internal/core/prompts"
 	feedback "github.com/dkroshow/nano/internal/features/feedback"
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
+	"github.com/dkroshow/nano/internal/features/subscriptions"
 	nanofiles "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
 	hosted "github.com/dkroshow/nano/internal/hosted"
@@ -39,6 +41,7 @@ import (
 	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threads"
 	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 	"github.com/dkroshow/nano/web"
 )
@@ -94,7 +97,7 @@ type server struct {
 	sidebar *sidebar.Controller
 	// mail is the feature-owned durable inbox store. It is separate from the
 	// canonical threads database and owns its generic unread notices.
-	mail    *agentMessageStore
+	mail    *featuremail.Store
 	mailErr string
 	// attachments persists durable codex attachments so hosted threads survive
 	// nano restarts (attachments.go). Nil when the store is unavailable, which
@@ -118,10 +121,10 @@ type server struct {
 	agentExecutions *agentExecutionStore
 	// subscriptions is set once, after boot, under subscriptionMu.
 	subscriptionMu sync.Mutex
-	subscriptions  *subscriptionDispatcher
+	subscriptions  *subscriptions.Dispatcher
 	// heartbeat owns the default-off wall-clock nudge scheduler and its
 	// sibling SQLite evidence; see docs/decisions/nano-heartbeat.md.
-	heartbeat      *heartbeatService
+	heartbeat      *featureheartbeat.Service
 	completedTurns *completedTurnSource
 	// claudeOwedRuns holds one detached Claude owed pass per hosted thread
 	// (claude_answer.go).
@@ -279,7 +282,7 @@ func construct(cfg config.Config) *application {
 	var queuedTurns *queuedTurnStore
 	var turnStore *prompts.Store
 	var agentExecutions *agentExecutionStore
-	var mail *agentMessageStore
+	var mail *featuremail.Store
 	var usageLimits *usageLimitsStore
 	if catalogPath != "" {
 		attachPath := cfg.Paths.Attachments
@@ -315,7 +318,7 @@ func construct(cfg config.Config) *application {
 		}
 		mailPath := cfg.Paths.MailDB
 		legacyMailPath := cfg.Paths.ThreadsDB
-		mailStore, report, err := openAgentMessageStore(mailPath, legacyMailPath)
+		mailStore, report, err := featuremail.OpenStore(mailPath, legacyMailPath)
 		if err != nil {
 			log.Fatalf("required mail store unavailable: %v", err)
 		}
@@ -324,7 +327,7 @@ func construct(cfg config.Config) *application {
 		if err != nil {
 			log.Fatalf("mail retention unavailable: %v", err)
 		}
-		startAgentMailRetention(context.Background(), mailStore, log.Printf)
+		featuremail.StartRetention(context.Background(), mailStore, log.Printf)
 		retention := "off"
 		if retentionEnabled {
 			retention = fmt.Sprintf("%d days", retentionDays)
@@ -442,7 +445,7 @@ func construct(cfg config.Config) *application {
 	if cfg.HeartbeatMaxWakesPerHour < 1 {
 		log.Fatal("heartbeat-max-wakes-per-hour must be positive")
 	}
-	if store, err := openHeartbeatStore(cfg.Paths.HeartbeatDB); err != nil {
+	if store, err := featureheartbeat.OpenStore(cfg.Paths.HeartbeatDB, threads.Backup); err != nil {
 		log.Printf("heartbeat store unavailable: %v", err)
 	} else {
 		if deleted, err := store.PruneDecisionLog(time.Now().AddDate(0, 0, -30)); err != nil {
@@ -450,7 +453,7 @@ func construct(cfg config.Config) *application {
 		} else if deleted > 0 {
 			log.Printf("heartbeat decision retention removed %d old skip rows", deleted)
 		}
-		s.heartbeat = newHeartbeatService(s, store, cfg.HeartbeatEnabled, log.Printf)
+		s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), cfg.HeartbeatEnabled, log.Printf)
 		s.heartbeat.MaxWakesHour = cfg.HeartbeatMaxWakesPerHour
 		log.Printf("heartbeat store ready (scheduler enabled=%v; max wakes/hour=%d)", cfg.HeartbeatEnabled, cfg.HeartbeatMaxWakesPerHour)
 	}

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	state "github.com/dkroshow/nano/internal/app/statestore"
-	"github.com/dkroshow/nano/internal/edge/statewiring"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,13 +11,17 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	state "github.com/dkroshow/nano/internal/app/statestore"
+	"github.com/dkroshow/nano/internal/edge/statewiring"
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 )
 
-func sendAgentMessageForTest(t *testing.T, s *server, recipient agentSessionRecord, senderID, clientID, subject, body string, refs []agentMessageRef) (*httptest.ResponseRecorder, agentMessageView) {
+func sendAgentMessageForTest(t *testing.T, s *server, recipient agentSessionRecord, senderID, clientID, subject, body string, refs []featuremail.Ref) (*httptest.ResponseRecorder, featuremail.Message) {
 	return sendAgentMessageWithFeedbackForTest(t, s, recipient, senderID, clientID, subject, body, refs, false)
 }
 
-func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient agentSessionRecord, senderID, clientID, subject, body string, refs []agentMessageRef, dispositionFeedback bool) (*httptest.ResponseRecorder, agentMessageView) {
+func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient agentSessionRecord, senderID, clientID, subject, body string, refs []featuremail.Ref, dispositionFeedback bool) (*httptest.ResponseRecorder, featuremail.Message) {
 	t.Helper()
 	encoded, err := json.Marshal(agentMessageSendRequest{ClientMessageID: clientID, SenderThreadRef: senderID, Subject: subject, Body: body, Refs: refs, DispositionFeedback: dispositionFeedback})
 	if err != nil {
@@ -27,7 +29,7 @@ func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient agen
 	}
 	rec := httptest.NewRecorder()
 	s.handleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
-	var message agentMessageView
+	var message featuremail.Message
 	if rec.Code == http.StatusCreated || rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), &message); err != nil {
 			t.Fatalf("decode message: %v (%s)", err, rec.Body.String())
@@ -38,18 +40,18 @@ func sendAgentMessageWithFeedbackForTest(t *testing.T, s *server, recipient agen
 
 func TestAgentMessageSendOrderingRefsAndDedup(t *testing.T) {
 	s, _, _, sender, recipient, _, _ := stage0Server(t)
-	refs := []agentMessageRef{{Kind: "nano.thread", ID: recipient.NativeThreadID}, {Kind: "issue.ref", ID: "sample-task"}}
+	refs := []featuremail.Ref{{Kind: "nano.thread", ID: recipient.NativeThreadID}, {Kind: "issue.ref", ID: "sample-task"}}
 	rec, first := sendAgentMessageForTest(t, s, recipient, sender.ID, "result-1", "First", "Result one", refs)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("first send = %d %s", rec.Code, rec.Body.String())
 	}
-	if first.Seq != 1 || first.Status != agentMessageUnread || first.Sender.HostedThreadID != sender.ID || first.Recipient.HostedThreadID != recipient.ID {
+	if first.Seq != 1 || first.Status != featuremail.Unread || first.Sender.HostedThreadID != sender.ID || first.Recipient.HostedThreadID != recipient.ID {
 		t.Fatalf("first message = %+v", first)
 	}
 	if len(first.Refs) != 2 || first.Refs[0].Kind != "issue.ref" {
 		t.Fatalf("normalized refs = %+v", first.Refs)
 	}
-	rec, replay := sendAgentMessageForTest(t, s, recipient, sender.ID, "result-1", "First", "Result one", []agentMessageRef{refs[1], refs[0]})
+	rec, replay := sendAgentMessageForTest(t, s, recipient, sender.ID, "result-1", "First", "Result one", []featuremail.Ref{refs[1], refs[0]})
 	if rec.Code != http.StatusOK || replay.MessageID != first.MessageID {
 		t.Fatalf("replay = %d %+v", rec.Code, replay)
 	}
@@ -62,7 +64,7 @@ func TestAgentMessageSendOrderingRefsAndDedup(t *testing.T) {
 		t.Fatalf("second sequence = %d", second.Seq)
 	}
 
-	outbox, err := s.mail.ListOutbox(sender.ID, agentMessageListOptions{Limit: 100})
+	outbox, err := s.mail.ListOutbox(sender.ID, featuremail.ListOptions{Limit: 100})
 	if err != nil || len(outbox) != 2 || outbox[0].MessageID != first.MessageID || outbox[1].MessageID != second.MessageID {
 		t.Fatalf("outbox = %+v, err=%v", outbox, err)
 	}
@@ -70,7 +72,7 @@ func TestAgentMessageSendOrderingRefsAndDedup(t *testing.T) {
 
 func TestAgentInboxPeekSeenLintAndRecipientBoundary(t *testing.T) {
 	s, _, _, sender, recipient, _, _ := stage0Server(t)
-	_, message := sendAgentMessageForTest(t, s, recipient, sender.ID, "finding-1", "Finding", "Please inspect", []agentMessageRef{{Kind: "issue.ref", ID: "sample-task"}})
+	_, message := sendAgentMessageForTest(t, s, recipient, sender.ID, "finding-1", "Finding", "Please inspect", []featuremail.Ref{{Kind: "issue.ref", ID: "sample-task"}})
 
 	peek := httptest.NewRecorder()
 	s.handleHostedThreadInbox(peek, httptest.NewRequest(http.MethodGet, "/inbox?actorThreadRef="+recipient.ID+"&peek=true", nil), recipient)
@@ -87,12 +89,12 @@ func TestAgentInboxPeekSeenLintAndRecipientBoundary(t *testing.T) {
 	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), `"status":"seen"`) {
 		t.Fatalf("read = %d %s", read.Code, read.Body.String())
 	}
-	lint, _, err := s.mail.ListInbox(recipient.ID, agentMessageListOptions{Limit: 10, Status: []string{agentMessageSeen}}, false, time.Now())
+	lint, _, err := s.mail.ListInbox(recipient.ID, featuremail.ListOptions{Limit: 10, Status: []string{featuremail.Seen}}, false, time.Now())
 	if err != nil || len(lint) != 1 || lint[0].MessageID != message.MessageID {
 		t.Fatalf("seen-undispositioned = %+v, err=%v", lint, err)
 	}
 	detail, err := s.mail.MessageDetail(message.MessageID)
-	if err != nil || len(detail.Events) != 2 || detail.Events[1].Kind != agentMessageSeen {
+	if err != nil || len(detail.Events) != 2 || detail.Events[1].Kind != featuremail.Seen {
 		t.Fatalf("events = %+v, err=%v", detail.Events, err)
 	}
 }
@@ -103,34 +105,34 @@ func TestAgentMessageDispositionFeedbackAndNoRecursion(t *testing.T) {
 	if quiet.DispositionFeedback {
 		t.Fatal("disposition feedback defaulted on")
 	}
-	message, feedback, err := s.mail.DispositionMessage(quiet.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, agentMessageActed, "Done quietly", time.Now())
-	if err != nil || message.Status != agentMessageActed || feedback != nil {
+	message, feedback, err := s.mail.DispositionMessage(quiet.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, featuremail.Acted, "Done quietly", time.Now())
+	if err != nil || message.Status != featuremail.Acted || feedback != nil {
 		t.Fatalf("default feedback = message:%+v feedback:%+v err:%v", message, feedback, err)
 	}
 	_, original := sendAgentMessageWithFeedbackForTest(t, s, recipient, sender.ID, "decision-1", "Decision", "Choose a path", nil, true)
 	if !original.DispositionFeedback {
 		t.Fatal("disposition feedback opt-in was not persisted")
 	}
-	message, deferredFeedback, err := s.mail.DispositionMessage(original.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, agentMessageDeferred, "Waiting for evidence", time.Now())
-	if err != nil || message.Status != agentMessageDeferred || deferredFeedback == nil {
+	message, deferredFeedback, err := s.mail.DispositionMessage(original.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, featuremail.Deferred, "Waiting for evidence", time.Now())
+	if err != nil || message.Status != featuremail.Deferred || deferredFeedback == nil {
 		t.Fatalf("defer = %+v feedback=%+v err=%v", message, deferredFeedback, err)
 	}
 	if deferredFeedback.Recipient.HostedThreadID != sender.ID || deferredFeedback.Sender.System != "nano" || deferredFeedback.FeedbackForMessageID != original.MessageID {
 		t.Fatalf("deferred feedback = %+v", deferredFeedback)
 	}
-	message, actedFeedback, err := s.mail.DispositionMessage(original.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, agentMessageActed, "Implemented", time.Now().Add(time.Second))
-	if err != nil || message.Status != agentMessageActed || actedFeedback == nil || actedFeedback.MessageID == deferredFeedback.MessageID {
+	message, actedFeedback, err := s.mail.DispositionMessage(original.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, featuremail.Acted, "Implemented", time.Now().Add(time.Second))
+	if err != nil || message.Status != featuremail.Acted || actedFeedback == nil || actedFeedback.MessageID == deferredFeedback.MessageID {
 		t.Fatalf("acted = %+v feedback=%+v err=%v", message, actedFeedback, err)
 	}
-	feedbackInbox, _, err := s.mail.ListInbox(sender.ID, agentMessageListOptions{Limit: 10, Status: []string{agentMessageUnread}}, false, time.Now())
+	feedbackInbox, _, err := s.mail.ListInbox(sender.ID, featuremail.ListOptions{Limit: 10, Status: []string{featuremail.Unread}}, false, time.Now())
 	if err != nil || len(feedbackInbox) != 2 || feedbackInbox[0].Seq >= feedbackInbox[1].Seq {
 		t.Fatalf("sender feedback inbox = %+v, err=%v", feedbackInbox, err)
 	}
-	_, recursive, err := s.mail.DispositionMessage(deferredFeedback.MessageID, sender.ID, "Sender", sender.NativeThreadID, agentMessageActed, "Noted", time.Now())
+	_, recursive, err := s.mail.DispositionMessage(deferredFeedback.MessageID, sender.ID, "Sender", sender.NativeThreadID, featuremail.Acted, "Noted", time.Now())
 	if err != nil || recursive != nil {
 		t.Fatalf("system feedback disposition recursively notified: feedback=%+v err=%v", recursive, err)
 	}
-	feedbackInbox, _, _ = s.mail.ListInbox(sender.ID, agentMessageListOptions{Limit: 10}, false, time.Now())
+	feedbackInbox, _, _ = s.mail.ListInbox(sender.ID, featuremail.ListOptions{Limit: 10}, false, time.Now())
 	if len(feedbackInbox) != 2 {
 		t.Fatalf("feedback disposition created extra mail: %+v", feedbackInbox)
 	}
@@ -145,14 +147,14 @@ func TestAgentMessageDispositionRollsBackWhenFeedbackFails(t *testing.T) {
 		WHEN NEW.feedback_for_message_id IS NOT NULL BEGIN SELECT RAISE(ABORT, 'injected feedback failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.mail.DispositionMessage(original.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, agentMessageActed, "done", time.Now()); err == nil {
+	if _, _, err := s.mail.DispositionMessage(original.MessageID, recipient.ID, "Recipient", recipient.NativeThreadID, featuremail.Acted, "done", time.Now()); err == nil {
 		t.Fatal("injected feedback failure succeeded")
 	}
 	detail, err := s.mail.MessageDetail(original.MessageID)
-	if err != nil || detail.Message.Status != agentMessageUnread || len(detail.Events) != 1 {
+	if err != nil || detail.Message.Status != featuremail.Unread || len(detail.Events) != 1 {
 		t.Fatalf("rolled-back disposition = %+v, err=%v", detail, err)
 	}
-	inbox, _, err := s.mail.ListInbox(sender.ID, agentMessageListOptions{Limit: 10}, false, time.Now())
+	inbox, _, err := s.mail.ListInbox(sender.ID, featuremail.ListOptions{Limit: 10}, false, time.Now())
 	if err != nil || len(inbox) != 0 {
 		t.Fatalf("rolled-back feedback inbox = %+v, err=%v", inbox, err)
 	}
@@ -167,8 +169,8 @@ func TestAgentMessageConcurrentPerRecipientSequence(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			req := agentMessageCreate{ClientMessageID: fmt.Sprintf("m-%d", i), SenderKey: "sender", SenderKind: "thread", Origin: "agent", SenderHostedID: "sender", RecipientHostedID: "recipient", Body: fmt.Sprintf("body-%d", i), CreatedAt: time.Now()}
-			req.RequestHash = agentMessageRequestHashWithFeedback(req.RecipientHostedID, "", req.Body, nil, false, "")
+			req := featuremail.Create{ClientMessageID: fmt.Sprintf("m-%d", i), SenderKey: "sender", SenderKind: "thread", Origin: "agent", SenderHostedID: "sender", RecipientHostedID: "recipient", Body: fmt.Sprintf("body-%d", i), CreatedAt: time.Now()}
+			req.RequestHash = featuremail.RequestHashWithFeedback(req.RecipientHostedID, "", req.Body, nil, false, "")
 			_, _, err := mail.CreateMessage(req)
 			errs <- err
 		}(i)
@@ -180,7 +182,7 @@ func TestAgentMessageConcurrentPerRecipientSequence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	items, _, err := mail.ListInbox("recipient", agentMessageListOptions{Limit: 100}, false, time.Now())
+	items, _, err := mail.ListInbox("recipient", featuremail.ListOptions{Limit: 100}, false, time.Now())
 	if err != nil || len(items) != total {
 		t.Fatalf("items=%d err=%v", len(items), err)
 	}
@@ -193,8 +195,8 @@ func TestAgentMessageConcurrentPerRecipientSequence(t *testing.T) {
 
 func TestAgentMessageFailedSendRollsBackSequenceAllocation(t *testing.T) {
 	mail := newTestAgentMessageStore(t)
-	failed := agentMessageCreate{ClientMessageID: "fail-1", SenderKey: "sender", SenderKind: "thread", Origin: "agent", SenderHostedID: "sender", RecipientHostedID: "recipient", Body: "fail", CreatedAt: time.Now()}
-	failed.RequestHash = agentMessageRequestHashWithFeedback(failed.RecipientHostedID, "", failed.Body, nil, false, "")
+	failed := featuremail.Create{ClientMessageID: "fail-1", SenderKey: "sender", SenderKind: "thread", Origin: "agent", SenderHostedID: "sender", RecipientHostedID: "recipient", Body: "fail", CreatedAt: time.Now()}
+	failed.RequestHash = featuremail.RequestHashWithFeedback(failed.RecipientHostedID, "", failed.Body, nil, false, "")
 	// The failure fires inside the send transaction, after the recipient's
 	// sequence number is allocated.
 	if _, err := mail.DB.Exec(`CREATE TRIGGER fail_send BEFORE INSERT ON agent_messages
@@ -206,7 +208,7 @@ func TestAgentMessageFailedSendRollsBackSequenceAllocation(t *testing.T) {
 	}
 	good := failed
 	good.ClientMessageID, good.Body = "good-1", "good"
-	good.RequestHash = agentMessageRequestHashWithFeedback(good.RecipientHostedID, "", good.Body, nil, false, "")
+	good.RequestHash = featuremail.RequestHashWithFeedback(good.RecipientHostedID, "", good.Body, nil, false, "")
 	message, created, err := mail.CreateMessage(good)
 	if err != nil || !created || message.Seq != 1 {
 		t.Fatalf("send after rollback = %+v created=%v err=%v", message, created, err)
@@ -222,7 +224,7 @@ func TestInboxSendToDetachedAndExitedRecipientCreatesNoTurn(t *testing.T) {
 			}
 			recipient, _ = store.Session(recipient.ID)
 			rec, message := sendAgentMessageForTest(t, s, recipient, sender.ID, "detached-"+status, "Status", "Stored only", nil)
-			if rec.Code != http.StatusCreated || message.Status != agentMessageUnread {
+			if rec.Code != http.StatusCreated || message.Status != featuremail.Unread {
 				t.Fatalf("send = %d %+v %s", rec.Code, message, rec.Body.String())
 			}
 			if got := sess.QueuedPromptCount(); got != 0 {
@@ -297,11 +299,11 @@ func TestAgentMailStoreCopiesLegacyRowsOnceAndLeavesSource(t *testing.T) {
 	}
 
 	mailPath := filepath.Join(dir, "mail.sqlite")
-	mail, report, err := openAgentMessageStore(mailPath, controlPath)
+	mail, report, err := featuremail.OpenStore(mailPath, controlPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report != (agentMailMigrationReport{Messages: 1, Events: 1, Refs: 1, Sequences: 1}) {
+	if report != (featuremail.MigrationReport{Messages: 1, Events: 1, Refs: 1, Sequences: 1}) {
 		t.Fatalf("migration report = %+v", report)
 	}
 	detail, err := mail.MessageDetail("nmsg_legacy")
@@ -311,7 +313,7 @@ func TestAgentMailStoreCopiesLegacyRowsOnceAndLeavesSource(t *testing.T) {
 	if err := mail.Close(); err != nil {
 		t.Fatal(err)
 	}
-	mail, replay, err := openAgentMessageStore(mailPath, controlPath)
+	mail, replay, err := featuremail.OpenStore(mailPath, controlPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,19 +328,19 @@ func TestAgentMailStoreCopiesLegacyRowsOnceAndLeavesSource(t *testing.T) {
 }
 
 func TestAgentMailRetentionDefaultsOffAndDeletesOnlyExpiredDispositionedMail(t *testing.T) {
-	mail, _, err := openAgentMessageStore(filepath.Join(t.TempDir(), "mail.sqlite"), "")
+	mail, _, err := featuremail.OpenStore(filepath.Join(t.TempDir(), "mail.sqlite"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer mail.Close()
 	now := time.Date(2026, time.September, 12, 12, 0, 0, 0, time.UTC)
 	for _, id := range []string{"expired-acted", "expired-seen", "recent-acted"} {
-		request := agentMessageCreate{
+		request := featuremail.Create{
 			ClientMessageID: id, SenderKey: "sender", SenderKind: "thread", Origin: "agent",
 			SenderHostedID: "sender", RecipientHostedID: "recipient", Body: id, CreatedAt: now,
-			Refs: []agentMessageRef{{Kind: "test", ID: id}},
+			Refs: []featuremail.Ref{{Kind: "test", ID: id}},
 		}
-		request.RequestHash = agentMessageRequestHashWithFeedback(request.RecipientHostedID, "", request.Body, request.Refs, false, "")
+		request.RequestHash = featuremail.RequestHashWithFeedback(request.RecipientHostedID, "", request.Body, request.Refs, false, "")
 		if _, created, err := mail.CreateMessage(request); err != nil || !created {
 			t.Fatalf("create %s: created=%v err=%v", id, created, err)
 		}
@@ -486,7 +488,7 @@ func TestQueuedUnreadFooterRetryUsesCallerHashAndPersistedText(t *testing.T) {
 	if !ok || !strings.Contains(queued.Text, "[nano: 1 unread") || queued.TextHash == queued.RequestHash || queued.RequestHash != turnRequestHash("Queued", true) {
 		t.Fatalf("queued record = %+v", queued)
 	}
-	_, _, err := s.mail.ListInbox(recipient.ID, agentMessageListOptions{Limit: 10}, true, time.Now())
+	_, _, err := s.mail.ListInbox(recipient.ID, featuremail.ListOptions{Limit: 10}, true, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

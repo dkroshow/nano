@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 )
@@ -39,7 +40,7 @@ func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.
 		Prompt               string                           `json:"prompt"`
 		PrePing              *heartbeatPrePingTemplateRequest `json:"prePing"`
 		Authority            string                           `json:"authority"`
-		Actor                heartbeatActor                   `json:"actor"`
+		Actor                featureheartbeat.Actor           `json:"actor"`
 	}
 	if err := decodeHeartbeatRequest(w, r, 128<<10, &body); err != nil {
 		httpapi.WriteHTTPError(w, "invalid heartbeat attachment", http.StatusBadRequest)
@@ -66,10 +67,10 @@ func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.
 		return
 	}
 	if _, existingErr := s.heartbeat.Store.AttachmentForTarget(target.ID); existingErr == nil {
-		httpapi.WriteHTTPError(w, errHeartbeatAttachmentExists.Error(), http.StatusConflict)
+		httpapi.WriteHTTPError(w, featureheartbeat.ErrAttachmentExists.Error(), http.StatusConflict)
 		return
 	}
-	var prePing *heartbeatPrePingReference
+	var prePing *featureheartbeat.PrePingReference
 	if body.PrePing != nil {
 		prePing, body.Prompt, err = s.copyHeartbeatTemplate(*body.PrePing, normalizedActor, body.Authority, body.Prompt, time.Now())
 		if err != nil {
@@ -77,12 +78,12 @@ func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.
 			return
 		}
 	}
-	rec, err := s.heartbeat.Store.CreateAttachment(heartbeatAttachmentInput{
+	rec, err := s.heartbeat.Store.CreateAttachment(featureheartbeat.AttachmentInput{
 		TargetHostedThreadID: target.ID, CadenceMinutes: body.CadenceMinutes, OffsetMinutes: body.OffsetMinutes,
 		Prompt: body.Prompt, PrePing: prePing, Authority: body.Authority, Actor: normalizedActor,
 	}, time.Now())
 	if err != nil {
-		if errors.Is(err, errHeartbeatAttachmentExists) {
+		if errors.Is(err, featureheartbeat.ErrAttachmentExists) {
 			httpapi.WriteHTTPError(w, err.Error(), http.StatusConflict)
 			return
 		}
@@ -94,16 +95,16 @@ func (s *server) handleHeartbeatAttachmentCreate(w http.ResponseWriter, r *http.
 	_ = json.NewEncoder(w).Encode(rec)
 }
 
-func (s *server) normalizeHeartbeatActor(actor heartbeatActor) (heartbeatActor, error) {
+func (s *server) normalizeHeartbeatActor(actor featureheartbeat.Actor) (featureheartbeat.Actor, error) {
 	actor.Kind = strings.TrimSpace(actor.Kind)
 	actor.Name = strings.TrimSpace(actor.Name)
 	if actor.Kind == "" {
-		return heartbeatActor{}, errors.New("actor.kind is required")
+		return featureheartbeat.Actor{}, errors.New("actor.kind is required")
 	}
 	if actor.Kind == "hosted-thread" {
 		record, ok := s.resolveHostedThreadRecord(actor.HostedThreadID)
 		if !ok {
-			return heartbeatActor{}, errors.New("actor hosted thread is unknown")
+			return featureheartbeat.Actor{}, errors.New("actor hosted thread is unknown")
 		}
 		actor.HostedThreadID = record.ID
 	}
@@ -122,19 +123,19 @@ func decodeHeartbeatRequest(w http.ResponseWriter, r *http.Request, limit int64,
 	return nil
 }
 
-func heartbeatMutationActor(w http.ResponseWriter, r *http.Request) (heartbeatActor, string, bool) {
+func heartbeatMutationActor(w http.ResponseWriter, r *http.Request) (featureheartbeat.Actor, string, bool) {
 	var body struct {
-		Reason string         `json:"reason"`
-		Actor  heartbeatActor `json:"actor"`
+		Reason string                 `json:"reason"`
+		Actor  featureheartbeat.Actor `json:"actor"`
 	}
 	if err := decodeHeartbeatRequest(w, r, 16<<10, &body); err != nil {
 		httpapi.WriteHTTPError(w, "body requires actor and reason", http.StatusBadRequest)
-		return heartbeatActor{}, "", false
+		return featureheartbeat.Actor{}, "", false
 	}
 	body.Reason = strings.TrimSpace(body.Reason)
 	if strings.TrimSpace(body.Actor.Kind) == "" || body.Reason == "" {
 		httpapi.WriteHTTPError(w, "body requires actor and reason", http.StatusBadRequest)
-		return heartbeatActor{}, "", false
+		return featureheartbeat.Actor{}, "", false
 	}
 	return body.Actor, body.Reason, true
 }
@@ -171,12 +172,12 @@ func (s *server) handleHeartbeatAttachmentUpdate(w http.ResponseWriter, r *http.
 		return
 	}
 	var body struct {
-		CadenceMinutes *int            `json:"cadenceMinutes"`
-		OffsetMinutes  *int            `json:"offsetMinutes"`
-		Prompt         *string         `json:"prompt"`
-		PrePing        json.RawMessage `json:"prePing"`
-		Reason         string          `json:"reason"`
-		Actor          heartbeatActor  `json:"actor"`
+		CadenceMinutes *int                   `json:"cadenceMinutes"`
+		OffsetMinutes  *int                   `json:"offsetMinutes"`
+		Prompt         *string                `json:"prompt"`
+		PrePing        json.RawMessage        `json:"prePing"`
+		Reason         string                 `json:"reason"`
+		Actor          featureheartbeat.Actor `json:"actor"`
 	}
 	if err := decodeHeartbeatRequest(w, r, 128<<10, &body); err != nil {
 		httpapi.WriteHTTPError(w, "invalid heartbeat attachment patch", http.StatusBadRequest)
@@ -192,7 +193,7 @@ func (s *server) handleHeartbeatAttachmentUpdate(w http.ResponseWriter, r *http.
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	var prePing *heartbeatPrePingReference
+	var prePing *featureheartbeat.PrePingReference
 	if prePingTemplate != nil {
 		current, currentErr := s.heartbeat.Store.Attachment(id)
 		if currentErr != nil {
@@ -209,12 +210,12 @@ func (s *server) handleHeartbeatAttachmentUpdate(w http.ResponseWriter, r *http.
 			return
 		}
 	}
-	rec, err := s.heartbeat.Store.UpdateAttachment(id, heartbeatAttachmentPatch{
+	rec, err := s.heartbeat.Store.UpdateAttachment(id, featureheartbeat.AttachmentPatch{
 		CadenceMinutes: body.CadenceMinutes, OffsetMinutes: body.OffsetMinutes, Prompt: body.Prompt,
 		PrePingSet: prePingSet, PrePing: prePing,
 	}, body.Reason, actor, time.Now())
 	if err != nil {
-		if errors.Is(err, errHeartbeatNotFound) {
+		if errors.Is(err, featureheartbeat.ErrNotFound) {
 			httpapi.WriteHTTPError(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -268,14 +269,14 @@ func (s *server) handleHeartbeatAttachmentToggle(w http.ResponseWriter, r *http.
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	var rec heartbeatAttachment
+	var rec featureheartbeat.Attachment
 	if pause {
 		rec, err = s.heartbeat.Store.PauseAttachment(id, reason, actor, time.Now())
 	} else {
 		rec, err = s.heartbeat.Store.ResumeAttachment(id, reason, actor, time.Now())
 	}
 	if err != nil {
-		if errors.Is(err, errHeartbeatNotFound) {
+		if errors.Is(err, featureheartbeat.ErrNotFound) {
 			httpapi.WriteHTTPError(w, err.Error(), http.StatusNotFound)
 			return
 		}

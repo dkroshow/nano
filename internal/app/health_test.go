@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 )
 
 func TestHealthRequiresHostedControl(t *testing.T) {
@@ -23,7 +25,7 @@ func TestHealthAcceptsUsableHostedControl(t *testing.T) {
 	s := &server{
 		agentExecutions: &agentExecutionStore{},
 		controlMetadata: &controlMetadataStore{},
-		mail:            &agentMessageStore{},
+		mail:            &featuremail.Store{},
 	}
 	rec := httptest.NewRecorder()
 	s.handleHealth(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))

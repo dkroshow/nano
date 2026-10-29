@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 // bootReattach holds one boot's registration order, per-provider controls and

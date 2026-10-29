@@ -5,12 +5,15 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
+	"github.com/dkroshow/nano/internal/interact"
 )
 
 func TestExplicitCloseSelfPausesHeartbeat(t *testing.T) {
 	s, _, _, _, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = newHeartbeatService(s, store, true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -21,14 +24,14 @@ func TestExplicitCloseSelfPausesHeartbeat(t *testing.T) {
 		t.Fatalf("close = %d %s", recorder.Code, recorder.Body.String())
 	}
 	paused, err := store.Attachment(attachment.ID)
-	if err != nil || paused.State != heartbeatStatePaused || paused.PauseReason != heartbeatTargetClosedReason {
+	if err != nil || paused.State != featureheartbeat.StatePaused || paused.PauseReason != featureheartbeat.TargetClosedReason {
 		t.Fatalf("paused = %#v, %v", paused, err)
 	}
 	var eventType, detail string
 	if err := store.DB.QueryRow(`SELECT event_type,detail FROM heartbeat_attachment_events WHERE attachment_id=? ORDER BY id DESC LIMIT 1`, attachment.ID).Scan(&eventType, &detail); err != nil {
 		t.Fatal(err)
 	}
-	if eventType != "target_gone" || detail != heartbeatTargetClosedReason {
+	if eventType != "target_gone" || detail != featureheartbeat.TargetClosedReason {
 		t.Fatalf("audit = %q/%q", eventType, detail)
 	}
 }

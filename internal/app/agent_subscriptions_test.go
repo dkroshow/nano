@@ -23,7 +23,7 @@ type recordingSubscriptionClient struct {
 	promptErr error
 }
 
-func subscriptionDispatcherForTest(executions *agentExecutionStore, client subscriptions.Client) *subscriptionDispatcher {
+func subscriptionDispatcherForTest(executions *agentExecutionStore, client subscriptions.Client) *subscriptions.Dispatcher {
 	return subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
 }
 
@@ -147,7 +147,7 @@ func TestCompletionSubscriptionSkipsExitedAndAdvancesPermanentFailure(t *testing
 	client := &recordingSubscriptionClient{sendErr: errors.New("recipient gone"), pages: map[string]interact.CompletedTurnPage{
 		child.ID + "\x00": {Items: []interact.CompletedTurn{{TurnID: "gone-turn", Outcome: agentTurnCompleted}}, NextCursor: "gone-turn"},
 	}}
-	subscriptionDispatcherForTest(executions, client).SweepTarget(subscriptionTarget{
+	subscriptionDispatcherForTest(executions, client).SweepTarget(subscriptions.Target{
 		ChildHostedID: child.ID, InvokerHostedID: parent.ID,
 	})
 	cursor, _, err := subscriptions.Cursor(executions.Control().CanonicalDatabase(), child.ID)

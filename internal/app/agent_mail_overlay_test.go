@@ -14,7 +14,7 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-func operatorSendForTest(t *testing.T, s *server, recipient agentSessionRecord, clientID, subject, body string) (*httptest.ResponseRecorder, agentMessageView) {
+func operatorSendForTest(t *testing.T, s *server, recipient agentSessionRecord, clientID, subject, body string) (*httptest.ResponseRecorder, featuremail.Message) {
 	t.Helper()
 	encoded, err := json.Marshal(agentMessageSendRequest{ClientMessageID: clientID, Operator: true, Subject: subject, Body: body})
 	if err != nil {
@@ -22,7 +22,7 @@ func operatorSendForTest(t *testing.T, s *server, recipient agentSessionRecord, 
 	}
 	rec := httptest.NewRecorder()
 	s.handleHostedThreadMessageSend(rec, httptest.NewRequest(http.MethodPost, "/messages", bytes.NewReader(encoded)), recipient)
-	var message agentMessageView
+	var message featuremail.Message
 	if rec.Code == http.StatusCreated || rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), &message); err != nil {
 			t.Fatalf("decode message: %v (%s)", err, rec.Body.String())
@@ -41,7 +41,7 @@ func TestOperatorSendIdentityAndExclusivity(t *testing.T) {
 	if message.Sender.Kind != operatorSenderKind || message.Sender.Name != operatorSenderName || message.Sender.HostedThreadID != "" {
 		t.Fatalf("operator sender = %+v", message.Sender)
 	}
-	if message.Origin != operatorSenderKind || message.Status != agentMessageUnread {
+	if message.Origin != operatorSenderKind || message.Status != featuremail.Unread {
 		t.Fatalf("operator message = %+v", message)
 	}
 
@@ -61,7 +61,7 @@ func TestOperatorSendIdentityAndExclusivity(t *testing.T) {
 
 	// A disposition of operator mail must not synthesize sender feedback —
 	// the operator watches status in the UI and has no hosted inbox.
-	_, feedback, err := s.mail.DispositionMessage(message.MessageID, recipient.ID, "Worker", recipient.NativeThreadID, agentMessageActed, "", time.Now())
+	_, feedback, err := s.mail.DispositionMessage(message.MessageID, recipient.ID, "Worker", recipient.NativeThreadID, featuremail.Acted, "", time.Now())
 	if err != nil || feedback != nil {
 		t.Fatalf("operator disposition feedback = %+v err=%v", feedback, err)
 	}
@@ -87,7 +87,7 @@ func TestOperatorEditOnlyWhileUnread(t *testing.T) {
 	if err != nil || detail.Message.Subject != "Final" || detail.Message.Body != "Second wording." {
 		t.Fatalf("edited message = %+v err=%v", detail.Message, err)
 	}
-	var edited *agentMessageEventView
+	var edited *featuremail.EventView
 	for i := range detail.Events {
 		if detail.Events[i].Kind == "edited" {
 			edited = &detail.Events[i]
@@ -98,7 +98,7 @@ func TestOperatorEditOnlyWhileUnread(t *testing.T) {
 	}
 
 	// Once read, the message freezes.
-	if _, _, err := s.mail.ListInbox(recipient.ID, agentMessageListOptions{Limit: 10}, true, time.Now()); err != nil {
+	if _, _, err := s.mail.ListInbox(recipient.ID, featuremail.ListOptions{Limit: 10}, true, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	rec = edit(message.MessageID, "Too late", "Rewrite after read.")
@@ -121,11 +121,11 @@ func TestAgentMailCountsAndCatalogOverlay(t *testing.T) {
 	operatorSendForTest(t, s, recipient, "m-3", "Three", "Third")
 
 	// Read marks all three seen; disposition one so counts split across states.
-	items, marked, err := s.mail.ListInbox(recipient.ID, agentMessageListOptions{Limit: 10}, true, time.Now())
+	items, marked, err := s.mail.ListInbox(recipient.ID, featuremail.ListOptions{Limit: 10}, true, time.Now())
 	if err != nil || marked != 3 {
 		t.Fatalf("mark seen = %d err=%v", marked, err)
 	}
-	if _, _, err := s.mail.DispositionMessage(items[0].MessageID, recipient.ID, "Worker", recipient.NativeThreadID, agentMessageActed, "", time.Now()); err != nil {
+	if _, _, err := s.mail.DispositionMessage(items[0].MessageID, recipient.ID, "Worker", recipient.NativeThreadID, featuremail.Acted, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,8 +173,8 @@ func TestGlobalMailListingOrderFiltersAndPaging(t *testing.T) {
 		}
 		return payload
 	}
-	decodeItems := func(raw json.RawMessage) []agentMessageView {
-		var items []agentMessageView
+	decodeItems := func(raw json.RawMessage) []featuremail.Message {
+		var items []featuremail.Message
 		if err := json.Unmarshal(raw, &items); err != nil {
 			t.Fatal(err)
 		}
@@ -186,7 +186,7 @@ func TestGlobalMailListingOrderFiltersAndPaging(t *testing.T) {
 	if len(items) != 3 || items[0].Subject != "Three" || items[2].Subject != "One" {
 		t.Fatalf("global order = %+v", items)
 	}
-	var summary agentMailCounts
+	var summary featuremail.Counts
 	if err := json.Unmarshal(payload["summary"], &summary); err != nil {
 		t.Fatal(err)
 	}

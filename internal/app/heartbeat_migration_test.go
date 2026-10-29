@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
 // buildLegacyHeartbeatDB hand-builds a legacy heartbeat.sqlite:
@@ -85,7 +87,7 @@ func buildLegacyHeartbeatDB(t *testing.T) string {
 
 func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 	path := buildLegacyHeartbeatDB(t)
-	store, err := openHeartbeatStore(path)
+	store, err := featureheartbeat.OpenStore(path, threads.Backup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +111,7 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	// phase_tick=902, cadence=5 -> offset = 902 % 5 = 2.
-	if active.State != heartbeatStateActive || active.OffsetMinutes != 2 || active.CadenceMinutes != 5 ||
+	if active.State != featureheartbeat.StateActive || active.OffsetMinutes != 2 || active.CadenceMinutes != 5 ||
 		active.Prompt != "Keep going." || active.Authority != "Operator request" || active.Creator.Name != "Operator" || active.Revision != 2 {
 		t.Fatalf("migrated active attachment = %#v", active)
 	}
@@ -118,7 +120,7 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if held.State != heartbeatStatePaused || held.PauseReason != "Operator is reviewing." || held.CadenceMinutes != 10 {
+	if held.State != featureheartbeat.StatePaused || held.PauseReason != "Operator is reviewing." || held.CadenceMinutes != 10 {
 		t.Fatalf("migrated held attachment = %#v", held)
 	}
 
@@ -126,7 +128,7 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if disabled.State != heartbeatStatePaused || disabled.PauseReason == "" {
+	if disabled.State != featureheartbeat.StatePaused || disabled.PauseReason == "" {
 		t.Fatalf("migrated disabled attachment = %#v", disabled)
 	}
 
@@ -138,7 +140,7 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 	for _, rec := range all {
 		if rec.ID == "hba_removed" {
 			removedFound = true
-			if rec.State != heartbeatStateRemoved || rec.RemovedAt == "" {
+			if rec.State != featureheartbeat.StateRemoved || rec.RemovedAt == "" {
 				t.Fatalf("migrated removed attachment = %#v", rec)
 			}
 		}
@@ -156,7 +158,7 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 	if err != nil || len(wakeRows) != 3 {
 		t.Fatalf("migrated wake log = %#v err=%v", wakeRows, err)
 	}
-	byTick := map[int64]heartbeatWakeDecision{}
+	byTick := map[int64]featureheartbeat.WakeDecision{}
 	for _, row := range wakeRows {
 		if row.DueEpochMinute != nil {
 			t.Fatalf("migrated legacy wake row has a due_epoch_minute: %#v", row)
@@ -166,18 +168,18 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 		}
 		byTick[*row.LegacyTickSequence] = row
 	}
-	if row := byTick[900]; row.Gate != heartbeatGateDelivery || row.Outcome != "submitted" || row.OperationID != "aop_legacy_1" {
+	if row := byTick[900]; row.Gate != featureheartbeat.GateDelivery || row.Outcome != "submitted" || row.OperationID != "aop_legacy_1" {
 		t.Fatalf("migrated delivered wake row = %#v", row)
 	}
-	if row := byTick[905]; row.Gate != heartbeatGateManualPause || row.Outcome != "held" {
+	if row := byTick[905]; row.Gate != featureheartbeat.GateManualPause || row.Outcome != "held" {
 		t.Fatalf("migrated held wake row = %#v", row)
 	}
-	if row := byTick[895]; row.Gate != heartbeatGateHardFacts || row.Outcome != "skipped" {
+	if row := byTick[895]; row.Gate != featureheartbeat.GateHardFacts || row.Outcome != "skipped" {
 		t.Fatalf("migrated hard-facts wake row = %#v", row)
 	}
 
 	for _, table := range []string{"heartbeat_state", "status_agents", "heartbeat_status_events", "status_judgments"} {
-		exists, err := tableExists(store.DB, table)
+		exists, err := featureheartbeat.TableExists(store.DB, table)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,7 +193,7 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openHeartbeatStore(path)
+	store, err = featureheartbeat.OpenStore(path, threads.Backup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,11 +210,11 @@ func TestMigrationRebuildsAttachmentsAndDropsStatusAgentTables(t *testing.T) {
 func TestMigrationOnFreshDatabaseCreatesV2SchemaDirectly(t *testing.T) {
 	store := openTestHeartbeatStore(t)
 	rec, err := store.CreateAttachment(testHeartbeatInput("nht_fresh"), time.Now())
-	if err != nil || rec.State != heartbeatStateActive || rec.OffsetMinutes != 0 {
+	if err != nil || rec.State != featureheartbeat.StateActive || rec.OffsetMinutes != 0 {
 		t.Fatalf("fresh attachment = %#v err=%v", rec, err)
 	}
 	for _, table := range []string{"heartbeat_state", "status_agents", "heartbeat_status_events", "status_judgments"} {
-		exists, err := tableExists(store.DB, table)
+		exists, err := featureheartbeat.TableExists(store.DB, table)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,7 +226,7 @@ func TestMigrationOnFreshDatabaseCreatesV2SchemaDirectly(t *testing.T) {
 
 func TestHeartbeatMigrationRetiresClosedConditionAndKeepsUnusedColumns(t *testing.T) {
 	path := t.TempDir() + "/heartbeat.sqlite"
-	store, err := openHeartbeatStore(path)
+	store, err := featureheartbeat.OpenStore(path, threads.Backup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +243,7 @@ func TestHeartbeatMigrationRetiresClosedConditionAndKeepsUnusedColumns(t *testin
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openHeartbeatStore(path)
+	store, err = featureheartbeat.OpenStore(path, threads.Backup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +252,7 @@ func TestHeartbeatMigrationRetiresClosedConditionAndKeepsUnusedColumns(t *testin
 		t.Fatalf("pre-migration backups = %v", backups)
 	}
 	loaded, err := store.Attachment(rec.ID)
-	if err != nil || loaded.State != heartbeatStatePaused || loaded.PauseReason == "" {
+	if err != nil || loaded.State != featureheartbeat.StatePaused || loaded.PauseReason == "" {
 		t.Fatalf("retired condition attachment = %#v, %v", loaded, err)
 	}
 	var condition, event string
@@ -278,19 +280,19 @@ func TestHeartbeatMigrationRetiresClosedConditionAndKeepsUnusedColumns(t *testin
 
 func TestHeartbeatMigrationReplacesLegacyScriptsWithSuspendedPrivateTemplates(t *testing.T) {
 	path := t.TempDir() + "/heartbeat.sqlite"
-	store, err := openHeartbeatStore(path)
+	store, err := featureheartbeat.OpenStore(path, threads.Backup)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, legacy, err := store.CreateScript(heartbeatScriptRevisionInput{
-		Name: "legacy custom", Source: `process.stdout.write('{"decision":"wake"}')`, Actor: heartbeatActor{Kind: "operator"},
+	_, legacy, err := store.CreateScript(featureheartbeat.ScriptRevisionInput{
+		Name: "legacy custom", Source: `process.stdout.write('{"decision":"wake"}')`, Actor: featureheartbeat.Actor{Kind: "operator"},
 	}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	makeAttachment := func(target string) heartbeatAttachment {
+	makeAttachment := func(target string) featureheartbeat.Attachment {
 		input := testHeartbeatInput(target)
-		input.PrePing = &heartbeatPrePingReference{ScriptID: legacy.ScriptID, Revision: legacy.Revision, Settings: json.RawMessage(`{}`)}
+		input.PrePing = &featureheartbeat.PrePingReference{ScriptID: legacy.ScriptID, Revision: legacy.Revision, Settings: json.RawMessage(`{}`)}
 		rec, err := store.CreateAttachment(input, time.Now())
 		if err != nil {
 			t.Fatal(err)
@@ -298,13 +300,13 @@ func TestHeartbeatMigrationReplacesLegacyScriptsWithSuspendedPrivateTemplates(t 
 		return rec
 	}
 	first, second := makeAttachment("nht_legacy_first"), makeAttachment("nht_legacy_second")
-	if _, err := store.PauseAttachment(first.ID, "controlled freeze", heartbeatActor{Kind: "operator", Name: "Operator"}, time.Now()); err != nil {
+	if _, err := store.PauseAttachment(first.ID, "controlled freeze", featureheartbeat.Actor{Kind: "operator", Name: "Operator"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openHeartbeatStore(path)
+	store, err = featureheartbeat.OpenStore(path, threads.Backup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,20 +319,20 @@ func TestHeartbeatMigrationReplacesLegacyScriptsWithSuspendedPrivateTemplates(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.State != heartbeatStatePaused || first.PauseReason != "controlled freeze" || !first.PrePingSuspended ||
-		second.State != heartbeatStatePaused || second.PauseReason == "" || !second.PrePingSuspended {
+	if first.State != featureheartbeat.StatePaused || first.PauseReason != "controlled freeze" || !first.PrePingSuspended ||
+		second.State != featureheartbeat.StatePaused || second.PauseReason == "" || !second.PrePingSuspended {
 		t.Fatalf("migrated attachments = %#v %#v", first, second)
 	}
 	if first.PrePing == nil || second.PrePing == nil || first.PrePing.ScriptID == legacy.ScriptID || second.PrePing.ScriptID == legacy.ScriptID || first.PrePing.ScriptID == second.PrePing.ScriptID {
 		t.Fatalf("private copies = %#v %#v; legacy=%#v", first.PrePing, second.PrePing, legacy)
 	}
-	template, err := heartbeatScriptTemplateByID(heartbeatInboxTemplateID)
+	template, err := featureheartbeat.ScriptTemplateByID(featureheartbeat.InboxTemplateID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, rec := range []heartbeatAttachment{first, second} {
+	for _, rec := range []featureheartbeat.Attachment{first, second} {
 		revision, err := store.ScriptRevision(rec.PrePing.ScriptID, rec.PrePing.Revision)
-		if err != nil || revision.TemplateID != heartbeatInboxTemplateID || revision.Source != template.Source {
+		if err != nil || revision.TemplateID != featureheartbeat.InboxTemplateID || revision.Source != template.Source {
 			t.Fatalf("template copy = %#v, %v", revision, err)
 		}
 	}
@@ -343,13 +345,13 @@ func TestHeartbeatMigrationReplacesLegacyScriptsWithSuspendedPrivateTemplates(t 
 		t.Fatalf("migration audit detail = %q, %v", detail, err)
 	}
 	client := &heartbeatTestClient{lifecycle: interact.LifecycleState{Availability: "available", AttachmentState: "live"}}
-	h := newHeartbeatService(&server{}, store, true, nil)
+	h := featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.apiOrigin, nil), true, nil)
 	h.Client = client
 	h.EvaluateDue(context.Background(), first, 500, time.Now())
 	if client.lifecycleReads != 0 || len(client.prompts) != 0 {
 		t.Fatalf("suspended legacy attachment ran: reads=%d prompts=%d", client.lifecycleReads, len(client.prompts))
 	}
-	resumed, err := store.ResumeAttachment(first.ID, "Operator resumed after migration", heartbeatActor{Kind: "operator", Name: "Operator"}, time.Now())
+	resumed, err := store.ResumeAttachment(first.ID, "Operator resumed after migration", featureheartbeat.Actor{Kind: "operator", Name: "Operator"}, time.Now())
 	if err != nil || resumed.PrePingSuspended {
 		t.Fatalf("resume = %#v, %v", resumed, err)
 	}

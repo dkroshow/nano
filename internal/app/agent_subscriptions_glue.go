@@ -7,13 +7,6 @@ import (
 	"github.com/dkroshow/nano/internal/interact"
 )
 
-type subscriptionDispatcher = subscriptions.Dispatcher
-type subscriptionTarget = subscriptions.Target
-
-func serverFeatureAction(actionID string) bool {
-	return subscriptions.IsFeatureAction(actionID)
-}
-
 // startSubscriptionDispatcher publishes the dispatcher before its catch-up
 // sweep starts. Nothing polls, so a turn saved after the catch-up has read its
 // child's feed reaches the invoker only if its finished-turn hook finds the

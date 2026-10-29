@@ -64,7 +64,7 @@ func (s *server) notifyMailChanged(recipients ...string) {
 		log.Printf("mail change notify: %v", err)
 		return
 	}
-	delta := featuremail.Delta{Counts: map[string]agentMailCounts{}}
+	delta := featuremail.Delta{Counts: map[string]featuremail.Counts{}}
 	for _, id := range ids {
 		delta.Counts[id] = all[id] // zero-value counts if the id has no mail
 	}
@@ -133,7 +133,7 @@ func (s *server) handleAgentMessagesGlobal(w http.ResponseWriter, r *http.Reques
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "mail_read_failed", err.Error())
 		return
 	}
-	var summary agentMailCounts
+	var summary featuremail.Counts
 	for _, counts := range all {
 		summary.Total += counts.Total
 		summary.Unread += counts.Unread
@@ -144,4 +144,11 @@ func (s *server) handleAgentMessagesGlobal(w http.ResponseWriter, r *http.Reques
 		nextBefore = items[len(items)-1].MessageOrder
 	}
 	httpapi.WriteJSON(w, map[string]any{"items": items, "summary": summary, "nextBefore": nextBefore})
+}
+
+func (s *server) promptWithUnreadFooter(hostedThreadID, prompt string) (string, error) {
+	if hostedThreadID == "" {
+		return prompt, nil
+	}
+	return s.notices.Append(hostedThreadID, prompt), nil
 }

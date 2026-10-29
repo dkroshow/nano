@@ -1749,7 +1749,7 @@ func (c *feedSubscriptionClient) SubmitPrompt(_ context.Context, request interac
 
 // subscribedCodexServer is startingCodexServer whose stored Codex thread is a
 // child that tells its parent's inbox when a turn completes.
-func subscribedCodexServer(t *testing.T, resumeTurns string) (*server, *fakeAppServer, attachmentRecord, *feedSubscriptionClient, *subscriptionDispatcher) {
+func subscribedCodexServer(t *testing.T, resumeTurns string) (*server, *fakeAppServer, attachmentRecord, *feedSubscriptionClient, *subscriptions.Dispatcher) {
 	t.Helper()
 	daemon := newFakeAppServer(t)
 	daemon.SetResumeTurns(json.RawMessage(resumeTurns))

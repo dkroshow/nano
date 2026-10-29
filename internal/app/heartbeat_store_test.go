@@ -5,12 +5,14 @@ import (
 	"testing"
 	"time"
 
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	"github.com/dkroshow/nano/internal/interact"
+	"github.com/dkroshow/nano/internal/threads"
 )
 
-func openTestHeartbeatStore(t *testing.T) *heartbeatStore {
+func openTestHeartbeatStore(t *testing.T) *featureheartbeat.Store {
 	t.Helper()
-	store, err := openHeartbeatStore(filepath.Join(t.TempDir(), "heartbeat.sqlite"))
+	store, err := featureheartbeat.OpenStore(filepath.Join(t.TempDir(), "heartbeat.sqlite"), threads.Backup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,13 +20,13 @@ func openTestHeartbeatStore(t *testing.T) *heartbeatStore {
 	return store
 }
 
-func testHeartbeatInput(target string) heartbeatAttachmentInput {
-	return heartbeatAttachmentInput{
+func testHeartbeatInput(target string) featureheartbeat.AttachmentInput {
+	return featureheartbeat.AttachmentInput{
 		TargetHostedThreadID: target,
 		CadenceMinutes:       1,
 		Prompt:               "Continue the assigned work.",
 		Authority:            "Operator approved",
-		Actor:                heartbeatActor{Kind: "operator", Name: "Operator"},
+		Actor:                featureheartbeat.Actor{Kind: "operator", Name: "Operator"},
 	}
 }
 
@@ -35,12 +37,12 @@ func TestHeartbeatPauseResumeRequireReasonsAndAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actor := heartbeatActor{Kind: "hosted-thread", HostedThreadID: "nht_manager"}
+	actor := featureheartbeat.Actor{Kind: "hosted-thread", HostedThreadID: "nht_manager"}
 	if _, err := store.PauseAttachment(rec.ID, "", actor, now); err == nil {
 		t.Fatal("pause without reason succeeded")
 	}
 	paused, err := store.PauseAttachment(rec.ID, "waiting for a review", actor, now.Add(time.Minute))
-	if err != nil || paused.State != heartbeatStatePaused || paused.PauseReason != "waiting for a review" {
+	if err != nil || paused.State != featureheartbeat.StatePaused || paused.PauseReason != "waiting for a review" {
 		t.Fatalf("pause = %#v, %v", paused, err)
 	}
 	if _, err := store.ResumeAttachment(rec.ID, "", actor, now); err == nil {
@@ -50,7 +52,7 @@ func TestHeartbeatPauseResumeRequireReasonsAndAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	resumed, err := store.ResumeAttachment(rec.ID, "review arrived", actor, now.Add(2*time.Minute))
-	if err != nil || resumed.State != heartbeatStateActive || resumed.ConsecutiveWakes != 0 || resumed.LastResumeAt == "" {
+	if err != nil || resumed.State != featureheartbeat.StateActive || resumed.ConsecutiveWakes != 0 || resumed.LastResumeAt == "" {
 		t.Fatalf("resume = %#v, %v", resumed, err)
 	}
 	var details string
@@ -115,16 +117,16 @@ func TestHeartbeatUsageCapAndDecisionRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := now.AddDate(0, 0, -31)
-	for minute, outcome := range map[int64]string{1: heartbeatOutcomeSkipped, 2: heartbeatOutcomeFailed, 3: heartbeatOutcomeDelivered} {
+	for minute, outcome := range map[int64]string{1: featureheartbeat.OutcomeSkipped, 2: featureheartbeat.OutcomeFailed, 3: featureheartbeat.OutcomeDelivered} {
 		id, claimed, err := store.ClaimWakeDecision(rec.ID, minute, old)
 		if err != nil || !claimed {
 			t.Fatalf("claim %d: %v", minute, err)
 		}
 		op := ""
-		if outcome == heartbeatOutcomeDelivered {
+		if outcome == featureheartbeat.OutcomeDelivered {
 			op = "aop_wake"
 		}
-		if err := store.SettleWakeDecision(id, heartbeatGateDelivery, "available", nil, outcome, op, "", old); err != nil {
+		if err := store.SettleWakeDecision(id, featureheartbeat.GateDelivery, "available", nil, outcome, op, "", old); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -136,7 +138,7 @@ func TestHeartbeatUsageCapAndDecisionRetention(t *testing.T) {
 	if err != nil || !claimed {
 		t.Fatalf("claim unavailable usage wake: %v", err)
 	}
-	if err := store.SettleWakeDecision(id, heartbeatGateDelivery, "available", nil, heartbeatOutcomeDelivered, "aop_no_usage", "", old); err != nil {
+	if err := store.SettleWakeDecision(id, featureheartbeat.GateDelivery, "available", nil, featureheartbeat.OutcomeDelivered, "aop_no_usage", "", old); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RecordWakeUsage("aop_no_usage", nil); err != nil {

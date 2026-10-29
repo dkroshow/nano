@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	"github.com/dkroshow/nano/internal/interact"
 )
 
@@ -40,10 +41,10 @@ func (c *heartbeatTestClient) SubscribeCompletedTurns(context.Context, interact.
 	return c.completed, nil
 }
 
-func heartbeatTestService(t *testing.T, client *heartbeatTestClient) (*heartbeatService, heartbeatAttachment) {
+func heartbeatTestService(t *testing.T, client *heartbeatTestClient) (*featureheartbeat.Service, featureheartbeat.Attachment) {
 	t.Helper()
 	store := openTestHeartbeatStore(t)
-	h := newHeartbeatService(&server{}, store, true, nil)
+	h := featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.apiOrigin, nil), true, nil)
 	h.Client = client
 	rec, err := store.CreateAttachment(testHeartbeatInput("nht_target"), time.Now().UTC())
 	if err != nil {
@@ -61,7 +62,7 @@ func TestHeartbeatUsesInteractAndSkipsUnavailableTargets(t *testing.T) {
 		t.Fatalf("interact prompts = %#v", client.prompts)
 	}
 	rows, err := h.Store.ListWakeLog(rec.ID, 10)
-	if err != nil || len(rows) != 1 || rows[0].Outcome != heartbeatOutcomeDelivered || rows[0].UsageState != heartbeatUsagePending {
+	if err != nil || len(rows) != 1 || rows[0].Outcome != featureheartbeat.OutcomeDelivered || rows[0].UsageState != featureheartbeat.UsagePending {
 		t.Fatalf("wake log = %#v, %v", rows, err)
 	}
 
@@ -72,7 +73,7 @@ func TestHeartbeatUsesInteractAndSkipsUnavailableTargets(t *testing.T) {
 		t.Fatalf("waiting target received prompt: %#v", client.prompts)
 	}
 	rows, _ = h.Store.ListWakeLog(rec.ID, 10)
-	if rows[0].Gate != heartbeatGateHardFacts || rows[0].AvailabilityState != "awaiting-human" {
+	if rows[0].Gate != featureheartbeat.GateHardFacts || rows[0].AvailabilityState != "awaiting-human" {
 		t.Fatalf("waiting decision = %#v", rows[0])
 	}
 }
@@ -91,7 +92,7 @@ func TestHeartbeatWakeIsIdempotentPerDueMinute(t *testing.T) {
 func TestManualPauseSkipsBeforeInteractRead(t *testing.T) {
 	client := &heartbeatTestClient{lifecycle: interact.LifecycleState{Availability: "available", AttachmentState: "live"}}
 	h, rec := heartbeatTestService(t, client)
-	paused, err := h.Store.PauseAttachment(rec.ID, "operator review", heartbeatActor{Kind: "operator", Name: "Operator"}, time.Now())
+	paused, err := h.Store.PauseAttachment(rec.ID, "operator review", featureheartbeat.Actor{Kind: "operator", Name: "Operator"}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,14 +113,14 @@ func TestHeartbeatGlobalCapAndTargetGonePause(t *testing.T) {
 		t.Fatalf("cap admitted %d prompts", len(client.prompts))
 	}
 	rows, _ := h.Store.ListWakeLog(rec.ID, 10)
-	if rows[0].Gate != heartbeatGateGlobalCap || rows[0].Outcome != heartbeatOutcomeSkipped {
+	if rows[0].Gate != featureheartbeat.GateGlobalCap || rows[0].Outcome != featureheartbeat.OutcomeSkipped {
 		t.Fatalf("cap decision = %#v", rows[0])
 	}
 
 	client.lifecycle = interact.LifecycleState{Availability: "unreachable", AvailabilityReasons: []string{"exited"}, AttachmentState: "exited"}
 	h.EvaluateDue(context.Background(), rec, 202, now.Add(2*time.Minute))
 	paused, err := h.Store.Attachment(rec.ID)
-	if err != nil || paused.State != heartbeatStatePaused || !strings.Contains(paused.PauseReason, "target is gone") {
+	if err != nil || paused.State != featureheartbeat.StatePaused || !strings.Contains(paused.PauseReason, "target is gone") {
 		t.Fatalf("gone pause = %#v, %v", paused, err)
 	}
 }
@@ -128,21 +129,21 @@ func TestPausedHeartbeatWakesOnlyForPrePingArrival(t *testing.T) {
 	client := &heartbeatTestClient{lifecycle: interact.LifecycleState{Availability: "available", AttachmentState: "live"}}
 	h, rec := heartbeatTestService(t, client)
 	now := time.Now().UTC()
-	revisionInput := heartbeatScriptRevisionInput{Name: "test attachment copy", Source: "process.exit(0)", DefaultSettings: json.RawMessage(`{}`), Actor: heartbeatActor{Kind: "operator"}}
+	revisionInput := featureheartbeat.ScriptRevisionInput{Name: "test attachment copy", Source: "process.exit(0)", DefaultSettings: json.RawMessage(`{}`), Actor: featureheartbeat.Actor{Kind: "operator"}}
 	_, revision, err := h.Store.CreateScript(revisionInput, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err = h.Store.UpdateAttachment(rec.ID, heartbeatAttachmentPatch{PrePingSet: true, PrePing: &heartbeatPrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add inbox template", heartbeatActor{Kind: "operator"}, now)
+	rec, err = h.Store.UpdateAttachment(rec.ID, featureheartbeat.AttachmentPatch{PrePingSet: true, PrePing: &featureheartbeat.PrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add inbox template", featureheartbeat.Actor{Kind: "operator"}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err = h.Store.PauseAttachment(rec.ID, "waiting for reviewer", heartbeatActor{Kind: "operator"}, now)
+	rec, err = h.Store.PauseAttachment(rec.ID, "waiting for reviewer", featureheartbeat.Actor{Kind: "operator"}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.PrePing = func(context.Context, heartbeatScriptRevision, heartbeatPrePingInput) (heartbeatPrePingResult, heartbeatPrePingAudit, error) {
-		return heartbeatPrePingResult{Decision: heartbeatPrePingWake, Prompt: "review arrived"}, heartbeatPrePingAudit{ScriptID: revision.ScriptID, Revision: 1, Result: heartbeatPrePingWake, PromptChanged: true}, nil
+	h.PrePing = func(context.Context, featureheartbeat.ScriptRevision, featureheartbeat.PrePingInput) (featureheartbeat.PrePingResult, featureheartbeat.PrePingAudit, error) {
+		return featureheartbeat.PrePingResult{Decision: featureheartbeat.PrePingWake, Prompt: "review arrived"}, featureheartbeat.PrePingAudit{ScriptID: revision.ScriptID, Revision: 1, Result: featureheartbeat.PrePingWake, PromptChanged: true}, nil
 	}
 	h.EvaluateDue(context.Background(), rec, 300, now)
 	if len(client.prompts) != 1 || !strings.Contains(client.prompts[0].Prompt, "waiting for reviewer") || !strings.Contains(client.prompts[0].Prompt, "review arrived") || !strings.Contains(client.prompts[0].Prompt, "restate the outstanding wait") {
@@ -154,22 +155,22 @@ func TestPrePingFailurePausesAndRunsOnlyOnce(t *testing.T) {
 	client := &heartbeatTestClient{lifecycle: interact.LifecycleState{Availability: "available", AttachmentState: "live"}}
 	h, rec := heartbeatTestService(t, client)
 	now := time.Now().UTC()
-	_, revision, err := h.Store.CreateScript(heartbeatScriptRevisionInput{Name: "broken copy", Source: "process.exit(1)", Actor: heartbeatActor{Kind: "operator"}}, now)
+	_, revision, err := h.Store.CreateScript(featureheartbeat.ScriptRevisionInput{Name: "broken copy", Source: "process.exit(1)", Actor: featureheartbeat.Actor{Kind: "operator"}}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err = h.Store.UpdateAttachment(rec.ID, heartbeatAttachmentPatch{PrePingSet: true, PrePing: &heartbeatPrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add template", heartbeatActor{Kind: "operator"}, now)
+	rec, err = h.Store.UpdateAttachment(rec.ID, featureheartbeat.AttachmentPatch{PrePingSet: true, PrePing: &featureheartbeat.PrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add template", featureheartbeat.Actor{Kind: "operator"}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runs := 0
-	h.PrePing = func(context.Context, heartbeatScriptRevision, heartbeatPrePingInput) (heartbeatPrePingResult, heartbeatPrePingAudit, error) {
+	h.PrePing = func(context.Context, featureheartbeat.ScriptRevision, featureheartbeat.PrePingInput) (featureheartbeat.PrePingResult, featureheartbeat.PrePingAudit, error) {
 		runs++
-		return heartbeatPrePingResult{Decision: heartbeatPrePingFail, Reason: "broken"}, heartbeatPrePingAudit{ScriptID: revision.ScriptID, Revision: 1, Result: heartbeatPrePingFail, Reason: "broken"}, nil
+		return featureheartbeat.PrePingResult{Decision: featureheartbeat.PrePingFail, Reason: "broken"}, featureheartbeat.PrePingAudit{ScriptID: revision.ScriptID, Revision: 1, Result: featureheartbeat.PrePingFail, Reason: "broken"}, nil
 	}
 	h.EvaluateDue(context.Background(), rec, 350, now)
 	paused, err := h.Store.Attachment(rec.ID)
-	if err != nil || paused.State != heartbeatStatePaused || paused.PrePingFailureRevision != 1 || len(client.prompts) != 1 {
+	if err != nil || paused.State != featureheartbeat.StatePaused || paused.PrePingFailureRevision != 1 || len(client.prompts) != 1 {
 		t.Fatalf("failure latch = %#v prompts=%d err=%v", paused, len(client.prompts), err)
 	}
 	h.EvaluateDue(context.Background(), paused, 351, now.Add(time.Minute))
@@ -182,22 +183,22 @@ func TestPausedHeartbeatLatchesPrePingFailureWithoutLosingPauseReason(t *testing
 	client := &heartbeatTestClient{lifecycle: interact.LifecycleState{Availability: "available", AttachmentState: "live"}}
 	h, rec := heartbeatTestService(t, client)
 	now := time.Now().UTC()
-	_, revision, err := h.Store.CreateScript(heartbeatScriptRevisionInput{Name: "broken copy", Source: "process.exit(1)", Actor: heartbeatActor{Kind: "operator"}}, now)
+	_, revision, err := h.Store.CreateScript(featureheartbeat.ScriptRevisionInput{Name: "broken copy", Source: "process.exit(1)", Actor: featureheartbeat.Actor{Kind: "operator"}}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err = h.Store.UpdateAttachment(rec.ID, heartbeatAttachmentPatch{PrePingSet: true, PrePing: &heartbeatPrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add template", heartbeatActor{Kind: "operator"}, now)
+	rec, err = h.Store.UpdateAttachment(rec.ID, featureheartbeat.AttachmentPatch{PrePingSet: true, PrePing: &featureheartbeat.PrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add template", featureheartbeat.Actor{Kind: "operator"}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err = h.Store.PauseAttachment(rec.ID, "waiting for reviewer", heartbeatActor{Kind: "operator", Name: "Operator"}, now)
+	rec, err = h.Store.PauseAttachment(rec.ID, "waiting for reviewer", featureheartbeat.Actor{Kind: "operator", Name: "Operator"}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runs := 0
-	h.PrePing = func(context.Context, heartbeatScriptRevision, heartbeatPrePingInput) (heartbeatPrePingResult, heartbeatPrePingAudit, error) {
+	h.PrePing = func(context.Context, featureheartbeat.ScriptRevision, featureheartbeat.PrePingInput) (featureheartbeat.PrePingResult, featureheartbeat.PrePingAudit, error) {
 		runs++
-		return heartbeatPrePingResult{Decision: heartbeatPrePingFail, Reason: "broken"}, heartbeatPrePingAudit{ScriptID: revision.ScriptID, Revision: 1, Result: heartbeatPrePingFail, Reason: "broken"}, nil
+		return featureheartbeat.PrePingResult{Decision: featureheartbeat.PrePingFail, Reason: "broken"}, featureheartbeat.PrePingAudit{ScriptID: revision.ScriptID, Revision: 1, Result: featureheartbeat.PrePingFail, Reason: "broken"}, nil
 	}
 	h.EvaluateDue(context.Background(), rec, 360, now)
 	loaded, err := h.Store.Attachment(rec.ID)
@@ -236,7 +237,7 @@ func TestHeartbeatPublicSubmissionAddsOnlyHeartbeatFooter(t *testing.T) {
 	}
 	select {
 	case delivered := <-prompts:
-		if delivered != "continue\n\n"+heartbeatFooter {
+		if delivered != "continue\n\n"+featureheartbeat.Footer {
 			t.Fatalf("delivered = %q", delivered)
 		}
 	case <-time.After(time.Second):
@@ -247,7 +248,7 @@ func TestHeartbeatPublicSubmissionAddsOnlyHeartbeatFooter(t *testing.T) {
 func TestAnyHostedAgentCanPauseAndResumeWithAuditedReasons(t *testing.T) {
 	s, _, _, manager, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = newHeartbeatService(s, store, true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +273,7 @@ func TestAnyHostedAgentCanPauseAndResumeWithAuditedReasons(t *testing.T) {
 func TestHeartbeatAttachmentAPIRequiresReasonAndRejectsClosedTarget(t *testing.T) {
 	s, _, _, manager, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = newHeartbeatService(s, store, true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
 	attachment, err := store.CreateAttachment(testHeartbeatInput(target.ID), time.Now())
 	if err != nil {
 		t.Fatal(err)

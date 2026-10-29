@@ -14,12 +14,13 @@ import (
 	"testing"
 	"time"
 
+	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 )
 
-func newTestAgentMessageStore(t *testing.T) *agentMessageStore {
+func newTestAgentMessageStore(t *testing.T) *featuremail.Store {
 	t.Helper()
-	mail, _, err := openAgentMessageStore(filepath.Join(t.TempDir(), "mail.sqlite"), "")
+	mail, _, err := featuremail.OpenStore(filepath.Join(t.TempDir(), "mail.sqlite"), "")
 	if err != nil {
 		t.Fatal(err)
 	}

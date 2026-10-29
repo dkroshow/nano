@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
 	"github.com/dkroshow/nano/internal/interact"
 )
 
 func TestHeartbeatPrePingRunnerContract(t *testing.T) {
-	runner := newHeartbeatPrePingRunner("", "http://127.0.0.1:1")
-	input := heartbeatPrePingInput{Version: 1, DueEpochMinute: 42, TargetHostedThreadID: "nht_target", Prompt: "original", Settings: json.RawMessage(`{"ready":true}`)}
+	runner := featureheartbeat.NewPrePingRunner("", "http://127.0.0.1:1")
+	input := featureheartbeat.PrePingInput{Version: 1, DueEpochMinute: 42, TargetHostedThreadID: "nht_target", Prompt: "original", Settings: json.RawMessage(`{"ready":true}`)}
 	for _, tc := range []struct {
 		name, source, decision, prompt, reason string
 		wantErr                                bool
@@ -29,7 +30,7 @@ func TestHeartbeatPrePingRunnerContract(t *testing.T) {
 		{"mixed output", `process.stdout.write('{"decision":"wake"}\nextra')`, "", "", "invalid_output", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, audit, err := runner(context.Background(), heartbeatScriptRevision{ScriptID: "hbs_test", Revision: 3, Source: tc.source}, input)
+			result, audit, err := runner(context.Background(), featureheartbeat.ScriptRevision{ScriptID: "hbs_test", Revision: 3, Source: tc.source}, input)
 			if (err != nil) != tc.wantErr || result.Decision != tc.decision || result.Prompt != tc.prompt || audit.Reason != tc.reason {
 				t.Fatalf("result=%#v audit=%#v err=%v", result, audit, err)
 			}
@@ -41,29 +42,29 @@ func TestHeartbeatPrePingRunnerContract(t *testing.T) {
 }
 
 func TestHeartbeatPrePingRunnerTimeoutAndDedupeLimits(t *testing.T) {
-	runner := newHeartbeatPrePingRunner("", "")
+	runner := featureheartbeat.NewPrePingRunner("", "")
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer cancel()
-	_, audit, err := runner(ctx, heartbeatScriptRevision{ScriptID: "hbs_timeout", Revision: 1, Source: `setInterval(() => {}, 1000)`}, heartbeatPrePingInput{Version: 1, Prompt: "x", Settings: json.RawMessage(`{}`)})
-	if err == nil || audit.Result != heartbeatPrePingFail || audit.Reason != "timeout" {
+	_, audit, err := runner(ctx, featureheartbeat.ScriptRevision{ScriptID: "hbs_timeout", Revision: 1, Source: `setInterval(() => {}, 1000)`}, featureheartbeat.PrePingInput{Version: 1, Prompt: "x", Settings: json.RawMessage(`{}`)})
+	if err == nil || audit.Result != featureheartbeat.PrePingFail || audit.Reason != "timeout" {
 		t.Fatalf("timeout audit=%#v err=%v", audit, err)
 	}
 
 	source := `process.stdout.write(JSON.stringify({decision:"wake",dedupeKey:"x".repeat(4097)}))`
-	_, audit, err = runner(context.Background(), heartbeatScriptRevision{ScriptID: "hbs_large", Revision: 1, Source: source}, heartbeatPrePingInput{Version: 1, Prompt: "x", Settings: json.RawMessage(`{}`)})
-	if err == nil || audit.Result != heartbeatPrePingFail || audit.Reason != "dedupe_key_too_large" {
+	_, audit, err = runner(context.Background(), featureheartbeat.ScriptRevision{ScriptID: "hbs_large", Revision: 1, Source: source}, featureheartbeat.PrePingInput{Version: 1, Prompt: "x", Settings: json.RawMessage(`{}`)})
+	if err == nil || audit.Result != featureheartbeat.PrePingFail || audit.Reason != "dedupe_key_too_large" {
 		t.Fatalf("dedupe audit=%#v err=%v", audit, err)
 	}
 }
 
 func TestHeartbeatTemplatesAreRepoOwnedAndCopiesArePerAttachment(t *testing.T) {
-	templates, err := loadHeartbeatScriptTemplates()
+	templates, err := featureheartbeat.LoadScriptTemplates()
 	if err != nil || len(templates) != 1 || templates[0].ID != "inbox_match" {
 		t.Fatalf("templates = %#v, %v", templates, err)
 	}
 	store := openTestHeartbeatStore(t)
-	s := &server{heartbeat: newHeartbeatService(&server{}, store, true, nil)}
-	actor := heartbeatActor{Kind: "operator", Name: "Operator"}
+	s := &server{heartbeat: featureheartbeat.NewService(store, interact.NewHTTPClient((&server{}).defaults.apiOrigin, nil), true, nil)}
+	actor := featureheartbeat.Actor{Kind: "operator", Name: "Operator"}
 	first, _, err := s.copyHeartbeatTemplate(heartbeatPrePingTemplateRequest{TemplateID: "inbox_match"}, actor, "approved", "", time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -88,14 +89,14 @@ func TestInboxMatchTemplatePeeksWithoutReading(t *testing.T) {
 		_, _ = w.Write([]byte(`{"items":[{"seq":1,"status":"unread","sender":{"hostedThreadId":"nht_sender"},"refs":[{"kind":"issue.ref","id":"sample-task"}]}]}`))
 	}))
 	defer api.Close()
-	template, err := heartbeatScriptTemplateByID("inbox_match")
+	template, err := featureheartbeat.ScriptTemplateByID("inbox_match")
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := newHeartbeatPrePingRunner("", api.URL)
-	input := heartbeatPrePingInput{Version: 1, TargetHostedThreadID: "nht_target", Prompt: "review", Settings: json.RawMessage(`{"senderHostedThreadId":"nht_sender","refKind":"issue.ref","refId":"sample-task"}`)}
-	result, audit, err := runner(context.Background(), heartbeatScriptRevision{ScriptID: "hbs_inbox", Revision: 1, Source: template.Source}, input)
-	if err != nil || result.Decision != heartbeatPrePingWake || audit.Reason != "inbox_match" || requests != 1 {
+	runner := featureheartbeat.NewPrePingRunner("", api.URL)
+	input := featureheartbeat.PrePingInput{Version: 1, TargetHostedThreadID: "nht_target", Prompt: "review", Settings: json.RawMessage(`{"senderHostedThreadId":"nht_sender","refKind":"issue.ref","refId":"sample-task"}`)}
+	result, audit, err := runner(context.Background(), featureheartbeat.ScriptRevision{ScriptID: "hbs_inbox", Revision: 1, Source: template.Source}, input)
+	if err != nil || result.Decision != featureheartbeat.PrePingWake || audit.Reason != "inbox_match" || requests != 1 {
 		t.Fatalf("result=%#v audit=%#v requests=%d err=%v", result, audit, requests, err)
 	}
 }
@@ -103,8 +104,8 @@ func TestInboxMatchTemplatePeeksWithoutReading(t *testing.T) {
 func TestHeartbeatScriptAPIIsReadOnly(t *testing.T) {
 	store := openTestHeartbeatStore(t)
 	s := &server{}
-	s.heartbeat = newHeartbeatService(s, store, true, nil)
-	script, _, err := store.CreateScript(heartbeatScriptRevisionInput{Name: "copy", Source: "process.exit(0)", Actor: heartbeatActor{Kind: "operator"}}, time.Now())
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
+	script, _, err := store.CreateScript(featureheartbeat.ScriptRevisionInput{Name: "copy", Source: "process.exit(0)", Actor: featureheartbeat.Actor{Kind: "operator"}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestHeartbeatScriptAPIIsReadOnly(t *testing.T) {
 func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
 	s, _, _, _, target, _, _ := stage0Server(t)
 	store := openTestHeartbeatStore(t)
-	s.heartbeat = newHeartbeatService(s, store, true, nil)
+	s.heartbeat = featureheartbeat.NewService(store, interact.NewHTTPClient(s.defaults.apiOrigin, nil), true, nil)
 	body, _ := json.Marshal(map[string]any{
 		"targetHostedThreadId": target.ID, "cadenceMinutes": 1,
 		"prePing":   map[string]any{"templateId": "inbox_match"},
@@ -134,7 +135,7 @@ func TestHeartbeatAttachmentAPIAcceptsTemplateNotScriptSource(t *testing.T) {
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("attach = %d %s", recorder.Code, recorder.Body.String())
 	}
-	var attached heartbeatAttachment
+	var attached featureheartbeat.Attachment
 	if err := json.Unmarshal(recorder.Body.Bytes(), &attached); err != nil || attached.PrePing == nil || attached.Prompt == "" {
 		t.Fatalf("attachment = %#v, %v", attached, err)
 	}
@@ -194,14 +195,14 @@ func unreadInboxItem(seq int64, sender, refID string) map[string]any {
 	return map[string]any{"seq": seq, "status": "unread", "sender": map[string]string{"hostedThreadId": sender}, "refs": refs}
 }
 
-func runInboxMatchTemplate(t *testing.T, apiURL, settings string) (heartbeatPrePingResult, heartbeatPrePingAudit) {
+func runInboxMatchTemplate(t *testing.T, apiURL, settings string) (featureheartbeat.PrePingResult, featureheartbeat.PrePingAudit) {
 	t.Helper()
-	template, err := heartbeatScriptTemplateByID("inbox_match")
+	template, err := featureheartbeat.ScriptTemplateByID("inbox_match")
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := heartbeatPrePingInput{Version: 1, TargetHostedThreadID: "nht_target", Prompt: "review", Settings: json.RawMessage(settings)}
-	result, audit, _ := newHeartbeatPrePingRunner("", apiURL)(context.Background(), heartbeatScriptRevision{ScriptID: "hbs_inbox", Revision: 1, Source: template.Source}, input)
+	input := featureheartbeat.PrePingInput{Version: 1, TargetHostedThreadID: "nht_target", Prompt: "review", Settings: json.RawMessage(settings)}
+	result, audit, _ := featureheartbeat.NewPrePingRunner("", apiURL)(context.Background(), featureheartbeat.ScriptRevision{ScriptID: "hbs_inbox", Revision: 1, Source: template.Source}, input)
 	return result, audit
 }
 
@@ -211,11 +212,11 @@ func runInboxMatchTemplate(t *testing.T, apiURL, settings string) (heartbeatPreP
 func TestInboxMatchTemplateEmptySettingsMatchesAnyUnread(t *testing.T) {
 	inbox := &fakeInboxAPI{unread: []map[string]any{unreadInboxItem(7, "nht_anyone", "")}}
 	api := inbox.serve(t)
-	if result, audit := runInboxMatchTemplate(t, api.URL, `{}`); result.Decision != heartbeatPrePingWake || audit.Reason != "inbox_match" {
+	if result, audit := runInboxMatchTemplate(t, api.URL, `{}`); result.Decision != featureheartbeat.PrePingWake || audit.Reason != "inbox_match" {
 		t.Fatalf("empty settings with unread mail: result=%#v audit=%#v", result, audit)
 	}
 	inbox.unread = nil
-	if result, audit := runInboxMatchTemplate(t, api.URL, `{}`); result.Decision != heartbeatPrePingSkip || audit.Reason != "inbox_no_match" {
+	if result, audit := runInboxMatchTemplate(t, api.URL, `{}`); result.Decision != featureheartbeat.PrePingSkip || audit.Reason != "inbox_no_match" {
 		t.Fatalf("empty settings with empty inbox: result=%#v audit=%#v", result, audit)
 	}
 }
@@ -231,7 +232,7 @@ func TestInboxMatchTemplateReadsPastTheFirstPage(t *testing.T) {
 	inbox.unread = append(inbox.unread, unreadInboxItem(251, "nht_sender", "sample-task"))
 	api := inbox.serve(t)
 	result, audit := runInboxMatchTemplate(t, api.URL, `{"senderHostedThreadId":"nht_sender"}`)
-	if result.Decision != heartbeatPrePingWake || audit.Reason != "inbox_match" || inbox.requests != 3 {
+	if result.Decision != featureheartbeat.PrePingWake || audit.Reason != "inbox_match" || inbox.requests != 3 {
 		t.Fatalf("match on page 3: result=%#v audit=%#v requests=%d", result, audit, inbox.requests)
 	}
 }
@@ -243,7 +244,7 @@ func TestInboxMatchTemplateSeparatesSettingsErrorsFromReadErrors(t *testing.T) {
 	inbox := &fakeInboxAPI{}
 	api := inbox.serve(t)
 	for _, settings := range []string{`{"refKind":"issue.ref"}`, `{"refId":"sample-task"}`, `{"sender":"nht_sender"}`, `{"senderHostedThreadId":7}`} {
-		if result, audit := runInboxMatchTemplate(t, api.URL, settings); result.Decision != heartbeatPrePingFail || audit.Reason != "settings_invalid" {
+		if result, audit := runInboxMatchTemplate(t, api.URL, settings); result.Decision != featureheartbeat.PrePingFail || audit.Reason != "settings_invalid" {
 			t.Fatalf("settings %s: result=%#v audit=%#v", settings, result, audit)
 		}
 	}
@@ -251,7 +252,7 @@ func TestInboxMatchTemplateSeparatesSettingsErrorsFromReadErrors(t *testing.T) {
 		t.Fatalf("settings errors read the inbox %d times", inbox.requests)
 	}
 	inbox.status = http.StatusServiceUnavailable
-	if result, audit := runInboxMatchTemplate(t, api.URL, `{}`); result.Decision != heartbeatPrePingFail || audit.Reason != "inbox_read_failed" {
+	if result, audit := runInboxMatchTemplate(t, api.URL, `{}`); result.Decision != featureheartbeat.PrePingFail || audit.Reason != "inbox_read_failed" {
 		t.Fatalf("unavailable inbox: result=%#v audit=%#v", result, audit)
 	}
 }
@@ -264,20 +265,20 @@ func TestInboxMatchAttachmentWithEmptySettingsWakesOnlyForUnreadMail(t *testing.
 	client := &heartbeatTestClient{lifecycle: interact.LifecycleState{Availability: "available", AttachmentState: "live"}}
 	h, rec := heartbeatTestService(t, client)
 	now := time.Now().UTC()
-	template, err := heartbeatScriptTemplateByID("inbox_match")
+	template, err := featureheartbeat.ScriptTemplateByID("inbox_match")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, revision, err := h.Store.CreateScript(heartbeatScriptRevisionInput{Name: template.Name + " attachment copy", Source: template.Source, DefaultSettings: json.RawMessage(`{}`), TemplateID: template.ID, TemplateRevision: template.Revision, Actor: heartbeatActor{Kind: "operator"}}, now)
+	_, revision, err := h.Store.CreateScript(featureheartbeat.ScriptRevisionInput{Name: template.Name + " attachment copy", Source: template.Source, DefaultSettings: json.RawMessage(`{}`), TemplateID: template.ID, TemplateRevision: template.Revision, Actor: featureheartbeat.Actor{Kind: "operator"}}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err = h.Store.UpdateAttachment(rec.ID, heartbeatAttachmentPatch{PrePingSet: true, PrePing: &heartbeatPrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add inbox template", heartbeatActor{Kind: "operator"}, now)
+	rec, err = h.Store.UpdateAttachment(rec.ID, featureheartbeat.AttachmentPatch{PrePingSet: true, PrePing: &featureheartbeat.PrePingReference{ScriptID: revision.ScriptID, Revision: 1, Settings: json.RawMessage(`{}`)}}, "add inbox template", featureheartbeat.Actor{Kind: "operator"}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	inbox := &fakeInboxAPI{}
-	h.PrePing = newHeartbeatPrePingRunner("", inbox.serve(t).URL)
+	h.PrePing = featureheartbeat.NewPrePingRunner("", inbox.serve(t).URL)
 
 	h.EvaluateDue(context.Background(), rec, 400, now)
 	inbox.unread = []map[string]any{unreadInboxItem(1, "nht_anyone", "")}
@@ -286,11 +287,11 @@ func TestInboxMatchAttachmentWithEmptySettingsWakesOnlyForUnreadMail(t *testing.
 		t.Fatalf("prompts = %d, want exactly one wake for the unread message", len(client.prompts))
 	}
 	loaded, err := h.Store.Attachment(rec.ID)
-	if err != nil || loaded.State != heartbeatStateActive {
+	if err != nil || loaded.State != featureheartbeat.StateActive {
 		t.Fatalf("attachment = %#v, %v", loaded, err)
 	}
 	rows, err := h.Store.ListWakeLog(rec.ID, 10)
-	if err != nil || len(rows) != 2 || rows[0].PrePingResult != heartbeatPrePingWake || rows[1].PrePingResult != heartbeatPrePingSkip || rows[1].PrePingReason != "inbox_no_match" {
+	if err != nil || len(rows) != 2 || rows[0].PrePingResult != featureheartbeat.PrePingWake || rows[1].PrePingResult != featureheartbeat.PrePingSkip || rows[1].PrePingReason != "inbox_no_match" {
 		t.Fatalf("wake log = %#v, %v", rows, err)
 	}
 }
@@ -302,7 +303,7 @@ func TestInboxMatchTemplateReportsTheScanLimit(t *testing.T) {
 	inbox := &fakeInboxAPI{endless: true}
 	api := inbox.serve(t)
 	result, audit := runInboxMatchTemplate(t, api.URL, `{"senderHostedThreadId":"nht_sender"}`)
-	if result.Decision != heartbeatPrePingFail || audit.Reason != "inbox_scan_limit" || inbox.requests != 50 {
+	if result.Decision != featureheartbeat.PrePingFail || audit.Reason != "inbox_scan_limit" || inbox.requests != 50 {
 		t.Fatalf("endless inbox: result=%#v audit=%#v requests=%d", result, audit, inbox.requests)
 	}
 }

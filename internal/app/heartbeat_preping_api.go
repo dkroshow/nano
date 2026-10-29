@@ -2,15 +2,17 @@ package app
 
 import (
 	"encoding/json"
-	"github.com/dkroshow/nano/internal/httpapi"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	featureheartbeat "github.com/dkroshow/nano/internal/features/heartbeat"
+	"github.com/dkroshow/nano/internal/httpapi"
 )
 
 func (s *server) handleHeartbeatScriptTemplates(w http.ResponseWriter, r *http.Request) {
-	items, err := loadHeartbeatScriptTemplates()
+	items, err := featureheartbeat.LoadScriptTemplates()
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -23,8 +25,8 @@ type heartbeatPrePingTemplateRequest struct {
 	Settings   json.RawMessage `json:"settings,omitempty"`
 }
 
-func (s *server) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, actor heartbeatActor, authority, prompt string, now time.Time) (*heartbeatPrePingReference, string, error) {
-	template, err := heartbeatScriptTemplateByID(strings.TrimSpace(body.TemplateID))
+func (s *server) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, actor featureheartbeat.Actor, authority, prompt string, now time.Time) (*featureheartbeat.PrePingReference, string, error) {
+	template, err := featureheartbeat.ScriptTemplateByID(strings.TrimSpace(body.TemplateID))
 	if err != nil {
 		return nil, prompt, err
 	}
@@ -32,14 +34,14 @@ func (s *server) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, act
 	if len(settings) == 0 {
 		settings = template.DefaultSettings
 	}
-	settings, err = normalizeJSONObject(settings, 16<<10)
+	settings, err = featureheartbeat.NormalizeJSONObject(settings, 16<<10)
 	if err != nil {
 		return nil, prompt, err
 	}
 	if strings.TrimSpace(prompt) == "" {
 		prompt = template.DefaultPrompt
 	}
-	input := heartbeatScriptRevisionInput{
+	input := featureheartbeat.ScriptRevisionInput{
 		Name: template.Name + " attachment copy", Source: template.Source, DefaultPrompt: prompt,
 		DefaultSettings: settings, TemplateID: template.ID, TemplateRevision: template.Revision,
 		Authority: strings.TrimSpace(authority), Actor: actor,
@@ -48,7 +50,7 @@ func (s *server) copyHeartbeatTemplate(body heartbeatPrePingTemplateRequest, act
 	if err != nil {
 		return nil, prompt, err
 	}
-	return &heartbeatPrePingReference{ScriptID: revision.ScriptID, Revision: revision.Revision, Settings: settings}, prompt, nil
+	return &featureheartbeat.PrePingReference{ScriptID: revision.ScriptID, Revision: revision.Revision, Settings: settings}, prompt, nil
 }
 
 func (s *server) handleHeartbeatScripts(w http.ResponseWriter, r *http.Request) {

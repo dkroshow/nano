@@ -11,13 +11,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	nanofiles "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/interact"
 	statedb "github.com/dkroshow/nano/internal/state/db"
-
 	_ "modernc.org/sqlite"
 )
 
@@ -191,10 +190,12 @@ type sqlScanner interface {
 	Scan(...any) error
 }
 
+// OpenStore resolves and opens the durable heartbeat database. Resolving the
+// prospective path here gives every caller the same file through symlinks.
 func OpenStore(path string, backup BackupFunc) (*Store, error) {
-	absolute, err := filepath.Abs(path)
+	absolute, err := nanofiles.CanonicalProspective(path)
 	if err != nil {
-		return nil, fmt.Errorf("resolve heartbeat database: %w", err)
+		return nil, err
 	}
 	info, statErr := os.Stat(absolute)
 	existing := statErr == nil && info.Mode().IsRegular() && info.Size() > 0
