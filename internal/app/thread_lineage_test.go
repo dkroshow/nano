@@ -117,7 +117,7 @@ func (f *lineageFixture) parents(t *testing.T) []string {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	target := "/api/v1/threads?limit=250&includeSubagents=true&updatedFrom=" + url.QueryEscape(f.budget.now.Add(-2*24*time.Hour).Format(time.RFC3339))
-	f.budget.server.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	fixtureOwners(f.budget.server).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
 	var page sidebar.CatalogPage
 	if rec.Code != http.StatusOK {
 		t.Fatalf("lineage response = %d %s", rec.Code, rec.Body.String())

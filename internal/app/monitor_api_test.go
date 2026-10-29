@@ -59,7 +59,7 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: observability.NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}, map[string]*sessions.Session{working.ID(): working, idle.ID(): idle})
 
 	rec := httptest.NewRecorder()
-	s.monitorHandlers().HandleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
+	fixtureOwners(s).monitorHandlers().HandleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}

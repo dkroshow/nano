@@ -23,7 +23,7 @@ func TestSidebarDeltaRidesCatalogEventStream(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
 	s, _ := sidebarActiveFixture(t, now)
 
-	srv := httptest.NewServer(http.HandlerFunc(s.catalogViews().HandleEvents))
+	srv := httptest.NewServer(http.HandlerFunc(fixtureOwners(s).catalogViews().HandleEvents))
 	defer srv.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

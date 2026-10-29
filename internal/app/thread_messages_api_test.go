@@ -424,7 +424,7 @@ func TestThreadMessagesRejectsInvalidQueryAndSurfacesBackendErrors(t *testing.T)
 	assertCatalogErrorCode(t, recorder, "transcript_error")
 
 	recorder = httptest.NewRecorder()
-	(&server{}).catalogViews().HandleMessages(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_one/messages", nil), "nth_one")
+	fixtureOwners(&server{}).catalogViews().HandleMessages(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_one/messages", nil), "nth_one")
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unavailable status = %d", recorder.Code)
 	}
@@ -448,7 +448,7 @@ func TestThreadMessagesValidatesQueryBeforeHostedLookup(t *testing.T) {
 	for _, id := range []string{"nht_unknown", "nht_unbound"} {
 		t.Run(id, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			s.catalogViews().HandleMessages(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/"+id+"/messages?tail=abc", nil), id)
+			fixtureOwners(s).catalogViews().HandleMessages(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/"+id+"/messages?tail=abc", nil), id)
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("invalid query status=%d body=%s", rec.Code, rec.Body.String())
 			}

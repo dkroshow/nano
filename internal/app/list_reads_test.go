@@ -338,7 +338,7 @@ func TestThreadListStatementsDoNotGrowWithLiveSessions(t *testing.T) {
 	measure := func(extra int) (int64, int) {
 		f := newBudgetFixture(t, extra, true)
 		var body map[string]any
-		statements := f.countControlStatements(t, func() { body = f.get(t, f.server.catalogViews().HandleThreads, f.threadsURL()) })
+		statements := f.countControlStatements(t, func() { body = f.get(t, fixtureOwners(f.server).catalogViews().HandleThreads, f.threadsURL()) })
 		items, _ := body["items"].([]any)
 		return statements, len(items)
 	}
@@ -396,7 +396,7 @@ func TestListResponsesShowEachRowsFacts(t *testing.T) {
 		"metadataUnavailable", "metadata.revision")
 	add("detached", sessions["detached"], "provider", "nativeThreadId", "hostedThreadId", "metadataUnavailable",
 		"metadata.revision")
-	threads := f.get(t, f.server.catalogViews().HandleThreads, f.threadsURL())
+	threads := f.get(t, fixtureOwners(f.server).catalogViews().HandleThreads, f.threadsURL())
 	add("thread", threads["items"], "provider", "nativeId", "idClass", "kind", "name.value", "name.provenance",
 		"runtime.status", "runtime.detached", "metadata.cwd.value", "metadata.model.value", "fleet.label")
 	lines = append(lines, "thread nextCursor="+fmt.Sprint(threads["nextCursor"] != nil))
@@ -583,7 +583,7 @@ func TestThreadListPagesKeepLimitAndLoseNoThread(t *testing.T) {
 			if cursor != "" {
 				target += "&cursor=" + url.QueryEscape(cursor)
 			}
-			body := f.get(t, f.server.catalogViews().HandleThreads, target)
+			body := f.get(t, fixtureOwners(f.server).catalogViews().HandleThreads, target)
 			items, _ := body["items"].([]any)
 			page := identities(items)
 			onPage := map[string]bool{}
@@ -613,7 +613,7 @@ func TestThreadListPagesKeepLimitAndLoseNoThread(t *testing.T) {
 		return nil
 	}
 	whole := func(f *budgetFixture, base string) map[string]bool {
-		items, _ := f.get(t, f.server.catalogViews().HandleThreads, base+"&limit=250")["items"].([]any)
+		items, _ := f.get(t, fixtureOwners(f.server).catalogViews().HandleThreads, base+"&limit=250")["items"].([]any)
 		union := map[string]bool{}
 		for _, key := range identities(items) {
 			union[key] = true

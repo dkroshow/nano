@@ -103,7 +103,7 @@ func TestCatalogListContractAndQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.catalogViews().HandleThreads(rec, req)
+	fixtureOwners(s).catalogViews().HandleThreads(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -128,7 +128,7 @@ func TestCatalogListContractAndQuery(t *testing.T) {
 	conditional := httptest.NewRecorder()
 	conditionalRequest := httptest.NewRequest(http.MethodGet, req.URL.String(), nil)
 	conditionalRequest.Header.Set("If-None-Match", etag)
-	s.catalogViews().HandleThreads(conditional, conditionalRequest)
+	fixtureOwners(s).catalogViews().HandleThreads(conditional, conditionalRequest)
 	if conditional.Code != http.StatusNotModified || conditional.Body.Len() != 0 {
 		t.Fatalf("conditional catalog response = %d body %q", conditional.Code, conditional.Body.String())
 	}
@@ -162,7 +162,7 @@ func TestCatalogHostedAssignmentOverlayAndUnavailable(t *testing.T) {
 	readCatalog := func() sidebar.Thread {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+		fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("catalog status = %d %s", rec.Code, rec.Body.String())
 		}
@@ -224,7 +224,7 @@ func TestCatalogListRejectsInvalidQuery(t *testing.T) {
 		"/api/v1/threads?threadId=" + strings.Repeat("a", 256+1),
 	} {
 		rec := httptest.NewRecorder()
-		s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
+		fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d", target, rec.Code)
 		}
@@ -293,7 +293,7 @@ func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	(&server{}).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	fixtureOwners(&server{}).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unavailable status = %d", rec.Code)
 	}
@@ -303,7 +303,7 @@ func TestCatalogStatusRefreshAndUnavailable(t *testing.T) {
 func TestCatalogBackendErrorsDoNotLeak(t *testing.T) {
 	s := &server{catalog: (&catalogRowsFixture{listErr: errors.New("private parser detail")}).source(t)}
 	rec := httptest.NewRecorder()
-	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -315,7 +315,7 @@ func TestCatalogBackendErrorsDoNotLeak(t *testing.T) {
 func TestCatalogInvalidCursorReturnsBadRequest(t *testing.T) {
 	s := &server{catalog: (&catalogRowsFixture{listErr: threadindex.ErrInvalidThreadCatalogCursor}).source(t)}
 	rec := httptest.NewRecorder()
-	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads?cursor=bad", nil))
+	fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads?cursor=bad", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
@@ -568,7 +568,7 @@ func memoryRowServer(t *testing.T, corrupt ...bool) *server {
 func listCatalog(t *testing.T, s *server, target string) []map[string]json.RawMessage {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, target, nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("%s status = %d, body = %s", target, rec.Code, rec.Body.String())
 	}

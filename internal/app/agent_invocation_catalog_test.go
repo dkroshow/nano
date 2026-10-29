@@ -34,7 +34,7 @@ func TestCatalogOverlaysCrossProviderInvocationIdentity(t *testing.T) {
 	}}}
 	s := &server{catalog: (catalog).source(t), Registry: newSessionRegistry(), agentExecutions: store}
 	rec := httptest.NewRecorder()
-	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("catalog status = %d, body %s", rec.Code, rec.Body.String())
 	}

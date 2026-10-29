@@ -78,7 +78,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	var list struct {
 		Items []map[string]json.RawMessage `json:"items"`
 	}
@@ -131,7 +131,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	fake.page.Items[0].Runtime = nil
 	s.RegisterSession(fixture.session)
 	rec = httptest.NewRecorder()
-	s.catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
+	fixtureOwners(s).catalogViews().HandleThreads(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads", nil))
 	list.Items = nil
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
@@ -251,7 +251,7 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 	s := newResumeTestServer(t, fakeCodex.WSURL())
 	s.catalog = catalogFixture.source(t)
 
-	srv := httptest.NewServer(http.HandlerFunc(s.catalogViews().HandleEvents))
+	srv := httptest.NewServer(http.HandlerFunc(fixtureOwners(s).catalogViews().HandleEvents))
 	defer srv.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

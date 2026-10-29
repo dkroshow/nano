@@ -22,7 +22,7 @@ type catalogEventFixture struct {
 // and the SSE headers/format are exact.
 func TestCatalogEventsStreamDeliversVersionOnConnectAndBump(t *testing.T) {
 	fake := &catalogEventFixture{catalogRowsFixture: &catalogRowsFixture{}, version: 5}
-	srv := httptest.NewServer(http.HandlerFunc((&server{catalog: fake.source(t)}).catalogViews().HandleEvents))
+	srv := httptest.NewServer(http.HandlerFunc(fixtureOwners(&server{catalog: fake.source(t)}).catalogViews().HandleEvents))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -65,7 +65,7 @@ func TestCatalogEventsStreamRejectsNonGetAndUnavailable(t *testing.T) {
 
 	// A catalog without the stream surface reports unavailable, not a panic.
 	rec = httptest.NewRecorder()
-	(&server{}).catalogViews().HandleEvents(rec, httptest.NewRequest(http.MethodGet, "/api/v1/thread-index/events", nil))
+	fixtureOwners(&server{}).catalogViews().HandleEvents(rec, httptest.NewRequest(http.MethodGet, "/api/v1/thread-index/events", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no-stream status = %d", rec.Code)
 	}
