@@ -122,7 +122,7 @@ func TestClaudeExplicitClosePreservesReplacement(t *testing.T) {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1", nil)
 	request.SetPathValue("nativeThreadId", "native-1")
-	s.handleAttachmentScoped(response, request)
+	s.hostedController().HandleAttachmentScoped(response, request)
 	if response.Code < 400 {
 		t.Fatal("replacement was not detected")
 	}
@@ -262,7 +262,7 @@ func TestClaudeExplicitStartingCloseDoesNotClaimSuccess(t *testing.T) {
 	sess, _ := claudeTestSession(t)
 	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{sess.ID(): sess})
 	w := httptest.NewRecorder()
-	s.handleSessionClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
+	s.hostedController().HandleLegacyClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
 	if w.Code != 502 || s.LookupSession(sess.ID()) != sess || sess.Summary().Status == sessionStatusExited {
 		t.Fatalf("starting close lost in-flight attachment: %d %s", w.Code, w.Body)
 	}
@@ -295,7 +295,7 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), attachments: attachments, agentExecutions: store}, map[string]*session{sess.ID(): sess})
 	w := httptest.NewRecorder()
-	s.handleSessionClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
+	s.hostedController().HandleLegacyClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("close = %d %s", w.Code, w.Body)
 	}

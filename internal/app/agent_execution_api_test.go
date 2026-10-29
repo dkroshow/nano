@@ -284,7 +284,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 	}
 
 	created := httptest.NewRecorder()
-	s.handleSessionCreate(created, httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader([]byte(`{
+	s.hostedController().HandleLegacyCreate(created, httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader([]byte(`{
 	      "provider":"codex","mode":"start","presentationMode":"shared","serviceTier":"priority"
     }`))))
 	if created.Code != http.StatusOK {

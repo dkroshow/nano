@@ -14,7 +14,7 @@ import (
 func (s *Controller) HandleLegacyCreate(w http.ResponseWriter, r *http.Request) {
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
-	s.LegacyCreate(w, r)
+	s.handleSessionCreateAction(w, r)
 }
 
 // HandleLegacyClose closes a pinned legacy session under the relationship lock.

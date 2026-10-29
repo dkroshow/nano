@@ -32,9 +32,9 @@ func applicationRoutes(s *server) []applicationRoute {
 	routes := []applicationRoute{
 		{http.MethodGet, "/healthz", "health.read", s.handleHealth},
 		{http.MethodGet, "/api/sessions", "sessions.list", s.handleSessionsList},
-		{http.MethodPost, "/api/sessions", "sessions.create", s.handleSessionCreate},
+		{http.MethodPost, "/api/sessions", "sessions.create", s.hostedController().HandleLegacyCreate},
 		{http.MethodPost, "/api/sessions/preview", "sessions.preview", s.handleSpawnPreview},
-		{http.MethodDelete, "/api/sessions/{sessionId}", "sessions.close", sessionRoute(s.handleSessionClose)},
+		{http.MethodDelete, "/api/sessions/{sessionId}", "sessions.close", sessionRoute(s.hostedController().HandleLegacyClose)},
 		{http.MethodGet, "/api/sessions/{sessionId}/events", "sessions.events.stream", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.HandleEvents(w, r) })},
 		{http.MethodGet, "/api/sessions/{sessionId}/events/page", "sessions.events.page", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.HandleEventsPage(w, r)
@@ -101,7 +101,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		})},
 		{http.MethodGet, "/api/codex/models", "models.codex.list", s.handleCodexModels},
 		{http.MethodGet, "/api/grok/models", "models.grok.list", s.handleGrokModels},
-		{http.MethodDelete, "/api/attachments/{nativeThreadId}", "attachments.forget", s.handleAttachmentScoped},
+		{http.MethodDelete, "/api/attachments/{nativeThreadId}", "attachments.forget", s.hostedController().HandleAttachmentScoped},
 		{http.MethodGet, "/api/v1/build", "build.read", handleBuildInfo},
 		{http.MethodGet, "/api/v1/connection-test", "connection.test", httpapi.HandleConnectionTest},
 		{http.MethodGet, "/api/v1/monitor", "monitor.read", monitor.HandleMonitor},
@@ -232,11 +232,11 @@ func hostedThreadRoutes(s *server, prefix string) []applicationRoute {
 		{http.MethodGet, prefix + "/{threadRef}/completed-turns", "hostedThreads.completedTurns", h(func(w http.ResponseWriter, r *http.Request, record threads.SessionRecord) {
 			s.handleCompletedTurns(w, r, record.ID)
 		})},
-		{http.MethodGet, prefix + "/{threadRef}/conversation", "hostedThreads.conversation", h(s.handleHostedThreadConversation)},
-		{http.MethodGet, prefix + "/{threadRef}/conversation/events", "hostedThreads.conversation.events", h(s.handleHostedThreadConversationEvents)},
-		{http.MethodGet, prefix + "/{threadRef}/live", "hostedThreads.live", h(s.handleHostedThreadLive)},
-		{http.MethodPost, prefix + "/{threadRef}/interactions/{requestId}", "hostedThreads.interactions.answer", h(s.handleHostedThreadInteraction)},
-		{http.MethodPost, prefix + "/{threadRef}/interrupt", "hostedThreads.interrupt", h(s.handleHostedThreadInterrupt)},
+		{http.MethodGet, prefix + "/{threadRef}/conversation", "hostedThreads.conversation", h(s.hostedController().HandleHostedThreadConversation)},
+		{http.MethodGet, prefix + "/{threadRef}/conversation/events", "hostedThreads.conversation.events", h(s.hostedController().HandleHostedThreadConversationEvents)},
+		{http.MethodGet, prefix + "/{threadRef}/live", "hostedThreads.live", h(s.hostedController().HandleHostedThreadLive)},
+		{http.MethodPost, prefix + "/{threadRef}/interactions/{requestId}", "hostedThreads.interactions.answer", h(s.hostedController().HandleHostedThreadInteraction)},
+		{http.MethodPost, prefix + "/{threadRef}/interrupt", "hostedThreads.interrupt", h(s.hostedController().HandleHostedThreadInterrupt)},
 		{http.MethodGet, prefix + "/{threadRef}/pins", "hostedThreads.pins.list", h(s.hostedPins().HandleList)},
 		{http.MethodPost, prefix + "/{threadRef}/pins", "hostedThreads.pins.create", h(s.hostedPins().HandleCreate)},
 		{http.MethodGet, prefix + "/{threadRef}/pins/candidates", "hostedThreads.pins.candidates", h(s.hostedPins().HandleCandidates)},

@@ -130,7 +130,7 @@ func postClaudeResume(t *testing.T, s *server, body string) *httptest.ResponseRe
 	_ = json.Unmarshal([]byte(body), &request)
 	seedHostedAttachmentFixture(t, s, request.Provider, request.ThreadID)
 	rec := httptest.NewRecorder()
-	s.handleSessionCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
+	s.hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
 	return rec
 }
 

@@ -13,7 +13,6 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/interact"
-
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
@@ -55,6 +54,7 @@ type AttachmentSources struct {
 // AttachmentCoordinator owns boot registration and explicit attachment attempts.
 // It serializes resumes per provider and uses the same spawn path for every entry.
 type AttachmentCoordinator struct {
+	claudeOwedRuns sync.Map
 	AttachmentSources
 	boot                                                                *bootReattach
 	resumeSpawnMu, resumeSpawnClaude, resumeSpawnCodex, resumeSpawnGrok sync.Mutex

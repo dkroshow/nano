@@ -329,7 +329,7 @@ func TestClaudeReconnectUnprovableEvidenceFailsWithoutReplacement(t *testing.T) 
 			}
 
 			response := httptest.NewRecorder()
-			s.handleSessionCreate(response, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
+			s.hostedController().HandleLegacyCreate(response, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
 			if test.ok {
 				if response.Code != http.StatusOK {
 					t.Fatalf("resume = %d %s", response.Code, response.Body.String())
@@ -515,7 +515,7 @@ func TestClaudeReconnectAdmittedFrameStallBlocksOverlappingRetry(t *testing.T) {
 	shim.BeforeAttach = nil
 	attaches := len(shim.CallsOf(shimMethodAttach))
 	retry := httptest.NewRecorder()
-	s.handleSessionCreate(retry, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
+	s.hostedController().HandleLegacyCreate(retry, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(resumeBody(claudeResumeThreadID))))
 	if retry.Code == http.StatusOK || !strings.Contains(retry.Body.String(), "still draining") {
 		t.Fatalf("overlapping retry = %d %s, want a draining refusal", retry.Code, retry.Body.String())
 	}

@@ -22,7 +22,7 @@ func newHostedController(s *server) *hostedmodel.Controller {
 		Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, ExecutionError: s.executionControlErr,
 		Attachments: s.attachments, Queue: s.queuedTurns, Sessions: &s.Registry, SendAttempts: s.sendAttempts, ClaudeShimWS: s.defaults.ClaudeShimWS,
 		Boot: &s.bootAttachments, AttachmentsControl: s.attachmentCoordinator(), Stars: s.threadStars,
-		Views: s.hostedViews, ResolveIdentity: s.hostedIdentity().ResolveIdentity, PrepareCreation: s.prepareHostedCreation,
+		Views: s.hostedViews, ResolveIdentity: s.hostedIdentity().ResolveIdentity,
 		PromptWithUnreadFooter: func(id, prompt string) (string, error) { return agentapi.PromptWithUnreadFooter(s.notices, id, prompt) }, UnreadFooterUnavailable: featuremail.ErrUnreadNoticeUnavailable,
 		FeatureFooter: func(action string) (string, bool) {
 			if strings.HasPrefix(action, featureheartbeat.ActionPrefix) {
@@ -44,6 +44,5 @@ func newHostedController(s *server) *hostedmodel.Controller {
 				s.runtimeEvents.Notify(sidebar.RuntimeDelta{Refresh: true})
 			}
 		},
-		LegacyCreate: s.handleSessionCreateAction,
 	}
 }

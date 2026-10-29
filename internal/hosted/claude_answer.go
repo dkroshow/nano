@@ -1,4 +1,4 @@
-package app
+package hosted
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
-// claudeAnswers is the rule for a hosted thread, read with the server's own
+// ClaudeAnswers is the rule for a hosted thread, read with the server's own
 // stores and saved readers: an operation's answer, attached or not, and a
 // thread with no session.
-func (s *server) claudeAnswers(hosted string) sessions.ClaudeAnswers {
-	return sessions.NewClaudeAnswers(hosted, s.turns, s.agentExecutions, s.hostedCatalog().SavedPromptRows, s.hostedCatalog().SavedTurnFinal)
+func (s *AttachmentCoordinator) ClaudeAnswers(hosted string) sessions.ClaudeAnswers {
+	return sessions.NewClaudeAnswers(hosted, s.Turns, s.Executions, s.Catalog.SavedPromptRows, s.Catalog.SavedTurnFinal)
 }
 
 // claudeOwedRun keeps one detached owed pass per hosted thread: a request
@@ -25,21 +25,21 @@ type claudeOwedRun struct {
 	dirty atomic.Bool
 }
 
-// finishDetachedClaudeOwed finishes, after a catalog commit of one native
+// FinishDetachedClaudeOwed finishes, after a catalog commit of one native
 // thread, the owed prompts of each hosted thread no session holds: an exited
 // thread's prompts are finished by the same rule, with no provider. A thread
 // with a session runs its own member step.
-func (s *server) finishDetachedClaudeOwed(native string) {
-	if s.turns == nil || s.agentExecutions == nil || s.completedTurns == nil || native == "" {
+func (s *AttachmentCoordinator) FinishDetachedClaudeOwed(native string) {
+	if s.Turns == nil || s.Executions == nil || s.CompletedTurns == nil || native == "" {
 		return
 	}
-	hosts, err := s.turns.OwedHosts(context.Background(), model.ProviderClaude, native)
+	hosts, err := s.Turns.OwedHosts(context.Background(), model.ProviderClaude, native)
 	if err != nil {
 		log.Printf("Claude owed prompts in %s unreadable: %v", native, err)
 		return
 	}
 	for _, hosted := range hosts {
-		if s.SessionForHostedThread(hosted) == nil {
+		if s.Registry.SessionForHostedThread(hosted) == nil {
 			s.runDetachedClaudeOwed(hosted)
 		}
 	}
@@ -47,8 +47,8 @@ func (s *server) finishDetachedClaudeOwed(native string) {
 
 // runDetachedClaudeOwed runs one hosted thread's owed pass, one at a time: a
 // request during a pass runs one more pass after it.
-func (s *server) runDetachedClaudeOwed(hosted string) {
-	if s.turns == nil || s.agentExecutions == nil || s.completedTurns == nil {
+func (s *AttachmentCoordinator) runDetachedClaudeOwed(hosted string) {
+	if s.Turns == nil || s.Executions == nil || s.CompletedTurns == nil {
 		return
 	}
 	value, _ := s.claudeOwedRuns.LoadOrStore(hosted, &claudeOwedRun{})
@@ -68,24 +68,24 @@ func (s *server) runDetachedClaudeOwed(hosted string) {
 // claudeOwedPass finishes every owed Claude prompt of one hosted thread the
 // saved transcript decides, reading provisional handles' recorded
 // resolutions. Undecided prompts stay owed for the next commit.
-func (s *server) claudeOwedPass(hosted string) {
+func (s *AttachmentCoordinator) claudeOwedPass(hosted string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	store, err := s.completedTurns.Store().CoreStore(ctx)
+	store, err := s.CompletedTurns.Store().CoreStore(ctx)
 	if err != nil {
 		log.Printf("Claude owed prompts of %s: turn store unavailable: %v", hosted, err)
 		return
 	}
 	resolve := func(handle string) string {
-		native, err := s.controlMetadata.ResolvedNative(ctx, hosted, string(model.ProviderClaude), handle)
+		native, err := s.Metadata.ResolvedNative(ctx, hosted, string(model.ProviderClaude), handle)
 		if err != nil {
 			return ""
 		}
 		return native
 	}
-	answers := s.claudeAnswers(hosted)
+	answers := s.ClaudeAnswers(hosted)
 	for from := uint64(0); ctx.Err() == nil; {
-		batch, err := s.turns.Owed(ctx, hosted, from, sessions.ClaudeMemberBatch)
+		batch, err := s.Turns.Owed(ctx, hosted, from, sessions.ClaudeMemberBatch)
 		if err != nil {
 			log.Printf("Claude owed prompts of %s unreadable: %v", hosted, err)
 			return

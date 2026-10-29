@@ -48,7 +48,7 @@ func (s *Controller) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteHTTPError(w, "clientSessionId must be 1-200 URL-safe letters, numbers, or . _ : @ -", http.StatusBadRequest)
 		return
 	}
-	resolved, err := s.PrepareCreation(req)
+	resolved, err := s.AttachmentsControl.prepareCreation(req)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return

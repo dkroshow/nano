@@ -1,4 +1,4 @@
-package app
+package hosted
 
 import (
 	"encoding/json"
@@ -6,26 +6,25 @@ import (
 	"log"
 	"net/http"
 
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
 	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 )
 
-func (s *server) handleSessionCreateAction(w http.ResponseWriter, r *http.Request) {
+func (s *Controller) handleSessionCreateAction(w http.ResponseWriter, r *http.Request) {
 	// Share admission serialization with hosted and legacy explicit close.
-	var req hostedmodel.SpawnRequest
+	var req SpawnRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Provider == "" {
 		httpapi.WriteHTTPError(w, "body must be {\"provider\": \"codex\"|\"claude\"|\"grok\", ...spawn options}", http.StatusBadRequest)
 		return
 	}
-	sess, err := s.attachmentCoordinator().Spawn(req)
+	sess, err := s.AttachmentsControl.Spawn(req)
 	if err != nil {
-		if errors.Is(err, hostedmodel.ErrHostedControlUnavailable) {
+		if errors.Is(err, ErrHostedControlUnavailable) {
 			message := err.Error()
-			if s.executionControlErr != "" {
-				message += ": " + s.executionControlErr
-			} else if s.controlMetadataErr != "" {
-				message += ": " + s.controlMetadataErr
+			if s.ExecutionError != "" {
+				message += ": " + s.ExecutionError
+			} else if s.MetadataError != "" {
+				message += ": " + s.MetadataError
 			}
 			httpapi.WriteHTTPError(w, message, http.StatusServiceUnavailable)
 			return
@@ -46,15 +45,4 @@ func (s *server) handleSessionCreateAction(w http.ResponseWriter, r *http.Reques
 	sum := sess.Summary() // snapshot under the state lock; claude's threadID lands async
 	log.Printf("spawned %s session %s (thread %q, cwd %s)", sum.Provider, sum.ID, sum.ThreadID, sum.Cwd)
 	httpapi.WriteJSON(w, sum)
-}
-
-func (s *server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
-	s.hostedController().HandleLegacyCreate(w, r)
-}
-
-func (s *server) handleSessionClose(w http.ResponseWriter, r *http.Request, sess *sessionruntime.Session) {
-	s.hostedController().HandleLegacyClose(w, r, sess)
-}
-func (s *server) handleAttachmentScoped(w http.ResponseWriter, r *http.Request) {
-	s.hostedController().HandleAttachmentScoped(w, r)
 }

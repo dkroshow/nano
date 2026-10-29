@@ -128,7 +128,7 @@ func (f *externalResumeFixture) filenameIdentity(t *testing.T) {
 func postExternalResume(s *server, provider, nativeID string) *httptest.ResponseRecorder {
 	body := `{"provider":"` + provider + `","mode":"resume","threadId":"` + nativeID + `"}`
 	rec := httptest.NewRecorder()
-	s.handleSessionCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
+	s.hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
 	return rec
 }
 

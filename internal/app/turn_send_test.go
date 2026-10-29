@@ -336,7 +336,7 @@ func newSettlementHarness(t *testing.T, provider string) *settlementHarness {
 		}
 		seedAcceptedTransactionalTurn(t, prompts, "hosted", model.Provider(provider), native, name, fixture.turns[name], name+" prompt")
 	}
-	h := &settlementHarness{t: t, fixture: fixture, historyPath: historyPath, service: service, server: &server{catalog: service},
+	h := &settlementHarness{t: t, fixture: fixture, historyPath: historyPath, service: service, server: &server{catalog: service, turns: prompts},
 		prompts: prompts, queue: queue, attempts: attempts}
 	if provider == "claude" {
 		// The child that ran under the shim handle announced the saved
@@ -965,7 +965,11 @@ func TestClaudeOwedPromptOnAThreadWithNoSessionFinishesOnASavedCommit(t *testing
 	}
 	completed := hostedmodel.NewCompletedTurnStore(h.queue.Database())
 	h.server.turns, h.server.agentExecutions, h.server.completedTurns, h.server.controlMetadata = h.prompts, executions, hostedmodel.NewCompletedTurnSource(completed), executions.Control()
-	executions.UseSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
+	h.server.attachmentCoordinator().Turns = h.server.turns
+	h.server.attachmentCoordinator().Executions = h.server.agentExecutions
+	h.server.attachmentCoordinator().CompletedTurns = h.server.completedTurns
+	h.server.attachmentCoordinator().Metadata = h.server.controlMetadata
+	executions.UseSavedResults(h.server.attachmentCoordinator().SavedOperationResult, h.server.attachmentCoordinator().SavedOperationResultFinished)
 	client := &feedSubscriptionClient{s: h.server}
 	dispatcher := subscriptions.NewDispatcher(executions.Control().CanonicalDatabase(), client, nil, nil)
 	h.server.agentController().StartSubscriptions(dispatcher)
@@ -1036,6 +1040,10 @@ func TestCompletedTurnFeedPublishesTheClaudeAnswerItsSavedTurnHolds(t *testing.T
 		t.Fatal(err)
 	}
 	h.server.turns, h.server.completedTurns, h.server.controlMetadata = h.prompts, hostedmodel.NewCompletedTurnSource(completed), h.control
+	h.server.attachmentCoordinator().Turns = h.server.turns
+	h.server.attachmentCoordinator().Executions = h.server.agentExecutions
+	h.server.attachmentCoordinator().CompletedTurns = h.server.completedTurns
+	h.server.attachmentCoordinator().Metadata = h.server.controlMetadata
 	h.server.agentExecutions = newTestAgentExecutionStore(t, "run")
 	turnOf := map[string]string{"answered": "claude:shim:701", "twin-a": "claude:shim:703", "twin-b": "claude:shim:703", "unsaved": "claude:shim:702"}
 	for _, action := range []string{"answered", "twin-a", "twin-b", "unsaved"} {
@@ -1197,7 +1205,7 @@ func testClaudeLateAnswerAfterReaderUpgrade(t *testing.T, upgrade string) {
 	var reads atomic.Int32
 	store.UseSavedResults(func(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
 		defer reads.Add(1)
-		return h.server.savedOperationResult(ctx, rec)
+		return h.server.attachmentCoordinator().SavedOperationResult(ctx, rec)
 	}, nil)
 	waitForCatalogWithin(t, time.Minute, func() bool { return reads.Load() >= 1 })
 	if got, _ := store.Turn(op.ID); got.Status != agentTurnFailed {

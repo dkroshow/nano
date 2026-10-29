@@ -115,9 +115,6 @@ type server struct {
 	// sibling SQLite evidence; see docs/decisions/nano-heartbeat.md.
 	heartbeat      *featureheartbeat.Service
 	completedTurns *hostedmodel.CompletedTurnSource
-	// claudeOwedRuns holds one detached Claude owed pass per hosted thread
-	// (claude_answer.go).
-	claudeOwedRuns sync.Map
 	notices        *interact.Notices
 	// browserDiagnostics is a bounded, content-free flight recorder uploaded by
 	// open Nano tabs. It explains browser/store/stream divergence after the hard
@@ -375,7 +372,7 @@ func construct(cfg config.Config) *application {
 	}
 	s.deliveryExpiries = sessionruntime.NewDeliveryExpiries(deliveryExpiryWindow, s.publishProviderRuntime)
 	if agentExecutions != nil {
-		agentExecutions.UseSavedResults(s.savedOperationResult, s.savedOperationResultFinished)
+		agentExecutions.UseSavedResults(s.attachmentCoordinator().SavedOperationResult, s.attachmentCoordinator().SavedOperationResultFinished)
 	}
 	s.restart = hostedmodel.NewRestartTracker(filepath.Join(cfg.Paths.DataDir, hostedmodel.RestartsFileName), buildStamp, s.browserDiagnostics.BootID(), processStarted)
 	if err := agentapi.SyncMailNotices(s.mail, s.notices); err != nil {

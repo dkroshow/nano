@@ -82,7 +82,7 @@ func newClaudeResultFixture(t *testing.T) claudeResultFixture {
 	// Operations take their answers through the saved-result reader, as Nano
 	// serves them.
 	h.server.turns = h.prompts
-	executions.UseSavedResults(h.server.savedOperationResult, h.server.savedOperationResultFinished)
+	executions.UseSavedResults(h.server.attachmentCoordinator().SavedOperationResult, h.server.attachmentCoordinator().SavedOperationResultFinished)
 	return claudeResultFixture{h: h, executions: executions, completed: completed, core: core, order: order, fill: fill}
 }
 

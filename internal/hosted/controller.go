@@ -2,7 +2,6 @@ package hosted
 
 import (
 	"context"
-	"net/http"
 	"sync"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
@@ -27,7 +26,6 @@ type Controller struct {
 	Stars                         *sidebar.Stars
 	Views                         func() *ViewService
 	ResolveIdentity               func(context.Context, string) (IdentityResolution, error)
-	PrepareCreation               func(CreationRequest) (CreationPlan, error)
 	PromptWithUnreadFooter        func(string, string) (string, error)
 	UnreadFooterUnavailable       error
 	FeatureFooter                 func(string) (string, bool)
@@ -35,7 +33,6 @@ type Controller struct {
 	NotifyRuntime                 func()
 	RefreshRuntime                func()
 	PublishRelationshipChange     func()
-	LegacyCreate                  http.HandlerFunc
 	relationshipMu                sync.Mutex
 }
 

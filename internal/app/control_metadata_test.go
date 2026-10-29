@@ -177,7 +177,7 @@ func TestSessionsRouteDegradedModeKeepsReadsButRejectsNewHostedSession(t *testin
 		t.Fatalf("degraded GET status = %d", get.Code)
 	}
 	post := httptest.NewRecorder()
-	server.handleSessionCreate(post, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"provider":"codex","mode":"start"}`)))
+	server.hostedController().HandleLegacyCreate(post, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"provider":"codex","mode":"start"}`)))
 	if post.Code != http.StatusServiceUnavailable || !strings.Contains(post.Body.String(), "control.sqlite is corrupt") {
 		t.Fatalf("degraded POST = %d %s", post.Code, post.Body.String())
 	}

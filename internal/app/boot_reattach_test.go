@@ -1415,7 +1415,7 @@ func TestResumeOfALiveCodexThreadKeepsItsBinding(t *testing.T) {
 	}
 	before := generation()
 	recorder := httptest.NewRecorder()
-	s.handleSessionCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/sessions",
+	s.hostedController().HandleLegacyCreate(recorder, httptest.NewRequest(http.MethodPost, "/api/sessions",
 		strings.NewReader(`{"provider":"codex","mode":"resume","threadId":"`+rec.NativeThreadID+`"}`)))
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("resume of a live thread = %d %s, want 409", recorder.Code, recorder.Body.String())

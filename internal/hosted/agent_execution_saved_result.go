@@ -1,4 +1,4 @@
-package app
+package hosted
 
 import (
 	"context"
@@ -13,8 +13,9 @@ import (
 	"github.com/dkroshow/nano/internal/transcriptparse/model"
 )
 
-func (s *server) savedOperationResultFinished(hostedID string) {
-	if sess := s.SessionForHostedThread(hostedID); sess != nil {
+// SavedOperationResultFinished wakes the owning live or detached settlement loop.
+func (s *AttachmentCoordinator) SavedOperationResultFinished(hostedID string) {
+	if sess := s.Registry.SessionForHostedThread(hostedID); sess != nil {
 		if sess.Provider() == "claude" {
 			sess.RequestMemberStep()
 		}
@@ -23,13 +24,13 @@ func (s *server) savedOperationResultFinished(hostedID string) {
 	s.runDetachedClaudeOwed(hostedID)
 }
 
-// savedOperationResult is an operation's answer and final item id from the
+// SavedOperationResult is an operation's answer and final item id from the
 // saved transcript: the final row of the completed saved turn that holds the
 // operation's own prompt, all at one catalog generation.
-func (s *server) savedOperationResult(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
+func (s *AttachmentCoordinator) SavedOperationResult(ctx context.Context, rec threads.TurnRecord) (string, string, error) {
 	// The prompt's binding, not its delivery state, proves membership below:
 	// settlement can lag the file, or expire a prompt whose answer it holds.
-	prompt, _, err := s.turns.Get(ctx, rec.TransportActionID)
+	prompt, _, err := s.Turns.Get(ctx, rec.TransportActionID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", "", err
 	}
@@ -43,11 +44,11 @@ func (s *server) savedOperationResult(ctx context.Context, rec threads.TurnRecor
 		if native, ok := sessions.ExactClaudeNative(entry); !ok || native != rec.NativeThreadID {
 			return "", "", history.ErrSavedTranscriptUnavailable
 		}
-		answer, err := s.claudeAnswers(rec.HostedThreadID).Answer(ctx, entry)
+		answer, err := s.ClaudeAnswers(rec.HostedThreadID).Answer(ctx, entry)
 		if err != nil {
 			return "", "", err
 		}
-		if answer.Outcome != agentTurnCompleted {
+		if answer.Outcome != threads.AgentTurnCompleted {
 			return "", "", history.ErrSavedTranscriptUnavailable // an interrupted turn has no answer
 		}
 		return answer.Text, answer.FinalID, nil
@@ -64,7 +65,7 @@ func (s *server) savedOperationResult(ctx context.Context, rec threads.TurnRecor
 	// The store keeps one such binding per turn; settlement's rule weighs them.
 	stored := []prompts.OutboxEntry{entry}
 	if binding.EventID == "" && binding.Scope.NativeTurnID != nil {
-		events, err := s.turns.TurnEvents(ctx, rec.HostedThreadID, prompt.Provider, rec.NativeThreadID, *binding.Scope.NativeTurnID)
+		events, err := s.Turns.TurnEvents(ctx, rec.HostedThreadID, prompt.Provider, rec.NativeThreadID, *binding.Scope.NativeTurnID)
 		if err != nil {
 			return "", "", err
 		}
@@ -74,7 +75,7 @@ func (s *server) savedOperationResult(ctx context.Context, rec threads.TurnRecor
 	}
 	var keys history.SavedUserKeys
 	sessions.AddSavedUserKey(&keys, binding, rec.Provider)
-	rows, err := s.hostedCatalog().SavedPromptRows(ctx, rec.NativeThreadID, keys)
+	rows, err := s.Catalog.SavedPromptRows(ctx, rec.NativeThreadID, keys)
 	if err != nil {
 		return "", "", err
 	}
@@ -91,7 +92,7 @@ func (s *server) savedOperationResult(ctx context.Context, rec threads.TurnRecor
 			return "", "", history.ErrSavedTranscriptUnavailable // an interrupted turn has no answer
 		}
 	}
-	text, itemID, err := s.hostedCatalog().SavedTurnFinal(ctx, rec.NativeThreadID, generation, turn)
+	text, itemID, err := s.Catalog.SavedTurnFinal(ctx, rec.NativeThreadID, generation, turn)
 	if err != nil {
 		return "", "", err
 	}

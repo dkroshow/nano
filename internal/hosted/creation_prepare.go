@@ -1,13 +1,12 @@
-package app
+package hosted
 
 import (
-	hostedmodel "github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-func runtimeCreationRequest(req hostedmodel.CreationRequest) hostedmodel.SpawnRequest {
-	return hostedmodel.SpawnRequest{ProviderRequest: sessions.ProviderRequest{
+func runtimeCreationRequest(req CreationRequest) SpawnRequest {
+	return SpawnRequest{ProviderRequest: sessions.ProviderRequest{
 		Provider:              req.Provider,
 		Mode:                  req.Mode,
 		ThreadID:              req.ThreadID,
@@ -40,12 +39,13 @@ func runtimeCreationRequest(req hostedmodel.CreationRequest) hostedmodel.SpawnRe
 	}
 }
 
-func (s *server) prepareHostedCreation(req hostedmodel.CreationRequest) (hostedmodel.CreationPlan, error) {
-	resolved, err := s.attachmentCoordinator().ResolveSpawn(runtimeCreationRequest(req))
+// prepareCreation resolves provider defaults before durable admission.
+func (s *AttachmentCoordinator) prepareCreation(req CreationRequest) (CreationPlan, error) {
+	resolved, err := s.ResolveSpawn(runtimeCreationRequest(req))
 	if err != nil {
-		return hostedmodel.CreationPlan{}, err
+		return CreationPlan{}, err
 	}
-	return hostedmodel.CreationPlan{ClientSessionID: resolved.ClientSessionID, Provider: resolved.Provider, Mode: resolved.Mode, PresentationMode: resolved.PresentationMode, SidebarPlacement: resolved.SidebarPlacement, Name: resolved.Name,
+	return CreationPlan{ClientSessionID: resolved.ClientSessionID, Provider: resolved.Provider, Mode: resolved.Mode, PresentationMode: resolved.PresentationMode, SidebarPlacement: resolved.SidebarPlacement, Name: resolved.Name,
 		Attach: func(record threads.SessionRecord, resume bool) (string, error) {
 			if resume {
 				resolved.Provider = record.Provider
@@ -58,7 +58,7 @@ func (s *server) prepareHostedCreation(req hostedmodel.CreationRequest) (hostedm
 			resolved.InvokerNativeThreadID = record.InvokerNativeThreadID
 			resolved.InvokerProvider = record.InvokerProvider
 			resolved.HostedThreadID = record.ID
-			sess, err := s.attachmentCoordinator().Spawn(resolved)
+			sess, err := s.Spawn(resolved)
 			if err != nil {
 				return "", err
 			}

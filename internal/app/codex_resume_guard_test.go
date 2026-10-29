@@ -54,7 +54,7 @@ func postResume(t *testing.T, s *server, threadID string) *httptest.ResponseReco
 	seedCanonicalResumeOwner(t, s, "codex", threadID, s.defaults.CWD)
 	body := `{"provider":"codex","mode":"resume","threadId":"` + threadID + `"}`
 	rec := httptest.NewRecorder()
-	s.handleSessionCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
+	s.hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(body)))
 	return rec
 }
 
@@ -637,7 +637,7 @@ func TestResumeWireReplyOmitsHistoricalTurns(t *testing.T) {
 func postStart(t *testing.T, s *server) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	s.handleSessionCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"provider":"codex","mode":"start"}`)))
+	s.hostedController().HandleLegacyCreate(rec, httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"provider":"codex","mode":"start"}`)))
 	return rec
 }
 

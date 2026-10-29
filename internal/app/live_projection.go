@@ -57,7 +57,7 @@ func (s *server) confirmDurableThread(ctx context.Context, change threadindex.Tr
 		s.confirmDurableItems(ctx, sess)
 	}
 	if provider == string(model.ProviderClaude) {
-		s.finishDetachedClaudeOwed(nativeThreadID)
+		s.attachmentCoordinator().FinishDetachedClaudeOwed(nativeThreadID)
 		// The commit can decide an answer a subscriber's feed waits on, and the
 		// owed pass finishes turns with no notice of their own: the owners'
 		// subscriptions read again (the dispatcher coalesces repeats).
