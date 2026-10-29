@@ -1278,14 +1278,7 @@ func (providerRuntime *Runtime) runCodexHandshakeWithTimeout(parent context.Cont
 	// a restart that kills this session leaves the record behind, so the
 	// thread returns as re-attachable (attachments.go). Covers start and resume
 	// alike — both reach ready here.
-	if providerRuntime.state.rememberAttachment != nil {
-		providerRuntime.state.rememberDurableAttachment(hostedstore.Attachment{
-			Provider:       "codex",
-			NativeThreadID: thread.Thread.ID,
-			Cwd:            providerRuntime.state.cwd,
-			Model:          thread.Model,
-		})
-	}
+	providerRuntime.state.rememberCodexAttachment(thread.Thread.ID, thread.Model)
 	// A resume can lose its link while it waits for its saved catch-up, so
 	// the record takes the status the settle left, not a fixed "ready".
 	status := providerRuntime.state.connectionStatus()

@@ -789,3 +789,14 @@ func (attachmentState *State) publishGrokIdentity(threadID, model string) bool {
 	attachmentState.stateMu.Unlock()
 	return true
 }
+
+func (attachmentState *State) rememberCodexAttachment(nativeID, model string) {
+	if attachmentState.rememberAttachment != nil {
+		attachmentState.rememberDurableAttachment(hostedstore.Attachment{
+			Provider:       "codex",
+			NativeThreadID: nativeID,
+			Cwd:            attachmentState.cwd,
+			Model:          model,
+		})
+	}
+}
