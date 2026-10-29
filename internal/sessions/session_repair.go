@@ -37,18 +37,18 @@ type TranscriptRepairResponse struct {
 // proven current and its prompts settled, with the attachment still the one
 // stopped, idle and ready; panes then read that file. A timeout returns
 // recovered prompt text but never claims the repair.
-func (sess *Lifecycle) StopDiscardAndRepair(parent context.Context, actionID string) (TranscriptRepairResponse, error) {
-	return sess.stopDiscardAndRepairWithin(parent, actionID, transcriptRepairWait)
+func (teardown *Teardown) StopDiscardAndRepair(parent context.Context, actionID string) (TranscriptRepairResponse, error) {
+	return teardown.stopDiscardAndRepairWithin(parent, actionID, transcriptRepairWait)
 }
 
-func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
-	if sess == nil || sess.stateOwner.catalogAvailable() == false {
+func (teardown *Teardown) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
+	if teardown == nil || teardown.state.catalogAvailable() == false {
 		return TranscriptRepairResponse{}, errors.New("transcript repair is unavailable")
 	}
-	sess.transcriptRepairMu.Lock()
-	defer sess.transcriptRepairMu.Unlock()
-	if cached, ok := sess.transcriptRepairResults[actionID]; ok {
-		stale := sess.stateOwner.repairResultStale(cached)
+	teardown.transcriptRepairMu.Lock()
+	defer teardown.transcriptRepairMu.Unlock()
+	if cached, ok := teardown.transcriptRepairResults[actionID]; ok {
+		stale := teardown.state.repairResultStale(cached)
 		if stale {
 			return TranscriptRepairResponse{}, errors.New("transcript repair result belongs to a prior attachment")
 		}
@@ -61,20 +61,20 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 	_ = parent
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
-	return sess.delivery.repairTranscript(ctx, actionID)
+	return teardown.delivery.repairTranscript(ctx, actionID)
 }
 
 // repairTranscript keeps the send fence inside the caller's repair transaction.
-func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (TranscriptRepairResponse, error) {
-	sess.sendMu.Lock()
-	defer sess.sendMu.Unlock()
+func (delivery *Delivery) repairTranscript(ctx context.Context, actionID string) (TranscriptRepairResponse, error) {
+	delivery.sendMu.Lock()
+	defer delivery.sendMu.Unlock()
 
-	threadID, attachmentGeneration := sess.stateOwner.repairIdentity()
+	threadID, attachmentGeneration := delivery.state.repairIdentity()
 	if threadID == "" {
 		return TranscriptRepairResponse{}, errors.New("provider thread is not attached")
 	}
 
-	queue := sess.queuedPrompts(threadID)
+	queue := delivery.queuedPrompts(threadID)
 	discardable := make([]prompts.QueuedTurn, 0, len(queue))
 	actionIDs := make([]string, 0, len(queue))
 	for _, record := range queue {
@@ -85,24 +85,24 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 		actionIDs = append(actionIDs, record.ClientActionID)
 	}
 
-	interrupt, err := sess.stateOwner.interruptTurn(ctx)
+	interrupt, err := delivery.state.interruptTurn(ctx)
 	if err != nil {
 		return TranscriptRepairResponse{}, fmt.Errorf("stop failed: %w", err)
 	}
-	if err := sess.stateOwner.waitForTranscriptRepairIdle(ctx); err != nil {
+	if err := delivery.state.waitForTranscriptRepairIdle(ctx); err != nil {
 		return TranscriptRepairResponse{}, err
 	}
 
 	if len(actionIDs) > 0 {
-		if sess.turns == nil {
+		if delivery.turns == nil {
 			return TranscriptRepairResponse{}, errors.New("prompt store is unavailable")
 		}
-		canceled, cancelErr := sess.turns.CancelQueuedBatch(ctx, actionIDs)
+		canceled, cancelErr := delivery.turns.CancelQueuedBatch(ctx, actionIDs)
 		if cancelErr != nil {
 			return TranscriptRepairResponse{}, fmt.Errorf("discard failed: %w", cancelErr)
 		}
 		for _, record := range canceled {
-			sess.publishTransactionalOutbox(record.Outbox)
+			delivery.publishTransactionalOutbox(record.Outbox)
 		}
 	}
 
@@ -127,12 +127,12 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 	// A fresh pass proves the file current after the stop. The wait follows
 	// this session's hold, so the recheck after it, whatever the waits found,
 	// names a replaced attachment as stale.
-	caughtUp := sess.stateOwner.awaitAttachedCurrent(sess.identity.id, true, nil, ctx.Done())
+	caughtUp := delivery.state.awaitAttachedCurrent(delivery.identity.id, true, nil, ctx.Done())
 	var settleErr error
 	if caughtUp {
-		settleErr = sess.settleSavedPrompts(ctx)
+		settleErr = delivery.settleSavedPrompts(ctx)
 	}
-	detail := sess.stateOwner.repairability(threadID, attachmentGeneration)
+	detail := delivery.state.repairability(threadID, attachmentGeneration)
 	switch {
 	case detail == transcriptRepairStale:
 		response.Status, response.Detail = "stale_attachment", detail
@@ -146,30 +146,30 @@ func (sess *Delivery) repairTranscript(ctx context.Context, actionID string) (Tr
 		response.Repaired, response.Status = true, "repaired"
 	}
 
-	sess.lifecycle.rememberRepairResult(actionID, response)
+	delivery.teardown.rememberRepairResult(actionID, response)
 	return response, nil
 }
 
 // rememberRepairResult runs under the repair transaction's outer lock.
-func (sess *Lifecycle) rememberRepairResult(actionID string, response TranscriptRepairResponse) {
-	if sess.transcriptRepairResults == nil {
-		sess.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
+func (teardown *Teardown) rememberRepairResult(actionID string, response TranscriptRepairResponse) {
+	if teardown.transcriptRepairResults == nil {
+		teardown.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
 	}
 	// One attachment needs only a small replay window. The browser retains the
 	// same action id across a transport retry.
-	if len(sess.transcriptRepairResults) >= 8 {
-		sess.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
+	if len(teardown.transcriptRepairResults) >= 8 {
+		teardown.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
 	}
-	sess.transcriptRepairResults[actionID] = response
+	teardown.transcriptRepairResults[actionID] = response
 }
 
-func (sess *State) waitForTranscriptRepairIdle(ctx context.Context) error {
+func (attachmentState *State) waitForTranscriptRepairIdle(ctx context.Context) error {
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		sess.stateMu.Lock()
-		active := sess.workActiveLocked() || sess.turnRestoreInProgress
-		sess.stateMu.Unlock()
+		attachmentState.stateMu.Lock()
+		active := attachmentState.workActiveLocked() || attachmentState.turnRestoreInProgress
+		attachmentState.stateMu.Unlock()
 		if !active {
 			return nil
 		}
@@ -185,26 +185,26 @@ const transcriptRepairStale = "attachment changed while repair was running"
 
 // repairableLocked says why the repair cannot be reported now, or "" when the
 // stopped attachment is unchanged, idle and ready. Callers hold stateMu.
-func (sess *State) repairableLocked(threadID string, attachmentGeneration int64) string {
-	if sess.threadID != threadID || sess.attachmentGeneration != attachmentGeneration {
+func (attachmentState *State) repairableLocked(threadID string, attachmentGeneration int64) string {
+	if attachmentState.threadID != threadID || attachmentState.attachmentGeneration != attachmentGeneration {
 		return transcriptRepairStale
 	}
-	if sess.closed || sess.connectionStatusLocked() != "ready" || sess.workActiveLocked() || sess.turnRestoreInProgress {
+	if attachmentState.closed || attachmentState.connectionStatusLocked() != "ready" || attachmentState.workActiveLocked() || attachmentState.turnRestoreInProgress {
 		return "attachment is not idle and ready"
 	}
-	if len(sess.interactions) != 0 {
+	if len(attachmentState.interactions) != 0 {
 		return "a provider interaction is still pending"
 	}
 	return ""
 }
 
-// Lifecycle owns serialized attachment close and transcript repair operations.
-type Lifecycle struct {
-	identity   *attachmentIdentity
-	wire       *Wire
-	delivery   *Delivery
-	stateOwner *State
-	runtime    *Runtime
+// Teardown owns serialized attachment close and transcript repair operations.
+type Teardown struct {
+	identity *attachmentIdentity
+	wire     *Wire
+	delivery *Delivery
+	state    *State
+	runtime  *Runtime
 	// transcriptRepairMu serializes the operator's stop/discard/rebuild action
 	// and retains its last idempotent response until the attachment changes.
 	transcriptRepairMu      sync.Mutex

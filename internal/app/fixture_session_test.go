@@ -27,6 +27,6 @@ func resumeCodexFixture(t *testing.T, cfg sessions.Config, nativeID string, fake
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.View().Summary().Status == "ready" })
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	return sess
 }

@@ -112,7 +112,7 @@ func applicationRoutes(s *server) []applicationRoute {
 			value.Delivery().HandleInterrupt(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/transcript-repair", "sessions.transcript.repair", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.Lifecycle().HandleTranscriptRepair(w, r)
+			value.Teardown().HandleTranscriptRepair(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/interactions/{requestId}", "sessions.interactions.answer", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.Delivery().HandleInteraction(w, r, r.PathValue("requestId"))

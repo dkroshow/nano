@@ -15,21 +15,21 @@ import (
 
 func TestSessionLifecycleWaitingBlocksSendAndDisconnectedWork(t *testing.T) {
 	sess := lifecycleTestSession("ready", true, "current")
-	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "permission", TurnID: "current"})
+	sess.state.addPendingInteraction(interact.PendingInteraction{ID: "permission", TurnID: "current"})
 	if sum := sess.view.Summary(); !sum.Waiting {
 		t.Fatal("waiting interaction missing")
 	}
-	sess.stateOwner.stateMu.Lock()
-	permission := sess.stateOwner.lifecyclePermissionLocked()
-	sess.stateOwner.stateMu.Unlock()
+	sess.state.stateMu.Lock()
+	permission := sess.state.lifecyclePermissionLocked()
+	sess.state.stateMu.Unlock()
 	if permission.Availability != lifecycle.AwaitingHuman || permission.Submit != lifecycle.QueuePrompt {
 		t.Fatalf("waiting permissions = %+v", permission)
 	}
-	sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
+	sess.state.observeConnection(lifecycle.EventLinkLost)
 	if sum := sess.view.Summary(); sum.Waiting || sum.TurnActive {
 		t.Fatalf("work leaked through connection loss: %+v", sum)
 	}
-	if _, id := sess.stateOwner.activeTurn(); id != "" {
+	if _, id := sess.state.activeTurn(); id != "" {
 		t.Fatal("disconnected turn remained interruptible")
 	}
 }
@@ -39,12 +39,12 @@ func TestSessionLifecycleAcceptanceCannotResurrectCompletedTurn(t *testing.T) {
 	if sess.view.Summary().TurnActive {
 		t.Fatal("reservation asserted provider work")
 	}
-	sess.stateOwner.acceptProviderTurn("current")
-	if sess.stateOwner.lifecycleState.State.Work != lifecycle.Accepted {
+	sess.state.acceptProviderTurn("current")
+	if sess.state.lifecycleState.State.Work != lifecycle.Accepted {
 		t.Fatal("provider ACK did not establish accepted work")
 	}
-	sess.stateOwner.setTurnActive(false, "current", 0, true)
-	sess.stateOwner.acceptProviderTurn("current")
+	sess.state.setTurnActive(false, "current", 0, true)
+	sess.state.acceptProviderTurn("current")
 	if sess.view.Summary().TurnActive {
 		t.Fatal("late ACK resurrected completed turn")
 	}
@@ -52,7 +52,7 @@ func TestSessionLifecycleAcceptanceCannotResurrectCompletedTurn(t *testing.T) {
 
 func TestCodexLifecycleIgnoresOtherNativeThread(t *testing.T) {
 	sess := lifecycleTestSession("ready", false, "")
-	sess.stateOwner.threadID = "own-native"
+	sess.state.threadID = "own-native"
 	observeCodexWork(sess.State(), protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"other-native","turn":{"id":"current"}}}`), true)
 	if sess.view.Summary().TurnActive {
 		t.Fatal("other native thread asserted work")
@@ -119,10 +119,10 @@ func TestProviderRestartIdleDiscardsOldWorkAnchors(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "old-stored-turn")
 			sess.identity.provider = provider
-			sess.stateOwner.turnStartedAtMs = 123
-			sess.stateOwner.beginTurnRestore()
-			epoch, sequence := sess.stateOwner.evidenceCoordinates()
-			if !sess.stateOwner.settleProviderEvidence(restartEvidenceFixture(provider, false, true, epoch, sequence), "", 0) {
+			sess.state.turnStartedAtMs = 123
+			sess.state.beginTurnRestore()
+			epoch, sequence := sess.state.evidenceCoordinates()
+			if !sess.state.settleProviderEvidence(restartEvidenceFixture(provider, false, true, epoch, sequence), "", 0) {
 				t.Fatal("current provider snapshot refused")
 			}
 			if sum := sess.view.Summary(); sum.Status != "ready" || sum.TurnActive || sum.TurnStartedAtMs != 0 {
@@ -137,11 +137,11 @@ func TestProviderRestartNewerTerminalWinsOverResumeResponse(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "")
 			sess.identity.provider = provider
-			sess.stateOwner.beginTurnRestore()
-			epoch, sequence := sess.stateOwner.evidenceCoordinates()
+			sess.state.beginTurnRestore()
+			epoch, sequence := sess.state.evidenceCoordinates()
 			response := restartEvidenceFixture(provider, true, true, epoch, sequence)
-			sess.stateOwner.setTurnActive(false, "current", 0, true)
-			if !sess.stateOwner.settleProviderEvidence(response, "current", 123) {
+			sess.state.setTurnActive(false, "current", 0, true)
+			if !sess.state.settleProviderEvidence(response, "current", 123) {
 				t.Fatal("settlement refused")
 			}
 			if sess.view.Summary().TurnActive {
@@ -156,10 +156,10 @@ func TestProviderRestartConnectionLossRejectsEarlierResponse(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "")
 			sess.identity.provider = provider
-			sess.stateOwner.beginTurnRestore()
-			epoch, sequence := sess.stateOwner.evidenceCoordinates()
-			sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
-			if sess.stateOwner.settleProviderEvidence(restartEvidenceFixture(provider, true, true, epoch, sequence), "current", 123) {
+			sess.state.beginTurnRestore()
+			epoch, sequence := sess.state.evidenceCoordinates()
+			sess.state.observeConnection(lifecycle.EventLinkLost)
+			if sess.state.settleProviderEvidence(restartEvidenceFixture(provider, true, true, epoch, sequence), "current", 123) {
 				t.Fatal("response predating transport loss was accepted")
 			}
 			if sum := sess.view.Summary(); sum.Status != "reconnecting" || sum.TurnActive {
@@ -174,20 +174,20 @@ func TestProviderRestartWaitingSettlesWithReadiness(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "")
 			sess.identity.provider = provider
-			sess.stateOwner.beginTurnRestore()
-			epoch, sequence := sess.stateOwner.evidenceCoordinates()
-			sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "request", TurnID: "current"})
+			sess.state.beginTurnRestore()
+			epoch, sequence := sess.state.evidenceCoordinates()
+			sess.state.addPendingInteraction(interact.PendingInteraction{ID: "request", TurnID: "current"})
 			if sum := sess.view.Summary(); sum.Waiting || sum.TurnActive {
 				t.Fatal("pending replay became current before readiness")
 			}
-			if !sess.stateOwner.settleProviderEvidence(restartEvidenceFixture(provider, true, true, epoch, sequence), "current", 123) {
+			if !sess.state.settleProviderEvidence(restartEvidenceFixture(provider, true, true, epoch, sequence), "current", 123) {
 				t.Fatal("newer interaction prevented readiness")
 			}
 			if !sess.view.Summary().Waiting {
 				t.Fatal("readiness lost pending provider request")
 			}
-			sess.stateOwner.takePendingInteraction("request")
-			if got := sess.stateOwner.lifecycleState.State.Work; got != lifecycle.Working {
+			sess.state.takePendingInteraction("request")
+			if got := sess.state.lifecycleState.State.Work; got != lifecycle.Working {
 				t.Fatalf("answer did not resume work: %s", got)
 			}
 		})
@@ -199,16 +199,16 @@ func TestProviderRestartAcceptanceWaitsForSettledEvidence(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			sess := lifecycleTestSession("starting", false, "stored-turn")
 			sess.identity.provider = provider
-			sess.stateOwner.beginTurnRestore()
-			epoch, sequence := sess.stateOwner.evidenceCoordinates()
+			sess.state.beginTurnRestore()
+			epoch, sequence := sess.state.evidenceCoordinates()
 			response := restartEvidenceFixture(provider, false, true, epoch, sequence)
 			// The provider ACK arrives after this snapshot, while replay is open.
-			sess.stateOwner.acceptProviderTurn("accepted-current")
+			sess.state.acceptProviderTurn("accepted-current")
 			if sum := sess.view.Summary(); sum.Status != "starting" || sum.TurnActive {
 				t.Fatal("acceptance escaped before provider replay settled")
 			}
-			if !sess.stateOwner.settleProviderEvidence(response, "", 0) || sess.stateOwner.lifecycleState.State.Work != lifecycle.Accepted || sess.stateOwner.turnID != "accepted-current" {
-				t.Fatalf("newer provider acceptance lost at settlement: %+v", sess.stateOwner.lifecycleState)
+			if !sess.state.settleProviderEvidence(response, "", 0) || sess.state.lifecycleState.State.Work != lifecycle.Accepted || sess.state.turnID != "accepted-current" {
+				t.Fatalf("newer provider acceptance lost at settlement: %+v", sess.state.lifecycleState)
 			}
 		})
 	}
@@ -257,23 +257,23 @@ func TestProviderRestartCloseAndResumeUseDurableEpoch(t *testing.T) {
 					t.Fatal(err)
 				}
 				sess := lifecycleTestSession("starting", false, "stale-anchor")
-				sess.identity.provider, sess.stateOwner.lifecycleState, sess.stateOwner.attachmentGeneration = provider, state, generation
-				sess.stateOwner.beginTurnRestore()
+				sess.identity.provider, sess.state.lifecycleState, sess.state.attachmentGeneration = provider, state, generation
+				sess.state.beginTurnRestore()
 				return sess
 			}
 			old := newAttachment()
-			epoch, sequence := old.stateOwner.evidenceCoordinates()
+			epoch, sequence := old.state.evidenceCoordinates()
 			response := restartEvidenceFixture(provider, true, true, epoch, sequence)
-			old.stateOwner.observeConnection(lifecycle.EventClose)
-			if old.stateOwner.settleProviderEvidence(response, "current", 123) || old.view.Summary().Status != "exited" {
+			old.state.observeConnection(lifecycle.EventClose)
+			if old.state.settleProviderEvidence(response, "current", 123) || old.view.Summary().Status != "exited" {
 				t.Fatal("late readiness reopened a closed attachment")
 			}
 			resumed := newAttachment()
-			if resumed.stateOwner.lifecycleState.Epoch <= epoch || resumed.stateOwner.settleProviderEvidence(response, "current", 123) {
+			if resumed.state.lifecycleState.Epoch <= epoch || resumed.state.settleProviderEvidence(response, "current", 123) {
 				t.Fatal("resume accepted an obsolete durable attachment epoch")
 			}
-			epoch, sequence = resumed.stateOwner.evidenceCoordinates()
-			if !resumed.stateOwner.settleProviderEvidence(restartEvidenceFixture(provider, false, true, epoch, sequence), "", 0) {
+			epoch, sequence = resumed.state.evidenceCoordinates()
+			if !resumed.state.settleProviderEvidence(restartEvidenceFixture(provider, false, true, epoch, sequence), "", 0) {
 				t.Fatal("new attachment refused current provider evidence")
 			}
 			if sum := resumed.view.Summary(); sum.Status != "ready" || sum.TurnActive || sum.TurnStartedAtMs != 0 {

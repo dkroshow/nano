@@ -378,7 +378,7 @@ func (c *claudeSession) initializeControl(ctx context.Context) (*claudeInitState
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return nil, fmt.Errorf("claude initialize: %w", err)
 	}
-	c.sess.stateOwner.setState("controlInit", raw)
+	c.sess.state.setState("controlInit", raw)
 	return &state, nil
 }
 
@@ -507,17 +507,17 @@ func (c *claudeSession) parkControlRequest(requestID string, request json.RawMes
 	}
 	pending := interact.PendingInteraction{
 		ID: requestID, Method: probe.Subtype, Kind: kind,
-		ThreadID:  c.sess.stateOwner.ThreadID(),
+		ThreadID:  c.sess.state.ThreadID(),
 		CreatedAt: time.Now().Format(time.RFC3339Nano),
 		Params:    append(json.RawMessage(nil), request...),
 	}
-	if c.sess.stateOwner.rejectStatusInteraction(pending) {
+	if c.sess.state.rejectStatusInteraction(pending) {
 		if err := c.respondControl(requestID, claudeRefusal(probe.Subtype)); err != nil {
 			log.Printf("claude status session %s: declining %s: %v", c.sess.identity.id, probe.Subtype, err)
 		}
 		return
 	}
-	c.sess.stateOwner.addPendingInteraction(pending)
+	c.sess.state.addPendingInteraction(pending)
 }
 
 // claudeInteractionKind maps an inbound subtype onto the card kind that renders

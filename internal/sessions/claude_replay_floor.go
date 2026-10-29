@@ -432,12 +432,12 @@ func claudeSpoolFactFreeFrame(raw []byte) (frame claudeSpoolFrame, ok bool) {
 // any frame is requested. Durable facts come from the prompt and turn stores;
 // the spool is found by the key the shim mints turn ids under: the hosted
 // thread id, or the shim session id for a child started before that existed.
-func (sess *Runtime) planClaudeReplay(ctx context.Context, spoolDir, native string, stored hostedstore.Attachment) (claudeReplayPlan, error) {
+func (providerRuntime *Runtime) planClaudeReplay(ctx context.Context, spoolDir, native string, stored hostedstore.Attachment) (claudeReplayPlan, error) {
 	if strings.TrimSpace(spoolDir) == "" {
 		return claudeReplayPlan{}, fmt.Errorf("%w: the claude shim spool directory is not configured", errClaudeRecoveryUnproven)
 	}
 	var key, path string
-	for _, candidate := range []string{sess.identity.hostedThreadID, stored.ShimSessionID} {
+	for _, candidate := range []string{providerRuntime.identity.hostedThreadID, stored.ShimSessionID} {
 		if candidate == "" || strings.ContainsAny(candidate, `/\`) {
 			continue
 		}
@@ -464,7 +464,7 @@ func (sess *Runtime) planClaudeReplay(ctx context.Context, spoolDir, native stri
 		return plan, err
 	}
 	prefix := "claude:" + key + ":"
-	wanted, sent, err := sess.unfinishedClaudePrompts(ctx, prefix, native, stored.ShimSessionID)
+	wanted, sent, err := providerRuntime.unfinishedClaudePrompts(ctx, prefix, native, stored.ShimSessionID)
 	if err != nil {
 		return planned(claudeReplayPlan{}, err)
 	}
@@ -519,15 +519,15 @@ type claudeSentPrompt struct {
 // fails rather than being skipped. sent maps each accepted prompt's anchor to
 // the native thread its record names; an anchor two records share is left
 // out.
-func (sess *Runtime) unfinishedClaudePrompts(ctx context.Context, prefix string, natives ...string) (wanted []int64, sent map[string]claudeSentPrompt, err error) {
-	if sess.delivery.PromptStore() == nil || sess.completedTurns == nil {
+func (providerRuntime *Runtime) unfinishedClaudePrompts(ctx context.Context, prefix string, natives ...string) (wanted []int64, sent map[string]claudeSentPrompt, err error) {
+	if providerRuntime.delivery.PromptStore() == nil || providerRuntime.completedTurns == nil {
 		return nil, nil, fmt.Errorf("%w: prompt and turn stores are unavailable", errClaudeRecoveryUnproven)
 	}
-	turnStore, err := sess.completedTurns(ctx)
+	turnStore, err := providerRuntime.completedTurns(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: turn store: %v", errClaudeRecoveryUnproven, err)
 	}
-	records, err := sess.delivery.PromptStore().List(ctx, sess.identity.hostedThreadID)
+	records, err := providerRuntime.delivery.PromptStore().List(ctx, providerRuntime.identity.hostedThreadID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: prompt store: %v", errClaudeRecoveryUnproven, err)
 	}
@@ -537,7 +537,7 @@ func (sess *Runtime) unfinishedClaudePrompts(ctx context.Context, prefix string,
 		if record.NativeThreadID == "" || !slices.Contains(natives, record.NativeThreadID) || record.ProviderText == "" || record.Outbox.PresentationText == "" {
 			continue
 		}
-		anchor := SubmissionEventID(sess.identity.hostedThreadID, record.Outbox.ActionID)
+		anchor := SubmissionEventID(providerRuntime.identity.hostedThreadID, record.Outbox.ActionID)
 		if _, seen := sent[anchor]; seen || anchor == "" {
 			shared[anchor] = true
 		}
@@ -546,7 +546,7 @@ func (sess *Runtime) unfinishedClaudePrompts(ctx context.Context, prefix string,
 	for anchor := range shared {
 		delete(sent, anchor)
 	}
-	ended, err := turnStore.Ended(ctx, sess.identity.hostedThreadID)
+	ended, err := turnStore.Ended(ctx, providerRuntime.identity.hostedThreadID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: turn lookup: %v", errClaudeRecoveryUnproven, err)
 	}

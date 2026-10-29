@@ -35,7 +35,7 @@ func newCodexObserverFixture(t *testing.T, store *hostedstore.ExecutionStore, ho
 	}
 	sess.ReserveNativeID(nativeID)
 	fake := newFakeAppServer(t)
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	return sess, fake
 }
 func startCodexObserverFixture(t *testing.T, sess *sessions.Session, fake *fakeAppServer) {

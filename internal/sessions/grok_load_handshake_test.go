@@ -38,10 +38,10 @@ func TestGrokLoadHandshakeSettlesLifecycleAndQueue(t *testing.T) {
 				return json.RawMessage(`{"turn":{"id":"queued-provider-turn"}}`), nil
 			})
 			sess.identity.provider = "grok"
-			sess.stateOwner.state = map[string]json.RawMessage{}
-			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
-			sess.stateOwner.turnID, sess.stateOwner.turnStartedAtMs = "old-anchor", 123
-			t.Cleanup(sess.lifecycle.Close)
+			sess.state.state = map[string]json.RawMessage{}
+			sess.state.lifecycleState = testLifecycleSnapshot("starting", false)
+			sess.state.turnID, sess.state.turnStartedAtMs = "old-anchor", 123
+			t.Cleanup(sess.teardown.Close)
 			if rec := postTurn(t, sess.Delivery(), context.Background(), "after-restart", "queued while starting"); rec.Code != http.StatusAccepted {
 				t.Fatalf("queue status %d: %s", rec.Code, rec.Body.String())
 			}
@@ -89,7 +89,7 @@ while IFS= read -r request; do :; done
 			if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
-			requestedID := sess.stateOwner.ThreadID()
+			requestedID := sess.state.ThreadID()
 			if tc.mode == "start" {
 				requestedID = ""
 			}
@@ -107,8 +107,8 @@ while IFS= read -r request; do :; done
 				t.Fatalf("settled session/load left connection %q", got)
 			}
 			if tc.active {
-				if sum := sess.view.Summary(); !sum.TurnActive || sum.TurnStartedAtMs != 0 || sess.stateOwner.turnID != "surviving-turn" {
-					t.Fatalf("provider work was lost or inherited an old anchor: %+v, turn %q", sum, sess.stateOwner.turnID)
+				if sum := sess.view.Summary(); !sum.TurnActive || sum.TurnStartedAtMs != 0 || sess.state.turnID != "surviving-turn" {
+					t.Fatalf("provider work was lost or inherited an old anchor: %+v, turn %q", sum, sess.state.turnID)
 				}
 				sess.delivery.drainQueuedTurn()
 				if row, ok := attempts.Get("after-restart"); !ok || row.Status != sendAttemptQueued || sends.Load() != 0 {

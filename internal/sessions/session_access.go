@@ -18,23 +18,23 @@ func (sess *Session) HostedThreadID() string { return sess.identity.hostedThread
 
 // PromptStore returns this attachment's canonical prompt store.
 // It can be unavailable before the runtime is initialized.
-func (sess *Delivery) PromptStore() *prompts.Store { return sess.turns }
+func (delivery *Delivery) PromptStore() *prompts.Store { return delivery.turns }
 
 // LiveTurnActive reads the view's active-turn fact without exposing its state.
-func (sess *View) LiveTurnActive() bool {
-	return sess.projection != nil && sess.projection.turnActive()
+func (views *View) LiveTurnActive() bool {
+	return views.projection != nil && views.projection.turnActive()
 }
 
 // PersistedOperation reads the hosted operation for one transport action.
-func (sess *Delivery) PersistedOperation(ctx context.Context, actionID string) (threads.TurnRecord, bool, error) {
-	if sess.identity.agentExecutions == nil {
+func (delivery *Delivery) PersistedOperation(ctx context.Context, actionID string) (threads.TurnRecord, bool, error) {
+	if delivery.identity.agentExecutions == nil {
 		return threads.TurnRecord{}, false, nil
 	}
-	return sess.identity.agentExecutions.PersistedTurnForTransportAction(ctx, sess.identity.hostedThreadID, actionID)
+	return delivery.identity.agentExecutions.PersistedTurnForTransportAction(ctx, delivery.identity.hostedThreadID, actionID)
 }
 
 // CWD returns the working directory retained by this attachment.
-func (sess *Session) CWD() string { return sess.stateOwner.cwd }
+func (sess *Session) CWD() string { return sess.state.cwd }
 
 // Wire returns the attachment's concrete wire owner.
 func (sess *Session) Wire() *Wire {
@@ -52,12 +52,12 @@ func (sess *Session) Delivery() *Delivery {
 	return &sess.delivery
 }
 
-// State returns the attachment's atomic runtime state owner.
+// State returns the attachment's atomic runtime state.
 func (sess *Session) State() *State {
 	if sess == nil {
 		return nil
 	}
-	return &sess.stateOwner
+	return &sess.state
 }
 
 // Runtime returns the attachment's concrete runtime owner.
@@ -68,12 +68,12 @@ func (sess *Session) Runtime() *Runtime {
 	return &sess.runtime
 }
 
-// Lifecycle returns the attachment's concrete lifecycle owner.
-func (sess *Session) Lifecycle() *Lifecycle {
+// Teardown returns the attachment's close and repair owner.
+func (sess *Session) Teardown() *Teardown {
 	if sess == nil {
 		return nil
 	}
-	return &sess.lifecycle
+	return &sess.teardown
 }
 
 // View returns the attachment's concrete view owner.

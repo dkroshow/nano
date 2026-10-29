@@ -74,6 +74,6 @@ func BenchmarkCodexResumeConsumers(b *testing.B) {
 			b.Fatal("resume skipped the real projection")
 		}
 		b.StopTimer()
-		sess.lifecycle.Close()
+		sess.teardown.Close()
 	}
 }

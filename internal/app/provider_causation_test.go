@@ -35,7 +35,7 @@ func causationTestSessionForProvider(t *testing.T, hosted, provider string) (*se
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("native")
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	return sess, store
 }
 
@@ -340,7 +340,7 @@ func TestClaudeReplayCannotSettleNewDesiredButFreshInitSettlesOwnRequest(t *test
 	if old == newer || f.DesiredEventID == nil || *f.DesiredEventID != newer || f.DesiredDisposition != metadataDispositionRequested || desired != "new" {
 		t.Fatalf("replay settled newer desired: %+v", f)
 	}
-	sess.Lifecycle().Close()
+	sess.Teardown().Close()
 	sess = newCausationClaudeAttachment(t, store, sess.HostedThreadID())
 	fresh := startCausationClaude(t, sess, "new")
 	fresh.emitAndDrain(t, []byte(`{"type":"system","subtype":"init","session_id":"claude-native","model":"new","permissionMode":""}`))
@@ -364,7 +364,7 @@ func TestCaptureInitReplayAndFreshLaunchUseImmutableSnapshots(t *testing.T) {
 	if err := store.CanonicalDatabase().QueryRow(`SELECT count(*) FROM thread_metadata_events WHERE hosted_thread_id=? AND evidence_freshness=?`, sess.HostedThreadID(), metadataFreshnessReplayed).Scan(&replayed); err != nil || replayed == 0 {
 		t.Fatalf("captureInit did not store replayed evidence: count=%d err=%v", replayed, err)
 	}
-	sess.Lifecycle().Close()
+	sess.Teardown().Close()
 	sess = newCausationClaudeAttachment(t, store, sess.HostedThreadID())
 	// Capture the old request at launch, then create the new decision before its response.
 	requested(t, sess, store, postureFieldModel, "old")
@@ -412,7 +412,7 @@ func newCausationClaudeAttachment(t *testing.T, store *hostedstore.MetadataStore
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("claude-native")
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	return sess
 }
 

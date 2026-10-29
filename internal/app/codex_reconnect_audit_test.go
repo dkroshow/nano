@@ -44,7 +44,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("missing-zero")
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	if err := store.BindSession(hosted.ID, sess.ID(), sess.State().ThreadID(), "starting", presentationBackground); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 	waitReconnectCondition(t, func() bool {
 		return fake.ResumeCount() > beforeResumes && sess.View().Summary().Status == "reconnect_failed"
 	})
-	sess.Lifecycle().Close()
+	sess.Teardown().Close()
 	attemptsAfter, err := newTestSendAttemptStore(t, attemptPath, "after")
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestReconnectAuditMissingZeroTurnPersistsContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened.ReserveNativeID(request.ThreadID)
-	t.Cleanup(reopened.Lifecycle().Close)
+	t.Cleanup(reopened.Teardown().Close)
 	if err := reopened.Runtime().BeginProviderSpawn(request, daemon, func() {}); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestReconnectAuditTerminalSettlementAndAvailability(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID("deleted-rollout")
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	fake.SetResumeResult(map[string]any{"thread": map[string]any{"id": sess.State().ThreadID()}})
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.State().ThreadID()}, daemon, func() {}); err != nil {
 		t.Fatal(err)

@@ -28,7 +28,7 @@ func seedRecoveryPrompt(t *testing.T, store *prompts.Store, hosted, native, acti
 func TestClaudeUnfinishedPromptsWaitForABusyWriterOncePerThread(t *testing.T) {
 	sess, store := readyTransactionalSendTestSession(t, nil)
 	hosted := sess.HostedThreadID()
-	native := sess.stateOwner.ThreadID()
+	native := sess.state.ThreadID()
 	ctx := context.Background()
 	completed, err := coreturns.OpenStore(ctx, sess.delivery.queuedTurns.Database())
 	if err != nil {

@@ -33,12 +33,10 @@ func (s *Registry) SessionForThread(provider, nativeThreadID string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.identity.provider != provider || sess.stateOwner.ThreadID() != nativeThreadID {
+		if sess.identity.provider != provider || sess.state.ThreadID() != nativeThreadID {
 			continue
 		}
-		sess.stateOwner.stateMu.Lock()
-		exited := sess.stateOwner.connectionStatusLocked() == StatusExited
-		sess.stateOwner.stateMu.Unlock()
+		exited := sess.state.exited()
 		if exited {
 			continue
 		}
@@ -58,9 +56,7 @@ func (s *Registry) LiveSessionForResume(provider, nativeThreadID, hostedThreadID
 	if existing == nil || hostedThreadID == "" {
 		return nil
 	}
-	existing.stateOwner.stateMu.Lock()
-	exited := existing.stateOwner.connectionStatusLocked() == StatusExited
-	existing.stateOwner.stateMu.Unlock()
+	exited := existing.state.exited()
 	if exited {
 		return nil
 	}
@@ -105,9 +101,7 @@ func liveHostedThreadSession(matches []*Session) *Session {
 	var oldest *Session
 	var oldestCreated string
 	for _, sess := range matches {
-		sess.stateOwner.stateMu.Lock()
-		exited := sess.stateOwner.connectionStatusLocked() == StatusExited
-		sess.stateOwner.stateMu.Unlock()
+		exited := sess.state.exited()
 		if exited {
 			continue
 		}
@@ -131,7 +125,7 @@ func (s *Registry) ResolveLiveHostedThreadRecord(ref string, lookup func(string)
 	}
 	if hostedThreadID == "" {
 		for _, sess := range s.sessions {
-			if sess.stateOwner.ThreadID() != ref {
+			if sess.state.ThreadID() != ref {
 				continue
 			}
 			if hostedThreadID != "" && hostedThreadID != sess.identity.hostedThreadID {
@@ -194,7 +188,7 @@ func (s *Registry) VolatileSummaries(needsAttention map[string]bool) []Summary {
 	sessions := s.SnapshotSessions()
 	summaries := make([]Summary, 0, len(sessions))
 	for _, sess := range sessions {
-		summary, live := sess.stateOwner.volatileSummary(needsAttention[sess.identity.hostedThreadID])
+		summary, live := sess.state.volatileSummary(needsAttention[sess.identity.hostedThreadID])
 		if live {
 			summaries = append(summaries, summary)
 		}
@@ -216,7 +210,7 @@ func (s *Registry) AttachmentSession(provider, nativeID string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.identity.provider == provider && sess.stateOwner.ThreadID() == nativeID {
+		if sess.identity.provider == provider && sess.state.ThreadID() == nativeID {
 			return sess
 		}
 	}
@@ -228,7 +222,7 @@ func (s *Registry) ForgetDetachedClaude(nativeID string, forget func() error) er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sess := range s.sessions {
-		if sess.identity.provider == "claude" && sess.stateOwner.ThreadID() == nativeID && sess.view.Summary().Status != StatusExited {
+		if sess.identity.provider == "claude" && sess.state.ThreadID() == nativeID && sess.view.Summary().Status != StatusExited {
 			return fmt.Errorf("thread is attached; end its session before forgetting")
 		}
 	}
@@ -258,7 +252,7 @@ func (s *Registry) LiveHostedSummary(hostedID string, needsAttention func(string
 	if oldest == nil {
 		return Summary{}, false
 	}
-	return oldest.stateOwner.volatileSummary(needsAttention(hostedID))
+	return oldest.state.volatileSummary(needsAttention(hostedID))
 }
 
 // MonitorSnapshot counts held sessions and snapshots their active turns.
@@ -266,7 +260,7 @@ func (s *Registry) MonitorSnapshot() (int, []observability.ActiveTurn) {
 	sessions := s.SnapshotSessions()
 	turns := []observability.ActiveTurn{}
 	for _, sess := range sessions {
-		if turn, active := sess.stateOwner.ActiveTurnSnapshot(); active {
+		if turn, active := sess.state.ActiveTurnSnapshot(); active {
 			turns = append(turns, turn)
 		}
 	}

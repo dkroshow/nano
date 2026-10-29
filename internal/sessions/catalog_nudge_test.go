@@ -108,7 +108,7 @@ func TestRecordWireNudgesCatalogOnTurnEdgesOnly(t *testing.T) {
 	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
-		stateOwner: State{
+		state: State{
 			catalogRefresh:    func(string) { nudges++ },
 			catalogSourcePath: "/sessions/rollout.jsonl",
 			lifecycleState:    testLifecycleSnapshot("ready", false)},
@@ -132,7 +132,7 @@ func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 	codexSession := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
-		stateOwner: State{
+		state: State{
 			catalogRefresh: func(path string) { codexPaths = append(codexPaths, path) },
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{provider: "codex"},
@@ -146,7 +146,7 @@ func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 
 	var claudePath string
 	claudeSession := sessionWithOwners(&Session{
-		stateOwner: State{threadID: "native-1", cwd: "/tmp/project",
+		state: State{threadID: "native-1", cwd: "/tmp/project",
 			catalogRefresh: func(path string) { claudePath = path },
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
@@ -165,7 +165,7 @@ func TestRecordWireTargetsKnownTranscriptPath(t *testing.T) {
 func TestRecordWireNudgesCatalogOnClaudeTurnStart(t *testing.T) {
 	var nudges int
 	sess := sessionWithOwners(&Session{
-		stateOwner: State{threadID: "native-1", cwd: "/tmp/project",
+		state: State{threadID: "native-1", cwd: "/tmp/project",
 			catalogRefresh: func(string) { nudges++ },
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		wire: Wire{
@@ -188,7 +188,7 @@ func TestRecordWireWithoutCatalogRefreshIsSafe(t *testing.T) {
 	sess := sessionWithOwners(&Session{
 		wire: Wire{
 			subs: map[chan wire.Event]struct{}{}},
-		stateOwner: State{
+		state: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{provider: "claude"},
 	})
@@ -204,7 +204,7 @@ func TestRecordWireWithoutCatalogRefreshIsSafe(t *testing.T) {
 func TestRecordWireRawStartsNoCatalogWorkForUnattachedChild(t *testing.T) {
 	nudges := 0
 	sess := sessionWithOwners(&Session{
-		stateOwner: State{
+		state: State{
 			catalogRefresh: func(string) { nudges++ },
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{provider: "grok"},

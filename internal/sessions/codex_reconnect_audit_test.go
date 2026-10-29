@@ -34,7 +34,7 @@ func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID 
 	t.Helper()
 	sess := sessionWithOwners(&Session{
 
-		stateOwner: State{
+		state: State{
 			threadID:       threadID,
 			state:          map[string]json.RawMessage{},
 			lifecycleState: testLifecycleSnapshot("ready", false)},
@@ -55,7 +55,7 @@ func reconnectTestSessionWithStores(t *testing.T, daemon *CodexDaemon, threadID 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		sess.lifecycle.Close()
+		sess.teardown.Close()
 		waitReconnectCondition(t, func() bool {
 			daemon.mu.Lock()
 			defer daemon.mu.Unlock()
@@ -99,7 +99,7 @@ func TestReconnectAuditPersistentFleetParksAndRearms(t *testing.T) {
 	sessions := reconnectTestFleet(t, daemon, "fleet", 123)
 	for index := range sessions {
 		if index < 6 {
-			fake.ResumeDelays[sessions[index].stateOwner.ThreadID()] = time.Second
+			fake.ResumeDelays[sessions[index].state.ThreadID()] = time.Second
 		}
 	}
 	fake.DropConnections()
@@ -121,12 +121,12 @@ func TestReconnectAuditPersistentFleetParksAndRearms(t *testing.T) {
 		if index < 6 {
 			want = codexReconnectAttempts
 		}
-		count := fake.ResumeCounts[sess.stateOwner.ThreadID()]
+		count := fake.ResumeCounts[sess.state.ThreadID()]
 		if (index < 6 && count != want) || (index >= 6 && (count < 1 || count > codexReconnectAttempts)) {
-			t.Errorf("%s attempts=%d want=%d", sess.stateOwner.ThreadID(), fake.ResumeCounts[sess.stateOwner.ThreadID()], want)
+			t.Errorf("%s attempts=%d want=%d", sess.state.ThreadID(), fake.ResumeCounts[sess.state.ThreadID()], want)
 		}
 	}
-	fake.ResumeDelays[sessions[0].stateOwner.ThreadID()] = 0
+	fake.ResumeDelays[sessions[0].state.ThreadID()] = 0
 	fake.Mu.Unlock()
 	for repeat := 0; repeat < 2; repeat++ {
 		response := postTurn(t, sessions[0].Delivery(), context.Background(), "rearm", "try after parking")
@@ -137,8 +137,8 @@ func TestReconnectAuditPersistentFleetParksAndRearms(t *testing.T) {
 	waitTurnSendDone(t, sessions[0], "rearm")
 	fake.Mu.Lock()
 	defer fake.Mu.Unlock()
-	if fake.ResumeCounts[sessions[0].stateOwner.ThreadID()] != codexReconnectAttempts+1 || fake.TurnStarts != 1 {
-		t.Fatalf("rearm duplicates: resumes=%d starts=%d", fake.ResumeCounts[sessions[0].stateOwner.ThreadID()], fake.TurnStarts)
+	if fake.ResumeCounts[sessions[0].state.ThreadID()] != codexReconnectAttempts+1 || fake.TurnStarts != 1 {
+		t.Fatalf("rearm duplicates: resumes=%d starts=%d", fake.ResumeCounts[sessions[0].state.ThreadID()], fake.TurnStarts)
 	}
 }
 
@@ -147,14 +147,14 @@ func TestReconnectAuditZeroTurnReadyAndSingleDelivery(t *testing.T) {
 	fake.SetTurnStartResult(map[string]any{"turn": map[string]any{"id": "zero-turn-first"}})
 	daemon := fake.daemon()
 	sess := reconnectTestSession(t, daemon, "zero-turn")
-	sess.stateOwner.codexZeroTurnEligible = true
+	sess.state.codexZeroTurnEligible = true
 	sess.setStatus("reconnecting")
 	fake.SetResumeErrorSequence("no rollout found for thread zero-turn", "")
 	if response := postTurn(t, sess.Delivery(), context.Background(), "first", "first prompt"); response.Code != http.StatusAccepted {
 		t.Fatalf("queue: %s", response.Body.String())
 	}
 	waitTurnSendDone(t, sess, "first")
-	waitReconnectCondition(t, func() bool { return !sess.stateOwner.codexZeroTurnRecoveryNeeded() })
+	waitReconnectCondition(t, func() bool { return !sess.state.codexZeroTurnRecoveryNeeded() })
 	fake.Mu.Lock()
 	defer fake.Mu.Unlock()
 	if fake.TurnStarts != 1 || sess.view.Summary().Status != "ready" {
@@ -171,7 +171,7 @@ func TestReconnectAuditNativeMissingRequiresExactEvidence(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			fake := newFakeAppServer(t)
 			sess := reconnectTestSession(t, fake.daemon(), "evidence-thread")
-			sess.stateOwner.codexZeroTurnEligible, sess.stateOwner.codexZeroTurnResume = true, true
+			sess.state.codexZeroTurnEligible, sess.state.codexZeroTurnResume = true, true
 			var deliveryErr error = &protocol.RPCError{Code: -32600, Message: "thread not found: evidence-thread"}
 			switch scenario {
 			case "wrong-native":
@@ -179,9 +179,9 @@ func TestReconnectAuditNativeMissingRequiresExactEvidence(t *testing.T) {
 			case "untyped":
 				deliveryErr = errors.New("thread not found: evidence-thread")
 			case "not-fallback":
-				sess.stateOwner.codexZeroTurnResume = false
+				sess.state.codexZeroTurnResume = false
 			case "accepted-history":
-				if err := JournalPut(sess.delivery.sendAttempts.(*prompts.LegacyJournal), prompts.SendAttempt{ClientActionID: "past", Provider: "codex", NativeThreadID: sess.stateOwner.ThreadID(), Status: sendAttemptAccepted}); err != nil {
+				if err := JournalPut(sess.delivery.sendAttempts.(*prompts.LegacyJournal), prompts.SendAttempt{ClientActionID: "past", Provider: "codex", NativeThreadID: sess.state.ThreadID(), Status: sendAttemptAccepted}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -214,15 +214,15 @@ func TestReconnectAuditZeroTurnWaitsForSlotWithoutAttemptTimeout(t *testing.T) {
 	fake := newFakeAppServer(t)
 	daemon := fake.daemon()
 	sess := reconnectTestSession(t, daemon, "saturated-zero")
-	sess.stateOwner.codexZeroTurnResume = true
+	sess.state.codexZeroTurnResume = true
 	for slot := 0; slot < codexResumeConcurrency; slot++ {
 		daemon.resumeSlots <- struct{}{}
 	}
-	sess.stateOwner.startCodexZeroTurnRecovery()
+	sess.state.startCodexZeroTurnRecovery()
 	time.Sleep(codexZeroTurnRecoveryAttemptTimeout + 100*time.Millisecond)
-	sess.stateOwner.stateMu.Lock()
-	running := sess.stateOwner.codexZeroTurnRecoveryRunning
-	sess.stateOwner.stateMu.Unlock()
+	sess.state.stateMu.Lock()
+	running := sess.state.codexZeroTurnRecoveryRunning
+	sess.state.stateMu.Unlock()
 	if !running {
 		t.Error("slot wait ended the zero-turn recovery task before any RPC")
 	}
@@ -232,7 +232,7 @@ func TestReconnectAuditZeroTurnWaitsForSlotWithoutAttemptTimeout(t *testing.T) {
 	for slot := 0; slot < codexResumeConcurrency; slot++ {
 		<-daemon.resumeSlots
 	}
-	waitReconnectCondition(t, func() bool { return !sess.stateOwner.codexZeroTurnRecoveryNeeded() })
+	waitReconnectCondition(t, func() bool { return !sess.state.codexZeroTurnRecoveryNeeded() })
 	if fake.ResumeCount() != 1 {
 		t.Fatalf("slot wait consumed attempts: %d", fake.ResumeCount())
 	}
@@ -257,12 +257,12 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, _, err = QueuePutSubmission(queue, prompts.QueuedTurn{ClientActionID: "journal-action", Provider: "codex",
-				NativeThreadID: sess.stateOwner.ThreadID(), HostedThreadID: sess.HostedThreadID(), Text: "retained prompt",
+				NativeThreadID: sess.state.ThreadID(), HostedThreadID: sess.HostedThreadID(), Text: "retained prompt",
 				TextHash: sendTextHash("retained prompt"), RequestHash: sendTextHash("retained prompt"), State: submissionQueued})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := JournalPut(attempts, prompts.SendAttempt{ClientActionID: "journal-action", Provider: "codex", NativeThreadID: sess.stateOwner.ThreadID(),
+			if err := JournalPut(attempts, prompts.SendAttempt{ClientActionID: "journal-action", Provider: "codex", NativeThreadID: sess.state.ThreadID(),
 				TextHash: sendTextHash("retained prompt"), Status: status}); err != nil {
 				t.Fatal(err)
 			}
@@ -277,7 +277,7 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 			sess.delivery.turns = mustBindTransactionalTurnStore(t, sess.delivery.queuedTurns, sess.delivery.sendAttempts)
 			fake.SetReplyDelay("thread/resume", 100*time.Millisecond)
 			sess.setStatus("starting")
-			if err := startCodexSession(sess.Runtime(), daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.stateOwner.ThreadID(), BootReattach: &BootControl{}}); err != nil {
+			if err := startCodexSession(sess.Runtime(), daemon, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.state.ThreadID(), BootReattach: &BootControl{}}); err != nil {
 				t.Fatal(err)
 			}
 			waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 1 })
@@ -285,9 +285,9 @@ func TestReconnectAuditRestartJournalExactlyOnce(t *testing.T) {
 			waitReconnectCondition(t, func() bool { return fake.ResumeCount() >= 2 && sess.view.Summary().Status == "ready" })
 			if status == sendAttemptQueued {
 				waitTurnSendDone(t, sess, "journal-action")
-				fake.EmitThreadNotification(sess.stateOwner.ThreadID(), map[string]any{"method": "item/completed", "params": map[string]any{
+				fake.EmitThreadNotification(sess.state.ThreadID(), map[string]any{"method": "item/completed", "params": map[string]any{
 					// Codex echoes the client id Nano sent with the prompt.
-					"threadId": sess.stateOwner.ThreadID(), "turnId": "journal-turn", "item": map[string]any{"id": "user-journal", "type": "userMessage",
+					"threadId": sess.state.ThreadID(), "turnId": "journal-turn", "item": map[string]any{"id": "user-journal", "type": "userMessage",
 						"clientId": submissionEventID(sess.HostedThreadID(), "journal-action"), "content": []map[string]any{{"type": "inputText", "text": "retained prompt"}}}}})
 				waitReconnectCondition(t, func() bool {
 					attempt, _ := sess.delivery.sendAttempts.Get("journal-action")

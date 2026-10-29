@@ -139,7 +139,7 @@ func newLiveTextHarnessForThread(t *testing.T, provider string, query threadinde
 	h.metadata, _ = cfg.Metadata.(*hostedstore.MetadataStore)
 	cfg.Metadata = journalReadMetadata{Metadata: cfg.Metadata, db: cfg.QueuedTurns.Database()}
 	sess := New(cfg)
-	t.Cleanup(sess.lifecycle.Close)
+	t.Cleanup(sess.teardown.Close)
 	if err := sess.InitializeBinding(generation); err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func (h *liveTextHarness) release() {
 // page reads the catalog directly: the test's own view of what is saved.
 func (h *liveTextHarness) page(query threadindex.TranscriptQuery) []threadindex.TranscriptItem {
 	h.t.Helper()
-	id, err := h.service.ResolveThreadReference(context.Background(), h.sess.stateOwner.ThreadID())
+	id, err := h.service.ResolveThreadReference(context.Background(), h.sess.state.ThreadID())
 	if err != nil {
 		return nil
 	}
@@ -194,7 +194,7 @@ func (h *liveTextHarness) page(query threadindex.TranscriptQuery) []threadindex.
 func (h *liveTextHarness) waitTurnEnded(nativeTurnID string) {
 	h.t.Helper()
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		id, err := h.service.ResolveThreadReference(context.Background(), h.sess.stateOwner.ThreadID())
+		id, err := h.service.ResolveThreadReference(context.Background(), h.sess.state.ThreadID())
 		if err != nil {
 			continue // not indexed yet
 		}
@@ -546,7 +546,7 @@ func TestLiveTextNamesAPromptSavedBeforeItWasShown(t *testing.T) {
 func TestLiveTextTailNamesPromptsWhoseSavedRowsItHolds(t *testing.T) {
 	ctx := context.Background()
 	h := newLiveTextHarness(t)
-	native := h.sess.stateOwner.ThreadID()
+	native := h.sess.state.ThreadID()
 	settle := func(action, event string) {
 		t.Helper()
 		text, turn := "prompt "+action, "claude:"+action
@@ -687,7 +687,7 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 	// existing live loop whose saved/live identity boundary this test observes.
 	turn := h.projection.currentTurnID()
 	h.projection = NewLiveProjection("claude", h.sess.HostedThreadID(), false)
-	h.projection.setNativeThreadID(h.sess.stateOwner.ThreadID())
+	h.projection.setNativeThreadID(h.sess.state.ThreadID())
 	h.projection.setClaudeProviderTurnID(turn)
 	h.projection.setLiveText(h.sess.view.LiveTextService())
 	for _, line := range wire {
@@ -1498,7 +1498,7 @@ func TestLiveTextCodexEvidenceInAnyOrder(t *testing.T) {
 func (h *liveTextHarness) deliveryJournal() map[string]prompts.View {
 	h.t.Helper()
 	rec := httptest.NewRecorder()
-	h.sess.delivery.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.stateOwner.ThreadID(), nil))
+	h.sess.delivery.HandleTurnDeliveryList(rec, httptest.NewRequest(http.MethodGet, "/turn-delivery?thread="+h.sess.state.ThreadID(), nil))
 	var body struct {
 		Operations []prompts.View `json:"operations"`
 	}
@@ -1541,7 +1541,7 @@ func liveEntry(live []liveTextEntry, id string) *liveTextEntry {
 func (h *liveTextHarness) acceptCodexPrompt(action, text, turn string, origin prompts.Origin, createdAt string) {
 	h.t.Helper()
 	ctx := context.Background()
-	hosted, native := h.sess.HostedThreadID(), h.sess.stateOwner.ThreadID()
+	hosted, native := h.sess.HostedThreadID(), h.sess.state.ThreadID()
 	if _, _, err := h.sess.delivery.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,
 		ProviderText: text, PresentationText: text, TextHash: sendTextHash(text), RequestHash: sendTextHash(text), Origin: origin, CreatedAt: createdAt}); err != nil {
 		h.t.Fatal(err)
@@ -1569,7 +1569,7 @@ func TestLiveTextAndJournalPresentEachPromptAlike(t *testing.T) {
 	ctx := context.Background()
 	h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 	sess := h.sess
-	hosted, native := sess.HostedThreadID(), sess.stateOwner.ThreadID()
+	hosted, native := sess.HostedThreadID(), sess.state.ThreadID()
 	submit := func(action string, nextTurn bool) {
 		text := "prompt " + action
 		if _, _, err := sess.delivery.PromptStore().Submit(ctx, prompts.Submission{HostedThreadID: hosted, Provider: model.ProviderCodex, NativeThreadID: native, ActionID: action,

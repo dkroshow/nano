@@ -24,7 +24,7 @@ func (rejectingNativeClaim) ClaimNativeIDResolving(string, string, string, bool,
 // exactly the rung most likely to need it.
 func TestClaudeSpawnFailureTranslatedDespiteTheSeededThreadID(t *testing.T) {
 	sess, _ := claudeTestSession(t)
-	sess.stateOwner.threadID = "native-1" // identity at spawn, no handshake yet
+	sess.state.threadID = "native-1" // identity at spawn, no handshake yet
 	c := &claudeSession{sess: sess.Runtime(), exited: make(chan struct{})}
 
 	c.captureState(&claudeChildTransport{owner: c}, []byte(claudeMissingTranscriptResult))
@@ -42,7 +42,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	c := &claudeSession{sess: sess.Runtime(), exited: make(chan struct{})}
 	tr := &claudeChildTransport{owner: c}
 
-	c.markTransportReady()
+	c.sess.state.markClaudeTransportReady(c)
 	c.captureState(tr, []byte(claudeInitLine))
 	c.captureState(tr, []byte(claudeMissingTranscriptResult))
 
@@ -56,16 +56,16 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 	unrecorded, _ := claudeTestSession(t)
 	unrecorded.identity.hostedThreadID = "nht_unrecorded"
 	unrecorded.identity.metadata = rejectingNativeClaim{unrecorded.identity.metadata} // models the hosted owner refusing the absent identity
-	unrecorded.stateOwner.threadID = "cs_handle"
+	unrecorded.state.threadID = "cs_handle"
 	child := &claudeSession{sess: unrecorded.Runtime(), exited: make(chan struct{}), supersedes: "cs_handle"}
 	shim := &claudeShimTransport{owner: child, shimSessionID: "cs_handle"}
-	child.markTransportReady()
+	child.sess.state.markClaudeTransportReady(child)
 	child.captureState(shim, []byte(claudeInitLine))
 	child.captureState(shim, []byte(claudeMissingTranscriptResult))
 	if sum := unrecorded.view.Summary(); sum.Status == "exited" || strings.Contains(sum.Error, "no longer on disk") {
 		t.Fatalf("summary = %#v; a handshake whose pair was not recorded became a failed spawn", sum)
 	}
-	if got := unrecorded.stateOwner.ThreadID(); got != "cs_handle" {
+	if got := unrecorded.state.ThreadID(); got != "cs_handle" {
 		t.Fatalf("identity = %q; want it to stay provisional until the pair is recorded", got)
 	}
 }
@@ -78,7 +78,7 @@ func TestClaudeResultErrorAfterInitLeavesTheSessionAlone(t *testing.T) {
 func TestClaudeInitAfterCloseDoesNotResurrectTheSession(t *testing.T) {
 	sess, attachments := claudeTestSession(t)
 	c := newClaudeSession(sess.Runtime(), "")
-	sess.lifecycle.Close()
+	sess.teardown.Close()
 
 	c.captureState(&claudeChildTransport{owner: c}, []byte(claudeInitLine))
 

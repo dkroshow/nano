@@ -1,68 +1,68 @@
 package sessions
 
 // StageNameBeforeBinding keeps a pre-native rename for the identity bind.
-func (sess *State) StageNameBeforeBinding(name string) (provider, nativeID string, staged bool) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	provider, nativeID = sess.identity.provider, sess.threadID
+func (attachmentState *State) StageNameBeforeBinding(name string) (provider, nativeID string, staged bool) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	provider, nativeID = attachmentState.identity.provider, attachmentState.threadID
 	if nativeID == "" {
-		sess.pendingName, sess.displayName = name, name
+		attachmentState.pendingName, attachmentState.displayName = name, name
 		staged = true
 	}
 	return
 }
 
 // StageProvisionalName stages only if the probed identity is still current.
-func (sess *State) StageProvisionalName(nativeID, name string) (current string, staged bool) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	if sess.threadID == nativeID {
-		sess.pendingName, sess.displayName = name, name
+func (attachmentState *State) StageProvisionalName(nativeID, name string) (current string, staged bool) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	if attachmentState.threadID == nativeID {
+		attachmentState.pendingName, attachmentState.displayName = name, name
 		staged = true
 	}
-	return sess.threadID, staged
+	return attachmentState.threadID, staged
 }
 
 // SetDisplayName updates the attachment display name under its state lock.
-func (sess *State) SetDisplayName(name string) {
-	sess.stateMu.Lock()
-	sess.pendingName, sess.displayName = "", name
-	sess.stateMu.Unlock()
+func (attachmentState *State) SetDisplayName(name string) {
+	attachmentState.stateMu.Lock()
+	attachmentState.pendingName, attachmentState.displayName = "", name
+	attachmentState.stateMu.Unlock()
 }
 
 // applyPendingName publishes the highest available not-yet-durable name once
 // a native id is known: a staged operator rename first, then the immutable
 // creation fallback. The derived projection ranks manual and imported truth
 // above creation, so an existing durable name remains authoritative.
-func (sess *State) applyPendingName(nativeThreadID string) {
+func (attachmentState *State) applyPendingName(nativeThreadID string) {
 	if nativeThreadID == "" {
 		return // no id yet — keep the name for a later bind site
 	}
-	sess.stateMu.Lock()
-	name := sess.pendingName
-	sess.pendingName = ""
-	sess.stateMu.Unlock()
-	sess.view.publishPendingName(sess.identity.provider, nativeThreadID, name)
+	attachmentState.stateMu.Lock()
+	name := attachmentState.pendingName
+	attachmentState.pendingName = ""
+	attachmentState.stateMu.Unlock()
+	attachmentState.view.publishPendingName(attachmentState.identity.provider, nativeThreadID, name)
 }
 
-func (sess *View) publishPendingName(provider, nativeThreadID, name string) {
+func (views *View) publishPendingName(provider, nativeThreadID, name string) {
 	if name != "" {
-		if sess.nameThread != nil {
-			sess.nameThread(provider, nativeThreadID, name)
+		if views.nameThread != nil {
+			views.nameThread(provider, nativeThreadID, name)
 		}
 		return
 	}
-	if sess.creationName == nil {
+	if views.creationName == nil {
 		return
 	}
-	name = sess.creationName()
+	name = views.creationName()
 	if name == "" {
 		return
 	}
-	if sess.publishCreationName != nil {
-		sess.publishCreationName(provider, nativeThreadID, name)
-	} else if sess.nameThread != nil {
+	if views.publishCreationName != nil {
+		views.publishCreationName(provider, nativeThreadID, name)
+	} else if views.nameThread != nil {
 		// A narrow fallback for legacy embedders without a derived projection.
-		sess.nameThread(provider, nativeThreadID, name)
+		views.nameThread(provider, nativeThreadID, name)
 	}
 }

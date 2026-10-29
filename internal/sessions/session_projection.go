@@ -19,114 +19,114 @@ import (
 )
 
 // PublishProjectionRuntime publishes the current attachment runtime into the live projection.
-func (sess *State) PublishProjectionRuntime() {
-	if sess.view.liveProjection() == nil {
+func (attachmentState *State) PublishProjectionRuntime() {
+	if attachmentState.view.liveProjection() == nil {
 		return
 	}
-	sess.stateMu.Lock()
+	attachmentState.stateMu.Lock()
 	runtime := liveview.Runtime{
-		SessionStatus:     sess.connectionStatusLocked(),
-		ThreadStatus:      sess.threadStatusLocked(),
-		TurnActive:        sess.workActiveLocked(),
-		TurnID:            sess.turnID,
-		TurnStartedAtMs:   sess.turnStartedAtMs,
-		CompactingSinceMs: sess.compactingSinceMsLocked(),
-		TokenUsage:        append(json.RawMessage(nil), sess.tokenUsage...),
-		LastError:         sess.lastError,
-		DeliveryExpiries:  sess.delivery.expiryCounter().count(sess.identity.provider),
+		SessionStatus:     attachmentState.connectionStatusLocked(),
+		ThreadStatus:      attachmentState.threadStatusLocked(),
+		TurnActive:        attachmentState.workActiveLocked(),
+		TurnID:            attachmentState.turnID,
+		TurnStartedAtMs:   attachmentState.turnStartedAtMs,
+		CompactingSinceMs: attachmentState.compactingSinceMsLocked(),
+		TokenUsage:        append(json.RawMessage(nil), attachmentState.tokenUsage...),
+		LastError:         attachmentState.lastError,
+		DeliveryExpiries:  attachmentState.delivery.expiryCounter().count(attachmentState.identity.provider),
 	}
 	// The transcript's runtime upsert must not interpret hidden disconnected
 	// work as a completed turn. Only provider terminal evidence completes it.
 	if !runtime.TurnActive {
 		runtime.TurnID, runtime.TurnStartedAtMs = "", 0
 	}
-	sess.stateMu.Unlock()
-	sess.view.liveProjection().updateRuntime(runtime)
+	attachmentState.stateMu.Unlock()
+	attachmentState.view.liveProjection().updateRuntime(runtime)
 }
 
-func (sess *View) applyLiveRuntimeWire(dir wire.Direction, line []byte, at time.Time) {
-	if sess.projection == nil {
+func (views *View) applyLiveRuntimeWire(dir wire.Direction, line []byte, at time.Time) {
+	if views.projection == nil {
 		return
 	}
-	if observe := lifecycleProviders[sess.identity.provider].runtime; observe != nil {
-		observe(sess.stateOwner, dir, line, at)
+	if observe := lifecycleProviders[views.identity.provider].runtime; observe != nil {
+		observe(views.state, dir, line, at)
 	}
 }
 
-func (sess *State) setLiveTokenUsage(raw json.RawMessage) {
+func (attachmentState *State) setLiveTokenUsage(raw json.RawMessage) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return
 	}
-	sess.stateMu.Lock()
-	sess.tokenUsage = append(json.RawMessage(nil), raw...)
-	sess.stateMu.Unlock()
-	sess.view.liveProjection().updateTokenUsage(raw)
+	attachmentState.stateMu.Lock()
+	attachmentState.tokenUsage = append(json.RawMessage(nil), raw...)
+	attachmentState.stateMu.Unlock()
+	attachmentState.view.liveProjection().updateTokenUsage(raw)
 }
 
-func (sess *State) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage) {
-	sess.setLiveTokenUsage(raw)
+func (attachmentState *State) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage) {
+	attachmentState.setLiveTokenUsage(raw)
 	usage := normalizeTokenUsage(raw)
 	if usage == nil || turnID == "" {
 		return
 	}
-	sess.stateMu.Lock()
-	if sess.turnTokenUsage == nil {
-		sess.turnTokenUsage = make(map[string]*interact.TokenUsage)
+	attachmentState.stateMu.Lock()
+	if attachmentState.turnTokenUsage == nil {
+		attachmentState.turnTokenUsage = make(map[string]*interact.TokenUsage)
 	}
-	sess.turnTokenUsage[turnID] = usage
-	if len(sess.turnTokenUsage) > liveProjectionStateTurnCap {
-		for id := range sess.turnTokenUsage {
+	attachmentState.turnTokenUsage[turnID] = usage
+	if len(attachmentState.turnTokenUsage) > liveProjectionStateTurnCap {
+		for id := range attachmentState.turnTokenUsage {
 			if id != turnID {
-				delete(sess.turnTokenUsage, id)
+				delete(attachmentState.turnTokenUsage, id)
 				break
 			}
 		}
 	}
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Unlock()
 }
 
-func (sess *State) completedTokenUsage(turnID string) *interact.TokenUsage {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.turnTokenUsage[turnID]
+func (attachmentState *State) completedTokenUsage(turnID string) *interact.TokenUsage {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.turnTokenUsage[turnID]
 }
 
-func (sess *State) setLiveError(message string) {
+func (attachmentState *State) setLiveError(message string) {
 	if message == "" {
 		return
 	}
-	sess.stateMu.Lock()
-	sess.lastError = message
-	sess.stateMu.Unlock()
-	sess.view.liveProjection().updateError(message)
+	attachmentState.stateMu.Lock()
+	attachmentState.lastError = message
+	attachmentState.stateMu.Unlock()
+	attachmentState.view.liveProjection().updateError(message)
 }
 
 // ReconcileDurableTurn settles the session's open turn from its saved status
 // when the live terminal event was lost. It reads only while a turn is open.
-func (sess *State) ReconcileDurableTurn(ctx context.Context) {
-	if sess == nil || sess.view.liveProjection() == nil || sess.savedTurn == nil {
+func (attachmentState *State) ReconcileDurableTurn(ctx context.Context) {
+	if attachmentState == nil || attachmentState.view.liveProjection() == nil || attachmentState.savedTurn == nil {
 		return
 	}
-	sess.stateMu.Lock()
-	turnID := sess.turnID
-	threadID := sess.threadID
-	generation := sess.attachmentGeneration
-	sessionTurnActive := sess.workActiveLocked()
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Lock()
+	turnID := attachmentState.turnID
+	threadID := attachmentState.threadID
+	generation := attachmentState.attachmentGeneration
+	sessionTurnActive := attachmentState.workActiveLocked()
+	attachmentState.stateMu.Unlock()
 	if turnID == "" {
-		turnID = sess.view.liveProjection().currentTurnID()
+		turnID = attachmentState.view.liveProjection().currentTurnID()
 	}
 	if turnID == "" {
 		return
 	}
-	liveTurn, wireEvidenceAtMs, version, retained := sess.view.liveProjection().retainedTurnEvidence(turnID)
+	liveTurn, wireEvidenceAtMs, version, retained := attachmentState.view.liveProjection().retainedTurnEvidence(turnID)
 	if !retained {
 		return
 	}
 	if !sessionTurnActive && liveTurn.Status != "in_progress" {
 		return
 	}
-	exact, found := sess.savedTurn(ctx, turnID)
+	exact, found := attachmentState.savedTurn(ctx, turnID)
 	if !liveview.DurableTerminalAuthoritative(exact, found, wireEvidenceAtMs) {
 		return
 	}
@@ -139,44 +139,44 @@ func (sess *State) ReconcileDurableTurn(ctx context.Context) {
 	// handshake cannot observe a terminal projection and then resurrect that
 	// exact turn. The saved end applies only to the attachment that read it,
 	// and only if the turn did no live work while it was read.
-	sess.stateMu.Lock()
-	if sess.attachmentGeneration != generation || threadID != "" && sess.threadID != threadID ||
-		!sess.view.liveProjection().completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
-		sess.workActiveLocked() && sess.turnID != turnID {
-		sess.stateMu.Unlock()
+	attachmentState.stateMu.Lock()
+	if attachmentState.attachmentGeneration != generation || threadID != "" && attachmentState.threadID != threadID ||
+		!attachmentState.view.liveProjection().completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
+		attachmentState.workActiveLocked() && attachmentState.turnID != turnID {
+		attachmentState.stateMu.Unlock()
 		return
 	}
 	if threadID == "" {
-		threadID = sess.threadID
+		threadID = attachmentState.threadID
 	}
-	sess.durablyTerminalTurnID = turnID
-	sess.durablyTerminalTurnThreadID = threadID
-	turnActiveChanged := sess.workActiveLocked()
+	attachmentState.durablyTerminalTurnID = turnID
+	attachmentState.durablyTerminalTurnThreadID = threadID
+	turnActiveChanged := attachmentState.workActiveLocked()
 	if turnActiveChanged {
-		sess.transitionLifecycleLocked(lifecycle.EventFinished)
-		sess.turnID = ""
-		sess.turnStartedAtMs = 0
+		attachmentState.transitionLifecycleLocked(lifecycle.EventFinished)
+		attachmentState.turnID = ""
+		attachmentState.turnStartedAtMs = 0
 		if exact.Turn.CompletedAtMs > 0 {
-			sess.lastTurnEndedAt = time.UnixMilli(exact.Turn.CompletedAtMs).UTC().Format(time.RFC3339Nano)
+			attachmentState.lastTurnEndedAt = time.UnixMilli(exact.Turn.CompletedAtMs).UTC().Format(time.RFC3339Nano)
 		}
 	}
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Unlock()
 
 	if !turnActiveChanged {
 		return
 	}
-	sess.PublishProjectionRuntime()
-	sess.NotifyRuntime()
-	sess.delivery.kickQueuedTurnDrain()
+	attachmentState.PublishProjectionRuntime()
+	attachmentState.NotifyRuntime()
+	attachmentState.delivery.kickQueuedTurnDrain()
 }
 
 // HandleConversation serves the default conversation view for this attachment.
-func (sess *View) HandleConversation(w http.ResponseWriter, r *http.Request) {
-	sess.HandleConversationView(w, r, conversationViewFull)
+func (views *View) HandleConversation(w http.ResponseWriter, r *http.Request) {
+	views.HandleConversationView(w, r, conversationViewFull)
 }
 
 // HandleConversationView serves a paginated conversation view with the supplied default mode.
-func (sess *View) HandleConversationView(w http.ResponseWriter, r *http.Request, defaultView liveview.View) {
+func (views *View) HandleConversationView(w http.ResponseWriter, r *http.Request, defaultView liveview.View) {
 	view, err := parseConversationView(r, defaultView)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
@@ -187,27 +187,27 @@ func (sess *View) HandleConversationView(w http.ResponseWriter, r *http.Request,
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	snapshot, err := sess.fileConversationSnapshot(r.Context(), view, before, limit)
+	snapshot, err := views.fileConversationSnapshot(r.Context(), view, before, limit)
 	if err != nil {
-		sess.liveText.writeBackendError(w, err)
+		views.liveText.writeBackendError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, snapshot)
 }
 
 // HandleConversationEvents streams changes to the default conversation view.
-func (sess *View) HandleConversationEvents(w http.ResponseWriter, r *http.Request) {
-	sess.HandleConversationEventsView(w, r, conversationViewFull)
+func (views *View) HandleConversationEvents(w http.ResponseWriter, r *http.Request) {
+	views.HandleConversationEventsView(w, r, conversationViewFull)
 }
 
 // HandleConversationEventsView streams changes to a conversation view with the supplied default mode.
-func (sess *View) HandleConversationEventsView(w http.ResponseWriter, r *http.Request, defaultView liveview.View) {
+func (views *View) HandleConversationEventsView(w http.ResponseWriter, r *http.Request, defaultView liveview.View) {
 	view, err := parseConversationView(r, defaultView)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sess.handleFileConversationEvents(w, r, view)
+	views.handleFileConversationEvents(w, r, view)
 }
 
 // ReconcileSavedTranscript confirms saved items and settles their waiting prompts.
@@ -223,7 +223,7 @@ func ReconcileSavedTranscript(ctx context.Context, sess *State) {
 type View struct {
 	identity   *attachmentIdentity
 	wire       *Wire
-	stateOwner *State
+	state      *State
 	runtime    *Runtime
 	projection *LiveProjection // normalized live transcript, one per session
 	nameThread func(provider, nativeThreadID, name string)
@@ -250,6 +250,6 @@ type View struct {
 	liveText *LiveTextLoop
 }
 
-func (sess *View) liveProjection() *LiveProjection { return sess.projection }
-func (sess *View) skillsFor(cwd string) []byte     { return sess.skills.Current(cwd) }
-func (sess *View) invalidateMCP()                  { sess.mcp.Invalidate() }
+func (views *View) liveProjection() *LiveProjection { return views.projection }
+func (views *View) skillsFor(cwd string) []byte     { return views.skills.Current(cwd) }
+func (views *View) invalidateMCP()                  { views.mcp.Invalidate() }

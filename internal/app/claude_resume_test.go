@@ -102,7 +102,7 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.Att
 			sessions = append(sessions, sess)
 		}
 		for _, sess := range sessions {
-			sess.Lifecycle().Close()
+			sess.Teardown().Close()
 		}
 	})
 	return s, store

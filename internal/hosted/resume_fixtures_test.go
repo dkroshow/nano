@@ -94,7 +94,7 @@ func readyClaimSession(t *testing.T, cfg sessions.Config, native string) *sessio
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", Cwd: t.TempDir(), ClaudeShimWS: shimServer.WSURL(), ClaudeShimSpools: t.TempDir(), ClaudeBin: "/fake/claude"}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if sess.View().Summary().Status == "ready" {

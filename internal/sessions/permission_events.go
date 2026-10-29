@@ -107,40 +107,40 @@ func firstJSONText(value any, keys ...string) string {
 	return walk(value)
 }
 
-func (sess *State) permissionModeForEvent() string {
-	if sess.identity.metadata != nil && sess.identity.hostedThreadID != "" {
-		if mode := sess.identity.metadata.Posture(sess.identity.hostedThreadID).PermissionMode; mode != "" {
+func (attachmentState *State) permissionModeForEvent() string {
+	if attachmentState.identity.metadata != nil && attachmentState.identity.hostedThreadID != "" {
+		if mode := attachmentState.identity.metadata.Posture(attachmentState.identity.hostedThreadID).PermissionMode; mode != "" {
 			return mode
 		}
 	}
-	return sess.permissionMode
+	return attachmentState.permissionMode
 }
 
-func (sess *State) permissionEvent(p interact.PendingInteraction, eventKind, decision, source, outcome string) hostedstore.PermissionEvent {
+func (attachmentState *State) permissionEvent(p interact.PendingInteraction, eventKind, decision, source, outcome string) hostedstore.PermissionEvent {
 	toolName, summary, digest := permissionRequestDetails(p)
 	return hostedstore.PermissionEvent{
-		HostedThreadID: sess.identity.hostedThreadID, Provider: sess.identity.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, sess.ThreadID()),
-		NanoSessionID: sess.identity.id, AttachmentGeneration: sess.attachmentGeneration,
+		HostedThreadID: attachmentState.identity.hostedThreadID, Provider: attachmentState.identity.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, attachmentState.ThreadID()),
+		NanoSessionID: attachmentState.identity.id, AttachmentGeneration: attachmentState.attachmentGeneration,
 		ProviderRequestID: p.ID, TurnID: p.TurnID, ItemID: p.ItemID, Method: p.Method,
 		InteractionKind: p.Kind, ToolName: toolName, EventKind: eventKind,
-		PermissionMode: sess.permissionModeForEvent(), Decision: decision, DecisionSource: source,
+		PermissionMode: attachmentState.permissionModeForEvent(), Decision: decision, DecisionSource: source,
 		Outcome: outcome, RequestSummary: summary, RequestSHA256: digest,
 		ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
 
-func (sess *Delivery) recordPermissionRequest(p interact.PendingInteraction) error {
-	if !isPermissionInteraction(p) || sess.identity.metadata == nil || sess.identity.hostedThreadID == "" || sess.identity.id == "" {
+func (delivery *Delivery) recordPermissionRequest(p interact.PendingInteraction) error {
+	if !isPermissionInteraction(p) || delivery.identity.metadata == nil || delivery.identity.hostedThreadID == "" || delivery.identity.id == "" {
 		return nil
 	}
-	return sess.identity.metadata.AppendPermissionEvent(sess.stateOwner.permissionEvent(p, permissionEventRequested, "", "", "requested"))
+	return delivery.identity.metadata.AppendPermissionEvent(delivery.state.permissionEvent(p, permissionEventRequested, "", "", "requested"))
 }
 
-func (sess *Delivery) recordPermissionResolution(p interact.PendingInteraction, decision, source, outcome string) error {
-	if !isPermissionInteraction(p) || sess.identity.metadata == nil || sess.identity.hostedThreadID == "" || sess.identity.id == "" {
+func (delivery *Delivery) recordPermissionResolution(p interact.PendingInteraction, decision, source, outcome string) error {
+	if !isPermissionInteraction(p) || delivery.identity.metadata == nil || delivery.identity.hostedThreadID == "" || delivery.identity.id == "" {
 		return nil
 	}
-	return sess.identity.metadata.AppendPermissionEvent(sess.stateOwner.permissionEvent(p, permissionEventResolved, decision, source, outcome))
+	return delivery.identity.metadata.AppendPermissionEvent(delivery.state.permissionEvent(p, permissionEventResolved, decision, source, outcome))
 }
 
 func permissionDecisionSource(decision, outcome string) string {

@@ -10,12 +10,12 @@ import (
 func TestRegisterThreadKeepsFirstBinding(t *testing.T) {
 	d := NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true })
 	first := sessionWithOwners(&Session{
-		stateOwner: State{
+		state: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{id: "aaaa"},
 	})
 	second := sessionWithOwners(&Session{
-		stateOwner: State{
+		state: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{id: "bbbb"},
 	})

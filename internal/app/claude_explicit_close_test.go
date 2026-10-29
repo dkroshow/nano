@@ -354,7 +354,7 @@ func TestClaudeInternalCloseSettlesOnlyAfterAcknowledgement(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sess.Lifecycle().Close()
+			sess.Teardown().Close()
 			record, _ := store.Session(hosted.ID)
 			turn, _ := store.Turn(op.ID)
 			if success {

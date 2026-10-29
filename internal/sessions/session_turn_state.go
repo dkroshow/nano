@@ -23,36 +23,36 @@ import (
 // 2026-08-06: 14 threads sharing one restart minute). A replayed close leaves
 // the stamp absent, which is the documented post-restart state of this
 // deliberately unpersisted field.
-func (sess *State) setTurnActive(active bool, turnID string, startedAtMs int64, live bool) {
-	sess.setTurnActiveState(active, turnID, startedAtMs, live, true)
+func (attachmentState *State) setTurnActive(active bool, turnID string, startedAtMs int64, live bool) {
+	attachmentState.setTurnActiveState(active, turnID, startedAtMs, live, true)
 }
 
-func (sess *State) beginTurnRestore() {
-	sess.stateMu.Lock()
-	if !sess.turnRestoreInProgress {
-		sess.turnRestoreInProgress = true
-		sess.turnRestoreSequence = 0
-		sess.turnRestoreActive = sess.workActiveLocked()
-		sess.turnRestoreAccepted = sess.lifecycleState.State.Work == lifecycle.Accepted
-		sess.turnRestoreID = sess.turnID
-		sess.turnRestoreStartedAtMs = sess.turnStartedAtMs
+func (attachmentState *State) beginTurnRestore() {
+	attachmentState.stateMu.Lock()
+	if !attachmentState.turnRestoreInProgress {
+		attachmentState.turnRestoreInProgress = true
+		attachmentState.turnRestoreSequence = 0
+		attachmentState.turnRestoreActive = attachmentState.workActiveLocked()
+		attachmentState.turnRestoreAccepted = attachmentState.lifecycleState.State.Work == lifecycle.Accepted
+		attachmentState.turnRestoreID = attachmentState.turnID
+		attachmentState.turnRestoreStartedAtMs = attachmentState.turnStartedAtMs
 	}
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Unlock()
 }
 
-func (sess *State) cancelTurnRestore() {
-	sess.stateMu.Lock()
-	sess.clearTurnRestoreLocked()
-	sess.stateMu.Unlock()
+func (attachmentState *State) cancelTurnRestore() {
+	attachmentState.stateMu.Lock()
+	attachmentState.clearTurnRestoreLocked()
+	attachmentState.stateMu.Unlock()
 }
 
-func (sess *State) clearTurnRestoreLocked() {
-	sess.turnRestoreInProgress = false
-	sess.turnRestoreSequence = 0
-	sess.turnRestoreActive = false
-	sess.turnRestoreAccepted = false
-	sess.turnRestoreID = ""
-	sess.turnRestoreStartedAtMs = 0
+func (attachmentState *State) clearTurnRestoreLocked() {
+	attachmentState.turnRestoreInProgress = false
+	attachmentState.turnRestoreSequence = 0
+	attachmentState.turnRestoreActive = false
+	attachmentState.turnRestoreAccepted = false
+	attachmentState.turnRestoreID = ""
+	attachmentState.turnRestoreStartedAtMs = 0
 }
 
 // restoreTurnActive reconstructs one historical turn boundary without
@@ -61,19 +61,19 @@ func (sess *State) clearTurnRestoreLocked() {
 // browser repeatedly promote and demote the restored thread while Nano boots.
 // The attach path calls settleRestoredTurnState once after the complete replay
 // and the shim's current-state snapshot have both landed.
-func (sess *State) restoreTurnActive(active bool, turnID string, startedAtMs int64) {
-	sess.setTurnActiveState(active, turnID, startedAtMs, false, false)
+func (attachmentState *State) restoreTurnActive(active bool, turnID string, startedAtMs int64) {
+	attachmentState.setTurnActiveState(active, turnID, startedAtMs, false, false)
 }
 
-func (sess *State) setTurnActiveState(active bool, turnID string, startedAtMs int64, live, publish bool) {
-	sess.stateMu.Lock()
-	restoring := sess.turnRestoreInProgress
-	currentActive, currentID := sess.workActiveLocked(), sess.turnID
+func (attachmentState *State) setTurnActiveState(active bool, turnID string, startedAtMs int64, live, publish bool) {
+	attachmentState.stateMu.Lock()
+	restoring := attachmentState.turnRestoreInProgress
+	currentActive, currentID := attachmentState.workActiveLocked(), attachmentState.turnID
 	if restoring {
-		currentActive, currentID = sess.turnRestoreActive, sess.turnRestoreID
+		currentActive, currentID = attachmentState.turnRestoreActive, attachmentState.turnRestoreID
 	}
-	if active && turnID != "" && (turnID == sess.durablyTerminalTurnID || turnID == sess.lastProviderTerminalTurnID) {
-		sess.stateMu.Unlock()
+	if active && turnID != "" && (turnID == attachmentState.durablyTerminalTurnID || turnID == attachmentState.lastProviderTerminalTurnID) {
+		attachmentState.stateMu.Unlock()
 		return
 	}
 	// A late terminal belongs to its own turn, never a newer one. Anonymous
@@ -81,55 +81,55 @@ func (sess *State) setTurnActiveState(active bool, turnID string, startedAtMs in
 	// Claude runs one execution at a time: its result ends it whichever
 	// prompt it answered, and a prompt written mid-turn is often the newer
 	// turn here.
-	if !active && turnID != "" && currentID != "" && turnID != currentID && sess.identity.provider != "claude" {
-		sess.stateMu.Unlock()
+	if !active && turnID != "" && currentID != "" && turnID != currentID && attachmentState.identity.provider != "claude" {
+		attachmentState.stateMu.Unlock()
 		return
 	}
-	if !restoring && sess.lifecycleState.State.Connection != lifecycle.Ready {
-		sess.stateMu.Unlock()
+	if !restoring && attachmentState.lifecycleState.State.Connection != lifecycle.Ready {
+		attachmentState.stateMu.Unlock()
 		return
 	}
 	changed, drain := false, false
 	if restoring {
-		sess.turnRestoreSequence = sess.nextEvidenceSequenceLocked()
+		attachmentState.turnRestoreSequence = attachmentState.nextEvidenceSequenceLocked()
 		changed = currentActive != active
 		if active {
-			if !currentActive || sess.turnRestoreAccepted || currentID != turnID {
-				sess.turnRestoreStartedAtMs = startedAtMs
+			if !currentActive || attachmentState.turnRestoreAccepted || currentID != turnID {
+				attachmentState.turnRestoreStartedAtMs = startedAtMs
 			}
-			sess.turnRestoreActive, sess.turnRestoreAccepted = true, false
-			sess.turnRestoreID = turnID
+			attachmentState.turnRestoreActive, attachmentState.turnRestoreAccepted = true, false
+			attachmentState.turnRestoreID = turnID
 		} else {
-			sess.turnRestoreActive, sess.turnRestoreAccepted = false, false
-			sess.turnRestoreID, sess.turnRestoreStartedAtMs = "", 0
+			attachmentState.turnRestoreActive, attachmentState.turnRestoreAccepted = false, false
+			attachmentState.turnRestoreID, attachmentState.turnRestoreStartedAtMs = "", 0
 		}
 	} else if active {
-		wasAccepted := sess.lifecycleState.State.Work == lifecycle.Accepted
-		changed, drain = sess.transitionLifecycleLocked(lifecycle.EventStarted)
+		wasAccepted := attachmentState.lifecycleState.State.Work == lifecycle.Accepted
+		changed, drain = attachmentState.transitionLifecycleLocked(lifecycle.EventStarted)
 		if !currentActive || wasAccepted || currentID != turnID {
-			sess.turnStartedAtMs = startedAtMs
+			attachmentState.turnStartedAtMs = startedAtMs
 		}
-		sess.turnID = turnID
+		attachmentState.turnID = turnID
 	} else {
-		changed, drain = sess.transitionLifecycleLocked(lifecycle.EventFinished)
-		sess.turnID, sess.turnStartedAtMs = "", 0
+		changed, drain = attachmentState.transitionLifecycleLocked(lifecycle.EventFinished)
+		attachmentState.turnID, attachmentState.turnStartedAtMs = "", 0
 	}
 	if !active {
 		// A replayed turn end too: a compaction it held ends with it.
-		sess.compactingSinceMs = 0
+		attachmentState.compactingSinceMs = 0
 		if live {
-			sess.lastProviderTerminalTurnID = turnID
+			attachmentState.lastProviderTerminalTurnID = turnID
 		}
 		if changed && live {
-			sess.lastTurnEndedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			attachmentState.lastTurnEndedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		}
 	}
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Unlock()
 	if changed && publish && !restoring {
-		sess.PublishProjectionRuntime()
-		sess.NotifyRuntime()
+		attachmentState.PublishProjectionRuntime()
+		attachmentState.NotifyRuntime()
 		if drain {
-			sess.delivery.kickQueuedTurnDrain()
+			attachmentState.delivery.kickQueuedTurnDrain()
 		}
 	}
 }
@@ -137,34 +137,34 @@ func (sess *State) setTurnActiveState(active bool, turnID string, startedAtMs in
 // settleRestoredTurnState exposes exactly one runtime answer after a Claude
 // replay. It also releases a prompt queued while the replay was draining when
 // the settled state is idle.
-func (sess *State) settleRestoredTurnState() {
-	sess.stateMu.Lock()
-	if !sess.turnRestoreInProgress {
-		sess.stateMu.Unlock()
+func (attachmentState *State) settleRestoredTurnState() {
+	attachmentState.stateMu.Lock()
+	if !attachmentState.turnRestoreInProgress {
+		attachmentState.stateMu.Unlock()
 		return
 	}
-	drain, status := sess.settleRestoredTurnStateLocked()
-	sess.stateMu.Unlock()
-	sess.publishRestoredTurnState(drain, status)
+	drain, status := attachmentState.settleRestoredTurnStateLocked()
+	attachmentState.stateMu.Unlock()
+	attachmentState.publishRestoredTurnState(drain, status)
 }
 
-func (sess *State) settleRestoredTurnStateLocked() (drain bool, status string) {
-	_, drain = sess.transitionLifecycleLocked(sess.readyLifecycleEventLocked())
-	if sess.workActiveLocked() {
-		sess.turnID, sess.turnStartedAtMs = sess.turnRestoreID, sess.turnRestoreStartedAtMs
+func (attachmentState *State) settleRestoredTurnStateLocked() (drain bool, status string) {
+	_, drain = attachmentState.transitionLifecycleLocked(attachmentState.readyLifecycleEventLocked())
+	if attachmentState.workActiveLocked() {
+		attachmentState.turnID, attachmentState.turnStartedAtMs = attachmentState.turnRestoreID, attachmentState.turnRestoreStartedAtMs
 	} else {
-		sess.turnID, sess.turnStartedAtMs = "", 0
+		attachmentState.turnID, attachmentState.turnStartedAtMs = "", 0
 	}
-	sess.clearTurnRestoreLocked()
-	return drain, sess.connectionStatusLocked()
+	attachmentState.clearTurnRestoreLocked()
+	return drain, attachmentState.connectionStatusLocked()
 }
 
-func (sess *State) publishRestoredTurnState(drain bool, status string) {
-	sess.PublishProjectionRuntime()
-	sess.NotifyRuntime()
-	sess.updateHostedThread(status, "")
+func (attachmentState *State) publishRestoredTurnState(drain bool, status string) {
+	attachmentState.PublishProjectionRuntime()
+	attachmentState.NotifyRuntime()
+	attachmentState.updateHostedThread(status, "")
 	if drain {
-		sess.delivery.kickQueuedTurnDrain()
+		attachmentState.delivery.kickQueuedTurnDrain()
 	}
 }
 
@@ -175,110 +175,110 @@ func (sess *State) publishRestoredTurnState(drain bool, status string) {
 // truth: it never fires on an idle session, and it may only move the anchor
 // BACKWARD (D9/D11), so a recovered start can lengthen the reported elapsed
 // but never shorten it.
-func (sess *State) restoreTurnAnchor(startedAtMs int64) bool {
-	return sess.restoreTurnAnchorState(startedAtMs, true)
+func (attachmentState *State) restoreTurnAnchor(startedAtMs int64) bool {
+	return attachmentState.restoreTurnAnchorState(startedAtMs, true)
 }
 
-func (sess *State) restoreTurnAnchorQuietly(startedAtMs int64) bool {
-	return sess.restoreTurnAnchorState(startedAtMs, false)
+func (attachmentState *State) restoreTurnAnchorQuietly(startedAtMs int64) bool {
+	return attachmentState.restoreTurnAnchorState(startedAtMs, false)
 }
 
-func (sess *State) restoreTurnAnchorState(startedAtMs int64, publish bool) bool {
+func (attachmentState *State) restoreTurnAnchorState(startedAtMs int64, publish bool) bool {
 	if startedAtMs <= 0 {
 		return false
 	}
-	sess.stateMu.Lock()
-	restoring := sess.turnRestoreInProgress
-	active := sess.workActiveLocked()
-	anchor := sess.turnStartedAtMs
+	attachmentState.stateMu.Lock()
+	restoring := attachmentState.turnRestoreInProgress
+	active := attachmentState.workActiveLocked()
+	anchor := attachmentState.turnStartedAtMs
 	if restoring {
-		active = sess.turnRestoreActive
-		anchor = sess.turnRestoreStartedAtMs
+		active = attachmentState.turnRestoreActive
+		anchor = attachmentState.turnRestoreStartedAtMs
 	}
 	restore := active && (anchor == 0 || startedAtMs < anchor)
 	if restore {
 		if restoring {
-			sess.turnRestoreStartedAtMs = startedAtMs
+			attachmentState.turnRestoreStartedAtMs = startedAtMs
 		} else {
-			sess.turnStartedAtMs = startedAtMs
+			attachmentState.turnStartedAtMs = startedAtMs
 		}
 	}
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Unlock()
 	if restore && publish && !restoring {
-		sess.PublishProjectionRuntime()
-		sess.NotifyRuntime()
+		attachmentState.PublishProjectionRuntime()
+		attachmentState.NotifyRuntime()
 	}
 	return restore
 }
 
 // turnAnchor snapshots the live turn's anchor, 0 when there is none.
-func (sess *State) turnAnchor() int64 {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	if sess.turnRestoreInProgress {
-		return sess.turnRestoreStartedAtMs
+func (attachmentState *State) turnAnchor() int64 {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	if attachmentState.turnRestoreInProgress {
+		return attachmentState.turnRestoreStartedAtMs
 	}
-	return sess.turnStartedAtMs
+	return attachmentState.turnStartedAtMs
 }
 
 // compactingSinceMsLocked is the compaction start the session shows: only a
 // turn in flight can be compacting, whichever path ended the last one.
-func (sess *State) compactingSinceMsLocked() int64 {
-	if !sess.workActiveLocked() {
+func (attachmentState *State) compactingSinceMsLocked() int64 {
+	if !attachmentState.workActiveLocked() {
 		return 0
 	}
-	return sess.compactingSinceMs
+	return attachmentState.compactingSinceMs
 }
 
 // markCompacting applies a provider's own compaction signal: a start keeps
 // the first start it saw (startedAtMs), an end clears it. A change reaches
 // every pane's status and the rail.
-func (sess *State) markCompacting(compacting bool, startedAtMs int64) {
-	sess.stateMu.Lock()
-	since := sess.compactingSinceMs
+func (attachmentState *State) markCompacting(compacting bool, startedAtMs int64) {
+	attachmentState.stateMu.Lock()
+	since := attachmentState.compactingSinceMs
 	switch {
 	case !compacting:
 		since = 0
 	case since == 0:
 		since = startedAtMs
 	}
-	changed := since != sess.compactingSinceMs
-	sess.compactingSinceMs = since
-	sess.stateMu.Unlock()
+	changed := since != attachmentState.compactingSinceMs
+	attachmentState.compactingSinceMs = since
+	attachmentState.stateMu.Unlock()
 	if changed {
-		sess.PublishProjectionRuntime()
-		sess.NotifyRuntime()
+		attachmentState.PublishProjectionRuntime()
+		attachmentState.NotifyRuntime()
 	}
 }
 
 // activeTurn snapshots the (thread, turn) pair an interrupt would address.
 // An empty turn id means there is nothing to interrupt.
-func (sess *State) activeTurn() (threadID, turnID string) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	if !sess.workActiveLocked() {
-		return sess.threadID, ""
+func (attachmentState *State) activeTurn() (threadID, turnID string) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	if !attachmentState.workActiveLocked() {
+		return attachmentState.threadID, ""
 	}
-	return sess.threadID, sess.turnID
+	return attachmentState.threadID, attachmentState.turnID
 }
 
 // turnOptions snapshots the per-turn overrides the next turn/start will carry.
-func (sess *State) turnOptions() (model, effort, serviceTier string) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.turnModel, sess.turnEffort, sess.turnServiceTier
+func (attachmentState *State) turnOptions() (model, effort, serviceTier string) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.turnModel, attachmentState.turnEffort, attachmentState.turnServiceTier
 }
 
 // NotifyRuntime publishes a change to the attachment runtime view.
-func (sess *State) NotifyRuntime() {
-	if sess.runtimeNotify != nil {
-		sess.runtimeNotify()
+func (attachmentState *State) NotifyRuntime() {
+	if attachmentState.runtimeNotify != nil {
+		attachmentState.runtimeNotify()
 	}
 }
 
 // ThreadID reads the attachment’s current native provider identity.
-func (sess *State) ThreadID() string {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.threadID
+func (attachmentState *State) ThreadID() string {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.threadID
 }

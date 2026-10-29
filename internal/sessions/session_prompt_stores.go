@@ -48,36 +48,36 @@ type Journal interface {
 }
 
 // QueuedPrompt reads one queued prompt from the attachment store.
-func (sess *Delivery) QueuedPrompt(actionID string) (prompts.QueuedTurn, bool) {
-	if sess.queuedTurns == nil {
+func (delivery *Delivery) QueuedPrompt(actionID string) (prompts.QueuedTurn, bool) {
+	if delivery.queuedTurns == nil {
 		return prompts.QueuedTurn{}, false
 	}
-	return sess.queuedTurns.Get(actionID)
+	return delivery.queuedTurns.Get(actionID)
 }
 
-func (sess *Delivery) sendAttempt(actionID string) (prompts.SendAttempt, bool) {
-	if sess.sendAttempts == nil {
+func (delivery *Delivery) sendAttempt(actionID string) (prompts.SendAttempt, bool) {
+	if delivery.sendAttempts == nil {
 		return prompts.SendAttempt{}, false
 	}
-	return sess.sendAttempts.Get(actionID)
+	return delivery.sendAttempts.Get(actionID)
 }
 
-func (sess *Delivery) queuedPrompts(nativeID string) []prompts.QueuedTurn {
-	if sess.queuedTurns == nil {
+func (delivery *Delivery) queuedPrompts(nativeID string) []prompts.QueuedTurn {
+	if delivery.queuedTurns == nil {
 		return nil
 	}
-	return sess.queuedTurns.ListThread(sess.identity.provider, nativeID, sess.identity.hostedThreadID)
+	return delivery.queuedTurns.ListThread(delivery.identity.provider, nativeID, delivery.identity.hostedThreadID)
 }
 
 // HasDeliveryEvidence reads this attachment's journal and queue, using the
 // application's stores only when that source is absent on the attachment.
-func (sess *Delivery) HasDeliveryEvidence(actionID string, queue Queue, journal Journal) bool {
-	if sess != nil {
-		if sess.queuedTurns != nil {
-			queue = sess.queuedTurns
+func (delivery *Delivery) HasDeliveryEvidence(actionID string, queue Queue, journal Journal) bool {
+	if delivery != nil {
+		if delivery.queuedTurns != nil {
+			queue = delivery.queuedTurns
 		}
-		if sess.sendAttempts != nil {
-			journal = sess.sendAttempts
+		if delivery.sendAttempts != nil {
+			journal = delivery.sendAttempts
 		}
 	}
 	if queue != nil {
@@ -94,25 +94,25 @@ func (sess *Delivery) HasDeliveryEvidence(actionID string, queue Queue, journal 
 }
 
 // QueuePositionOr reads this attachment's queue or the application fallback.
-func (sess *Delivery) QueuePositionOr(actionID string, fallback Queue) int {
-	if sess != nil && sess.queuedTurns != nil {
-		fallback = sess.queuedTurns
+func (delivery *Delivery) QueuePositionOr(actionID string, fallback Queue) int {
+	if delivery != nil && delivery.queuedTurns != nil {
+		fallback = delivery.queuedTurns
 	}
 	return fallback.Position(actionID)
 }
 
 // DeliveryWasAttempted reads acceptance/sending evidence from the attachment's journal.
-func (sess *Delivery) DeliveryWasAttempted(actionID string, fallback Journal) bool {
-	if sess != nil && sess.sendAttempts != nil {
-		fallback = sess.sendAttempts
+func (delivery *Delivery) DeliveryWasAttempted(actionID string, fallback Journal) bool {
+	if delivery != nil && delivery.sendAttempts != nil {
+		fallback = delivery.sendAttempts
 	}
 	attempt, ok := fallback.Get(actionID)
 	return ok && (attempt.Status == sendAttemptSending || attempt.Status == sendAttemptAccepted)
 }
 
 // initializePromptStore runs once during Runtime coordinator construction.
-func (sess *Delivery) initializePromptStore(canonicalDB *sql.DB) error {
-	if sess.turns == nil && canonicalDB != nil {
+func (delivery *Delivery) initializePromptStore(canonicalDB *sql.DB) error {
+	if delivery.turns == nil && canonicalDB != nil {
 		promptStore, err := prompts.OpenStore(context.Background(), canonicalDB)
 		if err != nil {
 			return err
@@ -120,18 +120,18 @@ func (sess *Delivery) initializePromptStore(canonicalDB *sql.DB) error {
 		if _, err := promptStore.AdoptLegacy(context.Background()); err != nil {
 			return err
 		}
-		sess.turns = promptStore
-		if sess.queuedTurns != nil {
-			sess.queuedTurns.BindTransactionStore(promptStore)
+		delivery.turns = promptStore
+		if delivery.queuedTurns != nil {
+			delivery.queuedTurns.BindTransactionStore(promptStore)
 		}
-		if sess.sendAttempts != nil {
-			sess.sendAttempts.BindTransactionStore(promptStore)
+		if delivery.sendAttempts != nil {
+			delivery.sendAttempts.BindTransactionStore(promptStore)
 		}
 	}
 	return nil
 }
 
-func (sess *Delivery) queuedPromptStore() Queue         { return sess.queuedTurns }
-func (sess *Delivery) sendJournal() Journal             { return sess.sendAttempts }
-func (sess *Delivery) expiryCounter() *DeliveryExpiries { return sess.deliveryExpiries }
-func (sess *Delivery) memberWorkPending() bool          { return sess.owedHint.Load() }
+func (delivery *Delivery) queuedPromptStore() Queue         { return delivery.queuedTurns }
+func (delivery *Delivery) sendJournal() Journal             { return delivery.sendAttempts }
+func (delivery *Delivery) expiryCounter() *DeliveryExpiries { return delivery.deliveryExpiries }
+func (delivery *Delivery) memberWorkPending() bool          { return delivery.owedHint.Load() }

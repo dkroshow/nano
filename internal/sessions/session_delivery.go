@@ -2,11 +2,11 @@ package sessions
 
 // InFlightDeliveries snapshots the deliveries that shutdown must wait for.
 // sendMu pairs with claim registration, after the shared stopping flag is set.
-func (sess *Delivery) InFlightDeliveries() []chan struct{} {
-	sess.sendMu.Lock()
-	defer sess.sendMu.Unlock()
+func (delivery *Delivery) InFlightDeliveries() []chan struct{} {
+	delivery.sendMu.Lock()
+	defer delivery.sendMu.Unlock()
 	var inFlight []chan struct{}
-	for _, op := range sess.sendOps {
+	for _, op := range delivery.sendOps {
 		select {
 		case <-op.done:
 		default:

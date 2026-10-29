@@ -15,7 +15,7 @@ func TestAgentExecutionLiveHostedSessionSelectsOnlyMatchingSummary(t *testing.T)
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	selected := sessionWithOwners(&Session{
 
-		stateOwner: State{threadID: "native", displayName: "display",
+		state: State{threadID: "native", displayName: "display",
 			model: "model", cwd: "/fixture",
 			sidebarPlacement: threadvalues.SidebarPlacementStandalone, spawnError: "error",
 			lifecycleState: testLifecycleSnapshot("ready", true), turnStartedAtMs: 1234,
@@ -23,26 +23,26 @@ func TestAgentExecutionLiveHostedSessionSelectsOnlyMatchingSummary(t *testing.T)
 		identity: attachmentIdentity{id: "a", provider: "codex", hostedThreadID: "target", createdAt: created.Add(900 * time.Millisecond), invokerHostedThreadID: "parent", invokerNativeThreadID: "parent-native", invokerProvider: "claude", spawnMode: "resume"},
 	})
 	unrelated := sessionWithOwners(&Session{
-		stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)},
-		identity:   attachmentIdentity{id: "unrelated", hostedThreadID: "other"},
+		state:    State{lifecycleState: testLifecycleSnapshot("ready", false)},
+		identity: attachmentIdentity{id: "unrelated", hostedThreadID: "other"},
 	})
 	registry := NewRegistry()
 	for _, sess := range map[string]*Session{
 		"a": selected,
 		"z": sessionWithOwners(&Session{
-			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)},
-			identity:   attachmentIdentity{id: "z", hostedThreadID: "target", createdAt: created.Add(100 * time.Millisecond)},
+			state:    State{lifecycleState: testLifecycleSnapshot("ready", false)},
+			identity: attachmentIdentity{id: "z", hostedThreadID: "target", createdAt: created.Add(100 * time.Millisecond)},
 		}),
 		"exited": sessionWithOwners(&Session{
-			stateOwner: State{lifecycleState: testLifecycleSnapshot("exited", false)},
-			identity:   attachmentIdentity{id: "exited", hostedThreadID: "target", createdAt: created.Add(-time.Hour)},
+			state:    State{lifecycleState: testLifecycleSnapshot("exited", false)},
+			identity: attachmentIdentity{id: "exited", hostedThreadID: "target", createdAt: created.Add(-time.Hour)},
 		}),
 		"unrelated": unrelated,
 	} {
 		registry.RegisterSession(sess)
 	}
 
-	unrelated.stateOwner.stateMu.Lock()
+	unrelated.state.stateMu.Lock()
 	done := make(chan struct{})
 	var got Summary
 	var found bool
@@ -52,9 +52,9 @@ func TestAgentExecutionLiveHostedSessionSelectsOnlyMatchingSummary(t *testing.T)
 	}()
 	select {
 	case <-done:
-		unrelated.stateOwner.stateMu.Unlock()
+		unrelated.state.stateMu.Unlock()
 	case <-time.After(time.Second):
-		unrelated.stateOwner.stateMu.Unlock()
+		unrelated.state.stateMu.Unlock()
 		<-done
 		t.Fatal("point reference waited for an unrelated session's summary")
 	}

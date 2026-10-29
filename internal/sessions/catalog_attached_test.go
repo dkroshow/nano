@@ -12,20 +12,20 @@ import (
 func TestSessionCatalogBindNeverOutlivesClose(t *testing.T) {
 	sources := &testsupport.Sources{}
 	sess := sessionWithOwners(&Session{
-		stateOwner: State{cwd: "/work", catalogSources: sources},
-		identity:   attachmentIdentity{id: "s1", provider: "claude"},
+		state:    State{cwd: "/work", catalogSources: sources},
+		identity: attachmentIdentity{id: "s1", provider: "claude"},
 	})
-	sess.stateOwner.setProjectionThreadID("native-1")
+	sess.state.setProjectionThreadID("native-1")
 	if len(sources.Binds) != 1 || sources.Binds[0] != "claude/native-1@/work|" {
 		t.Fatalf("binds = %q, want the identity once", sources.Binds)
 	}
-	sources.OnBind = func() { sess.stateOwner.closed = true } // a close lands while the hold is made
-	sess.stateOwner.setProjectionThreadID("native-2")
+	sources.OnBind = func() { sess.state.closed = true } // a close lands while the hold is made
+	sess.state.setProjectionThreadID("native-2")
 	if sources.Releases != 1 {
 		t.Fatalf("releases after a racing close = %d, want 1", sources.Releases)
 	}
 	sources.OnBind = nil
-	sess.stateOwner.setProjectionThreadID("native-3")
+	sess.state.setProjectionThreadID("native-3")
 	if len(sources.Binds) != 2 {
 		t.Fatalf("a closed attachment bound again: %q", sources.Binds)
 	}

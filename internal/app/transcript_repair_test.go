@@ -60,7 +60,7 @@ func repairSession(t *testing.T, catalog *repairCatalog) *sessions.Session {
 func postRepair(t *testing.T, s *server, sess *sessions.Session, action string) (int, sessions.TranscriptRepairResponse) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
-	sess.Lifecycle().HandleTranscriptRepair(recorder, httptest.NewRequest(http.MethodPost, "/api/sessions/"+sess.ID()+"/transcript-repair",
+	sess.Teardown().HandleTranscriptRepair(recorder, httptest.NewRequest(http.MethodPost, "/api/sessions/"+sess.ID()+"/transcript-repair",
 		bytes.NewBufferString(`{"clientActionId":"`+action+`"}`)))
 	var response sessions.TranscriptRepairResponse
 	if recorder.Code == http.StatusOK {

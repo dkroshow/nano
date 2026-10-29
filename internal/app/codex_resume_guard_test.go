@@ -46,7 +46,7 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 			sessions = append(sessions, sess)
 		}
 		for _, sess := range sessions {
-			sess.Lifecycle().Close()
+			sess.Teardown().Close()
 		}
 	})
 	return s
@@ -105,7 +105,7 @@ func TestCodexDaemonReconnectsExistingSessionsWithoutAnotherRPC(t *testing.T) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
 			sess := s.LookupSession(spawned.ID)
 			if sess != nil {
-				sess.Lifecycle().Close()
+				sess.Teardown().Close()
 			}
 			return
 		}
@@ -132,7 +132,7 @@ func TestCodexDaemonReconnectOwnsResumeFailureFromDroppedSocket(t *testing.T) {
 		if fake.ResumeCount() >= 2 && waitSessionStatus(s, spawned.ID) == "ready" {
 			sess := s.LookupSession(spawned.ID)
 			if sess != nil {
-				sess.Lifecycle().Close()
+				sess.Teardown().Close()
 			}
 			return
 		}

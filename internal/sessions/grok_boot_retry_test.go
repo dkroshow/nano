@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// The session owns retries and the status/error sent to the hosted-state owner.
+// The session owns retries and the status/error sent to the hosted-atomic state.
 // The app tests retain persistence coverage; this boundary can shorten retries.
 type bootStatusRecorder struct {
 	resultRecorder
@@ -54,15 +54,15 @@ func TestGrokBootReattachRetriesSessionLoadTimeout(t *testing.T) {
 			bin := writeRetryingGrokACP(t, stateDir, tc.timeouts, tc.neverAnswers)
 			sess, _ := readyTransactionalSendTestSession(t, nil)
 			sess.identity.id, sess.identity.provider = "grok-boot-"+tc.name, "grok"
-			sess.identity.hostedThreadID, sess.stateOwner.threadID = "nht_grok_boot_"+tc.name, "native-"+tc.name
-			sess.stateOwner.state = map[string]json.RawMessage{}
+			sess.identity.hostedThreadID, sess.state.threadID = "nht_grok_boot_"+tc.name, "native-"+tc.name
+			sess.state.state = map[string]json.RawMessage{}
 			sess.view.projection = newDeliveryTestProjection("grok")
-			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
+			sess.state.lifecycleState = testLifecycleSnapshot("starting", false)
 			executions := &bootStatusRecorder{}
 			sess.identity.agentExecutions = executions
-			t.Cleanup(sess.lifecycle.Close)
+			t.Cleanup(sess.teardown.Close)
 
-			if err := sess.runtime.BeginProviderSpawn(ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.stateOwner.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {
+			if err := sess.runtime.BeginProviderSpawn(ProviderRequest{Provider: "grok", Mode: "resume", ThreadID: sess.state.ThreadID(), Cwd: stateDir, GrokBin: bin, BootReattach: &BootControl{loadTimeout: 50 * time.Millisecond, retryBackoffBase: time.Millisecond}}, nil, func() {}); err != nil {
 				t.Fatal(err)
 			}
 

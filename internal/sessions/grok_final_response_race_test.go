@@ -33,8 +33,8 @@ func grokRaceSession(t *testing.T, withCore bool) (*Session, *grokTerminalRecord
 		sess, _ = readyTransactionalSendTestSession(t, nil)
 	} else {
 		sess = sessionWithOwners(&Session{
-			stateOwner: State{threadID: "native-thread", lifecycleState: testLifecycleSnapshot("ready", false)},
-			identity:   attachmentIdentity{id: "nano-session"},
+			state:    State{threadID: "native-thread", lifecycleState: testLifecycleSnapshot("ready", false)},
+			identity: attachmentIdentity{id: "nano-session"},
 		})
 	}
 	sess.identity.provider = "grok"

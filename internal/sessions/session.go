@@ -16,11 +16,11 @@ type Session struct {
 
 	delivery Delivery
 
-	stateOwner State
+	state State
 
 	runtime Runtime
 
-	lifecycle Lifecycle
+	teardown Teardown
 
 	view View
 }

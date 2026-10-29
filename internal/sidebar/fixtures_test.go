@@ -338,9 +338,9 @@ func memorySession(t *testing.T, id, provider, native, status, cwd, model string
 		t.Fatal(err)
 	}
 	sess.ReserveNativeID(native)
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	if status == "exited" {
-		sess.Lifecycle().Close()
+		sess.Teardown().Close()
 		return sess
 	}
 	if status != "ready" {

@@ -23,11 +23,11 @@ func TestDeliveryErrorsDistinguishRefusalFromUncertainty(t *testing.T) {
 
 func TestSessionSummaryCountsProviderAcceptanceAsActive(t *testing.T) {
 	sess := sessionWithOwners(&Session{
-		stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)}})
+		state: State{lifecycleState: testLifecycleSnapshot("ready", false)}})
 	if sess.view.Summary().TurnActive {
 		t.Fatal("local reservation asserted work")
 	}
-	sess.stateOwner.acceptProviderTurn("accepted-turn")
+	sess.state.acceptProviderTurn("accepted-turn")
 	if summary := sess.view.Summary(); !summary.TurnActive {
 		t.Fatalf("accepted provider turn summary = %#v", summary)
 	}
@@ -37,7 +37,7 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 	hosted := threads.SessionRecord{ID: "nht_lock_boundary"}
 	sess := sessionWithOwners(&Session{
 
-		stateOwner: State{
+		state: State{
 			threadID:       "native-live-only",
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{id: "nano-lock-boundary", hostedThreadID: hosted.ID, provider: "codex"},
@@ -87,19 +87,19 @@ func TestResolveHostedThreadRecordReleasesServerLockBeforeControlStore(t *testin
 func TestHostedThreadOperationsUseItsLiveSessionNotAnExitedOne(t *testing.T) {
 	sessions := map[string]*Session{
 		"dead": sessionWithOwners(&Session{
-			stateOwner: State{lifecycleState: testLifecycleSnapshot(StatusExited, false)},
-			identity:   attachmentIdentity{id: "dead", hostedThreadID: "target"},
+			state:    State{lifecycleState: testLifecycleSnapshot(StatusExited, false)},
+			identity: attachmentIdentity{id: "dead", hostedThreadID: "target"},
 		}),
 		"live": sessionWithOwners(&Session{
-			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)},
-			identity:   attachmentIdentity{id: "live", hostedThreadID: "target"},
+			state:    State{lifecycleState: testLifecycleSnapshot("ready", false)},
+			identity: attachmentIdentity{id: "live", hostedThreadID: "target"},
 		}),
 	}
 	for i := range 20 { // more entries, so map order varies between lookups
 		id := fmt.Sprintf("other-%d", i)
 		sessions[id] = sessionWithOwners(&Session{
-			stateOwner: State{lifecycleState: testLifecycleSnapshot("ready", false)},
-			identity:   attachmentIdentity{id: id, hostedThreadID: id},
+			state:    State{lifecycleState: testLifecycleSnapshot("ready", false)},
+			identity: attachmentIdentity{id: id, hostedThreadID: id},
 		})
 	}
 	s := NewRegistry()

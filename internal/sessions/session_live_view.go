@@ -15,8 +15,8 @@ import (
 )
 
 // HandleLiveStream is a file-only pane's one stream.
-func (sess *View) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
-	pane, err := sess.liveText.requestPane(r)
+func (views *View) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
+	pane, err := views.liveText.requestPane(r)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -31,7 +31,7 @@ func (sess *View) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 	// whenever a later update changes it; the loop's messages carry rows and
 	// live text only. The projection closes a subscription that falls behind,
 	// and the stream ends so the browser reconnects to a fresh status.
-	updates, cancel := sess.projection.subscribe()
+	updates, cancel := views.projection.subscribe()
 	defer cancel()
 	pane.Start()
 	defer pane.Stop()
@@ -42,7 +42,7 @@ func (sess *View) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 		_, err := fmt.Fprintf(w, "data: %s\n\n", raw)
 		return err == nil
 	}
-	status := sess.projection.status()
+	status := views.projection.status()
 	writeStatus := func() bool {
 		raw, err := json.Marshal(struct {
 			Type   string           `json:"type"`
@@ -100,21 +100,21 @@ func (sess *View) HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 
 // fileConversationItems reads a file-only thread's saved rows for agents, in
 // the conversation item shape. Live text never appears here.
-func (sess *View) fileConversationItems(ctx context.Context, view liveview.View, before string, limit int) ([]liveview.Item, *liveview.Page, string, error) {
-	return sess.liveText.conversationItems(ctx, view, before, limit)
+func (views *View) fileConversationItems(ctx context.Context, view liveview.View, before string, limit int) ([]liveview.Item, *liveview.Page, string, error) {
+	return views.liveText.conversationItems(ctx, view, before, limit)
 }
 
 // fileConversationSnapshot is the agent snapshot of a file-only thread: saved
 // rows plus the live status and pending questions. Status keeps the live
 // Projection's epoch and revision, the one cursor every status reader uses,
 // so an older answer never replaces a newer status.
-func (sess *View) fileConversationSnapshot(ctx context.Context, view liveview.View, before string, limit int) (liveview.Snapshot, error) {
-	items, page, _, err := sess.fileConversationItems(ctx, view, before, limit)
+func (views *View) fileConversationSnapshot(ctx context.Context, view liveview.View, before string, limit int) (liveview.Snapshot, error) {
+	items, page, _, err := views.fileConversationItems(ctx, view, before, limit)
 	if err != nil {
 		return liveview.Snapshot{}, err
 	}
-	status := sess.projection.status()
-	return liveview.Snapshot{Version: liveProjectionVersion, Provider: sess.identity.provider, NativeThreadID: sess.stateOwner.ThreadID(),
+	status := views.projection.status()
+	return liveview.Snapshot{Version: liveProjectionVersion, Provider: views.identity.provider, NativeThreadID: views.state.ThreadID(),
 		Epoch: status.Epoch, Revision: status.Revision, Items: items, Turns: []liveview.Turn{},
 		Runtime: status.Runtime, Interactions: status.Interactions, Page: page}, nil
 }
@@ -124,20 +124,20 @@ func (sess *View) fileConversationSnapshot(ctx context.Context, view liveview.Vi
 // rows.changed hint whenever the thread's saved rows change. It subscribes
 // before reading its snapshot, so no status change falls between them, and
 // ends when the status epoch changes, so the caller reconnects to a new one.
-func (sess *View) handleFileConversationEvents(w http.ResponseWriter, r *http.Request, view liveview.View) {
+func (views *View) handleFileConversationEvents(w http.ResponseWriter, r *http.Request, view liveview.View) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		httpapi.WriteHTTPError(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	updates, cancel := sess.projection.subscribe()
+	updates, cancel := views.projection.subscribe()
 	defer cancel()
-	snapshot, err := sess.fileConversationSnapshot(r.Context(), view, "", transcriptFirstPaintRows)
+	snapshot, err := views.fileConversationSnapshot(r.Context(), view, "", transcriptFirstPaintRows)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	pane := sess.liveText.rowsPane(view)
+	pane := views.liveText.rowsPane(view)
 	pane.Start()
 	defer pane.Stop()
 	w.Header().Set("Content-Type", "text/event-stream")

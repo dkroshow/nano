@@ -65,7 +65,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				t.Fatal(err)
 			}
 			sess.ReserveNativeID("native-thread")
-			t.Cleanup(sess.Lifecycle().Close)
+			t.Cleanup(sess.Teardown().Close)
 
 			root := t.TempDir()
 			dir := filepath.Join(root, url.PathEscape(sess.CWD()), sess.State().ThreadID())
@@ -202,7 +202,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				}
 			}
 			if !tc.exits {
-				sess.Lifecycle().Close() // ends the wait for a transcript that is not coming
+				sess.Teardown().Close() // ends the wait for a transcript that is not coming
 				select {
 				case <-peerEnded:
 				case <-time.After(10 * time.Second):

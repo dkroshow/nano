@@ -50,27 +50,27 @@ func wireNudgesCatalog(provider string, dir wire.Direction, line []byte) bool {
 	return false
 }
 
-func (sess *State) observeProviderWork(dir wire.Direction, line []byte, live bool) {
-	if observe := lifecycleProviders[sess.identity.provider].observe; observe != nil {
-		observe(sess, dir, line, live)
+func (attachmentState *State) observeProviderWork(dir wire.Direction, line []byte, live bool) {
+	if observe := lifecycleProviders[attachmentState.identity.provider].observe; observe != nil {
+		observe(attachmentState, dir, line, live)
 	}
 }
 
 // evidenceCoordinates is captured at the provider response's ordered ingress,
 // before a later wire delta can arrive. A snapshot must keep that ordering when
 // replay and identity reconciliation take longer than the provider response.
-func (sess *State) evidenceCoordinates() (uint64, uint64) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.lifecycleState.Epoch, sess.nextEvidenceSequenceLocked()
+func (attachmentState *State) evidenceCoordinates() (uint64, uint64) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.lifecycleState.Epoch, attachmentState.nextEvidenceSequenceLocked()
 }
 
-func (sess *State) nextEvidenceSequenceLocked() uint64 {
-	if sess.evidenceSequence < sess.lifecycleState.Sequence {
-		sess.evidenceSequence = sess.lifecycleState.Sequence
+func (attachmentState *State) nextEvidenceSequenceLocked() uint64 {
+	if attachmentState.evidenceSequence < attachmentState.lifecycleState.Sequence {
+		attachmentState.evidenceSequence = attachmentState.lifecycleState.Sequence
 	}
-	sess.evidenceSequence++
-	return sess.evidenceSequence
+	attachmentState.evidenceSequence++
+	return attachmentState.evidenceSequence
 }
 
 // awaitSavedCatchUp holds a resumed attachment's readiness until the catalog
@@ -84,24 +84,24 @@ func (sess *State) nextEvidenceSequenceLocked() uint64 {
 // wait. It reports false, and the caller publishes no readiness, when
 // transport closes or the session ends first. neverPrompted, when set, reads
 // the evidence that the thread was never prompted (catalog_attached.go).
-func (sess *State) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted func() bool) bool {
-	sess.recordRestartStep(restartAttached)
-	sess.stateMu.Lock()
-	release, fresh := sess.releaseHandshakeSlot, sess.savedCaughtUp
-	sess.savedCaughtUp = true
-	sess.stateMu.Unlock()
+func (attachmentState *State) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted func() bool) bool {
+	attachmentState.recordRestartStep(restartAttached)
+	attachmentState.stateMu.Lock()
+	release, fresh := attachmentState.releaseHandshakeSlot, attachmentState.savedCaughtUp
+	attachmentState.savedCaughtUp = true
+	attachmentState.stateMu.Unlock()
 	if release != nil {
 		release()
 	}
-	if sess.catalogSources == nil {
+	if attachmentState.catalogSources == nil {
 		return true
 	}
-	if !sess.catalogSources.AwaitAttachedCurrent(sess.identity.id, fresh, neverPrompted, transport) {
+	if !attachmentState.catalogSources.AwaitAttachedCurrent(attachmentState.identity.id, fresh, neverPrompted, transport) {
 		return false
 	}
 	for delay := time.Second; ; delay = min(2*delay, 30*time.Second) {
 		ctx, cancel := context.WithTimeout(context.Background(), savedPromptSettleTimeout)
-		err := sess.delivery.settleSavedPrompts(ctx)
+		err := attachmentState.delivery.settleSavedPrompts(ctx)
 		cancel()
 		if err == nil {
 			return true
@@ -111,47 +111,47 @@ func (sess *State) awaitSavedCatchUp(transport <-chan struct{}, neverPrompted fu
 			return false
 		case <-time.After(delay):
 		}
-		if sess.ended() {
+		if attachmentState.ended() {
 			return false
 		}
 	}
 }
 
 // ended reports a closed or exited session.
-func (sess *State) ended() bool {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.closed || sess.connectionStatusLocked() == StatusExited
+func (attachmentState *State) ended() bool {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.closed || attachmentState.connectionStatusLocked() == StatusExited
 }
 
 // settleProviderEvidence combines the response with any strictly newer ordered
 // work delta. Stored anchors can date a validated turn, but never choose work.
-func (sess *State) settleProviderEvidence(adapter lifecycle.Adapter, turnID string, startedAtMs int64) bool {
+func (attachmentState *State) settleProviderEvidence(adapter lifecycle.Adapter, turnID string, startedAtMs int64) bool {
 	observation, ok := adapter.Current()
 	if !ok {
 		return false
 	}
-	sess.stateMu.Lock()
-	if observation.Epoch != sess.lifecycleState.Epoch || sess.closed ||
-		sess.lifecycleState.Sequence > observation.Sequence || !sess.turnRestoreInProgress {
-		sess.stateMu.Unlock()
+	attachmentState.stateMu.Lock()
+	if observation.Epoch != attachmentState.lifecycleState.Epoch || attachmentState.closed ||
+		attachmentState.lifecycleState.Sequence > observation.Sequence || !attachmentState.turnRestoreInProgress {
+		attachmentState.stateMu.Unlock()
 		return false
 	}
-	if observation.Sequence >= sess.turnRestoreSequence {
+	if observation.Sequence >= attachmentState.turnRestoreSequence {
 		active := observation.Event == lifecycle.EventReadyWorking || observation.Event == lifecycle.EventReadyAccepted || observation.Event == lifecycle.EventReadyWaiting
-		if turnID != "" && (turnID == sess.durablyTerminalTurnID || turnID == sess.lastProviderTerminalTurnID) {
+		if turnID != "" && (turnID == attachmentState.durablyTerminalTurnID || turnID == attachmentState.lastProviderTerminalTurnID) {
 			active = false
 		}
-		sess.turnRestoreActive = active
-		sess.turnRestoreAccepted = active && observation.Event == lifecycle.EventReadyAccepted
+		attachmentState.turnRestoreActive = active
+		attachmentState.turnRestoreAccepted = active && observation.Event == lifecycle.EventReadyAccepted
 		if active {
-			sess.turnRestoreID, sess.turnRestoreStartedAtMs = turnID, startedAtMs
+			attachmentState.turnRestoreID, attachmentState.turnRestoreStartedAtMs = turnID, startedAtMs
 		} else {
-			sess.turnRestoreID, sess.turnRestoreStartedAtMs = "", 0
+			attachmentState.turnRestoreID, attachmentState.turnRestoreStartedAtMs = "", 0
 		}
 	}
-	drain, status := sess.settleRestoredTurnStateLocked()
-	sess.stateMu.Unlock()
-	sess.publishRestoredTurnState(drain, status)
+	drain, status := attachmentState.settleRestoredTurnStateLocked()
+	attachmentState.stateMu.Unlock()
+	attachmentState.publishRestoredTurnState(drain, status)
 	return true
 }

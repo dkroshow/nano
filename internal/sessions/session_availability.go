@@ -17,52 +17,52 @@ type Availability struct {
 }
 
 // AvailabilityState reads the runtime facts used by admission and availability.
-func (sess *State) AvailabilityState() Availability {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
+func (attachmentState *State) AvailabilityState() Availability {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
 	return Availability{
-		Status: sess.connectionStatusLocked(), Active: sess.workActiveLocked(),
-		Waiting: sess.waitingLocked(), Permission: sess.lifecyclePermissionLocked(),
-		LastHumanPromptAt: sess.lastHumanPromptAt,
+		Status: attachmentState.connectionStatusLocked(), Active: attachmentState.workActiveLocked(),
+		Waiting: attachmentState.waitingLocked(), Permission: attachmentState.lifecyclePermissionLocked(),
+		LastHumanPromptAt: attachmentState.lastHumanPromptAt,
 	}
 }
 
 // QueuedPromptCount counts prompts waiting on this attachment.
-func (sess *Delivery) QueuedPromptCount() int {
-	if sess.queuedTurns == nil {
+func (delivery *Delivery) QueuedPromptCount() int {
+	if delivery.queuedTurns == nil {
 		return 0
 	}
-	return sess.queuedTurns.QueuedCount(sess.identity.provider, sess.stateOwner.ThreadID(), sess.identity.hostedThreadID)
+	return delivery.queuedTurns.QueuedCount(delivery.identity.provider, delivery.state.ThreadID(), delivery.identity.hostedThreadID)
 }
 
 // ActiveTurnSnapshot returns one atomic snapshot of the live turn fields.
 // activeTurn is one atomic snapshot of the monitor's live turn fields.
-func (sess *State) ActiveTurnSnapshot() (observability.ActiveTurn, bool) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return observability.ActiveTurn{Provider: sess.identity.provider, ThreadID: sess.threadID,
-		HostedThreadID: sess.identity.hostedThreadID, Name: sess.displayName,
-		TurnStartedAtMs: sess.turnStartedAtMs}, sess.workActiveLocked()
+func (attachmentState *State) ActiveTurnSnapshot() (observability.ActiveTurn, bool) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return observability.ActiveTurn{Provider: attachmentState.identity.provider, ThreadID: attachmentState.threadID,
+		HostedThreadID: attachmentState.identity.hostedThreadID, Name: attachmentState.displayName,
+		TurnStartedAtMs: attachmentState.turnStartedAtMs}, attachmentState.workActiveLocked()
 }
 
 // WithIdleDelivery holds the delivery lock from readiness through the caller's
 // durable admission and queue update. Hosted admission remains with the caller.
-func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (string, error) {
-	sess.sendMu.Lock()
-	defer sess.sendMu.Unlock()
-	status, permission := sess.stateOwner.deliveryPermission()
+func (delivery *Delivery) WithIdleDelivery(rested bool, deliver func() error) (string, error) {
+	delivery.sendMu.Lock()
+	defer delivery.sendMu.Unlock()
+	status, permission := delivery.state.deliveryPermission()
 	// A resting thread had no open work at boot and queues behind its attach.
 	restingIdle := rested && status == "starting"
 	switch {
 	case status == StatusExited:
 		return "detached", nil
-	case sess.nanoIsStopping() || status != "ready" && !restingIdle:
+	case delivery.nanoIsStopping() || status != "ready" && !restingIdle:
 		return "notReady", nil
-	case !restingIdle && (permission.Submit != lifecycle.SendNow || sess.runtime.CorePromptInFlight()):
+	case !restingIdle && (permission.Submit != lifecycle.SendNow || delivery.runtime.CorePromptInFlight()):
 		return "busy", nil
 	}
-	if sess.queuedTurns != nil {
-		if _, queued := sess.queuedTurns.First(sess.identity.provider, sess.stateOwner.ThreadID(), sess.identity.hostedThreadID); queued {
+	if delivery.queuedTurns != nil {
+		if _, queued := delivery.queuedTurns.First(delivery.identity.provider, delivery.state.ThreadID(), delivery.identity.hostedThreadID); queued {
 			return "queuedBacklog", nil
 		}
 	}
@@ -71,14 +71,14 @@ func (sess *Delivery) WithIdleDelivery(rested bool, deliver func() error) (strin
 
 // BusyForMaintenance reports live, restoring or delivering work. Locks do not
 // extend into the caller's maintenance store operations.
-func (sess *Delivery) BusyForMaintenance() bool {
-	active := sess.stateOwner.maintenanceActive()
+func (delivery *Delivery) BusyForMaintenance() bool {
+	active := delivery.state.maintenanceActive()
 	if active {
 		return true
 	}
-	sess.sendMu.Lock()
-	defer sess.sendMu.Unlock()
-	for _, op := range sess.sendOps {
+	delivery.sendMu.Lock()
+	defer delivery.sendMu.Unlock()
+	for _, op := range delivery.sendOps {
 		select {
 		case <-op.done:
 		default:

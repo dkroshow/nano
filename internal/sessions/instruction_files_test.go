@@ -129,7 +129,7 @@ func newTestCodexSession(t *testing.T, cwd string, sources []string) *Session {
 	}
 	return sessionWithOwners(&Session{
 
-		stateOwner: State{
+		state: State{
 			cwd:            cwd,
 			state:          map[string]json.RawMessage{"thread": raw},
 			lifecycleState: testLifecycleSnapshot("ready", false)},
@@ -271,12 +271,12 @@ func TestClaudeInstructionFilesUseDocumentedLoadingRules(t *testing.T) {
 	}
 
 	sess := sessionWithOwners(&Session{
-		stateOwner: State{
+		state: State{
 			cwd:            cwd,
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{provider: "claude"},
 	})
-	sources, _ := sess.stateOwner.instructionFileSources()
+	sources, _ := sess.state.instructionFileSources()
 	got := map[string]setup.InstructionFileSource{}
 	for _, src := range sources {
 		got[src.Path] = src

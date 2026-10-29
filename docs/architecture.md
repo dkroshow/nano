@@ -68,16 +68,20 @@ CLI upgrades).
 `sessions.Session` keeps identity, construction and concrete owner accessors.
 Callers use those owners directly: `Delivery` handles prompt sends and
 settlement, `State` holds atomic lifecycle and turn facts, `Runtime` coordinates
-provider handles and the core event loop, `Wire` retains raw events, `Lifecycle`
+provider handles and the core event loop, `Wire` retains raw events, `Teardown`
 closes or repairs an attachment, and `View` serves summaries and projections.
 Each owner holds its own state; there is no forwarding facade on Session.
 
-The original lock boundaries remain intact. State's lock still protects the
-provider-handle/ready transition across State and Runtime. Delivery retains the
-send and settlement locks; Wire retains the event-buffer lock; Lifecycle retains
-the close and repair locks. `LiveTextLoop` remains the single owner of saved/live
-reconciliation and keeps its event order. All these owners live in `sessions`;
-none needs a new package or interface.
+The original lock boundaries remain intact. State owns `stateMu`, including
+provider handles and their atomic ready transition. Delivery owns `sendMu` and
+`settleMu`; Runtime owns `coreMu`, `coreOnce` and `codexHandshakeMu`; Wire owns
+its event-buffer `mu`; Teardown owns `closeMu` and `transcriptRepairMu`. View
+owns its projection and view caches with their existing internal locks. Owners
+hold explicit concrete dependencies and invoke each other's guarded operations;
+none holds a Session back-pointer or takes another owner's lock.
+`LiveTextLoop` remains the single owner of saved/live reconciliation and keeps
+its event order. All these owners live in `sessions`; none needs a new package
+or interface.
 
 ## Provider runtimes
 

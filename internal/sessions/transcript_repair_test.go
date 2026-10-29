@@ -25,9 +25,9 @@ func (c *repairCatalog) AwaitAttachedCurrent(_ string, _ bool, _ func() bool, ca
 func TestTranscriptRepairFailsWhenStopDoesNotReachIdle(t *testing.T) {
 	catalog := &repairCatalog{wait: func(<-chan struct{}) bool { return true }}
 	sess, _ := readyTransactionalSendTestSession(t, nil)
-	sess.stateOwner.catalogSources = catalog
-	sess.stateOwner.lifecycleState = testLifecycleSnapshot("ready", true)
-	_, err := sess.lifecycle.stopDiscardAndRepairWithin(context.Background(), "repair", 50*time.Millisecond)
+	sess.state.catalogSources = catalog
+	sess.state.lifecycleState = testLifecycleSnapshot("ready", true)
+	_, err := sess.teardown.stopDiscardAndRepairWithin(context.Background(), "repair", 50*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "stop did not reach an idle provider boundary") || catalog.waits.Load() != 0 {
 		t.Fatalf("stop failure = %v after %d catch-ups", err, catalog.waits.Load())
 	}

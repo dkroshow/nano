@@ -236,7 +236,7 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 	// is now visible to the catalog's runtime overlay.
 	sess.ConfigureRegistration(req.restart.at, req.restart.fail, req.catalogBackground, s.CatalogSources)
 	s.Registry.RegisterSession(sess)
-	sess.DidRegister()
+	sess.State().DidRegister()
 
 	if req.immediateRuntimePublish {
 		s.publishRuntime(false)

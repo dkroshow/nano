@@ -25,7 +25,7 @@ func resumeCodexFixture(t *testing.T, cfg Config, nativeID string, fake *fakeApp
 		t.Fatal(err)
 	}
 	waitReconnectCondition(t, func() bool { return sess.view.Summary().Status == "ready" })
-	t.Cleanup(sess.lifecycle.Close)
+	t.Cleanup(sess.teardown.Close)
 	return sess
 }
 
@@ -33,38 +33,38 @@ func resumeCodexFixture(t *testing.T, cfg Config, nativeID string, fake *fakeApp
 func sessionWithOwners(sess *Session) *Session {
 	sess.wire.identity = &sess.identity
 	sess.wire.delivery = &sess.delivery
-	sess.wire.stateOwner = &sess.stateOwner
+	sess.wire.state = &sess.state
 	sess.wire.runtime = &sess.runtime
 
 	sess.wire.view = &sess.view
 	sess.delivery.identity = &sess.identity
 	sess.delivery.wire = &sess.wire
-	sess.delivery.stateOwner = &sess.stateOwner
+	sess.delivery.state = &sess.state
 	sess.delivery.runtime = &sess.runtime
-	sess.delivery.lifecycle = &sess.lifecycle
+	sess.delivery.teardown = &sess.teardown
 	sess.delivery.view = &sess.view
-	sess.stateOwner.identity = &sess.identity
-	sess.stateOwner.wire = &sess.wire
-	sess.stateOwner.delivery = &sess.delivery
-	sess.stateOwner.runtime = &sess.runtime
+	sess.state.identity = &sess.identity
+	sess.state.wire = &sess.wire
+	sess.state.delivery = &sess.delivery
+	sess.state.runtime = &sess.runtime
 
-	sess.stateOwner.view = &sess.view
+	sess.state.view = &sess.view
 	sess.runtime.identity = &sess.identity
 	sess.runtime.wire = &sess.wire
 	sess.runtime.delivery = &sess.delivery
-	sess.runtime.stateOwner = &sess.stateOwner
+	sess.runtime.state = &sess.state
 
 	sess.runtime.view = &sess.view
-	sess.lifecycle.identity = &sess.identity
-	sess.lifecycle.wire = &sess.wire
-	sess.lifecycle.delivery = &sess.delivery
-	sess.lifecycle.stateOwner = &sess.stateOwner
-	sess.lifecycle.runtime = &sess.runtime
+	sess.teardown.identity = &sess.identity
+	sess.teardown.wire = &sess.wire
+	sess.teardown.delivery = &sess.delivery
+	sess.teardown.state = &sess.state
+	sess.teardown.runtime = &sess.runtime
 
 	sess.view.identity = &sess.identity
 	sess.view.wire = &sess.wire
 
-	sess.view.stateOwner = &sess.stateOwner
+	sess.view.state = &sess.state
 	sess.view.runtime = &sess.runtime
 
 	return sess

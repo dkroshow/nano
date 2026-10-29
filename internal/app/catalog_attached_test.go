@@ -37,7 +37,7 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 	}
 	sess.ConfigureRegistration(nil, nil, false, service)
 	sess.ConfigureSavedReaders(nil, nil, nil, nil, func(string) {})
-	sess.DidRegister()
+	sess.State().DidRegister()
 	if attachments, held, unresolved := view(); attachments != 1 || held != 0 || unresolved["awaiting native identity"] != 1 {
 		t.Fatalf("before identity: attachments %d, held %d, unresolved %v", attachments, held, unresolved)
 	}
@@ -54,7 +54,7 @@ func TestUnresolvedAttachmentStaysVisibleUntilBoundOrReleased(t *testing.T) {
 	if attachments, held, unresolved := view(); attachments != 1 || held != 1 || len(unresolved) != 0 {
 		t.Fatalf("resolved: attachments %d, held %d, unresolved %v", attachments, held, unresolved)
 	}
-	sess.Lifecycle().Close()
+	sess.Teardown().Close()
 	if attachments, held, _ := view(); attachments != 0 || held != 0 {
 		t.Fatalf("released: attachments %d, held %d", attachments, held)
 	}

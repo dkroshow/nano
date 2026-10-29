@@ -5,13 +5,19 @@
 //   - State: atomic lifecycle, native identity, turn, replay and posture facts;
 //   - Runtime: provider handles, handshake serialization and the core event loop;
 //   - Wire: ordered raw evidence, the retained spool and event subscribers;
-//   - Lifecycle: attachment close and the fenced transcript repair operation;
+//   - Teardown: attachment close and the fenced transcript repair operation;
 //   - View: summaries, HTTP reads, live projection access and view caches.
 //
-// Owners retain their existing locks. Provider handle publication and readiness
-// share State's lock so observers cannot see half of that transition. Session
-// construction connects the owners before publishing the attachment; callers
-// use the owner accessors directly, without Session forwarding methods.
+// State owns stateMu and the provider handle/readiness transition it guards.
+// Delivery owns sendMu and settleMu. Runtime owns coreMu, coreOnce and
+// codexHandshakeMu. Wire owns mu for event buffers and subscribers. Teardown
+// owns closeMu and transcriptRepairMu. View owns projection and view caches;
+// those concrete values retain their internal synchronization.
+//
+// Construction connects explicit owner dependencies before publishing the
+// attachment. Owners call guarded operations instead of taking another owner's
+// lock, and none holds a Session back-pointer. Callers use owner accessors
+// directly, without Session forwarding methods.
 //
 // LiveTextLoop remains the sole saved/live reconciliation loop. Pane queues and
 // warm sizing share this package so parsed evidence and saved rows keep their

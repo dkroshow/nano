@@ -15,12 +15,12 @@ func TestCodexEchoAndDeliveryOutcomeMayArriveTogether(t *testing.T) {
 	sess.identity.hostedThreadID = "hosted"
 	for i := range 100 {
 		action := fmt.Sprintf("race-%d", i)
-		sess.stateOwner.expectCodexEcho(codexEchoWait{actionID: action, claimToken: "claim", claimEpoch: 1})
+		sess.state.expectCodexEcho(codexEchoWait{actionID: action, claimToken: "claim", claimEpoch: 1})
 		echo := `{"method":"item/started","params":{"turnId":"turn-race","item":{"type":"userMessage","clientId":"` + submissionEventID("hosted", action) + `"}}}`
 		var wg sync.WaitGroup
 		wg.Add(2)
-		go func() { defer wg.Done(); sess.stateOwner.deliveredCodexEcho(action, true) }()
-		go func() { defer wg.Done(); sess.stateOwner.observeCodexTurnInput([]byte(echo)) }()
+		go func() { defer wg.Done(); sess.state.deliveredCodexEcho(action, true) }()
+		go func() { defer wg.Done(); sess.state.observeCodexTurnInput([]byte(echo)) }()
 		wg.Wait()
 	}
 }

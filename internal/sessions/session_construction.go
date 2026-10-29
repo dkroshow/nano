@@ -64,7 +64,7 @@ type Config struct {
 func New(cfg Config) *Session {
 	sess := &Session{
 
-		stateOwner: State{
+		state: State{
 			presentationMode:     cfg.PresentationMode,
 			sidebarPlacement:     cfg.SidebarPlacement,
 			cwd:                  cfg.CWD,
@@ -105,38 +105,38 @@ func New(cfg Config) *Session {
 	}
 	sess.wire.identity = &sess.identity
 	sess.wire.delivery = &sess.delivery
-	sess.wire.stateOwner = &sess.stateOwner
+	sess.wire.state = &sess.state
 	sess.wire.runtime = &sess.runtime
 
 	sess.wire.view = &sess.view
 	sess.delivery.identity = &sess.identity
 	sess.delivery.wire = &sess.wire
-	sess.delivery.stateOwner = &sess.stateOwner
+	sess.delivery.state = &sess.state
 	sess.delivery.runtime = &sess.runtime
-	sess.delivery.lifecycle = &sess.lifecycle
+	sess.delivery.teardown = &sess.teardown
 	sess.delivery.view = &sess.view
-	sess.stateOwner.identity = &sess.identity
-	sess.stateOwner.wire = &sess.wire
-	sess.stateOwner.delivery = &sess.delivery
-	sess.stateOwner.runtime = &sess.runtime
+	sess.state.identity = &sess.identity
+	sess.state.wire = &sess.wire
+	sess.state.delivery = &sess.delivery
+	sess.state.runtime = &sess.runtime
 
-	sess.stateOwner.view = &sess.view
+	sess.state.view = &sess.view
 	sess.runtime.identity = &sess.identity
 	sess.runtime.wire = &sess.wire
 	sess.runtime.delivery = &sess.delivery
-	sess.runtime.stateOwner = &sess.stateOwner
+	sess.runtime.state = &sess.state
 
 	sess.runtime.view = &sess.view
-	sess.lifecycle.identity = &sess.identity
-	sess.lifecycle.wire = &sess.wire
-	sess.lifecycle.delivery = &sess.delivery
-	sess.lifecycle.stateOwner = &sess.stateOwner
-	sess.lifecycle.runtime = &sess.runtime
+	sess.teardown.identity = &sess.identity
+	sess.teardown.wire = &sess.wire
+	sess.teardown.delivery = &sess.delivery
+	sess.teardown.state = &sess.state
+	sess.teardown.runtime = &sess.runtime
 
 	sess.view.identity = &sess.identity
 	sess.view.wire = &sess.wire
 
-	sess.view.stateOwner = &sess.stateOwner
+	sess.view.state = &sess.state
 	sess.view.runtime = &sess.runtime
 
 	return sess
@@ -144,74 +144,74 @@ func New(cfg Config) *Session {
 
 // ReserveNativeID establishes the pre-publication native identity of a resume.
 func (sess *Session) ReserveNativeID(nativeID string) {
-	sess.stateOwner.threadID = nativeID
-	sess.stateOwner.setProjectionThreadID(nativeID)
+	sess.state.threadID = nativeID
+	sess.state.setProjectionThreadID(nativeID)
 }
 
 // InitializeBinding applies the canonical generation before provider activity.
 func (sess *Session) InitializeBinding(generation int64) error {
-	sess.stateOwner.attachmentGeneration = generation
+	sess.state.attachmentGeneration = generation
 	var err error
-	sess.stateOwner.lifecycleState, err = lifecycle.New(uint64(generation))
+	sess.state.lifecycleState, err = lifecycle.New(uint64(generation))
 	return err
 }
 
 // ConfigureSavedReaders connects the catalog reads before registration.
 func (sess *Session) ConfigureSavedReaders(turn func(context.Context, string) (liveview.DurableTurnEvidence, bool), prompts SavedPromptReader, nativePrompts savedPromptNativeReader, final savedTurnFinalReader, sweep func(string)) {
-	sess.stateOwner.savedTurn = turn
+	sess.state.savedTurn = turn
 	sess.delivery.savedPrompts = prompts
 	sess.delivery.savedPromptsIn = nativePrompts
 	sess.delivery.savedTurnFinal = final
-	sess.stateOwner.subscriptionSweep = sweep
+	sess.state.subscriptionSweep = sweep
 }
 
 // OpenWireSpool opens the attachment's ordered wire log.
-func (sess *Wire) OpenWireSpool(dir string) error {
-	spool, err := newWireSpool(dir, sess.identity.id)
+func (wireState *Wire) OpenWireSpool(dir string) error {
+	spool, err := newWireSpool(dir, wireState.identity.id)
 	if err != nil {
 		return err
 	}
-	sess.spool = spool
+	wireState.spool = spool
 	return nil
 }
 
 // ConfigureRegistration connects the progress and catalog owners before publication.
 func (sess *Session) ConfigureRegistration(progress func(observability.RestartStep), failure func(string), background bool, sources AttachedCatalog) {
-	sess.stateOwner.restartProgress = progress
-	sess.stateOwner.restartFailure = failure
-	sess.stateOwner.catalogBackground = background
+	sess.state.restartProgress = progress
+	sess.state.restartFailure = failure
+	sess.state.catalogBackground = background
 	if sources != nil {
-		sess.stateOwner.catalogSources = sources
+		sess.state.catalogSources = sources
 	}
 }
 
 // DidRegister binds the catalog and hosted runtime after registry publication.
-func (sess *Session) DidRegister() {
-	sess.stateOwner.bindCatalogSource(sess.stateOwner.ThreadID())
-	sess.stateOwner.recordRestartStep(restartRegistered)
-	if sess.identity.agentExecutions != nil {
+func (attachmentState *State) DidRegister() {
+	attachmentState.bindCatalogSource(attachmentState.ThreadID())
+	attachmentState.recordRestartStep(restartRegistered)
+	if attachmentState.identity.agentExecutions != nil {
 		// Presentation is mutable once this attachment is resolvable.
-		sess.stateOwner.stateMu.Lock()
-		presentationMode, status, threadID := sess.stateOwner.presentationMode, sess.stateOwner.connectionStatusLocked(), sess.stateOwner.threadID
-		sess.stateOwner.stateMu.Unlock()
-		if err := sess.identity.agentExecutions.BindSession(sess.identity.hostedThreadID, sess.identity.id, threadID, status, presentationMode); err != nil {
-			log.Printf("bind hosted thread %s: %v", sess.identity.hostedThreadID, err)
+		attachmentState.stateMu.Lock()
+		presentationMode, status, threadID := attachmentState.presentationMode, attachmentState.connectionStatusLocked(), attachmentState.threadID
+		attachmentState.stateMu.Unlock()
+		if err := attachmentState.identity.agentExecutions.BindSession(attachmentState.identity.hostedThreadID, attachmentState.identity.id, threadID, status, presentationMode); err != nil {
+			log.Printf("bind hosted thread %s: %v", attachmentState.identity.hostedThreadID, err)
 		}
 	}
-	sess.stateOwner.subscriptionSweep(sess.identity.hostedThreadID)
+	attachmentState.subscriptionSweep(attachmentState.identity.hostedThreadID)
 }
 
 // WarmSkills begins the shared cwd read without waiting for a pane request.
-func (sess *State) WarmSkills() { sess.view.skillsFor(sess.cwd) }
+func (attachmentState *State) WarmSkills() { attachmentState.view.skillsFor(attachmentState.cwd) }
 
 // RecordCreationPosture records the provider values of the admitted creation.
-func (sess *State) RecordCreationPosture(req ProviderRequest) {
-	sess.recordPosture(creationPostureEntries(req), metadataFreshnessLive)
+func (attachmentState *State) RecordCreationPosture(req ProviderRequest) {
+	attachmentState.recordPosture(creationPostureEntries(req), metadataFreshnessLive)
 }
 
 // DiscardSpawnResources releases an unpublished or refused attachment's resources.
 func (sess *Session) DiscardSpawnResources() {
-	sess.stateOwner.releaseCatalogSource()
+	sess.state.releaseCatalogSource()
 	sess.wire.closeSpool()
 }
 
@@ -222,4 +222,4 @@ func (sess *Session) AttachLiveText(view *LiveTextLoop) {
 }
 
 // LiveTextService returns the view service for application-owned pane reads.
-func (sess *View) LiveTextService() *LiveTextLoop { return sess.liveText }
+func (views *View) LiveTextService() *LiveTextLoop { return views.liveText }

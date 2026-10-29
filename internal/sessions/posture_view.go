@@ -27,28 +27,28 @@ func overlayFold(folded map[string]hostedstore.PostureEntry, field string, dst *
 // posture is the canonical hosted-thread display projection. Legacy JSON is a
 // migration input only; unavailable metadata stays unknown rather than being
 // silently reconstructed from the retired posture log or local defaults.
-func (sess *State) posture() hostedstore.Posture {
-	if sess.identity.metadata == nil {
+func (attachmentState *State) posture() hostedstore.Posture {
+	if attachmentState.identity.metadata == nil {
 		return hostedstore.Posture{}
 	}
-	return sess.identity.metadata.Posture(sess.identity.hostedThreadID)
+	return attachmentState.identity.metadata.Posture(attachmentState.identity.hostedThreadID)
 }
 
 // markMetadataDegraded reports that a newer observation did not enter the
 // canonical log. The last committed record remains readable and is still the
 // only value authority; this flag is an ingestion warning, not a second
 // availability decision.
-func (sess *State) markMetadataDegraded() {
-	sess.stateMu.Lock()
-	sess.metadataDegraded = true
-	sess.stateMu.Unlock()
+func (attachmentState *State) markMetadataDegraded() {
+	attachmentState.stateMu.Lock()
+	attachmentState.metadataDegraded = true
+	attachmentState.stateMu.Unlock()
 }
 
 // recordPosture is the one live mutation adapter.  It writes immutable events
 // to control.sqlite only; canonical posture store is a read-only migration and
 // rollback parser and is never dual-written by production code.
-func (sess *State) recordPosture(entries []hostedstore.PostureEntry, freshness string) {
-	if sess.identity.metadata == nil {
+func (attachmentState *State) recordPosture(entries []hostedstore.PostureEntry, freshness string) {
+	if attachmentState.identity.metadata == nil {
 		return
 	}
 	committed, failed := false, false
@@ -60,16 +60,16 @@ func (sess *State) recordPosture(entries []hostedstore.PostureEntry, freshness s
 		if entry.Source == postureSourceProvider {
 			disposition = metadataDispositionConfirmed
 		}
-		appended, err := sess.identity.metadata.AppendEvent(hostedstore.MetadataEvent{
-			HostedThreadID: sess.identity.hostedThreadID, Field: entry.Field, Value: entry.Value,
+		appended, err := attachmentState.identity.metadata.AppendEvent(hostedstore.MetadataEvent{
+			HostedThreadID: attachmentState.identity.hostedThreadID, Field: entry.Field, Value: entry.Value,
 			Disposition: disposition, Source: entry.Source, Evidence: entry.Evidence,
-			NativeThreadID: sess.ThreadID(), NanoSessionID: sess.identity.id,
-			AttachmentGeneration: sess.attachmentGeneration, Freshness: freshness,
+			NativeThreadID: attachmentState.ThreadID(), NanoSessionID: attachmentState.identity.id,
+			AttachmentGeneration: attachmentState.attachmentGeneration, Freshness: freshness,
 		})
 		if err != nil {
-			sess.markMetadataDegraded()
+			attachmentState.markMetadataDegraded()
 			failed = true
-			log.Printf("record canonical posture %s/%s: %v", sess.identity.hostedThreadID, entry.Field, err)
+			log.Printf("record canonical posture %s/%s: %v", attachmentState.identity.hostedThreadID, entry.Field, err)
 		} else if appended.Committed {
 			committed = true
 		}
@@ -78,7 +78,7 @@ func (sess *State) recordPosture(entries []hostedstore.PostureEntry, freshness s
 	// Every open tab re-fetches /state, whose hosted metadata view and revision
 	// are authoritative even if a notification is coalesced or lost.
 	if committed || failed {
-		sess.NotifyRuntime()
+		attachmentState.NotifyRuntime()
 	}
 }
 
@@ -96,11 +96,11 @@ type providerCausationSnapshot map[string]providerCausation
 // snapshotProviderCausation captures only requested values that are exactly
 // represented in the outbound request.  Fields absent from values have no
 // causal relationship to the response.
-func (sess *State) snapshotProviderCausation(values map[string]string) providerCausationSnapshot {
-	if sess.identity.metadata == nil || len(values) == 0 {
+func (attachmentState *State) snapshotProviderCausation(values map[string]string) providerCausationSnapshot {
+	if attachmentState.identity.metadata == nil || len(values) == 0 {
 		return nil
 	}
-	view, err := sess.identity.metadata.View(sess.identity.hostedThreadID)
+	view, err := attachmentState.identity.metadata.View(attachmentState.identity.hostedThreadID)
 	if err != nil {
 		return nil
 	}
@@ -126,28 +126,28 @@ type turnCausationEntry struct {
 // beginTurnCausation is the pre-Call seam used by sendCodexTurn.  Its return
 // ID lets the error path remove the exact request rather than leaving stale
 // causation for a later provider notification.
-func (sess *State) beginTurnCausation(values map[string]string) int64 {
-	snapshot := sess.snapshotProviderCausation(values)
+func (attachmentState *State) beginTurnCausation(values map[string]string) int64 {
+	snapshot := attachmentState.snapshotProviderCausation(values)
 	if len(snapshot) == 0 {
 		return 0
 	}
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	sess.turnCausationSeq++
-	id := sess.turnCausationSeq
-	sess.pendingTurnCausation = append(sess.pendingTurnCausation, turnCausationEntry{ID: id, Snapshot: snapshot})
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	attachmentState.turnCausationSeq++
+	id := attachmentState.turnCausationSeq
+	attachmentState.pendingTurnCausation = append(attachmentState.pendingTurnCausation, turnCausationEntry{ID: id, Snapshot: snapshot})
 	return id
 }
 
-func (sess *State) abandonTurnCausation(id int64) {
+func (attachmentState *State) abandonTurnCausation(id int64) {
 	if id == 0 {
 		return
 	}
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	for i, entry := range sess.pendingTurnCausation {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	for i, entry := range attachmentState.pendingTurnCausation {
 		if entry.ID == id {
-			sess.pendingTurnCausation = append(sess.pendingTurnCausation[:i], sess.pendingTurnCausation[i+1:]...)
+			attachmentState.pendingTurnCausation = append(attachmentState.pendingTurnCausation[:i], attachmentState.pendingTurnCausation[i+1:]...)
 			return
 		}
 	}
@@ -157,19 +157,19 @@ func (sess *State) abandonTurnCausation(id int64) {
 // for a provider retry, returns the previous entry for this same semantic
 // payload.  A second queued request always wins over retry dedupe, even if its
 // settings are byte-for-byte identical.
-func (sess *State) takeSettingsCausation(semanticKey string) (turnCausationEntry, bool) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	if len(sess.pendingTurnCausation) > 0 {
-		entry := sess.pendingTurnCausation[0]
-		sess.pendingTurnCausation = sess.pendingTurnCausation[1:]
-		if sess.lastSettingsEvidence == nil {
-			sess.lastSettingsEvidence = map[string]turnCausationEntry{}
+func (attachmentState *State) takeSettingsCausation(semanticKey string) (turnCausationEntry, bool) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	if len(attachmentState.pendingTurnCausation) > 0 {
+		entry := attachmentState.pendingTurnCausation[0]
+		attachmentState.pendingTurnCausation = attachmentState.pendingTurnCausation[1:]
+		if attachmentState.lastSettingsEvidence == nil {
+			attachmentState.lastSettingsEvidence = map[string]turnCausationEntry{}
 		}
-		sess.lastSettingsEvidence[semanticKey] = entry
+		attachmentState.lastSettingsEvidence[semanticKey] = entry
 		return entry, true
 	}
-	entry, ok := sess.lastSettingsEvidence[semanticKey]
+	entry, ok := attachmentState.lastSettingsEvidence[semanticKey]
 	return entry, ok
 }
 
@@ -189,14 +189,14 @@ func providerEvidenceKey(hosted string, generation int64, seam, field, actual, f
 // facts: the exact requested value was rejected, and the provider actually
 // reports a different confirmed value.  Replayed/historical evidence is
 // never causal, even if a request snapshot happens to be available.
-func (sess *State) recordProviderEvidence(seam string, values map[string]string, freshness string, snapshot providerCausationSnapshot) {
-	if sess.identity.metadata == nil || len(values) == 0 {
+func (attachmentState *State) recordProviderEvidence(seam string, values map[string]string, freshness string, snapshot providerCausationSnapshot) {
+	if attachmentState.identity.metadata == nil || len(values) == 0 {
 		return
 	}
-	sess.stateMu.Lock()
-	generation := sess.attachmentGeneration
-	nativeID := sess.threadID
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Lock()
+	generation := attachmentState.attachmentGeneration
+	nativeID := attachmentState.threadID
+	attachmentState.stateMu.Unlock()
 	if freshness != metadataFreshnessLive {
 		snapshot = nil
 	}
@@ -212,18 +212,18 @@ func (sess *State) recordProviderEvidence(seam string, values map[string]string,
 				id := cause.EventID
 				causeID = &id
 			}
-			appended, err := sess.identity.metadata.AppendEvent(hostedstore.MetadataEvent{
-				HostedThreadID: sess.identity.hostedThreadID, Field: field, Value: value,
+			appended, err := attachmentState.identity.metadata.AppendEvent(hostedstore.MetadataEvent{
+				HostedThreadID: attachmentState.identity.hostedThreadID, Field: field, Value: value,
 				Disposition: disposition, Source: postureSourceProvider, Evidence: seam,
-				NativeThreadID: nativeID, NanoSessionID: sess.identity.id,
+				NativeThreadID: nativeID, NanoSessionID: attachmentState.identity.id,
 				AttachmentGeneration: generation, Freshness: freshness,
 				CausationEventID: causeID,
-				SourceEventKey:   providerEvidenceKey(sess.identity.hostedThreadID, generation, seam, field, actual, freshness, cause, kind),
+				SourceEventKey:   providerEvidenceKey(attachmentState.identity.hostedThreadID, generation, seam, field, actual, freshness, cause, kind),
 			})
 			if err != nil {
-				sess.markMetadataDegraded()
+				attachmentState.markMetadataDegraded()
 				failed = true
-				log.Printf("record provider evidence %s/%s: %v", sess.identity.hostedThreadID, field, err)
+				log.Printf("record provider evidence %s/%s: %v", attachmentState.identity.hostedThreadID, field, err)
 			} else if appended.Committed {
 				committed = true
 			}
@@ -240,40 +240,40 @@ func (sess *State) recordProviderEvidence(seam string, values map[string]string,
 		}
 	}
 	if committed || failed {
-		sess.NotifyRuntime()
+		attachmentState.NotifyRuntime()
 	}
 }
 
 // recordProviderRejection settles only the exact outbound requests a provider
 // explicitly rejected. Timeouts and transport loss call neither this helper nor
 // any inferred rejection path, leaving the desired state honestly pending.
-func (sess *State) recordProviderRejection(seam string, snapshot providerCausationSnapshot) {
-	if sess.identity.metadata == nil {
+func (attachmentState *State) recordProviderRejection(seam string, snapshot providerCausationSnapshot) {
+	if attachmentState.identity.metadata == nil {
 		return
 	}
-	sess.stateMu.Lock()
-	generation, nativeID := sess.attachmentGeneration, sess.threadID
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Lock()
+	generation, nativeID := attachmentState.attachmentGeneration, attachmentState.threadID
+	attachmentState.stateMu.Unlock()
 	committed, failed := false, false
 	for field, causal := range snapshot {
 		id := causal.EventID
-		appended, err := sess.identity.metadata.AppendEvent(hostedstore.MetadataEvent{
-			HostedThreadID: sess.identity.hostedThreadID, Field: field, Value: causal.Value,
+		appended, err := attachmentState.identity.metadata.AppendEvent(hostedstore.MetadataEvent{
+			HostedThreadID: attachmentState.identity.hostedThreadID, Field: field, Value: causal.Value,
 			Disposition: metadataDispositionRejected, Source: postureSourceProvider,
-			Evidence: seam, NativeThreadID: nativeID, NanoSessionID: sess.identity.id,
+			Evidence: seam, NativeThreadID: nativeID, NanoSessionID: attachmentState.identity.id,
 			AttachmentGeneration: generation, Freshness: metadataFreshnessLive,
 			CausationEventID: &id,
-			SourceEventKey:   providerEvidenceKey(sess.identity.hostedThreadID, generation, seam, field, causal.Value, metadataFreshnessLive, &causal, "rejected"),
+			SourceEventKey:   providerEvidenceKey(attachmentState.identity.hostedThreadID, generation, seam, field, causal.Value, metadataFreshnessLive, &causal, "rejected"),
 		})
 		if err != nil {
-			sess.markMetadataDegraded()
-			log.Printf("record provider rejection %s/%s: %v", sess.identity.hostedThreadID, field, err)
+			attachmentState.markMetadataDegraded()
+			log.Printf("record provider rejection %s/%s: %v", attachmentState.identity.hostedThreadID, field, err)
 			failed = true
 		} else if appended.Committed {
 			committed = true
 		}
 	}
 	if committed || failed {
-		sess.NotifyRuntime()
+		attachmentState.NotifyRuntime()
 	}
 }

@@ -61,7 +61,7 @@ func TestSavedCompletionEndsOnlyATurnThatDidNoLiveWorkSinceIt(t *testing.T) {
 				}
 				return saved, turnID == saved.Turn.ID
 			}, nil, nil, nil, nil)
-			sess.stateOwner.ReconcileDurableTurn(context.Background())
+			sess.state.ReconcileDurableTurn(context.Background())
 			working := sess.view.Summary().TurnActive
 			if working != tc.working {
 				t.Fatalf("working after the saved completion = %v, want %v", working, tc.working)

@@ -323,7 +323,7 @@ func TestHumanCreatedSessionUsesUniversalHostedThreadAPI(t *testing.T) {
 		t.Fatalf("hosted-thread list status = %d, body %s", listed.Code, listed.Body.String())
 	}
 	sess := s.LookupSession(summary.ID)
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	deadline := time.Now().Add(time.Second)
 	for sess.View().Summary().Status != "ready" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
@@ -432,7 +432,7 @@ func TestAPICreatedHostedThreadUsesOrdinarySessionControl(t *testing.T) {
 	if sess == nil {
 		t.Fatal("API-created hosted thread did not enter the ordinary session registry")
 	}
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	deadline := time.Now().Add(time.Second)
 	for sess.View().Summary().Status != "ready" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
@@ -1125,7 +1125,7 @@ func TestHostedTurnQueuesWhileSessionStartsWithoutNativeIdentity(t *testing.T) {
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 
 	latest := waitForAgentTurnStatus(t, executions, queued.ID, agentTurnRunning)
 	if latest.ProviderTurnID != "claude:1" {
@@ -1417,7 +1417,7 @@ func startFastClaudeFixture(t *testing.T, sess *sessions.Session, includeResult 
 		t.Fatal(err)
 	}
 	waitForClaudeStatus(t, sess, "ready")
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 }
 
 func TestQueuedHostedTurnReportsPositionAndCanBeCanceled(t *testing.T) {

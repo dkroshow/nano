@@ -19,7 +19,7 @@ import (
 func TestMCPEndpointRejectsClaudeSessions(t *testing.T) {
 	sess := sessionWithOwners(&Session{
 
-		stateOwner: State{
+		state: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{id: "claude-1", provider: "claude"},
 	})
@@ -73,7 +73,7 @@ func TestStateDoesNotFetchMCPInventory(t *testing.T) {
 	fake := newFakeAppServer(t)
 	sess := resumedSession(t, fake)
 
-	rec := getSessionPath(t, sess.stateOwner.HandleState, "/api/sessions/"+sess.ID()+"/state")
+	rec := getSessionPath(t, sess.state.HandleState, "/api/sessions/"+sess.ID()+"/state")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/state: got %d, want 200 (%s)", rec.Code, rec.Body.String())
 	}

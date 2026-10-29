@@ -79,8 +79,8 @@ func TestClaudeSessionIsReadyOnceItsTransportIsUp(t *testing.T) {
 	})
 
 	sess, attachments := claudeTestSession(t)
-	sess.stateOwner.pendingName = "overnight run"
-	sess.stateOwner.displayName = "overnight run"
+	sess.state.pendingName = "overnight run"
+	sess.state.displayName = "overnight run"
 	req := claudeShimSpawnRequest(sess, shim.WSURL())
 	claude, err := startClaudeSession(sess.Runtime(), req)
 	if err != nil {

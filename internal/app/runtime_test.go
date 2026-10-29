@@ -510,7 +510,7 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 	if err := pending.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(pending.Lifecycle().Close)
+	t.Cleanup(pending.Teardown().Close)
 	waitReconnectCondition(t, func() bool { return pending.View().Summary().Status == "ready" })
 	pending.ReserveNativeID("")
 	if changed := runtimeSnapshotForTest(t, s); !carries(changed) || changed.Sessions[0].Status != "ready" {
@@ -534,7 +534,7 @@ func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
 	if err := pending.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(pending.Lifecycle().Close)
+	t.Cleanup(pending.Teardown().Close)
 	waitReconnectCondition(t, func() bool { return pending.View().Summary().Status == "exited" })
 	failed := runtimeSnapshotForTest(t, s)
 	if len(failed.RemovedSessions) != 0 || len(failed.Sessions) != 1 || failed.Sessions[0].Status != sessionStatusExited || failed.Sessions[0].Error != "thread/start: rpc error -32000: handshake failed" {

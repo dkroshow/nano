@@ -157,10 +157,10 @@ func (d *CodexDaemon) handleServerRequest(requestID string, method string, param
 		CreatedAt: time.Now().Format(time.RFC3339Nano), ExpiresAt: routing.expires,
 		Params: append(json.RawMessage(nil), params...),
 	}
-	if sess.stateOwner.rejectStatusInteraction(pending) {
+	if sess.state.rejectStatusInteraction(pending) {
 		return interactionDecisionResult(method, decisionDecline, params, nil)
 	}
-	sess.stateOwner.addPendingInteraction(pending)
+	sess.state.addPendingInteraction(pending)
 	return protocol.Deferred, nil
 }
 
@@ -196,11 +196,11 @@ func connectionLevelResponse(method string) (any, *protocol.RPCError, bool) {
 	return nil, nil, false
 }
 
-func (sess *Delivery) respondInteraction(ctx context.Context, p interact.PendingInteraction, decision string, answers json.RawMessage) (model.Batch, error) {
-	if err := sess.runtime.ensureProviderCoordinator(); err != nil {
+func (delivery *Delivery) respondInteraction(ctx context.Context, p interact.PendingInteraction, decision string, answers json.RawMessage) (model.Batch, error) {
+	if err := delivery.runtime.ensureProviderCoordinator(); err != nil {
 		return model.Batch{}, err
 	}
-	scope := sess.runtime.deliveryScope()
+	scope := delivery.runtime.deliveryScope()
 	if p.ThreadID != "" {
 		scope.NativeThreadID = &p.ThreadID
 	}
@@ -208,7 +208,7 @@ func (sess *Delivery) respondInteraction(ctx context.Context, p interact.Pending
 		scope.NativeTurnID = &p.TurnID
 	}
 	request := model.Item{ID: p.ID, Scope: scope, Detail: append(json.RawMessage(nil), p.Params...)}
-	return sess.runtime.coordinator().RespondInteraction(ctx, providers.InteractionResponse{
+	return delivery.runtime.coordinator().RespondInteraction(ctx, providers.InteractionResponse{
 		Request: request, RequestID: p.ID, Method: p.Method, Params: p.Params,
 		Kind: providers.InteractionKind(p.Kind), Decision: decision, Answers: answers,
 	})
@@ -505,12 +505,12 @@ func (d *CodexDaemon) handleNotification(method string, params json.RawMessage) 
 		if approval != "" {
 			values[postureFieldPermissionMode] = approval
 		}
-		entry, known := sess.stateOwner.takeSettingsCausation(settingsSemanticKey(values))
+		entry, known := sess.state.takeSettingsCausation(settingsSemanticKey(values))
 		var snapshot providerCausationSnapshot
 		if known {
 			snapshot = entry.Snapshot
 		}
-		sess.stateOwner.recordProviderEvidence("thread_settings_updated", values, metadataFreshnessLive, snapshot)
+		sess.state.recordProviderEvidence("thread_settings_updated", values, metadataFreshnessLive, snapshot)
 		return
 	}
 	if method != serverRequestResolvedMethod {
@@ -582,58 +582,58 @@ const (
 // below reach an OPEN PANE only; without the runtime nudge the compact rail
 // would keep ticking an elapsed timer at a thread that is standing still,
 // which is exactly what D15 forbids.
-func (sess *State) addPendingInteraction(p interact.PendingInteraction) {
-	if err := sess.delivery.recordPermissionRequest(p); err != nil {
-		log.Printf("session %s: record permission request %s: %v", sess.identity.id, p.ID, err)
+func (attachmentState *State) addPendingInteraction(p interact.PendingInteraction) {
+	if err := attachmentState.delivery.recordPermissionRequest(p); err != nil {
+		log.Printf("session %s: record permission request %s: %v", attachmentState.identity.id, p.ID, err)
 	}
-	sess.stateMu.Lock()
-	if sess.interactions == nil {
-		sess.interactions = map[string]interact.PendingInteraction{}
+	attachmentState.stateMu.Lock()
+	if attachmentState.interactions == nil {
+		attachmentState.interactions = map[string]interact.PendingInteraction{}
 	}
-	sess.interactions[p.ID] = p
-	sess.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
-	sess.stateMu.Unlock()
-	if sess.view.liveProjection() != nil {
-		sess.view.liveProjection().upsertInteraction(p)
+	attachmentState.interactions[p.ID] = p
+	attachmentState.observeInteractionLocked(lifecycle.EventWaiting, p.TurnID)
+	attachmentState.stateMu.Unlock()
+	if attachmentState.view.liveProjection() != nil {
+		attachmentState.view.liveProjection().upsertInteraction(p)
 	}
-	sess.wire.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
-	sess.NotifyRuntime()
-	if sess.identity.agentExecutions != nil && sess.identity.hostedThreadID != "" {
-		if err := sess.identity.agentExecutions.MarkWaiting(sess.identity.hostedThreadID, p.TurnID, true); err != nil {
-			log.Printf("mark hosted thread %s waiting: %v", sess.identity.hostedThreadID, err)
+	attachmentState.wire.recordNanoEvent(interactionPendingEvent, map[string]any{"interaction": p})
+	attachmentState.NotifyRuntime()
+	if attachmentState.identity.agentExecutions != nil && attachmentState.identity.hostedThreadID != "" {
+		if err := attachmentState.identity.agentExecutions.MarkWaiting(attachmentState.identity.hostedThreadID, p.TurnID, true); err != nil {
+			log.Printf("mark hosted thread %s waiting: %v", attachmentState.identity.hostedThreadID, err)
 		}
 	}
 }
 
-func (sess *State) configureStatusClassifier() {
-	sess.stateMu.Lock()
-	sess.autoRejectInteractions = true
-	sess.stateMu.Unlock()
+func (attachmentState *State) configureStatusClassifier() {
+	attachmentState.stateMu.Lock()
+	attachmentState.autoRejectInteractions = true
+	attachmentState.stateMu.Unlock()
 }
 
-func (sess *State) statusInteractionEpoch() int64 {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.rejectedInteractionSeq
+func (attachmentState *State) statusInteractionEpoch() int64 {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.rejectedInteractionSeq
 }
 
 // rejectStatusInteraction records the abnormal request without ever adding it
 // to sess.interactions or the live projection. The provider-specific ingress
 // returns its own decline shape immediately; the status dispatcher observes
 // the epoch change and interrupts the classifier turn.
-func (sess *State) rejectStatusInteraction(p interact.PendingInteraction) bool {
-	sess.stateMu.Lock()
-	if !sess.autoRejectInteractions {
-		sess.stateMu.Unlock()
+func (attachmentState *State) rejectStatusInteraction(p interact.PendingInteraction) bool {
+	attachmentState.stateMu.Lock()
+	if !attachmentState.autoRejectInteractions {
+		attachmentState.stateMu.Unlock()
 		return false
 	}
-	sess.rejectedInteractionSeq++
-	sess.stateMu.Unlock()
-	if err := sess.delivery.recordPermissionRequest(p); err != nil {
-		log.Printf("session %s: record hidden status interaction %s: %v", sess.identity.id, p.ID, err)
+	attachmentState.rejectedInteractionSeq++
+	attachmentState.stateMu.Unlock()
+	if err := attachmentState.delivery.recordPermissionRequest(p); err != nil {
+		log.Printf("session %s: record hidden status interaction %s: %v", attachmentState.identity.id, p.ID, err)
 	}
-	if err := sess.delivery.recordPermissionResolution(p, decisionDecline, "nano_status_classifier", "autoDeclined"); err != nil {
-		log.Printf("session %s: record hidden status resolution %s: %v", sess.identity.id, p.ID, err)
+	if err := attachmentState.delivery.recordPermissionResolution(p, decisionDecline, "nano_status_classifier", "autoDeclined"); err != nil {
+		log.Printf("session %s: record hidden status resolution %s: %v", attachmentState.identity.id, p.ID, err)
 	}
 	return true
 }
@@ -641,18 +641,18 @@ func (sess *State) rejectStatusInteraction(p interact.PendingInteraction) bool {
 // takePendingInteraction claims one pending interaction. The claim is the
 // idempotency point on nano's side: a second answer finds nothing and is told
 // so, which is what makes a second tab's click collapse rather than double-send.
-func (sess *State) takePendingInteraction(id string) (interact.PendingInteraction, bool) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	p, ok := sess.interactions[id]
+func (attachmentState *State) takePendingInteraction(id string) (interact.PendingInteraction, bool) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	p, ok := attachmentState.interactions[id]
 	if ok {
-		delete(sess.interactions, id)
-		if len(sess.interactions) == 0 {
-			sess.observeInteractionLocked(lifecycle.EventAnswered, "")
+		delete(attachmentState.interactions, id)
+		if len(attachmentState.interactions) == 0 {
+			attachmentState.observeInteractionLocked(lifecycle.EventAnswered, "")
 		}
 	}
-	if ok && sess.view.liveProjection() != nil {
-		sess.view.liveProjection().removeInteraction(id)
+	if ok && attachmentState.view.liveProjection() != nil {
+		attachmentState.view.liveProjection().removeInteraction(id)
 	}
 	return p, ok
 }
@@ -660,14 +660,14 @@ func (sess *State) takePendingInteraction(id string) (interact.PendingInteractio
 // claimPendingInteraction is takePendingInteraction plus the runtime nudge a
 // successful claim owes the catalog: the thread stops waiting and goes back to
 // working, and the rail's timer must resume with it.
-func (sess *Delivery) claimPendingInteraction(id string) (interact.PendingInteraction, bool) {
-	p, ok := sess.stateOwner.takePendingInteraction(id)
+func (delivery *Delivery) claimPendingInteraction(id string) (interact.PendingInteraction, bool) {
+	p, ok := delivery.state.takePendingInteraction(id)
 	if ok {
-		sess.stateOwner.NotifyRuntime()
-		if sess.identity.agentExecutions != nil && sess.identity.hostedThreadID != "" {
-			remaining := len(sess.stateOwner.PendingInteractionList()) > 0
-			if err := sess.identity.agentExecutions.MarkWaiting(sess.identity.hostedThreadID, p.TurnID, remaining); err != nil {
-				log.Printf("resume hosted thread %s after interaction: %v", sess.identity.hostedThreadID, err)
+		delivery.state.NotifyRuntime()
+		if delivery.identity.agentExecutions != nil && delivery.identity.hostedThreadID != "" {
+			remaining := len(delivery.state.PendingInteractionList()) > 0
+			if err := delivery.identity.agentExecutions.MarkWaiting(delivery.identity.hostedThreadID, p.TurnID, remaining); err != nil {
+				log.Printf("resume hosted thread %s after interaction: %v", delivery.identity.hostedThreadID, err)
 			}
 		}
 	}
@@ -676,26 +676,26 @@ func (sess *Delivery) claimPendingInteraction(id string) (interact.PendingIntera
 
 // drainPendingInteractions removes and returns everything still parked —
 // teardown's list of requests it must answer before unsubscribing.
-func (sess *State) drainPendingInteractions() []interact.PendingInteraction {
-	sess.stateMu.Lock()
-	out := make([]interact.PendingInteraction, 0, len(sess.interactions))
-	for _, p := range sess.interactions {
+func (attachmentState *State) drainPendingInteractions() []interact.PendingInteraction {
+	attachmentState.stateMu.Lock()
+	out := make([]interact.PendingInteraction, 0, len(attachmentState.interactions))
+	for _, p := range attachmentState.interactions {
 		out = append(out, p)
 	}
-	sess.interactions = nil
-	sess.observeInteractionLocked(lifecycle.EventAnswered, "")
-	sess.stateMu.Unlock()
-	if sess.view.liveProjection() != nil {
+	attachmentState.interactions = nil
+	attachmentState.observeInteractionLocked(lifecycle.EventAnswered, "")
+	attachmentState.stateMu.Unlock()
+	if attachmentState.view.liveProjection() != nil {
 		for _, interaction := range out {
-			sess.view.liveProjection().removeInteraction(interaction.ID)
+			attachmentState.view.liveProjection().removeInteraction(interaction.ID)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
 	if len(out) > 0 {
-		sess.NotifyRuntime()
-		if sess.identity.agentExecutions != nil && sess.identity.hostedThreadID != "" {
-			if err := sess.identity.agentExecutions.MarkWaiting(sess.identity.hostedThreadID, "", false); err != nil {
-				log.Printf("clear hosted thread %s interactions: %v", sess.identity.hostedThreadID, err)
+		attachmentState.NotifyRuntime()
+		if attachmentState.identity.agentExecutions != nil && attachmentState.identity.hostedThreadID != "" {
+			if err := attachmentState.identity.agentExecutions.MarkWaiting(attachmentState.identity.hostedThreadID, "", false); err != nil {
+				log.Printf("clear hosted thread %s interactions: %v", attachmentState.identity.hostedThreadID, err)
 			}
 		}
 	}
@@ -704,22 +704,22 @@ func (sess *State) drainPendingInteractions() []interact.PendingInteraction {
 
 // PendingInteractionList is the /state snapshot — the authoritative copy for a
 // tab that opened after the request landed and so cannot find it by replay.
-func (sess *State) PendingInteractionList() []interact.PendingInteraction {
-	sess.stateMu.Lock()
-	out := make([]interact.PendingInteraction, 0, len(sess.interactions))
-	for _, p := range sess.interactions {
+func (attachmentState *State) PendingInteractionList() []interact.PendingInteraction {
+	attachmentState.stateMu.Lock()
+	out := make([]interact.PendingInteraction, 0, len(attachmentState.interactions))
+	for _, p := range attachmentState.interactions {
 		out = append(out, p)
 	}
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return threadvalues.TimestampBefore(out[i].CreatedAt, out[j].CreatedAt) })
 	return out
 }
 
-func (sess *Delivery) noteInteractionResolved(p interact.PendingInteraction, decision, outcome string) {
-	if err := sess.recordPermissionResolution(p, decision, permissionDecisionSource(decision, outcome), outcome); err != nil {
-		log.Printf("session %s: record permission resolution %s: %v", sess.identity.id, p.ID, err)
+func (delivery *Delivery) noteInteractionResolved(p interact.PendingInteraction, decision, outcome string) {
+	if err := delivery.recordPermissionResolution(p, decision, permissionDecisionSource(decision, outcome), outcome); err != nil {
+		log.Printf("session %s: record permission resolution %s: %v", delivery.identity.id, p.ID, err)
 	}
-	sess.wire.recordNanoEvent(interactionResolvedEvent, map[string]any{
+	delivery.wire.recordNanoEvent(interactionResolvedEvent, map[string]any{
 		"id": p.ID, "method": p.Method, "kind": p.Kind, "outcome": outcome,
 	})
 }
@@ -729,19 +729,19 @@ func (sess *Delivery) noteInteractionResolved(p interact.PendingInteraction, dec
 // daemon that outlives nano, with no operator anywhere able to reach it.
 // "cancel" rather than "decline": the session is going away, so continuing the
 // turn without the answer is not what the operator asked for.
-func (sess *Delivery) closeInteractions() {
-	for _, p := range sess.stateOwner.drainPendingInteractions() {
-		if _, err := sess.respondInteraction(context.Background(), p, decisionCancel, nil); err != nil {
-			log.Printf("session %s: cancelling parked %s: %v", sess.identity.id, p.Method, err)
+func (delivery *Delivery) closeInteractions() {
+	for _, p := range delivery.state.drainPendingInteractions() {
+		if _, err := delivery.respondInteraction(context.Background(), p, decisionCancel, nil); err != nil {
+			log.Printf("session %s: cancelling parked %s: %v", delivery.identity.id, p.Method, err)
 		}
-		sess.noteInteractionResolved(p, decisionCancel, "sessionClosed")
+		delivery.noteInteractionResolved(p, decisionCancel, "sessionClosed")
 	}
 }
 
 // --- HTTP -------------------------------------------------------------------
 
 // HandleInteraction answers or dismisses one pending provider interaction.
-func (sess *Delivery) HandleInteraction(w http.ResponseWriter, r *http.Request, requestID string) {
+func (delivery *Delivery) HandleInteraction(w http.ResponseWriter, r *http.Request, requestID string) {
 	if requestID = strings.TrimSpace(requestID); requestID == "" {
 		httpapi.WriteHTTPError(w, "request id required", http.StatusBadRequest)
 		return
@@ -754,7 +754,7 @@ func (sess *Delivery) HandleInteraction(w http.ResponseWriter, r *http.Request, 
 		httpapi.WriteHTTPError(w, "body must be {\"decision\": \"…\", \"answers\": {…}}", http.StatusBadRequest)
 		return
 	}
-	p, ok := sess.claimPendingInteraction(requestID)
+	p, ok := delivery.claimPendingInteraction(requestID)
 	if !ok {
 		httpapi.WriteErrorEnvelope(w, http.StatusConflict, httpapi.ErrorEnvelope{Error: httpapi.Error{
 			Code: "already_resolved", Message: "Interaction is already resolved", Details: map[string]string{"requestId": requestID},
@@ -762,19 +762,19 @@ func (sess *Delivery) HandleInteraction(w http.ResponseWriter, r *http.Request, 
 
 		return
 	}
-	if rpcErr := validateInteractionAnswer(sess.identity.provider, p, body.Decision, body.Answers); rpcErr != nil {
+	if rpcErr := validateInteractionAnswer(delivery.identity.provider, p, body.Decision, body.Answers); rpcErr != nil {
 		// Reject malformed input before reaching the provider edge. This also
 		// keeps the parked request available when the runtime is still attaching.
-		sess.stateOwner.addPendingInteraction(p)
+		delivery.state.addPendingInteraction(p)
 		httpapi.WriteHTTPError(w, rpcErr.Message, http.StatusBadRequest)
 		return
 	}
-	_, responseErr := sess.respondInteraction(r.Context(), p, body.Decision, body.Answers)
+	_, responseErr := delivery.respondInteraction(r.Context(), p, body.Decision, body.Answers)
 	var rpcErr *protocol.RPCError
 	if errors.As(responseErr, &rpcErr) && rpcErr.Code == -32602 {
 		// A malformed answer must not consume the request: put it back so the
 		// operator can try again rather than losing the dialog to a typo.
-		sess.stateOwner.addPendingInteraction(p)
+		delivery.state.addPendingInteraction(p)
 		httpapi.WriteHTTPError(w, rpcErr.Message, http.StatusBadRequest)
 		return
 	}
@@ -782,14 +782,14 @@ func (sess *Delivery) HandleInteraction(w http.ResponseWriter, r *http.Request, 
 		// The far side already moved on (or the connection died). The
 		// interaction is genuinely over either way, so report the same
 		// collapse-silently status rather than resurrecting a dead dialog.
-		sess.noteInteractionResolved(p, body.Decision, "unreachable")
+		delivery.noteInteractionResolved(p, body.Decision, "unreachable")
 		httpapi.WriteErrorEnvelope(w, http.StatusConflict, httpapi.ErrorEnvelope{Error: httpapi.Error{
 			Code: "already_resolved", Message: responseErr.Error(), Details: map[string]string{"requestId": requestID},
 		}})
 
 		return
 	}
-	sess.noteInteractionResolved(p, body.Decision, body.Decision)
+	delivery.noteInteractionResolved(p, body.Decision, body.Decision)
 	httpapi.WriteJSON(w, map[string]any{"answered": true, "id": requestID, "decision": body.Decision})
 }
 

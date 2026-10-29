@@ -87,7 +87,7 @@ func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
 			events: []wire.Event{testWireEvent(1), testWireEvent(2), testWireEvent(3), testWireEvent(4)},
 			seq:    4,
 			subs:   map[chan wire.Event]struct{}{}},
-		stateOwner: State{
+		state: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)},
 		identity: attachmentIdentity{id: "s1"},
 	})
@@ -113,7 +113,7 @@ func TestHandleEventsPageFallsBackToMemory(t *testing.T) {
 func TestRecordWireCapsMemoryBuffer(t *testing.T) {
 	sess := sessionWithOwners(&Session{
 		wire: Wire{subs: map[chan wire.Event]struct{}{}},
-		stateOwner: State{
+		state: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	for i := 0; i < wireBufferCap+5; i++ {
 		sess.wire.recordWire(protocol.Send, []byte(`{"jsonrpc":"2.0","method":"test"}`))

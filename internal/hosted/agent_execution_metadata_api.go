@@ -177,7 +177,7 @@ func (s *Controller) HandleDetach(w http.ResponseWriter, _ *http.Request, record
 		return
 	}
 	if sess := s.sessionForHosted(record.ID); sess != nil {
-		sess.Lifecycle().Close()
+		sess.Teardown().Close()
 		s.Sessions.RemoveSession(sess.ID())
 		s.NotifyRuntime()
 	}

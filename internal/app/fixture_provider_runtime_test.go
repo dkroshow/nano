@@ -197,7 +197,7 @@ func connectProviderRuntimeFixture(t *testing.T, sess *sessions.Session, view *s
 	default:
 		t.Fatalf("unsupported runtime fixture provider %q", sess.Provider())
 	}
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	waitReconnectCondition(t, func() bool { return sess.View().Summary().Status == "ready" })
 	if sess.Provider() == "claude" {
 		emitClaudeInit(t, sess, f.claude, 1, native, model)
@@ -273,7 +273,7 @@ func configuredFixtureSession(t *testing.T, cfg sessions.Config, native, status,
 		t.Fatal(err)
 	}
 	if status == sessionStatusExited {
-		sess.Lifecycle().Close()
+		sess.Teardown().Close()
 	}
 	return sess
 }

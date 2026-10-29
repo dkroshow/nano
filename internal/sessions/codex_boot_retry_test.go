@@ -27,14 +27,14 @@ func TestBootReattachRetriesCodexResumeRefusedByAClosedListener(t *testing.T) {
 			connection := daemon.daemon()
 			connection.reconnectBackoff = time.Millisecond
 			sess := reconnectTestSession(t, connection, "native-boot-retry")
-			sess.stateOwner.lifecycleState = testLifecycleSnapshot("starting", false)
+			sess.state.lifecycleState = testLifecycleSnapshot("starting", false)
 			refusals := make([]string, tc.refusals)
 			for i := range refusals {
-				refusals[i] = fmt.Sprintf(tc.refusal, sess.stateOwner.threadID)
+				refusals[i] = fmt.Sprintf(tc.refusal, sess.state.threadID)
 			}
 			daemon.SetResumeErrorSequence(refusals...)
 
-			if err := startCodexSession(sess.Runtime(), connection, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.stateOwner.threadID, Cwd: t.TempDir(), BootReattach: NewBootControl(0)}); err != nil {
+			if err := startCodexSession(sess.Runtime(), connection, ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.state.threadID, Cwd: t.TempDir(), BootReattach: NewBootControl(0)}); err != nil {
 				t.Fatal(err)
 			}
 			if tc.refusals > 1 {

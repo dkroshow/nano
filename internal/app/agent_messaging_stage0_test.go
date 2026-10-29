@@ -83,7 +83,7 @@ func stage0Server(t *testing.T, seed ...func(*hostedstore.ExecutionStore, thread
 				t.Error("fixture delivery did not finish")
 			}
 		}
-		sess.Lifecycle().Close()
+		sess.Teardown().Close()
 	})
 	seedTestSessionRegistry(&s.Registry, map[string]*sessions.Session{sess.ID(): sess})
 	return s, store, sess, sender, worker, prompts, fake

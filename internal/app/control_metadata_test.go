@@ -415,7 +415,7 @@ func TestHostedMetadataAttachmentStateIsReadTimeJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	live.ReserveNativeID("native-attachment-view")
-	t.Cleanup(live.Lifecycle().Close)
+	t.Cleanup(live.Teardown().Close)
 
 	s.RegisterSession(live)
 	rec = httptest.NewRecorder()

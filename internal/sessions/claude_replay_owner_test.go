@@ -44,7 +44,7 @@ func (h *replayOwnerHarness) resume(t *testing.T) error {
 		}
 	}
 	b := h.base
-	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.identity.metadata, Turns: b.delivery.turns, QueuedTurns: b.delivery.queuedTurns, SendAttempts: b.delivery.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.stateOwner.rememberAttachment, ForgetAttachment: b.stateOwner.forgetAttachment})
+	sess := New(Config{ID: "replay-owner", Provider: "claude", HostedThreadID: b.HostedThreadID(), CWD: b.CWD(), Projection: h.projection(), Metadata: b.identity.metadata, Turns: b.delivery.turns, QueuedTurns: b.delivery.queuedTurns, SendAttempts: b.delivery.sendAttempts, CompletedTurns: func(context.Context) (*coreturns.Store, error) { return h.turns, nil }, AgentExecutions: h.executions, RememberAttachment: b.state.rememberAttachment, ForgetAttachment: b.state.forgetAttachment})
 	if err := sess.InitializeBinding(1); err != nil {
 		t.Fatal(err)
 	}

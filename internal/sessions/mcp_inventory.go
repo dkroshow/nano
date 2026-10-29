@@ -32,32 +32,32 @@ const mcpInventoryDetail = "toolsAndAuthOnly"
 // miss. The app-server call deliberately runs without the cache lock held: it
 // can take seconds, and an invalidation arriving from the wire in the meantime
 // must not block behind it.
-func (sess *View) mcpServers(ctx context.Context) (*inspection.MCPInventory, error) {
-	cached, generation := sess.mcp.Cached()
+func (views *View) mcpServers(ctx context.Context) (*inspection.MCPInventory, error) {
+	cached, generation := views.mcp.Cached()
 	if cached != nil {
 		return cached, nil
 	}
 
 	var raw json.RawMessage
-	params := map[string]any{"threadId": sess.stateOwner.ThreadID(), "detail": mcpInventoryDetail}
-	if err := sess.runtime.daemon().callForSession(ctx, sess.runtime, "mcpServerStatus/list", params, &raw); err != nil {
+	params := map[string]any{"threadId": views.state.ThreadID(), "detail": mcpInventoryDetail}
+	if err := views.runtime.daemon().callForSession(ctx, views.runtime, "mcpServerStatus/list", params, &raw); err != nil {
 		return nil, err
 	}
 	inventory := inspection.ProjectMCPInventory(raw)
-	sess.mcp.Store(inventory, generation)
+	views.mcp.Store(inventory, generation)
 	return inventory, nil
 }
 
 // HandleMCPServers serves the attachment provider MCP inventory.
-func (sess *View) HandleMCPServers(w http.ResponseWriter, r *http.Request) {
-	if sess.identity.provider != "codex" {
+func (views *View) HandleMCPServers(w http.ResponseWriter, r *http.Request) {
+	if views.identity.provider != "codex" {
 		// Claude's registry comes from its system.init snapshot, already on /state.
 		httpapi.WriteHTTPError(w, "mcp inventory is codex-only", http.StatusNotImplemented)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), mcpInventoryTimeout)
 	defer cancel()
-	inventory, err := sess.mcpServers(ctx)
+	inventory, err := views.mcpServers(ctx)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return

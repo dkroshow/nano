@@ -14,20 +14,20 @@ import (
 
 const codexNativeMissing = "codex_native_thread_missing"
 
-func (sess *Runtime) codexMayBeZeroTurn() bool {
-	return sess.stateOwner.codexZeroTurnEvidence("")
+func (providerRuntime *Runtime) codexMayBeZeroTurn() bool {
+	return providerRuntime.state.codexZeroTurnEvidence("")
 }
 
-func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
-	sess.stateMu.Lock()
-	eligible := sess.codexZeroTurnEligible && !sess.closed
-	sess.stateMu.Unlock()
+func (attachmentState *State) codexZeroTurnEvidence(refusedAction string) bool {
+	attachmentState.stateMu.Lock()
+	eligible := attachmentState.codexZeroTurnEligible && !attachmentState.closed
+	attachmentState.stateMu.Unlock()
 	if !eligible {
 		return false
 	}
 	var attempts []prompts.SendAttempt
-	if sess.delivery.sendJournal() != nil {
-		attempts = sess.delivery.sendJournal().ListThread("codex", sess.ThreadID())
+	if attachmentState.delivery.sendJournal() != nil {
+		attempts = attachmentState.delivery.sendJournal().ListThread("codex", attachmentState.ThreadID())
 	}
 	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
@@ -40,53 +40,53 @@ func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
 			return false
 		}
 	}
-	if sess.identity.agentExecutions != nil {
-		for _, operation := range sess.identity.agentExecutions.TurnsForHosted(sess.identity.hostedThreadID) {
+	if attachmentState.identity.agentExecutions != nil {
+		for _, operation := range attachmentState.identity.agentExecutions.TurnsForHosted(attachmentState.identity.hostedThreadID) {
 			if operation.ProviderTurnID != "" {
 				return false
 			}
 		}
 	}
-	return sess.view.liveProjection() == nil || len(sess.view.liveProjection().turnList()) == 0
+	return attachmentState.view.liveProjection() == nil || len(attachmentState.view.liveProjection().turnList()) == 0
 }
 
-func (sess *Runtime) codexZeroTurnNativeMissing(actionID string, err error) bool {
+func (providerRuntime *Runtime) codexZeroTurnNativeMissing(actionID string, err error) bool {
 	var rpcErr *protocol.RPCError
-	return ProviderLifecycleCapabilities(sess.identity.provider).ResumeWithoutTranscript && errors.As(err, &rpcErr) &&
-		rpcErr.Message == "thread not found: "+sess.stateOwner.ThreadID() &&
-		sess.stateOwner.codexZeroTurnRecoveryNeeded() && sess.stateOwner.codexZeroTurnEvidence(actionID)
+	return ProviderLifecycleCapabilities(providerRuntime.identity.provider).ResumeWithoutTranscript && errors.As(err, &rpcErr) &&
+		rpcErr.Message == "thread not found: "+providerRuntime.state.ThreadID() &&
+		providerRuntime.state.codexZeroTurnRecoveryNeeded() && providerRuntime.state.codexZeroTurnEvidence(actionID)
 }
 
-func (sess *State) containCodexNativeMissing(message string) error {
-	sess.stateMu.Lock()
-	sess.codexZeroTurnEligible = false
-	sess.codexZeroTurnResume = false
-	sess.stateMu.Unlock()
-	return sess.delivery.failCodexReconnect(message)
+func (attachmentState *State) containCodexNativeMissing(message string) error {
+	attachmentState.stateMu.Lock()
+	attachmentState.codexZeroTurnEligible = false
+	attachmentState.codexZeroTurnResume = false
+	attachmentState.stateMu.Unlock()
+	return attachmentState.delivery.failCodexReconnect(message)
 }
 
-func (sess *Delivery) failCodexReconnect(message string) error {
-	sess.sendMu.Lock()
+func (delivery *Delivery) failCodexReconnect(message string) error {
+	delivery.sendMu.Lock()
 	changed := false
 	defer func() {
-		sess.sendMu.Unlock()
+		delivery.sendMu.Unlock()
 		if !changed {
 			return
 		}
-		sess.stateOwner.PublishProjectionRuntime()
-		sess.stateOwner.NotifyRuntime()
-		sess.stateOwner.updateHostedThread("reconnect_failed", message)
+		delivery.state.PublishProjectionRuntime()
+		delivery.state.NotifyRuntime()
+		delivery.state.updateHostedThread("reconnect_failed", message)
 	}()
-	closed, didChange := sess.stateOwner.markReconnectFailed(message)
+	closed, didChange := delivery.state.markReconnectFailed(message)
 	changed = didChange
 	if closed {
 		return nil
 	}
-	for _, queued := range sess.queuedPrompts(sess.stateOwner.ThreadID()) {
+	for _, queued := range delivery.queuedPrompts(delivery.state.ThreadID()) {
 		if queued.State != submissionQueued && queued.State != submissionParked {
 			continue
 		}
-		attempt, ok := sess.sendAttempt(queued.ClientActionID)
+		attempt, ok := delivery.sendAttempt(queued.ClientActionID)
 		if queued.State == submissionParked {
 			if !ok || (attempt.Reason != "reconnect_failed" && attempt.Reason != codexNativeMissing) {
 				continue
@@ -94,23 +94,23 @@ func (sess *Delivery) failCodexReconnect(message string) error {
 		} else if ok && attempt.Status != sendAttemptQueued && !(attempt.Status == sendAttemptRefused && attempt.Reason == "reconnect_failed") {
 			continue
 		}
-		if sess.turns == nil {
+		if delivery.turns == nil {
 			return fmt.Errorf("transactional turns store is unavailable")
 		}
 		var record prompts.Record
 		var err error
 		if queued.State == submissionParked {
-			record, _, err = sess.turns.Get(context.Background(), queued.ClientActionID)
+			record, _, err = delivery.turns.Get(context.Background(), queued.ClientActionID)
 		} else {
-			record, err = sess.turns.Cancel(context.Background(), queued.ClientActionID)
+			record, err = delivery.turns.Cancel(context.Background(), queued.ClientActionID)
 		}
 		if err != nil {
 			return fmt.Errorf("park terminal submission: %w", err)
 		}
-		sess.publishTransactionalOutbox(record.Outbox)
-		if sess.identity.agentExecutions != nil {
-			if operation, found := sess.identity.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
-				if err := sess.identity.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,
+		delivery.publishTransactionalOutbox(record.Outbox)
+		if delivery.identity.agentExecutions != nil {
+			if operation, found := delivery.identity.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
+				if err := delivery.identity.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,
 					&threads.ExecutionError{Source: "reconnect", Code: "reconnect_failed", Message: message}); err != nil {
 					return fmt.Errorf("settle terminal operation: %w", err)
 				}
@@ -120,10 +120,10 @@ func (sess *Delivery) failCodexReconnect(message string) error {
 	return nil
 }
 
-func (sess *State) rejectFailedReconnect(w http.ResponseWriter) bool {
-	sess.stateMu.Lock()
-	failed := sess.connectionStatusLocked() == "reconnect_failed"
-	sess.stateMu.Unlock()
+func (attachmentState *State) rejectFailedReconnect(w http.ResponseWriter) bool {
+	attachmentState.stateMu.Lock()
+	failed := attachmentState.connectionStatusLocked() == "reconnect_failed"
+	attachmentState.stateMu.Unlock()
 	if failed {
 		httpapi.WriteError(w, http.StatusConflict, "reconnect_failed", "Codex cannot recover this thread")
 	}

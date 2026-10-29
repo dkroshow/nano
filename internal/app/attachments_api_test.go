@@ -64,7 +64,7 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 	s, store := serverWithAttachments(t)
 	store.Remember(attach("t-retry", "/a", "2026-07-25T10:00:00Z"))
 	exited := liveSession(t, "sess-exited", "t-retry")
-	exited.Lifecycle().Close()
+	exited.Teardown().Close()
 	s.RegisterSession(exited)
 
 	rec := httptest.NewRecorder()

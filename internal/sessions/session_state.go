@@ -22,92 +22,92 @@ import (
 )
 
 // Close tears down the session's provider attachment.
-func (sess *Lifecycle) Close() {
-	if err := sess.closeProvider(false); err != nil {
-		log.Printf("session %s teardown unconfirmed: %v", sess.identity.id, err)
+func (teardown *Teardown) Close() {
+	if err := teardown.closeProvider(false); err != nil {
+		log.Printf("session %s teardown unconfirmed: %v", teardown.identity.id, err)
 		return
 	}
-	sess.stateOwner.ConfirmClaudeClose()
+	teardown.state.ConfirmClaudeClose()
 }
 
 // ConfirmClaudeClose settles Claude prompts after the shim confirms an explicit close.
 // Internal teardown and explicit close both settle only after a successful
 // stop. Explicit close additionally checks attachment removal before calling.
-func (sess *State) ConfirmClaudeClose() {
-	if sess.identity.provider != "claude" {
+func (attachmentState *State) ConfirmClaudeClose() {
+	if attachmentState.identity.provider != "claude" {
 		return
 	}
-	sess.stateMu.Lock()
-	unconfirmed := sess.closeUnconfirmed
-	sess.closeUnconfirmed = false
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Lock()
+	unconfirmed := attachmentState.closeUnconfirmed
+	attachmentState.closeUnconfirmed = false
+	attachmentState.stateMu.Unlock()
 	if unconfirmed {
-		sess.settleAgentTurnsOnExit(true)
-		sess.updateHostedThread(StatusExited, "closed")
+		attachmentState.settleAgentTurnsOnExit(true)
+		attachmentState.updateHostedThread(StatusExited, "closed")
 	}
 }
 
 // CloseWithResult closes the attachment and returns any provider teardown failure.
 // Explicit HTTP close callers must use closeWithResult and preserve failures.
-func (sess *Lifecycle) CloseWithResult() error { return sess.closeProvider(true) }
+func (teardown *Teardown) CloseWithResult() error { return teardown.closeProvider(true) }
 
-func (sess *Lifecycle) closeProvider(requireReady bool) error {
-	sess.closeMu.Lock()
-	defer sess.closeMu.Unlock()
+func (teardown *Teardown) closeProvider(requireReady bool) error {
+	teardown.closeMu.Lock()
+	defer teardown.closeMu.Unlock()
 	// Mark exited before detaching: a background handshake still in flight must
 	// not resurrect the session or its thread routing after teardown
 	// (runCodexHandshake and markTransportReady both re-check this under
 	// stateMu, and a claude transport that lands afterwards closes itself).
-	alreadyClosed, err := sess.stateOwner.beginClose(requireReady)
+	alreadyClosed, err := teardown.state.beginClose(requireReady)
 	if alreadyClosed {
-		return sess.closeErr
+		return teardown.closeErr
 	}
 	if err != nil {
 		return err
 	}
-	sess.stateOwner.releaseCatalogSource()
-	sess.stateOwner.observeConnection(lifecycle.EventClose)
-	claude := sess.stateOwner.claudeHandle()
-	grok := sess.stateOwner.grokHandle()
+	teardown.state.releaseCatalogSource()
+	teardown.state.observeConnection(lifecycle.EventClose)
+	claude := teardown.state.claudeHandle()
+	grok := teardown.state.grokHandle()
 	switch {
-	case sess.runtime.daemon() != nil:
-		sess.runtime.daemon().closeSession(sess.runtime)
+	case teardown.runtime.daemon() != nil:
+		teardown.runtime.daemon().closeSession(teardown.runtime)
 	case claude != nil:
 		// Same rule as codex (closeSession): answer everything still parked
 		// before the transport goes away. A shim-hosted child outlives nano, so
 		// an unanswered can_use_tool would hold its turn open with no operator
 		// anywhere able to reach it.
-		sess.delivery.closeInteractions()
-		sess.closeErr = claude.Close()
+		teardown.delivery.closeInteractions()
+		teardown.closeErr = claude.Close()
 	case grok != nil:
 		// Explicit close rejects parked permissions before disconnecting the
 		// proxy. A Nano process restart does not call close, so the leader keeps
 		// both the turn and any parked request alive for session/load.
-		sess.delivery.closeInteractions()
+		teardown.delivery.closeInteractions()
 		_ = grok.Close()
 	}
-	sess.wire.closeSpool()
-	if core := sess.runtime.coreSession(); core != nil {
+	teardown.wire.closeSpool()
+	if core := teardown.runtime.coreSession(); core != nil {
 		core.Close()
 	}
-	return sess.closeErr
+	return teardown.closeErr
 }
 
 // Summary is one session's full summary: its canonical view (three reads),
 // its durable name (one read) and its attention flag from the one-pass
 // operation map.
-func (sess *View) Summary() Summary {
+func (views *View) Summary() Summary {
 	view, err := hostedstore.MetadataView{}, error(sql.ErrNoRows)
-	if sess.identity.metadata != nil {
-		view, err = sess.identity.metadata.View(sess.identity.hostedThreadID)
+	if views.identity.metadata != nil {
+		view, err = views.identity.metadata.View(views.identity.hostedThreadID)
 	}
 	needsAttention := false
-	if sess.identity.agentExecutions != nil {
-		needsAttention = sess.identity.agentExecutions.SessionNeedsAttention(sess.identity.hostedThreadID)
+	if views.identity.agentExecutions != nil {
+		needsAttention = views.identity.agentExecutions.SessionNeedsAttention(views.identity.hostedThreadID)
 	}
-	summary := sess.stateOwner.SummaryWith(view, err, needsAttention)
+	summary := views.state.SummaryWith(view, err, needsAttention)
 	if summary.Metadata != nil {
-		summary.Metadata.Name, _ = sess.hostedMetadataName(summary.Provider, summary.ThreadID, summary.Name)
+		summary.Metadata.Name, _ = views.hostedMetadataName(summary.Provider, summary.ThreadID, summary.Name)
 	}
 	return summary
 }
@@ -117,51 +117,51 @@ func (sess *View) Summary() Summary {
 // views in one batch. The view's name is the display name; summary replaces
 // it with the durable name for one session. The sessions list carries no name
 // in its metadata.
-func (sess *State) SummaryWith(view hostedstore.MetadataView, viewErr error, needsAttention bool) Summary {
-	sess.stateMu.Lock()
-	presentationMode := sess.presentationMode
+func (attachmentState *State) SummaryWith(view hostedstore.MetadataView, viewErr error, needsAttention bool) Summary {
+	attachmentState.stateMu.Lock()
+	presentationMode := attachmentState.presentationMode
 	if presentationMode == "" {
 		presentationMode = presentationShared
 	}
 	summary := Summary{
-		ID:                    sess.identity.id,
-		Provider:              sess.identity.provider,
-		ThreadID:              sess.threadID,
-		Name:                  sess.displayName,
-		Model:                 sess.model,
-		Cwd:                   sess.cwd,
-		Status:                sess.connectionStatusLocked(),
-		HostedThreadID:        sess.identity.hostedThreadID,
-		InvokerHostedThreadID: sess.identity.invokerHostedThreadID,
-		InvokerNativeThreadID: sess.identity.invokerNativeThreadID,
-		InvokerProvider:       sess.identity.invokerProvider,
+		ID:                    attachmentState.identity.id,
+		Provider:              attachmentState.identity.provider,
+		ThreadID:              attachmentState.threadID,
+		Name:                  attachmentState.displayName,
+		Model:                 attachmentState.model,
+		Cwd:                   attachmentState.cwd,
+		Status:                attachmentState.connectionStatusLocked(),
+		HostedThreadID:        attachmentState.identity.hostedThreadID,
+		InvokerHostedThreadID: attachmentState.identity.invokerHostedThreadID,
+		InvokerNativeThreadID: attachmentState.identity.invokerNativeThreadID,
+		InvokerProvider:       attachmentState.identity.invokerProvider,
 		PresentationMode:      presentationMode,
-		SidebarPlacement:      sess.sidebarPlacement,
-		SpawnMode:             sess.identity.spawnMode,
-		Error:                 sess.spawnError,
-		TurnActive:            sess.workActiveLocked(),
-		ThreadStatus:          sess.threadStatusLocked(),
-		TurnStartedAtMs:       sess.turnStartedAtMs,
-		CompactingSinceMs:     sess.compactingSinceMsLocked(),
-		LastTurnEndedAt:       sess.lastTurnEndedAt,
-		Waiting:               sess.lifecycleState.State.Connection == lifecycle.Ready && sess.lifecycleState.State.Work == lifecycle.WaitingOnYou,
-		MetadataDegraded:      sess.metadataDegraded,
-		CreatedAt:             sess.identity.createdAt.Format(time.RFC3339),
+		SidebarPlacement:      attachmentState.sidebarPlacement,
+		SpawnMode:             attachmentState.identity.spawnMode,
+		Error:                 attachmentState.spawnError,
+		TurnActive:            attachmentState.workActiveLocked(),
+		ThreadStatus:          attachmentState.threadStatusLocked(),
+		TurnStartedAtMs:       attachmentState.turnStartedAtMs,
+		CompactingSinceMs:     attachmentState.compactingSinceMsLocked(),
+		LastTurnEndedAt:       attachmentState.lastTurnEndedAt,
+		Waiting:               attachmentState.lifecycleState.State.Connection == lifecycle.Ready && attachmentState.lifecycleState.State.Work == lifecycle.WaitingOnYou,
+		MetadataDegraded:      attachmentState.metadataDegraded,
+		CreatedAt:             attachmentState.identity.createdAt.Format(time.RFC3339),
 	}
 	if !summary.TurnActive {
 		summary.TurnStartedAtMs = 0
 	}
-	sess.stateMu.Unlock()
-	summary.RunningTurnInput = sess.runtime.acceptsRunningTurnInput()
-	if sess.view.liveProjection() != nil {
-		summary.ThreadDiagnostics = sess.view.liveProjection().ThreadDiagnosticsSnapshot()
+	attachmentState.stateMu.Unlock()
+	summary.RunningTurnInput = attachmentState.runtime.acceptsRunningTurnInput()
+	if attachmentState.view.liveProjection() != nil {
+		summary.ThreadDiagnostics = attachmentState.view.liveProjection().ThreadDiagnosticsSnapshot()
 	}
 	summary.NeedsAttention = needsAttention
 	summary.FileTranscript = true
 	// A hosted session's facts are served exclusively from the canonical view.
 	// Local session fields are transport state, not a fallback metadata source.
 	summary.Posture, summary.Model, summary.Cwd = hostedstore.Posture{}, "", ""
-	if sess.identity.metadata == nil || viewErr != nil {
+	if attachmentState.identity.metadata == nil || viewErr != nil {
 		summary.MetadataUnavailable = true
 		return summary
 	}
@@ -176,9 +176,9 @@ func (sess *State) SummaryWith(view hostedstore.MetadataView, viewErr error, nee
 	return summary
 }
 
-func (sess *View) hostedMetadataName(provider, nativeThreadID, fallback string) (hostedstore.MetadataName, bool) {
-	if sess.metadataName != nil {
-		if name, ok := sess.metadataName(provider, nativeThreadID); ok {
+func (views *View) hostedMetadataName(provider, nativeThreadID, fallback string) (hostedstore.MetadataName, bool) {
+	if views.metadataName != nil {
+		if name, ok := views.metadataName(provider, nativeThreadID); ok {
 			return name, true
 		}
 	}
@@ -198,24 +198,24 @@ func displayMetadataName(displayName string) hostedstore.MetadataName {
 // failSpawn records a background spawn failure: the session stays listed so
 // the UI can show what went wrong, with status exited and the message
 // surfaced as "error" on the summary and /state (frozen R3 contract).
-func (sess *State) failSpawn(message string) {
-	sess.recordRestartFailure("handshake_failed")
-	sess.stateMu.Lock()
-	wasActive := sess.workActiveLocked()
-	sess.spawnError = message
-	sess.transitionLifecycleLocked(lifecycle.EventRuntimeExited)
-	closed := sess.closed
+func (attachmentState *State) failSpawn(message string) {
+	attachmentState.recordRestartFailure("handshake_failed")
+	attachmentState.stateMu.Lock()
+	wasActive := attachmentState.workActiveLocked()
+	attachmentState.spawnError = message
+	attachmentState.transitionLifecycleLocked(lifecycle.EventRuntimeExited)
+	closed := attachmentState.closed
 	if wasActive {
-		sess.lastTurnEndedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		attachmentState.lastTurnEndedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	sess.turnStartedAtMs = 0 // clearing site 3 of 3 (D14)
-	sess.clearTurnRestoreLocked()
-	sess.stateMu.Unlock()
-	sess.settleAgentTurnsOnExit(closed)
-	sess.releaseCatalogSource()
-	sess.PublishProjectionRuntime()
-	sess.NotifyRuntime()
-	sess.updateHostedThread(StatusExited, message)
+	attachmentState.turnStartedAtMs = 0 // clearing site 3 of 3 (D14)
+	attachmentState.clearTurnRestoreLocked()
+	attachmentState.stateMu.Unlock()
+	attachmentState.settleAgentTurnsOnExit(closed)
+	attachmentState.releaseCatalogSource()
+	attachmentState.PublishProjectionRuntime()
+	attachmentState.NotifyRuntime()
+	attachmentState.updateHostedThread(StatusExited, message)
 }
 
 // claudeHandle snapshots the claude provider handle, which a fresh start now
@@ -223,32 +223,32 @@ func (sess *State) failSpawn(message string) {
 // means the transport is not up yet: readiness and the handle are published
 // under one lock, but the child's own init line can promote a session a moment
 // earlier, so every caller checks rather than trusting "ready".
-func (sess *State) claudeHandle() *claudeSession {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.claude
+func (attachmentState *State) claudeHandle() *claudeSession {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.claude
 }
 
-func (sess *State) grokHandle() *grokSession {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.grok
+func (attachmentState *State) grokHandle() *grokSession {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.grok
 }
 
-func (sess *State) setState(key string, v json.RawMessage) {
-	sess.stateMu.Lock()
-	sess.state[key] = v
-	sess.stateMu.Unlock()
+func (attachmentState *State) setState(key string, v json.RawMessage) {
+	attachmentState.stateMu.Lock()
+	attachmentState.state[key] = v
+	attachmentState.stateMu.Unlock()
 }
 
-func (sess *State) settleAgentTurnsOnExit(closed bool) {
-	sess.stateMu.Lock()
-	unconfirmed := sess.closeUnconfirmed
-	sess.stateMu.Unlock()
+func (attachmentState *State) settleAgentTurnsOnExit(closed bool) {
+	attachmentState.stateMu.Lock()
+	unconfirmed := attachmentState.closeUnconfirmed
+	attachmentState.stateMu.Unlock()
 	if unconfirmed {
 		return
 	}
-	if sess.identity.agentExecutions == nil || sess.identity.hostedThreadID == "" {
+	if attachmentState.identity.agentExecutions == nil || attachmentState.identity.hostedThreadID == "" {
 		return
 	}
 	turnStatus := agentTurnDeliveryUnknown
@@ -262,38 +262,38 @@ func (sess *State) settleAgentTurnsOnExit(closed bool) {
 			Source: "client", Code: "session_closed", Message: "the caller closed the hosted thread",
 		}
 	}
-	if err := sess.identity.agentExecutions.MarkSessionTurns(sess.identity.hostedThreadID, turnStatus, executionErr); err != nil {
-		log.Printf("settle turns for exited hosted thread %s: %v", sess.identity.hostedThreadID, err)
+	if err := attachmentState.identity.agentExecutions.MarkSessionTurns(attachmentState.identity.hostedThreadID, turnStatus, executionErr); err != nil {
+		log.Printf("settle turns for exited hosted thread %s: %v", attachmentState.identity.hostedThreadID, err)
 	}
 }
 
-func (sess *State) updateHostedThread(status, message string) {
-	sess.stateMu.Lock()
-	unconfirmed := sess.closeUnconfirmed
-	sess.stateMu.Unlock()
+func (attachmentState *State) updateHostedThread(status, message string) {
+	attachmentState.stateMu.Lock()
+	unconfirmed := attachmentState.closeUnconfirmed
+	attachmentState.stateMu.Unlock()
 	if unconfirmed {
 		return
 	}
-	if sess.identity.hostedThreadID == "" {
+	if attachmentState.identity.hostedThreadID == "" {
 		return
 	}
-	if sess.identity.metadata != nil {
-		if err := hostedstore.SkipOwnedNativeClaim(sess.identity.metadata.ClaimNativeID(sess.identity.hostedThreadID, sess.identity.provider, sess.ThreadID(), NativeThreadIDProvisional(sess.identity.provider, sess.ThreadID()))); err != nil {
-			log.Printf("claim canonical native id for %s: %v", sess.identity.hostedThreadID, err)
+	if attachmentState.identity.metadata != nil {
+		if err := hostedstore.SkipOwnedNativeClaim(attachmentState.identity.metadata.ClaimNativeID(attachmentState.identity.hostedThreadID, attachmentState.identity.provider, attachmentState.ThreadID(), NativeThreadIDProvisional(attachmentState.identity.provider, attachmentState.ThreadID()))); err != nil {
+			log.Printf("claim canonical native id for %s: %v", attachmentState.identity.hostedThreadID, err)
 		}
 	}
-	if sess.identity.agentExecutions == nil {
+	if attachmentState.identity.agentExecutions == nil {
 		return
 	}
-	if err := sess.identity.agentExecutions.UpdateSession(
-		sess.identity.hostedThreadID, sess.identity.id, sess.ThreadID(), status, message,
+	if err := attachmentState.identity.agentExecutions.UpdateSession(
+		attachmentState.identity.hostedThreadID, attachmentState.identity.id, attachmentState.ThreadID(), status, message,
 	); err != nil {
-		log.Printf("update hosted thread %s: %v", sess.identity.hostedThreadID, err)
+		log.Printf("update hosted thread %s: %v", attachmentState.identity.hostedThreadID, err)
 	}
 }
 
-func (sess *State) rememberDurableAttachment(rec hostedstore.Attachment) {
-	if sess.rememberAttachment == nil {
+func (attachmentState *State) rememberDurableAttachment(rec hostedstore.Attachment) {
+	if attachmentState.rememberAttachment == nil {
 		return
 	}
 	// A never-prompted Claude child has only its shim handle. Keep the New
@@ -302,74 +302,74 @@ func (sess *State) rememberDurableAttachment(rec hostedstore.Attachment) {
 	// overlay. Real attachment records must not retain this staging value: a
 	// later manual rename is authoritative and must never be overwritten at boot.
 	if rec.Provisional() {
-		sess.stateMu.Lock()
-		rec.PendingName = sess.pendingName
-		sess.stateMu.Unlock()
+		attachmentState.stateMu.Lock()
+		rec.PendingName = attachmentState.pendingName
+		attachmentState.stateMu.Unlock()
 	}
-	rec.HostedThreadID = sess.identity.hostedThreadID
+	rec.HostedThreadID = attachmentState.identity.hostedThreadID
 	// Cwd/model/tier are canonical control.sqlite facts. The attachment JSON is
 	// retained solely as a read-only migration/transport bridge and must never
 	// regain posture authority from a live session.
 	rec.Cwd, rec.Model, rec.TurnServiceTier = "", "", ""
-	rec.InvokerHostedThreadID = sess.identity.invokerHostedThreadID
-	rec.InvokerNativeThreadID = sess.identity.invokerNativeThreadID
-	rec.InvokerProvider = sess.identity.invokerProvider
+	rec.InvokerHostedThreadID = attachmentState.identity.invokerHostedThreadID
+	rec.InvokerNativeThreadID = attachmentState.identity.invokerNativeThreadID
+	rec.InvokerProvider = attachmentState.identity.invokerProvider
 	// presentationMode is mutable under stateMu (the presentation endpoint
 	// flips it mid-life), unlike the invoker fields above, so its read locks.
-	sess.stateMu.Lock()
-	rec.PresentationMode = sess.presentationMode
-	sess.stateMu.Unlock()
-	sess.rememberAttachment(rec)
+	attachmentState.stateMu.Lock()
+	rec.PresentationMode = attachmentState.presentationMode
+	attachmentState.stateMu.Unlock()
+	attachmentState.rememberAttachment(rec)
 }
 
 // recordRestartStep reports progress without owning the restart record.
-func (sess *State) recordRestartStep(step observability.RestartStep) {
-	if sess.restartProgress != nil {
-		sess.restartProgress(step)
+func (attachmentState *State) recordRestartStep(step observability.RestartStep) {
+	if attachmentState.restartProgress != nil {
+		attachmentState.restartProgress(step)
 	}
 }
 
 // recordRestartFailure reports the provider outcome to the restart owner.
-func (sess *State) recordRestartFailure(reason string) {
-	if sess.restartFailure != nil {
-		sess.restartFailure(reason)
+func (attachmentState *State) recordRestartFailure(reason string) {
+	if attachmentState.restartFailure != nil {
+		attachmentState.restartFailure(reason)
 	}
 }
 
 // holdHandshakeRelease records the slot held by this attachment until catch-up.
-func (sess *State) holdHandshakeRelease(release func()) {
-	sess.stateMu.Lock()
-	sess.releaseHandshakeSlot = release
-	sess.stateMu.Unlock()
+func (attachmentState *State) holdHandshakeRelease(release func()) {
+	attachmentState.stateMu.Lock()
+	attachmentState.releaseHandshakeSlot = release
+	attachmentState.stateMu.Unlock()
 }
 
 // SetPresentation updates the attachment presentation mode.
-func (sess *State) SetPresentation(mode string) {
-	sess.stateMu.Lock()
-	sess.presentationMode = mode
-	sess.stateMu.Unlock()
+func (attachmentState *State) SetPresentation(mode string) {
+	attachmentState.stateMu.Lock()
+	attachmentState.presentationMode = mode
+	attachmentState.stateMu.Unlock()
 }
 
 // SetSidebarPlacement updates the attachment sidebar placement.
-func (sess *State) SetSidebarPlacement(placement string) {
-	sess.stateMu.Lock()
-	sess.sidebarPlacement = placement
-	sess.stateMu.Unlock()
+func (attachmentState *State) SetSidebarPlacement(placement string) {
+	attachmentState.stateMu.Lock()
+	attachmentState.sidebarPlacement = placement
+	attachmentState.stateMu.Unlock()
 }
 
 // IsClosed reports whether attachment teardown has begun.
-func (sess *State) IsClosed() bool {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	return sess.closed
+func (attachmentState *State) IsClosed() bool {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	return attachmentState.closed
 }
 
 // ReadyAndWorking reports whether the connected attachment is executing a turn.
-func (sess *State) ReadyAndWorking() (ready, working bool) {
-	sess.stateMu.Lock()
-	defer sess.stateMu.Unlock()
-	ready = sess.lifecycleState.State.Connection == lifecycle.Ready
-	return ready, ready && sess.lifecycleState.State.Work == lifecycle.Working
+func (attachmentState *State) ReadyAndWorking() (ready, working bool) {
+	attachmentState.stateMu.Lock()
+	defer attachmentState.stateMu.Unlock()
+	ready = attachmentState.lifecycleState.State.Connection == lifecycle.Ready
+	return ready, ready && attachmentState.lifecycleState.State.Work == lifecycle.Working
 }
 
 // State owns the atomic lifecycle, native identity, turn and replay facts.
@@ -562,100 +562,230 @@ type State struct {
 }
 
 // connectionStatus reads the lifecycle without lending its lock to a caller.
-func (sess *State) connectionStatus() string {
-	sess.stateMu.Lock()
-	status := sess.connectionStatusLocked()
-	sess.stateMu.Unlock()
+func (attachmentState *State) connectionStatus() string {
+	attachmentState.stateMu.Lock()
+	status := attachmentState.connectionStatusLocked()
+	attachmentState.stateMu.Unlock()
 	return status
 }
-func (sess *State) deliveryPermission() (string, lifecycle.Permission) {
-	sess.stateMu.Lock()
-	status, permission := sess.connectionStatusLocked(), sess.lifecyclePermissionLocked()
-	sess.stateMu.Unlock()
+func (attachmentState *State) deliveryPermission() (string, lifecycle.Permission) {
+	attachmentState.stateMu.Lock()
+	status, permission := attachmentState.connectionStatusLocked(), attachmentState.lifecyclePermissionLocked()
+	attachmentState.stateMu.Unlock()
 	return status, permission
 }
-func (sess *State) maintenanceActive() bool {
-	sess.stateMu.Lock()
-	active := sess.workActiveLocked() || sess.turnRestoreInProgress
-	sess.stateMu.Unlock()
+func (attachmentState *State) maintenanceActive() bool {
+	attachmentState.stateMu.Lock()
+	active := attachmentState.workActiveLocked() || attachmentState.turnRestoreInProgress
+	attachmentState.stateMu.Unlock()
 	return active
 }
-func (sess *State) lifecycleEpoch() uint64 {
-	sess.stateMu.Lock()
-	epoch := sess.lifecycleState.Epoch
-	sess.stateMu.Unlock()
+func (attachmentState *State) lifecycleEpoch() uint64 {
+	attachmentState.stateMu.Lock()
+	epoch := attachmentState.lifecycleState.Epoch
+	attachmentState.stateMu.Unlock()
 	return epoch
 }
-func (sess *State) settlementWaiting() map[string]bool {
-	sess.stateMu.Lock()
-	waiting := maps.Clone(sess.settleWaiting)
-	sess.stateMu.Unlock()
+func (attachmentState *State) settlementWaiting() map[string]bool {
+	attachmentState.stateMu.Lock()
+	waiting := maps.Clone(attachmentState.settleWaiting)
+	attachmentState.stateMu.Unlock()
 	return waiting
 }
-func (sess *State) turnPermission() lifecycle.Permission {
-	sess.stateMu.Lock()
-	permission := sess.lifecyclePermissionLocked()
-	sess.stateMu.Unlock()
+func (attachmentState *State) turnPermission() lifecycle.Permission {
+	attachmentState.stateMu.Lock()
+	permission := attachmentState.lifecyclePermissionLocked()
+	attachmentState.stateMu.Unlock()
 	return permission
 }
-func (sess *State) lifecycleSnapshot() lifecycle.Snapshot {
-	sess.stateMu.Lock()
-	initial := sess.lifecycleState
-	sess.stateMu.Unlock()
+func (attachmentState *State) lifecycleSnapshot() lifecycle.Snapshot {
+	attachmentState.stateMu.Lock()
+	initial := attachmentState.lifecycleState
+	attachmentState.stateMu.Unlock()
 	return initial
 }
-func (sess *State) markReconnectFailed(message string) (closed, changed bool) {
-	sess.stateMu.Lock()
-	closed = sess.closed || sess.connectionStatusLocked() == StatusExited
+func (attachmentState *State) markReconnectFailed(message string) (closed, changed bool) {
+	attachmentState.stateMu.Lock()
+	closed = attachmentState.closed || attachmentState.connectionStatusLocked() == StatusExited
 	if !closed {
 		changed = true
-		sess.transitionLifecycleLocked(lifecycle.EventNativeMissing)
-		sess.spawnError = message
+		attachmentState.transitionLifecycleLocked(lifecycle.EventNativeMissing)
+		attachmentState.spawnError = message
 	}
-	sess.stateMu.Unlock()
+	attachmentState.stateMu.Unlock()
 	return closed, changed
 }
-func (sess *State) beginClose(requireReady bool) (bool, error) {
-	sess.stateMu.Lock()
-	if sess.closed {
-		sess.stateMu.Unlock()
+func (attachmentState *State) beginClose(requireReady bool) (bool, error) {
+	attachmentState.stateMu.Lock()
+	if attachmentState.closed {
+		attachmentState.stateMu.Unlock()
 		return true, nil
 	}
-	if requireReady && sess.identity.provider == "claude" && sess.claude == nil {
-		sess.stateMu.Unlock()
+	if requireReady && attachmentState.identity.provider == "claude" && attachmentState.claude == nil {
+		attachmentState.stateMu.Unlock()
 		return false, errors.New("Claude transport is not ready; stop unconfirmed, retry when attachment settles")
 	}
-	sess.closed = true
-	sess.closeUnconfirmed = sess.identity.provider == "claude" && sess.claude != nil
-	sess.durablyTerminalTurnID = ""
-	sess.durablyTerminalTurnThreadID = ""
-	sess.stateMu.Unlock()
+	attachmentState.closed = true
+	attachmentState.closeUnconfirmed = attachmentState.identity.provider == "claude" && attachmentState.claude != nil
+	attachmentState.durablyTerminalTurnID = ""
+	attachmentState.durablyTerminalTurnThreadID = ""
+	attachmentState.stateMu.Unlock()
 	return false, nil
 }
-func (sess *State) repairResultStale(cached TranscriptRepairResponse) bool {
-	sess.stateMu.Lock()
-	stale := sess.threadID != cached.threadID || sess.attachmentGeneration != cached.attachmentGen
-	sess.stateMu.Unlock()
+func (attachmentState *State) repairResultStale(cached TranscriptRepairResponse) bool {
+	attachmentState.stateMu.Lock()
+	stale := attachmentState.threadID != cached.threadID || attachmentState.attachmentGeneration != cached.attachmentGen
+	attachmentState.stateMu.Unlock()
 	return stale
 }
-func (sess *State) repairIdentity() (string, int64) {
-	sess.stateMu.Lock()
-	threadID := sess.threadID
-	attachmentGeneration := sess.attachmentGeneration
-	sess.stateMu.Unlock()
+func (attachmentState *State) repairIdentity() (string, int64) {
+	attachmentState.stateMu.Lock()
+	threadID := attachmentState.threadID
+	attachmentGeneration := attachmentState.attachmentGeneration
+	attachmentState.stateMu.Unlock()
 	return threadID, attachmentGeneration
 }
-func (sess *State) repairability(threadID string, attachmentGeneration int64) string {
-	sess.stateMu.Lock()
-	detail := sess.repairableLocked(threadID, attachmentGeneration)
-	sess.stateMu.Unlock()
+func (attachmentState *State) repairability(threadID string, attachmentGeneration int64) string {
+	attachmentState.stateMu.Lock()
+	detail := attachmentState.repairableLocked(threadID, attachmentGeneration)
+	attachmentState.stateMu.Unlock()
 	return detail
 }
 
-func (sess *State) catalogAvailable() bool { return sess.catalogSources != nil }
-func (sess *State) awaitAttachedCurrent(id string, freshness bool, progress func() bool, done <-chan struct{}) bool {
-	return sess.catalogSources.AwaitAttachedCurrent(id, freshness, progress, done)
+func (attachmentState *State) catalogAvailable() bool { return attachmentState.catalogSources != nil }
+func (attachmentState *State) awaitAttachedCurrent(id string, freshness bool, progress func() bool, done <-chan struct{}) bool {
+	return attachmentState.catalogSources.AwaitAttachedCurrent(id, freshness, progress, done)
 }
-func (sess *State) savedTurnReader() func(context.Context, string) (liveview.DurableTurnEvidence, bool) {
-	return sess.savedTurn
+func (attachmentState *State) savedTurnReader() func(context.Context, string) (liveview.DurableTurnEvidence, bool) {
+	return attachmentState.savedTurn
+}
+
+func (attachmentState *State) exited() bool {
+	attachmentState.stateMu.Lock()
+	exited := attachmentState.connectionStatusLocked() == StatusExited
+	attachmentState.stateMu.Unlock()
+	return exited
+}
+func (attachmentState *State) closedOrExited() bool {
+	attachmentState.stateMu.Lock()
+	closed := attachmentState.closed || attachmentState.connectionStatusLocked() == StatusExited
+	attachmentState.stateMu.Unlock()
+	return closed
+}
+func (attachmentState *State) setNativeThreadID(id string) {
+	attachmentState.stateMu.Lock()
+	attachmentState.threadID = id
+	attachmentState.stateMu.Unlock()
+}
+func (attachmentState *State) adoptNativeThreadID(id string) {
+	attachmentState.stateMu.Lock()
+	if attachmentState.threadID == "" {
+		attachmentState.threadID = id
+	}
+	attachmentState.stateMu.Unlock()
+}
+func (attachmentState *State) reconnectCandidate() (bool, bool, string) {
+	attachmentState.stateMu.Lock()
+	closed := attachmentState.closed || attachmentState.connectionStatusLocked() == StatusExited
+	eligible := attachmentState.connectionStatusLocked() == "ready" || attachmentState.connectionStatusLocked() == "reconnecting" || attachmentState.connectionStatusLocked() == "reconnect_parked" || attachmentState.connectionStatusLocked() == "reconnect_failed"
+	threadID := attachmentState.threadID
+	attachmentState.stateMu.Unlock()
+	return closed, eligible, threadID
+}
+func (attachmentState *State) recoveryRequested() bool {
+	attachmentState.stateMu.Lock()
+	eligible := !attachmentState.closed && (attachmentState.connectionStatusLocked() == "reconnecting" || attachmentState.connectionStatusLocked() == "reconnect_parked") && attachmentState.threadID != ""
+	attachmentState.stateMu.Unlock()
+	return eligible
+}
+func (attachmentState *State) reconnectParked() bool {
+	attachmentState.stateMu.Lock()
+	parked := attachmentState.connectionStatusLocked() == "reconnect_parked"
+	attachmentState.stateMu.Unlock()
+	return parked
+}
+func (attachmentState *State) reconnectModel() (string, bool) {
+	attachmentState.stateMu.Lock()
+	model := attachmentState.model
+	closed := attachmentState.closed || attachmentState.connectionStatusLocked() == StatusExited
+	attachmentState.stateMu.Unlock()
+	return model, closed
+}
+func (attachmentState *State) recoveryRetainsFailure() bool {
+	attachmentState.stateMu.Lock()
+	recovery := !attachmentState.closed && (attachmentState.connectionStatusLocked() == "reconnecting" || attachmentState.connectionStatusLocked() == "ready")
+	attachmentState.stateMu.Unlock()
+	return recovery
+}
+func (attachmentState *State) captureCodexIdentity(nativeID, model, cwd, nativeCwd string) bool {
+	attachmentState.stateMu.Lock()
+	if attachmentState.connectionStatusLocked() == "exited" {
+		attachmentState.stateMu.Unlock()
+		return false
+	}
+	attachmentState.threadID = nativeID
+	attachmentState.model = model
+	if cwd != "" {
+		attachmentState.cwd = cwd
+	} else if nativeCwd != "" {
+		attachmentState.cwd = nativeCwd
+	}
+	attachmentState.stateMu.Unlock()
+	return true
+}
+func (attachmentState *State) prepareResumeReady() bool {
+	attachmentState.stateMu.Lock()
+	if attachmentState.closed || attachmentState.connectionStatusLocked() == StatusExited {
+		attachmentState.stateMu.Unlock()
+		return false
+	}
+	attachmentState.spawnError = ""
+	attachmentState.stateMu.Unlock()
+	return true
+}
+func (attachmentState *State) claudeReadyEvidence(exited <-chan struct{}) (uint64, uint64, bool, string, int64, bool) {
+	attachmentState.stateMu.Lock()
+	epoch, sequence := attachmentState.lifecycleState.Epoch, attachmentState.nextEvidenceSequenceLocked()
+	active, turnID, anchor := attachmentState.turnRestoreActive, attachmentState.turnRestoreID, attachmentState.turnRestoreStartedAtMs
+	ended := false
+	select {
+	case <-exited:
+		ended = true
+	default:
+	}
+	attachmentState.stateMu.Unlock()
+	return epoch, sequence, active, turnID, anchor, ended
+}
+func (attachmentState *State) restoreEvidence() (uint64, uint64, bool, string, int64) {
+	attachmentState.stateMu.Lock()
+	epoch, sequence := attachmentState.lifecycleState.Epoch, attachmentState.nextEvidenceSequenceLocked()
+	active, turnID, anchor := attachmentState.turnRestoreActive, attachmentState.turnRestoreID, attachmentState.turnRestoreStartedAtMs
+	attachmentState.stateMu.Unlock()
+	return epoch, sequence, active, turnID, anchor
+}
+func (attachmentState *State) publishGrokHandle(grok *grokSession, req ProviderRequest) bool {
+	attachmentState.stateMu.Lock()
+	if attachmentState.closed {
+		attachmentState.stateMu.Unlock()
+		return false
+	}
+	attachmentState.grok = grok
+	if req.Mode == "resume" {
+		attachmentState.threadID = req.ThreadID
+		attachmentState.model = req.GrokResumeModel
+	}
+	attachmentState.stateMu.Unlock()
+	return true
+}
+func (attachmentState *State) publishGrokIdentity(threadID, model string) bool {
+	attachmentState.stateMu.Lock()
+	if attachmentState.closed {
+		attachmentState.stateMu.Unlock()
+		return false
+	}
+	attachmentState.threadID = threadID
+	attachmentState.model = model
+	attachmentState.turnModel = ""
+	attachmentState.stateMu.Unlock()
+	return true
 }

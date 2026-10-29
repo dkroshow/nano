@@ -436,7 +436,7 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "claude", ClaudeShimWS: shim.WSURL(), ClaudeBin: "/fake/claude", Cwd: t.TempDir()}, nil, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(sess.Lifecycle().Close)
+	t.Cleanup(sess.Teardown().Close)
 	conn := <-connected
 	waitForClaudeStatus(t, sess, "ready")
 	emitClaudeInit(t, sess, conn, 1, "native-2", "")
@@ -508,7 +508,7 @@ func memorySession(t *testing.T, id, provider, threadID, status, cwd, model stri
 		t.Fatal(err)
 	}
 	if status == "exited" {
-		sess.Lifecycle().Close()
+		sess.Teardown().Close()
 	}
 	return sess
 }
