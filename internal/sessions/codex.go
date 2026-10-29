@@ -413,14 +413,14 @@ func (d *CodexDaemon) reconnectSessionLoop(sess *Session) {
 		if closed {
 			return
 		}
-		if codexNoRolloutError(err) && sess.runtime.codexMayBeZeroTurn() && sess.runtime.markCodexZeroTurnReady(model) {
+		if codexNoRolloutError(err) && sess.runtime.codexMayBeZeroTurn() && sess.stateOwner.markCodexZeroTurnReady(model) {
 			return
 		}
 		var rpcErr *protocol.RPCError
-		terminal := (codexNoRolloutError(err) && !sess.runtime.codexZeroTurnRecoveryNeeded()) ||
+		terminal := (codexNoRolloutError(err) && !sess.stateOwner.codexZeroTurnRecoveryNeeded()) ||
 			(errors.As(err, &rpcErr) && !codexNoRolloutError(err) && (rpcErr.Code == -32600 || rpcErr.Code == -32602))
 		if terminal {
-			if settlementErr := sess.runtime.failCodexReconnect(err.Error()); settlementErr != nil {
+			if settlementErr := sess.delivery.failCodexReconnect(err.Error()); settlementErr != nil {
 				err, terminal = settlementErr, false
 			}
 		}
@@ -874,18 +874,18 @@ func (d *CodexDaemon) interruptTurn(ctx context.Context, sess *Session, threadID
 // seedCodexTurnOverrides is retained only for legacy rollback-parser tests.
 // Production resume always calls seedCodexCanonicalOverrides below, which is
 // keyed by the hosted identity in control.sqlite.
-func (sess *Runtime) seedCodexTurnOverrides(folded map[string]hostedstore.PostureEntry, legacyServiceTier string) {
-	sess.session.stateOwner.stateMu.Lock()
-	defer sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) seedCodexTurnOverrides(folded map[string]hostedstore.PostureEntry, legacyServiceTier string) {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
 	if folded == nil {
 		if legacyServiceTier != "" {
-			sess.session.stateOwner.turnServiceTier = legacyServiceTier
+			sess.turnServiceTier = legacyServiceTier
 		}
 		return
 	}
-	overlayFold(folded, postureFieldModel, &sess.session.stateOwner.turnModel)
-	overlayFold(folded, postureFieldEffort, &sess.session.stateOwner.turnEffort)
-	overlayFold(folded, postureFieldServiceTier, &sess.session.stateOwner.turnServiceTier)
+	overlayFold(folded, postureFieldModel, &sess.turnModel)
+	overlayFold(folded, postureFieldEffort, &sess.turnEffort)
+	overlayFold(folded, postureFieldServiceTier, &sess.turnServiceTier)
 }
 
 func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) error {
@@ -896,7 +896,7 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 	sess.runtime.codex = daemon
 	if req.Mode == "resume" && sess.metadata != nil {
 		if view, err := sess.metadata.View(sess.hostedThreadID); err == nil {
-			sess.runtime.seedCodexCanonicalOverrides(view)
+			sess.stateOwner.seedCodexCanonicalOverrides(view)
 		}
 	}
 	if req.Mode == "resume" {
@@ -922,7 +922,7 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 				// Manual resumes and every other error retain the normal exited
 				// contract below.
 				if sess.runtime.codexMayBeZeroTurn() && codexNoRolloutError(err) &&
-					sess.runtime.markCodexZeroTurnReady(req.codexResumeModel) {
+					sess.stateOwner.markCodexZeroTurnReady(req.codexResumeModel) {
 					log.Printf("boot re-attach kept zero-turn codex thread %s in session %s", req.ThreadID, sess.id)
 					return
 				}
@@ -963,12 +963,12 @@ func startCodexSession(sess *Session, daemon *CodexDaemon, req ProviderRequest) 
 	return nil
 }
 
-func (sess *Runtime) seedCodexCanonicalOverrides(view hostedstore.MetadataView) {
-	sess.session.stateOwner.stateMu.Lock()
-	defer sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) seedCodexCanonicalOverrides(view hostedstore.MetadataView) {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
 	// A cleared/unknown canonical value must not leave a stale in-memory
 	// override from an earlier attachment generation.
-	sess.session.stateOwner.turnModel, sess.session.stateOwner.turnEffort, sess.session.stateOwner.turnServiceTier = "", "", ""
+	sess.turnModel, sess.turnEffort, sess.turnServiceTier = "", "", ""
 	for field, current := range view.Fields {
 		value, ok := hostedstore.ResumeString(current)
 		if !ok {
@@ -976,11 +976,11 @@ func (sess *Runtime) seedCodexCanonicalOverrides(view hostedstore.MetadataView) 
 		}
 		switch field {
 		case postureFieldModel:
-			sess.session.stateOwner.turnModel = value
+			sess.turnModel = value
 		case postureFieldEffort:
-			sess.session.stateOwner.turnEffort = value
+			sess.turnEffort = value
 		case postureFieldServiceTier:
-			sess.session.stateOwner.turnServiceTier = value
+			sess.turnServiceTier = value
 		}
 	}
 }
@@ -1011,56 +1011,56 @@ func codexThreadClosingError(err error) bool {
 // markCodexZeroTurnReady turns a boot resume's zero-rollout failure into the
 // usable daemon-resident state. A concurrent explicit close wins and leaves
 // the caller to run the ordinary failure cleanup.
-func (sess *Runtime) markCodexZeroTurnReady(model string) bool {
-	sess.session.stateOwner.stateMu.Lock()
-	if sess.session.stateOwner.closed || sess.session.stateOwner.connectionStatusLocked() == StatusExited {
-		sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) markCodexZeroTurnReady(model string) bool {
+	sess.stateMu.Lock()
+	if sess.closed || sess.connectionStatusLocked() == StatusExited {
+		sess.stateMu.Unlock()
 		return false
 	}
-	sess.session.stateOwner.transitionLifecycleLocked(lifecycle.EventReadyIdle)
-	sess.session.stateOwner.model = model
-	sess.session.stateOwner.spawnError = ""
-	sess.session.stateOwner.codexZeroTurnResume = true
-	sess.session.stateOwner.stateMu.Unlock()
-	sess.session.stateOwner.setState("codexReconnect", json.RawMessage(`{"retrying":false,"zeroTurn":true}`))
-	sess.session.view.PublishProjectionRuntime()
-	sess.session.stateOwner.NotifyRuntime()
-	sess.session.stateOwner.updateHostedThread("ready", "")
+	sess.transitionLifecycleLocked(lifecycle.EventReadyIdle)
+	sess.model = model
+	sess.spawnError = ""
+	sess.codexZeroTurnResume = true
+	sess.stateMu.Unlock()
+	sess.setState("codexReconnect", json.RawMessage(`{"retrying":false,"zeroTurn":true}`))
+	sess.PublishProjectionRuntime()
+	sess.NotifyRuntime()
+	sess.updateHostedThread("ready", "")
 	sess.session.delivery.kickQueuedTurnDrain()
 	return true
 }
 
-func (sess *Runtime) codexZeroTurnRecoveryNeeded() bool {
-	sess.session.stateOwner.stateMu.Lock()
-	defer sess.session.stateOwner.stateMu.Unlock()
-	return !sess.session.stateOwner.closed && sess.session.stateOwner.codexZeroTurnResume
+func (sess *State) codexZeroTurnRecoveryNeeded() bool {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
+	return !sess.closed && sess.codexZeroTurnResume
 }
 
-func (sess *Runtime) finishCodexZeroTurnRecovery() {
-	sess.session.stateOwner.stateMu.Lock()
-	sess.session.stateOwner.codexZeroTurnResume = false
-	sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) finishCodexZeroTurnRecovery() {
+	sess.stateMu.Lock()
+	sess.codexZeroTurnResume = false
+	sess.stateMu.Unlock()
 }
 
-func (sess *Runtime) startCodexZeroTurnRecovery() {
-	if sess == nil || !ProviderLifecycleCapabilities(sess.session.provider).ResumeWithoutTranscript || sess.codex == nil {
+func (sess *State) startCodexZeroTurnRecovery() {
+	if sess == nil || !ProviderLifecycleCapabilities(sess.session.provider).ResumeWithoutTranscript || sess.session.runtime.codex == nil {
 		return
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	if sess.session.stateOwner.closed || !sess.session.stateOwner.codexZeroTurnResume || sess.session.stateOwner.codexZeroTurnRecoveryRunning {
-		sess.session.stateOwner.stateMu.Unlock()
+	sess.stateMu.Lock()
+	if sess.closed || !sess.codexZeroTurnResume || sess.codexZeroTurnRecoveryRunning {
+		sess.stateMu.Unlock()
 		return
 	}
-	sess.session.stateOwner.codexZeroTurnRecoveryRunning = true
-	sess.session.stateOwner.stateMu.Unlock()
+	sess.codexZeroTurnRecoveryRunning = true
+	sess.stateMu.Unlock()
 	go sess.runCodexZeroTurnRecovery()
 }
 
-func (sess *Runtime) runCodexZeroTurnRecovery() {
+func (sess *State) runCodexZeroTurnRecovery() {
 	defer func() {
-		sess.session.stateOwner.stateMu.Lock()
-		sess.session.stateOwner.codexZeroTurnRecoveryRunning = false
-		sess.session.stateOwner.stateMu.Unlock()
+		sess.stateMu.Lock()
+		sess.codexZeroTurnRecoveryRunning = false
+		sess.stateMu.Unlock()
 	}()
 	backoff := time.Duration(0)
 	for attempt := 1; attempt <= codexZeroTurnRecoveryAttempts; attempt++ {
@@ -1074,17 +1074,17 @@ func (sess *Runtime) runCodexZeroTurnRecovery() {
 				return
 			}
 		}
-		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.session.stateOwner.ThreadID()}
-		err := runCodexHandshakeWithTimeout(context.Background(), sess.session, sess.codex, req, codexZeroTurnRecoveryAttemptTimeout)
+		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.ThreadID()}
+		err := runCodexHandshakeWithTimeout(context.Background(), sess.session, sess.session.runtime.codex, req, codexZeroTurnRecoveryAttemptTimeout)
 		if err == nil || !sess.codexZeroTurnRecoveryNeeded() {
 			return
 		}
 		log.Printf("zero-turn recovery resume %d/%d for thread %s (session %s): %v",
 			attempt, codexZeroTurnRecoveryAttempts, req.ThreadID, sess.session.id, err)
-		sess.session.stateOwner.observeConnection(lifecycle.EventLinkLost)
+		sess.observeConnection(lifecycle.EventLinkLost)
 		var rpcErr *protocol.RPCError
 		if !errors.As(err, &rpcErr) {
-			sess.codex.requestSessionRecovery(sess.session)
+			sess.session.runtime.codex.requestSessionRecovery(sess.session)
 			// Transport loss owns its replacement connection and ordinary resume.
 			// The shared success path below clears the zero-turn flag if it wins.
 			return
@@ -1099,8 +1099,8 @@ func (sess *Runtime) runCodexZeroTurnRecovery() {
 		}
 	}
 	log.Printf("zero-turn recovery exhausted for thread %s (session %s); leaving session reconnecting",
-		sess.session.stateOwner.ThreadID(), sess.session.id)
-	sess.codex.requestSessionRecovery(sess.session)
+		sess.ThreadID(), sess.session.id)
+	sess.session.runtime.codex.requestSessionRecovery(sess.session)
 }
 
 // runCodexHandshake performs the thread/start or thread/resume call and
@@ -1148,7 +1148,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	}
 	sess.stateOwner.beginTurnRestore()
 	defer sess.stateOwner.cancelTurnRestore()
-	sess.runtime.forgetCodexTurnInputs()
+	sess.stateOwner.forgetCodexTurnInputs()
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	method, params := CodexSessionRequest(req)
@@ -1244,13 +1244,13 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		// Restore action-bearing rows before the lossy provider baseline so a
 		// returned user item promotes the same logical row instead of duplicating
 		// it. The outbox is scrubbed only after durable/provider confirmation.
-		sess.delivery.restoreSubmissionOutbox()
+		sess.stateOwner.restoreSubmissionOutbox()
 		seedCodexResume(sess.view.projection, decoded)
 		sess.delivery.observeCodexResume(decoded)
 		// A resume payload is explicitly lossy and can lag the active rollout.
 		// Settle the open turn from its saved copy; later catalog changes
 		// repeat this repair.
-		sess.view.ReconcileDurableTurn(ctx)
+		sess.stateOwner.ReconcileDurableTurn(ctx)
 		// This is the one successful-resume transition for both the session-owned
 		// zero-turn task and an ordinary daemon reconnect that wins the race.
 
@@ -1293,7 +1293,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 	sess.stateOwner.recordProviderEvidence(method+"_response", providerValues, metadataFreshnessLive, causation)
 	// The native id is authoritative from here: a dialog-supplied session name
 	// can finally reach the names store (start and resume both land here).
-	sess.view.applyPendingName(thread.Thread.ID)
+	sess.stateOwner.applyPendingName(thread.Thread.ID)
 	// starting → ready is a runtime-visible transition (frozen R3 contract).
 	// Re-attaching to a thread whose turn is still running: seed both the
 	// working state and its anchor from the response's own turns array. Nothing
@@ -1352,7 +1352,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Session, daemon 
 		}
 	}
 	if req.Mode == "resume" {
-		sess.runtime.finishCodexZeroTurnRecovery()
+		sess.stateOwner.finishCodexZeroTurnRecovery()
 	}
 	return nil
 }

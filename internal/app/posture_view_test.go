@@ -57,7 +57,7 @@ func TestSummaryAndStateServeFoldedPosture(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	sess.View().HandleState(w, httptest.NewRequest(http.MethodGet, "/api/sessions/x/state", nil))
+	sess.State().HandleState(w, httptest.NewRequest(http.MethodGet, "/api/sessions/x/state", nil))
 	var state struct {
 		Posture hostedstore.Posture `json:"posture"`
 	}

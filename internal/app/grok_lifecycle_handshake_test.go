@@ -187,7 +187,7 @@ func TestGrokResumeReadinessNeedsItsSavedTranscriptAndALiveProxy(t *testing.T) {
 				}
 				waitForClaude(t, "the fake app-server to answer initialize", func() bool {
 					rec := httptest.NewRecorder()
-					sess.View().HandleState(rec, httptest.NewRequest(http.MethodGet, "/state", nil))
+					sess.State().HandleState(rec, httptest.NewRequest(http.MethodGet, "/state", nil))
 					var state map[string]json.RawMessage
 					if err := json.Unmarshal(rec.Body.Bytes(), &state); err != nil {
 						t.Fatal(err)

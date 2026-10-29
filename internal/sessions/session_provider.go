@@ -19,9 +19,11 @@ func (sess *Runtime) BeginProviderSpawn(req ProviderRequest, daemon *CodexDaemon
 		// Run its orchestration outside that mailbox so it can make progress.
 		// Manual resumes still return their synchronous HTTP refusal errors;
 		// boot and external resumes retain their existing asynchronous shells.
-		return sess.beginProviderSpawnLegacy(req, daemon, discard)
+		return sess.session.stateOwner.beginProviderSpawnLegacy(req, daemon, discard)
 	}
-	operation := func(context.Context) error { return sess.beginProviderSpawnLegacy(req, daemon, discard) }
+	operation := func(context.Context) error {
+		return sess.session.stateOwner.beginProviderSpawnLegacy(req, daemon, discard)
+	}
 	if req.Mode == "resume" {
 		return sess.core.ResumeLegacy(context.Background(), operation)
 	}
@@ -30,7 +32,7 @@ func (sess *Runtime) BeginProviderSpawn(req ProviderRequest, daemon *CodexDaemon
 
 // beginProviderSpawnLegacy is the c2: asynchronous attachment shim. Provider
 // adapters replace it when their Start and Resume operations return evidence.
-func (sess *Runtime) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDaemon, discard func()) error {
+func (sess *State) beginProviderSpawnLegacy(req ProviderRequest, daemon *CodexDaemon, discard func()) error {
 	if req.Provider == "codex" {
 		return startCodexSession(sess.session, daemon, req)
 	}
@@ -42,20 +44,20 @@ func (sess *Runtime) beginProviderSpawnLegacy(req ProviderRequest, daemon *Codex
 		if req.BootReattach != nil {
 			go func() {
 				defer req.BootReattach.holdHandshakeSlot(sess.session)()
-				sess.session.stateOwner.stateMu.Lock()
-				closed := sess.session.stateOwner.closed
-				sess.session.stateOwner.stateMu.Unlock()
+				sess.stateMu.Lock()
+				closed := sess.closed
+				sess.stateMu.Unlock()
 				if closed {
-					sess.session.stateOwner.recordRestartFailure("closed")
+					sess.recordRestartFailure("closed")
 					return
 				}
-				if err := sess.resumeClaudeForSpawn(req); err != nil {
+				if err := sess.session.runtime.resumeClaudeForSpawn(req); err != nil {
 					if errors.Is(err, errSpawnSessionClosed) {
-						sess.session.stateOwner.recordRestartFailure("closed")
+						sess.recordRestartFailure("closed")
 						log.Printf("claude boot session %s was closed before its transport came up", sess.session.id)
 						return
 					}
-					sess.session.stateOwner.recordRestartFailure("handshake_failed")
+					sess.recordRestartFailure("handshake_failed")
 					log.Printf("boot re-attach %s/%s failed (left detached): %v", req.Provider, req.ThreadID, err)
 					discard()
 				}
@@ -64,16 +66,16 @@ func (sess *Runtime) beginProviderSpawnLegacy(req ProviderRequest, daemon *Codex
 		}
 		if req.ExternalResumePosture {
 			go func() {
-				if err := sess.resumeClaudeForSpawn(req); err != nil {
+				if err := sess.session.runtime.resumeClaudeForSpawn(req); err != nil {
 					if errors.Is(err, errSpawnSessionClosed) {
 						return
 					}
-					sess.session.stateOwner.failSpawn(err.Error())
+					sess.failSpawn(err.Error())
 				}
 			}()
 			return nil
 		}
-		return sess.resumeClaudeForSpawn(req)
+		return sess.session.runtime.resumeClaudeForSpawn(req)
 	}
 	go func() {
 		if _, err := startClaudeSession(sess.session, req); err != nil {
@@ -82,7 +84,7 @@ func (sess *Runtime) beginProviderSpawnLegacy(req ProviderRequest, daemon *Codex
 				return // closed by the operator: reporting a failure would resurrect it
 			}
 			log.Printf("start claude session %s: %v", sess.session.id, err)
-			sess.session.stateOwner.failSpawn(err.Error())
+			sess.failSpawn(err.Error())
 		}
 	}()
 	return nil

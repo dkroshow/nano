@@ -107,20 +107,20 @@ func firstJSONText(value any, keys ...string) string {
 	return walk(value)
 }
 
-func (sess *Delivery) permissionModeForEvent() string {
+func (sess *State) permissionModeForEvent() string {
 	if sess.session.metadata != nil && sess.session.hostedThreadID != "" {
 		if mode := sess.session.metadata.Posture(sess.session.hostedThreadID).PermissionMode; mode != "" {
 			return mode
 		}
 	}
-	return sess.session.stateOwner.permissionMode
+	return sess.permissionMode
 }
 
-func (sess *Delivery) permissionEvent(p interact.PendingInteraction, eventKind, decision, source, outcome string) hostedstore.PermissionEvent {
+func (sess *State) permissionEvent(p interact.PendingInteraction, eventKind, decision, source, outcome string) hostedstore.PermissionEvent {
 	toolName, summary, digest := permissionRequestDetails(p)
 	return hostedstore.PermissionEvent{
-		HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, sess.session.stateOwner.ThreadID()),
-		NanoSessionID: sess.session.id, AttachmentGeneration: sess.session.stateOwner.attachmentGeneration,
+		HostedThreadID: sess.session.hostedThreadID, Provider: sess.session.provider, NativeThreadID: threadvalues.FirstNonEmpty(p.ThreadID, sess.ThreadID()),
+		NanoSessionID: sess.session.id, AttachmentGeneration: sess.attachmentGeneration,
 		ProviderRequestID: p.ID, TurnID: p.TurnID, ItemID: p.ItemID, Method: p.Method,
 		InteractionKind: p.Kind, ToolName: toolName, EventKind: eventKind,
 		PermissionMode: sess.permissionModeForEvent(), Decision: decision, DecisionSource: source,
@@ -133,14 +133,14 @@ func (sess *Delivery) recordPermissionRequest(p interact.PendingInteraction) err
 	if !isPermissionInteraction(p) || sess.session.metadata == nil || sess.session.hostedThreadID == "" || sess.session.id == "" {
 		return nil
 	}
-	return sess.session.metadata.AppendPermissionEvent(sess.permissionEvent(p, permissionEventRequested, "", "", "requested"))
+	return sess.session.metadata.AppendPermissionEvent(sess.session.stateOwner.permissionEvent(p, permissionEventRequested, "", "", "requested"))
 }
 
 func (sess *Delivery) recordPermissionResolution(p interact.PendingInteraction, decision, source, outcome string) error {
 	if !isPermissionInteraction(p) || sess.session.metadata == nil || sess.session.hostedThreadID == "" || sess.session.id == "" {
 		return nil
 	}
-	return sess.session.metadata.AppendPermissionEvent(sess.permissionEvent(p, permissionEventResolved, decision, source, outcome))
+	return sess.session.metadata.AppendPermissionEvent(sess.session.stateOwner.permissionEvent(p, permissionEventResolved, decision, source, outcome))
 }
 
 func permissionDecisionSource(decision, outcome string) string {

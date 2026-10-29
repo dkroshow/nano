@@ -181,7 +181,7 @@ func (sess *Session) DidRegister() {
 }
 
 // WarmSkills begins the shared cwd read without waiting for a pane request.
-func (sess *View) WarmSkills() { sess.skills.Current(sess.session.stateOwner.cwd) }
+func (sess *State) WarmSkills() { sess.session.view.skills.Current(sess.cwd) }
 
 // RecordCreationPosture records the provider values of the admitted creation.
 func (sess *State) RecordCreationPosture(req ProviderRequest) {

@@ -328,7 +328,7 @@ func (sess *Delivery) claudeResolver(ctx context.Context) func(string) string {
 	return func(handle string) string {
 		native, ok := resolved[handle]
 		if !ok {
-			native = sess.resolveClaudeHandle(ctx, handle)
+			native = sess.session.stateOwner.resolveClaudeHandle(ctx, handle)
 			resolved[handle] = native
 		}
 		return native

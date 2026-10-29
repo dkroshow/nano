@@ -16,19 +16,19 @@ import (
 const codexNativeMissing = "codex_native_thread_missing"
 
 func (sess *Runtime) codexMayBeZeroTurn() bool {
-	return sess.codexZeroTurnEvidence("")
+	return sess.session.stateOwner.codexZeroTurnEvidence("")
 }
 
-func (sess *Runtime) codexZeroTurnEvidence(refusedAction string) bool {
-	sess.session.stateOwner.stateMu.Lock()
-	eligible := sess.session.stateOwner.codexZeroTurnEligible && !sess.session.stateOwner.closed
-	sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) codexZeroTurnEvidence(refusedAction string) bool {
+	sess.stateMu.Lock()
+	eligible := sess.codexZeroTurnEligible && !sess.closed
+	sess.stateMu.Unlock()
 	if !eligible {
 		return false
 	}
 	var attempts []prompts.SendAttempt
 	if sess.session.delivery.sendAttempts != nil {
-		attempts = sess.session.delivery.sendAttempts.ListThread("codex", sess.session.stateOwner.ThreadID())
+		attempts = sess.session.delivery.sendAttempts.ListThread("codex", sess.ThreadID())
 	}
 	for _, attempt := range attempts {
 		if attempt.Reason == codexNativeMissing {
@@ -55,26 +55,26 @@ func (sess *Runtime) codexZeroTurnNativeMissing(actionID string, err error) bool
 	var rpcErr *protocol.RPCError
 	return ProviderLifecycleCapabilities(sess.session.provider).ResumeWithoutTranscript && errors.As(err, &rpcErr) &&
 		rpcErr.Message == "thread not found: "+sess.session.stateOwner.ThreadID() &&
-		sess.codexZeroTurnRecoveryNeeded() && sess.codexZeroTurnEvidence(actionID)
+		sess.session.stateOwner.codexZeroTurnRecoveryNeeded() && sess.session.stateOwner.codexZeroTurnEvidence(actionID)
 }
 
-func (sess *Runtime) containCodexNativeMissing(message string) error {
-	sess.session.stateOwner.stateMu.Lock()
-	sess.session.stateOwner.codexZeroTurnEligible = false
-	sess.session.stateOwner.codexZeroTurnResume = false
-	sess.session.stateOwner.stateMu.Unlock()
-	return sess.failCodexReconnect(message)
+func (sess *State) containCodexNativeMissing(message string) error {
+	sess.stateMu.Lock()
+	sess.codexZeroTurnEligible = false
+	sess.codexZeroTurnResume = false
+	sess.stateMu.Unlock()
+	return sess.session.delivery.failCodexReconnect(message)
 }
 
-func (sess *Runtime) failCodexReconnect(message string) error {
-	sess.session.delivery.sendMu.Lock()
+func (sess *Delivery) failCodexReconnect(message string) error {
+	sess.sendMu.Lock()
 	changed := false
 	defer func() {
-		sess.session.delivery.sendMu.Unlock()
+		sess.sendMu.Unlock()
 		if !changed {
 			return
 		}
-		sess.session.view.PublishProjectionRuntime()
+		sess.session.stateOwner.PublishProjectionRuntime()
 		sess.session.stateOwner.NotifyRuntime()
 		sess.session.stateOwner.updateHostedThread("reconnect_failed", message)
 	}()
@@ -89,11 +89,11 @@ func (sess *Runtime) failCodexReconnect(message string) error {
 	if closed {
 		return nil
 	}
-	for _, queued := range sess.session.delivery.queuedPrompts(sess.session.stateOwner.ThreadID()) {
+	for _, queued := range sess.queuedPrompts(sess.session.stateOwner.ThreadID()) {
 		if queued.State != submissionQueued && queued.State != submissionParked {
 			continue
 		}
-		attempt, ok := sess.session.delivery.sendAttempt(queued.ClientActionID)
+		attempt, ok := sess.sendAttempt(queued.ClientActionID)
 		if queued.State == submissionParked {
 			if !ok || (attempt.Reason != "reconnect_failed" && attempt.Reason != codexNativeMissing) {
 				continue
@@ -101,20 +101,20 @@ func (sess *Runtime) failCodexReconnect(message string) error {
 		} else if ok && attempt.Status != sendAttemptQueued && !(attempt.Status == sendAttemptRefused && attempt.Reason == "reconnect_failed") {
 			continue
 		}
-		if sess.session.delivery.turns == nil {
+		if sess.turns == nil {
 			return fmt.Errorf("transactional turns store is unavailable")
 		}
 		var record prompts.Record
 		var err error
 		if queued.State == submissionParked {
-			record, _, err = sess.session.delivery.turns.Get(context.Background(), queued.ClientActionID)
+			record, _, err = sess.turns.Get(context.Background(), queued.ClientActionID)
 		} else {
-			record, err = sess.session.delivery.turns.Cancel(context.Background(), queued.ClientActionID)
+			record, err = sess.turns.Cancel(context.Background(), queued.ClientActionID)
 		}
 		if err != nil {
 			return fmt.Errorf("park terminal submission: %w", err)
 		}
-		sess.session.delivery.publishTransactionalOutbox(record.Outbox)
+		sess.publishTransactionalOutbox(record.Outbox)
 		if sess.session.agentExecutions != nil {
 			if operation, found := sess.session.agentExecutions.TurnForTransportAction(queued.ClientActionID); found {
 				if err := sess.session.agentExecutions.MarkTurnDelivery(operation.ID, "", agentTurnFailed,
@@ -127,10 +127,10 @@ func (sess *Runtime) failCodexReconnect(message string) error {
 	return nil
 }
 
-func (sess *Runtime) rejectFailedReconnect(w http.ResponseWriter) bool {
-	sess.session.stateOwner.stateMu.Lock()
-	failed := sess.session.stateOwner.connectionStatusLocked() == "reconnect_failed"
-	sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) rejectFailedReconnect(w http.ResponseWriter) bool {
+	sess.stateMu.Lock()
+	failed := sess.connectionStatusLocked() == "reconnect_failed"
+	sess.stateMu.Unlock()
 	if failed {
 		httpapi.WriteError(w, http.StatusConflict, "reconnect_failed", "Codex cannot recover this thread")
 	}

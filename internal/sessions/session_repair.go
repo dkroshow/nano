@@ -38,16 +38,16 @@ type TranscriptRepairResponse struct {
 // stopped, idle and ready; panes then read that file. A timeout returns
 // recovered prompt text but never claims the repair.
 func (sess *Lifecycle) StopDiscardAndRepair(parent context.Context, actionID string) (TranscriptRepairResponse, error) {
-	return sess.stopDiscardAndRepairWithin(parent, actionID, transcriptRepairWait)
+	return sess.session.delivery.stopDiscardAndRepairWithin(parent, actionID, transcriptRepairWait)
 }
 
-func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
+func (sess *Delivery) stopDiscardAndRepairWithin(parent context.Context, actionID string, wait time.Duration) (TranscriptRepairResponse, error) {
 	if sess == nil || sess.session.stateOwner.catalogSources == nil {
 		return TranscriptRepairResponse{}, errors.New("transcript repair is unavailable")
 	}
-	sess.transcriptRepairMu.Lock()
-	defer sess.transcriptRepairMu.Unlock()
-	if cached, ok := sess.transcriptRepairResults[actionID]; ok {
+	sess.session.lifecycle.transcriptRepairMu.Lock()
+	defer sess.session.lifecycle.transcriptRepairMu.Unlock()
+	if cached, ok := sess.session.lifecycle.transcriptRepairResults[actionID]; ok {
 		sess.session.stateOwner.stateMu.Lock()
 		stale := sess.session.stateOwner.threadID != cached.threadID || sess.session.stateOwner.attachmentGeneration != cached.attachmentGen
 		sess.session.stateOwner.stateMu.Unlock()
@@ -63,8 +63,8 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 	_ = parent
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
-	sess.session.delivery.sendMu.Lock()
-	defer sess.session.delivery.sendMu.Unlock()
+	sess.sendMu.Lock()
+	defer sess.sendMu.Unlock()
 
 	sess.session.stateOwner.stateMu.Lock()
 	threadID := sess.session.stateOwner.threadID
@@ -74,7 +74,7 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 		return TranscriptRepairResponse{}, errors.New("provider thread is not attached")
 	}
 
-	queue := sess.session.delivery.queuedPrompts(threadID)
+	queue := sess.queuedPrompts(threadID)
 	discardable := make([]prompts.QueuedTurn, 0, len(queue))
 	actionIDs := make([]string, 0, len(queue))
 	for _, record := range queue {
@@ -85,7 +85,7 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 		actionIDs = append(actionIDs, record.ClientActionID)
 	}
 
-	interrupt, err := sess.session.delivery.interruptTurn(ctx)
+	interrupt, err := sess.session.stateOwner.interruptTurn(ctx)
 	if err != nil {
 		return TranscriptRepairResponse{}, fmt.Errorf("stop failed: %w", err)
 	}
@@ -94,15 +94,15 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 	}
 
 	if len(actionIDs) > 0 {
-		if sess.session.delivery.turns == nil {
+		if sess.turns == nil {
 			return TranscriptRepairResponse{}, errors.New("prompt store is unavailable")
 		}
-		canceled, cancelErr := sess.session.delivery.turns.CancelQueuedBatch(ctx, actionIDs)
+		canceled, cancelErr := sess.turns.CancelQueuedBatch(ctx, actionIDs)
 		if cancelErr != nil {
 			return TranscriptRepairResponse{}, fmt.Errorf("discard failed: %w", cancelErr)
 		}
 		for _, record := range canceled {
-			sess.session.delivery.publishTransactionalOutbox(record.Outbox)
+			sess.publishTransactionalOutbox(record.Outbox)
 		}
 	}
 
@@ -130,10 +130,10 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 	caughtUp := sess.session.stateOwner.catalogSources.AwaitAttachedCurrent(sess.session.id, true, nil, ctx.Done())
 	var settleErr error
 	if caughtUp {
-		settleErr = sess.session.delivery.settleSavedPrompts(ctx)
+		settleErr = sess.settleSavedPrompts(ctx)
 	}
 	sess.session.stateOwner.stateMu.Lock()
-	detail := sess.repairableLocked(threadID, attachmentGeneration)
+	detail := sess.session.stateOwner.repairableLocked(threadID, attachmentGeneration)
 	sess.session.stateOwner.stateMu.Unlock()
 	switch {
 	case detail == transcriptRepairStale:
@@ -148,15 +148,15 @@ func (sess *Lifecycle) stopDiscardAndRepairWithin(parent context.Context, action
 		response.Repaired, response.Status = true, "repaired"
 	}
 
-	if sess.transcriptRepairResults == nil {
-		sess.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
+	if sess.session.lifecycle.transcriptRepairResults == nil {
+		sess.session.lifecycle.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
 	}
 	// One attachment needs only a small replay window. The browser retains the
 	// same action id across a transport retry.
-	if len(sess.transcriptRepairResults) >= 8 {
-		sess.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
+	if len(sess.session.lifecycle.transcriptRepairResults) >= 8 {
+		sess.session.lifecycle.transcriptRepairResults = make(map[string]TranscriptRepairResponse)
 	}
-	sess.transcriptRepairResults[actionID] = response
+	sess.session.lifecycle.transcriptRepairResults[actionID] = response
 	return response, nil
 }
 
@@ -182,14 +182,14 @@ const transcriptRepairStale = "attachment changed while repair was running"
 
 // repairableLocked says why the repair cannot be reported now, or "" when the
 // stopped attachment is unchanged, idle and ready. Callers hold stateMu.
-func (sess *Lifecycle) repairableLocked(threadID string, attachmentGeneration int64) string {
-	if sess.session.stateOwner.threadID != threadID || sess.session.stateOwner.attachmentGeneration != attachmentGeneration {
+func (sess *State) repairableLocked(threadID string, attachmentGeneration int64) string {
+	if sess.threadID != threadID || sess.attachmentGeneration != attachmentGeneration {
 		return transcriptRepairStale
 	}
-	if sess.session.stateOwner.closed || sess.session.stateOwner.connectionStatusLocked() != "ready" || sess.session.stateOwner.workActiveLocked() || sess.session.stateOwner.turnRestoreInProgress {
+	if sess.closed || sess.connectionStatusLocked() != "ready" || sess.workActiveLocked() || sess.turnRestoreInProgress {
 		return "attachment is not idle and ready"
 	}
-	if len(sess.session.stateOwner.interactions) != 0 {
+	if len(sess.interactions) != 0 {
 		return "a provider interaction is still pending"
 	}
 	return ""

@@ -1432,7 +1432,7 @@ func TestClaudeOwedPromptSavedCommitFinishesAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForCatalogWithin(t, time.Minute, func() bool {
-		after.Delivery().SettleWaitingPrompts(ctx) // what a later saved commit runs
+		after.State().SettleWaitingPrompts(ctx) // what a later saved commit runs
 		record, err := core.Get(ctx, "hosted", turnOf["person-starter"])
 		return err == nil && record.Outcome != ""
 	})
@@ -1817,7 +1817,7 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 						hold.Do(func() { close(entered); <-release })
 						return read(ctx, keys)
 					})
-					go func() { sess.Delivery().SettleWaitingPrompts(ctx); close(passed) }()
+					go func() { sess.State().SettleWaitingPrompts(ctx); close(passed) }()
 					<-entered
 				case read:
 					close(release)
@@ -1836,7 +1836,7 @@ func TestCodexResendRequiresSavedAndWireDropEvidence(t *testing.T) {
 			for _, f := range test.frames {
 				play(f)
 			}
-			sess.Delivery().SettleWaitingPrompts(ctx) // the pass a saved commit runs
+			sess.State().SettleWaitingPrompts(ctx) // the pass a saved commit runs
 
 			select {
 			case got := <-sent:
@@ -2188,7 +2188,7 @@ func TestCodexLateRPCEchoBindsAndSettlesSavedPrompt(t *testing.T) {
 					rows, err := h.savedReader(sess)(ctx, history.SavedUserKeys{NativeTurnIDs: []string{turn}})
 					return err == nil && len(rows) > 0 && rows[0].TurnStatus == history.TurnCompleted
 				})
-				sess.Delivery().SettleWaitingPrompts(ctx) // the commit's pass, while the prompt is still unbound
+				sess.State().SettleWaitingPrompts(ctx) // the commit's pass, while the prompt is still unbound
 			}
 			if test.reconnect {
 				before := runtime.codex.ResumeCount()
@@ -2207,7 +2207,7 @@ func TestCodexLateRPCEchoBindsAndSettlesSavedPrompt(t *testing.T) {
 				waitForCatalogWithin(t, 5*time.Second, func() bool { return h.state(t, "late") == promptstypes.Accepted })
 				saved()
 				waitForCatalogWithin(t, time.Minute, func() bool {
-					sess.Delivery().SettleWaitingPrompts(ctx) // the pass a saved commit runs
+					sess.State().SettleWaitingPrompts(ctx) // the pass a saved commit runs
 					return h.state(t, "late") == promptstypes.Confirmed
 				})
 			}

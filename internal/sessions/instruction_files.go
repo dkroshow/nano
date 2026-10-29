@@ -65,15 +65,15 @@ func instructionEvidence(src setup.InstructionFileSource) string {
 // write policy. Codex paths are wire-authoritative (the thread response reports
 // them); Claude paths are documented-expected from Claude Code's memory loading
 // rules, but not wire-attested as exact prompt input.
-func (sess *View) instructionFileSources() ([]setup.InstructionFileSource, instructionFilePolicy) {
+func (sess *State) instructionFileSources() ([]setup.InstructionFileSource, instructionFilePolicy) {
 	pol := instructionFilePolicy{protectedRoots: setup.ProtectedProviderRoots()}
 	var sources []setup.InstructionFileSource
 	switch sess.session.provider {
 	case "codex":
-		sess.session.stateOwner.stateMu.Lock()
-		raw := sess.session.stateOwner.state["thread"]
-		cwd := sess.session.stateOwner.cwd // the background resume handshake may still be updating it
-		sess.session.stateOwner.stateMu.Unlock()
+		sess.stateMu.Lock()
+		raw := sess.state["thread"]
+		cwd := sess.cwd // the background resume handshake may still be updating it
+		sess.stateMu.Unlock()
 		var thread struct {
 			Cwd                   string   `json:"cwd"`
 			InstructionSources    []string `json:"instructionSources"`
@@ -101,11 +101,11 @@ func (sess *View) instructionFileSources() ([]setup.InstructionFileSource, instr
 			pol.writeRoots = append(pol.writeRoots, filemodel.CanonicalPath(r))
 		}
 	case "claude":
-		sess.session.stateOwner.stateMu.Lock()
-		initRaw := sess.session.stateOwner.state["init"]
-		sess.session.stateOwner.stateMu.Unlock()
-		sources = append(sources, setup.ClaudeInstructionSources(sess.session.stateOwner.cwd, initRaw)...)
-		pol.writeRoots = []string{filemodel.CanonicalPath(sess.session.stateOwner.cwd)}
+		sess.stateMu.Lock()
+		initRaw := sess.state["init"]
+		sess.stateMu.Unlock()
+		sources = append(sources, setup.ClaudeInstructionSources(sess.cwd, initRaw)...)
+		pol.writeRoots = []string{filemodel.CanonicalPath(sess.cwd)}
 	}
 	return sources, pol
 }
@@ -184,7 +184,7 @@ func inspectInstructionFile(provider string, src setup.InstructionFileSource, po
 
 // HandleInstructionFiles lists instruction files visible to the attachment.
 func (sess *View) HandleInstructionFiles(w http.ResponseWriter, r *http.Request) {
-	sources, pol := sess.instructionFileSources()
+	sources, pol := sess.session.stateOwner.instructionFileSources()
 	files := make([]instructionFileMeta, 0, len(sources))
 	for _, src := range sources {
 		meta, _ := inspectInstructionFile(sess.session.provider, src, pol)
@@ -195,7 +195,7 @@ func (sess *View) HandleInstructionFiles(w http.ResponseWriter, r *http.Request)
 
 // HandleInstructionFileRead reads an allowed instruction file.
 func (sess *View) HandleInstructionFileRead(w http.ResponseWriter, r *http.Request) {
-	sources, pol := sess.instructionFileSources()
+	sources, pol := sess.session.stateOwner.instructionFileSources()
 	src := findInstructionSource(sources, r.URL.Query().Get("path"))
 	if src == nil {
 		httpapi.WriteHTTPError(w, "path is not an instruction source of this session", http.StatusNotFound)
@@ -222,7 +222,7 @@ func (sess *View) HandleInstructionFileRead(w http.ResponseWriter, r *http.Reque
 // HandleInstructionFileMtime reports the current on-disk mtime for an
 // allowlisted file so the viewer can poll for external changes cheaply.
 func (sess *View) HandleInstructionFileMtime(w http.ResponseWriter, r *http.Request) {
-	sources, _ := sess.instructionFileSources()
+	sources, _ := sess.session.stateOwner.instructionFileSources()
 	src := findInstructionSource(sources, r.URL.Query().Get("path"))
 	if src == nil {
 		httpapi.WriteHTTPError(w, "path is not an instruction source of this session", http.StatusNotFound)
@@ -251,7 +251,7 @@ func (sess *View) HandleInstructionFileWrite(w http.ResponseWriter, r *http.Requ
 		httpapi.WriteHTTPError(w, fmt.Sprintf("content exceeds %d bytes", maxInstructionFileBytes), http.StatusRequestEntityTooLarge)
 		return
 	}
-	sources, pol := sess.instructionFileSources()
+	sources, pol := sess.session.stateOwner.instructionFileSources()
 	src := findInstructionSource(sources, req.Path)
 	if src == nil {
 		httpapi.WriteHTTPError(w, "path is not an instruction source of this session", http.StatusNotFound)

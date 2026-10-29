@@ -158,10 +158,10 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 		return sess
 	}
 	created := now.Add(-time.Hour)
-	live("onpage-live", "/canon/onpage", "canon-model-a", true, created).View().SetDisplayName("Onpage display")
+	live("onpage-live", "/canon/onpage", "canon-model-a", true, created).State().SetDisplayName("Onpage display")
 	live("outside-live", "/canon/outside", "canon-model-b", true, created.Add(time.Second))
 	live("unindexed-live", "/canon/unindexed", "canon-model-c", true, created.Add(2*time.Second))
-	live("failed-live", "/canon/failed", "canon-model-d", true, created.Add(3*time.Second)).View().SetDisplayName("Failed display")
+	live("failed-live", "/canon/failed", "canon-model-d", true, created.Add(3*time.Second)).State().SetDisplayName("Failed display")
 	live("badged-live", "/canon/badged", "canon-model-e", true, created.Add(4*time.Second))
 	live("missing-record-live", "", "", false, created.Add(5*time.Second))
 	for i := 0; i < extra; i++ {

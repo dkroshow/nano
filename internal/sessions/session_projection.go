@@ -19,20 +19,20 @@ import (
 )
 
 // PublishProjectionRuntime publishes the current attachment runtime into the live projection.
-func (sess *View) PublishProjectionRuntime() {
-	if sess.projection == nil {
+func (sess *State) PublishProjectionRuntime() {
+	if sess.session.view.projection == nil {
 		return
 	}
-	sess.session.stateOwner.stateMu.Lock()
+	sess.stateMu.Lock()
 	runtime := liveview.Runtime{
-		SessionStatus:     sess.session.stateOwner.connectionStatusLocked(),
-		ThreadStatus:      sess.session.stateOwner.threadStatusLocked(),
-		TurnActive:        sess.session.stateOwner.workActiveLocked(),
-		TurnID:            sess.session.stateOwner.turnID,
-		TurnStartedAtMs:   sess.session.stateOwner.turnStartedAtMs,
-		CompactingSinceMs: sess.session.stateOwner.compactingSinceMsLocked(),
-		TokenUsage:        append(json.RawMessage(nil), sess.session.stateOwner.tokenUsage...),
-		LastError:         sess.session.stateOwner.lastError,
+		SessionStatus:     sess.connectionStatusLocked(),
+		ThreadStatus:      sess.threadStatusLocked(),
+		TurnActive:        sess.workActiveLocked(),
+		TurnID:            sess.turnID,
+		TurnStartedAtMs:   sess.turnStartedAtMs,
+		CompactingSinceMs: sess.compactingSinceMsLocked(),
+		TokenUsage:        append(json.RawMessage(nil), sess.tokenUsage...),
+		LastError:         sess.lastError,
 		DeliveryExpiries:  sess.session.delivery.deliveryExpiries.count(sess.session.provider),
 	}
 	// The transcript's runtime upsert must not interpret hidden disconnected
@@ -40,8 +40,8 @@ func (sess *View) PublishProjectionRuntime() {
 	if !runtime.TurnActive {
 		runtime.TurnID, runtime.TurnStartedAtMs = "", 0
 	}
-	sess.session.stateOwner.stateMu.Unlock()
-	sess.projection.updateRuntime(runtime)
+	sess.stateMu.Unlock()
+	sess.session.view.projection.updateRuntime(runtime)
 }
 
 func (sess *View) applyLiveRuntimeWire(dir wire.Direction, line []byte, at time.Time) {
@@ -53,80 +53,80 @@ func (sess *View) applyLiveRuntimeWire(dir wire.Direction, line []byte, at time.
 	}
 }
 
-func (sess *View) setLiveTokenUsage(raw json.RawMessage) {
+func (sess *State) setLiveTokenUsage(raw json.RawMessage) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	sess.session.stateOwner.tokenUsage = append(json.RawMessage(nil), raw...)
-	sess.session.stateOwner.stateMu.Unlock()
-	sess.projection.updateTokenUsage(raw)
+	sess.stateMu.Lock()
+	sess.tokenUsage = append(json.RawMessage(nil), raw...)
+	sess.stateMu.Unlock()
+	sess.session.view.projection.updateTokenUsage(raw)
 }
 
-func (sess *View) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage) {
+func (sess *State) setLiveTokenUsageForTurn(turnID string, raw json.RawMessage) {
 	sess.setLiveTokenUsage(raw)
 	usage := normalizeTokenUsage(raw)
 	if usage == nil || turnID == "" {
 		return
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	if sess.session.stateOwner.turnTokenUsage == nil {
-		sess.session.stateOwner.turnTokenUsage = make(map[string]*interact.TokenUsage)
+	sess.stateMu.Lock()
+	if sess.turnTokenUsage == nil {
+		sess.turnTokenUsage = make(map[string]*interact.TokenUsage)
 	}
-	sess.session.stateOwner.turnTokenUsage[turnID] = usage
-	if len(sess.session.stateOwner.turnTokenUsage) > liveProjectionStateTurnCap {
-		for id := range sess.session.stateOwner.turnTokenUsage {
+	sess.turnTokenUsage[turnID] = usage
+	if len(sess.turnTokenUsage) > liveProjectionStateTurnCap {
+		for id := range sess.turnTokenUsage {
 			if id != turnID {
-				delete(sess.session.stateOwner.turnTokenUsage, id)
+				delete(sess.turnTokenUsage, id)
 				break
 			}
 		}
 	}
-	sess.session.stateOwner.stateMu.Unlock()
+	sess.stateMu.Unlock()
 }
 
-func (sess *View) completedTokenUsage(turnID string) *interact.TokenUsage {
-	sess.session.stateOwner.stateMu.Lock()
-	defer sess.session.stateOwner.stateMu.Unlock()
-	return sess.session.stateOwner.turnTokenUsage[turnID]
+func (sess *State) completedTokenUsage(turnID string) *interact.TokenUsage {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
+	return sess.turnTokenUsage[turnID]
 }
 
-func (sess *View) setLiveError(message string) {
+func (sess *State) setLiveError(message string) {
 	if message == "" {
 		return
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	sess.session.stateOwner.lastError = message
-	sess.session.stateOwner.stateMu.Unlock()
-	sess.projection.updateError(message)
+	sess.stateMu.Lock()
+	sess.lastError = message
+	sess.stateMu.Unlock()
+	sess.session.view.projection.updateError(message)
 }
 
 // ReconcileDurableTurn settles the session's open turn from its saved status
 // when the live terminal event was lost. It reads only while a turn is open.
-func (sess *View) ReconcileDurableTurn(ctx context.Context) {
-	if sess == nil || sess.projection == nil || sess.session.stateOwner.savedTurn == nil {
+func (sess *State) ReconcileDurableTurn(ctx context.Context) {
+	if sess == nil || sess.session.view.projection == nil || sess.savedTurn == nil {
 		return
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	turnID := sess.session.stateOwner.turnID
-	threadID := sess.session.stateOwner.threadID
-	generation := sess.session.stateOwner.attachmentGeneration
-	sessionTurnActive := sess.session.stateOwner.workActiveLocked()
-	sess.session.stateOwner.stateMu.Unlock()
+	sess.stateMu.Lock()
+	turnID := sess.turnID
+	threadID := sess.threadID
+	generation := sess.attachmentGeneration
+	sessionTurnActive := sess.workActiveLocked()
+	sess.stateMu.Unlock()
 	if turnID == "" {
-		turnID = sess.projection.currentTurnID()
+		turnID = sess.session.view.projection.currentTurnID()
 	}
 	if turnID == "" {
 		return
 	}
-	liveTurn, wireEvidenceAtMs, version, retained := sess.projection.retainedTurnEvidence(turnID)
+	liveTurn, wireEvidenceAtMs, version, retained := sess.session.view.projection.retainedTurnEvidence(turnID)
 	if !retained {
 		return
 	}
 	if !sessionTurnActive && liveTurn.Status != "in_progress" {
 		return
 	}
-	exact, found := sess.session.stateOwner.savedTurn(ctx, turnID)
+	exact, found := sess.savedTurn(ctx, turnID)
 	if !liveview.DurableTerminalAuthoritative(exact, found, wireEvidenceAtMs) {
 		return
 	}
@@ -139,34 +139,34 @@ func (sess *View) ReconcileDurableTurn(ctx context.Context) {
 	// handshake cannot observe a terminal projection and then resurrect that
 	// exact turn. The saved end applies only to the attachment that read it,
 	// and only if the turn did no live work while it was read.
-	sess.session.stateOwner.stateMu.Lock()
-	if sess.session.stateOwner.attachmentGeneration != generation || threadID != "" && sess.session.stateOwner.threadID != threadID ||
-		!sess.projection.completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
-		sess.session.stateOwner.workActiveLocked() && sess.session.stateOwner.turnID != turnID {
-		sess.session.stateOwner.stateMu.Unlock()
+	sess.stateMu.Lock()
+	if sess.attachmentGeneration != generation || threadID != "" && sess.threadID != threadID ||
+		!sess.session.view.projection.completeTurnUnlessWorked(turnID, version, status, exact.Turn.DurationMS, exact.Turn.CompletedAtMs) ||
+		sess.workActiveLocked() && sess.turnID != turnID {
+		sess.stateMu.Unlock()
 		return
 	}
 	if threadID == "" {
-		threadID = sess.session.stateOwner.threadID
+		threadID = sess.threadID
 	}
-	sess.session.stateOwner.durablyTerminalTurnID = turnID
-	sess.session.stateOwner.durablyTerminalTurnThreadID = threadID
-	turnActiveChanged := sess.session.stateOwner.workActiveLocked()
+	sess.durablyTerminalTurnID = turnID
+	sess.durablyTerminalTurnThreadID = threadID
+	turnActiveChanged := sess.workActiveLocked()
 	if turnActiveChanged {
-		sess.session.stateOwner.transitionLifecycleLocked(lifecycle.EventFinished)
-		sess.session.stateOwner.turnID = ""
-		sess.session.stateOwner.turnStartedAtMs = 0
+		sess.transitionLifecycleLocked(lifecycle.EventFinished)
+		sess.turnID = ""
+		sess.turnStartedAtMs = 0
 		if exact.Turn.CompletedAtMs > 0 {
-			sess.session.stateOwner.lastTurnEndedAt = time.UnixMilli(exact.Turn.CompletedAtMs).UTC().Format(time.RFC3339Nano)
+			sess.lastTurnEndedAt = time.UnixMilli(exact.Turn.CompletedAtMs).UTC().Format(time.RFC3339Nano)
 		}
 	}
-	sess.session.stateOwner.stateMu.Unlock()
+	sess.stateMu.Unlock()
 
 	if !turnActiveChanged {
 		return
 	}
 	sess.PublishProjectionRuntime()
-	sess.session.stateOwner.NotifyRuntime()
+	sess.NotifyRuntime()
 	sess.session.delivery.kickQueuedTurnDrain()
 }
 
@@ -215,8 +215,8 @@ func ReconcileSavedTranscript(ctx context.Context, sess *Session) {
 	if sess == nil {
 		return
 	}
-	sess.view.ReconcileDurableTurn(ctx)
-	sess.delivery.SettleWaitingPrompts(ctx)
+	sess.stateOwner.ReconcileDurableTurn(ctx)
+	sess.stateOwner.SettleWaitingPrompts(ctx)
 }
 
 // View owns transcript projection access, session views and their caches.

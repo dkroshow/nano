@@ -194,7 +194,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 	if sum := sess.view.Summary(); sum.Waiting {
 		t.Fatal("a working session is not waiting")
 	}
-	sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
+	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
 	sum := sess.view.Summary()
 	if !sum.Waiting {
 		t.Fatal("a parked interaction must read as waiting")
@@ -216,7 +216,7 @@ func TestWaitingReflectsParkedInteractions(t *testing.T) {
 // is reset after setup so each case measures only its own transition.
 func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 	park := func(s *Session) {
-		s.delivery.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
+		s.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval})
 	}
 	cases := []struct {
 		name  string
@@ -225,7 +225,7 @@ func TestInteractionTransitionsNudgeTheRuntimeStream(t *testing.T) {
 	}{
 		{"park", func(*Session) {}, park},
 		{"claim", park, func(s *Session) { s.delivery.claimPendingInteraction("1") }},
-		{"drain", park, func(s *Session) { s.delivery.drainPendingInteractions() }},
+		{"drain", park, func(s *Session) { s.stateOwner.drainPendingInteractions() }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -265,12 +265,12 @@ func TestApplyPendingNameWritesOnceAtTheFirstRealBind(t *testing.T) {
 		writes = append(writes, provider+"/"+nativeID+"="+name)
 	}
 
-	sess.view.applyPendingName("") // no id yet: nothing written, name kept
+	sess.stateOwner.applyPendingName("") // no id yet: nothing written, name kept
 	if len(writes) != 0 {
 		t.Fatalf("wrote a name with no native id: %v", writes)
 	}
-	sess.view.applyPendingName("sess-native-1")
-	sess.view.applyPendingName("sess-native-1") // second bind site: no double write
+	sess.stateOwner.applyPendingName("sess-native-1")
+	sess.stateOwner.applyPendingName("sess-native-1") // second bind site: no double write
 	if len(writes) != 1 || writes[0] != "claude/sess-native-1=overnight run" {
 		t.Fatalf("expected exactly one name write, got %v", writes)
 	}

@@ -228,7 +228,7 @@ func (sess *Wire) recordWireWith(gate func() error, prepare func(), dir wire.Dir
 			sess.applyWireSemantic(gate, dir, frame, live, replay, at, sequence...)
 			if terminal != nil && sess.session.view.projection != nil {
 				terminal.FinalMessageID = sess.session.view.projection.finalAgentItemID(terminal.TurnID)
-				if usage := sess.session.view.completedTokenUsage(terminal.TurnID); usage != nil {
+				if usage := sess.session.stateOwner.completedTokenUsage(terminal.TurnID); usage != nil {
 					terminal.Usage = coreturns.Usage{InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens, OutputTokens: usage.OutputTokens}
 				}
 			}

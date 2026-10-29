@@ -71,11 +71,13 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPut, "/api/sessions/{sessionId}/instruction-files/write", "sessions.instructions.write", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.View().HandleInstructionFileWrite(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/state", "sessions.state.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.View().HandleState(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/state", "sessions.state.read", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.State().HandleState(w, r) })},
 		{http.MethodGet, "/api/sessions/{sessionId}/mcp", "sessions.mcp.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.View().HandleMCPServers(w, r)
 		})},
-		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) { value.View().HandleSkills(w, r) })},
+		{http.MethodGet, "/api/sessions/{sessionId}/skills", "sessions.skills.list", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
+			value.State().HandleSkills(w, r)
+		})},
 		{http.MethodPut, "/api/sessions/{sessionId}/name", "sessions.name.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			func(w http.ResponseWriter, r *http.Request, sess *sessions.Session) {
 				var namer threadindex.Namer
@@ -104,7 +106,7 @@ func applicationRoutes(s *server) []applicationRoute {
 			value.View().HandleTurnOptionsRead(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/turn-options", "sessions.turnOptions.update", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
-			value.View().HandleTurnOptionsUpdate(w, r)
+			value.State().HandleTurnOptionsUpdate(w, r)
 		})},
 		{http.MethodPost, "/api/sessions/{sessionId}/interrupt", "sessions.turn.interrupt", sessionRoute(func(w http.ResponseWriter, r *http.Request, value *sessions.Session) {
 			value.Delivery().HandleInterrupt(w, r)

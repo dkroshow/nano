@@ -44,7 +44,7 @@ func requested(t *testing.T, sess *sessions.Session, store *hostedstore.Metadata
 	if sess.Provider() == "codex" && value != "ultrafast" {
 		body, _ := json.Marshal(map[string]string{field: value})
 		response := httptest.NewRecorder()
-		sess.View().HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(string(body))))
+		sess.State().HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(string(body))))
 		if response.Code != http.StatusOK {
 			t.Fatalf("requested %s: %d %s", field, response.Code, response.Body.String())
 		}
@@ -553,7 +553,7 @@ func TestUltrafastSettingEvidenceSettlesOnlyTheRequestedTier(t *testing.T) {
 	fake.ModelList = map[string]any{"data": []any{map[string]any{"model": "gpt-6.1-sol", "serviceTiers": []any{map[string]any{"id": "ultrafast"}}}}}
 	fake.Mu.Unlock()
 	response := httptest.NewRecorder()
-	sess.View().HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(`{"model":"gpt-6.1-sol","serviceTier":"ultrafast"}`)))
+	sess.State().HandleTurnOptionsUpdate(response, httptest.NewRequest(http.MethodPatch, "/turn-options", strings.NewReader(`{"model":"gpt-6.1-sol","serviceTier":"ultrafast"}`)))
 	if response.Code != http.StatusOK {
 		t.Fatalf("provider-advertised Ultrafast must be valid canonical intent: %d %s", response.Code, response.Body.String())
 	}

@@ -703,7 +703,7 @@ func TestAgentTurnViewScopesInteractionsToTheOpenTurn(t *testing.T) {
 	f := newProviderRuntimeFixture(t, sessions.Config{ID: "nano-1", Provider: "codex", HostedThreadID: hosted.ID}, "native-1", "")
 	sess := f.session
 	f.codex.EmitNotification(map[string]any{"id": 1, "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "native-1", "turnId": "turn-current"}})
-	waitForClaude(t, "the current turn's interaction", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
+	waitForClaude(t, "the current turn's interaction", func() bool { return len(sess.State().PendingInteractionList()) == 1 })
 
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), agentExecutions: store}, map[string]*sessions.Session{"nano-1": sess})
 	oldRecord, _ := store.Turn(old.ID)

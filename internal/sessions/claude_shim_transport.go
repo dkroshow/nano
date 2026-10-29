@@ -228,7 +228,7 @@ func attachClaudeSession(sess *Session, shimURL, nativeSessionID string, plan cl
 	c.persistedAnchor.Store(stored.TurnStartedAtMs)
 	// Recreate action-bearing submitted rows before shim replay so replayed user
 	// evidence promotes those rows in place rather than painting a duplicate.
-	sess.delivery.restoreSubmissionOutbox()
+	sess.stateOwner.restoreSubmissionOutbox()
 	// A failed attach whose last admitted frame never acknowledged is still
 	// running on its session loop; a second generation must not overlap it.
 	if err := claudeDrainSettled(sess); err != nil {
@@ -680,7 +680,7 @@ func (sess *Runtime) observeClaudeShimEventGated(event wireclaude.Event, gate fu
 		}
 		// The result line is this turn's own usage evidence. A narrowed replay
 		// has no projection turn for the prompt to key live usage by.
-		usage := sess.session.view.completedTokenUsage(turnID)
+		usage := sess.session.stateOwner.completedTokenUsage(turnID)
 		var message map[string]json.RawMessage
 		if json.Unmarshal(event.Line, &message) == nil {
 			if lineUsage := normalizeTokenUsage(claudeResultUsagePayload(message)); lineUsage != nil {

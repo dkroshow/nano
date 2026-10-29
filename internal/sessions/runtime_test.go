@@ -138,7 +138,7 @@ func TestHandleTurnOptions(t *testing.T) {
 
 	post := func(body string) map[string]any {
 		rec := httptest.NewRecorder()
-		sess.view.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/x/turn-options", strings.NewReader(body)))
+		sess.stateOwner.HandleTurnOptionsUpdate(rec, httptest.NewRequest(http.MethodPost, "/x/turn-options", strings.NewReader(body)))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
 		}

@@ -272,7 +272,7 @@ func TestClaudeInstructionFilesUseDocumentedLoadingRules(t *testing.T) {
 		stateOwner: State{
 			cwd:            cwd,
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	sources, _ := sess.view.instructionFileSources()
+	sources, _ := sess.stateOwner.instructionFileSources()
 	got := map[string]setup.InstructionFileSource{}
 	for _, src := range sources {
 		got[src.Path] = src

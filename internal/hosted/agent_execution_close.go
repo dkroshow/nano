@@ -106,6 +106,6 @@ func (s *Controller) closeAgentSession(sess *sessions.Session) error {
 			return err
 		}
 	}
-	sess.Lifecycle().ConfirmClaudeClose()
+	sess.State().ConfirmClaudeClose()
 	return nil
 }

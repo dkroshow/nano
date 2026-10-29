@@ -71,7 +71,7 @@ func TestStateDoesNotFetchMCPInventory(t *testing.T) {
 	fake := newFakeAppServer(t)
 	sess := resumedSession(t, fake)
 
-	rec := getSessionPath(t, sess.view.HandleState, "/api/sessions/"+sess.ID()+"/state")
+	rec := getSessionPath(t, sess.stateOwner.HandleState, "/api/sessions/"+sess.ID()+"/state")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/state: got %d, want 200 (%s)", rec.Code, rec.Body.String())
 	}

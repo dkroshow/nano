@@ -8,7 +8,7 @@ import (
 	"github.com/dkroshow/nano/internal/observability"
 )
 
-// Session connects one attachment identity to its concrete runtime owners.
+// Session owns one live provider attachment and its ordered runtime state.
 type Session struct {
 	id                    string
 	provider              string

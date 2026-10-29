@@ -51,9 +51,9 @@ func TestHostedFleetUsesLifecycleAndMatchesPane(t *testing.T) {
 			case lifecycle.WaitingOnYou:
 				fixture.activate(t)
 				fixture.emitAndWait(t, []byte(`{"id":77,"method":"item/commandExecution/requestApproval","params":{"threadId":"native-hosted","turnId":"fleet-turn","itemId":"fleet-command","command":"echo test"}}`))
-				waitForClaude(t, "fleet waiting state", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
+				waitForClaude(t, "fleet waiting state", func() bool { return len(sess.State().PendingInteractionList()) == 1 })
 			}
-			sess.View().PublishProjectionRuntime()
+			sess.State().PublishProjectionRuntime()
 			fake := &fakeFleetCatalog{
 				catalogRowsFixture: catalogRowsFixture{page: sidebar.CatalogPage{Items: []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_hosted", Provider: "codex", NativeID: "native-hosted", Kind: "main"}}}}},
 				// Deliberately contradict idle and waiting lifecycle states. Hosted

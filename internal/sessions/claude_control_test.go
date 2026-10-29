@@ -214,7 +214,7 @@ func TestClaudeInterruptIsGatedOnTurnState(t *testing.T) {
 func TestClaudeInteractionResponseUsesProviderAdapter(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{} })
 	sess, _ := startControlSession(t, shim)
-	sess.delivery.addPendingInteraction(interact.PendingInteraction{
+	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{
 		ID: "permission-1", Kind: kindToolPermission, ThreadID: sess.stateOwner.ThreadID(),
 		Params: json.RawMessage(`{"input":{"command":"pwd"}}`), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
@@ -303,9 +303,9 @@ func TestReattachRecoversOnlyUnansweredControlRequests(t *testing.T) {
 	defer claude.Close()
 
 	waitForClaude(t, "the orphaned request to be recovered", func() bool {
-		return len(sess.delivery.PendingInteractionList()) > 0
+		return len(sess.stateOwner.PendingInteractionList()) > 0
 	})
-	pending := sess.delivery.PendingInteractionList()
+	pending := sess.stateOwner.PendingInteractionList()
 	if len(pending) != 1 || pending[0].ID != "old-orphan" {
 		t.Fatalf("pending = %+v, want only the request nothing ever answered", pending)
 	}
@@ -337,9 +337,9 @@ func TestInitializeRehydratesPendingRequests(t *testing.T) {
 	sess, _ := startControlSession(t, shim)
 
 	waitForClaude(t, "the rehydrated request to park", func() bool {
-		return len(sess.delivery.PendingInteractionList()) > 0
+		return len(sess.stateOwner.PendingInteractionList()) > 0
 	})
-	pending := sess.delivery.PendingInteractionList()
+	pending := sess.stateOwner.PendingInteractionList()
 	if len(pending) != 1 || pending[0].ID != "resumed-1" || pending[0].Kind != kindUserInput {
 		t.Fatalf("pending = %+v, want the rehydrated question", pending)
 	}
@@ -352,7 +352,7 @@ func TestClaudeSetModelRecordsOnlyWhatTheWireAccepted(t *testing.T) {
 	shim := controlResponder(t, func(string) any { return map[string]any{} })
 	sess, _ := startControlSession(t, shim)
 
-	res := postJSON(t, sess.view.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":"haiku"}`)
+	res := postJSON(t, sess.stateOwner.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":"haiku"}`)
 	if res.Code != http.StatusOK {
 		t.Fatalf("set model = %d %s", res.Code, res.Body.String())
 	}
@@ -366,7 +366,7 @@ func TestClaudeSetModelRecordsOnlyWhatTheWireAccepted(t *testing.T) {
 
 	// Clearing the override sends the CLI's own reset token rather than an empty
 	// string, which it would not recognize.
-	postJSON(t, sess.view.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":""}`)
+	postJSON(t, sess.stateOwner.HandleTurnOptionsUpdate, "/api/sessions/x/turn-options", `{"model":""}`)
 	frames = controlFramesOf(shim, claudeSubtypeSetModel)
 	if len(frames) != 2 || !strings.Contains(frames[1], `"model":"`+claudeSetModelDefault+`"`) {
 		t.Fatalf("reset frame = %#v", frames)
@@ -402,9 +402,9 @@ func TestStartedSessionParksInboundRequests(t *testing.T) {
 	sess, _ := startControlSession(t, shim)
 
 	waitForClaude(t, "the child's question to park", func() bool {
-		return len(sess.delivery.PendingInteractionList()) > 0
+		return len(sess.stateOwner.PendingInteractionList()) > 0
 	})
-	if pending := sess.delivery.PendingInteractionList(); pending[0].Kind != kindUserInput {
+	if pending := sess.stateOwner.PendingInteractionList(); pending[0].Kind != kindUserInput {
 		t.Fatalf("pending = %+v, want the question parked", pending)
 	}
 }

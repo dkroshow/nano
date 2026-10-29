@@ -107,10 +107,10 @@ func grokRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at time
 	}
 	if promptID, status, usage, terminal := grokTerminalFromWire(line); terminal {
 		if len(usage) > 0 {
-			sess.view.setLiveTokenUsageForTurn(promptID, usage)
+			sess.stateOwner.setLiveTokenUsageForTurn(promptID, usage)
 		}
 		if status == agentTurnFailed {
-			sess.view.setLiveError("Grok turn failed")
+			sess.stateOwner.setLiveError("Grok turn failed")
 		}
 		duration := int64(0)
 		var usageBody map[string]json.RawMessage

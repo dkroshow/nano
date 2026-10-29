@@ -26,23 +26,23 @@ func (sess *Lifecycle) Close() {
 		log.Printf("session %s teardown unconfirmed: %v", sess.session.id, err)
 		return
 	}
-	sess.ConfirmClaudeClose()
+	sess.session.stateOwner.ConfirmClaudeClose()
 }
 
 // ConfirmClaudeClose settles Claude prompts after the shim confirms an explicit close.
 // Internal teardown and explicit close both settle only after a successful
 // stop. Explicit close additionally checks attachment removal before calling.
-func (sess *Lifecycle) ConfirmClaudeClose() {
+func (sess *State) ConfirmClaudeClose() {
 	if sess.session.provider != "claude" {
 		return
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	unconfirmed := sess.session.stateOwner.closeUnconfirmed
-	sess.session.stateOwner.closeUnconfirmed = false
-	sess.session.stateOwner.stateMu.Unlock()
+	sess.stateMu.Lock()
+	unconfirmed := sess.closeUnconfirmed
+	sess.closeUnconfirmed = false
+	sess.stateMu.Unlock()
 	if unconfirmed {
-		sess.session.delivery.settleAgentTurnsOnExit(true)
-		sess.session.stateOwner.updateHostedThread(StatusExited, "closed")
+		sess.settleAgentTurnsOnExit(true)
+		sess.updateHostedThread(StatusExited, "closed")
 	}
 }
 
@@ -62,19 +62,19 @@ func (sess *Lifecycle) closeProvider(requireReady bool) error {
 		sess.session.stateOwner.stateMu.Unlock()
 		return sess.closeErr
 	}
-	if requireReady && sess.session.provider == "claude" && sess.session.runtime.claude == nil {
+	if requireReady && sess.session.provider == "claude" && sess.session.stateOwner.claude == nil {
 		sess.session.stateOwner.stateMu.Unlock()
 		return errors.New("Claude transport is not ready; stop unconfirmed, retry when attachment settles")
 	}
 	sess.session.stateOwner.closed = true
-	sess.session.stateOwner.closeUnconfirmed = sess.session.provider == "claude" && sess.session.runtime.claude != nil
+	sess.session.stateOwner.closeUnconfirmed = sess.session.provider == "claude" && sess.session.stateOwner.claude != nil
 	sess.session.stateOwner.durablyTerminalTurnID = ""
 	sess.session.stateOwner.durablyTerminalTurnThreadID = ""
 	sess.session.stateOwner.stateMu.Unlock()
 	sess.session.stateOwner.releaseCatalogSource()
 	sess.session.stateOwner.observeConnection(lifecycle.EventClose)
-	claude := sess.session.runtime.claudeHandle()
-	grok := sess.session.runtime.grokHandle()
+	claude := sess.session.stateOwner.claudeHandle()
+	grok := sess.session.stateOwner.grokHandle()
 	switch {
 	case sess.session.runtime.codex != nil:
 		sess.session.runtime.codex.closeSession(sess.session)
@@ -115,7 +115,7 @@ func (sess *View) Summary() Summary {
 	if sess.session.agentExecutions != nil {
 		needsAttention = sess.session.agentExecutions.SessionNeedsAttention(sess.session.hostedThreadID)
 	}
-	summary := sess.SummaryWith(view, err, needsAttention)
+	summary := sess.session.stateOwner.SummaryWith(view, err, needsAttention)
 	if summary.Metadata != nil {
 		summary.Metadata.Name, _ = sess.hostedMetadataName(summary.Provider, summary.ThreadID, summary.Name)
 	}
@@ -127,44 +127,44 @@ func (sess *View) Summary() Summary {
 // views in one batch. The view's name is the display name; summary replaces
 // it with the durable name for one session. The sessions list carries no name
 // in its metadata.
-func (sess *View) SummaryWith(view hostedstore.MetadataView, viewErr error, needsAttention bool) Summary {
-	sess.session.stateOwner.stateMu.Lock()
-	presentationMode := sess.session.stateOwner.presentationMode
+func (sess *State) SummaryWith(view hostedstore.MetadataView, viewErr error, needsAttention bool) Summary {
+	sess.stateMu.Lock()
+	presentationMode := sess.presentationMode
 	if presentationMode == "" {
 		presentationMode = presentationShared
 	}
 	summary := Summary{
 		ID:                    sess.session.id,
 		Provider:              sess.session.provider,
-		ThreadID:              sess.session.stateOwner.threadID,
-		Name:                  sess.session.stateOwner.displayName,
-		Model:                 sess.session.stateOwner.model,
-		Cwd:                   sess.session.stateOwner.cwd,
-		Status:                sess.session.stateOwner.connectionStatusLocked(),
+		ThreadID:              sess.threadID,
+		Name:                  sess.displayName,
+		Model:                 sess.model,
+		Cwd:                   sess.cwd,
+		Status:                sess.connectionStatusLocked(),
 		HostedThreadID:        sess.session.hostedThreadID,
 		InvokerHostedThreadID: sess.session.invokerHostedThreadID,
 		InvokerNativeThreadID: sess.session.invokerNativeThreadID,
 		InvokerProvider:       sess.session.invokerProvider,
 		PresentationMode:      presentationMode,
-		SidebarPlacement:      sess.session.stateOwner.sidebarPlacement,
+		SidebarPlacement:      sess.sidebarPlacement,
 		SpawnMode:             sess.session.spawnMode,
-		Error:                 sess.session.stateOwner.spawnError,
-		TurnActive:            sess.session.stateOwner.workActiveLocked(),
-		ThreadStatus:          sess.session.stateOwner.threadStatusLocked(),
-		TurnStartedAtMs:       sess.session.stateOwner.turnStartedAtMs,
-		CompactingSinceMs:     sess.session.stateOwner.compactingSinceMsLocked(),
-		LastTurnEndedAt:       sess.session.stateOwner.lastTurnEndedAt,
-		Waiting:               sess.session.stateOwner.lifecycleState.State.Connection == lifecycle.Ready && sess.session.stateOwner.lifecycleState.State.Work == lifecycle.WaitingOnYou,
-		MetadataDegraded:      sess.session.stateOwner.metadataDegraded,
+		Error:                 sess.spawnError,
+		TurnActive:            sess.workActiveLocked(),
+		ThreadStatus:          sess.threadStatusLocked(),
+		TurnStartedAtMs:       sess.turnStartedAtMs,
+		CompactingSinceMs:     sess.compactingSinceMsLocked(),
+		LastTurnEndedAt:       sess.lastTurnEndedAt,
+		Waiting:               sess.lifecycleState.State.Connection == lifecycle.Ready && sess.lifecycleState.State.Work == lifecycle.WaitingOnYou,
+		MetadataDegraded:      sess.metadataDegraded,
 		CreatedAt:             sess.session.createdAt.Format(time.RFC3339),
 	}
 	if !summary.TurnActive {
 		summary.TurnStartedAtMs = 0
 	}
-	sess.session.stateOwner.stateMu.Unlock()
+	sess.stateMu.Unlock()
 	summary.RunningTurnInput = sess.session.runtime.acceptsRunningTurnInput()
-	if sess.projection != nil {
-		summary.ThreadDiagnostics = sess.projection.ThreadDiagnosticsSnapshot()
+	if sess.session.view.projection != nil {
+		summary.ThreadDiagnostics = sess.session.view.projection.ThreadDiagnosticsSnapshot()
 	}
 	summary.NeedsAttention = needsAttention
 	summary.FileTranscript = true
@@ -221,9 +221,9 @@ func (sess *State) failSpawn(message string) {
 	sess.turnStartedAtMs = 0 // clearing site 3 of 3 (D14)
 	sess.clearTurnRestoreLocked()
 	sess.stateMu.Unlock()
-	sess.session.delivery.settleAgentTurnsOnExit(closed)
+	sess.settleAgentTurnsOnExit(closed)
 	sess.releaseCatalogSource()
-	sess.session.view.PublishProjectionRuntime()
+	sess.PublishProjectionRuntime()
 	sess.NotifyRuntime()
 	sess.updateHostedThread(StatusExited, message)
 }
@@ -233,15 +233,15 @@ func (sess *State) failSpawn(message string) {
 // means the transport is not up yet: readiness and the handle are published
 // under one lock, but the child's own init line can promote a session a moment
 // earlier, so every caller checks rather than trusting "ready".
-func (sess *Runtime) claudeHandle() *claudeSession {
-	sess.session.stateOwner.stateMu.Lock()
-	defer sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) claudeHandle() *claudeSession {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
 	return sess.claude
 }
 
-func (sess *Runtime) grokHandle() *grokSession {
-	sess.session.stateOwner.stateMu.Lock()
-	defer sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) grokHandle() *grokSession {
+	sess.stateMu.Lock()
+	defer sess.stateMu.Unlock()
 	return sess.grok
 }
 
@@ -251,10 +251,10 @@ func (sess *State) setState(key string, v json.RawMessage) {
 	sess.stateMu.Unlock()
 }
 
-func (sess *Delivery) settleAgentTurnsOnExit(closed bool) {
-	sess.session.stateOwner.stateMu.Lock()
-	unconfirmed := sess.session.stateOwner.closeUnconfirmed
-	sess.session.stateOwner.stateMu.Unlock()
+func (sess *State) settleAgentTurnsOnExit(closed bool) {
+	sess.stateMu.Lock()
+	unconfirmed := sess.closeUnconfirmed
+	sess.stateMu.Unlock()
 	if unconfirmed {
 		return
 	}
@@ -393,6 +393,8 @@ type State struct {
 	// is the immediate fallback used when a provider asks before that read is
 	// available.
 	permissionMode string
+	claude         *claudeSession // claude provider
+	grok           *grokSession   // grok provider: stdio proxy to the durable native leader
 	// savedTurn reads the saved status of one turn by exact native turn id,
 	// to settle a live turn whose terminal event was lost.
 	savedTurn func(ctx context.Context, turnID string) (liveview.DurableTurnEvidence, bool)

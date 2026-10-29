@@ -36,7 +36,7 @@ func TestCodexPriorAttachmentEvidenceCannotResendPrompt(t *testing.T) {
 		if _, err := store.Accepted(ctx, prompts.Acceptance{ActionID: "prompt", ClaimToken: "case", AttachmentEpoch: 1, Binding: prompts.Binding{Scope: model.Scope{Kind: model.ScopeTurn, Provider: model.ProviderCodex, NativeThreadID: &native, NativeTurnID: &turn}}}); err != nil {
 			t.Fatal(err)
 		}
-		sess.delivery.awaitSavedPrompt("prompt")
+		sess.stateOwner.awaitSavedPrompt("prompt")
 		play := func() {
 			sess.wire.recordWireLive(protocol.Recv, []byte(`{"method":"turn/started","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"inProgress","items":[]}}}`), true)
 			sess.wire.recordWireLive(protocol.Recv, []byte(`{"method":"turn/completed","params":{"threadId":"`+native+`","turn":{"id":"`+turn+`","status":"interrupted"}}}`), true)
@@ -55,15 +55,15 @@ func TestCodexPriorAttachmentEvidenceCannotResendPrompt(t *testing.T) {
 			}
 		})
 		sess.runtime.coreSession().ObserveAsync(coresession.AdapterEvent{LegacyApply: func() error { <-busy; return nil }})
-		sess.runtime.forgetCodexTurnInputs()
-		sess.delivery.SettleWaitingPrompts(ctx)
+		sess.stateOwner.forgetCodexTurnInputs()
+		sess.stateOwner.SettleWaitingPrompts(ctx)
 		sess.stateOwner.observeConnection(lifecycle.EventLinkLost)
 		close(busy)
 		play()
 		if err := sess.runtime.coreSession().Observe(ctx, coresession.AdapterEvent{}); err != nil {
 			t.Fatal(err)
 		}
-		sess.delivery.SettleWaitingPrompts(ctx)
+		sess.stateOwner.SettleWaitingPrompts(ctx)
 		select {
 		case text := <-sent:
 			t.Fatalf("sent %q again; want resent=false", text)
@@ -82,7 +82,7 @@ func TestCodexEchoBeforeRPCDeadlineOutcomeKeepsPromptBound(t *testing.T) {
 	var sess *Session
 	sess, store := readyTransactionalSendTestSession(t, func(context.Context, string) (json.RawMessage, error) {
 		event := SubmissionEventID(sess.HostedThreadID(), "late")
-		sess.runtime.observeCodexTurnInput([]byte(`{"method":"item/started","params":{"threadId":"` + sess.stateOwner.ThreadID() + `","turnId":"turn-late","item":{"id":"late-item","type":"userMessage","clientId":"` + event + `","content":[{"type":"text","text":"late prompt"}]}}}`))
+		sess.stateOwner.observeCodexTurnInput([]byte(`{"method":"item/started","params":{"threadId":"` + sess.stateOwner.ThreadID() + `","turnId":"turn-late","item":{"id":"late-item","type":"userMessage","clientId":"` + event + `","content":[{"type":"text","text":"late prompt"}]}}}`))
 		return nil, context.DeadlineExceeded
 	})
 	if rec := postTurn(t, sess.Delivery(), context.Background(), "late", "late prompt"); rec.Code != http.StatusAccepted {

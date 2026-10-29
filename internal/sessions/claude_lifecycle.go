@@ -158,10 +158,10 @@ func claudeRuntimeEvidence(sess *Session, dir wire.Direction, line []byte, at ti
 		}
 	case "result":
 		if usagePayload := claudeResultUsagePayload(message); usagePayload != nil {
-			sess.view.setLiveTokenUsageForTurn(sess.view.projection.latestTerminalTurnID(), usagePayload)
+			sess.stateOwner.setLiveTokenUsageForTurn(sess.view.projection.latestTerminalTurnID(), usagePayload)
 		}
 		if wire.Bool(message["is_error"]) && !strings.HasPrefix(wire.String(message["terminal_reason"]), "aborted") {
-			sess.view.setLiveError(threadvalues.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "turn failed"))
+			sess.stateOwner.setLiveError(threadvalues.FirstNonEmpty(wire.String(message["result"]), wire.String(message["subtype"]), "turn failed"))
 		}
 	}
 }
@@ -186,11 +186,11 @@ func claudeResultUsagePayload(message map[string]json.RawMessage) json.RawMessag
 }
 
 func claudeReleaseAcceptedEvidence(sess *Session) {
-	if child := sess.runtime.claudeHandle(); child != nil {
+	if child := sess.stateOwner.claudeHandle(); child != nil {
 		child.releaseTurnIngress()
 	}
 }
 func claudeEvidenceIngressBlocked(sess *Session) bool {
-	child := sess.runtime.claudeHandle()
+	child := sess.stateOwner.claudeHandle()
 	return child != nil && child.turnIngressActive()
 }

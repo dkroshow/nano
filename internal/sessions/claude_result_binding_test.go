@@ -173,7 +173,7 @@ func TestClaudeResultIngressBindsToAnsweredPrompt(t *testing.T) {
 	}
 	defer tr.close()
 	owner.tr = tr
-	sess.runtime.claude = owner
+	sess.stateOwner.claude = owner
 	for _, prompt := range order {
 		if _, err := owner.sendTurnWithEventID("prompt "+prompt.name, prompt.event); err != nil {
 			t.Fatal(err)

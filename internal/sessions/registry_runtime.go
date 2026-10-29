@@ -5,7 +5,7 @@ package sessions
 func (s *Registry) PublishProviderRuntime(provider string) {
 	for _, sess := range s.SnapshotSessions() {
 		if sess.Provider() == provider {
-			sess.view.PublishProjectionRuntime()
+			sess.stateOwner.PublishProjectionRuntime()
 		}
 	}
 }

@@ -257,8 +257,8 @@ func TestClaudeReconnectRecoversPendingPermissionOnce(t *testing.T) {
 		t.Fatalf("fromSeq = %d, want the request's enclosing message start %d", got, start-1)
 	}
 	sess := sessionForNative(t, s)
-	waitForClaude(t, "the recovered permission", func() bool { return len(sess.Delivery().PendingInteractionList()) > 0 })
-	pending := sess.Delivery().PendingInteractionList()
+	waitForClaude(t, "the recovered permission", func() bool { return len(sess.State().PendingInteractionList()) > 0 })
+	pending := sess.State().PendingInteractionList()
 	if len(pending) != 1 || pending[0].ID != "perm-1" {
 		t.Fatalf("pending = %+v, want perm-1 exactly once", pending)
 	}
@@ -407,7 +407,7 @@ func TestClaudeReconnectDoesNotResurrectRequestRetiredByItsResult(t *testing.T) 
 	if got := shim.LastFromSeq(); got != start-1 {
 		t.Fatalf("fromSeq = %d, want %d", got, start-1)
 	}
-	if pending := sessionForNative(t, s).Delivery().PendingInteractionList(); len(pending) != 0 {
+	if pending := sessionForNative(t, s).State().PendingInteractionList(); len(pending) != 0 {
 		t.Fatalf("pending = %+v, want the retired request left settled", pending)
 	}
 }

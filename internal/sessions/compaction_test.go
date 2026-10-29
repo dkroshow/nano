@@ -54,7 +54,7 @@ func TestCompactingFollowsTheProvidersOwnSignals(t *testing.T) {
 				}
 			}
 			shown := func() (pane, rail int64) {
-				summary, _ := sess.view.volatileSummary(false)
+				summary, _ := sess.stateOwner.volatileSummary(false)
 				return sess.view.projection.status().Runtime.CompactingSinceMs, summary.CompactingSinceMs
 			}
 			apply(test.start)

@@ -21,7 +21,7 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 	codex := sessionWithOwners(&Session{provider: "codex",
 		stateOwner: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	codex.runtime.seedCodexTurnOverrides(folded, "ignored-legacy")
+	codex.stateOwner.seedCodexTurnOverrides(folded, "ignored-legacy")
 	if codex.stateOwner.turnModel != "gpt-5.3-codex" || codex.stateOwner.turnEffort != "high" || codex.stateOwner.turnServiceTier != "priority" {
 		t.Fatalf("codex overrides = %q/%q/%q, want the folded posture seeded",
 			codex.stateOwner.turnModel, codex.stateOwner.turnEffort, codex.stateOwner.turnServiceTier)
@@ -30,7 +30,7 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 	legacy := sessionWithOwners(&Session{provider: "codex",
 		stateOwner: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	legacy.runtime.seedCodexTurnOverrides(nil, "priority")
+	legacy.stateOwner.seedCodexTurnOverrides(nil, "priority")
 	if legacy.stateOwner.turnServiceTier != "priority" {
 		t.Fatalf("legacy tier = %q, want the pre-log record honored on a nil fold", legacy.stateOwner.turnServiceTier)
 	}
@@ -39,7 +39,7 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 		stateOwner: State{
 			turnServiceTier: "stale",
 			lifecycleState:  testLifecycleSnapshot("ready", false)}})
-	cleared.runtime.seedCodexTurnOverrides(map[string]hostedstore.PostureEntry{}, "stale-record")
+	cleared.stateOwner.seedCodexTurnOverrides(map[string]hostedstore.PostureEntry{}, "stale-record")
 	if cleared.stateOwner.turnServiceTier != "stale" {
 		t.Fatalf("cleared-history tier = %q, want the record ignored once any history exists", cleared.stateOwner.turnServiceTier)
 	}
@@ -50,7 +50,7 @@ func TestSeedCodexTurnOverridesFromFold(t *testing.T) {
 func TestCanonicalResumeClearsStaleSessionOverrides(t *testing.T) {
 	sess := sessionWithOwners(&Session{
 		stateOwner: State{turnModel: "stale", turnServiceTier: "stale"}})
-	sess.runtime.seedCodexCanonicalOverrides(hostedstore.MetadataView{})
+	sess.stateOwner.seedCodexCanonicalOverrides(hostedstore.MetadataView{})
 	if sess.stateOwner.turnModel != "" || sess.stateOwner.turnServiceTier != "" {
 		t.Fatalf("Codex resume = %q/%q, want cleared canonical values", sess.stateOwner.turnModel, sess.stateOwner.turnServiceTier)
 	}

@@ -45,7 +45,7 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 		go func(sess *Session) {
 			defer wg.Done()
 			response := httptest.NewRecorder()
-			sess.view.HandleSkills(response, httptest.NewRequest("GET", "/skills", nil))
+			sess.stateOwner.HandleSkills(response, httptest.NewRequest("GET", "/skills", nil))
 			if response.Code != 200 {
 				t.Errorf("skills response = %d, want 200", response.Code)
 			}
@@ -57,7 +57,7 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 	for _, sess := range sessions {
 		for {
 			response := httptest.NewRecorder()
-			sess.view.HandleSkills(response, httptest.NewRequest("GET", "/skills", nil))
+			sess.stateOwner.HandleSkills(response, httptest.NewRequest("GET", "/skills", nil))
 			if strings.Contains(response.Body.String(), `"name":"some-skill"`) {
 				break
 			}
@@ -85,7 +85,7 @@ func TestSkillsListFanoutCollapsesFortySessionsByCwd(t *testing.T) {
 
 	for _, sess := range sessions {
 		response := httptest.NewRecorder()
-		sess.view.HandleSkills(response, httptest.NewRequest("GET", "/skills", nil))
+		sess.stateOwner.HandleSkills(response, httptest.NewRequest("GET", "/skills", nil))
 		if !strings.Contains(response.Body.String(), `"name":"some-skill"`) {
 			t.Fatalf("cached skills read omitted the answer: %s", response.Body.String())
 		}

@@ -154,7 +154,7 @@ func TestTransactionalRestoreMarksStaleClaimUncertainBeforeReplay(t *testing.T) 
 		t.Fatalf("claim=%v err=%v", claimed, err)
 	}
 	sess.stateOwner.lifecycleState.Epoch = 2
-	sess.delivery.restoreSubmissionOutbox()
+	sess.stateOwner.restoreSubmissionOutbox()
 	record, attempt, err := store.Get(context.Background(), "stale-action")
 	if err != nil || record.Outbox.State != turns.Uncertain || attempt.State != turns.JournalUnknown {
 		t.Fatalf("restored record=%+v attempt=%+v err=%v", record, attempt, err)
@@ -231,7 +231,7 @@ func TestAcceptedSubmissionTextSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := readySendTestSession(t, reloadedAttempts, nil)
-	restarted.delivery.restoreSubmissionOutbox()
+	restarted.stateOwner.restoreSubmissionOutbox()
 	accepted, ok := restarted.delivery.queuedTurns.Get("restart-action")
 	if !ok || accepted.State != submissionAccepted || accepted.Text != "survive the restart" {
 		t.Fatalf("accepted retained record = %#v, present=%v", accepted, ok)
@@ -1277,7 +1277,7 @@ func TestQueuedPromptJoinsTheTurnItsThreadReturnsTo(t *testing.T) {
 			if path == "reconnected" {
 				sess.setStatus("reconnecting")
 			} else {
-				sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.stateOwner.ThreadID()})
+				sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "approval-1", Method: "item/commandExecution/requestApproval", TurnID: "turn-running", ThreadID: sess.stateOwner.ThreadID()})
 			}
 			if err := sess.runtime.ensureCoreSession(); err != nil {
 				t.Fatal(err)

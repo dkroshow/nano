@@ -206,7 +206,7 @@ func (s *ViewService) TurnView(rec ownedthreads.TurnRecord) TurnView {
 			view.NativeThreadID = threadID
 		}
 		if !threadvalues.TurnTerminal(rec.Status) {
-			for _, interaction := range runtime.Delivery().PendingInteractionList() {
+			for _, interaction := range runtime.State().PendingInteractionList() {
 				if interaction.TurnID == "" || rec.ProviderTurnID == "" || interaction.TurnID == rec.ProviderTurnID {
 					view.Interactions = append(view.Interactions, interaction)
 				}

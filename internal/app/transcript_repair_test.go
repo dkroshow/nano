@@ -136,7 +136,7 @@ func TestTranscriptRepairReportsRepairedOnlyAfterTheSavedFileCatchesUp(t *testin
 				fake.EmitThreadNotification("thread", map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "thread", "turn": map[string]any{"id": "turn-1", "status": "interrupted"}}})
 			}
 			fake.EmitThreadNotification("thread", map[string]any{"id": 42, "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "thread", "turnId": "turn-1", "itemId": "q", "command": "pwd"}})
-			waitReconnectCondition(t, func() bool { return len(sess.Delivery().PendingInteractionList()) > 0 })
+			waitReconnectCondition(t, func() bool { return len(sess.State().PendingInteractionList()) > 0 })
 		}, "saved_copy_not_ready"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

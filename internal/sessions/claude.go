@@ -422,7 +422,7 @@ func resumeClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, er
 	// turn's init supplies the native id, or we would persist the name under an
 	// identity the catalog will immediately retire.
 	if !req.ClaudeAnchor.Provisional() {
-		sess.view.applyPendingName(req.ThreadID)
+		sess.stateOwner.applyPendingName(req.ThreadID)
 	}
 	if shimURL := strings.TrimSpace(req.ClaudeShimWS); shimURL != "" {
 		// The replay floor comes from durable prompt facts and the shim's
@@ -433,7 +433,7 @@ func resumeClaudeSession(sess *Session, req ProviderRequest) (*claudeSession, er
 			// prompts landed in. That pair is recorded before any frame is
 			// admitted or any rung chosen, and the resume continues as that
 			// native; if it cannot be recorded, nothing proceeds.
-			anchor, adoptErr := sess.runtime.adoptResolvedClaudeNative(req.ThreadID, plan.Resolved, req.ClaudeAnchor)
+			anchor, adoptErr := sess.stateOwner.adoptResolvedClaudeNative(req.ThreadID, plan.Resolved, req.ClaudeAnchor)
 			if adoptErr != nil {
 				return nil, adoptErr
 			}
@@ -528,7 +528,7 @@ var errClaudeProvisionalGone = errors.New("claude session was never prompted and
 // failed write leaves the handle's record on disk. A claim error, including
 // one reported after its commit, stops the resume with the record intact; a
 // retry finds the recorded resolution.
-func (sess *Runtime) adoptResolvedClaudeNative(handle, native string, anchor hostedstore.Attachment) (hostedstore.Attachment, error) {
+func (sess *State) adoptResolvedClaudeNative(handle, native string, anchor hostedstore.Attachment) (hostedstore.Attachment, error) {
 	if sess.session.metadata == nil || sess.session.hostedThreadID == "" {
 		return anchor, fmt.Errorf("%w: no claim owner for %s", errClaudeRecoveryUnproven, handle)
 	}
@@ -536,16 +536,16 @@ func (sess *Runtime) adoptResolvedClaudeNative(handle, native string, anchor hos
 	if err := sess.session.metadata.ClaimNativeIDResolving(sess.session.hostedThreadID, sess.session.provider, native, false, &pair); err != nil {
 		return anchor, fmt.Errorf("%w: record provisional %s as %s: %v", errClaudeRecoveryUnproven, handle, native, err)
 	}
-	sess.session.stateOwner.stateMu.Lock()
-	sess.session.stateOwner.threadID = native
-	sess.session.stateOwner.stateMu.Unlock()
-	sess.session.stateOwner.setProjectionThreadID(native)
+	sess.stateMu.Lock()
+	sess.threadID = native
+	sess.stateMu.Unlock()
+	sess.setProjectionThreadID(native)
 	rec := anchor
 	rec.NativeThreadID = native
-	if sess.session.stateOwner.rememberAttachment != nil {
-		sess.session.stateOwner.rememberDurableAttachment(rec)
-		if sess.session.stateOwner.forgetAttachment != nil {
-			sess.session.stateOwner.forgetAttachment(sess.session.provider, handle)
+	if sess.rememberAttachment != nil {
+		sess.rememberDurableAttachment(rec)
+		if sess.forgetAttachment != nil {
+			sess.forgetAttachment(sess.session.provider, handle)
 		}
 	}
 	return rec, nil
@@ -697,7 +697,7 @@ func (c *claudeSession) adoptDurableIdentity(tr claudeTransport) {
 	c.sess.stateOwner.threadID = rec.ShimSessionID
 	c.sess.stateOwner.stateMu.Unlock()
 	c.sess.stateOwner.setProjectionThreadID(rec.ShimSessionID)
-	c.sess.view.PublishProjectionRuntime()
+	c.sess.stateOwner.PublishProjectionRuntime()
 	c.sess.stateOwner.NotifyRuntime()
 	c.sess.stateOwner.updateHostedThread("ready", "")
 	if c.sess.stateOwner.rememberAttachment == nil {
@@ -808,7 +808,7 @@ func (c *claudeSession) markTransportReady() bool {
 		c.sess.stateOwner.stateMu.Unlock()
 		return false
 	}
-	c.sess.runtime.claude = c
+	c.sess.stateOwner.claude = c
 	select {
 	case <-c.exited:
 		c.sess.stateOwner.stateMu.Unlock()
@@ -823,7 +823,7 @@ func (c *claudeSession) markTransportReady() bool {
 	status := c.sess.stateOwner.connectionStatusLocked()
 	c.sess.stateOwner.stateMu.Unlock()
 	if changed {
-		c.sess.view.PublishProjectionRuntime()
+		c.sess.stateOwner.PublishProjectionRuntime()
 		c.sess.stateOwner.NotifyRuntime()
 		c.sess.stateOwner.updateHostedThread(status, "")
 	}
@@ -1313,10 +1313,10 @@ func (c *claudeSession) captureInit(tr claudeTransport, line []byte, sessionID, 
 	c.sess.stateOwner.setProjectionThreadID(sessionID)
 	// A fresh claude start learns its native id here (init lands with the
 	// first turn), which is the earliest a dialog-supplied name can be written.
-	c.sess.view.applyPendingName(sessionID)
+	c.sess.stateOwner.applyPendingName(sessionID)
 	// The threadID landing is what makes this session matchable by the
 	// catalog's runtime overlay (provider + nativeId).
-	c.sess.view.PublishProjectionRuntime()
+	c.sess.stateOwner.PublishProjectionRuntime()
 	c.sess.stateOwner.NotifyRuntime()
 	c.sess.stateOwner.updateHostedThread("ready", "")
 	// A `--resume` child mints a fresh native id; an attach lands back on the

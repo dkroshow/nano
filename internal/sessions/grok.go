@@ -369,7 +369,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		_ = client.Close()
 		return errSpawnSessionClosed
 	}
-	sess.runtime.grok = grok
+	sess.stateOwner.grok = grok
 	if req.Mode == "resume" {
 		sess.stateOwner.threadID = req.ThreadID
 		sess.stateOwner.model = req.GrokResumeModel
@@ -377,7 +377,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 	sess.stateOwner.stateMu.Unlock()
 	if req.Mode == "resume" {
 		sess.stateOwner.setProjectionThreadID(req.ThreadID)
-		sess.delivery.restoreSubmissionOutbox()
+		sess.stateOwner.restoreSubmissionOutbox()
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), grokHandshakeTimeout)
@@ -469,7 +469,7 @@ func runGrokHandshake(sess *Session, req ProviderRequest) error {
 		return fmt.Errorf("verify %s reasoning effort: %w", method, effortErr)
 	}
 	sess.stateOwner.setProjectionThreadID(threadID)
-	sess.view.applyPendingName(threadID)
+	sess.stateOwner.applyPendingName(threadID)
 	sess.stateOwner.rememberDurableAttachment(hostedstore.Attachment{
 		Provider: "grok", NativeThreadID: threadID, Cwd: req.Cwd, Model: model,
 		AttachedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -1158,7 +1158,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		Params:    visibleParams,
 	}
-	if method == grokPermissionMethod && g.sess.delivery.permissionModeForEvent() == "bypassPermissions" {
+	if method == grokPermissionMethod && g.sess.stateOwner.permissionModeForEvent() == "bypassPermissions" {
 		// Grok 1.0.3 can still forward a permission request after accepting
 		// _meta.yoloMode. Nano's thread-level bypass selection is literal: record
 		// both audit events before allowing the request. If the audit store is
@@ -1173,7 +1173,7 @@ func (g *grokSession) handleServerRequest(requestID, method string, params json.
 			log.Printf("session %s: record Grok bypass request %s: %v", g.sess.id, requestID, err)
 		}
 	}
-	g.sess.delivery.addPendingInteraction(pending)
+	g.sess.stateOwner.addPendingInteraction(pending)
 	return protocol.Deferred, nil
 }
 

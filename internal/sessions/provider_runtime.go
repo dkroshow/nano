@@ -263,7 +263,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
 		Submit: providerSubmitOperation(sess, func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
-			claude := sess.runtime.claudeHandle()
+			claude := sess.stateOwner.claudeHandle()
 			if claude == nil {
 				return nil, errors.New("session transport is still starting")
 			}
@@ -280,7 +280,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 			})
 		}),
 		Interrupt: func(ctx context.Context, _ providers.InterruptRequest) (providers.InterruptionResult, error) {
-			claude := sess.runtime.claudeHandle()
+			claude := sess.stateOwner.claudeHandle()
 			if claude == nil {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
@@ -290,7 +290,7 @@ func claudeProviderOperations(sess *Session) providers.Operations {
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
 		RespondInteraction: providerInteractionOperation(claudeInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			claude := sess.runtime.claudeHandle()
+			claude := sess.stateOwner.claudeHandle()
 			if claude == nil {
 				return errClaudeControlClosed
 			}
@@ -306,14 +306,14 @@ func grokProviderOperations(sess *Session) providers.Operations {
 	return providers.Operations{
 		Start: unavailableProviderStart, Resume: unavailableProviderResume,
 		Submit: providerSubmitOperation(sess, func(ctx context.Context, request providers.SubmissionRequest) (json.RawMessage, error) {
-			grok := sess.runtime.grokHandle()
+			grok := sess.stateOwner.grokHandle()
 			if grok == nil {
 				return nil, errors.New("session transport is still starting")
 			}
 			return grok.SendTurn(ctx, request.Text, request.Outbox.ActionID)
 		}),
 		Interrupt: func(_ context.Context, _ providers.InterruptRequest) (providers.InterruptionResult, error) {
-			grok := sess.runtime.grokHandle()
+			grok := sess.stateOwner.grokHandle()
 			if grok == nil {
 				return providers.InterruptionResult{Reason: "no turn in flight"}, nil
 			}
@@ -323,7 +323,7 @@ func grokProviderOperations(sess *Session) providers.Operations {
 			return providers.InterruptionResult{Interrupted: true}, nil
 		},
 		RespondInteraction: providerInteractionOperation(grokInteractionResult, func(p interact.PendingInteraction, result any, rpcErr *protocol.RPCError) error {
-			grok := sess.runtime.grokHandle()
+			grok := sess.stateOwner.grokHandle()
 			if grok == nil {
 				return errors.New("grok ACP proxy is not connected")
 			}
@@ -526,10 +526,8 @@ func scopeNativeTurn(scope model.Scope) string {
 type Runtime struct {
 	session *Session
 
-	codex            *CodexDaemon   // codex provider: shared daemon client
-	claude           *claudeSession // claude provider
-	grok             *grokSession   // grok provider: stdio proxy to the durable native leader
-	reasoningSummary string         // codex: turn/start summary level
+	codex            *CodexDaemon // codex provider: shared daemon client
+	reasoningSummary string       // codex: turn/start summary level
 	completedTurns   func(context.Context) (*coreturns.Store, error)
 	core             *coresession.Session
 	coreMu           sync.RWMutex

@@ -24,7 +24,7 @@ func reconcileWithSavedTurn(sess *Session, saved liveview.DurableTurnEvidence) {
 	sess.stateOwner.savedTurn = func(_ context.Context, id string) (liveview.DurableTurnEvidence, bool) {
 		return saved, id == saved.Turn.ID
 	}
-	sess.view.ReconcileDurableTurn(context.Background())
+	sess.stateOwner.ReconcileDurableTurn(context.Background())
 }
 func TestDurableReconciliationSettlesResumeBeforeHandshakeCannotResurrect(t *testing.T) {
 	started := time.Now().Add(-time.Minute).UnixMilli()
@@ -127,7 +127,7 @@ func checkSavedAttachmentReplacement(t *testing.T) {
 				test.change(sess)
 				return liveview.DurableTurnEvidence{Turn: liveview.Turn{ID: "turn-1", Status: "completed", CompletedAtMs: started.Add(time.Second).UnixMilli(), DurationMS: 1000}}, id == "turn-1"
 			}
-			sess.view.ReconcileDurableTurn(context.Background())
+			sess.stateOwner.ReconcileDurableTurn(context.Background())
 			sess.stateOwner.stateMu.Lock()
 			working := sess.stateOwner.workActiveLocked()
 			sess.stateOwner.stateMu.Unlock()

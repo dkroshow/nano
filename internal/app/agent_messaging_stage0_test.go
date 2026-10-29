@@ -283,12 +283,12 @@ func TestAvailabilityFromHardFacts(t *testing.T) {
 	}
 	// Pending interaction holds the thread.
 	fake.EmitNotification(map[string]any{"id": "req-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": sess.State().ThreadID()}})
-	waitForClaude(t, "pending permissions", func() bool { return len(sess.Delivery().PendingInteractionList()) == 1 })
+	waitForClaude(t, "pending permissions", func() bool { return len(sess.State().PendingInteractionList()) == 1 })
 	if v := fixtureOwners(s).hostedViews().AvailabilityFor(worker.ID, now.Add(10*time.Minute)); v.State != availabilityAwaitingHuman {
 		t.Fatalf("pending interaction = %+v", v)
 	}
 	response := httptest.NewRecorder()
-	sess.Delivery().HandleInteraction(response, httptest.NewRequest(http.MethodPost, "/interactions/req-1", strings.NewReader(`{"decision":"decline"}`)), sess.Delivery().PendingInteractionList()[0].ID)
+	sess.Delivery().HandleInteraction(response, httptest.NewRequest(http.MethodPost, "/interactions/req-1", strings.NewReader(`{"decision":"decline"}`)), sess.State().PendingInteractionList()[0].ID)
 	if response.Code != http.StatusOK {
 		t.Fatalf("interaction decline = %d %s", response.Code, response.Body.String())
 	}

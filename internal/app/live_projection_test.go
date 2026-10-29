@@ -327,7 +327,7 @@ func reconcileWithSavedTurn(sess *sessions.Session, saved liveview.DurableTurnEv
 	sess.ConfigureSavedReaders(func(_ context.Context, turnID string) (liveview.DurableTurnEvidence, bool) {
 		return saved, turnID == saved.Turn.ID
 	}, nil, nil, nil, nil)
-	sess.View().ReconcileDurableTurn(context.Background())
+	sess.State().ReconcileDurableTurn(context.Background())
 }
 
 func durableTurnTestSession(t *testing.T, turnID string, startedAtMs int64, drop ...bool) (*sessions.Session, *sessions.LiveProjection) {

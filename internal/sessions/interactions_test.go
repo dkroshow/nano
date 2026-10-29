@@ -165,9 +165,9 @@ func TestPendingInteractionsAreServerOwned(t *testing.T) {
 		stateOwner: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	p := interact.PendingInteraction{ID: "7", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "2026-07-30T10:00:00Z"}
-	sess.delivery.addPendingInteraction(p)
+	sess.stateOwner.addPendingInteraction(p)
 
-	if list := sess.delivery.PendingInteractionList(); len(list) != 1 || list[0].ID != "7" {
+	if list := sess.stateOwner.PendingInteractionList(); len(list) != 1 || list[0].ID != "7" {
 		t.Fatalf("snapshot = %+v", list)
 	}
 	// The nudge rides the session's own feed as a nano-origin notification.
@@ -184,13 +184,13 @@ func TestPendingInteractionsAreServerOwned(t *testing.T) {
 		t.Fatal("no pending nudge on the session feed")
 	}
 
-	if _, ok := sess.delivery.takePendingInteraction("7"); !ok {
+	if _, ok := sess.stateOwner.takePendingInteraction("7"); !ok {
 		t.Fatal("first claim failed")
 	}
-	if _, ok := sess.delivery.takePendingInteraction("7"); ok {
+	if _, ok := sess.stateOwner.takePendingInteraction("7"); ok {
 		t.Fatal("second claim succeeded — a second tab would double-respond")
 	}
-	if len(sess.delivery.PendingInteractionList()) != 0 {
+	if len(sess.stateOwner.PendingInteractionList()) != 0 {
 		t.Fatal("claimed interaction still in the snapshot")
 	}
 }
@@ -219,7 +219,7 @@ func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
 			subs: map[chan wire.Event]struct{}{}},
 		stateOwner: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	sess.delivery.addPendingInteraction(interact.PendingInteraction{
+	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{
 		ID: "7", Method: methodRequestUserInput, Kind: kindUserInput,
 		Params: json.RawMessage(`{"questions":[{"id":"q1"}]}`), CreatedAt: "2026-07-30T10:00:00Z",
 	})
@@ -229,7 +229,7 @@ func TestHandleInteractionKeepsMalformedAnswerPending(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (%s)", rec.Code, rec.Body.String())
 	}
-	if len(sess.delivery.PendingInteractionList()) != 1 {
+	if len(sess.stateOwner.PendingInteractionList()) != 1 {
 		t.Fatal("a rejected answer consumed the pending interaction")
 	}
 }
@@ -248,14 +248,14 @@ func TestServerRequestResolvedCollapses(t *testing.T) {
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
 	sess.stateOwner.threadID = "thread_a"
 	daemon.sessions["thread_a"] = sess
-	sess.delivery.addPendingInteraction(interact.PendingInteraction{
+	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{
 		ID: "4", Method: methodRequestUserInput, Kind: kindUserInput, ThreadID: "thread_a",
 		CreatedAt: "2026-07-30T10:00:00Z",
 	})
 
 	// The id arrives as a JSON number; the pending key is the raw id text.
 	daemon.handleNotification(serverRequestResolvedMethod, json.RawMessage(`{"threadId":"thread_a","requestId":4}`))
-	if len(sess.delivery.PendingInteractionList()) != 0 {
+	if len(sess.stateOwner.PendingInteractionList()) != 0 {
 		t.Fatal("a request the app-server resolved is still offered as answerable")
 	}
 	// Idempotent, and inert for threads and ids it does not know.
@@ -275,12 +275,12 @@ func TestCloseInteractionsAnswersEverythingParked(t *testing.T) {
 			codex: NewCodexDaemon("ws://unused", supervisedDaemonLabel, func() bool { return true })},
 		stateOwner: State{
 			lifecycleState: testLifecycleSnapshot("ready", false)}})
-	sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "a"})
-	sess.delivery.addPendingInteraction(interact.PendingInteraction{ID: "2", Method: methodRequestUserInput, Kind: kindUserInput, CreatedAt: "b"})
+	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "1", Method: methodCommandApproval, Kind: kindCommandApproval, CreatedAt: "a"})
+	sess.stateOwner.addPendingInteraction(interact.PendingInteraction{ID: "2", Method: methodRequestUserInput, Kind: kindUserInput, CreatedAt: "b"})
 
 	sess.delivery.closeInteractions()
 
-	if got := sess.delivery.PendingInteractionList(); len(got) != 0 {
+	if got := sess.stateOwner.PendingInteractionList(); len(got) != 0 {
 		t.Fatalf("still parked after close: %+v", got)
 	}
 	var resolved int

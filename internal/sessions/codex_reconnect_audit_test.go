@@ -153,7 +153,7 @@ func TestReconnectAuditZeroTurnReadyAndSingleDelivery(t *testing.T) {
 		t.Fatalf("queue: %s", response.Body.String())
 	}
 	waitTurnSendDone(t, sess, "first")
-	waitReconnectCondition(t, func() bool { return !sess.runtime.codexZeroTurnRecoveryNeeded() })
+	waitReconnectCondition(t, func() bool { return !sess.stateOwner.codexZeroTurnRecoveryNeeded() })
 	fake.Mu.Lock()
 	defer fake.Mu.Unlock()
 	if fake.TurnStarts != 1 || sess.view.Summary().Status != "ready" {
@@ -217,7 +217,7 @@ func TestReconnectAuditZeroTurnWaitsForSlotWithoutAttemptTimeout(t *testing.T) {
 	for slot := 0; slot < codexResumeConcurrency; slot++ {
 		daemon.resumeSlots <- struct{}{}
 	}
-	sess.runtime.startCodexZeroTurnRecovery()
+	sess.stateOwner.startCodexZeroTurnRecovery()
 	time.Sleep(codexZeroTurnRecoveryAttemptTimeout + 100*time.Millisecond)
 	sess.stateOwner.stateMu.Lock()
 	running := sess.stateOwner.codexZeroTurnRecoveryRunning
@@ -231,7 +231,7 @@ func TestReconnectAuditZeroTurnWaitsForSlotWithoutAttemptTimeout(t *testing.T) {
 	for slot := 0; slot < codexResumeConcurrency; slot++ {
 		<-daemon.resumeSlots
 	}
-	waitReconnectCondition(t, func() bool { return !sess.runtime.codexZeroTurnRecoveryNeeded() })
+	waitReconnectCondition(t, func() bool { return !sess.stateOwner.codexZeroTurnRecoveryNeeded() })
 	if fake.ResumeCount() != 1 {
 		t.Fatalf("slot wait consumed attempts: %d", fake.ResumeCount())
 	}

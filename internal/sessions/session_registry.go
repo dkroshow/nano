@@ -194,7 +194,7 @@ func (s *Registry) VolatileSummaries(needsAttention map[string]bool) []Summary {
 	sessions := s.SnapshotSessions()
 	summaries := make([]Summary, 0, len(sessions))
 	for _, sess := range sessions {
-		summary, live := sess.view.volatileSummary(needsAttention[sess.hostedThreadID])
+		summary, live := sess.stateOwner.volatileSummary(needsAttention[sess.hostedThreadID])
 		if live {
 			summaries = append(summaries, summary)
 		}
@@ -258,7 +258,7 @@ func (s *Registry) LiveHostedSummary(hostedID string, needsAttention func(string
 	if oldest == nil {
 		return Summary{}, false
 	}
-	return oldest.view.volatileSummary(needsAttention(hostedID))
+	return oldest.stateOwner.volatileSummary(needsAttention(hostedID))
 }
 
 // MonitorSnapshot counts held sessions and snapshots their active turns.
