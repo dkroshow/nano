@@ -309,11 +309,10 @@ func TestBootReattachReloadsCanonicalCreationNameWhenAttachmentDroppedIt(t *test
 	store.Remember(rec)
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
+	catalog := creationNameCatalogBeforeFact(t, s.controlMetadata.CreationThreadNames)
 	if err := fixtureRecordCreationName(s.controlMetadata, rec.HostedThreadID, "creation survives boot"); err != nil {
 		t.Fatal(err)
 	}
-	catalog := fixtureIdentityCatalog(t, nil)
-	catalog.SetCreationNameSource(s.controlMetadata.CreationThreadNames)
 	s.catalog = catalog
 
 	s.reattachOnBoot()

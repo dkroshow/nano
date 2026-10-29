@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/dkroshow/nano/internal/history"
 )
@@ -22,6 +24,7 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	catalog := creationNameCatalogBeforeFact(t, control.CreationThreadNames)
 	if err := fixtureRecordCreationName(control, hosted.ID, "creation name"); err != nil {
 		t.Fatal(err)
 	}
@@ -29,8 +32,6 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 	if err := executions.BindSession(hosted.ID, "nano", "native-after-restart", "ready", presentationShared); err != nil {
 		t.Fatal(err)
 	}
-	catalog := fixtureIdentityCatalog(t, nil)
-	catalog.SetCreationNameSource(control.CreationThreadNames)
 	server := &server{catalog: catalog, controlMetadata: control}
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "creation-name", Provider: "claude", HostedThreadID: hosted.ID, CreationName: func() string {
 		name, _ := control.CreationName(hosted.ID)
@@ -55,4 +56,42 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", "native-after-restart"); got != "operator rename" {
 		t.Fatalf("later bind restored %q over operator rename", got)
 	}
+}
+
+// creationNameCatalogBeforeFact drains startup names work while the canonical
+// source is empty. Later names can reach the catalog only through the bind
+// publication under test, not a background refresh left over from setup.
+func creationNameCatalogBeforeFact(t *testing.T, source func(context.Context) ([]history.ThreadNameRecord, error)) *threadCatalogService {
+	t.Helper()
+	if records, err := source(context.Background()); err != nil || len(records) != 0 {
+		t.Fatalf("creation-name fixture must start without facts: %v, %v", records, err)
+	}
+	dir := t.TempDir()
+	store, err := history.Open(filepath.Join(dir, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	refreshed := make(chan struct{}, 1)
+	catalog, err := newThreadCatalogService(context.Background(), store, threadCatalogServiceOptions{
+		Roots:     []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}},
+		NamesPath: filepath.Join(dir, "names.json"), DisableWatcher: true,
+		Logf: func(format string, args ...any) {
+			if strings.HasPrefix(format, "thread catalog recovery delay=") {
+				refreshed <- struct{}{}
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(catalog.Close)
+	catalog.SetCreationNameSource(source)
+	catalog.RequestRefresh()
+	select {
+	case <-refreshed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("catalog did not finish the empty creation-name refresh")
+	}
+	return catalog
 }
