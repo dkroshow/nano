@@ -159,10 +159,10 @@ func TestBulkCloseRequiresAndAppliesExplicitStarPolicy(t *testing.T) {
 	s, store, _ := newBulkCloseTestServer(t)
 	root := createBulkCloseMember(t, store, "root", agentSessionRecord{})
 	child := createBulkCloseMember(t, store, "child", root)
-	if err := s.threadStars.setStarred(root.Provider, root.NativeThreadID, true); err != nil {
+	if err := s.threadStars.SetStarred(root.Provider, root.NativeThreadID, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.threadStars.setStarred(child.Provider, child.NativeThreadID, true); err != nil {
+	if err := s.threadStars.SetStarred(child.Provider, child.NativeThreadID, true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -170,7 +170,7 @@ func TestBulkCloseRequiresAndAppliesExplicitStarPolicy(t *testing.T) {
 	if status != http.StatusOK || !preserve.Complete || preserve.StarredCount != 2 {
 		t.Fatalf("preserve response = %d %+v", status, preserve)
 	}
-	if !s.threadStars.isStarred(root.Provider, root.NativeThreadID) || !s.threadStars.isStarred(child.Provider, child.NativeThreadID) {
+	if !s.threadStars.IsStarred(root.Provider, root.NativeThreadID) || !s.threadStars.IsStarred(child.Provider, child.NativeThreadID) {
 		t.Fatal("preserve policy changed a star")
 	}
 
@@ -178,7 +178,7 @@ func TestBulkCloseRequiresAndAppliesExplicitStarPolicy(t *testing.T) {
 	if status != http.StatusOK || !remove.Complete {
 		t.Fatalf("unstar response = %d %+v", status, remove)
 	}
-	if s.threadStars.isStarred(root.Provider, root.NativeThreadID) || s.threadStars.isStarred(child.Provider, child.NativeThreadID) {
+	if s.threadStars.IsStarred(root.Provider, root.NativeThreadID) || s.threadStars.IsStarred(child.Provider, child.NativeThreadID) {
 		t.Fatal("unstar policy left a tree member pinned")
 	}
 	for _, member := range remove.Members {

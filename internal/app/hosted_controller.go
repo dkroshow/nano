@@ -15,14 +15,10 @@ func (s *server) hostedController() *hosted.Controller {
 }
 
 func newHostedController(s *server) *hosted.Controller {
-	var stars hosted.CloseStars
-	if s.threadStars != nil {
-		stars = hostedCloseStars{store: s.threadStars}
-	}
 	return &hosted.Controller{
 		Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, ExecutionError: s.executionControlErr,
 		Attachments: s.attachments, Queue: s.queuedTurns, Sessions: &s.Registry, SendAttempts: s.sendAttempts, ClaudeShimWS: s.defaults.claudeShimWS,
-		Boot: &s.bootAttachments, Reattach: s.reattachWaitingHosted, Stars: stars,
+		Boot: &s.bootAttachments, Reattach: s.reattachWaitingHosted, Stars: s.threadStars,
 		Views: s.hostedViews, ResolveIdentity: s.resolveIdentity, PrepareCreation: s.prepareHostedCreation,
 		PromptWithUnreadFooter: s.promptWithUnreadFooter, UnreadFooterUnavailable: errUnreadFooterUnavailable,
 		FeatureFooter: func(action string) (string, bool) {

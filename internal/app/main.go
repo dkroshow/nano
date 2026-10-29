@@ -39,6 +39,7 @@ import (
 	"github.com/dkroshow/nano/internal/observability"
 	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
+	"github.com/dkroshow/nano/internal/sidebar"
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 	"github.com/dkroshow/nano/web"
@@ -166,7 +167,7 @@ type server struct {
 	// threadStars is the operator pin overlay for the sidebar. Nil
 	// when the sibling SQLite file failed to open; listings then report every
 	// row unstarred and PUT /starred returns 503.
-	threadStars *threadStarsStore
+	threadStars *sidebar.Stars
 	threadPins  *threadPinsStore
 	// feedback keeps the operator's Feedback notes with their evidence
 	// (feedback_api.go). Nil when its SQLite file failed to open; the feedback
@@ -446,7 +447,7 @@ func construct(cfg config.Config) *application {
 		s.sidebar = newSidebarMaterializedState()
 		s.fleet = startFleetWatcher(context.Background(), s.sidebar)
 	}
-	if store, err := openThreadStarsStore(cfg.Paths.ThreadStarsDB); err != nil {
+	if store, err := sidebar.OpenStars(cfg.Paths.ThreadStarsDB); err != nil {
 		log.Printf("thread stars store unavailable: %v", err)
 	} else {
 		s.threadStars = store

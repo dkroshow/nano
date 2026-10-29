@@ -22,6 +22,7 @@ import (
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -101,7 +102,7 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 		t.Fatal(err)
 	}
 
-	stars, err := openThreadStarsStore(filepath.Join(t.TempDir(), "stars.sqlite"))
+	stars, err := sidebar.OpenStars(filepath.Join(t.TempDir(), "stars.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

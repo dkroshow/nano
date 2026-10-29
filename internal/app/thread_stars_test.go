@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-func openTestThreadStars(t *testing.T) *threadStarsStore {
+func openTestThreadStars(t *testing.T) *sidebar.Stars {
 	t.Helper()
-	store, err := openThreadStarsStore(filepath.Join(t.TempDir(), "thread-stars.sqlite"))
+	store, err := sidebar.OpenStars(filepath.Join(t.TempDir(), "thread-stars.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,78 +24,9 @@ func openTestThreadStars(t *testing.T) *threadStarsStore {
 	return store
 }
 
-func TestThreadStarsSetUnsetAndSurviveReopen(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "stars.sqlite")
-	store, err := openThreadStarsStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if store.isStarred("codex", "native-a") {
-		t.Fatal("empty store reported a star")
-	}
-	if err := store.setStarred("codex", "native-a", true); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.setStarred("claude", "native-b", true); err != nil {
-		t.Fatal(err)
-	}
-	if !store.isStarred("codex", "native-a") || !store.isStarred("claude", "native-b") {
-		t.Fatal("set stars missing from cache")
-	}
-	if err := store.setStarred("codex", "native-a", false); err != nil {
-		t.Fatal(err)
-	}
-	if store.isStarred("codex", "native-a") {
-		t.Fatal("unstar left the row starred")
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	reopened, err := openThreadStarsStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { reopened.Close() })
-	if reopened.isStarred("codex", "native-a") {
-		t.Fatal("unstar did not survive reopen")
-	}
-	if !reopened.isStarred("claude", "native-b") {
-		t.Fatal("star did not survive reopen")
-	}
-}
-
-func TestThreadStarsRejectBlankIdentity(t *testing.T) {
-	store := openTestThreadStars(t)
-	if err := store.setStarred("codex", "", true); err == nil {
-		t.Fatal("expected identity error")
-	}
-	if store.isStarred("codex", "") {
-		t.Fatal("blank native id must not star")
-	}
-}
-
-func TestThreadStarsUnstarManyIsAtomicAndUpdatesCache(t *testing.T) {
-	store := openTestThreadStars(t)
-	for _, nativeID := range []string{"native-a", "native-b"} {
-		if err := store.setStarred("codex", nativeID, true); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := store.unstarMany([]attachmentKey{
-		{Provider: "codex", NativeThreadID: "native-a"},
-		{Provider: "codex", NativeThreadID: "native-b"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if store.isStarred("codex", "native-a") || store.isStarred("codex", "native-b") {
-		t.Fatal("bulk unstar left cache entries behind")
-	}
-}
-
 func TestAttachStarredOverlayMarksMatchingRows(t *testing.T) {
 	store := openTestThreadStars(t)
-	if err := store.setStarred("codex", "native-a", true); err != nil {
+	if err := store.SetStarred("codex", "native-a", true); err != nil {
 		t.Fatal(err)
 	}
 	s := &server{threadStars: store}
@@ -116,7 +48,7 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 	if item := byNative["starred-old"]; item == nil || item["starred"] != true {
 		t.Fatalf("current star missing from active sidebar: %v", item)
 	}
-	if err := s.threadStars.setStarred("codex", "starred-old", false); err != nil {
+	if err := s.threadStars.SetStarred("codex", "starred-old", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.materializeSidebar(context.Background(), now); err != nil {
@@ -147,7 +79,7 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	if !starred.Starred || starred.ID != "nth_1" {
 		t.Fatalf("starred response = %+v", starred)
 	}
-	if !store.isStarred("codex", "native-1") {
+	if !store.IsStarred("codex", "native-1") {
 		t.Fatal("PUT did not persist the star")
 	}
 
@@ -157,7 +89,7 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unstar status = %d body %s", rec.Code, rec.Body.String())
 	}
-	if store.isStarred("codex", "native-1") {
+	if store.IsStarred("codex", "native-1") {
 		t.Fatal("unstar did not persist")
 	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -478,12 +479,12 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 	seed("cycle-b", "cycle-a", history.ThreadMain, live, []historyCourt{{user: true, text: "cycle b"}})
 	seed("orphan-child", "missing-native", history.ThreadMain, live, []historyCourt{{user: true, text: "orphan"}})
 
-	stars, err := openThreadStarsStore(filepath.Join(t.TempDir(), "stars.sqlite"))
+	stars, err := sidebar.OpenStars(filepath.Join(t.TempDir(), "stars.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stars.Close() })
-	if err := stars.setStarred("codex", "starred-old", true); err != nil {
+	if err := stars.SetStarred("codex", "starred-old", true); err != nil {
 		t.Fatal(err)
 	}
 	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))

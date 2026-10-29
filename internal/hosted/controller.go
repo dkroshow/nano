@@ -8,13 +8,8 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/sidebar"
 )
-
-// CloseStars supplies only the star reads and removal used by a tree close.
-type CloseStars interface {
-	IsStarred(string, string) bool
-	UnstarMany([]hostedstore.AttachmentKey) error
-}
 
 // Controller owns hosted admission and relationship mutation ordering.
 // Dependencies are fixed when wired; the stores retain the sole durable facts.
@@ -31,7 +26,7 @@ type Controller struct {
 	// Reattach is a construction-time action until the lifecycle landing moves
 	// boot orchestration down. It does not expose the app server.
 	Reattach                  func(string)
-	Stars                     CloseStars
+	Stars                     *sidebar.Stars
 	Views                     func() *ViewService
 	ResolveIdentity           func(context.Context, string) (IdentityResolution, error)
 	PrepareCreation           func(CreationRequest) (CreationPlan, error)

@@ -11,6 +11,7 @@ import (
 	"github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/httpapi/remoteauth"
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/usage"
 )
 
@@ -34,7 +35,7 @@ func TestFreshStoresKeepSQLiteFilesPrivate(t *testing.T) {
 			case "feedback":
 				store, err = feedback.Open(path)
 			case "stars":
-				store, err = openThreadStarsStore(path)
+				store, err = sidebar.OpenStars(path)
 			case "pins":
 				store, err = openThreadPinsStore(path)
 			case "remote-auth":
