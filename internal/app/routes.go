@@ -21,6 +21,7 @@ type applicationRoute struct {
 
 func applicationRoutes(s *server) []applicationRoute {
 	index := threadindex.NewHandlers(s.catalog)
+	monitor := s.monitorHandlers()
 	audits := observability.NewAuditHandlers(s.hostedCatalog(), s.transcriptAudits, s.transcriptAuditEvents, embeddedBundleName())
 	browser := observability.NewBrowserHandlers(s.browserDiagnostics, s.transcriptValidations, s.controlMetadata, s.controlMetadataErr)
 	accountUsage := &usage.Handlers{Store: s.usageLimits, Poller: s.usageLimitsPoller}
@@ -102,8 +103,8 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodDelete, "/api/attachments/{nativeThreadId}", "attachments.forget", s.handleAttachmentScoped},
 		{http.MethodGet, "/api/v1/build", "build.read", handleBuildInfo},
 		{http.MethodGet, "/api/v1/connection-test", "connection.test", httpapi.HandleConnectionTest},
-		{http.MethodGet, "/api/v1/monitor", "monitor.read", s.handleMonitor},
-		{http.MethodGet, "/api/v1/monitor/ingest-receipts", "monitor.ingestReceipts", s.handleIngestReceipts},
+		{http.MethodGet, "/api/v1/monitor", "monitor.read", monitor.HandleMonitor},
+		{http.MethodGet, "/api/v1/monitor/ingest-receipts", "monitor.ingestReceipts", monitor.HandleIngestReceipts},
 		{http.MethodGet, "/api/v1/restarts", "restarts.read", s.restart.HandleRestarts},
 		{http.MethodGet, "/api/v1/heartbeat/attachments", "heartbeat.attachments.list", s.agentController().HandleHeartbeatAttachmentsList},
 		{http.MethodPost, "/api/v1/heartbeat/attachments", "heartbeat.attachments.create", s.agentController().HandleHeartbeatAttachmentCreate},

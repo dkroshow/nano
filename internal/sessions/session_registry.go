@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 // Registry owns the live-session map and its lock.
@@ -256,4 +258,16 @@ func (s *Registry) LiveHostedSummary(hostedID string, needsAttention func(string
 		return Summary{}, false
 	}
 	return oldest.volatileSummary(needsAttention(hostedID))
+}
+
+// MonitorSnapshot counts held sessions and snapshots their active turns.
+func (s *Registry) MonitorSnapshot() (int, []observability.ActiveTurn) {
+	sessions := s.SnapshotSessions()
+	turns := []observability.ActiveTurn{}
+	for _, sess := range sessions {
+		if turn, active := sess.ActiveTurnSnapshot(); active {
+			turns = append(turns, turn)
+		}
+	}
+	return len(sessions), turns
 }

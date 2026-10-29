@@ -1,4 +1,4 @@
-package app
+package observability
 
 import (
 	"context"
@@ -12,9 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dkroshow/nano/internal/hosted"
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/observability"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -39,7 +37,8 @@ const (
 	monitorSnapshotTail = 256 << 10
 )
 
-type hostMonitor struct {
+// HostMonitor reads host snapshots and records changes in snapshot freshness.
+type HostMonitor struct {
 	healthDir   string
 	deploysPath string
 	now         func() time.Time
@@ -57,13 +56,18 @@ type monitorAlert struct {
 	Source string    `json:"source"`
 }
 
-func newHostMonitor(healthDir, deploysPath string) *hostMonitor {
-	return &hostMonitor{healthDir: healthDir, deploysPath: deploysPath, now: time.Now}
+// NewHostMonitor watches the supplied snapshot directory using the supplied clock.
+// A nil clock uses time.Now.
+func NewHostMonitor(healthDir, deploysPath string, now func() time.Time) *HostMonitor {
+	if now == nil {
+		now = time.Now
+	}
+	return &HostMonitor{healthDir: healthDir, deploysPath: deploysPath, now: now}
 }
 
 // recentDeploys returns the newest deploy records, newest first.
-func (m *hostMonitor) recentDeploys() ([]json.RawMessage, error) {
-	lines, err := observability.TailJSONLines(m.deploysPath, monitorDeploysTail)
+func (m *HostMonitor) recentDeploys() ([]json.RawMessage, error) {
+	lines, err := TailJSONLines(m.deploysPath, monitorDeploysTail)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +80,7 @@ func (m *hostMonitor) recentDeploys() ([]json.RawMessage, error) {
 
 // newestSnapshot returns the snapshot file the monitor last wrote and when;
 // zero when it never has, which means no monitor is installed.
-func (m *hostMonitor) newestSnapshot() (string, time.Time, error) {
+func (m *HostMonitor) newestSnapshot() (string, time.Time, error) {
 	paths, err := filepath.Glob(filepath.Join(m.healthDir, "health-*.jsonl"))
 	if err != nil {
 		return "", time.Time{}, err
@@ -98,8 +102,8 @@ func (m *hostMonitor) newestSnapshot() (string, time.Time, error) {
 // latestDelivery returns the newest snapshot's delivery block, as the monitor
 // recorded it, so agents read delivery lags and overdue counts here as well;
 // null when that run's delivery probe failed.
-func (m *hostMonitor) latestDelivery(file string) (json.RawMessage, error) {
-	lines, err := observability.TailJSONLines(file, monitorSnapshotTail)
+func (m *HostMonitor) latestDelivery(file string) (json.RawMessage, error) {
+	lines, err := TailJSONLines(file, monitorSnapshotTail)
 	if err != nil || len(lines) == 0 {
 		return nil, err
 	}
@@ -114,7 +118,7 @@ func (m *hostMonitor) latestDelivery(file string) (json.RawMessage, error) {
 
 // check records a monitor-stale alert when snapshots stop, and a clear line
 // when they resume.
-func (m *hostMonitor) check() error {
+func (m *HostMonitor) check() error {
 	_, newest, err := m.newestSnapshot()
 	if err != nil || newest.IsZero() {
 		return err
@@ -153,7 +157,7 @@ func (m *hostMonitor) check() error {
 	return nil
 }
 
-func (m *hostMonitor) record(alert monitorAlert) error {
+func (m *HostMonitor) record(alert monitorAlert) error {
 	line, err := json.Marshal(alert)
 	if err != nil {
 		return err
@@ -166,7 +170,8 @@ func (m *hostMonitor) record(alert monitorAlert) error {
 	return errors.Join(werr, f.Close())
 }
 
-func (m *hostMonitor) run(ctx context.Context) {
+// Run checks snapshot freshness until the context ends.
+func (m *HostMonitor) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
@@ -183,86 +188,87 @@ func (m *hostMonitor) run(ctx context.Context) {
 
 // tailAlerts returns the alert lines in the last monitorAlertsTail bytes of
 // the file, oldest first.
-func (m *hostMonitor) tailAlerts() ([]json.RawMessage, error) {
-	return observability.TailJSONLines(filepath.Join(m.healthDir, monitorAlertsName), monitorAlertsTail)
+func (m *HostMonitor) tailAlerts() ([]json.RawMessage, error) {
+	return TailJSONLines(filepath.Join(m.healthDir, monitorAlertsName), monitorAlertsTail)
 }
 
-func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
-	sessions := s.SnapshotSessions()
-	turns := []monitorTurn{}
-	for _, sess := range sessions {
-		if turn, active := sess.ActiveTurnSnapshot(); active {
-			turns = append(turns, turn)
-		}
-	}
-	file, newest, err := s.hostMonitor.newestSnapshot()
+// MonitorHandlers joins host diagnostics with snapshots from their live owners.
+// The callbacks only read response values; those owners retain their state.
+type MonitorHandlers struct {
+	Monitor     *HostMonitor
+	Requests    *RequestTimes
+	Catalog     *threadindex.Service
+	Live        func() (int, []ActiveTurn)
+	WarmStreams func() any
+	Restarts    func() (any, error)
+}
+
+// HandleMonitor serves process, host and active-turn diagnostics.
+func (s *MonitorHandlers) HandleMonitor(w http.ResponseWriter, _ *http.Request) {
+	held, turns := s.Live()
+
+	file, newest, err := s.Monitor.newestSnapshot()
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, "monitor_unreadable", err.Error())
 		return
 	}
 	var delivery json.RawMessage
 	if file != "" {
-		if delivery, err = s.hostMonitor.latestDelivery(file); err != nil {
+		if delivery, err = s.Monitor.latestDelivery(file); err != nil {
 			httpapi.WriteError(w, http.StatusInternalServerError, "monitor_unreadable", err.Error())
 			return
 		}
 	}
-	alerts, err := s.hostMonitor.tailAlerts()
+	alerts, err := s.Monitor.tailAlerts()
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, "monitor_unreadable", err.Error())
 		return
 	}
 	alerts = alerts[max(0, len(alerts)-monitorAlertsShown):]
-	restarts, err := s.restart.Recent(hosted.DefaultRestartsLimit, false)
+	restarts, err := s.Restarts()
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, "monitor_unreadable", err.Error())
 		return
 	}
-	deploys, err := s.hostMonitor.recentDeploys()
+	deploys, err := s.Monitor.recentDeploys()
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, "monitor_unreadable", err.Error())
 		return
 	}
 	snapshot := map[string]any{"newestSnapshotAt": nil, "stale": false, "delivery": nil}
 	if !newest.IsZero() {
-		snapshot = map[string]any{"newestSnapshotAt": newest.UTC(), "stale": s.hostMonitor.now().Sub(newest) > monitorStaleAfter, "delivery": delivery}
+		snapshot = map[string]any{"newestSnapshotAt": newest.UTC(), "stale": s.Monitor.now().Sub(newest) > monitorStaleAfter, "delivery": delivery}
 	}
-	requests, streams := s.requests.Report()
+	requests, streams := s.Requests.Report()
 	var ingest *threadindex.IngestStatus
-	if catalog, ok := s.catalog.(interface {
-		IngestStatus() threadindex.IngestStatus
-	}); ok {
-		status := catalog.IngestStatus()
+	if s.Catalog != nil {
+		status := s.Catalog.IngestStatus()
 		ingest = &status
 	}
+
 	w.Header().Set("Cache-Control", "no-cache")
 	httpapi.WriteJSON(w, map[string]any{
 		"ingest":      ingest,
-		"threadsHeld": len(sessions),
+		"threadsHeld": held,
 		"turnsActive": turns,
 		"monitor":     snapshot,
 		"alerts":      alerts,
 		"requests":    requests,
 		"streamsOpen": streams,
-		"warmStreams": s.sidebarOwner().WarmReport(),
+		"warmStreams": s.WarmStreams(),
 		"restarts":    restarts,
 		"deploys":     deploys,
 	})
 }
 
-// handleIngestReceipts serves the latest ingestion receipt of every held
+// HandleIngestReceipts serves the latest ingestion receipt of every held
 // native file, newest first, for probes that join Nano's stage times to their
 // own file and browser observations.
-func (s *server) handleIngestReceipts(w http.ResponseWriter, _ *http.Request) {
-	catalog, ok := s.catalog.(interface {
-		IngestReceipts() []threadindex.IngestReceipt
-	})
-	if !ok {
+func (s *MonitorHandlers) HandleIngestReceipts(w http.ResponseWriter, _ *http.Request) {
+	if s.Catalog == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")
-	httpapi.WriteJSON(w, map[string]any{"receipts": catalog.IngestReceipts()})
+	httpapi.WriteJSON(w, map[string]any{"receipts": s.Catalog.IngestReceipts()})
 }
-
-type monitorTurn = observability.ActiveTurn

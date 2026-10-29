@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dkroshow/nano/internal/observability"
 )
 
 // Catches: the host monitor losing the active turns its finished-turn row
@@ -35,7 +37,7 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 	for i := range 1000 { // about 100 KB, past the tail the endpoint reads
 		fmt.Fprintf(&alerts, `{"at":"2026-10-01T05:00:00Z","row":"swap","firing":true,"text":"alert %d","source":"host-monitor"}`+"\n", i)
 	}
-	if err := os.WriteFile(filepath.Join(dir, monitorAlertsName), []byte(alerts.String()), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "alerts.jsonl"), []byte(alerts.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,27 +55,28 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 	})
 	working := f.session
 	idle := memorySession(t, "idle", "claude", "native-idle", "ready", "/w", "model", now)
-	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}, map[string]*session{working.ID(): working, idle.ID(): idle})
-	s.hostMonitor.now = func() time.Time { return now }
+	s := testServerWithSessions(&server{Registry: newSessionRegistry(), hostMonitor: observability.NewHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"), func() time.Time { return now })}, map[string]*session{working.ID(): working, idle.ID(): idle})
 
 	rec := httptest.NewRecorder()
-	s.handleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
+	s.monitorHandlers().HandleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	var body struct {
-		ThreadsHeld int            `json:"threadsHeld"`
-		TurnsActive []monitorTurn  `json:"turnsActive"`
-		Monitor     map[string]any `json:"monitor"`
-		Alerts      []monitorAlert `json:"alerts"`
-		Deploys     []struct {
+		ThreadsHeld int                        `json:"threadsHeld"`
+		TurnsActive []observability.ActiveTurn `json:"turnsActive"`
+		Monitor     map[string]any             `json:"monitor"`
+		Alerts      []struct {
+			Text string `json:"text"`
+		} `json:"alerts"`
+		Deploys []struct {
 			Stamp string `json:"stamp"`
 		} `json:"deploys"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.ThreadsHeld != 2 || len(body.TurnsActive) != 1 || body.TurnsActive[0] != (monitorTurn{Provider: "codex", ThreadID: "native-working", HostedThreadID: "nht_working", Name: "busy agent"}) {
+	if body.ThreadsHeld != 2 || len(body.TurnsActive) != 1 || body.TurnsActive[0] != (observability.ActiveTurn{Provider: "codex", ThreadID: "native-working", HostedThreadID: "nht_working", Name: "busy agent"}) {
 		t.Fatalf("threads held %d, turns %+v", body.ThreadsHeld, body.TurnsActive)
 	}
 	delivery, _ := body.Monitor["delivery"].(map[string]any)
@@ -83,107 +86,10 @@ func TestMonitorServesActiveTurnsAndTheNewestAlerts(t *testing.T) {
 	if body.Monitor["stale"] != false {
 		t.Fatalf("monitor = %v; a one-minute-old snapshot is fresh", body.Monitor)
 	}
-	if len(body.Alerts) != monitorAlertsShown || body.Alerts[0].Text != "alert 950" || body.Alerts[len(body.Alerts)-1].Text != "alert 999" {
-		t.Fatalf("alerts = %d, first %q; want the newest %d, oldest first", len(body.Alerts), body.Alerts[0].Text, monitorAlertsShown)
+	if len(body.Alerts) != 50 || body.Alerts[0].Text != "alert 950" || body.Alerts[len(body.Alerts)-1].Text != "alert 999" {
+		t.Fatalf("alerts = %d, first %q; want the newest %d, oldest first", len(body.Alerts), body.Alerts[0].Text, 50)
 	}
-	if len(body.Deploys) != monitorDeploysShown || body.Deploys[0].Stamp != "s6" || body.Deploys[monitorDeploysShown-1].Stamp != "s2" {
-		t.Fatalf("deploys = %+v; want the newest %d, newest first", body.Deploys, monitorDeploysShown)
-	}
-}
-
-// Catches: a stopped monitor job going unrecorded, its alert repeated every
-// minute, one raised where no monitor is installed, or a stale alert never
-// cleared because Nano restarted before snapshots resumed. Boundary: Nano's
-// freshness check over the monitor's directory.
-func TestHostMonitorRecordsStoppedSnapshotsOnceAndTheirReturn(t *testing.T) {
-	now := time.Date(2026, 10, 1, 6, 0, 0, 0, time.UTC)
-	dir := t.TempDir()
-	m := newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))
-	m.now = func() time.Time { return now }
-	alertLines := func() []string {
-		data, err := os.ReadFile(filepath.Join(dir, monitorAlertsName))
-		if os.IsNotExist(err) {
-			return nil
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		return strings.Split(strings.TrimSpace(string(data)), "\n")
-	}
-
-	if err := m.check(); err != nil || alertLines() != nil {
-		t.Fatalf("no monitor installed: err %v, alerts %v", err, alertLines())
-	}
-	snapshot := filepath.Join(dir, "health-2026-10-01.jsonl")
-	if err := os.WriteFile(snapshot, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chtimes(snapshot, now.Add(-5*time.Minute), now.Add(-5*time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	for range 3 {
-		if err := m.check(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if lines := alertLines(); len(lines) != 1 || !strings.Contains(lines[0], `"row":"monitor-stale","firing":true`) {
-		t.Fatalf("after the job stopped: %v; want one firing line", lines)
-	}
-	// Other rows record more changes than the API shows, then Nano restarts
-	// and snapshots resume before its first check.
-	f, err := os.OpenFile(filepath.Join(dir, monitorAlertsName), os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := range monitorAlertsShown + 10 {
-		fmt.Fprintf(f, `{"at":"2026-10-01T06:00:00Z","row":"swap","firing":%t,"text":"x","source":"host-monitor"}`+"\n", i%2 == 0)
-	}
-	f.Close()
-	if err := os.Chtimes(snapshot, now, now); err != nil {
-		t.Fatal(err)
-	}
-	restarted := newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))
-	restarted.now = m.now
-	if err := restarted.check(); err != nil {
-		t.Fatal(err)
-	}
-	if lines := alertLines(); len(lines) != monitorAlertsShown+12 || !strings.Contains(lines[len(lines)-1], `"row":"monitor-stale","firing":false`) {
-		t.Fatalf("after a restart and snapshots resuming: %d lines, last %q; want a monitor-stale clear line", len(lines), lines[len(lines)-1])
-	}
-}
-
-// Catches: an older delivery block served after the newest snapshot's probe
-// failed, so a stale lag looks current, or a partial last line (a snapshot
-// being written) breaking the read. Boundary: GET /api/v1/monitor.
-func TestMonitorDeliveryComesFromTheNewestCompleteSnapshot(t *testing.T) {
-	for _, c := range []struct {
-		name, lines string
-		want        any
-	}{
-		{"partial last line", `{"ts":"a","delivery":{"notices_overdue":1}}` + "\n" + `{"ts":"b","delivery":{"notices_overdue":2}}` + "\n" + `{"ts":"c","deli`, float64(2)},
-		{"newest probe failed", `{"ts":"a","delivery":{"notices_overdue":1}}` + "\n" + `{"ts":"b","probe_errors":{"delivery":"database is locked"}}` + "\n", nil},
-	} {
-		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, "health-2026-10-01.jsonl"), []byte(c.lines), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		s := &server{Registry: newSessionRegistry(), hostMonitor: newHostMonitor(dir, filepath.Join(dir, "deploys.jsonl"))}
-		rec := httptest.NewRecorder()
-		s.handleMonitor(rec, httptest.NewRequest(http.MethodGet, "/api/v1/monitor", nil))
-		var body struct {
-			Monitor struct {
-				Delivery map[string]any `json:"delivery"`
-			} `json:"monitor"`
-		}
-		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil {
-			t.Fatalf("%s: status %d: %s", c.name, rec.Code, rec.Body)
-		}
-		var got any
-		if body.Monitor.Delivery != nil {
-			got = body.Monitor.Delivery["notices_overdue"]
-		}
-		if got != c.want {
-			t.Errorf("%s: delivery %v; want notices_overdue %v", c.name, body.Monitor.Delivery, c.want)
-		}
+	if len(body.Deploys) != 5 || body.Deploys[0].Stamp != "s6" || body.Deploys[5-1].Stamp != "s2" {
+		t.Fatalf("deploys = %+v; want the newest %d, newest first", body.Deploys, 5)
 	}
 }

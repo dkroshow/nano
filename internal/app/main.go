@@ -154,7 +154,7 @@ type server struct {
 	// usageLimitsPoller is retained so the Codex push notification can nudge an
 	// out-of-band refresh. Nil whenever usageLimits is.
 	usageLimitsPoller  *usage.Poller
-	hostMonitor        *hostMonitor
+	hostMonitor        *observability.HostMonitor
 	requests           observability.RequestTimes
 	hostedControl      *hosted.Controller
 	hostedControlOnce  sync.Once
@@ -382,8 +382,8 @@ func construct(cfg config.Config) *application {
 	if catalogService != nil && controlMetadata != nil {
 		catalogService.SetCreationNameSource(controlMetadata.CreationThreadNames)
 	}
-	s.hostMonitor = newHostMonitor(filepath.Join(cfg.Paths.DataDir, "health"), filepath.Join(cfg.Paths.DataDir, "deploys.jsonl"))
-	go s.hostMonitor.run(context.Background())
+	s.hostMonitor = observability.NewHostMonitor(filepath.Join(cfg.Paths.DataDir, "health"), filepath.Join(cfg.Paths.DataDir, "deploys.jsonl"), nil)
+	go s.hostMonitor.Run(context.Background())
 	if usageLimits != nil {
 		s.usageLimitsPoller = newUsageLimitsPoller(usageLimits, codexDaemon, s.defaults, cfg.UsagePollInterval)
 		go s.usageLimitsPoller.Run(context.Background())
