@@ -415,7 +415,7 @@ func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 	}
 	seedBootAttachments(t, s)
 	s.prepareBootReattach()
-	s.restart.rank(map[attachmentKey]bootRank{records["visible"].Key(): {tier: bootTierStarred, visible: true}}, s.boot.order)
+	s.restart.rank(map[attachmentKey]sidebar.BootRank{records["visible"].Key(): {Tier: 0, Visible: true}}, s.boot.order)
 
 	s.reattachStored(records["visible"], false)
 	s.reattachStored(records["hidden"], false)
@@ -486,22 +486,18 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.prepareBootReattach()
-	updated := func(ago time.Duration) *string {
+	Updated := func(ago time.Duration) *string {
 		value := now.Add(-ago).Format(time.RFC3339Nano)
 		return &value
 	}
 	threads := []sidebar.Thread{
-		{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred-idle", UpdatedAt: updated(40 * 24 * time.Hour)}, HostedThreadID: "nht_starred-idle", Starred: true},
-		{Thread: threadindex.Thread{ID: "nth_root", Provider: "codex", NativeID: "root-idle", UpdatedAt: updated(time.Hour)}, HostedThreadID: "nht_root-idle"},
-		{Thread: threadindex.Thread{ID: "nth_child", Provider: "codex", NativeID: "child-idle", UpdatedAt: updated(time.Minute)}, HostedThreadID: "nht_child-idle"},
-		{Thread: threadindex.Thread{ID: "nth_child_wake", Provider: "codex", NativeID: "child-wake", UpdatedAt: updated(time.Minute)}, HostedThreadID: "nht_child-wake"},
-		{Thread: threadindex.Thread{ID: "nth_child_quiet", Provider: "codex", NativeID: "child-quiet", UpdatedAt: updated(time.Minute)}, HostedThreadID: "nht_child-quiet"},
+		{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred-idle", UpdatedAt: Updated(40 * 24 * time.Hour)}, HostedThreadID: "nht_starred-idle", Starred: true},
+		{Thread: threadindex.Thread{ID: "nth_root", Provider: "codex", NativeID: "root-idle", UpdatedAt: Updated(time.Hour)}, HostedThreadID: "nht_root-idle"},
+		{Thread: threadindex.Thread{ID: "nth_child", Provider: "codex", NativeID: "child-idle", UpdatedAt: Updated(time.Minute)}, HostedThreadID: "nht_child-idle"},
+		{Thread: threadindex.Thread{ID: "nth_child_wake", Provider: "codex", NativeID: "child-wake", UpdatedAt: Updated(time.Minute)}, HostedThreadID: "nht_child-wake"},
+		{Thread: threadindex.Thread{ID: "nth_child_quiet", Provider: "codex", NativeID: "child-quiet", UpdatedAt: Updated(time.Minute)}, HostedThreadID: "nht_child-quiet"},
 	}
-	s.attachRuntimeOverlayBatch(ctx, threads, s.sidebarRuntimeSnapshot())
-	query := sidebarDefaultQuery(now)
-	active, nodes := projectSidebar(threads, query, 1)
-	s.sidebar = newSidebarMaterializedState()
-	s.sidebar.replace(threads, query, active, nodes, 1)
+	materializeBootSidebar(t, s, threads, now)
 	var logs syncBuffer
 	priorLog := log.Writer()
 	log.SetOutput(&logs)
@@ -570,13 +566,8 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 	updates := s.runtimeEvents.Subscribe()
 	defer s.runtimeEvents.Unsubscribe(updates)
 
-	s.runtimeSnapshotMu.Lock()
-	held := true
-	defer func() {
-		if held {
-			s.runtimeSnapshotMu.Unlock()
-		}
-	}()
+	resumePublication := blockRuntimePublication(t, s)
+	defer resumePublication()
 	done := make(chan struct{})
 	go func() {
 		s.reattachOnBoot()
@@ -596,8 +587,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 		stacks := make([]byte, 1<<20)
 		blockedStacks = string(stacks[:runtime.Stack(stacks, true)])
 	}
-	held = false
-	s.runtimeSnapshotMu.Unlock()
+	resumePublication()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -642,13 +632,8 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 	updates := s.runtimeEvents.Subscribe()
 	defer s.runtimeEvents.Unsubscribe(updates)
 
-	s.runtimeSnapshotMu.Lock()
-	held := true
-	defer func() {
-		if held {
-			s.runtimeSnapshotMu.Unlock()
-		}
-	}()
+	resumePublication := blockRuntimePublication(t, s)
+	defer resumePublication()
 	done := make(chan struct{})
 	go func() {
 		s.reattachOnBoot()
@@ -658,7 +643,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		ready = 0
-		for _, sum := range s.volatileSessionSummaries() {
+		for _, sum := range s.Registry.VolatileSummaries(nil) {
 			if sum.Provider == "codex" && strings.HasPrefix(sum.ThreadID, "handshake-thread-") && sum.Status == "ready" {
 				ready++
 			}
@@ -673,8 +658,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 		stacks := make([]byte, 1<<20)
 		blockedStacks = string(stacks[:runtime.Stack(stacks, true)])
 	}
-	held = false
-	s.runtimeSnapshotMu.Unlock()
+	resumePublication()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -826,12 +810,12 @@ func TestBootReattachStuckProviderDoesNotHoldAnother(t *testing.T) {
 // hidden threads for every queue's visible registrations. Boundary: bootOrder.
 func TestBootOrderPutsVisibleThreadsBeforeTiedHiddenOnes(t *testing.T) {
 	hidden := attachmentRecord{Provider: "codex", NativeThreadID: "hidden"}
-	visible := attachmentRecord{Provider: "codex", NativeThreadID: "visible"}
-	ranks := map[attachmentKey]bootRank{
-		hidden.Key():  {tier: bootTierTopLevel},
-		visible.Key(): {tier: bootTierTopLevel, visible: true},
+	Visible := attachmentRecord{Provider: "codex", NativeThreadID: "visible"}
+	ranks := map[attachmentKey]sidebar.BootRank{
+		hidden.Key():  {Tier: 1},
+		Visible.Key(): {Tier: 1, Visible: true},
 	}
-	if got := bootOrder([]attachmentRecord{hidden, visible}, ranks); got[0].NativeThreadID != "visible" {
+	if got := bootOrder([]attachmentRecord{hidden, Visible}, ranks); got[0].NativeThreadID != "visible" {
 		t.Fatalf("boot order = %s, %s; want the visible thread first", got[0].NativeThreadID, got[1].NativeThreadID)
 	}
 }
@@ -859,16 +843,12 @@ func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.
 	openTurnsForBoot(t, s)
 	s.prepareBootReattach()
 	now := time.Now().UTC()
-	updated := now.Format(time.RFC3339Nano)
+	Updated := now.Format(time.RFC3339Nano)
 	threads := []sidebar.Thread{
-		{Thread: threadindex.Thread{ID: "nth_codex_visible", Provider: "codex", NativeID: "codex-visible", UpdatedAt: &updated}, Starred: true},
-		{Thread: threadindex.Thread{ID: "nth_claude_visible", Provider: "claude", NativeID: claudeResumeThreadID, UpdatedAt: &updated}, Starred: true},
+		{Thread: threadindex.Thread{ID: "nth_codex_visible", Provider: "codex", NativeID: "codex-visible", UpdatedAt: &Updated}, Starred: true},
+		{Thread: threadindex.Thread{ID: "nth_claude_visible", Provider: "claude", NativeID: claudeResumeThreadID, UpdatedAt: &Updated}, Starred: true},
 	}
-	s.attachRuntimeOverlayBatch(context.Background(), threads, s.sidebarRuntimeSnapshot())
-	query := sidebarDefaultQuery(now)
-	active, nodes := projectSidebar(threads, query, 1)
-	s.sidebar = newSidebarMaterializedState()
-	s.sidebar.replace(threads, query, active, nodes, 1)
+	materializeBootSidebar(t, s, threads, now)
 	var logs syncBuffer
 	priorLog := log.Writer()
 	log.SetOutput(&logs)
@@ -1522,7 +1502,7 @@ func TestServeAnswersWhileStoredThreadsStillReattach(t *testing.T) {
 	if get("/api/sessions", &sessions); len(sessions.Detached) != 1 || sessions.Detached[0].Status != "starting" {
 		t.Fatalf("session list while reattaching = %+v, want one starting row", sessions.Detached)
 	}
-	if runtime, _ := s.RuntimeFor(rec.Provider, rec.NativeThreadID); runtime.Status != "starting" {
+	if runtime, _ := runtimeForTest(t, s, rec.Provider, rec.NativeThreadID); runtime.Status != "starting" {
 		t.Fatalf("runtime overlay while reattaching = %+v", runtime)
 	}
 
@@ -1535,7 +1515,7 @@ func TestServeAnswersWhileStoredThreadsStillReattach(t *testing.T) {
 		t.Fatalf("boot summary lines = %d:\n%s", count, logs.String())
 	}
 	waitForClaude(t, "thread/resume call", func() bool { return daemon.ResumeCount() == 1 })
-	if runtime, _ := s.RuntimeFor(rec.Provider, rec.NativeThreadID); !runtime.Attached {
+	if runtime, _ := runtimeForTest(t, s, rec.Provider, rec.NativeThreadID); !runtime.Attached {
 		t.Fatalf("runtime overlay after reattach = %+v", runtime)
 	}
 }

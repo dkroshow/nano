@@ -1,9 +1,10 @@
 package sidebar
 
 import (
-	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"path/filepath"
 	"testing"
+
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 func openTestThreadStars(t *testing.T) *Stars {

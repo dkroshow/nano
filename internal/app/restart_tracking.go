@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/observability"
 )
@@ -184,7 +185,7 @@ func (t *restartTracker) addThreads(records []attachmentRecord) {
 		}
 		th := &restartThread{tracker: t, restartThreadRecord: restartThreadRecord{
 			Provider: rec.Provider, NativeThreadID: rec.NativeThreadID, HostedThreadID: rec.HostedThreadID,
-			Tier: bootTierNames[bootTierUnseen], Order: i, State: restartStatePending,
+			Tier: bootTierNames[sidebar.BootTierUnseen], Order: i, State: restartStatePending,
 		}}
 		t.threads = append(t.threads, th)
 		t.byKey[rec.Key()] = th
@@ -193,7 +194,7 @@ func (t *restartTracker) addThreads(records []attachmentRecord) {
 
 // rank fixes each thread's sidebar place and the order the boot loop takes,
 // before the loop starts, so requests that jump the queue do not change them.
-func (t *restartTracker) rank(ranks map[attachmentKey]bootRank, ordered []attachmentRecord) {
+func (t *restartTracker) rank(ranks map[attachmentKey]sidebar.BootRank, ordered []attachmentRecord) {
 	if t == nil {
 		return
 	}
@@ -203,9 +204,9 @@ func (t *restartTracker) rank(ranks map[attachmentKey]bootRank, ordered []attach
 		if th := t.byKey[rec.Key()]; th != nil {
 			r, known := ranks[rec.Key()]
 			if !known {
-				r.tier = bootTierUnseen
+				r.Tier = sidebar.BootTierUnseen
 			}
-			th.Tier, th.Visible, th.Order = bootTierNames[r.tier], r.visible, i
+			th.Tier, th.Visible, th.Order = bootTierNames[r.Tier], r.Visible, i
 		}
 	}
 }
@@ -432,7 +433,7 @@ func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
 		last            *int64
 		failed, pending bool
 	}
-	var all, visible span
+	var all, Visible span
 	note := func(s *span, th *restartThread) {
 		switch th.State {
 		case restartStateLive:
@@ -466,7 +467,7 @@ func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
 		note(&all, th)
 		if th.Visible {
 			record.Visible++
-			note(&visible, th)
+			note(&Visible, th)
 		}
 		record.ByProvider[th.Provider] = p
 		if durations[th.Provider] == nil {
@@ -484,7 +485,7 @@ func (t *restartTracker) recordLocked(withThreads bool) restartRecord {
 	for _, s := range []struct {
 		span          span
 		live, settled **int64
-	}{{all, &record.AllLiveMs, &record.AllSettledMs}, {visible, &record.VisibleLiveMs, &record.VisibleSettledMs}} {
+	}{{all, &record.AllLiveMs, &record.AllSettledMs}, {Visible, &record.VisibleLiveMs, &record.VisibleSettledMs}} {
 		if s.span.pending || s.span.last == nil {
 			continue
 		}

@@ -1,66 +1,45 @@
-package app
+package sidebar
 
 import (
 	"context"
-	"errors"
-	"sync"
+	"fmt"
+	"log"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-// sidebarTestCatalog wraps the fixture's real catalog so a test can publish
-// catalog changes, count full sidebar graph reads, and fail one read.
+// sidebarTestCatalog drives the real catalog's name-change publication and
+// counts the materializer's completed rebuild diagnostics.
 type sidebarTestCatalog struct {
-	store *history.Store
-	*threadCatalogService
-	changes   chan catalog.Change
-	mu        sync.Mutex
-	fullReads int
-	failNext  bool
-}
-
-func (c *sidebarTestCatalog) SubscribeCatalog() (<-chan catalog.Change, func()) {
-	return c.changes, func() {}
-}
-
-func (c *sidebarTestCatalog) ListSidebarGraph(ctx context.Context, params history.SidebarGraphParams) (history.SidebarGraph, error) {
-	c.mu.Lock()
-	fail := c.failNext
-	c.failNext = false
-	if !params.OnlyExtra {
-		c.fullReads++
-	}
-	c.mu.Unlock()
-	if fail {
-		return history.SidebarGraph{}, errors.New("synthetic transient read failure")
-	}
-	return c.threadCatalogService.ListSidebarGraph(ctx, params)
+	store      *history.Store
+	service    *threadindex.Service
+	controller *Controller
+	logs       *testsupport.LogBuffer
+	sequence   int
 }
 
 func (c *sidebarTestCatalog) reads() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.fullReads
+	return strings.Count(c.logs.String(), "sidebar full rebuild (")
 }
-
-// startSidebarFixture runs the real materializer loop over the sidebar
-// fixture and the wrapped catalog.
-func startSidebarFixture(t *testing.T) (*server, *sidebarTestCatalog) {
+func startSidebarFixture(t *testing.T) (*Controller, *sidebarTestCatalog) {
 	t.Helper()
 	s, _, store := sidebarActiveFixtureWithStore(t, time.Now())
-	c := &sidebarTestCatalog{store: store, threadCatalogService: s.catalog.(*threadCatalogService), changes: make(chan catalog.Change, 1)}
-	s.catalog = c
+	logs := &testsupport.LogBuffer{}
+	prior := log.Writer()
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(prior) })
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	if err := s.startSidebarMaterializer(ctx, time.Now()); err != nil {
+	if err := s.StartSidebarMaterializer(ctx, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	return s, c
+	return s, &sidebarTestCatalog{store: store, service: s.catalog, controller: s, logs: logs}
 }
 
 // seedLateThread commits a new working thread that only a full rebuild shows.
@@ -75,7 +54,7 @@ func seedLateThread(t *testing.T, c *sidebarTestCatalog, native string) func(sid
 	return func(row sidebarThread) bool { return row.NativeID == native }
 }
 
-func awaitSidebarRow(t *testing.T, s *server, match func(sidebarThread) bool, within time.Duration) {
+func awaitSidebarRow(t *testing.T, s *Controller, match func(sidebarThread) bool, within time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(within)
 	for {
@@ -89,22 +68,32 @@ func awaitSidebarRow(t *testing.T, s *server, match func(sidebarThread) bool, wi
 	}
 }
 
-// publish hands the loop one catalog change and waits until it takes it.
+// publish commits a name change, then waits for the catalog's real feed.
 func (c *sidebarTestCatalog) publish(t *testing.T, change catalog.Change) {
 	t.Helper()
-	c.changes <- change
-	deadline := time.Now().Add(time.Second)
-	for len(c.changes) != 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("the materializer did not take the catalog change")
+	if len(change.ThreadIDs) > 0 {
+		if !c.controller.repairSidebarCatalogRows(context.Background(), change) {
+			t.Fatal("catalog row repair failed")
 		}
-		time.Sleep(time.Millisecond)
+		return
 	}
+	events, stop := c.service.SubscribeCatalog()
+	defer stop()
+	c.sequence++
+	if err := c.service.AssignThreadName("codex", "idle-recent", fmt.Sprintf("catalog event %d", c.sequence)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-events:
+	case <-time.After(time.Second):
+		t.Fatal("the catalog did not publish the name change")
+	}
+	time.Sleep(10 * time.Millisecond)
 }
 
-func activeSidebarRow(t *testing.T, s *server, match func(sidebarThread) bool) (sidebarThread, bool) {
+func activeSidebarRow(t *testing.T, s *Controller, match func(sidebarThread) bool) (sidebarThread, bool) {
 	t.Helper()
-	snapshot, err := s.sidebar.activeSnapshot(threadindex.ListQuery{}, true)
+	snapshot, err := s.activeSnapshot(threadindex.ListQuery{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,22 +134,33 @@ func TestSidebarFailedRuntimeRebuildKeepsWaitingCatalogRebuild(t *testing.T) {
 	s, c := startSidebarFixture(t)
 	isLate := seedLateThread(t, c, "pending-catalog")
 	c.publish(t, catalog.Change{Refresh: true})
-	c.mu.Lock()
-	c.failNext = true
-	c.mu.Unlock()
-	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Refresh: true})
+	s.updateMu.Lock()
+	savedCatalog := s.catalog
+	s.catalog = nil
+	s.updateMu.Unlock()
+	s.runtimeEvents.Notify(RuntimeDelta{Refresh: true})
+	deadline := time.Now().Add(time.Second)
+	for !strings.Contains(c.logs.String(), "sidebar runtime Rebuild:") {
+		if time.Now().After(deadline) {
+			t.Fatal("runtime rebuild did not report the unavailable source")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	s.updateMu.Lock()
+	s.catalog = savedCatalog
+	s.updateMu.Unlock()
 
 	awaitSidebarRow(t, s, isLate, sidebarRebuildMinInterval+3*time.Second)
 }
 
 // Some refresh markers carry no rows. Applied as a snapshot, one cleared every
-// runtime overlay, and an unrelated working thread left the active sidebar.
+// runtime overlay, and an unrelated working thread left the active
 func TestSidebarRuntimeRefreshMarkerKeepsOtherRuntime(t *testing.T) {
 	s, _ := startSidebarFixture(t)
-	events := s.sidebar.events.subscribe()
-	defer s.sidebar.events.unsubscribe(events)
+	events := s.Subscribe()
+	defer s.Unsubscribe(events)
 
-	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Refresh: true})
+	s.runtimeEvents.Notify(RuntimeDelta{Refresh: true})
 	select {
 	case <-events:
 	case <-time.After(500 * time.Millisecond):
@@ -180,15 +180,15 @@ func TestSidebarNativeBindShowsAtOnce(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := s.startSidebarMaterializer(ctx, time.Now()); err != nil {
+	if err := s.StartSidebarMaterializer(ctx, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	s.runtimeDeltaSnapshot()
-	events := s.sidebar.events.subscribe()
-	defer s.sidebar.events.unsubscribe(events)
+	events := s.Subscribe()
+	defer s.Unsubscribe(events)
 
 	sess.ReserveNativeID("native-bound")
-	s.notifyRuntime()
+	s.PublishRuntimeDelta(false, false)
 	select {
 	case <-events:
 	case <-time.After(time.Second):
@@ -210,8 +210,8 @@ func TestSidebarRebuildAgreesWithRuntimeDelta(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	events := s.sidebar.events.subscribe()
-	defer s.sidebar.events.unsubscribe(events)
+	events := s.Subscribe()
+	defer s.Unsubscribe(events)
 	delta := s.runtimeDeltaSnapshot()
 	delta.Refresh, delta.Rebuild = false, false // patch in place, as an ordinary turn-state change does
 	s.runtimeEvents.Notify(delta)
@@ -237,14 +237,14 @@ func TestSidebarRebuildAgreesWithRuntimeDelta(t *testing.T) {
 
 // A delta names only the threads whose runtime changed. Applied as a
 // snapshot, one small delta cleared every other row's runtime and the working
-// threads it left out fell off the active sidebar.
+// threads it left out fell off the active
 func TestSidebarPartialRuntimeDeltaKeepsUnnamedRuntime(t *testing.T) {
 	s, _ := startSidebarFixture(t)
-	events := s.sidebar.events.subscribe()
-	defer s.sidebar.events.unsubscribe(events)
-	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Rows: []sidebar.RuntimeRow{{
+	events := s.Subscribe()
+	defer s.Unsubscribe(events)
+	s.runtimeEvents.Notify(RuntimeDelta{Rows: []RuntimeRow{{
 		Provider: "codex", NativeID: "attached-recent",
-		Runtime: &sidebar.RuntimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
+		Runtime: &RuntimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
 	}}})
 	select {
 	case <-events:
@@ -263,22 +263,22 @@ func TestSidebarPartialRuntimeDeltaKeepsUnnamedRuntime(t *testing.T) {
 // matching revision.
 func TestSidebarGenerationNamesTheProcess(t *testing.T) {
 	s, _ := startSidebarFixture(t)
-	snapshot, err := s.sidebar.activeSnapshot(threadindex.ListQuery{}, true)
+	snapshot, err := s.activeSnapshot(threadindex.ListQuery{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if snapshot.Generation == "" {
 		t.Fatal("the active list names no generation")
 	}
-	marker, ok := s.sidebar.marker(snapshot.CatalogVersion)
+	marker, ok := s.Marker(snapshot.CatalogVersion)
 	if !ok || !marker.Refresh || marker.Generation != snapshot.Generation || marker.Revision != snapshot.Revision {
 		t.Fatalf("connect marker = %+v ok=%v, want a refresh at the list's generation and revision", marker, ok)
 	}
-	events := s.sidebar.events.subscribe()
-	defer s.sidebar.events.unsubscribe(events)
-	s.runtimeEvents.Notify(sidebar.RuntimeDelta{Rows: []sidebar.RuntimeRow{{
+	events := s.Subscribe()
+	defer s.Unsubscribe(events)
+	s.runtimeEvents.Notify(RuntimeDelta{Rows: []RuntimeRow{{
 		Provider: "codex", NativeID: "attached-recent",
-		Runtime: &sidebar.RuntimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
+		Runtime: &RuntimeInfo{Attached: true, SessionID: "sess-attached", Status: "ready", TurnActive: true, ThreadStatus: "working"},
 	}}})
 	select {
 	case delta := <-events:
@@ -288,7 +288,7 @@ func TestSidebarGenerationNamesTheProcess(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("the runtime delta published no sidebar delta")
 	}
-	if other := newSidebarMaterializedState(); other.generation == s.sidebar.generation {
+	if other := New(Sources{}); other.generation == s.generation {
 		t.Fatal("two processes share one generation")
 	}
 }
@@ -310,7 +310,7 @@ func TestSidebarIndexTimeAloneResendsNoRow(t *testing.T) {
 	active := func(item sidebarThread, version int64) sidebarActiveResponse {
 		return sidebarActiveResponse{Items: []sidebarThread{item}, Roots: []string{item.ID}, CatalogVersion: version}
 	}
-	next := func(events chan sidebarDelta) *sidebarDelta {
+	next := func(events chan Delta) *Delta {
 		select {
 		case delta := <-events:
 			return &delta
@@ -318,7 +318,7 @@ func TestSidebarIndexTimeAloneResendsNoRow(t *testing.T) {
 			return nil
 		}
 	}
-	m := newSidebarMaterializedState()
+	m := New(Sources{})
 	m.replace(nil, threadindex.ListQuery{}, active(row("2026-10-28T20:00:00Z", 0), 1), nil, 1)
 	events := m.events.subscribe()
 	m.replace(nil, threadindex.ListQuery{}, active(row("2026-10-28T20:00:05Z", 0), 1), nil, 1)

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -28,7 +29,7 @@ type warmReader struct {
 // (lines, cols, markers) ride along.
 func openWarm(t *testing.T, srv *server, set []string, extra url.Values) *warmReader {
 	t.Helper()
-	ts := httptest.NewServer(http.HandlerFunc(srv.handleWarmTranscripts))
+	ts := httptest.NewServer(http.HandlerFunc(srv.sidebarOwner().HandleWarmTranscripts))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(func() { cancel(); ts.Close() })
 	query := url.Values{"set": {strings.Join(set, ",")}}
@@ -324,7 +325,12 @@ func TestWarmStreamRetriesARefusedThreadWithATail(t *testing.T) {
 	h.expect("rows", func(liveTextMessage) bool { return len(h.view.rows) > 0 })
 	ref := h.sess.HostedThreadID()
 	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
-	h.srv.sidebar = newSidebarMaterializedState() // the stream retries on its events
+	h.srv.sidebar = sidebar.New(sidebar.Sources{Catalog: h.service.Service, Registry: &h.srv.Registry, Stars: openTestThreadStars(t)})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := h.srv.sidebar.StartSidebarMaterializer(ctx, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	earlier := openWarm(t, h.srv, []string{ref}, nil)
 	earlier.next("set")
 	tail := earlier.next("tail")
@@ -337,7 +343,12 @@ func TestWarmStreamRetriesARefusedThreadWithATail(t *testing.T) {
 	}
 	warm.next("set")
 	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess}) // it is back
-	h.srv.sidebar.events.notify(sidebarDelta{Revision: 1})
+	// An operator star change is a real sidebar delta that wakes the stream.
+	rec := httptest.NewRecorder()
+	h.srv.sidebar.HandleThreadStarred(rec, httptest.NewRequest(http.MethodPut, "/star", strings.NewReader(`{"starred":true}`)), h.sess.ThreadID())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sidebar wake: %d %s", rec.Code, rec.Body.String())
+	}
 	got := warm.next("retry")
 	if got.Type == "set" { // the set names the thread again before its rows
 		got = warm.next("retry rows")
@@ -377,7 +388,7 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 			t.Fatalf("turn %s is not one of the window's rows' turns", turn.ID)
 		}
 	}
-	if report := h.srv.warm.Report(); len(report) == 0 || report[len(report)-1].Lines != 5 || report[len(report)-1].Cols != 20 {
+	if report := h.srv.sidebarOwner().WarmReport(); len(report) == 0 || report[len(report)-1].Lines != 5 || report[len(report)-1].Cols != 20 {
 		t.Fatalf("monitor report = %+v, want the stream's 5 x 20 window", report)
 	}
 
@@ -388,32 +399,6 @@ func TestWarmStreamSendsTheWindowThatFillsThePage(t *testing.T) {
 	}
 	if bad := openWarm(t, h.srv, []string{ref}, url.Values{"lines": {"3"}, "cols": {"20"}}); bad.status != http.StatusBadRequest {
 		t.Fatalf("lines below the minimum: status %d, want 400", bad.status)
-	}
-}
-
-// A thread the server cannot warm gets one error and stays out of the set:
-// no live session holds it, or the server-wide budget is spent. It is tried
-// again when the sidebar changes, with no second error.
-func TestWarmStreamRefusesThreadsItCannotWarm(t *testing.T) {
-	h := newLiveTextHarness(t)
-	seedTestSessionRegistry(&h.srv.Registry, map[string]*session{h.sess.ID(): h.sess})
-	for i := range warmBudget {
-		h.srv.warm.Admit(fmt.Sprintf("nht_elsewhere_%d", i))
-	}
-	warm := openWarm(t, h.srv, []string{"nht_not_held", h.sess.HostedThreadID()}, nil)
-	for _, want := range []struct{ ref, reason string }{
-		{"nht_not_held", "no live session holds this thread"},
-		{h.sess.HostedThreadID(), "the warm budget is spent"},
-	} {
-		if got := warm.next("refusal"); got.Type != "error" || got.Ref != want.ref || got.Error != want.reason {
-			t.Fatalf("got %+v, want error %q for %s", got, want.reason, want.ref)
-		}
-	}
-	if set := warm.next("set"); set.Type != "set" || len(set.Refs) != 0 {
-		t.Fatalf("got %+v, want an empty set", set)
-	}
-	if bad := openWarm(t, h.srv, []string{h.sess.HostedThreadID()}, url.Values{"markers": {"not json"}}); bad.status != http.StatusBadRequest {
-		t.Fatalf("malformed markers: status %d, want 400", bad.status)
 	}
 }
 

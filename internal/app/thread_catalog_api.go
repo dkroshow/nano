@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,7 +15,6 @@ import (
 	"github.com/dkroshow/nano/internal/catalog"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
-	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
@@ -158,9 +156,9 @@ func (s *server) listCatalogPage(ctx context.Context, query threadindex.ListQuer
 		key := listKey(page.Items[len(page.Items)-1])
 		last = &key
 	}
-	runtime := s.sidebarRuntimeSnapshot()
+	runtime := s.sidebarOwner().SidebarRuntimeSnapshot()
 	items := page.Items
-	for _, row := range s.runtimeThreadRows(ctx, query, page.Items, runtime.summaries) {
+	for _, row := range s.runtimeThreadRows(ctx, query, page.Items, runtime.Summaries) {
 		if key := listKey(row); (after == nil || listsBefore(*after, key)) && (last == nil || !listsBefore(*last, key)) {
 			items = append(items, row)
 		}
@@ -189,7 +187,7 @@ func (s *server) listCatalogPage(ctx context.Context, query threadindex.ListQuer
 		page.NextCursor = &encoded
 	}
 	page.Items = append(items, parents...)
-	s.composeCatalogThreads(ctx, page.Items, runtime, false)
+	s.sidebarOwner().ComposeCatalogThreads(ctx, page.Items, runtime, false)
 	return page, nil
 }
 
@@ -217,19 +215,6 @@ func listsBefore(a, b history.ThreadCursor) bool {
 }
 
 const (
-	// memoryThreadIDPrefix namespaces a memory row's id away from the durable
-	// `nth_` space: it addresses a session, not a stored thread, so
-	// GET /api/v1/threads/mem_* has nothing to load by design.
-	memoryThreadIDPrefix = "mem_"
-	// memoryThreadKind marks a row no scanner has judged yet — main and
-	// subagent are evidence-derived classes, and a memory row has no evidence.
-	memoryThreadKind = "thread"
-	// memoryThreadInteraction is the honest answer until the provider file is
-	// read, and the one the interaction filters always admit.
-	memoryThreadInteraction = "unclassified"
-	// runtimeEvidence labels cells whose authority is the live session itself;
-	// history.Evidence covers file-derived authorities only.
-	runtimeEvidence = "runtime"
 	// archivedOnlyFilter is the query class no live session can belong to.
 	archivedOnlyFilter = "only"
 	// archivedIncludeFilter is the widest archived class — what a rescue lookup
@@ -277,7 +262,7 @@ func (s *server) runtimeThreadRows(ctx context.Context, query threadindex.ListQu
 		}
 		key := attachmentKey{Provider: sess.Provider, NativeThreadID: sess.ThreadID}
 		if _, found := indexed[key]; sess.ThreadID == "" || (err == nil && !covered[key] && !found) {
-			rows = append(rows, memoryThreadRow(sess))
+			rows = append(rows, sidebar.MemoryThreadRow(sess))
 		}
 	}
 	if query.ThreadID == "" {
@@ -320,58 +305,6 @@ func (s *server) threadsByIdentity(ctx context.Context, keys []attachmentKey) (m
 		}
 	}
 	return found, nil
-}
-
-// memoryThreadRow projects one live session into a catalog row. Only what the
-// session actually knows becomes a known cell; the rest stays unknown per the
-// three-way metadata contract — a runtime row is thin and honest about it
-// rather than padded with defaults. Title and preview stay null: they are
-// derived from the provider transcript, which this row does not have. A
-// dialog-supplied name is session-owned until the durable overlay takes over,
-// so it is safe to carry through immediately.
-//
-// The runtime overlay is stamped here rather than left to attachRuntimeOverlay:
-// a memory row is attached by construction, and a session still starting has no
-// native id for the (provider, nativeId) lookup to match. The later overlay pass
-// leaves a stamped row alone.
-func memoryThreadRow(sess sessions.Summary) sidebar.Thread {
-	createdAt := sess.CreatedAt
-	runtime := sessionRuntimeInfo(sess)
-	var name *threadindex.ThreadName
-	if sess.Name != "" {
-		name = &threadindex.ThreadName{
-			Value: sess.Name, Provenance: "manual", Evidence: threadindex.ThreadNameEvidence,
-		}
-	}
-	return sidebar.Thread{Thread: threadindex.Thread{ID: memoryThreadIDPrefix + sess.ID, Provider: sess.Provider, NativeID: sess.ThreadID, Kind: memoryThreadKind, CreatedAt: &createdAt, UpdatedAt: &createdAt, Metadata: threadindex.Metadata{
-		CWD: runtimeCatalogValue(sess.Cwd),
-		// The posture cells serve the same unified projection as the
-		// summary and /state (posture_view.go, decision 4) — which is what
-		// lights up effort/priority/permission for a live row, and shows
-		// the creation-request model before the provider's own handshake
-		// reports one.
-		Model:            runtimeCatalogValue(sess.Posture.Model),
-		Effort:           runtimeCatalogValue(sess.Posture.Effort),
-		Priority:         runtimeCatalogValue(sess.Posture.ServiceTier),
-		Permission:       runtimeCatalogValue(sess.Posture.PermissionMode),
-		HistoricalBranch: unknownCatalogValue(),
-		Origin:           unknownCatalogValue(),
-	}, Interaction: memoryThreadInteraction, Name: name, Source: threadindex.SourceSummary{}}, HostedThreadID: sess.HostedThreadID, InvokerHostedThreadID: sess.InvokerHostedThreadID, InvokerNativeThreadID: sess.InvokerNativeThreadID, InvokerProvider: sess.InvokerProvider, SidebarPlacement: sess.SidebarPlacement, Transient: true, Runtime: &runtime}
-}
-
-// runtimeCatalogValue makes one metadata cell from a live session field: known
-// when the session holds the value, unknown while it is still being learned
-// (claude's model arrives with the init line, after the row can first appear).
-func runtimeCatalogValue(value string) threadindex.Value {
-	if value == "" {
-		return unknownCatalogValue()
-	}
-	evidence := runtimeEvidence
-	return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
-}
-
-func unknownCatalogValue() threadindex.Value {
-	return threadindex.Value{State: string(history.MetadataUnknown)}
 }
 
 // lineageParentRows closes the graph around every worker in a list response:
@@ -419,7 +352,7 @@ func (s *server) lineageParentRows(ctx context.Context, query threadindex.ListQu
 // related-thread assignment wins, then a standalone thread stops, then the
 // hosted invoker, then a subagent's provider-native parent.
 func (s *server) lineageParentKeys(rows []sidebar.Thread) []attachmentKey {
-	records, found := s.sidebarHostedRecords(rows)
+	records, found := s.sidebarOwner().SidebarHostedRecords(rows)
 	var assignments map[string]*orchestrationAssignmentView
 	if s.controlMetadata != nil && s.controlMetadataErr == "" {
 		ids := make([]string, 0, len(rows))
@@ -455,131 +388,6 @@ func (s *server) lineageParentKeys(rows []sidebar.Thread) []attachmentKey {
 	return keys
 }
 
-// attachRuntimeOverlay stamps the volatile runtime fields and Nano's durable
-// hosted-thread identity overlay onto one catalog thread. Invocation lineage
-// is deliberately separate from provider-native parentNativeId: an ordinary
-// Codex hosted thread may have invoked a Claude or Grok hosted thread.
-func (s *server) attachRuntimeOverlay(thread *sidebar.Thread) {
-	if s.runtime != nil {
-		if info, ok := s.runtime.RuntimeFor(thread.Provider, thread.NativeID); ok {
-			thread.Runtime = &info
-		}
-	}
-	record, ok := s.catalogHostedThreadRecord(*thread)
-	if !ok {
-		return
-	}
-	thread.HostedThreadID = record.ID
-	thread.HostedStatus = record.Status
-	thread.InvokerHostedThreadID = record.InvokerHostedThreadID
-	thread.InvokerNativeThreadID = record.InvokerNativeThreadID
-	thread.InvokerProvider = record.InvokerProvider
-	thread.SidebarPlacement = record.SidebarPlacement
-	// A durable hosted overlay supersedes transcript-derived standing posture.
-	// Provider files remain valuable evidence for non-hosted threads, but once
-	// a hosted identity exists the control store is the only metadata authority.
-	s.applyHostedCatalogMetadata(thread, record.ID)
-	s.applyHostedCatalogAssignment(thread, record.ID)
-}
-
-func (s *server) applyHostedCatalogMetadata(thread *sidebar.Thread, hostedID string) {
-	setUnknown := func() {
-		thread.Metadata.CWD = unknownCatalogValue()
-		thread.Metadata.Model = unknownCatalogValue()
-		thread.Metadata.Effort = unknownCatalogValue()
-		thread.Metadata.Priority = unknownCatalogValue()
-		thread.Metadata.Permission = unknownCatalogValue()
-	}
-	if s.controlMetadata == nil || s.controlMetadataErr != "" {
-		setUnknown()
-		return
-	}
-	view, err := s.controlMetadata.View(hostedID)
-	if err != nil {
-		setUnknown()
-		return
-	}
-	canonical := func(field string) threadindex.Value {
-		value, ok := hostedstore.MetadataString(view.Fields[field])
-		if !ok {
-			return unknownCatalogValue()
-		}
-		evidence := "canonical_hosted_metadata"
-		return threadindex.Value{State: string(history.MetadataKnown), Value: &value, Evidence: &evidence}
-	}
-	thread.Metadata.CWD = canonical("cwd")
-	thread.Metadata.Model = canonical(hostedstore.PostureFieldModel)
-	thread.Metadata.Effort = canonical(hostedstore.PostureFieldEffort)
-	thread.Metadata.Priority = canonical(hostedstore.PostureFieldServiceTier)
-	thread.Metadata.Permission = canonical(hostedstore.PostureFieldPermissionMode)
-}
-
-func (s *server) applyHostedCatalogAssignment(thread *sidebar.Thread, hostedID string) {
-	thread.Assignment = nil
-	thread.AssignmentUnavailable = false
-	if s.controlMetadata == nil || s.controlMetadataErr != "" {
-		thread.AssignmentUnavailable = true
-		return
-	}
-	assignment, err := s.controlMetadata.CurrentOrchestrationAssignment(hostedID)
-	if err != nil {
-		thread.AssignmentUnavailable = true
-		return
-	}
-	thread.Assignment = assignment
-}
-
-func (s *server) catalogHostedThreadRecord(thread sidebar.Thread) (agentSessionRecord, bool) {
-	if s.agentExecutions == nil {
-		return agentSessionRecord{}, false
-	}
-	if thread.HostedThreadID != "" {
-		if record, ok := s.agentExecutions.Session(thread.HostedThreadID); ok {
-			return record, true
-		}
-	}
-	return s.agentExecutions.SessionForNative(thread.Provider, thread.NativeID)
-}
-
-// attachFleetStates stamps each row's turn state (fleet_status.go). Rows Nano
-// does not hold are classified from their saved files in one batch query.
-//
-// Best-effort by design: a failed classification
-// leaves those rows' field absent rather than failing the page.
-func (s *server) attachFleetStates(ctx context.Context, threads []sidebar.Thread) {
-	courts, err := s.fleetCourts(ctx, threads)
-	now := time.Now()
-	for i := range threads {
-		if err != nil && !nanoHolds(threads[i]) {
-			continue
-		}
-		threads[i].Fleet = threadFleetState(threads[i], courts[threads[i].ID], now)
-	}
-}
-
-// fleetCourts reads the saved-file evidence of the rows Nano does not hold.
-func (s *server) fleetCourts(ctx context.Context, threads []sidebar.Thread) (map[string]fleetCourtMessage, error) {
-	source, ok := s.catalog.(catalog.FleetCourtSource)
-	if !ok {
-		return nil, errors.New("catalog has no fleet court read")
-	}
-	ids := make([]string, 0, len(threads))
-	for _, thread := range threads {
-		if !nanoHolds(thread) {
-			ids = append(ids, thread.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	courts, err := source.FleetCourt(ctx, ids)
-	if err != nil {
-		log.Printf("catalog fleet states for %d threads: %v", len(ids), err)
-		return nil, err
-	}
-	return courts, nil
-}
-
 func (s *server) handleCatalogThreadRead(w http.ResponseWriter, r *http.Request, rawID string) {
 	if s.catalog == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
@@ -608,10 +416,10 @@ func (s *server) handleCatalogThreadRead(w http.ResponseWriter, r *http.Request,
 		sources := []threadindex.SourceDetail{}
 		thread.Sources = &sources
 	}
-	s.attachRuntimeOverlay(&thread)
-	s.starThread(&thread)
+	s.sidebarOwner().AttachRuntimeOverlay(&thread)
+	s.sidebarOwner().StarThread(&thread)
 	mailRow := []sidebar.Thread{thread}
-	s.attachMailOverlay(mailRow)
+	s.sidebarOwner().AttachMailOverlay(mailRow)
 	thread.Mail = mailRow[0].Mail
 	if thread.Provider == "codex" && s.historicalCodex != nil {
 		resolution := s.historicalCodex.ResolvePrepared(r.Context(), thread)
@@ -665,12 +473,8 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	// Fleet transitions mirror onto the same stream for always-connected
 	// consumers. Best-effort with no replay by contract: the bookmark feed at
 	// /api/v1/fleet/changes is what guarantees a transition is never missed.
-	var fleetEvents <-chan fleetTransition
-	if s.fleet != nil {
-		ch := s.fleet.hub.subscribe()
-		defer s.fleet.hub.unsubscribe(ch)
-		fleetEvents = ch
-	}
+	fleetEvents, stopFleet := s.sidebarOwner().SubscribeFleet()
+	defer stopFleet()
 	// Mail count changes ride the same stream as a fourth named event. No
 	// connect-time event: the client's initial window fetch carries current
 	// counts on the rows (attachMailOverlay), same as the runtime overlay.
@@ -683,10 +487,10 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	// The materialized sidebar publishes row/removal/root patches on this
 	// existing browser stream. A refresh marker on connect closes the race with
 	// the caller's cached whole-state GET without adding another SSE route.
-	var sidebarEvents <-chan sidebarDelta
+	var sidebarEvents <-chan sidebar.Delta
 	if s.sidebar != nil {
-		ch := s.sidebar.events.subscribe()
-		defer s.sidebar.events.unsubscribe(ch)
+		ch := s.sidebarOwner().Subscribe()
+		defer s.sidebarOwner().Unsubscribe(ch)
 		sidebarEvents = ch
 	}
 	// Transcript audit requests reuse the app-wide browser stream. The event is
@@ -709,7 +513,7 @@ func (s *server) handleCatalogIndexEvents(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	writeCatalogChangeEvent(w, catalog.Change{Version: uint64(version), Refresh: true})
-	if marker, ok := s.sidebar.marker(version); ok {
+	if marker, ok := s.sidebar.Marker(version); ok {
 		writeSidebarEvent(w, marker)
 	}
 	flusher.Flush()
@@ -804,7 +608,7 @@ func writeMailEvent(w io.Writer, delta featuremail.Delta) {
 	fmt.Fprintf(w, "event: mail\ndata: %s\n\n", payload)
 }
 
-func writeSidebarEvent(w io.Writer, delta sidebarDelta) {
+func writeSidebarEvent(w io.Writer, delta sidebar.Delta) {
 	payload, err := json.Marshal(delta)
 	if err != nil {
 		return
@@ -814,7 +618,7 @@ func writeSidebarEvent(w io.Writer, delta sidebarDelta) {
 
 // writeFleetEvent mirrors one fleet transition. The payload carries the same
 // shape the changes endpoint returns, so a consumer parses one format.
-func writeFleetEvent(w io.Writer, transition fleetTransition) {
+func writeFleetEvent(w io.Writer, transition sidebar.FleetTransition) {
 	payload, err := json.Marshal(transition)
 	if err != nil {
 		return

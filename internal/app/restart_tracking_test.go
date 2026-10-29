@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -43,11 +42,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	now := time.Now().UTC()
 	updated := now.Format(time.RFC3339Nano)
 	threads := []sidebar.Thread{{Thread: threadindex.Thread{ID: "nth_starred", Provider: "codex", NativeID: "starred", UpdatedAt: &updated}, HostedThreadID: "nht_starred", Starred: true}}
-	s.attachRuntimeOverlayBatch(context.Background(), threads, s.sidebarRuntimeSnapshot())
-	query := sidebarDefaultQuery(now)
-	active, nodes := projectSidebar(threads, query, 1)
-	s.sidebar = newSidebarMaterializedState()
-	s.sidebar.replace(threads, query, active, nodes, 1)
+	materializeBootSidebar(t, s, threads, now)
 	s.restart.markHTTPOpen()
 	s.attachments.Forget("codex", "forgotten")
 

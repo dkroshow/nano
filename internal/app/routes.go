@@ -165,20 +165,22 @@ func applicationRoutes(s *server) []applicationRoute {
 			index.HandleThreadTranscript(w, r, r.PathValue("threadId"))
 		}},
 		{http.MethodGet, "/api/v1/threads/{threadId}/messages", "threads.messages", func(w http.ResponseWriter, r *http.Request) { s.handleThreadMessages(w, r, r.PathValue("threadId")) }},
-		{http.MethodPut, "/api/v1/threads/{threadId}/starred", "threads.starred", func(w http.ResponseWriter, r *http.Request) { s.handleThreadStarred(w, r, r.PathValue("threadId")) }},
+		{http.MethodPut, "/api/v1/threads/{threadId}/starred", "threads.starred", func(w http.ResponseWriter, r *http.Request) {
+			s.sidebarOwner().HandleThreadStarred(w, r, r.PathValue("threadId"))
+		}},
 		{http.MethodPut, "/api/v1/threads/{threadId}/name", "threads.name", index.HandleThreadNameSet},
 		{http.MethodDelete, "/api/v1/threads/{threadId}/name", "threads.name.clear", index.HandleThreadNameClear},
 		{http.MethodGet, "/api/v1/thread-index/status", "threadIndex.status", index.HandleCatalogIndexStatus},
 		{http.MethodPost, "/api/v1/thread-index/refresh", "threadIndex.refresh", index.HandleCatalogRefresh},
 		{http.MethodGet, "/api/v1/thread-index/events", "threadIndex.events", s.handleCatalogIndexEvents},
-		{http.MethodGet, "/api/v1/fleet/changes", "fleet.changes", s.handleFleetChanges},
-		{http.MethodGet, "/api/v1/sidebar/threads", "sidebar.threads", s.handleSidebarThreads},
-		{http.MethodGet, "/api/v1/sidebar/threads/{threadId}/history", "sidebar.threadHistory", s.handleSidebarThreadHistory},
+		{http.MethodGet, "/api/v1/fleet/changes", "fleet.changes", s.sidebarOwner().HandleFleetChanges},
+		{http.MethodGet, "/api/v1/sidebar/threads", "sidebar.threads", s.sidebarOwner().HandleSidebarThreads},
+		{http.MethodGet, "/api/v1/sidebar/threads/{threadId}/history", "sidebar.threadHistory", s.sidebarOwner().HandleSidebarThreadHistory},
 		{http.MethodGet, "/api/v1/pins/monitor", "pins.monitor", s.handleThreadPinMonitor},
 	}
 	routes = append(routes, apiDiscoveryRoutes()...)
 	routes = append(routes, hostedThreadRoutes(s, "/api/v1/hosted-threads")...)
-	routes = append(routes, applicationRoute{http.MethodGet, "/api/v1/warm-transcripts", "warmTranscripts.stream", s.handleWarmTranscripts})
+	routes = append(routes, applicationRoute{http.MethodGet, "/api/v1/warm-transcripts", "warmTranscripts.stream", s.sidebarOwner().HandleWarmTranscripts})
 	// The first agent-only spelling remains a compatibility alias for the same
 	// operations and records; it does not define a second dispatch path.
 	routes = append(routes, hostedThreadRoutes(s, "/api/v1/agent-sessions")...)

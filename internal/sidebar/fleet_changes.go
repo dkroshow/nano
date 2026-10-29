@@ -1,5 +1,3 @@
-package app
-
 // fleet_changes.go — the fleet transition feed, so a consumer can learn every
 // label change since a bookmark without polling the thread list. Every
 // change to the materialized sidebar re-evaluates its rows
@@ -16,6 +14,8 @@ package app
 // Everything here is in-memory and loss-tolerant on purpose: fleet state is
 // never stored, and a consumer that loses the feed re-snapshots.
 
+package sidebar
+
 import (
 	"context"
 	"crypto/rand"
@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/httpapi"
-	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 const (
@@ -53,7 +53,8 @@ const (
 	fleetResnapshotExpired    = "bookmark_expired"
 )
 
-type fleetTransition struct {
+// FleetTransition reports one thread label change in bookmark order.
+type FleetTransition struct {
 	Seq      uint64 `json:"seq"`
 	ThreadID string `json:"threadId"`
 	From     string `json:"from"`
@@ -61,8 +62,9 @@ type fleetTransition struct {
 	At       string `json:"at"`
 }
 
+// FleetChangesResponse carries transitions after a bookmark or requests a new snapshot.
 type fleetChangesResponse struct {
-	Transitions []fleetTransition `json:"transitions"`
+	Transitions []FleetTransition `json:"transitions"`
 	Bookmark    string            `json:"bookmark"`
 	// Resnapshot tells the caller its cursor bought it nothing and it must
 	// re-read /api/v1/threads before trusting the feed again.
@@ -76,7 +78,7 @@ type fleetChangesResponse struct {
 type fleetChangeLog struct {
 	mu    sync.Mutex
 	epoch string
-	ring  []fleetTransition
+	ring  []FleetTransition
 	next  uint64
 }
 
@@ -86,14 +88,14 @@ func newFleetChangeLog() *fleetChangeLog {
 		// A process that cannot read randomness still needs a distinguishable
 		// epoch; start time is unique enough for a cursor's purpose.
 		return &fleetChangeLog{epoch: strconv.FormatInt(time.Now().UnixNano(), 36),
-			ring: make([]fleetTransition, fleetChangeRingSize), next: 1}
+			ring: make([]FleetTransition, fleetChangeRingSize), next: 1}
 	}
 	return &fleetChangeLog{epoch: hex.EncodeToString(epoch),
-		ring: make([]fleetTransition, fleetChangeRingSize), next: 1}
+		ring: make([]FleetTransition, fleetChangeRingSize), next: 1}
 }
 
 // append stamps and stores one transition, returning it with its sequence.
-func (l *fleetChangeLog) append(transition fleetTransition) fleetTransition {
+func (l *fleetChangeLog) append(transition FleetTransition) FleetTransition {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	transition.Seq = l.next
@@ -109,7 +111,7 @@ func (l *fleetChangeLog) since(bookmark string) fleetChangesResponse {
 	defer l.mu.Unlock()
 	head := l.next - 1
 	response := fleetChangesResponse{
-		Transitions: []fleetTransition{},
+		Transitions: []FleetTransition{},
 		Bookmark:    fmt.Sprintf("%s.%d", l.epoch, head),
 	}
 	bookmark = strings.TrimSpace(bookmark)
@@ -158,22 +160,22 @@ func (l *fleetChangeLog) slot(seq uint64) int { return int((seq - 1) % uint64(le
 // because the bookmark feed is what guarantees delivery.
 type fleetHub struct {
 	mu   sync.Mutex
-	subs map[chan fleetTransition]struct{}
+	subs map[chan FleetTransition]struct{}
 }
 
 func newFleetHub() *fleetHub {
-	return &fleetHub{subs: make(map[chan fleetTransition]struct{})}
+	return &fleetHub{subs: make(map[chan FleetTransition]struct{})}
 }
 
-func (h *fleetHub) subscribe() chan fleetTransition {
-	ch := make(chan fleetTransition, fleetSubscriberBuffer)
+func (h *fleetHub) subscribe() chan FleetTransition {
+	ch := make(chan FleetTransition, fleetSubscriberBuffer)
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
 	h.mu.Unlock()
 	return ch
 }
 
-func (h *fleetHub) unsubscribe(ch chan fleetTransition) {
+func (h *fleetHub) unsubscribe(ch chan FleetTransition) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if _, ok := h.subs[ch]; ok {
@@ -182,7 +184,7 @@ func (h *fleetHub) unsubscribe(ch chan fleetTransition) {
 	}
 }
 
-func (h *fleetHub) notify(transition fleetTransition) {
+func (h *fleetHub) notify(transition FleetTransition) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch := range h.subs {
@@ -223,13 +225,13 @@ func newFleetWatcher() *fleetWatcher {
 
 // startFleetWatcher follows the materialized sidebar: every change to its rows
 // re-evaluates their labels in memory.
-func startFleetWatcher(ctx context.Context, sidebar *sidebarMaterializedState) *fleetWatcher {
+func startFleetWatcher(ctx context.Context, sidebar *Controller) *fleetWatcher {
 	watcher := newFleetWatcher()
 	go watcher.run(ctx, sidebar)
 	return watcher
 }
 
-func (w *fleetWatcher) run(ctx context.Context, sidebar *sidebarMaterializedState) {
+func (w *fleetWatcher) run(ctx context.Context, sidebar *Controller) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -245,12 +247,12 @@ func (w *fleetWatcher) run(ctx context.Context, sidebar *sidebarMaterializedStat
 // resync labels the materialized rows at now and publishes the labels that
 // moved. Re-evaluating every row, not only the changed ones, is what lets an
 // abandoned prompt leave working once it passes the bound.
-func (w *fleetWatcher) resync(threads []sidebar.Thread, now time.Time) {
+func (w *fleetWatcher) resync(threads []Thread, now time.Time) {
 	w.mu.Lock()
 	previous, seeded := w.observed, w.seeded
 	observed := make(map[string]string, len(threads))
 	read := make(map[string]fleetCourtRead, len(threads))
-	var transitions []fleetTransition
+	var transitions []FleetTransition
 	for _, thread := range threads {
 		id := thread.ID
 		held := nanoHolds(thread)
@@ -265,7 +267,7 @@ func (w *fleetWatcher) resync(threads []sidebar.Thread, now time.Time) {
 		}
 		observed[id] = label
 		if before := previous[id]; seeded && before != label {
-			transitions = append(transitions, fleetTransition{ThreadID: id, From: before, To: label})
+			transitions = append(transitions, FleetTransition{ThreadID: id, From: before, To: label})
 		}
 	}
 	w.observed, w.seeded, w.read = observed, true, read
@@ -276,7 +278,7 @@ func (w *fleetWatcher) resync(threads []sidebar.Thread, now time.Time) {
 // publish records transitions in the ring and mirrors them onto the SSE stream.
 // Map iteration order is undefined, so one batch is ordered by thread id — a
 // consumer's sequence numbers should not depend on Go's hash seed.
-func (w *fleetWatcher) publish(transitions []fleetTransition, now time.Time) {
+func (w *fleetWatcher) publish(transitions []FleetTransition, now time.Time) {
 	sort.Slice(transitions, func(i, j int) bool { return transitions[i].ThreadID < transitions[j].ThreadID })
 	stamp := now.UTC().Format(time.RFC3339)
 	for _, transition := range transitions {
@@ -285,10 +287,11 @@ func (w *fleetWatcher) publish(transitions []fleetTransition, now time.Time) {
 	}
 }
 
-func (s *server) handleFleetChanges(w http.ResponseWriter, r *http.Request) {
+// HandleFleetChanges serves the bookmark-based fleet transition feed.
+func (s *Controller) HandleFleetChanges(w http.ResponseWriter, r *http.Request) {
 	if s.fleet == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "fleet_unavailable", "Fleet transition feed unavailable")
 		return
 	}
-	writeCatalogJSON(w, http.StatusOK, s.fleet.changes.since(r.URL.Query().Get("since")))
+	threadindex.WriteCatalogJSON(w, http.StatusOK, s.fleet.changes.since(r.URL.Query().Get("since")))
 }

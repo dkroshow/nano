@@ -1,4 +1,4 @@
-package app
+package sidebar
 
 import (
 	"encoding/json"
@@ -9,24 +9,24 @@ import (
 
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
-	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
-func (s *server) starThread(thread *sidebar.Thread) {
+// StarThread applies the current operator-owned star to a response row.
+func (s *Controller) StarThread(thread *Thread) {
 	if s == nil || s.threadStars == nil || thread == nil {
 		return
 	}
 	thread.Starred = s.threadStars.IsStarred(thread.Provider, thread.NativeID)
 }
 
-func (s *server) attachStarredOverlay(threads []sidebar.Thread) {
+func (s *Controller) attachStarredOverlay(threads []Thread) {
 	for i := range threads {
-		s.starThread(&threads[i])
+		s.StarThread(&threads[i])
 	}
 }
 
-func (s *server) attachStarredOnSessions(summaries []sessions.Summary) {
+func (s *Controller) attachStarredOnSessions(summaries []sessions.Summary) {
 	if s == nil || s.threadStars == nil {
 		return
 	}
@@ -35,7 +35,8 @@ func (s *server) attachStarredOnSessions(summaries []sessions.Summary) {
 	}
 }
 
-func (s *server) handleThreadStarred(w http.ResponseWriter, r *http.Request, rawID string) {
+// HandleThreadStarred persists a star change and updates connected browsers.
+func (s *Controller) HandleThreadStarred(w http.ResponseWriter, r *http.Request, rawID string) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	if s.threadStars == nil {
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "stars_unavailable", "Thread stars store unavailable")
@@ -54,14 +55,15 @@ func (s *server) handleThreadStarred(w http.ResponseWriter, r *http.Request, raw
 		httpapi.WriteError(w, http.StatusBadRequest, "invalid_thread_id", "Invalid thread id")
 		return
 	}
-	id, err := s.resolveThreadReference(r.Context(), reference)
+	id, err := threadindex.ResolveReference(r.Context(), s.catalog, reference)
 	if err != nil {
-		writeThreadReferenceError(w, err)
+		threadindex.WriteThreadReferenceError(w, err)
 		return
 	}
-	thread, err := s.catalog.LoadThread(r.Context(), id)
+	saved, err := s.catalog.LoadThread(r.Context(), id)
+	thread := Thread{Thread: saved}
 	if err != nil {
-		writeCatalogBackendError(w, err)
+		threadindex.WriteCatalogBackendError(w, err)
 		return
 	}
 	var payload struct {
@@ -73,19 +75,19 @@ func (s *server) handleThreadStarred(w http.ResponseWriter, r *http.Request, raw
 		return
 	}
 	if err := s.threadStars.SetStarred(thread.Provider, thread.NativeID, *payload.Starred); err != nil {
-		if errors.Is(err, sidebar.ErrStarIdentityMissing) {
+		if errors.Is(err, ErrStarIdentityMissing) {
 			httpapi.WriteError(w, http.StatusConflict, "star_identity_missing", "Thread has no provider-native id to star yet")
 			return
 		}
 		httpapi.WriteError(w, http.StatusInternalServerError, "star_error", "Thread star update failed")
 		return
 	}
-	s.attachRuntimeOverlay(&thread)
-	s.starThread(&thread)
-	sidebarCurrent := s.sidebar != nil && s.sidebar.applyStar(thread.Provider, thread.NativeID, *payload.Starred)
+	s.AttachRuntimeOverlay(&thread)
+	s.StarThread(&thread)
+	sidebarCurrent := s != nil && s.applyStar(thread.Provider, thread.NativeID, *payload.Starred)
 	// Open browsers on every device share this SQLite file through this
-	// server. Nudge them to refetch so a pin on the laptop is not stuck in
+	// Controller. Nudge them to refetch so a pin on the laptop is not stuck in
 	// the iPad's in-memory snapshot until a hard refresh.
-	s.publishRuntimeDelta(true, sidebarCurrent)
-	writeCatalogJSON(w, http.StatusOK, thread)
+	s.PublishRuntimeDelta(true, sidebarCurrent)
+	threadindex.WriteCatalogJSON(w, http.StatusOK, thread)
 }

@@ -671,7 +671,6 @@ func memoryRowServer(t *testing.T) *server {
 		sess := memorySession(t, fixture.id, fixture.provider, fixture.native, fixture.status, fixture.cwd, fixture.model, base.Add(time.Duration(index)*time.Minute), func(cfg *sessionConfig) { cfg.HostedThreadID = hostedID; cfg.Metadata = metadata })
 		s.RegisterSession(sess)
 	}
-	s.runtime = s
 	return s
 }
 
@@ -779,7 +778,7 @@ func TestCatalogMemoryRowsMergeIntoFirstPage(t *testing.T) {
 }
 
 func TestMemoryThreadRowCarriesDialogNameBeforeDurableIndexing(t *testing.T) {
-	row := memoryThreadRow(sessionSummary{
+	row := sidebar.MemoryThreadRow(sessionSummary{
 		ID: "session-1", Provider: "codex", Name: "sidebar name", CreatedAt: "2026-08-04T12:00:00Z",
 	})
 	if row.Name == nil || row.Name.Value != "sidebar name" ||
@@ -854,7 +853,6 @@ func rescueServer(t *testing.T) *server {
 		"aaa": memorySession(t, "aaa", "codex", "native-visible", "ready", "/w/vis", "gpt-5", base),
 		"bbb": memorySession(t, "bbb", "claude", "native-prog", "ready", "/w/prog", "sonnet", base.Add(time.Minute)),
 	})
-	s.runtime = s
 	return s
 }
 

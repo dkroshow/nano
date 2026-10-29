@@ -280,7 +280,7 @@ func (s *server) handleMonitor(w http.ResponseWriter, _ *http.Request) {
 		"alerts":      alerts,
 		"requests":    requests,
 		"streamsOpen": streams,
-		"warmStreams": s.warm.Report(),
+		"warmStreams": s.sidebarOwner().WarmReport(),
 		"restarts":    restarts,
 		"deploys":     deploys,
 	})

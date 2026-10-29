@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,9 +18,6 @@ const (
 	// warmSetMax is how many threads one page may ask for; the first are
 	// kept. A sidebar renders fewer rows than this.
 	warmSetMax = 100
-	// warmBudget caps the distinct threads warm across every stream, so
-	// several pages warming different threads cannot multiply the work.
-	warmBudget = 150
 	// WarmJoining is how many threads join one stream at once: the next
 	// joins when one of them has sent its first message, or has waited
 	// WarmJoinWait without one (a projection still indexing sends nothing).
@@ -136,13 +132,6 @@ func ParseWarmRequest(r *http.Request) (WarmRequest, error) {
 	return WarmRequest{Set: set, Fill: fill, Markers: markers}, nil
 }
 
-// WarmStreams holds every open warm stream and the threads they warm.
-type WarmStreams struct {
-	mu      sync.Mutex
-	threads map[string]int // hosted thread id: warm streams holding it
-	streams map[*WarmStream]bool
-}
-
 // WarmStream is one page's warm stream and its counters.
 type WarmStream struct {
 	queue    *liveTextQueue
@@ -168,59 +157,12 @@ type WarmStreamReport struct {
 	TailBytes int64     `json:"tailBytes"`
 }
 
-// Admit counts a stream's hold on a thread. A thread already warm costs no
-// budget; a new one is refused once the budget is spent.
-func (w *WarmStreams) Admit(ref string) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.threads[ref] == 0 && len(w.threads) >= warmBudget {
-		return false
-	}
-	if w.threads == nil {
-		w.threads = make(map[string]int)
-	}
-	w.threads[ref]++
-	return true
+// NewWarmStream creates the bounded shared queue for a browser warm stream.
+func NewWarmStream(fill WarmFill) *WarmStream {
+	return &WarmStream{queue: newLiveTextQueueWithBacklog(warmStreamBacklog), openedAt: time.Now().UTC(), fill: fill}
 }
 
-// Release removes a stream's hold on a warm thread.
-func (w *WarmStreams) Release(ref string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.threads[ref]--; w.threads[ref] <= 0 {
-		delete(w.threads, ref)
-	}
-}
-
-// Open creates a shared warm-stream queue with bounded backlog.
-func (w *WarmStreams) Open(fill WarmFill) *WarmStream {
-	stream := &WarmStream{queue: newLiveTextQueueWithBacklog(warmStreamBacklog), openedAt: time.Now().UTC(), fill: fill}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.streams == nil {
-		w.streams = make(map[*WarmStream]bool)
-	}
-	w.streams[stream] = true
-	return stream
-}
-
-// Close removes an ended stream from monitoring.
-func (w *WarmStreams) Close(stream *WarmStream) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	delete(w.streams, stream)
-}
-
-// Report snapshots the active warm streams.
-func (w *WarmStreams) Report() []WarmStreamReport {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	out := make([]WarmStreamReport, 0, len(w.streams))
-	for stream := range w.streams {
-		out = append(out, WarmStreamReport{OpenedAt: stream.openedAt, Lines: stream.fill.lines, Cols: stream.fill.cols,
-			Refs: stream.refs.Load(), Reads: stream.reads.Load(), Bytes: stream.bytes.Load(),
-			Tails: stream.tails.Load(), TailBytes: stream.tailBytes.Load()})
-	}
-	slices.SortFunc(out, func(a, b WarmStreamReport) int { return a.OpenedAt.Compare(b.OpenedAt) })
-	return out
+// Report snapshots this stream's counters without reading another owner.
+func (stream *WarmStream) Report() WarmStreamReport {
+	return WarmStreamReport{OpenedAt: stream.openedAt, Lines: stream.fill.lines, Cols: stream.fill.cols, Refs: stream.refs.Load(), Reads: stream.reads.Load(), Bytes: stream.bytes.Load(), Tails: stream.tails.Load(), TailBytes: stream.tailBytes.Load()}
 }

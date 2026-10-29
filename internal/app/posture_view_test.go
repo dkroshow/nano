@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -191,7 +192,7 @@ func TestMemoryThreadRowServesPostureCells(t *testing.T) {
 		ID: "sess-1", Provider: "claude", Cwd: "/w",
 		Posture: sessionPosture{Model: "opus", Effort: "high", PermissionMode: "plan", ServiceTier: "priority"},
 	}
-	row := memoryThreadRow(sum)
+	row := sidebar.MemoryThreadRow(sum)
 	cells := map[string]threadindex.Value{
 		"model":      row.Metadata.Model,
 		"effort":     row.Metadata.Effort,
@@ -206,7 +207,7 @@ func TestMemoryThreadRowServesPostureCells(t *testing.T) {
 		}
 	}
 
-	unknown := memoryThreadRow(sessionSummary{ID: "sess-2", Provider: "claude"})
+	unknown := sidebar.MemoryThreadRow(sessionSummary{ID: "sess-2", Provider: "claude"})
 	if unknown.Metadata.Effort.State != "unknown" {
 		t.Fatalf("empty posture effort cell = %+v, want honest unknown", unknown.Metadata.Effort)
 	}

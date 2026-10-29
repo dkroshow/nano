@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
@@ -72,7 +73,7 @@ func TestRuntimeOverlayCarriesAnchorAndWaiting(t *testing.T) {
 	waitReconnectCondition(t, func() bool { return sess.AvailabilityState().Waiting })
 
 	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"sess-anchor": sess})
-	info, ok := s.RuntimeFor("codex", "t1")
+	info, ok := runtimeForTest(t, s, "codex", "t1")
 	if !ok {
 		t.Fatal("the hosted thread has no runtime overlay")
 	}
@@ -80,7 +81,7 @@ func TestRuntimeOverlayCarriesAnchorAndWaiting(t *testing.T) {
 		t.Fatalf("overlay = %+v, want attached+working+anchored+waiting", info)
 	}
 
-	row := memoryThreadRow(sess.Summary())
+	row := sidebar.MemoryThreadRow(sess.Summary())
 	if row.Runtime == nil || row.Runtime.TurnStartedAtMs != 1785510514000 || !row.Runtime.Waiting {
 		t.Fatalf("memory row runtime = %+v, want the same anchor and waiting flag", row.Runtime)
 	}

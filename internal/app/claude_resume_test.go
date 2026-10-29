@@ -92,7 +92,6 @@ func claudeResumeServer(t *testing.T, shimURL string) (*server, *hostedstore.Att
 		sendAttempts:    attempts,
 		turns:           turnStore,
 	}
-	s.runtime = s
 	t.Cleanup(func() {
 		sessions := make([]*session, 0, len(s.SnapshotSessions()))
 		for _, sess := range s.SnapshotSessions() {
@@ -1017,7 +1016,7 @@ func TestClaudeSecondResumeOnRespawnRungIs409(t *testing.T) {
 	}
 	// And the catalog overlay says the same thing, so the row offers a jump
 	// rather than a Resume that would fork the conversation.
-	rt, ok := s.RuntimeFor("claude", claudeResumeThreadID)
+	rt, ok := runtimeForTest(t, s, "claude", claudeResumeThreadID)
 	if !ok || !rt.Attached || rt.SessionID != winner.ID {
 		t.Fatalf("runtime overlay = %+v (ok = %v), want the thread attached to %s", rt, ok, winner.ID)
 	}

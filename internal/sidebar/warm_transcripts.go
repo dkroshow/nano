@@ -1,4 +1,4 @@
-package app
+package sidebar
 
 import (
 	"bytes"
@@ -11,13 +11,13 @@ import (
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
-// handleWarmTranscripts streams the set's saved rows. Messages are the
+// HandleWarmTranscripts streams the set's saved rows. Messages are the
 // file-only pane messages (tail, update, error) tagged with ref, and set,
 // which names the threads carried: the browser drops any other. A thread
-// joining with a marker at the current projection gets an update with the
+// joining with a Marker at the current projection gets an update with the
 // rows it lacks; any other joining thread gets a tail; one that cannot be
 // warmed gets one error, and is tried again when the sidebar changes.
-func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
+func (s *Controller) HandleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 	request, err := sessions.ParseWarmRequest(r)
 	if err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadRequest)
@@ -28,14 +28,14 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteHTTPError(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	var sidebarEvents <-chan sidebarDelta
-	if s.sidebar != nil {
-		ch := s.sidebar.events.subscribe()
-		defer s.sidebar.events.unsubscribe(ch)
+	var sidebarEvents <-chan Delta
+	if s != nil {
+		ch := s.events.subscribe()
+		defer s.events.unsubscribe(ch)
 		sidebarEvents = ch
 	}
-	stream := s.warm.Open(request.Fill)
-	defer s.warm.Close(stream)
+	stream := s.warm.open(request.Fill)
+	defer s.warm.close(stream)
 	type member struct {
 		sess     *sessions.Session
 		pane     *sessions.LiveTextStream
@@ -45,7 +45,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 	members := make(map[string]member)
 	leave := func(ref string, m member) {
 		m.pane.Stop()
-		s.warm.Release(ref)
+		s.warm.release(ref)
 		delete(members, ref)
 	}
 	defer func() {
@@ -90,7 +90,7 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 				failedAt[ref], told[ref] = now, true
 				delete(request.Markers, ref)
 				leave(ref, m)
-			case s.SessionForHostedThread(ref) != m.sess:
+			case s.registry.SessionForHostedThread(ref) != m.sess:
 				leave(ref, m)
 			}
 		}
@@ -111,17 +111,17 @@ func (s *server) handleWarmTranscripts(w http.ResponseWriter, r *http.Request) {
 				soonest(sessions.WarmRetryWait - now.Sub(failed))
 				continue
 			}
-			sess := s.SessionForHostedThread(ref)
+			sess := s.registry.SessionForHostedThread(ref)
 			reason := ""
 			switch {
 			case sess == nil || sess.LiveTextService() == nil:
 				reason = "no live session holds this thread"
-			case !s.warm.Admit(ref):
+			case !s.warm.admit(ref):
 				reason = "the warm budget is spent"
 			}
 			if reason != "" {
 				// The browser drops the thread on the error, so a later
-				// retry sends a tail, not an update against its marker.
+				// retry sends a tail, not an update against its Marker.
 				delete(request.Markers, ref)
 				if !told[ref] {
 					told[ref] = true

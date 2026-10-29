@@ -214,9 +214,11 @@ func newBudgetFixture(t *testing.T, extra int) *budgetFixture {
 		controlMetadata: metadata, agentExecutions: executions,
 		runtimeEvents: sidebar.NewRuntimeHub(), mailEvents: featuremail.NewHub(), mail: newTestAgentMessageStore(t),
 	}, sessions)
-	s.runtime = s
 	nameOwner = s
-	if err := s.materializeSidebar(context.Background(), now); err != nil {
+	s.sidebar = sidebar.New(sidebar.Sources{Catalog: f.catalog.Service, Registry: &s.Registry, Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, Attachments: s.attachments, Boot: &s.bootAttachments, Stars: s.threadStars, Mail: s.mail, MailError: s.mailErr, RuntimeEvents: s.runtimeEvents})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
 		t.Fatal(err)
 	}
 	f.server = s
@@ -488,7 +490,7 @@ func TestListResponsesShowEachRowsFacts(t *testing.T) {
 	add("thread", threads["items"], "provider", "nativeId", "idClass", "kind", "name.value", "name.provenance",
 		"runtime.status", "runtime.detached", "metadata.cwd.value", "metadata.model.value", "fleet.label")
 	lines = append(lines, "thread nextCursor="+fmt.Sprint(threads["nextCursor"] != nil))
-	sidebar := f.get(t, f.server.handleSidebarThreads, f.sidebarURL())
+	sidebar := f.get(t, f.server.sidebarOwner().HandleSidebarThreads, f.sidebarURL())
 	add("sidebar", sidebar["items"], "provider", "nativeId", "idClass", "name.value", "name.provenance", "runtime.status",
 		"sidebar.active", "sidebar.depth", "fleet.label")
 	roots, _ := sidebar["roots"].([]any)

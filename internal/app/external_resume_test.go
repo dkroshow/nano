@@ -182,7 +182,7 @@ func TestExternalResumeProviderResolversPreserveKnownAndUnknownPosture(t *testin
 			catalog := externalResumeCatalog(t, provider, nativeID, s.defaults.cwd)
 			// Unknown permission must remain unknown; Nano must not substitute
 			// its new-session allowlist or a broader permission mode.
-			catalog.thread.Metadata.Permission = unknownCatalogValue()
+			catalog.thread.Metadata.Permission = threadindex.Value{State: "unknown"}
 			s.catalog = catalog
 			resolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: provider, Mode: "resume", ThreadID: nativeID}})
 			if err != nil {
@@ -251,7 +251,7 @@ func TestExternalClaudeRetryKeepsUnknownAllowlist(t *testing.T) {
 	s.defaults.claudeBin = filepath.Join(t.TempDir(), "missing-claude")
 	const nativeID = "external-claude-retry"
 	catalog := externalResumeCatalog(t, "claude", nativeID, s.defaults.cwd)
-	catalog.thread.Metadata.Permission = unknownCatalogValue()
+	catalog.thread.Metadata.Permission = threadindex.Value{State: "unknown"}
 	s.catalog = catalog
 
 	firstResolved, err := s.resolveSpawn(spawnRequest{ProviderRequest: providerRequest{Provider: "claude", Mode: "resume", ThreadID: nativeID}})

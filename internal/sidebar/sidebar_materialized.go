@@ -1,4 +1,4 @@
-package app
+package sidebar
 
 import (
 	"context"
@@ -12,19 +12,20 @@ import (
 	"github.com/dkroshow/nano/internal/catalog"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
-	"github.com/dkroshow/nano/internal/sidebar"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
 var errSidebarMaterializedUnavailable = threadindex.ErrThreadCatalogUnavailable
 
-// sidebarDelta is a complete patch against one prior sidebar revision, except
+// Delta is a complete patch against one prior sidebar revision, except
 // for each row's index time, which no row shows (sidebarComparable): a fresh
 // read may carry a newer one at the same revision. Slow stream consumers
 // receive Refresh instead of an unsafe partial merge.
 // Generation names the process whose revisions these are: revisions count
 // from 1 again after a restart, so a browser compares both.
-type sidebarDelta struct {
+type Delta struct {
 	Generation      string          `json:"generation"`
 	Revision        uint64          `json:"revision"`
 	Rows            []sidebarThread `json:"rows,omitempty"`
@@ -37,22 +38,22 @@ type sidebarDelta struct {
 
 type sidebarHub struct {
 	mu   sync.Mutex
-	subs map[chan sidebarDelta]struct{}
+	subs map[chan Delta]struct{}
 }
 
 func newSidebarHub() *sidebarHub {
-	return &sidebarHub{subs: map[chan sidebarDelta]struct{}{}}
+	return &sidebarHub{subs: map[chan Delta]struct{}{}}
 }
 
-func (h *sidebarHub) subscribe() chan sidebarDelta {
-	ch := make(chan sidebarDelta, 1)
+func (h *sidebarHub) subscribe() chan Delta {
+	ch := make(chan Delta, 1)
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
 	h.mu.Unlock()
 	return ch
 }
 
-func (h *sidebarHub) unsubscribe(ch chan sidebarDelta) {
+func (h *sidebarHub) unsubscribe(ch chan Delta) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if _, ok := h.subs[ch]; ok {
@@ -61,14 +62,14 @@ func (h *sidebarHub) unsubscribe(ch chan sidebarDelta) {
 	}
 }
 
-func (h *sidebarHub) notify(delta sidebarDelta) {
+func (h *sidebarHub) notify(delta Delta) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch := range h.subs {
 		next := delta
 		select {
 		case <-ch:
-			next = sidebarDelta{Generation: delta.Generation, Revision: delta.Revision, CatalogVersion: delta.CatalogVersion, Refresh: true}
+			next = Delta{Generation: delta.Generation, Revision: delta.Revision, CatalogVersion: delta.CatalogVersion, Refresh: true}
 		default:
 		}
 		select {
@@ -78,16 +79,36 @@ func (h *sidebarHub) notify(delta sidebarDelta) {
 	}
 }
 
-type sidebarMaterializedState struct {
+// Controller owns visible rows, runtime deltas, fleet transitions, and browser subscriptions.
+type Controller struct {
+	catalog            *threadindex.Service
+	registry           *sessions.Registry
+	agentExecutions    *hostedstore.ExecutionStore
+	controlMetadata    *hostedstore.MetadataStore
+	controlMetadataErr string
+	attachments        *hostedstore.AttachmentStore
+	boot               *sessions.BootAttachments
+	threadStars        *Stars
+	mail               *featuremail.Store
+	mailErr            string
+	runtimeEvents      *RuntimeHub
+	fleet              *fleetWatcher
+	warm               warmStreams
+	runtimeSnapshotMu  sync.Mutex
+	runtimePublishMu   sync.Mutex
+	runtimeSnapshot    map[hostedstore.AttachmentKey]RuntimeInfo
+	runtimeSessions    map[string]string
+	runtimeDetached    map[hostedstore.AttachmentKey]string
+
 	updateMu     sync.Mutex
 	mu           sync.RWMutex
-	all          []sidebar.Thread
+	all          []Thread
 	defaultQuery threadindex.ListQuery
 	active       sidebarActiveResponse
 	nodes        []*sidebarNode
 	version      int64
 	revision     uint64
-	generation   string // this process's revision sequence; see sidebarDelta
+	generation   string // this process's revision sequence; see Delta
 	ready        bool
 	events       *sidebarHub
 	// rowsChanged wakes the fleet feed after any change to all, including
@@ -95,8 +116,10 @@ type sidebarMaterializedState struct {
 	rowsChanged chan struct{}
 }
 
-func newSidebarMaterializedState() *sidebarMaterializedState {
-	return &sidebarMaterializedState{
+// New constructs the sidebar over the existing concrete state owners.
+func New(s Sources) *Controller {
+	return &Controller{
+		catalog: s.Catalog, registry: s.Registry, agentExecutions: s.Executions, controlMetadata: s.Metadata, controlMetadataErr: s.MetadataError, attachments: s.Attachments, boot: s.Boot, threadStars: s.Stars, mail: s.Mail, mailErr: s.MailError, runtimeEvents: s.RuntimeEvents,
 		events: newSidebarHub(), generation: strconv.FormatInt(time.Now().UnixNano(), 36),
 		rowsChanged: make(chan struct{}, 1),
 	}
@@ -104,29 +127,30 @@ func newSidebarMaterializedState() *sidebarMaterializedState {
 
 // rows returns a copy of every materialized thread, and whether the sidebar
 // has been built.
-func (m *sidebarMaterializedState) rows() ([]sidebar.Thread, bool) {
+func (m *Controller) rows() ([]Thread, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return append([]sidebar.Thread(nil), m.all...), m.ready
+	return append([]Thread(nil), m.all...), m.ready
 }
 
-// marker is the refresh marker a stream sends on connect: the current
+// Marker is the refresh Marker a stream sends on connect: the current
 // generation and revision, which a browser compares with its list's.
-func (m *sidebarMaterializedState) marker(version int64) (sidebarDelta, bool) {
+// Marker reports the generation and revision a browser must synchronize with.
+func (m *Controller) Marker(version int64) (Delta, bool) {
 	if m == nil {
-		return sidebarDelta{}, false
+		return Delta{}, false
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.revision == 0 {
-		return sidebarDelta{}, false
+		return Delta{}, false
 	}
-	return sidebarDelta{Generation: m.generation, Revision: m.revision, CatalogVersion: version, Refresh: true}, true
+	return Delta{Generation: m.generation, Revision: m.revision, CatalogVersion: version, Refresh: true}, true
 }
 
 // defaultNodes returns the default view's whole thread tree, history rows
 // included, and whether it has been built. Callers only read it.
-func (m *sidebarMaterializedState) defaultNodes() ([]*sidebarNode, bool) {
+func (m *Controller) defaultNodes() ([]*sidebarNode, bool) {
 	if m == nil {
 		return nil, false
 	}
@@ -135,7 +159,7 @@ func (m *sidebarMaterializedState) defaultNodes() ([]*sidebarNode, bool) {
 	return m.nodes, m.ready
 }
 
-func (m *sidebarMaterializedState) activeSnapshot(query threadindex.ListQuery, useDefault bool) (sidebarActiveResponse, error) {
+func (m *Controller) activeSnapshot(query threadindex.ListQuery, useDefault bool) (sidebarActiveResponse, error) {
 	if m == nil {
 		return sidebarActiveResponse{}, errSidebarMaterializedUnavailable
 	}
@@ -149,7 +173,7 @@ func (m *sidebarMaterializedState) activeSnapshot(query threadindex.ListQuery, u
 		m.mu.RUnlock()
 		return result, nil
 	}
-	all := append([]sidebar.Thread(nil), m.all...)
+	all := append([]Thread(nil), m.all...)
 	version := m.version
 	revision := m.revision
 	m.mu.RUnlock()
@@ -158,7 +182,7 @@ func (m *sidebarMaterializedState) activeSnapshot(query threadindex.ListQuery, u
 	return result, nil
 }
 
-func (m *sidebarMaterializedState) historySnapshot(query threadindex.ListQuery, useDefault bool, parentRef string, cursor *history.ThreadCursor, limit int) (sidebarActiveResponse, error) {
+func (m *Controller) historySnapshot(query threadindex.ListQuery, useDefault bool, parentRef string, cursor *history.ThreadCursor, limit int) (sidebarActiveResponse, error) {
 	if m == nil {
 		return sidebarActiveResponse{}, errSidebarMaterializedUnavailable
 	}
@@ -174,7 +198,7 @@ func (m *sidebarMaterializedState) historySnapshot(query threadindex.ListQuery, 
 		nodes = m.nodes
 		m.mu.RUnlock()
 	} else {
-		all := append([]sidebar.Thread(nil), m.all...)
+		all := append([]Thread(nil), m.all...)
 		m.mu.RUnlock()
 		_, nodes = projectSidebar(all, query, version)
 	}
@@ -192,30 +216,28 @@ func sameSidebarTime(a, b *time.Time) bool {
 	return a.Equal(*b)
 }
 
-func (s *server) materializeSidebar(ctx context.Context, now time.Time) error {
-	if s.sidebar == nil {
-		s.sidebar = newSidebarMaterializedState()
-	}
-	s.sidebar.updateMu.Lock()
-	defer s.sidebar.updateMu.Unlock()
-	runtime := s.sidebarRuntimeSnapshot()
+func (s *Controller) materializeSidebar(ctx context.Context, now time.Time) error {
+
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+	runtime := s.SidebarRuntimeSnapshot()
 	baseQuery := sidebarBaseQuery()
 	graph, threads, err := s.loadSidebarPopulation(ctx, baseQuery, runtime, now)
 	if err != nil {
 		return err
 	}
-	threads = append(threads, s.memorySidebarThreadRows(threads, runtime.summaries)...)
-	s.composeCatalogThreads(ctx, threads, runtime, true)
+	threads = append(threads, s.memorySidebarThreadRows(threads, runtime.Summaries)...)
+	s.ComposeCatalogThreads(ctx, threads, runtime, true)
 	query := sidebarDefaultQuery(now)
 	active, nodes := projectSidebar(threads, query, threadindex.CatalogVersion(graph.CatalogVersion))
-	s.sidebar.replace(threads, query, active, nodes, threadindex.CatalogVersion(graph.CatalogVersion))
+	s.replace(threads, query, active, nodes, threadindex.CatalogVersion(graph.CatalogVersion))
 	return nil
 }
 
 func sidebarBaseQuery() threadindex.ListQuery {
 	return threadindex.ListQuery{
 		IncludeSubagents: true, IncludeProgrammatic: false,
-		Archived: archivedIncludeFilter, Limit: sidebarHistoryDefaultLimit,
+		Archived: string(history.ArchivedInclude), Limit: sidebarHistoryDefaultLimit,
 	}
 }
 
@@ -226,7 +248,8 @@ func sidebarDefaultQuery(now time.Time) threadindex.ListQuery {
 	return query
 }
 
-func (s *server) composeCatalogThreads(ctx context.Context, threads []sidebar.Thread, runtime sidebarRuntimeSnapshot, fleetReady bool) {
+// ComposeCatalogThreads attaches current runtime, fleet, stars, and inbox facts to saved rows.
+func (s *Controller) ComposeCatalogThreads(ctx context.Context, threads []Thread, runtime SidebarRuntimeSnapshot, fleetReady bool) {
 	for i := range threads {
 		threads[i].Mail = nil
 	}
@@ -235,10 +258,10 @@ func (s *server) composeCatalogThreads(ctx context.Context, threads []sidebar.Th
 		s.attachFleetStates(ctx, threads)
 	}
 	s.attachStarredOverlay(threads)
-	s.attachMailOverlay(threads)
+	s.AttachMailOverlay(threads)
 }
 
-func (m *sidebarMaterializedState) replace(all []sidebar.Thread, query threadindex.ListQuery, active sidebarActiveResponse, nodes []*sidebarNode, version int64) {
+func (m *Controller) replace(all []Thread, query threadindex.ListQuery, active sidebarActiveResponse, nodes []*sidebarNode, version int64) {
 	m.mu.Lock()
 	wasReady := m.ready
 	previous := m.active
@@ -267,7 +290,8 @@ func (m *sidebarMaterializedState) replace(all []sidebar.Thread, query threadind
 	}
 }
 
-func (m *sidebarMaterializedState) applyMailDelta(delta featuremail.Delta) {
+// ApplyMailDelta applies committed inbox counts to the materialized rows.
+func (m *Controller) ApplyMailDelta(delta featuremail.Delta) {
 	if m == nil || len(delta.Counts) == 0 {
 		return
 	}
@@ -278,7 +302,7 @@ func (m *sidebarMaterializedState) applyMailDelta(delta featuremail.Delta) {
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]sidebar.Thread(nil), m.all...)
+	all := append([]Thread(nil), m.all...)
 	query := m.defaultQuery
 	version := m.version
 	m.mu.RUnlock()
@@ -288,8 +312,8 @@ func (m *sidebarMaterializedState) applyMailDelta(delta featuremail.Delta) {
 		if !ok {
 			continue
 		}
-		var mail *agentMailCounts
-		if counts != (agentMailCounts{}) {
+		var mail *featuremail.Counts
+		if counts != (featuremail.Counts{}) {
 			copy := counts
 			mail = &copy
 		}
@@ -305,29 +329,29 @@ func (m *sidebarMaterializedState) applyMailDelta(delta featuremail.Delta) {
 	m.replace(all, query, active, nodes, version)
 }
 
-func (m *sidebarMaterializedState) applyRuntimeDelta(delta sidebar.RuntimeDelta) {
+func (m *Controller) applyRuntimeDelta(delta RuntimeDelta) {
 	if m == nil {
 		return
 	}
 	m.updateMu.Lock()
 	defer m.updateMu.Unlock()
-	overlays := make(map[attachmentKey]*sidebar.RuntimeInfo, len(delta.Rows))
+	overlays := make(map[hostedstore.AttachmentKey]*RuntimeInfo, len(delta.Rows))
 	for _, row := range delta.Rows {
-		overlays[attachmentKey{Provider: row.Provider, NativeThreadID: row.NativeID}] = row.Runtime
+		overlays[hostedstore.AttachmentKey{Provider: row.Provider, NativeThreadID: row.NativeID}] = row.Runtime
 	}
 	m.mu.RLock()
 	if !m.ready {
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]sidebar.Thread(nil), m.all...)
+	all := append([]Thread(nil), m.all...)
 	query := m.defaultQuery
 	version := m.version
 	m.mu.RUnlock()
 	for i := range all {
 		// A delta names only the threads whose runtime changed; the rest keep
 		// theirs. A named nil overlay is a thread Nano no longer holds.
-		runtime, named := overlays[attachmentKey{Provider: all[i].Provider, NativeThreadID: all[i].NativeID}]
+		runtime, named := overlays[hostedstore.AttachmentKey{Provider: all[i].Provider, NativeThreadID: all[i].NativeID}]
 		if !named {
 			continue
 		}
@@ -340,7 +364,7 @@ func (m *sidebarMaterializedState) applyRuntimeDelta(delta sidebar.RuntimeDelta)
 	m.replace(all, query, active, nodes, version)
 }
 
-func (m *sidebarMaterializedState) applyStar(provider, nativeID string, starred bool) bool {
+func (m *Controller) applyStar(provider, nativeID string, starred bool) bool {
 	if m == nil || provider == "" || nativeID == "" {
 		return false
 	}
@@ -351,7 +375,7 @@ func (m *sidebarMaterializedState) applyStar(provider, nativeID string, starred 
 		m.mu.RUnlock()
 		return false
 	}
-	all := append([]sidebar.Thread(nil), m.all...)
+	all := append([]Thread(nil), m.all...)
 	query := m.defaultQuery
 	version := m.version
 	m.mu.RUnlock()
@@ -370,7 +394,7 @@ func (m *sidebarMaterializedState) applyStar(provider, nativeID string, starred 
 	return true
 }
 
-func (m *sidebarMaterializedState) applyCatalogRows(rows []sidebar.Thread, version int64) {
+func (m *Controller) applyCatalogRows(rows []Thread, version int64) {
 	if m == nil || len(rows) == 0 {
 		return
 	}
@@ -381,7 +405,7 @@ func (m *sidebarMaterializedState) applyCatalogRows(rows []sidebar.Thread, versi
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]sidebar.Thread(nil), m.all...)
+	all := append([]Thread(nil), m.all...)
 	query := m.defaultQuery
 	m.mu.RUnlock()
 	positions := make(map[string]int, len(all))
@@ -400,7 +424,7 @@ func (m *sidebarMaterializedState) applyCatalogRows(rows []sidebar.Thread, versi
 	m.replace(all, query, active, nodes, version)
 }
 
-func diffSidebar(previous, next sidebarActiveResponse) *sidebarDelta {
+func diffSidebar(previous, next sidebarActiveResponse) *Delta {
 	if sidebarResponsesEqual(previous, next) {
 		return nil
 	}
@@ -420,7 +444,7 @@ func diffSidebar(previous, next sidebarActiveResponse) *sidebarDelta {
 		removed = append(removed, id)
 	}
 	sort.Strings(removed)
-	return &sidebarDelta{
+	return &Delta{
 		Generation: next.Generation, Revision: next.Revision, Rows: rows, RemovedIDs: removed,
 		Roots: append([]string(nil), next.Roots...), HistoricalCount: next.HistoricalCount,
 		CatalogVersion: next.CatalogVersion,
@@ -436,7 +460,7 @@ func sidebarResponsesEqual(left, right sidebarActiveResponse) bool {
 
 // sidebarComparable drops the index time, which no sidebar row shows: about
 // two thirds of sidebar events changed only that, and each made every open
-// page rebuild its sidebar. A full read still returns the current value.
+// page rebuild its  A full read still returns the current value.
 func sidebarComparable(row sidebarThread) sidebarThread {
 	row.Source.LastIndexedAt = ""
 	return row
@@ -450,7 +474,7 @@ func sidebarComparableRows(rows []sidebarThread) []sidebarThread {
 	return out
 }
 
-func projectSidebar(all []sidebar.Thread, query threadindex.ListQuery, version int64) (sidebarActiveResponse, []*sidebarNode) {
+func projectSidebar(all []Thread, query threadindex.ListQuery, version int64) (sidebarActiveResponse, []*sidebarNode) {
 	full := indexSidebarThreads(all)
 	selected := map[string]bool{}
 	for _, node := range full.order {
@@ -468,7 +492,7 @@ func projectSidebar(all []sidebar.Thread, query threadindex.ListQuery, version i
 			cursor = full.byID[cursor.parentID]
 		}
 	}
-	population := make([]sidebar.Thread, 0, len(selected))
+	population := make([]Thread, 0, len(selected))
 	for _, thread := range all {
 		if selected[thread.ID] {
 			population = append(population, thread)
@@ -497,7 +521,7 @@ func projectSidebar(all []sidebar.Thread, query threadindex.ListQuery, version i
 	}, nodes
 }
 
-func sidebarThreadInPopulation(thread sidebar.Thread, query threadindex.ListQuery) bool {
+func sidebarThreadInPopulation(thread Thread, query threadindex.ListQuery) bool {
 	if thread.Transient || thread.Runtime != nil || thread.Starred {
 		return true
 	}
@@ -514,7 +538,7 @@ func sidebarThreadInPopulation(thread sidebar.Thread, query threadindex.ListQuer
 	return true
 }
 
-func assembleSidebarThreads(threads []sidebar.Thread) []*sidebarNode {
+func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 	index := indexSidebarThreads(threads)
 	breakSidebarCycles(index)
 	for _, node := range index.order {
@@ -635,17 +659,19 @@ func (p *sidebarRebuildPacer) rebuilt(now time.Time) {
 	p.waiting = false
 }
 
-func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) error {
-	if s.sidebar == nil {
-		s.sidebar = newSidebarMaterializedState()
+// StartSidebarMaterializer builds the initial view and follows its source changes until cancellation.
+func (s *Controller) StartSidebarMaterializer(ctx context.Context, now time.Time) error {
+	if s.fleet == nil && s.catalog != nil {
+		s.fleet = startFleetWatcher(ctx, s)
 	}
+
 	var catalogEvents <-chan catalog.Change
 	var stopCatalog func()
-	if stream, ok := s.catalog.(threadCatalogStream); ok {
-		catalogEvents, stopCatalog = stream.SubscribeCatalog()
+	if s.catalog != nil {
+		catalogEvents, stopCatalog = s.catalog.SubscribeCatalog()
 	}
-	var runtimeEvents <-chan sidebar.RuntimeDelta
-	var runtimeChannel chan sidebar.RuntimeDelta
+	var runtimeEvents <-chan RuntimeDelta
+	var runtimeChannel chan RuntimeDelta
 	if s.runtimeEvents != nil {
 		runtimeChannel = s.runtimeEvents.Subscribe()
 		runtimeEvents = runtimeChannel
@@ -695,7 +721,7 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 			case <-ctx.Done():
 				return
 			case <-window.C:
-				s.sidebar.advanceWindow(time.Now())
+				s.advanceWindow(time.Now())
 			case <-trailing:
 				// The timer is spent: a failed read must not leave the pacer
 				// believing a rebuild is still scheduled.
@@ -715,10 +741,10 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 					runtimeEvents = nil
 					continue
 				}
-				// A refresh marker may carry no rows, so it is never applied as
+				// A refresh Marker may carry no rows, so it is never applied as
 				// a snapshot; the rebuild reads the runtime state itself.
 				if delta.SidebarCurrent || !delta.Rebuild && !delta.Refresh {
-					s.sidebar.applyRuntimeDelta(delta)
+					s.applyRuntimeDelta(delta)
 				} else {
 					rebuild("runtime")
 				}
@@ -730,7 +756,7 @@ func (s *server) startSidebarMaterializer(ctx context.Context, now time.Time) er
 
 // repairSidebarCatalogRows re-reads only the named rows. It reports false when
 // a row is gone, which only a full rebuild can reflect.
-func (s *server) repairSidebarCatalogRows(ctx context.Context, change catalog.Change) bool {
+func (s *Controller) repairSidebarCatalogRows(ctx context.Context, change catalog.Change) bool {
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
 		log.Printf("sidebar catalog repair: %v", err)
@@ -749,16 +775,16 @@ func (s *server) repairSidebarCatalogRows(ctx context.Context, change catalog.Ch
 		return false
 	}
 	rows := s.graphRowsToThreads(graph.Rows, time.Now())
-	s.composeCatalogThreads(ctx, rows, s.sidebarRuntimeSnapshot(), true)
+	s.ComposeCatalogThreads(ctx, rows, s.SidebarRuntimeSnapshot(), true)
 	version := threadindex.CatalogVersion(change.Version)
 	if graphVersion := threadindex.CatalogVersion(graph.CatalogVersion); graphVersion > version {
 		version = graphVersion
 	}
-	s.sidebar.applyCatalogRows(rows, version)
+	s.applyCatalogRows(rows, version)
 	return true
 }
 
-func (m *sidebarMaterializedState) advanceWindow(now time.Time) {
+func (m *Controller) advanceWindow(now time.Time) {
 	if m == nil {
 		return
 	}
@@ -769,7 +795,7 @@ func (m *sidebarMaterializedState) advanceWindow(now time.Time) {
 		m.mu.RUnlock()
 		return
 	}
-	all := append([]sidebar.Thread(nil), m.all...)
+	all := append([]Thread(nil), m.all...)
 	version := m.version
 	m.mu.RUnlock()
 	query := sidebarDefaultQuery(now)

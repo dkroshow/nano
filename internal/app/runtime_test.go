@@ -57,7 +57,6 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 		thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-live", Kind: "main"}},
 	}
 	s := &server{catalog: fake, Registry: newSessionRegistry()}
-	s.runtime = s
 	fixture := newProviderRuntimeFixture(t, sessionConfig{ID: "s1", Provider: "codex"}, "native-live", "model")
 	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"native-live","turn":{"id":"turn-1","status":"inProgress"}}}`))
 	waitReconnectCondition(t, func() bool { return fixture.session.Summary().TurnActive })
@@ -124,7 +123,7 @@ func TestRuntimeOverlayOnListAndDetail(t *testing.T) {
 	// Nil runtime source (catalog wired without sessions): never present. The
 	// fake reuses its page value across calls, so clear the stamp the earlier
 	// list request left (the real service builds fresh items per call).
-	s.runtime = nil
+	s.sidebar = sidebar.New(sidebar.Sources{})
 	fake.page.Items[0].Runtime = nil
 	s.RegisterSession(fixture.session)
 	rec = httptest.NewRecorder()
@@ -161,7 +160,6 @@ func TestRuntimeForThreeStates(t *testing.T) {
 		"s3": memorySession(t, "s3", "claude", "claude-exited", "exited", "", "", time.Time{}),
 		"s4": memorySession(t, "s4", "codex", "codex-gone", "exited", "", "", time.Time{}),
 	})
-	s.runtime = s
 
 	cases := []struct {
 		name     string
@@ -170,8 +168,8 @@ func TestRuntimeForThreeStates(t *testing.T) {
 		want     sidebar.RuntimeInfo
 		wantOK   bool
 	}{
-		{"codex attached working", "codex", "codex-live", sidebar.RuntimeInfo{Attached: true, SessionID: "s1", Status: "ready", TurnActive: true, TurnStartedAtMs: 1787600000000, ThreadStatus: fleetWorking, PresentationMode: presentationShared}, true},
-		{"claude attached starting", "claude", "claude-live", sidebar.RuntimeInfo{Attached: true, SessionID: "s2", Status: "starting", ThreadStatus: fleetIdle, PresentationMode: presentationShared}, true},
+		{"codex attached working", "codex", "codex-live", sidebar.RuntimeInfo{Attached: true, SessionID: "s1", Status: "ready", TurnActive: true, TurnStartedAtMs: 1787600000000, ThreadStatus: catalog.FleetWorking, PresentationMode: presentationShared}, true},
+		{"claude attached starting", "claude", "claude-live", sidebar.RuntimeInfo{Attached: true, SessionID: "s2", Status: "starting", ThreadStatus: catalog.FleetIdle, PresentationMode: presentationShared}, true},
 		{"codex detached", "codex", "codex-detached", sidebar.RuntimeInfo{Detached: true}, true},
 		{"claude detached", "claude", "claude-detached", sidebar.RuntimeInfo{Detached: true}, true},
 		{"exited session with record reads detached", "claude", "claude-exited", sidebar.RuntimeInfo{Detached: true}, true},
@@ -182,7 +180,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := s.RuntimeFor(tc.provider, tc.nativeID)
+			got, ok := runtimeForTest(t, s, tc.provider, tc.nativeID)
 			if !reflect.DeepEqual(got, tc.want) || ok != tc.wantOK {
 				t.Fatalf("RuntimeFor(%q, %q) = %#v, %v; want %#v, %v", tc.provider, tc.nativeID, got, ok, tc.want, tc.wantOK)
 			}
@@ -191,7 +189,7 @@ func TestRuntimeForThreeStates(t *testing.T) {
 
 	// A server without an attachment store simply has no detached state.
 	bare := &server{Registry: newSessionRegistry()}
-	if info, ok := bare.RuntimeFor("codex", "codex-detached"); ok || !reflect.DeepEqual(info, sidebar.RuntimeInfo{}) {
+	if info, ok := runtimeForTest(t, bare, "codex", "codex-detached"); ok || !reflect.DeepEqual(info, sidebar.RuntimeInfo{}) {
 		t.Fatalf("nil attachment store = %#v, %v", info, ok)
 	}
 }
@@ -207,7 +205,6 @@ func TestDetachedOverlayJSON(t *testing.T) {
 		attachments: attachments,
 		Registry:    newSessionRegistry(),
 	}
-	s.runtime = s
 
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/threads/nth_1", nil))
@@ -379,9 +376,9 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	for i := range 40 {
 		s.attachments.Remember(attachmentRecord{Provider: "codex", NativeThreadID: fmt.Sprintf("parked-%02d", i), AttachedAt: "2026-07-27T10:00:00Z"})
 	}
-	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
+	runtimeSnapshotForTest(t, s) // the first snapshot only records the baseline
 	s.RegisterSession(memorySession(t, "s-0", "codex", "parked-00", "ready", "/w", "gpt-5.6-sol", now))
-	attached := s.runtimeDeltaSnapshot()
+	attached := runtimeSnapshotForTest(t, s)
 	if attached.Refresh || len(attached.DetachedRows) != 0 || !slices.Equal(attached.RemovedDetached, []string{"codex:parked-00"}) {
 		t.Fatalf("one re-attach = refresh:%v detached rows %d removed %v, want only codex:parked-00 removed", attached.Refresh, len(attached.DetachedRows), attached.RemovedDetached)
 	}
@@ -393,7 +390,9 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	// rows of any kind, runtime overlays included: first 33 of the parked
 	// threads re-attaching together (33 sessions + 33 detached keys, only 33
 	// runtime rows), then a burst of new sessions.
-	s.runtimeEvents = sidebar.NewRuntimeHub()
+	if s.runtimeEvents == nil {
+		s.runtimeEvents = sidebar.NewRuntimeHub()
+	}
 	browser := s.runtimeEvents.Subscribe()
 	defer s.runtimeEvents.Unsubscribe(browser)
 	emptyRefresh := func(event sidebar.RuntimeDelta) bool {
@@ -406,7 +405,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 	}
 	// Published by a star update (already current for its own change), the
 	// re-attach still needs the sidebar rebuilt.
-	s.publishRuntimeDelta(true, true)
+	s.sidebarOwner().PublishRuntimeDelta(true, true)
 	if reattach := <-browser; !emptyRefresh(reattach) {
 		t.Fatalf("33 re-attaches = refresh:%v rows %d sessions %d removed detached %d, want an empty refresh marker",
 			reattach.Refresh, len(reattach.Rows), len(reattach.Sessions), len(reattach.RemovedDetached))
@@ -415,7 +414,7 @@ func TestRuntimeDeltaSendsOnlyTheDetachedRowsThatChanged(t *testing.T) {
 		id := fmt.Sprintf("s-%d", i)
 		s.RegisterSession(memorySession(t, id, "codex", fmt.Sprintf("burst-%02d", i), "ready", "/w", "gpt-5.6-sol", now))
 	}
-	s.publishRuntimeDelta(false, false)
+	s.sidebarOwner().PublishRuntimeDelta(false, false)
 	if burst := <-browser; !emptyRefresh(burst) {
 		t.Fatalf("burst event = refresh:%v Rebuild:%v rows %d sessions %d, want an empty refresh marker", burst.Refresh, burst.Rebuild, len(burst.Rows), len(burst.Sessions))
 	}
@@ -461,16 +460,16 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &server{Registry: newSessionRegistry()}
-	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
+	runtimeSnapshotForTest(t, s) // the first snapshot only records the baseline
 
 	carries := func(delta sidebar.RuntimeDelta) bool {
 		return !delta.Refresh && len(delta.Sessions) == 1 && delta.Sessions[0].ID == "pending"
 	}
 	s.RegisterSession(pending)
-	if joined := s.runtimeDeltaSnapshot(); !carries(joined) {
+	if joined := runtimeSnapshotForTest(t, s); !carries(joined) {
 		t.Fatalf("a new session without a native id = %+v, want its list row and no re-read", joined)
 	}
-	if same := s.runtimeDeltaSnapshot(); len(same.Sessions) != 0 || same.Refresh || len(same.DetachedRows) != 0 {
+	if same := runtimeSnapshotForTest(t, s); len(same.Sessions) != 0 || same.Refresh || len(same.DetachedRows) != 0 {
 		t.Fatalf("an unchanged session set = %+v, want nothing", same)
 	}
 	fake := newFakeAppServer(t)
@@ -481,7 +480,7 @@ func TestRuntimeDeltaCarriesSessionsWithoutRows(t *testing.T) {
 	t.Cleanup(pending.Close)
 	waitReconnectCondition(t, func() bool { return pending.Summary().Status == "ready" })
 	pending.ReserveNativeID("")
-	if changed := s.runtimeDeltaSnapshot(); !carries(changed) || changed.Sessions[0].Status != "ready" {
+	if changed := runtimeSnapshotForTest(t, s); !carries(changed) || changed.Sessions[0].Status != "ready" {
 		t.Fatalf("a status change of a session without a native id = %+v, want its new row", changed)
 	}
 }
@@ -495,7 +494,7 @@ func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"pending": pending})
-	s.runtimeDeltaSnapshot() // the first snapshot only records the baseline
+	runtimeSnapshotForTest(t, s) // the first snapshot only records the baseline
 
 	fake := newFakeAppServer(t)
 	fake.SetStartError("handshake failed")
@@ -504,11 +503,11 @@ func TestRuntimeDeltaKeepsAFailedSpawnListed(t *testing.T) {
 	}
 	t.Cleanup(pending.Close)
 	waitReconnectCondition(t, func() bool { return pending.Summary().Status == "exited" })
-	failed := s.runtimeDeltaSnapshot()
+	failed := runtimeSnapshotForTest(t, s)
 	if len(failed.RemovedSessions) != 0 || len(failed.Sessions) != 1 || failed.Sessions[0].Status != sessionStatusExited || failed.Sessions[0].Error != "thread/start: rpc error -32000: handshake failed" {
 		t.Fatalf("failed spawn delta = sessions %+v removed %v, want its exited row with the error", failed.Sessions, failed.RemovedSessions)
 	}
-	if again := s.runtimeDeltaSnapshot(); len(again.Sessions) != 0 || len(again.RemovedSessions) != 0 {
+	if again := runtimeSnapshotForTest(t, s); len(again.Sessions) != 0 || len(again.RemovedSessions) != 0 {
 		t.Fatalf("an unchanged failed session = %+v, want nothing", again)
 	}
 }
@@ -556,12 +555,20 @@ func TestRuntimeSnapshotWaitsForTheExecutionStoreOnce(t *testing.T) {
 	}
 	<-held // time the snapshot only once the store is busy
 	started := time.Now()
-	delta := s.runtimeDeltaSnapshot()
+	snapshot := s.sidebarOwner().SidebarRuntimeSnapshot()
 	took := time.Since(started)
 	close(stop)
 	writers.Wait()
-	if len(delta.Rows) != threads {
-		t.Fatalf("snapshot rows = %d, want %d", len(delta.Rows), threads)
+	rows := make([]sidebar.Thread, threads)
+	for i := range rows {
+		rows[i].Provider = "codex"
+		rows[i].NativeID = fmt.Sprintf("codex-thread-%d", i)
+	}
+	s.sidebarOwner().ComposeCatalogThreads(context.Background(), rows, snapshot, true)
+	for i, row := range rows {
+		if row.Runtime == nil || !row.Runtime.Detached {
+			t.Fatalf("snapshot row %d lost its detached overlay: %+v", i, row.Runtime)
+		}
 	}
 	if took > time.Second {
 		t.Fatalf("snapshot of %d detached threads took %s behind a busy execution store", threads, took)
@@ -576,21 +583,51 @@ func TestRuntimeDeltaCarriesOnlyChangedRows(t *testing.T) {
 	a := fixture.session
 	b := memorySession(t, "sess-b", "codex", "thread-b", "ready", "/w/b", "gpt-5.6-sol", now)
 	s := testServerWithSessions(&server{Registry: newSessionRegistry()}, map[string]*session{"sess-a": a, "sess-b": b})
-	if first := s.runtimeDeltaSnapshot(); len(first.Rows) != 2 {
+	if first := runtimeSnapshotForTest(t, s); len(first.Rows) != 2 {
 		t.Fatalf("first delta rows = %d, want every held thread", len(first.Rows))
 	}
-	if same := s.runtimeDeltaSnapshot(); len(same.Rows) != 0 {
+	if same := runtimeSnapshotForTest(t, s); len(same.Rows) != 0 {
 		t.Fatalf("an unchanged runtime produced %d rows", len(same.Rows))
 	}
 	fixture.emit(t, []byte(`{"method":"turn/started","params":{"threadId":"thread-a","turn":{"id":"turn-a","status":"inProgress"}}}`))
 	waitReconnectCondition(t, func() bool { return a.Summary().TurnActive })
-	flip := s.runtimeDeltaSnapshot()
+	flip := runtimeSnapshotForTest(t, s)
 	if len(flip.Rows) != 1 || flip.Rows[0].NativeID != "thread-a" || flip.Rows[0].Runtime == nil || !flip.Rows[0].Runtime.TurnActive {
 		t.Fatalf("turnActive flip delta = %#v, want only thread-a", flip.Rows)
 	}
 	s.RemoveSession("sess-b")
-	gone := s.runtimeDeltaSnapshot()
+	gone := runtimeSnapshotForTest(t, s)
 	if gone.Refresh || !slices.Equal(gone.RemovedSessions, []string{"sess-b"}) || len(gone.Rows) != 1 || gone.Rows[0].NativeID != "thread-b" || gone.Rows[0].Runtime != nil {
 		t.Fatalf("release delta = refresh:%v removed:%v %#v, want sess-b removed and thread-b with no overlay", gone.Refresh, gone.RemovedSessions, gone.Rows)
 	}
+}
+
+// runtimeSnapshotForTest observes the delta at the published event boundary.
+func runtimeSnapshotForTest(t *testing.T, s *server) sidebar.RuntimeDelta {
+	t.Helper()
+	if s.runtimeEvents == nil {
+		s.runtimeEvents = sidebar.NewRuntimeHub()
+		s.sidebar = nil
+	}
+	ch := s.runtimeEvents.Subscribe()
+	defer s.runtimeEvents.Unsubscribe(ch)
+	s.sidebarOwner().PublishRuntimeDelta(false, false)
+	select {
+	case delta := <-ch:
+		return delta
+	case <-time.After(time.Second):
+		t.Fatal("runtime snapshot was not published")
+	}
+	return sidebar.RuntimeDelta{}
+}
+
+// runtimeForTest reads the same composed catalog overlay as an HTTP caller.
+func runtimeForTest(t *testing.T, s *server, provider, native string) (sidebar.RuntimeInfo, bool) {
+	t.Helper()
+	row := sidebar.Thread{Thread: threadindex.Thread{Provider: provider, NativeID: native}}
+	s.sidebarOwner().AttachRuntimeOverlay(&row)
+	if row.Runtime == nil {
+		return sidebar.RuntimeInfo{}, false
+	}
+	return *row.Runtime, true
 }

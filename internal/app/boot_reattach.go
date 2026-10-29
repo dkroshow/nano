@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/sessions"
 )
 
@@ -96,14 +97,14 @@ func (s *server) reattachOnBoot() {
 	boot.runtimeActive = true
 	boot.mu.Unlock()
 	started := time.Now()
-	ranks, ok := s.sidebarBootRanks(boot.order)
+	ranks, ok := s.sidebarOwner().BootRanks(boot.order)
 	if !ok {
 		log.Printf("boot re-attach: sidebar unavailable; attaching in stored order")
 	}
 	ordered := bootOrder(boot.order, ranks)
 	s.restart.rank(ranks, ordered)
 	order, resting := bootQueue(ordered, func(rec attachmentRecord) bool {
-		return ranks[rec.Key()].visible || s.bootWorkOpen(rec)
+		return ranks[rec.Key()].Visible || s.bootWorkOpen(rec)
 	})
 	s.bootAttachments.Rest(resting)
 	s.restart.rest(resting)
@@ -133,7 +134,7 @@ func (s *server) reattachOnBoot() {
 			defer queued.Done()
 			waiting := true
 			for _, rec := range records {
-				if waiting && !ranks[rec.Key()].visible {
+				if waiting && !ranks[rec.Key()].Visible {
 					waiting = false
 					visiblePending.Done()
 					<-hidden.Done()
@@ -176,13 +177,6 @@ registering:
 	s.restart.markBootLoopDone()
 }
 
-const (
-	bootTierStarred = iota
-	bootTierTopLevel
-	bootTierNested
-	bootTierUnseen
-)
-
 var bootTierNames = [...]string{"starred", "top_level", "nested", "unseen"}
 
 // bootOrder sets restart priority from the sidebar, so the threads near its
@@ -192,23 +186,23 @@ var bootTierNames = [...]string{"starred", "top_level", "nested", "unseen"}
 // keep the stored order, and without ranks the stored order stands. Every
 // visible thread precedes every hidden one, which reattachOnBoot's hold
 // relies on.
-func bootOrder(records []attachmentRecord, ranks map[attachmentKey]bootRank) []attachmentRecord {
-	rankOf := func(rec attachmentRecord) bootRank {
+func bootOrder(records []attachmentRecord, ranks map[attachmentKey]sidebar.BootRank) []attachmentRecord {
+	rankOf := func(rec attachmentRecord) sidebar.BootRank {
 		if r, ok := ranks[rec.Key()]; ok {
 			return r
 		}
-		return bootRank{tier: bootTierUnseen}
+		return sidebar.BootRank{Tier: sidebar.BootTierUnseen}
 	}
 	ordered := append([]attachmentRecord(nil), records...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		a, b := rankOf(ordered[i]), rankOf(ordered[j])
-		if a.tier != b.tier {
-			return a.tier < b.tier
+		if a.Tier != b.Tier {
+			return a.Tier < b.Tier
 		}
-		if a.visible != b.visible {
-			return a.visible
+		if a.Visible != b.Visible {
+			return a.Visible
 		}
-		return a.updated.After(b.updated)
+		return a.Updated.After(b.Updated)
 	})
 	return ordered
 }
@@ -243,62 +237,6 @@ func (s *server) bootWorkOpen(rec attachmentRecord) bool {
 	}
 	inFlight, err := s.turns.InFlight(context.Background(), rec.HostedThreadID)
 	return inFlight || err != nil
-}
-
-// sidebarVisibleTopLevel is how many top-level rows count as visible: about
-// one screen of the sidebar under its starred rows.
-const sidebarVisibleTopLevel = 20
-
-// bootRank is a stored thread's place in the sidebar at boot.
-type bootRank struct {
-	tier    int
-	updated time.Time
-	visible bool
-}
-
-// sidebarBootRanks reads each stored thread's place in the sidebar's default
-// view: starred rows, top-level rows and nested rows, with the catalog's
-// updated time. Visible rows are the ones a browser shows first once the
-// restart is done: every starred row, and the first sidebarVisibleTopLevel
-// top-level rows by recency among the rows the active sidebar will show (rows
-// it shows now, plus stored threads, which show once attached). Ordinary
-// history rows do not count. A thread the sidebar does not know has no entry
-// and ranks as unseen.
-func (s *server) sidebarBootRanks(stored []attachmentRecord) (map[attachmentKey]bootRank, bool) {
-	nodes, ready := s.sidebar.defaultNodes()
-	if !ready {
-		return nil, false
-	}
-	isStored := make(map[attachmentKey]bool, len(stored))
-	for _, rec := range stored {
-		isStored[rec.Key()] = true
-	}
-	ranks := make(map[attachmentKey]bootRank, len(nodes))
-	var topLevel []attachmentKey
-	for _, node := range nodes {
-		key := attachmentKey{Provider: node.thread.Provider, NativeThreadID: node.thread.NativeID}
-		r := bootRank{tier: bootTierNested}
-		if updated := parseCatalogTimePtr(node.thread.UpdatedAt); updated != nil {
-			r.updated = *updated
-		}
-		switch {
-		case node.thread.Starred:
-			r.tier, r.visible = bootTierStarred, true
-		case node.parentID == "":
-			r.tier = bootTierTopLevel
-			if node.included || isStored[key] {
-				topLevel = append(topLevel, key)
-			}
-		}
-		ranks[key] = r
-	}
-	sort.SliceStable(topLevel, func(i, j int) bool { return ranks[topLevel[i]].updated.After(ranks[topLevel[j]].updated) })
-	for _, key := range topLevel[:min(len(topLevel), sidebarVisibleTopLevel)] {
-		r := ranks[key]
-		r.visible = true
-		ranks[key] = r
-	}
-	return ranks, true
 }
 
 // resumeSpawnLock returns provider's resume lock.

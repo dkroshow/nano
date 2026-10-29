@@ -33,7 +33,6 @@ func newResumeTestServer(t *testing.T, wsURL string) *server {
 		controlMetadata: metadata,
 		agentExecutions: executions,
 	}
-	s.runtime = s
 	// Session handshakes run in background. Tear them down before the temporary
 	// control.sqlite cleanup so a late provider reply cannot query a closed DB.
 	t.Cleanup(func() {

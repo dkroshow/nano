@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -34,7 +35,9 @@ func TestAttachStarredOverlayMarksMatchingRows(t *testing.T) {
 		{Thread: threadindex.Thread{ID: "nth_a", Provider: "codex", NativeID: "native-a"}},
 		{Thread: threadindex.Thread{ID: "nth_b", Provider: "claude", NativeID: "native-b"}},
 	}
-	s.attachStarredOverlay(threads)
+	for i := range threads {
+		s.sidebarOwner().StarThread(&threads[i])
+	}
 	if !threads[0].Starred || threads[1].Starred {
 		t.Fatalf("overlay = %+v", threads)
 	}
@@ -51,7 +54,9 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 	if err := s.threadStars.SetStarred("codex", "starred-old", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.materializeSidebar(context.Background(), now); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := s.sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
 		t.Fatal(err)
 	}
 	body = getSidebarActive(t, s, now)
@@ -63,10 +68,10 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 
 func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	store := openTestThreadStars(t)
-	catalog := &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1", Title: strPtr("Pinned")}}}
+	catalog, id := starEndpointCatalog(t)
 	s := &server{catalog: catalog, threadStars: store, Registry: newSessionRegistry()}
 
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{"starred":true}`))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{"starred":true}`))
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -76,14 +81,14 @@ func TestThreadStarredEndpointTogglesAndReturnsRow(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &starred); err != nil {
 		t.Fatal(err)
 	}
-	if !starred.Starred || starred.ID != "nth_1" {
+	if !starred.Starred || starred.ID != id {
 		t.Fatalf("starred response = %+v", starred)
 	}
 	if !store.IsStarred("codex", "native-1") {
 		t.Fatal("PUT did not persist the star")
 	}
 
-	req = httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{"starred":false}`))
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{"starred":false}`))
 	rec = httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -99,13 +104,14 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 	hub := sidebar.NewRuntimeHub()
 	ch := hub.Subscribe()
 	t.Cleanup(func() { hub.Unsubscribe(ch) })
+	catalog, id := starEndpointCatalog(t)
 	s := &server{
-		catalog:       &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
+		catalog:       catalog,
 		threadStars:   store,
 		runtimeEvents: hub,
 		Registry:      newSessionRegistry(),
 	}
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{"starred":true}`))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{"starred":true}`))
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -122,11 +128,12 @@ func TestThreadStarredEndpointNudgesOpenBrowsers(t *testing.T) {
 }
 
 func TestThreadStarredEndpointRejectsMissingBody(t *testing.T) {
+	catalog, id := starEndpointCatalog(t)
 	s := &server{
-		catalog:     &fakeThreadCatalog{thread: sidebar.Thread{Thread: threadindex.Thread{ID: "nth_1", Provider: "codex", NativeID: "native-1"}}},
+		catalog:     catalog,
 		threadStars: openTestThreadStars(t),
 	}
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/nth_1/starred", strings.NewReader(`{}`))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/threads/"+id+"/starred", strings.NewReader(`{}`))
 	rec := httptest.NewRecorder()
 	applicationHandler(s).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -135,3 +142,18 @@ func TestThreadStarredEndpointRejectsMissingBody(t *testing.T) {
 }
 
 func strPtr(value string) *string { return &value }
+
+func starEndpointCatalog(t *testing.T) (*threadCatalogService, string) {
+	t.Helper()
+	store, err := history.Open(filepath.Join(t.TempDir(), "star-catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	if _, err := store.EnsureRoot(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	id := seedSidebarThread(t, store, root, "native-1", "", history.ThreadMain, time.Now(), []historyCourt{{final: true, text: "Pinned"}})
+	return newStoredCatalog(t, store), id
+}

@@ -5,7 +5,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -18,7 +17,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,7 +39,6 @@ import (
 	sessionruntime "github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/sidebar"
-	threadvalues "github.com/dkroshow/nano/internal/threads"
 	codexwire "github.com/dkroshow/nano/internal/wire/codex"
 	"github.com/dkroshow/nano/web"
 )
@@ -85,10 +82,6 @@ type server struct {
 	// registered session holds its native files there. Nil when the catalog
 	// is unavailable.
 	catalogSources sessionruntime.AttachedCatalog
-	// runtime answers "is a nano session attached to this thread?" for the
-	// catalog API's volatile runtime overlay (runtime.go); main injects the
-	// server itself. Nil leaves the overlay field absent on every response.
-	runtime runtimeSource
 	// runtimeEvents fans compact `runtime` SSE deltas to thread-index event
 	// subscribers on session bind/unbind and turnActive flips.
 	runtimeEvents *sidebar.RuntimeHub
@@ -98,18 +91,11 @@ type server struct {
 	mailEvents *featuremail.Hub
 	// sidebar is the server-owned catalog projection. HTTP reads immutable
 	// snapshots from it; catalog and runtime events rebuild it off request paths.
-	sidebar *sidebarMaterializedState
-	// warm holds the open warm streams and the threads they warm.
-	warm sessionruntime.WarmStreams
+	sidebar *sidebar.Controller
 	// mail is the feature-owned durable inbox store. It is separate from the
 	// canonical threads database and owns its generic unread notices.
-	mail              *agentMessageStore
-	mailErr           string
-	runtimeSnapshotMu sync.Mutex
-	runtimePublishMu  sync.Mutex // one snapshot and its notify at a time (publishRuntimeDelta)
-	runtimeSnapshot   map[attachmentKey]sidebar.RuntimeInfo
-	runtimeSessions   map[string]string
-	runtimeDetached   map[attachmentKey]string // detached records as last sent (detachedChanges)
+	mail    *agentMessageStore
+	mailErr string
 	// attachments persists durable codex attachments so hosted threads survive
 	// nano restarts (attachments.go). Nil when the store is unavailable, which
 	// turns the feature off cleanly: no detached entries, hooks are no-ops.
@@ -161,10 +147,7 @@ type server struct {
 	// skills is the process-wide, cwd-keyed Codex skills/list cache. Session
 	// state reads never call the provider and boot fan-out is bounded here.
 	skills *setup.SkillsListCache
-	// fleet watches the recent catalog for fleet-state transitions and serves
-	// them as a bookmark feed (fleet_changes.go). Nil when the catalog is
-	// unavailable, which reports the feed as unavailable rather than empty.
-	fleet *fleetWatcher
+
 	// threadStars is the operator pin overlay for the sidebar. Nil
 	// when the sibling SQLite file failed to open; listings then report every
 	// row unstarred and PUT /starred returns 503.
@@ -438,16 +421,6 @@ func construct(cfg config.Config) *application {
 		}
 		s.historicalClaude = newHistoricalClaudeResolver(catalogStore, s.defaults.claudeBin)
 	}
-	// The catalog API reads runtime truth through the narrow runtimeSource
-	// seam; the server implements it over its own sessions map.
-	s.runtime = s
-	// Fleet transitions: the materialized sidebar's changes feed the in-memory
-	// bookmark log at /api/v1/fleet/changes. Loss-tolerant by design — a
-	// consumer that misses the window re-snapshots.
-	if catalogService != nil {
-		s.sidebar = newSidebarMaterializedState()
-		s.fleet = startFleetWatcher(context.Background(), s.sidebar)
-	}
 	if store, err := sidebar.OpenStars(cfg.Paths.ThreadStarsDB); err != nil {
 		log.Printf("thread stars store unavailable: %v", err)
 	} else {
@@ -491,7 +464,7 @@ func construct(cfg config.Config) *application {
 	// never leaves threads detached (boot_reattach.go). HTTP opens first; until
 	// its registration each thread reports "starting".
 	s.prepareBootReattach()
-	if err := s.startSidebarMaterializer(context.Background(), time.Now()); err != nil {
+	if err := s.sidebarOwner().StartSidebarMaterializer(context.Background(), time.Now()); err != nil {
 		log.Printf("sidebar materialization unavailable: %v", err)
 	}
 	return &application{
@@ -837,7 +810,7 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 	}
 	sessions := s.SnapshotSessions()
 
-	listed := s.listedSessions(sessions)
+	listed := s.sidebarOwner().ListedSessions(sessions)
 	live := make(map[attachmentKey]bool, len(listed))
 	for _, sum := range listed {
 		if sum.ThreadID != "" && sum.Status != sessionruntime.StatusExited {
@@ -846,7 +819,7 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 	}
 	httpapi.WriteJSON(w, map[string]any{
 		"sessions":      listed,
-		"detached":      s.detachedSessionViews(live),
+		"detached":      s.sidebarOwner().DetachedSessionViews(live),
 		"runtimeStream": position,
 		"defaults": map[string]string{
 			"cwd": s.defaults.cwd, "model": s.defaults.model,
@@ -855,92 +828,6 @@ func (s *server) handleSessionsList(w http.ResponseWriter, _ *http.Request) {
 			"grokBin": s.defaults.grokBin, "grokLeaderSocket": s.defaults.grokLeaderSocket,
 		},
 	})
-}
-
-// listedSessions is the session list's rows for sessions, oldest first. The
-// list read and the runtime event that names joined sessions share it, so a
-// browser holds the same row either way. Every per-session fact is read in
-// bounded batches, never once per session: views, attention, badges and names.
-func (s *server) listedSessions(sessions []*sessionruntime.Session) []sidebar.ListedSession {
-	var summaryDB *sql.DB
-	if s.controlMetadata != nil {
-		summaryDB = s.controlMetadata.ReadPool()
-	}
-	hostedIDs := make([]string, 0, len(sessions))
-	for _, sess := range sessions {
-		if sess.HostedThreadID() != "" {
-			hostedIDs = append(hostedIDs, sess.HostedThreadID())
-		}
-	}
-	views, viewsErr := s.controlMetadata.ViewsFrom(summaryDB, hostedIDs)
-	needsAttention := s.agentExecutions.SessionsNeedingAttention()
-	summaries := make([]sessionruntime.Summary, 0, len(sessions))
-	for _, sess := range sessions {
-		view, found := views[sess.HostedThreadID()]
-		viewErr := viewsErr
-		if viewErr == nil && !found {
-			viewErr = sql.ErrNoRows
-		}
-		sum := sess.SummaryWith(view, viewErr, sess.HostedThreadID() != "" && needsAttention[sess.HostedThreadID()])
-		summaries = append(summaries, sum)
-	}
-	s.attachStarredOnSessions(summaries)
-	sort.Slice(summaries, func(i, j int) bool {
-		return threadvalues.TimestampBefore(summaries[i].CreatedAt, summaries[j].CreatedAt)
-	})
-	listed := make([]sidebar.ListedSession, len(summaries))
-	for i, sum := range summaries {
-		listed[i] = sidebar.ListedSession{Summary: sum, Metadata: sidebar.ListMetadata(sum.Metadata)}
-	}
-	return listed
-}
-
-// detachedSessionViews lists the attachments whose thread has no live
-// session. Right after a restart these include threads the boot loop has not
-// reached yet (boot_reattach.go), marked "starting"; the rest are records
-// whose resume failed (daemon down, thread gone), offered as one-click
-// re-attachable. Absent the store, the list is empty. Kept out of s.sessions
-// by design, so they carry no runtime overlay in the Explorer.
-func (s *server) detachedSessionViews(live map[attachmentKey]bool) []sidebar.DetachedSessionView {
-	var records []attachmentRecord
-	if s.attachments != nil {
-		records = s.attachments.DetachedExcept(live)
-	}
-	return s.detachedViewsOf(records)
-}
-
-// detachedViewsOf is the list rows of these detached records.
-func (s *server) detachedViewsOf(records []attachmentRecord) []sidebar.DetachedSessionView {
-	var summaryDB *sql.DB
-	if s.controlMetadata != nil {
-		summaryDB = s.controlMetadata.ReadPool()
-	}
-	detachedIDs := make([]string, 0, len(records))
-	for _, record := range records {
-		if record.HostedThreadID != "" {
-			detachedIDs = append(detachedIDs, record.HostedThreadID)
-		}
-	}
-	detachedViews, detachedErr := s.controlMetadata.ViewsFrom(summaryDB, detachedIDs)
-	detached := []sidebar.DetachedSessionView{}
-	for _, record := range records {
-		view := sidebar.DetachedSessionView{Attachment: record}
-		if state := s.bootAttachments.State(record.Key()); state != "" {
-			view.Status = state
-		}
-		// These retired JSON fields must never leak back into a hosted
-		// response as a plausible current setting.
-		view.Cwd, view.Model, view.TurnServiceTier = "", "", ""
-		if record.HostedThreadID == "" || s.controlMetadata == nil || s.controlMetadataErr != "" {
-			view.MetadataUnavailable = record.HostedThreadID != ""
-		} else if metadata, ok := detachedViews[record.HostedThreadID]; ok && detachedErr == nil {
-			view.Metadata = sidebar.ListMetadata(&metadata)
-		} else {
-			view.MetadataUnavailable = true
-		}
-		detached = append(detached, view)
-	}
-	return detached
 }
 
 func (s *server) sessionOperation(operation func(http.ResponseWriter, *http.Request, *sessionruntime.Session)) http.HandlerFunc {

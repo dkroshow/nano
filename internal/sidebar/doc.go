@@ -1,5 +1,7 @@
-// Package sidebar owns operator-pinned thread identities, compact runtime
-// changes and their replay queues. Its stars database preserves operator
-// truth separately from the saved catalog. Live attachment state remains in
-// sessions and saved catalog state remains in threadindex.
+// Package sidebar owns the visible-thread projection, fleet transitions,
+// operator stars, and browser warm-stream membership. Its controller reads
+// concrete catalog, session, hosted-store, and mail owners; it does not copy
+// their durable facts or own live session state. The saved/live reconciliation
+// loop, pane queues, and warm sizing remain in sessions. App composes routes
+// and boot orchestration and attaches any private workspace badges.
 package sidebar
