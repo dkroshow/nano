@@ -1,5 +1,3 @@
-// Package history discovers and projects metadata from native coding-agent
-// history files. It is deliberately read-only toward provider-owned files.
 package history
 
 import (
