@@ -385,7 +385,7 @@ func (d *CodexDaemon) reconnectSessionLoop(sess *Runtime) {
 		sess.state.setState("codexReconnect", progress)
 		sess.state.observeConnection(lifecycle.EventLinkLost)
 		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: sess.state.ThreadID()}
-		err := runCodexHandshakeWithTimeout(context.Background(), sess, d, req, timeout)
+		err := sess.runCodexHandshakeWithTimeout(context.Background(), d, req, timeout)
 		if err == nil {
 			sess.state.setState("codexReconnect", json.RawMessage(`{"retrying":false}`))
 			return
@@ -1053,7 +1053,7 @@ func (attachmentState *State) runCodexZeroTurnRecovery() {
 			}
 		}
 		req := ProviderRequest{Provider: "codex", Mode: "resume", ThreadID: attachmentState.ThreadID()}
-		err := runCodexHandshakeWithTimeout(context.Background(), attachmentState.runtime, attachmentState.runtime.daemon(), req, codexZeroTurnRecoveryAttemptTimeout)
+		err := attachmentState.runtime.runCodexHandshakeWithTimeout(context.Background(), attachmentState.runtime.daemon(), req, codexZeroTurnRecoveryAttemptTimeout)
 		if err == nil || !attachmentState.codexZeroTurnRecoveryNeeded() {
 			return
 		}
@@ -1095,12 +1095,12 @@ func runCodexHandshakeContext(parent context.Context, sess *Runtime, daemon *Cod
 	if req.Mode == "resume" && daemon.resumeTimeout > 0 {
 		timeout = daemon.resumeTimeout
 	}
-	return runCodexHandshakeWithTimeout(parent, sess, daemon, req, timeout)
+	return sess.runCodexHandshakeWithTimeout(parent, daemon, req, timeout)
 }
 
-func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon *CodexDaemon, req ProviderRequest, timeout time.Duration) error {
-	sess.codexHandshakeMu.Lock()
-	defer sess.codexHandshakeMu.Unlock()
+func (providerRuntime *Runtime) runCodexHandshakeWithTimeout(parent context.Context, daemon *CodexDaemon, req ProviderRequest, timeout time.Duration) error {
+	providerRuntime.codexHandshakeMu.Lock()
+	defer providerRuntime.codexHandshakeMu.Unlock()
 	releaseSlot := func() {}
 	if req.Mode == "resume" {
 		select {
@@ -1111,7 +1111,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 		case <-parent.Done():
 			return parent.Err()
 		}
-		closed := sess.state.closedOrExited()
+		closed := providerRuntime.state.closedOrExited()
 		if closed {
 			return nil
 		}
@@ -1120,11 +1120,11 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 		// A resume without a tier takes the tier of Codex's own config, not
 		// the thread's: it would run at that tier until its next turn sends the
 		// override, and report it as the thread's confirmed tier.
-		_, _, req.ServiceTier = sess.state.turnOptions()
+		_, _, req.ServiceTier = providerRuntime.state.turnOptions()
 	}
-	sess.state.beginTurnRestore()
-	defer sess.state.cancelTurnRestore()
-	sess.state.forgetCodexTurnInputs()
+	providerRuntime.state.beginTurnRestore()
+	defer providerRuntime.state.cancelTurnRestore()
+	providerRuntime.state.forgetCodexTurnInputs()
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	method, params := CodexSessionRequest(req)
@@ -1140,13 +1140,13 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 			sent[pair.field] = value
 		}
 	}
-	causation := sess.state.snapshotProviderCausation(sent)
+	causation := providerRuntime.state.snapshotProviderCausation(sent)
 	var threadResp json.RawMessage
 	var decoded *codexResumeResponse
-	wireLog := protocol.WireLogger(sess.wire.recordWire)
+	wireLog := protocol.WireLogger(providerRuntime.wire.recordWire)
 	if method == "thread/resume" {
 		wireLog = func(dir wire.Direction, line []byte) {
-			if response := sess.recordResumeWire(dir, line); response != nil {
+			if response := providerRuntime.recordResumeWire(dir, line); response != nil {
 				decoded = response
 			}
 		}
@@ -1157,12 +1157,12 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 		if dir == protocol.Recv {
 			var message protocol.Message
 			if json.Unmarshal(line, &message) == nil && message.IsResponse() {
-				responseEpoch, responseSequence = sess.state.evidenceCoordinates()
+				responseEpoch, responseSequence = providerRuntime.state.evidenceCoordinates()
 			}
 		}
 		recordWire(dir, line)
 	}
-	transport, err := daemon.callForSessionWithWireLog(ctx, sess, method, params, &threadResp, wireLog)
+	transport, err := daemon.callForSessionWithWireLog(ctx, providerRuntime, method, params, &threadResp, wireLog)
 	// The slot bounds concurrent resume calls at the app server, so it ends
 	// with the call: the post-reply work below waits on Nano's own stores, and
 	// other resumes must not queue behind it.
@@ -1175,7 +1175,7 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 		// for the tier it carried.
 		var rpcErr *protocol.RPCError
 		if errors.As(err, &rpcErr) && method != "thread/resume" {
-			sess.state.recordProviderRejection(method+"_rejected", causation)
+			providerRuntime.state.recordProviderRejection(method+"_rejected", causation)
 		}
 		return fmt.Errorf("%s: %w", method, err)
 	}
@@ -1210,32 +1210,32 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 	}
 	// The response names the rollout; boot's saved-catalog path stands in
 	// only until this confirms or replaces it.
-	sess.state.learnCatalogSourcePath(thread.Thread.Path)
-	sess.state.setProjectionThreadID(thread.Thread.ID)
+	providerRuntime.state.learnCatalogSourcePath(thread.Thread.Path)
+	providerRuntime.state.setProjectionThreadID(thread.Thread.ID)
 	if method == "thread/resume" {
 		// Boot and recovery resumes both pass here, before readiness.
-		sess.state.recordRestartStep(restartAttached)
+		providerRuntime.state.recordRestartStep(restartAttached)
 	}
-	if method == "thread/resume" && sess.view.liveProjection() != nil {
+	if method == "thread/resume" && providerRuntime.view.liveProjection() != nil {
 		// Restore action-bearing rows before the lossy provider baseline so a
 		// returned user item promotes the same logical row instead of duplicating
 		// it. The outbox is scrubbed only after durable/provider confirmation.
-		sess.state.restoreSubmissionOutbox()
-		seedCodexResume(sess.view.liveProjection(), decoded)
-		sess.delivery.observeCodexResume(decoded)
+		providerRuntime.state.restoreSubmissionOutbox()
+		seedCodexResume(providerRuntime.view.liveProjection(), decoded)
+		providerRuntime.delivery.observeCodexResume(decoded)
 		// A resume payload is explicitly lossy and can lag the active rollout.
 		// Settle the open turn from its saved copy; later catalog changes
 		// repeat this repair.
-		sess.state.ReconcileDurableTurn(ctx)
+		providerRuntime.state.ReconcileDurableTurn(ctx)
 		// This is the one successful-resume transition for both the session-owned
 		// zero-turn task and an ordinary daemon reconnect that wins the race.
 
 	}
-	sess.state.setState("thread", compactResponse)
-	if !sess.state.captureCodexIdentity(thread.Thread.ID, thread.Model, thread.Cwd, thread.Thread.Cwd) {
-		daemon.releaseThread(req.ThreadID, sess)
+	providerRuntime.state.setState("thread", compactResponse)
+	if !providerRuntime.state.captureCodexIdentity(thread.Thread.ID, thread.Model, thread.Cwd, thread.Thread.Cwd) {
+		daemon.releaseThread(req.ThreadID, providerRuntime)
 		if req.Mode != "resume" {
-			daemon.unsubscribeThread(sess, thread.Thread.ID)
+			daemon.unsubscribeThread(providerRuntime, thread.Thread.ID)
 		}
 		return nil
 	}
@@ -1252,10 +1252,10 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 	if approval != "" {
 		providerValues[postureFieldPermissionMode] = approval
 	}
-	sess.state.recordProviderEvidence(method+"_response", providerValues, metadataFreshnessLive, causation)
+	providerRuntime.state.recordProviderEvidence(method+"_response", providerValues, metadataFreshnessLive, causation)
 	// The native id is authoritative from here: a dialog-supplied session name
 	// can finally reach the names store (start and resume both land here).
-	sess.state.applyPendingName(thread.Thread.ID)
+	providerRuntime.state.applyPendingName(thread.Thread.ID)
 	// starting → ready is a runtime-visible transition (frozen R3 contract).
 	// Re-attaching to a thread whose turn is still running: seed both the
 	// working state and its anchor from the response's own turns array. Nothing
@@ -1263,49 +1263,49 @@ func runCodexHandshakeWithTimeout(parent context.Context, sess *Runtime, daemon 
 	// the turn streams — a gap that predates the timers work and that the
 	// timers make visible.
 	_ = resuming // Current() chooses work from the full provider response.
-	if !sess.state.prepareResumeReady() {
+	if !providerRuntime.state.prepareResumeReady() {
 		return nil
 	}
-	if method == "thread/resume" && !sess.state.awaitSavedCatchUp(transport, nil) {
-		if sess.state.ended() {
-			daemon.releaseThread(req.ThreadID, sess)
+	if method == "thread/resume" && !providerRuntime.state.awaitSavedCatchUp(transport, nil) {
+		if providerRuntime.state.ended() {
+			daemon.releaseThread(req.ThreadID, providerRuntime)
 			return nil
 		}
 		return fmt.Errorf("%s: the app-server connection closed while the saved file caught up", method)
 	}
-	sess.state.settleProviderEvidence(codexLifecycleAdapter{epoch: responseEpoch, sequence: responseSequence, response: decoded, nativeID: thread.Thread.ID, settled: true}, inFlight.ID, inFlight.startedAtMs())
+	providerRuntime.state.settleProviderEvidence(codexLifecycleAdapter{epoch: responseEpoch, sequence: responseSequence, response: decoded, nativeID: thread.Thread.ID, settled: true}, inFlight.ID, inFlight.startedAtMs())
 	// Persist the durable attachment now that the thread id is authoritative:
 	// a restart that kills this session leaves the record behind, so the
 	// thread returns as re-attachable (attachments.go). Covers start and resume
 	// alike — both reach ready here.
-	if sess.state.rememberAttachment != nil {
-		sess.state.rememberDurableAttachment(hostedstore.Attachment{
+	if providerRuntime.state.rememberAttachment != nil {
+		providerRuntime.state.rememberDurableAttachment(hostedstore.Attachment{
 			Provider:       "codex",
 			NativeThreadID: thread.Thread.ID,
-			Cwd:            sess.state.cwd,
+			Cwd:            providerRuntime.state.cwd,
 			Model:          thread.Model,
 		})
 	}
 	// A resume can lose its link while it waits for its saved catch-up, so
 	// the record takes the status the settle left, not a fixed "ready".
-	status := sess.state.connectionStatus()
-	sess.state.updateHostedThread(status, "")
+	status := providerRuntime.state.connectionStatus()
+	providerRuntime.state.updateHostedThread(status, "")
 	if req.ThreadID != thread.Thread.ID {
 		// Start mode (no pre-claim), or a resume answered with a different id
 		// than requested (not observed in practice): route the real id and
 		// drop any stale claim. A matching resume needs neither — its
 		// pre-claim already IS the registration.
-		daemon.registerThread(thread.Thread.ID, sess)
-		daemon.releaseThread(req.ThreadID, sess)
-		exited := sess.state.exited()
+		daemon.registerThread(thread.Thread.ID, providerRuntime)
+		daemon.releaseThread(req.ThreadID, providerRuntime)
+		exited := providerRuntime.state.exited()
 		if exited {
 			// close() slipped between the ready transition and the rebind;
 			// don't leave a routing entry for a torn-down session.
-			daemon.releaseThread(thread.Thread.ID, sess)
+			daemon.releaseThread(thread.Thread.ID, providerRuntime)
 		}
 	}
 	if req.Mode == "resume" {
-		sess.state.finishCodexZeroTurnRecovery()
+		providerRuntime.state.finishCodexZeroTurnRecovery()
 	}
 	return nil
 }
