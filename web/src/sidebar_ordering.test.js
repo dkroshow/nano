@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, fireEvent, render, within } from '@testing-library/svelte'
 import { tick } from 'svelte'
+import closedThreadTree from '../../internal/sidebar/testdata/closed_thread_tree.json'
 import App from './App.svelte'
 import { app } from './app.svelte.js'
 import { __resetSidebarBootstrapForTest, explorer, loadDataset, scheduleActiveRefresh } from './explorer.svelte.js'
@@ -839,6 +840,27 @@ describe('compact sidebar active ordering', () => {
 
     await fireEvent.click(compact.getByRole('button', { name: 'Hide subagents of Parent run' }))
     expect(titles(container)).toEqual(['Parent run'])
+  })
+
+  // The rows come from the server's own test, so this fails when the server
+  // keeps a closed thread as a gray row above its open sub-agents.
+  it('shows a closed thread only in history, with its open sub-agents in its place', async () => {
+    explorer.dataset = closedThreadTree.items.map((row, index) => ({
+      ...activeThread(row.nativeId, row.title, index, '2026-08-03T12:00:00Z'),
+      ...row,
+    }))
+    app.sessions = []
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (String(url) === '/api/sessions') return response({ sessions: [], detached: [], defaults: {} })
+      return response({})
+    })
+
+    const { container } = render(App)
+    expect(titles(container).sort()).toEqual(['Open child', 'Open supervisor'])
+
+    const compact = within(container.querySelector('.side-compact'))
+    await fireEvent.click(compact.getByRole('button', { name: 'Show subagents of Open supervisor' }))
+    expect(titles(container).sort()).toEqual(['Open child', 'Open grandchild', 'Open supervisor'])
   })
 
   it('keeps a closed hosted coordinator as the Nano tree owner of an attached background grandchild', async () => {

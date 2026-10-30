@@ -538,6 +538,9 @@ func sidebarThreadInPopulation(thread Thread, query threadindex.ListQuery) bool 
 	return true
 }
 
+// assembleSidebarThreads picks the rows the sidebar shows. A row is included for
+// its own activity or as the ancestor of an active row, but a closed thread
+// never stays for its descendants: it goes to history and they move up.
 func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 	index := indexSidebarThreads(threads)
 	breakSidebarCycles(index)
@@ -552,9 +555,9 @@ func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 		seen := map[string]bool{}
 		for cursor != nil && !seen[cursor.thread.ID] {
 			seen[cursor.thread.ID] = true
-			cursor.included = true
-			if !cursor.independent {
-				cursor.structural = true
+			if cursor.independent || cursor.thread.HostedStatus != sessions.StatusExited {
+				cursor.included = true
+				cursor.structural = !cursor.independent
 			}
 			if cursor.parentID == "" {
 				break
@@ -568,8 +571,26 @@ func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 			node.included = true
 		}
 	}
+	for _, node := range index.order {
+		if node.included {
+			node.parentID = nearestIncludedAncestor(node, index)
+		}
+	}
 	buildSidebarTree(index)
 	return index.order
+}
+
+// nearestIncludedAncestor is where a row sits once closed threads have gone to
+// history: an open sub-agent takes the place of its closed parent.
+func nearestIncludedAncestor(node *sidebarNode, index *sidebarIndex) string {
+	parent := index.byID[node.parentID]
+	for parent != nil && !parent.included {
+		parent = index.byID[parent.parentID]
+	}
+	if parent == nil {
+		return ""
+	}
+	return parent.thread.ID
 }
 
 func pageSidebarHistory(nodes []*sidebarNode, parentRef string, cursor *history.ThreadCursor, limit int, version int64, revision uint64) (sidebarActiveResponse, error) {

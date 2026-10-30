@@ -1,0 +1,8 @@
+{
+  "items": [
+    {"id": "nth_open_supervisor", "provider": "codex", "nativeId": "open-supervisor", "title": "Open supervisor", "sidebar": {"parentId": null, "active": true, "structural": false}},
+    {"id": "nth_open_grandchild", "provider": "codex", "nativeId": "open-grandchild", "title": "Open grandchild", "sidebar": {"parentId": "nth_open_supervisor", "active": true, "structural": false}},
+    {"id": "nth_open_child", "provider": "codex", "nativeId": "open-child", "title": "Open child", "sidebar": {"parentId": null, "active": true, "structural": false}}
+  ],
+  "roots": ["nth_open_supervisor", "nth_open_child"]
+}
