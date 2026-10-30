@@ -277,11 +277,7 @@ func (attachmentState *State) updateHostedThread(status, message string) {
 	if attachmentState.identity.hostedThreadID == "" {
 		return
 	}
-	if attachmentState.identity.metadata != nil {
-		if err := hostedstore.SkipOwnedNativeClaim(attachmentState.identity.metadata.ClaimNativeID(attachmentState.identity.hostedThreadID, attachmentState.identity.provider, attachmentState.ThreadID(), NativeThreadIDProvisional(attachmentState.identity.provider, attachmentState.ThreadID()))); err != nil {
-			log.Printf("claim canonical native id for %s: %v", attachmentState.identity.hostedThreadID, err)
-		}
-	}
+	attachmentState.claimNativeID()
 	if attachmentState.identity.agentExecutions == nil {
 		return
 	}
@@ -289,6 +285,16 @@ func (attachmentState *State) updateHostedThread(status, message string) {
 		attachmentState.identity.hostedThreadID, attachmentState.identity.id, attachmentState.ThreadID(), status, message,
 	); err != nil {
 		log.Printf("update hosted thread %s: %v", attachmentState.identity.hostedThreadID, err)
+	}
+}
+
+// claimNativeID records the current native id as this hosted thread's own.
+func (attachmentState *State) claimNativeID() {
+	if attachmentState.identity.hostedThreadID == "" || attachmentState.identity.metadata == nil {
+		return
+	}
+	if err := hostedstore.SkipOwnedNativeClaim(attachmentState.identity.metadata.ClaimNativeID(attachmentState.identity.hostedThreadID, attachmentState.identity.provider, attachmentState.ThreadID(), NativeThreadIDProvisional(attachmentState.identity.provider, attachmentState.ThreadID()))); err != nil {
+		log.Printf("claim canonical native id for %s: %v", attachmentState.identity.hostedThreadID, err)
 	}
 }
 

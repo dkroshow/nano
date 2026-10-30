@@ -38,6 +38,9 @@ func (attachmentState *State) applyPendingName(nativeThreadID string) {
 	if nativeThreadID == "" {
 		return // no id yet — keep the name for a later bind site
 	}
+	// The creation-name projection reads claimed identities only, so a publish
+	// ahead of the claim would miss and wait for an unrelated names refresh.
+	attachmentState.claimNativeID()
 	attachmentState.stateMu.Lock()
 	name := attachmentState.pendingName
 	attachmentState.pendingName = ""

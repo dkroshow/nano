@@ -65,6 +65,52 @@ func TestCreationNameSurvivesLaterBindWithoutOverwritingOperatorRename(t *testin
 	}
 }
 
+// A fresh Codex thread learns its native id from the thread/start reply. Its
+// name reaches the catalog from that one bind, or it waits for an unrelated
+// names refresh and the sidebar shows the prompt text instead.
+func TestFreshCodexStartProjectsCreationNameAtBind(t *testing.T) {
+	control, err := fixtureOpenMetadata(filepath.Join(t.TempDir(), "nano_threads.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { control.Close() })
+	executions, err := newControlAgentExecutionStore(control, "fresh-creation-name-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hosted, err := fixtureEnsureSession(executions, "nht_fresh_creation_name", "codex", presentationShared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := creationNameCatalogBeforeFact(t, control.CreationThreadNames)
+	if err := fixtureRecordCreationName(control, hosted.ID, "fresh name"); err != nil {
+		t.Fatal(err)
+	}
+	server := &server{catalog: catalog, controlMetadata: control}
+	sess := newSession(runtimeFixtureConfig(t, sessions.Config{
+		ID: "fresh-creation-name", Provider: "codex", HostedThreadID: hosted.ID, Metadata: control,
+		Projection: newLiveProjection("codex", hosted.ID),
+		CreationName: func() string {
+			name, _ := control.CreationName(hosted.ID)
+			return name
+		},
+		PublishCreationName: fixtureOwners(server).creationNames().Publish,
+	}))
+	if err := sess.InitializeBinding(1); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sess.Teardown().Close)
+	fake := newFakeAppServer(t)
+	fake.SetStartResult(map[string]any{"thread": map[string]any{"id": "fresh-native"}})
+	if err := sess.Runtime().BeginProviderSpawn(sessions.ProviderRequest{Provider: "codex", Mode: "start"}, fake.daemon(), func() {}); err != nil {
+		t.Fatal(err)
+	}
+	waitReconnectCondition(t, func() bool { return sess.View().Summary().Status == "ready" })
+	if got, _ := catalog.ThreadNameFor(context.Background(), "codex", "fresh-native"); got != "fresh name" {
+		t.Fatalf("name after fresh start = %q, want the creation name", got)
+	}
+}
+
 // creationNameCatalogBeforeFact drains startup names work while the canonical
 // source is empty. Later names can reach the catalog only through the bind
 // publication under test, not a background refresh left over from setup.
