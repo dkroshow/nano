@@ -70,7 +70,7 @@ export function cancelBulkClose() {
   bulkClose.request = null
 }
 
-export async function submitBulkClose(starredPolicy) {
+export async function submitBulkClose() {
   const request = bulkClose.request
   if (!request || request.busy) return
   request.busy = true
@@ -78,8 +78,6 @@ export async function submitBulkClose(starredPolicy) {
   try {
     const response = await fetch(`/api/v1/hosted-threads/${encodeURIComponent(request.rootHostedThreadId)}/family/close`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ starredPolicy }),
     })
     if (!response.ok && response.status !== 207) {
       throw new Error((await readAPIError(response, `Bulk close failed (${response.status}).`)).message)

@@ -13,11 +13,6 @@ import (
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
-const (
-	bulkClosePreserveStars = "preserve"
-	bulkCloseRemoveStars   = "unstar"
-)
-
 type bulkCloseMemberResult struct {
 	HostedThreadID    string `json:"hostedThreadId"`
 	Provider          string `json:"provider"`
@@ -33,7 +28,6 @@ type bulkCloseMemberResult struct {
 
 type bulkCloseResponse struct {
 	RootHostedThreadID string                  `json:"rootHostedThreadId"`
-	StarredPolicy      string                  `json:"starredPolicy"`
 	Complete           bool                    `json:"complete"`
 	MemberCount        int                     `json:"memberCount"`
 	WorkingCount       int                     `json:"workingCount"`
@@ -169,7 +163,7 @@ func (s *Controller) bulkCloseMemberWorking(record ownedthreads.SessionRecord) b
 // HandleBulkClosePreview serves the bounded hosted relationship-tree close preview.
 func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root ownedthreads.SessionRecord) {
 	if s.Stars == nil {
-		httpapi.WriteHTTPError(w, "thread stars unavailable; bulk close cannot preview star policy", http.StatusServiceUnavailable)
+		httpapi.WriteHTTPError(w, "thread stars unavailable; bulk close cannot preview stars", http.StatusServiceUnavailable)
 		return
 	}
 	s.relationshipMu.Lock()
@@ -203,22 +197,9 @@ func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root ownedthr
 }
 
 // HandleBulkClose closes a selected hosted relationship tree under one lock.
-func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, root ownedthreads.SessionRecord) {
-	var request struct {
-		StarredPolicy string `json:"starredPolicy"`
-	}
-	body := http.MaxBytesReader(w, r.Body, 4<<10)
-	if err := json.NewDecoder(body).Decode(&request); err != nil {
-		httpapi.WriteHTTPError(w, `body must be {"starredPolicy":"preserve"} or {"starredPolicy":"unstar"}`, http.StatusBadRequest)
-		return
-	}
-	request.StarredPolicy = strings.TrimSpace(request.StarredPolicy)
-	if request.StarredPolicy != bulkClosePreserveStars && request.StarredPolicy != bulkCloseRemoveStars {
-		httpapi.WriteHTTPError(w, `starredPolicy must be "preserve" or "unstar"`, http.StatusBadRequest)
-		return
-	}
+func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, root ownedthreads.SessionRecord) {
 	if s.Stars == nil {
-		httpapi.WriteHTTPError(w, "thread stars unavailable; bulk close cannot apply an explicit star policy", http.StatusServiceUnavailable)
+		httpapi.WriteHTTPError(w, "thread stars unavailable; bulk close cannot remove stars", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -240,7 +221,7 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, roo
 			toUnstar = append(toUnstar, hostedstore.AttachmentKey{Provider: member.Provider, NativeThreadID: member.NativeThreadID})
 		}
 	}
-	if request.StarredPolicy == bulkCloseRemoveStars && len(toUnstar) > 0 {
+	if len(toUnstar) > 0 {
 		if err := s.Stars.UnstarMany(toUnstar); err != nil {
 			httpapi.WriteHTTPError(w, "could not remove tree stars: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -249,7 +230,6 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, roo
 
 	response := bulkCloseResponse{
 		RootHostedThreadID: tree[0].record.ID,
-		StarredPolicy:      request.StarredPolicy,
 		Complete:           true,
 		MemberCount:        len(tree),
 		StarredCount:       len(toUnstar),
@@ -271,11 +251,7 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, roo
 			result.CloseAction = "already_exited"
 		}
 		if result.PreviouslyStarred {
-			if request.StarredPolicy == bulkCloseRemoveStars {
-				result.StarAction = "unstarred"
-			} else {
-				result.StarAction = "preserved"
-			}
+			result.StarAction = "unstarred"
 		}
 		result.Working = s.bulkCloseMemberWorking(member)
 		if result.Working {

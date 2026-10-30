@@ -165,6 +165,11 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			}
 			s.attachments = newTestStore(t)
 			s.attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"})
+			for _, native := range []string{"native-1", "other-thread"} {
+				if err := fixtureSetStarred(t, s.threadStars, "claude", native, true); err != nil {
+					t.Fatal(err)
+				}
+			}
 			var reject atomic.Bool
 			reject.Store(true)
 			shim := newFakeShim(t, func(c *claudeshim.Conn) {
@@ -186,7 +191,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 				case "delete":
 					method, path = http.MethodDelete, "/api/v1/hosted-threads/"+hosted.ID
 				case "family":
-					path, body = "/api/v1/hosted-threads/"+hosted.ID+"/family/close", `{"starredPolicy":"preserve"}`
+					path = "/api/v1/hosted-threads/" + hosted.ID + "/family/close"
 				case "attachment":
 					method, path = http.MethodDelete, "/api/attachments/native-1?provider=claude"
 				}
@@ -211,6 +216,10 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); !ok {
 				t.Fatal("failed stop removed queued prompt")
 			}
+			// Bulk close removes a whole tree's stars before it closes anyone.
+			if endpoint != "family" && !s.threadStars.IsStarred("claude", "native-1") {
+				t.Fatal("failed stop removed the star of a thread that is still open")
+			}
 			reject.Store(false)
 			w = request()
 			if w.Code != 200 {
@@ -222,7 +231,37 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); ok {
 				t.Fatal("successful retry left queued prompt")
 			}
+			if s.threadStars.IsStarred("claude", "native-1") {
+				t.Fatal("closing the thread left its star, so it stays a gray sidebar row")
+			}
+			if !s.threadStars.IsStarred("claude", "other-thread") {
+				t.Fatal("closing one thread removed another thread's star")
+			}
 		})
+	}
+}
+
+// A Claude detach shares the close path but the thread is not closed: it can
+// resume, so it keeps its place in the sidebar.
+func TestClaudeDetachKeepsTheStar(t *testing.T) {
+	s, store, _ := newBulkCloseTestServer(t)
+	hosted, _, err := fixtureBeginSession(store, "detach-test", "hash", "claude", presentationShared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationShared); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixtureSetStarred(t, s.threadStars, "claude", "native-1", true); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	applicationHandler(fixtureOwners(s)).ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+hosted.ID+"/detach", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("detach = %d %s", w.Code, w.Body)
+	}
+	if !s.threadStars.IsStarred("claude", "native-1") {
+		t.Fatal("detach removed the star")
 	}
 }
 

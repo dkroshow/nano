@@ -68,7 +68,7 @@
         <p class="descendant-close-warning">{workingCount} thread{workingCount === 1 ? ' is' : 's are'} working and will be interrupted.</p>
       {/if}
       {#if starredCount > 0 && failures.length === 0}
-        <p class="descendant-close-warning">{starredCount} thread{starredCount === 1 ? ' is' : 's are'} starred. Keep the stars to leave those closed rows pinned, or remove the stars to remove the whole tree from the timeline.</p>
+        <p class="descendant-close-warning">{starredCount} thread{starredCount === 1 ? ' is' : 's are'} starred. Closing removes the star{starredCount === 1 ? '' : 's'}.</p>
       {/if}
       {#if failures.length > 0}
         <div class="descendant-close-results" role="alert">
@@ -83,12 +83,7 @@
           <button type="button" onclick={acknowledgeBulkCloseFailure}>Dismiss</button>
         {:else}
           <button type="button" disabled={request.busy} onclick={cancelBulkClose}>Cancel</button>
-          {#if starredCount > 0}
-            <button type="button" class="descendant-close-primary" disabled={request.busy} onclick={() => void submitBulkClose('preserve')}>Close tree and keep stars</button>
-            <button type="button" class="descendant-close-primary" disabled={request.busy} onclick={() => void submitBulkClose('unstar')}>Close tree and remove stars</button>
-          {:else}
-            <button type="button" class="descendant-close-primary" disabled={request.busy} onclick={() => void submitBulkClose('preserve')}>{request.busy ? 'Closing…' : 'Close tree'}</button>
-          {/if}
+          <button type="button" class="descendant-close-primary" disabled={request.busy} onclick={() => void submitBulkClose()}>{request.busy ? 'Closing…' : 'Close tree'}</button>
         {/if}
       </div>
     </div>

@@ -52,32 +52,21 @@ afterEach(() => {
 })
 
 describe('BulkCloseDialog', () => {
-  it('warns about working and starred members, then preserves stars in one request', async () => {
+  it('warns about working and starred members, then closes in one request', async () => {
     openDialog()
     const view = render(BulkCloseDialog)
     expect(view.getByRole('dialog', { name: 'Bulk close thread tree' }).textContent).toContain('closes 2 threads')
     expect(view.container.textContent).toContain('1 thread is working')
-    expect(view.container.textContent).toContain('1 thread is starred')
+    expect(view.container.textContent).toContain('1 thread is starred. Closing removes the star.')
     expect(view.container.querySelector('.descendant-close-row[style*="padding-left: 26px"]')).not.toBeNull()
 
-    await fireEvent.click(view.getByRole('button', { name: 'Close tree and keep stars' }))
+    await fireEvent.click(view.getByRole('button', { name: 'Close tree' }))
 
     await waitFor(() => {
       const calls = fetch.mock.calls.filter(([url]) => String(url).includes('/family/close'))
       expect(calls).toHaveLength(1)
       expect(calls[0][0]).toBe('/api/v1/hosted-threads/root/family/close')
-      expect(JSON.parse(calls[0][1].body)).toEqual({ starredPolicy: 'preserve' })
       expect(bulkClose.request).toBeNull()
-    })
-  })
-
-  it('offers explicit star removal and sends unstar', async () => {
-    openDialog()
-    const view = render(BulkCloseDialog)
-    await fireEvent.click(view.getByRole('button', { name: 'Close tree and remove stars' }))
-    await waitFor(() => {
-      const call = fetch.mock.calls.find(([url]) => String(url).includes('/family/close'))
-      expect(JSON.parse(call[1].body)).toEqual({ starredPolicy: 'unstar' })
     })
   })
 
@@ -94,7 +83,7 @@ describe('BulkCloseDialog', () => {
     }))
     openDialog()
     const view = render(BulkCloseDialog)
-    await fireEvent.click(view.getByRole('button', { name: 'Close tree and keep stars' }))
+    await fireEvent.click(view.getByRole('button', { name: 'Close tree' }))
     await waitFor(() => expect(view.getByRole('alert').textContent).toContain('worker could not close'))
     expect(bulkClose.request).not.toBeNull()
   })

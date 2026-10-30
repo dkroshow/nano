@@ -15,10 +15,7 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-const (
-	bulkClosePreserveStars = "preserve"
-	bulkCloseRemoveStars   = "unstar"
-)
+const ()
 
 type bulkCloseMemberResult struct {
 	HostedThreadID    string `json:"hostedThreadId"`
@@ -34,7 +31,6 @@ type bulkCloseMemberResult struct {
 }
 type bulkCloseResponse struct {
 	RootHostedThreadID string                  `json:"rootHostedThreadId"`
-	StarredPolicy      string                  `json:"starredPolicy"`
 	Complete           bool                    `json:"complete"`
 	MemberCount        int                     `json:"memberCount"`
 	WorkingCount       int                     `json:"workingCount"`

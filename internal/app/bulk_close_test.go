@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -43,11 +42,10 @@ func createBulkCloseMember(t *testing.T, store *hostedstore.ExecutionStore, clie
 	return record
 }
 
-func bulkCloseRequest(t *testing.T, s *server, rootID, policy string) (int, bulkCloseResponse) {
+func bulkCloseRequest(t *testing.T, s *server, rootID string) (int, bulkCloseResponse) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
-	body := bytes.NewBufferString(`{"starredPolicy":"` + policy + `"}`)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+rootID+"/family/close", body)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+rootID+"/family/close", nil)
 	applicationHandler(fixtureOwners(s)).ServeHTTP(recorder, request)
 	var response bulkCloseResponse
 	if strings.Contains(recorder.Header().Get("Content-Type"), "application/json") {
@@ -92,7 +90,7 @@ func TestBulkCloseUsesCurrentRelationshipTreeNotImmutableInvokerLineage(t *testi
 		t.Fatalf("bulk close preview members = %+v", preview.Members)
 	}
 
-	status, response := bulkCloseRequest(t, s, rootA.ID, bulkClosePreserveStars)
+	status, response := bulkCloseRequest(t, s, rootA.ID)
 	if status != http.StatusOK || !response.Complete || response.MemberCount != 2 {
 		t.Fatalf("bulk close A = %d %+v", status, response)
 	}
@@ -147,7 +145,7 @@ func TestBulkCloseKeepsResumedHostedAliasesInOneVisibleTree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, response := bulkCloseRequest(t, s, newRoot.ID, bulkClosePreserveStars)
+	status, response := bulkCloseRequest(t, s, newRoot.ID)
 	if status != http.StatusOK || !response.Complete || response.MemberCount != 2 {
 		t.Fatalf("bulk close resumed root = %d %+v", status, response)
 	}
@@ -159,7 +157,7 @@ func TestBulkCloseKeepsResumedHostedAliasesInOneVisibleTree(t *testing.T) {
 	}
 }
 
-func TestBulkCloseRequiresAndAppliesExplicitStarPolicy(t *testing.T) {
+func TestBulkCloseRemovesStarsAcrossTheTree(t *testing.T) {
 	s, store, _ := newBulkCloseTestServer(t)
 	root := createBulkCloseMember(t, store, "root", threads.SessionRecord{})
 	child := createBulkCloseMember(t, store, "child", root)
@@ -170,32 +168,20 @@ func TestBulkCloseRequiresAndAppliesExplicitStarPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, preserve := bulkCloseRequest(t, s, root.ID, bulkClosePreserveStars)
-	if status != http.StatusOK || !preserve.Complete || preserve.StarredCount != 2 {
-		t.Fatalf("preserve response = %d %+v", status, preserve)
-	}
-	if !s.threadStars.IsStarred(root.Provider, root.NativeThreadID) || !s.threadStars.IsStarred(child.Provider, child.NativeThreadID) {
-		t.Fatal("preserve policy changed a star")
+	// A starred closed root is a gray row; Bulk close tree is the close it offers.
+	if err := store.UpdateSession(root.ID, "", "", sessionStatusExited, "closed"); err != nil {
+		t.Fatal(err)
 	}
 
-	status, remove := bulkCloseRequest(t, s, root.ID, bulkCloseRemoveStars)
-	if status != http.StatusOK || !remove.Complete {
-		t.Fatalf("unstar response = %d %+v", status, remove)
+	status, closed := bulkCloseRequest(t, s, root.ID)
+	if status != http.StatusOK || !closed.Complete || closed.StarredCount != 2 {
+		t.Fatalf("bulk close response = %d %+v", status, closed)
 	}
 	if s.threadStars.IsStarred(root.Provider, root.NativeThreadID) || s.threadStars.IsStarred(child.Provider, child.NativeThreadID) {
-		t.Fatal("unstar policy left a tree member pinned")
+		t.Fatal("bulk close left a tree member pinned")
 	}
-	for _, member := range remove.Members {
-		if member.CloseAction != "already_exited" || member.StarAction != "unstarred" {
-			t.Fatalf("idempotent member result = %+v", member)
-		}
-	}
-
-	bad := httptest.NewRecorder()
-	applicationHandler(fixtureOwners(s)).ServeHTTP(bad, httptest.NewRequest(http.MethodPost,
-		"/api/v1/hosted-threads/"+root.ID+"/family/close", strings.NewReader(`{}`)))
-	if bad.Code != http.StatusBadRequest {
-		t.Fatalf("missing star policy status = %d body=%s", bad.Code, bad.Body.String())
+	if closed.Members[0].CloseAction != "already_exited" || closed.Members[1].CloseAction != "closed" {
+		t.Fatalf("member results = %+v", closed.Members)
 	}
 }
 
@@ -220,7 +206,7 @@ func TestBulkCloseReportsPartialMemberFailure(t *testing.T) {
 	}
 	s.queuedTurns = queue
 
-	status, response := bulkCloseRequest(t, s, root.ID, bulkClosePreserveStars)
+	status, response := bulkCloseRequest(t, s, root.ID)
 	if status != http.StatusMultiStatus || response.Complete || len(response.Members) != 1 {
 		t.Fatalf("partial response = %d %+v", status, response)
 	}
