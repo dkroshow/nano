@@ -41,7 +41,7 @@ func Protected(path string) bool {
 // when that walk enters a protected folder or cannot be followed safely. It
 // walks the way the kernel does, one component at a time, following each link
 // and applying ".." to where the walk really is, and checks every step before
-// looking at it. A missing tail is kept as spelled.
+// looking at it. A missing tail is kept as written.
 func Physical(path string) (string, bool) {
 	roots := protectedRoots()
 	if path == "" {
@@ -77,9 +77,11 @@ func Physical(path string) (string, bool) {
 		}
 		info, err := os.Lstat(next)
 		if err != nil {
-			// Nothing further exists to follow; the rest is only a spelling.
-			rest := filepath.Join(append([]string{next}, pending...)...)
-			return rest, !spelledProtected(rest, roots)
+			// The kernel stops here too. The rest is kept as written, not
+			// cleaned: cleaning "missing/../x" would name a file that exists,
+			// while opening the written path fails as the kernel would.
+			rest := next + "/" + strings.Join(pending, "/")
+			return rest, !spelledProtected(filepath.Clean(rest), roots)
 		}
 		if info.Mode()&os.ModeSymlink == 0 {
 			current = next

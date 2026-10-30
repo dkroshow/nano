@@ -69,8 +69,8 @@ func gitBranch(_ context.Context, cwd string) string {
 	if !ok {
 		return ""
 	}
-	branch, _ := repo.head()
-	return branch
+	ref, _ := repo.head()
+	return strings.TrimPrefix(ref, "refs/heads/")
 }
 
 func ObserveGit(_ context.Context, cwd string) Git {
@@ -78,11 +78,14 @@ func ObserveGit(_ context.Context, cwd string) Git {
 	if !ok {
 		return Git{}
 	}
-	branch, commit := repo.head()
+	ref, commit := repo.head()
+	if ref != "" {
+		commit = repo.resolve(ref)
+	}
 	if len(commit) > 12 {
 		commit = commit[:12]
 	}
-	return Git{Root: repo.root, Branch: branch, Commit: commit}
+	return Git{Root: repo.root, Branch: strings.TrimPrefix(ref, "refs/heads/"), Commit: commit}
 }
 
 type repository struct {
@@ -145,17 +148,16 @@ func linkedDir(path, prefix string) (string, bool) {
 	return files.Physical(target)
 }
 
-// head returns the checked-out branch, empty when detached, and its commit.
+// head returns the ref HEAD names, or "" and the commit when it is detached.
 func (repo repository) head() (string, string) {
 	line, ok := firstLine(filepath.Join(repo.gitDir, "HEAD"))
 	if !ok {
 		return "", ""
 	}
-	ref, symbolic := strings.CutPrefix(line, "ref: ")
-	if !symbolic {
-		return "", line
+	if ref, symbolic := strings.CutPrefix(line, "ref: "); symbolic {
+		return ref, ""
 	}
-	return strings.TrimPrefix(ref, "refs/heads/"), repo.resolve(ref)
+	return "", line
 }
 
 func (repo repository) resolve(ref string) string {
