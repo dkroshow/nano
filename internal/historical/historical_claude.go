@@ -120,6 +120,9 @@ func unavailableClaudeResolution(cwd, diagnostic string) inspection.CurrentResol
 }
 
 func (r *ClaudeResolver) workspace(ctx context.Context, cwd string) (claudeWorkspaceSnapshot, bool, error) {
+	if filemodel.Protected(cwd) {
+		return claudeWorkspaceSnapshot{}, false, errors.New(filemodel.ProtectedNotice)
+	}
 	for {
 		r.mu.Lock()
 		if snapshot, ok := r.memory[cwd]; ok && r.now().Sub(snapshot.ResolvedAt) < r.ttl {

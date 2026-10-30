@@ -50,6 +50,14 @@ func TestProtectedFolderResolutionReadsNothingThere(t *testing.T) {
 			t.Errorf("%s: resolution = %s %q, want unavailable with the notice", name, resolution.State, resolution.Diagnostics)
 		}
 	}
+	// The boot warm-up calls workspace directly for every saved thread's folder
+	// (seen live after the v0.1.1 deploy: git ran in ~/Documents and macOS asked).
+	if _, _, err := codex.workspace(context.Background(), cwd); err == nil {
+		t.Error("codex workspace resolved a protected folder")
+	}
+	if _, _, err := claude.workspace(context.Background(), cwd); err == nil {
+		t.Error("claude workspace resolved a protected folder")
+	}
 	if len(fake.methods) != 0 {
 		t.Errorf("asked the app server %v for a protected folder", fake.methods)
 	}

@@ -164,7 +164,12 @@ func unavailableResolution(cwd, diagnostic string) inspection.CurrentResolution 
 	}
 }
 
+// workspace is where every saved-thread read of a folder starts, the boot
+// warm-up included, so the protected-folder rule lives here too.
 func (r *CodexResolver) workspace(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
+	if filemodel.Protected(cwd) {
+		return codexWorkspaceSnapshot{}, false, errors.New(filemodel.ProtectedNotice)
+	}
 	for {
 		r.mu.Lock()
 		snapshot, cached := r.memory[cwd]
