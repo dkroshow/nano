@@ -2,32 +2,14 @@ package inspection
 
 import (
 	"context"
-	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
-
-func TestMain(m *testing.M) {
-	if os.Getenv("NANO_TEST_GIT") == "1" {
-		log, err := os.OpenFile(os.Getenv("GIT_CALLS"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		_, writeErr := fmt.Fprintln(log, strings.Join(os.Args[1:], " "))
-		closeErr := log.Close()
-		if writeErr != nil || closeErr != nil {
-			fmt.Fprintf(os.Stderr, "write call log: %v; close: %v\n", writeErr, closeErr)
-			os.Exit(1)
-		}
-		fmt.Fprintln(os.Stdout, "feature/current")
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
 
 func TestGitCacheResolvesOncePerTTL(t *testing.T) {
 	now := time.Unix(0, 0)
@@ -60,31 +42,121 @@ func TestObserveGitReadsThisRepo(t *testing.T) {
 	}
 }
 
-// Branch-only reads must not launch root, commit, or dirty-status inspection:
-// those extra subprocesses made a cold session-state read stall.
-func TestGitCacheBranchRunsOnlyBranchCommand(t *testing.T) {
-	dir := t.TempDir()
-	log := filepath.Join(dir, "calls")
-	executable, err := os.Executable()
+// Catches: the file reader disagreeing with git about the root, branch and
+// commit it reports. Git itself builds the fixtures and gives the expected
+// answers: a plain repository from a subfolder, packed refs, a linked
+// worktree and a detached HEAD. Boundary: ObserveGit, which panes and the
+// setup panel read.
+func TestObserveGitAgreesWithGit(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Reuse the running binary: a new executable script can launch cold past
-	// the production deadline when other tests launch scripts concurrently.
-	if err := os.Symlink(executable, filepath.Join(dir, "git")); err != nil {
+	repo, worktree := filepath.Join(base, "repo"), filepath.Join(base, "worktree")
+	gitRun(t, base, "init", "-q", "-b", "main", repo)
+	gitRun(t, repo, "commit", "-q", "--allow-empty", "-m", "first")
+	if err := os.MkdirAll(filepath.Join(repo, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir)
-	t.Setenv("GIT_CALLS", log)
-	t.Setenv("NANO_TEST_GIT", "1")
-	if got := NewGitCache().Branch(context.Background(), "/repo"); got != "feature/current" {
-		t.Fatalf("branch = %q", got)
+	expect := func(name, cwd, root string) {
+		t.Helper()
+		want := Git{Root: root, Commit: gitRun(t, cwd, "rev-parse", "--short=12", "HEAD")}
+		if branch, err := gitOutputErr(cwd, "symbolic-ref", "--quiet", "--short", "HEAD"); err == nil {
+			want.Branch = branch
+		}
+		if got := ObserveGit(context.Background(), cwd); got != want {
+			t.Errorf("%s: ObserveGit = %+v, git says %+v", name, got, want)
+		}
 	}
-	calls, err := os.ReadFile(log)
+	expect("plain", filepath.Join(repo, "sub"), repo)
+	gitRun(t, repo, "pack-refs", "--all")
+	expect("packed refs", repo, repo)
+	gitRun(t, repo, "worktree", "add", "-q", "-b", "feature", worktree)
+	expect("linked worktree", worktree, worktree)
+	gitRun(t, repo, "checkout", "-q", "--detach")
+	expect("detached", repo, repo)
+}
+
+// Catches: git metadata reached from a safe folder that leads into a folder
+// macOS protects being read: a .git link to a gitdir file naming it, a
+// worktree whose commondir file is a link into it, a gitdir path with ".."
+// after a link, and a repository found through the folder's physical rather
+// than spelled ancestry (each seen in review). Boundary: ObserveGit.
+func TestObserveGitNeverReadsAProtectedFolder(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS privacy folders exist only on darwin")
+	}
+	home, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(string(calls)); got != "-C /repo symbolic-ref --quiet --short HEAD" {
-		t.Fatalf("branch read ran unrelated Git inspection: %q", got)
+	t.Setenv("HOME", home)
+	protected := filepath.Join(home, "Documents", "deep", "repo")
+	gitRun(t, home, "init", "-q", "-b", "protected-branch", protected)
+	gitRun(t, protected, "commit", "-q", "--allow-empty", "-m", "first")
+	code := filepath.Join(home, "Code")
+	write := func(path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
+	link := func(target, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A .git link to a safe gitdir file that names the protected repository.
+	write(filepath.Join(code, "gitfile"), "gitdir: "+filepath.Join(protected, ".git")+"\n")
+	link(filepath.Join(code, "gitfile"), filepath.Join(code, "a", ".git"))
+	// A worktree gitdir outside, whose commondir file links into the folder.
+	write(filepath.Join(code, "wt-meta", "HEAD"), "ref: refs/heads/protected-branch\n")
+	write(filepath.Join(home, "Documents", "commondir"), filepath.Join(protected, ".git")+"\n")
+	link(filepath.Join(home, "Documents", "commondir"), filepath.Join(code, "wt-meta", "commondir"))
+	write(filepath.Join(code, "b", ".git"), "gitdir: "+filepath.Join(code, "wt-meta")+"\n")
+	// ".." after a link: jump/../repo/.git is Documents/deep/repo/.git.
+	link(filepath.Join(home, "Documents", "deep", "x"), filepath.Join(code, "c", "jump"))
+	write(filepath.Join(code, "c", ".git"), "gitdir: jump/../repo/.git\n")
+	// A spelled path whose physical parent holds a .git link into the folder.
+	link(filepath.Join(protected, ".git"), filepath.Join(code, "physical", ".git"))
+	if err := os.MkdirAll(filepath.Join(code, "physical", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link(filepath.Join(code, "physical", "sub"), filepath.Join(code, "alias", "sub"))
+	if err := os.MkdirAll(filepath.Join(home, "Documents", "deep", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, cwd := range []string{"a", "b", "c", filepath.Join("alias", "sub")} {
+		dir := filepath.Join(code, cwd)
+		if got := ObserveGit(context.Background(), dir); got.Branch != "" || got.Commit != "" {
+			t.Errorf("%s: read repository metadata in a protected folder: %+v", cwd, got)
+		}
+		if got := gitBranch(context.Background(), dir); got != "" {
+			t.Errorf("%s: read the branch %q in a protected folder", cwd, got)
+		}
+	}
+}
+
+func gitRun(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := gitOutputErr(dir, args...)
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return out
+}
+
+func gitOutputErr(dir string, args ...string) (string, error) {
+	command := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=test", "-c", "user.email=test@example.invalid"}, args...)...)
+	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	out, err := command.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
 }

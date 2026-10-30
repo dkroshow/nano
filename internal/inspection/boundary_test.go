@@ -28,7 +28,8 @@ func TestInspectionDependencyDirection(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Direction now lives at its canonical owner in wire; wire/codex already depended on it.
-			if strings.HasPrefix(dependency, "github.com/dkroshow/nano/") && dependency != "github.com/dkroshow/nano/internal/wire/codex" && dependency != "github.com/dkroshow/nano/internal/wire" {
+			// files is a standard-library leaf: git details read through its protected-folder walk.
+			if strings.HasPrefix(dependency, "github.com/dkroshow/nano/") && dependency != "github.com/dkroshow/nano/internal/wire/codex" && dependency != "github.com/dkroshow/nano/internal/wire" && dependency != "github.com/dkroshow/nano/internal/files" {
 				t.Errorf("%s imports forbidden dependency %s", path, dependency)
 			}
 		}

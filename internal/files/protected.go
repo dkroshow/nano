@@ -31,23 +31,34 @@ const maxLinkHops = 32
 // privacy prompt, or leads into one through a symlink. Any read there, even a
 // stat or a git status, asks the user whether "codex-nano-bin" may access it,
 // and the answer belongs to one build of the binary, so Nano reads nothing
-// there. The path is walked the way the kernel walks it, one component at a
-// time, following each link and applying ".." to where the walk really is,
-// and every step is checked before it is looked at.
+// there.
 func Protected(path string) bool {
+	_, ok := Physical(path)
+	return !ok
+}
+
+// Physical returns the path the kernel reaches for path and true, or false
+// when that walk enters a protected folder or cannot be followed safely. It
+// walks the way the kernel does, one component at a time, following each link
+// and applying ".." to where the walk really is, and checks every step before
+// looking at it. A missing tail is kept as spelled.
+func Physical(path string) (string, bool) {
 	roots := protectedRoots()
-	if roots == nil || path == "" {
-		return false
+	if path == "" {
+		return "", true
 	}
 	if !filepath.IsAbs(path) {
 		wd, err := os.Getwd()
 		if err != nil {
-			return true
+			return "", false
 		}
 		path = wd + "/" + path
 	}
+	if roots == nil {
+		return filepath.Clean(path), true
+	}
 	if spelledProtected(filepath.Clean(path), roots) {
-		return true
+		return "", false
 	}
 	current, pending := "/", strings.Split(path, "/")
 	for hops := 0; len(pending) > 0; {
@@ -62,12 +73,13 @@ func Protected(path string) bool {
 		}
 		next := filepath.Join(current, name)
 		if spelledProtected(next, roots) {
-			return true
+			return "", false
 		}
 		info, err := os.Lstat(next)
 		if err != nil {
 			// Nothing further exists to follow; the rest is only a spelling.
-			return spelledProtected(filepath.Join(append([]string{next}, pending...)...), roots)
+			rest := filepath.Join(append([]string{next}, pending...)...)
+			return rest, !spelledProtected(rest, roots)
 		}
 		if info.Mode()&os.ModeSymlink == 0 {
 			current = next
@@ -75,14 +87,14 @@ func Protected(path string) bool {
 		}
 		target, err := os.Readlink(next)
 		if hops++; err != nil || hops > maxLinkHops {
-			return true
+			return "", false
 		}
 		if filepath.IsAbs(target) {
 			current = "/"
 		}
 		pending = append(strings.Split(target, "/"), pending...)
 	}
-	return false
+	return current, true
 }
 
 // protectedRoots spells each folder both ways when the home path itself goes
@@ -118,59 +130,4 @@ func spelledProtected(path string, roots []string) bool {
 		}
 	}
 	return false
-}
-
-// ProtectedRepository reports whether running git in dir would read inside a
-// protected folder: dir itself, or the repository metadata git finds from it
-// (a .git link, a gitdir file or its common dir). Only entries outside
-// protected folders are looked at to decide.
-func ProtectedRepository(dir string) bool {
-	if protectedRoots() == nil || dir == "" {
-		return false
-	}
-	if Protected(dir) {
-		return true
-	}
-	for current := filepath.Clean(dir); ; current = filepath.Dir(current) {
-		marker := filepath.Join(current, ".git")
-		info, err := os.Lstat(marker)
-		if err != nil {
-			if filepath.Dir(current) == current {
-				return false
-			}
-			continue
-		}
-		if Protected(marker) {
-			return true
-		}
-		gitDir := marker
-		if info.Mode().IsRegular() { // a worktree's .git file names its gitdir
-			if gitDir = linkedPath(marker, "gitdir: "); gitDir == "" {
-				return false
-			}
-			if Protected(gitDir) {
-				return true
-			}
-		}
-		common := linkedPath(filepath.Join(gitDir, "commondir"), "")
-		return common != "" && Protected(common)
-	}
-}
-
-// linkedPath reads the path a git metadata file names on its first line,
-// resolved against the file's directory, or "" when there is none.
-func linkedPath(file, prefix string) string {
-	content, err := os.ReadFile(file)
-	if err != nil {
-		return ""
-	}
-	line, _, _ := strings.Cut(string(content), "\n")
-	line = strings.TrimSpace(strings.TrimPrefix(line, prefix))
-	if line == "" {
-		return ""
-	}
-	if !filepath.IsAbs(line) {
-		line = filepath.Join(filepath.Dir(file), line)
-	}
-	return line
 }

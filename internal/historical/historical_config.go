@@ -601,9 +601,6 @@ func intConfig(config map[string]json.RawMessage, key string, fallback int) int 
 }
 
 func observeGit(ctx context.Context, cwd string) inspection.Git {
-	if filemodel.ProtectedRepository(cwd) {
-		return inspection.Git{}
-	}
 	return inspection.ObserveGit(ctx, cwd)
 }
 
