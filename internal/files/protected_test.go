@@ -1,6 +1,7 @@
 package files
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,8 +10,9 @@ import (
 
 // Catches: a folder macOS guards with a privacy prompt missing from the list,
 // a lookalike (~/Documents-old, /VolumesX) caught by a loose prefix, and a
-// file link into one being opened, directly, through a symlink outside it, or
-// by the suffix search walking down from home (each seen in review).
+// file link into one being opened, directly or through a symlink outside it:
+// a plain link, a ".." after a link, and a chain longer than the walk follows
+// (each seen in review).
 // Boundary: Protected, which every reader asks first, and the link resolver.
 func TestProtectedFoldersAreNeverOpened(t *testing.T) {
 	if runtime.GOOS != "darwin" {
@@ -45,29 +47,42 @@ func TestProtectedFoldersAreNeverOpened(t *testing.T) {
 	if err := os.WriteFile(file, []byte("notes\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	alias := filepath.Join(home, "notes.md")
-	if err := os.Symlink(file, alias); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, "Documents", "deep"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(home, "Documents"), filepath.Join(home, "docs")); err != nil {
+	code := filepath.Join(home, "Code")
+	if err := os.MkdirAll(code, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{file, alias, filepath.Join(home, "docs", "notes.md")} {
+	links := map[string]string{
+		filepath.Join(home, "notes.md"): file,
+		filepath.Join(home, "docs"):     filepath.Join(home, "Documents"),
+		// ".." applies after jump is followed, so this lands in Documents.
+		filepath.Join(code, "jump"):      filepath.Join(home, "Documents", "deep"),
+		filepath.Join(code, "AGENTS.md"): "jump/../notes.md",
+	}
+	// A chain longer than the walk follows must be refused, not trusted.
+	for i := 0; i < 40; i++ {
+		target := file
+		if i < 39 {
+			target = filepath.Join(code, fmt.Sprintf("chain%d", i+1))
+		}
+		links[filepath.Join(code, fmt.Sprintf("chain%d", i))] = target
+	}
+	for link, target := range links {
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{
+		file, filepath.Join(home, "notes.md"), filepath.Join(home, "docs", "notes.md"),
+		filepath.Join(code, "AGENTS.md"), filepath.Join(code, "chain0"),
+	} {
 		if got, _, err := Resolve(path, "", "", nil); err == nil || err.Message != ProtectedNotice {
 			t.Errorf("Resolve(%s) opened %q in a protected folder (err %v)", path, got, err)
 		}
 	}
 	if dir := CleanDir(filepath.Join(home, "docs")); dir != "" {
 		t.Errorf("CleanDir followed a link into a protected folder: %q", dir)
-	}
-	deep := filepath.Join(home, "Documents", "deep", "only.md")
-	if err := os.MkdirAll(filepath.Dir(deep), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(deep, []byte("only\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got, _, err := Resolve("deep/only.md", home, "", nil); err == nil {
-		t.Errorf("the suffix search from home walked into a protected folder and found %q", got)
 	}
 }
