@@ -207,6 +207,7 @@
     <details class="sect">
       <summary>Evidence Boundary <span class="n">wire + documented rules</span></summary>
       <div class="sect-body">
+        {#if store.meta?.protectedFolder}<div class="context-note">{store.meta.protectedFolder}</div>{/if}
         <dl class="kv">
           <dt>wire snapshot</dt><dd>system.init {#if init}<span class="ok">observed</span>{:else}<span class="warn">waiting</span>{/if}</dd>
           <dt>assembled prompt</dt><dd>not exposed <span class="n">no Claude Code wire/transcript field</span></dd>

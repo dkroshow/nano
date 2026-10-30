@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
 
@@ -133,6 +134,9 @@ func (r *CodexResolver) Resolve(ctx context.Context, thread threadindex.Thread) 
 		return unavailableResolution("", "The rollout does not record a session working directory.")
 	}
 	cwd = filepath.Clean(cwd)
+	if filemodel.Protected(cwd) {
+		return unavailableResolution(cwd, filemodel.ProtectedNotice)
+	}
 	info, err := os.Stat(cwd)
 	if err != nil {
 		return unavailableResolution(cwd, fmt.Sprintf("The recorded working directory is unavailable: %v", err))

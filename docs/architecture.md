@@ -52,7 +52,7 @@ for the parsing module, the state layer and lifecycle.
 | `files/api` | Workspace file HTTP operations and reference resolution over saved and live evidence; `files` keeps its standard-library filesystem primitives. |
 | `setup` | Read-only Claude context sources and the workspace skills cache. Attachment view handlers live in `sessions`. |
 | `observability` | Bounded request measurements, rotating process logs, host-monitor reads, browser validation and transcript audits. Durable browser evidence remains in diagnostics. |
-| `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution; content-free browser evidence. |
+| `inspection`, `files`, `diagnostics` | Read-only setup evidence (git, MCP tools, Claude settings); bounded file-reference resolution and the folders macOS guards with a privacy prompt, which no reader opens (`files.Protected`); content-free browser evidence. |
 | `httpapi`, `httpapi/remoteauth` | HTTP transport conventions, compression, discovery document delivery and connection measurement; the password-guarded remote listener and its store. |
 | `state/db`, `state/store`, `hosted/schema`, `edge/statewiring`, `edge/stateopen` | Shared SQLite policy, checked migration and backup paths, hosted table schemas, and ordered opening of canonical stores at the program edge. |
 

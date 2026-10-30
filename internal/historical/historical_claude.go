@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/inspection"
 	"github.com/dkroshow/nano/internal/setup"
@@ -88,6 +89,9 @@ func (r *ClaudeResolver) Resolve(ctx context.Context, thread threadindex.Thread)
 		return unavailableClaudeResolution("", "The Claude transcript does not record a working directory.")
 	}
 	cwd := filepath.Clean(target.CWD)
+	if filemodel.Protected(cwd) {
+		return unavailableClaudeResolution(cwd, filemodel.ProtectedNotice)
+	}
 	info, err := os.Stat(cwd)
 	if err != nil {
 		return unavailableClaudeResolution(cwd, fmt.Sprintf("The recorded working directory is unavailable: %v", err))
@@ -360,7 +364,7 @@ func resolveClaudeImports(sources []setup.ClaudeContextSource, excludes []string
 				path = filepath.Join(filepath.Dir(parent.Path), path)
 			}
 			path = filepath.Clean(path)
-			if seen[path] || matchesClaudeExclude(path, excludes) {
+			if seen[path] || matchesClaudeExclude(path, excludes) || filemodel.Protected(path) {
 				continue
 			}
 			info, err := os.Stat(path)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/history"
 	"github.com/dkroshow/nano/internal/liveview"
 	"github.com/dkroshow/nano/internal/observability"
@@ -81,7 +82,9 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 			return nil, failRegistration(err)
 		}
 	}
-	if req.Mode != "resume" {
+	// A folder macOS protects is not checked: the check itself would ask the
+	// user for permission. The provider reports a missing one.
+	if req.Mode != "resume" && !filemodel.Protected(req.Cwd) {
 		if fi, err := os.Stat(req.Cwd); err != nil || !fi.IsDir() {
 			return nil, fmt.Errorf("cwd %q is not a directory", req.Cwd)
 		}

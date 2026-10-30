@@ -88,6 +88,14 @@ describe('sessionBarFields', () => {
     expect(codex[1].text).toBe('default')
   })
 
+  it('says a protected folder was not read instead of dropping the branch', () => {
+    // Nano never reads inside a folder macOS guards with a privacy prompt;
+    // an empty field would read as "not a repository".
+    const notice = 'Not read: macOS asks permission before any app reads this folder'
+    const fields = sessionBarFields({ provider: 'codex', cwd: '/Users/u/Documents/x', protectedFolder: notice })
+    expect(fields.find((f) => f.key === 'branch')).toEqual({ key: 'branch', text: 'not read: protected folder', title: notice })
+  })
+
   it('drops what it does not know instead of inventing a placeholder', () => {
     // A codex resume before its handshake lands: a cwd and nothing else. The
     // failure this guards is a bar reading "~/Code/nano · · · " — separators

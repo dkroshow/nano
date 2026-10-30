@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	filemodel "github.com/dkroshow/nano/internal/files"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/lifecycle"
 	"github.com/dkroshow/nano/internal/setup"
@@ -602,6 +603,9 @@ func (providerRuntime *Runtime) provisionalMayHaveDelivered(ctx context.Context,
 // finds no transcript under the path derived from its cwd, and dies with a raw
 // error the operator has to decode.
 func requireResumeCwd(req ProviderRequest) error {
+	if filemodel.Protected(req.Cwd) {
+		return nil // checking would read inside the folder; the provider reports a missing one
+	}
 	if fi, err := os.Stat(req.Cwd); err != nil || !fi.IsDir() {
 		return fmt.Errorf("cannot resume claude thread %s: its working directory %s is gone — the project was moved or deleted", req.ThreadID, req.Cwd)
 	}

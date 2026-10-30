@@ -128,6 +128,9 @@ func CleanDir(path string) string {
 		return ""
 	}
 	canonical := canonicalPath(ExpandHome(path))
+	if Protected(canonical) {
+		return ""
+	}
 	if info, err := os.Stat(canonical); err != nil || !info.IsDir() {
 		return ""
 	}
@@ -300,6 +303,9 @@ func CanonicalExisting(path string) (string, *Error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return "", fileError("invalid_path", "Invalid file path")
+	}
+	if Protected(absolute) {
+		return "", fileError("read_only", ProtectedNotice)
 	}
 	canonical, err := filepath.EvalSymlinks(absolute)
 	if err != nil {

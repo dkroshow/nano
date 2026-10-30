@@ -3,6 +3,7 @@ package historical
 import (
 	"context"
 	"fmt"
+	filemodel "github.com/dkroshow/nano/internal/files"
 	"github.com/dkroshow/nano/internal/threadindex"
 	"os"
 	"path/filepath"
@@ -21,6 +22,9 @@ func (r *CodexResolver) ResolvePrepared(_ context.Context, thread threadindex.Th
 		return unavailableResolution("", "The rollout does not record a session working directory.")
 	}
 	cwd = filepath.Clean(cwd)
+	if filemodel.Protected(cwd) {
+		return unavailableResolution(cwd, filemodel.ProtectedNotice)
+	}
 	info, err := os.Stat(cwd)
 	if err != nil {
 		return unavailableResolution(cwd, fmt.Sprintf("The recorded working directory is unavailable: %v", err))
@@ -147,6 +151,9 @@ func (r *ClaudeResolver) ResolvePrepared(_ context.Context, thread threadindex.T
 		return unavailableClaudeResolution("", "The Claude transcript does not record a working directory.")
 	}
 	cwd := filepath.Clean(target.CWD)
+	if filemodel.Protected(cwd) {
+		return unavailableClaudeResolution(cwd, filemodel.ProtectedNotice)
+	}
 	info, err := os.Stat(cwd)
 	if err != nil {
 		return unavailableClaudeResolution(cwd, fmt.Sprintf("The recorded working directory is unavailable: %v", err))

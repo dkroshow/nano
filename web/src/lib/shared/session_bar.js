@@ -77,6 +77,7 @@ export function sessionBarFields({
   provider,
   cwd,
   gitBranch,
+  protectedFolder,
   model,
   threadModel,
   effort,
@@ -89,7 +90,9 @@ export function sessionBarFields({
 } = {}) {
   return [
     field('cwd', compactPath(cwd), (cwd ?? '').trim()),
-    field('branch', gitBranch),
+    // A folder macOS protects is never read, so its branch is unknown; the
+    // field says so instead of going quiet (the notice is the server's).
+    protectedFolder ? field('branch', 'not read: protected folder', protectedFolder) : field('branch', gitBranch),
     // The override if one is set, the thread's own otherwise: the value this
     // session's next turn will actually use, which is also what the menu's
     // selects edit. Same rule for model and effort.

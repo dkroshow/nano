@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	filemodel "github.com/dkroshow/nano/internal/files"
 )
 
 // ClaudeContextSource describes one read-only source of Claude context.
@@ -54,10 +56,7 @@ func ClaudeContextSources(cwd string, initRaw json.RawMessage) []ClaudeContextSo
 	var sources []ClaudeContextSource
 	seen := map[string]bool{}
 	add := func(src ClaudeContextSource) {
-		if src.Path == "" || seen[src.Path] {
-			return
-		}
-		if _, err := os.Stat(src.Path); err != nil {
+		if src.Path == "" || seen[src.Path] || !exists(src.Path) {
 			return
 		}
 		seen[src.Path] = true
@@ -206,8 +205,20 @@ func AncestorDirs(cwd string) []string {
 	return dirs
 }
 
+// exists never looks inside a folder macOS guards with a privacy prompt.
+func exists(path string) bool {
+	if filemodel.Protected(path) {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func markdownFiles(root string) []string {
 	var paths []string
+	if filemodel.Protected(root) {
+		return nil
+	}
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -277,7 +288,7 @@ func RepoRoot(cwd string) string {
 		abs = filepath.Clean(cwd)
 	}
 	for dir := abs; ; {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		if exists(filepath.Join(dir, ".git")) {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -308,10 +319,7 @@ func ClaudeConfigSources(cwd string) []ClaudeContextSource {
 	var sources []ClaudeContextSource
 	seen := map[string]bool{}
 	add := func(path, kind, scope, detail string) {
-		if path == "" || seen[path] {
-			return
-		}
-		if _, err := os.Stat(path); err != nil {
+		if path == "" || seen[path] || !exists(path) {
 			return
 		}
 		seen[path] = true

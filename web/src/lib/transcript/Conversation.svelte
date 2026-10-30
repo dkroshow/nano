@@ -910,6 +910,7 @@
       provider: store.provider,
 		cwd: metadataUnavailable ? '' : (store.meta?.cwd ?? info?.cwd ?? ''),
       gitBranch: store.meta?.gitBranch ?? '',
+      protectedFolder: store.meta?.protectedFolder ?? '',
       model: turnModel,
       threadModel,
       effort: turnEffort,

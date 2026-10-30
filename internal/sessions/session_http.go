@@ -12,6 +12,7 @@ import (
 	"time"
 
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	filemodel "github.com/dkroshow/nano/internal/files"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/providers"
@@ -218,7 +219,9 @@ func (attachmentState *State) HandleState(w http.ResponseWriter, r *http.Request
 
 	// The pane's info bar names the branch this session is working on. Cached
 	// per directory and refreshed only when /state is rebuilt (live_git.go).
-	if branch := liveGit.Branch(r.Context(), cwd); branch != "" {
+	if filemodel.Protected(cwd) {
+		out["protectedFolder"] = filemodel.ProtectedNotice
+	} else if branch := liveGit.Branch(r.Context(), cwd); branch != "" {
 		out["gitBranch"] = branch
 	}
 

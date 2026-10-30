@@ -134,6 +134,10 @@ func inspectInstructionFile(provider string, src setup.InstructionFileSource, po
 		ProvenLoaded: src.ProvenLoaded,
 		Evidence:     instructionEvidence(src),
 	}
+	if filemodel.Protected(src.Path) {
+		meta.ReadOnlyReason = filemodel.ProtectedNotice
+		return meta, nil
+	}
 	fi, err := os.Stat(src.Path)
 	if err != nil {
 		meta.ReadOnlyReason = "file does not exist"
@@ -226,6 +230,10 @@ func (views *View) HandleInstructionFileMtime(w http.ResponseWriter, r *http.Req
 	src := findInstructionSource(sources, r.URL.Query().Get("path"))
 	if src == nil {
 		httpapi.WriteHTTPError(w, "path is not an instruction source of this session", http.StatusNotFound)
+		return
+	}
+	if filemodel.Protected(src.Path) {
+		httpapi.WriteHTTPError(w, filemodel.ProtectedNotice, http.StatusNotFound)
 		return
 	}
 	fi, err := os.Stat(src.Path)

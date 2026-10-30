@@ -15,6 +15,9 @@ func CanonicalPath(p string) string {
 	if err != nil {
 		return filepath.Clean(p)
 	}
+	if Protected(abs) {
+		return abs
+	}
 	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
 		return resolved
 	}
