@@ -164,8 +164,8 @@ func unavailableResolution(cwd, diagnostic string) inspection.CurrentResolution 
 	}
 }
 
-// workspace is where every saved-thread read of a folder starts, the boot
-// warm-up included, so the protected-folder rule lives here too.
+// The boot warm-up and the background refreshers call workspace directly,
+// past Resolve's checks, so it refuses a protected folder itself.
 func (r *CodexResolver) workspace(ctx context.Context, cwd string) (codexWorkspaceSnapshot, bool, error) {
 	if filemodel.Protected(cwd) {
 		return codexWorkspaceSnapshot{}, false, errors.New(filemodel.ProtectedNotice)
@@ -384,6 +384,9 @@ func fingerprintPaths(paths []string) string {
 	for _, path := range ordered {
 		_, _ = hash.Write([]byte(path))
 		_, _ = hash.Write([]byte{0})
+		if filemodel.Protected(path) {
+			continue
+		}
 		info, err := os.Stat(path)
 		if err != nil {
 			_, _ = hash.Write([]byte("missing:" + err.Error()))
@@ -489,6 +492,9 @@ func resolveCodexInstructions(codexHome, cwd string, markers, fallbacks []string
 }
 
 func inspectResolvedInstruction(path, scope string, remaining int64) (resolvedInstructionSource, bool, error) {
+	if filemodel.Protected(path) {
+		return resolvedInstructionSource{}, false, nil
+	}
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return resolvedInstructionSource{}, false, nil
@@ -526,7 +532,7 @@ func nearestProjectRoot(cwd string, markers []string) string {
 			if marker == "" {
 				continue
 			}
-			if _, err := os.Stat(filepath.Join(cursor, marker)); err == nil {
+			if _, err := os.Lstat(filepath.Join(cursor, marker)); err == nil {
 				return cursor
 			}
 		}
@@ -595,6 +601,9 @@ func intConfig(config map[string]json.RawMessage, key string, fallback int) int 
 }
 
 func observeGit(ctx context.Context, cwd string) inspection.Git {
+	if filemodel.ProtectedRepository(cwd) {
+		return inspection.Git{}
+	}
 	return inspection.ObserveGit(ctx, cwd)
 }
 

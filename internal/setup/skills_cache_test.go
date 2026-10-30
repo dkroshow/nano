@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -133,5 +134,32 @@ func TestSkillsListCacheNeverAsksAboutAProtectedFolder(t *testing.T) {
 	cache.mu.Unlock()
 	if entries != 0 || calls.Load() != 0 {
 		t.Fatalf("started a skills request for a protected folder: entries=%d calls=%d", entries, calls.Load())
+	}
+}
+
+// Catches: a rule file linked into a folder macOS protects being read to find
+// its load mode before anything checks where it leads (seen in review).
+// Boundary: ruleLoad, which reads every discovered rule.
+func TestRuleLoadNeverReadsAProtectedFolder(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS privacy folders exist only on darwin")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	target := filepath.Join(home, "Documents", "rule.md")
+	link := filepath.Join(home, "Code", ".claude", "rules", "rule.md")
+	for _, dir := range []string{filepath.Dir(target), filepath.Dir(link)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(target, []byte("---\npaths: [x]\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if got := ruleLoad(link); got == "conditional" {
+		t.Fatal("read a rule through a link into a protected folder")
 	}
 }

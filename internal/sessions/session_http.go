@@ -219,7 +219,7 @@ func (attachmentState *State) HandleState(w http.ResponseWriter, r *http.Request
 
 	// The pane's info bar names the branch this session is working on. Cached
 	// per directory and refreshed only when /state is rebuilt (live_git.go).
-	if filemodel.Protected(cwd) {
+	if filemodel.ProtectedRepository(cwd) {
 		out["protectedFolder"] = filemodel.ProtectedNotice
 	} else if branch := liveGit.Branch(r.Context(), cwd); branch != "" {
 		out["gitBranch"] = branch

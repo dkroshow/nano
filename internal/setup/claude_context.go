@@ -236,6 +236,9 @@ func markdownFiles(root string) []string {
 }
 
 func ruleLoad(path string) string {
+	if filemodel.Protected(path) {
+		return "startup-or-conditional" // never read; add drops it
+	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return "startup-or-conditional"

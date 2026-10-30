@@ -101,6 +101,36 @@ func TestProtectedFolderSessionReadsNothingThere(t *testing.T) {
 		t.Errorf("served %s through a link into a protected folder: %s", link, rec.Body.String())
 	}
 
+	// A safe folder whose repository metadata lives in a protected one: git run
+	// there reads it (seen in review: the branch came back).
+	for _, marker := range []string{"link", "file"} {
+		dir := filepath.Join(home, "Code", "git-"+marker)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		gitDir := filepath.Join(cwd, ".git")
+		var err error
+		if marker == "link" {
+			err = os.Symlink(gitDir, filepath.Join(dir, ".git"))
+		} else {
+			err = os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: "+gitDir+"\n"), 0o644)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		newTestCodexSession(t, dir, nil).state.HandleState(rec, httptest.NewRequest(http.MethodGet, "/state", nil))
+		var state struct {
+			GitBranch string `json:"gitBranch"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &state); err != nil {
+			t.Fatal(err)
+		}
+		if state.GitBranch != "" {
+			t.Errorf("git in %s read repository metadata in a protected folder: branch %q", dir, state.GitBranch)
+		}
+	}
+
 	if got := GrokProbeCwd(cwd); got == cwd {
 		t.Errorf("Grok's probe chose the protected folder %s", got)
 	}

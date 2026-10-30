@@ -119,3 +119,58 @@ func spelledProtected(path string, roots []string) bool {
 	}
 	return false
 }
+
+// ProtectedRepository reports whether running git in dir would read inside a
+// protected folder: dir itself, or the repository metadata git finds from it
+// (a .git link, a gitdir file or its common dir). Only entries outside
+// protected folders are looked at to decide.
+func ProtectedRepository(dir string) bool {
+	if protectedRoots() == nil || dir == "" {
+		return false
+	}
+	if Protected(dir) {
+		return true
+	}
+	for current := filepath.Clean(dir); ; current = filepath.Dir(current) {
+		marker := filepath.Join(current, ".git")
+		info, err := os.Lstat(marker)
+		if err != nil {
+			if filepath.Dir(current) == current {
+				return false
+			}
+			continue
+		}
+		if Protected(marker) {
+			return true
+		}
+		gitDir := marker
+		if info.Mode().IsRegular() { // a worktree's .git file names its gitdir
+			if gitDir = linkedPath(marker, "gitdir: "); gitDir == "" {
+				return false
+			}
+			if Protected(gitDir) {
+				return true
+			}
+		}
+		common := linkedPath(filepath.Join(gitDir, "commondir"), "")
+		return common != "" && Protected(common)
+	}
+}
+
+// linkedPath reads the path a git metadata file names on its first line,
+// resolved against the file's directory, or "" when there is none.
+func linkedPath(file, prefix string) string {
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return ""
+	}
+	line, _, _ := strings.Cut(string(content), "\n")
+	line = strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	if line == "" {
+		return ""
+	}
+	if !filepath.IsAbs(line) {
+		line = filepath.Join(filepath.Dir(file), line)
+	}
+	return line
+}

@@ -77,3 +77,71 @@ func TestProtectedFolderResolutionReadsNothingThere(t *testing.T) {
 		}
 	}
 }
+
+// Catches: a saved thread's folder outside the protected ones whose inputs
+// link into one (instructions, Claude settings, a skill), and the cache
+// fingerprint statting such a link; each read went through (seen in review).
+// Boundary: the resolvers' workspace, which the warm-up and refreshers call.
+func TestProtectedLinksFromASafeFolderAreNotRead(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS privacy folders exist only on darwin")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cwd := filepath.Join(home, "Code", "repo")
+	documents := filepath.Join(home, "Documents")
+	for _, dir := range []string{filepath.Join(cwd, ".claude", "skills", "example"), documents} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	links := map[string]string{
+		filepath.Join(cwd, "AGENTS.md"):                                "instructions\n",
+		filepath.Join(cwd, ".claude", "settings.json"):                 `{"model":"protected-model"}`,
+		filepath.Join(cwd, ".claude", "skills", "example", "SKILL.md"): "---\nname: protected-skill\n---\n",
+	}
+	for link, content := range links {
+		target := filepath.Join(documents, filepath.Base(link))
+		if err := os.WriteFile(target, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	codex, _, err := NewCodexResolver(&fakePassiveCodex{}, store, filepath.Join(home, ".codex")).workspace(context.Background(), cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range codex.Instructions {
+		if source.BytesRead > 0 && filepath.Base(source.Path) == "AGENTS.md" {
+			t.Errorf("read %d bytes of instructions through a link into a protected folder", source.BytesRead)
+		}
+	}
+	claude, _, err := NewClaudeResolver(store, "/missing/claude").workspace(context.Background(), cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claude.Settings.Model == "protected-model" {
+		t.Error("read Claude settings through a link into a protected folder")
+	}
+	for _, skill := range claude.Skills {
+		if skill.Name == "protected-skill" {
+			t.Error("read a skill's metadata through a link into a protected folder")
+		}
+	}
+	target := filepath.Join(documents, "SKILL.md")
+	before := fingerprintPaths([]string{target})
+	if err := os.WriteFile(target, []byte("longer content than before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if fingerprintPaths([]string{target}) != before {
+		t.Error("the cache fingerprint statted a file in a protected folder")
+	}
+}

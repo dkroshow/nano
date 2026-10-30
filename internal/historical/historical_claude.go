@@ -288,7 +288,13 @@ func firstNonempty(values ...string) string {
 }
 
 func resolveClaudeSettings(cwd string) (inspection.ClaudeSettings, []string) {
-	return inspection.ReadClaudeSettings(claudeSettingsLayerPaths(cwd))
+	var paths []string
+	for _, path := range claudeSettingsLayerPaths(cwd) {
+		if !filemodel.Protected(path) {
+			paths = append(paths, path)
+		}
+	}
+	return inspection.ReadClaudeSettings(paths)
 }
 
 func claudeSettingsLayerPaths(cwd string) []string {
@@ -448,6 +454,9 @@ func resolveClaudeSkills(cwd string) ([]resolvedSkill, []string) {
 	var diagnostics []string
 	seen := map[string]bool{}
 	for _, candidate := range roots {
+		if filemodel.Protected(candidate.path) {
+			continue
+		}
 		err := filepath.WalkDir(candidate.path, func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
 				return nil
@@ -457,7 +466,8 @@ func resolveClaudeSkills(cwd string) ([]resolvedSkill, []string) {
 			}
 			isSkill := entry.Name() == "SKILL.md"
 			isCommand := strings.Contains(candidate.scope, "command") && strings.EqualFold(filepath.Ext(path), ".md")
-			if (!isSkill && !isCommand) || seen[path] {
+			// The walk never follows a link, but opening an entry would.
+			if (!isSkill && !isCommand) || seen[path] || filemodel.Protected(path) {
 				return nil
 			}
 			seen[path] = true

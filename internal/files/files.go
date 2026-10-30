@@ -143,7 +143,7 @@ func CleanDir(path string) string {
 func repositoryRoot(dir string) string {
 	current := dir
 	for index := 0; index < maxAscent; index++ {
-		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
+		if _, err := os.Lstat(filepath.Join(current, ".git")); err == nil {
 			return current
 		}
 		parent := filepath.Dir(current)
