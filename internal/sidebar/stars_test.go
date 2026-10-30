@@ -3,7 +3,6 @@ package sidebar
 import (
 	"path/filepath"
 	"testing"
-
 )
 
 func openTestThreadStars(t *testing.T) *Stars {
