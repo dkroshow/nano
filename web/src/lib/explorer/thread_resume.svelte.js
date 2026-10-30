@@ -149,7 +149,8 @@ function resumeRequest(item) {
 }
 
 // Detach is the inverse bridge: nano lets go of the thread without touching
-// its history. The semantics differ per provider — a codex thread keeps
+// its history. It is the same close as the sidebar's Close session, so it also
+// removes the thread's star. The semantics differ per provider — a codex thread keeps
 // running in the app-server daemon, while ending a hosted claude session stops
 // its child process (a later resume respawns a new one from the native
 // transcript, which cannot carry a turn that was in flight) — so the
@@ -160,13 +161,13 @@ export function detachLabels(provider) {
     return {
       label: 'End session',
       busy: 'Ending…',
-      title: 'Stop the hosted claude process. History stays in the catalog.',
+      title: 'Stop the hosted claude process and remove its star. History stays in the catalog.',
     }
   }
   return {
     label: 'Detach',
     busy: 'Detaching…',
-    title: 'Close nano’s attachment. The thread keeps its history and can be resumed any time.',
+    title: 'Close nano’s attachment and remove its star. The thread keeps its history and can be resumed any time.',
   }
 }
 

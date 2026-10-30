@@ -213,18 +213,10 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, roo
 	}
 
 	starred := make(map[string]bool, len(tree))
-	toUnstar := make([]hostedstore.AttachmentKey, 0)
 	for _, treeMember := range tree {
 		member := treeMember.record
 		if s.Stars.IsStarred(member.Provider, member.NativeThreadID) {
 			starred[member.ID] = true
-			toUnstar = append(toUnstar, hostedstore.AttachmentKey{Provider: member.Provider, NativeThreadID: member.NativeThreadID})
-		}
-	}
-	if len(toUnstar) > 0 {
-		if err := s.Stars.UnstarMany(toUnstar); err != nil {
-			httpapi.WriteHTTPError(w, "could not remove tree stars: "+err.Error(), http.StatusInternalServerError)
-			return
 		}
 	}
 
@@ -232,7 +224,7 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, roo
 		RootHostedThreadID: tree[0].record.ID,
 		Complete:           true,
 		MemberCount:        len(tree),
-		StarredCount:       len(toUnstar),
+		StarredCount:       len(starred),
 		Members:            make([]bulkCloseMemberResult, 0, len(tree)),
 	}
 	for _, treeMember := range tree {
@@ -249,9 +241,6 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, roo
 		}
 		if member.Status == hostedstore.StatusExited {
 			result.CloseAction = "already_exited"
-		}
-		if result.PreviouslyStarred {
-			result.StarAction = "unstarred"
 		}
 		result.Working = s.bulkCloseMemberWorking(member)
 		if result.Working {
@@ -270,6 +259,14 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, roo
 			failures = append(failures, "read final status: "+readErr.Error())
 		} else if found {
 			result.FinalStatus = current.Status
+		}
+		// A member that stays open keeps its star.
+		if result.PreviouslyStarred && len(failures) == 0 && result.FinalStatus == hostedstore.StatusExited {
+			if err := s.Stars.Unstar(member.Provider, member.NativeThreadID); err != nil {
+				failures = append(failures, "remove star: "+err.Error())
+			} else {
+				result.StarAction = "unstarred"
+			}
 		}
 		if len(failures) > 0 || result.FinalStatus != hostedstore.StatusExited {
 			response.Complete = false

@@ -65,7 +65,7 @@ func (s *Controller) unstarClosedThread(provider, nativeID string) error {
 	if !s.Stars.IsStarred(provider, nativeID) {
 		return nil
 	}
-	if err := s.Stars.UnstarMany([]hostedstore.AttachmentKey{{Provider: provider, NativeThreadID: nativeID}}); err != nil {
+	if err := s.Stars.Unstar(provider, nativeID); err != nil {
 		return fmt.Errorf("thread closed, but its star could not be removed: %w", err)
 	}
 	s.PublishRelationshipChange()

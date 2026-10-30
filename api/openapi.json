@@ -841,16 +841,7 @@
         "tags": ["Hosted threads"],
         "operationId": "bulkCloseHostedThreadTree",
         "summary": "Close the current mutable thread tree",
-        "description": "Closes the referenced visible root and every recursive descendant in Nano's current assignment-first sidebar tree. A mutable related-thread assignment wins over immutable invoker lineage, so a thread moved under another parent is not closed with its former parent. Resumed hosted aliases are collapsed to the current visible conversation owner. Child creation, relationship moves, and close operations serialize with tree resolution so a descendant cannot escape the snapshot. Durable hosted records and transcripts survive. The request must explicitly preserve stars or remove them; 207 exposes per-member partial failure.",
-        "requestBody": {
-          "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object",
-            "required": ["starredPolicy"],
-            "properties": {"starredPolicy": {"type": "string", "enum": ["preserve", "unstar"]}},
-            "additionalProperties": false
-          }}}
-        },
+        "description": "Closes the referenced visible root and every recursive descendant in Nano's current assignment-first sidebar tree. A mutable related-thread assignment wins over immutable invoker lineage, so a thread moved under another parent is not closed with its former parent. Resumed hosted aliases are collapsed to the current visible conversation owner. Child creation, relationship moves, and close operations serialize with tree resolution so a descendant cannot escape the snapshot. Durable hosted records and transcripts survive. Every member that closes loses its star, including a member that was already closed; a member that fails to close keeps its star. 207 exposes per-member partial failure.",
         "responses": {
           "200": {"description": "Every member is exited or was already exited.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BulkCloseTreeResult"}}}},
           "207": {"description": "One or more members did not fully close; inspect each member result.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BulkCloseTreeResult"}}}},
@@ -966,7 +957,7 @@
         "tags": ["Hosted threads"],
         "operationId": "closeHostedThread",
         "summary": "Close a hosted thread, keeping its durable record",
-        "description": "Ends the attachment, settles non-terminal operations as interrupted (including on an already-detached thread), forgets the boot-reattach attachment record, and drops queued prompts. The durable hosted-thread record survives with status exited. Claude closure requires acknowledgement from the exact shim process; errors, missing identity and unconfirmed not-found replies preserve the attachment and queued prompts. No attach, replay or replacement process is started by close.",
+        "description": "Ends the attachment, settles non-terminal operations as interrupted (including on an already-detached thread), forgets the boot-reattach attachment record, drops queued prompts, and removes the thread's star. The durable hosted-thread record survives with status exited. Claude closure requires acknowledgement from the exact shim process; errors, missing identity and unconfirmed not-found replies preserve the attachment and queued prompts. No attach, replay or replacement process is started by close.",
         "responses": {
           "200": {
             "description": "The closed hosted-thread record.",
@@ -3551,10 +3542,9 @@
     },
     "BulkCloseTreeResult": {
       "type": "object",
-      "required": ["rootHostedThreadId", "starredPolicy", "complete", "memberCount", "workingCount", "starredCount", "members"],
+      "required": ["rootHostedThreadId", "complete", "memberCount", "workingCount", "starredCount", "members"],
       "properties": {
         "rootHostedThreadId": {"type": "string"},
-        "starredPolicy": {"type": "string", "enum": ["preserve", "unstar"]},
         "complete": {"type": "boolean"},
         "memberCount": {"type": "integer", "minimum": 1},
         "workingCount": {"type": "integer", "minimum": 0},
@@ -3570,7 +3560,7 @@
             "finalStatus": {"type": "string"},
             "working": {"type": "boolean"},
             "previouslyStarred": {"type": "boolean"},
-            "starAction": {"type": "string", "enum": ["none", "preserved", "unstarred"]},
+            "starAction": {"type": "string", "enum": ["none", "unstarred"]},
             "closeAction": {"type": "string", "enum": ["closed", "already_exited", "failed"]},
             "error": {"type": "string"}
           },

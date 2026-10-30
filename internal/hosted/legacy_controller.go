@@ -67,13 +67,12 @@ func (s *Controller) HandleAttachmentScoped(w http.ResponseWriter, r *http.Reque
 				err = s.forgetUnconfirmedClaude(matches[0], r.URL.Query().Get("expectedShimSessionId"), r.URL.Query().Get("expectedAttachedAt"))
 			} else {
 				err = s.closeExplicitAttachment(matches[0])
+				if err == nil {
+					err = s.unstarClosedThread(matches[0].Provider, matches[0].NativeThreadID)
+				}
 			}
 			if err != nil {
 				httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
-				return
-			}
-			if err := s.unstarClosedThread(matches[0].Provider, matches[0].NativeThreadID); err != nil {
-				httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}

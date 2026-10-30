@@ -15,8 +15,6 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 )
 
-const ()
-
 type bulkCloseMemberResult struct {
 	HostedThreadID    string `json:"hostedThreadId"`
 	Provider          string `json:"provider"`

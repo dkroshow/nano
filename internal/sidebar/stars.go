@@ -141,42 +141,9 @@ func (s *Stars) setStarred(provider, nativeID string, starred bool) error {
 	return nil
 }
 
-// UnstarMany removes an operator-approved set atomically. Bulk close must not
-// close half a tree and only then discover that one requested pin could not be
-// removed.
-func (s *Stars) UnstarMany(identities []hostedstore.AttachmentKey) error {
-	if s == nil {
-		return errors.New("thread stars store unavailable")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.ensureLoaded(); err != nil {
-		return err
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	keys := make([]string, 0, len(identities))
-	for _, identity := range identities {
-		provider := strings.TrimSpace(identity.Provider)
-		nativeID := strings.TrimSpace(identity.NativeThreadID)
-		if provider == "" || nativeID == "" {
-			return errStarIdentityMissing
-		}
-		if _, err := tx.Exec(`DELETE FROM thread_stars WHERE provider = ? AND native_thread_id = ?`, provider, nativeID); err != nil {
-			return err
-		}
-		keys = append(keys, threadStarKey(provider, nativeID))
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	for _, key := range keys {
-		delete(s.cache, key)
-	}
-	return nil
+// Unstar removes one operator pin.
+func (s *Stars) Unstar(provider, nativeID string) error {
+	return s.setStarred(provider, nativeID, false)
 }
 
 // ErrStarIdentityMissing reports an incomplete identity supplied to a pin mutation.

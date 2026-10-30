@@ -25,7 +25,10 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 				record.ShimSessionID = ""
 			}
 			store.Remember(record)
-			s := &server{Registry: newSessionRegistry(), attachments: store}
+			s := &server{Registry: newSessionRegistry(), attachments: store, threadStars: openTestThreadStars(t)}
+			if err := fixtureSetStarred(t, s.threadStars, "claude", "native-1", true); err != nil {
+				t.Fatal(err)
+			}
 			query := url.Values{"provider": {"claude"}, "forget": {"unconfirmed"}, "expectedShimSessionId": {record.ShimSessionID}, "expectedAttachedAt": {record.AttachedAt}}
 			switch scenario {
 			case "replacement":
@@ -44,6 +47,10 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 			if scenario == "forget" || scenario == "missing_identity" {
 				if w.Code != 200 || retained || !strings.Contains(w.Body.String(), `"processState":"unknown"`) {
 					t.Fatalf("forget=%d %s retained=%v", w.Code, w.Body, retained)
+				}
+				// Claude may still be running, so nothing is known to be closed.
+				if !s.threadStars.IsStarred("claude", "native-1") {
+					t.Fatal("forgetting an unconfirmed attachment removed the star")
 				}
 			} else if w.Code < 400 || !retained {
 				t.Fatalf("unsafe forget=%d %s retained=%v", w.Code, w.Body, retained)
@@ -216,8 +223,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); !ok {
 				t.Fatal("failed stop removed queued prompt")
 			}
-			// Bulk close removes a whole tree's stars before it closes anyone.
-			if endpoint != "family" && !s.threadStars.IsStarred("claude", "native-1") {
+			if !s.threadStars.IsStarred("claude", "native-1") {
 				t.Fatal("failed stop removed the star of a thread that is still open")
 			}
 			reject.Store(false)

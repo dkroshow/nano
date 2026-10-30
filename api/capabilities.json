@@ -220,7 +220,7 @@
     },
     {
       "id": "hostedThreads.bulkCloseTree",
-      "summary": "Close a root and every descendant in Nano's current assignment-first sidebar tree. Requires an explicit preserve or unstar policy and returns one result per member.",
+      "summary": "Close a root and every descendant in Nano's current assignment-first sidebar tree. Removes the star of every member that closes and returns one result per member.",
       "method": "POST",
       "path": "/api/v1/hosted-threads/{threadRef}/family/close"
     },

@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 )
 
 func openTestThreadStars(t *testing.T) *Stars {
@@ -64,23 +63,5 @@ func TestThreadStarsRejectBlankIdentity(t *testing.T) {
 	}
 	if store.IsStarred("codex", "") {
 		t.Fatal("blank native id must not star")
-	}
-}
-
-func TestThreadStarsUnstarManyIsAtomicAndUpdatesCache(t *testing.T) {
-	store := openTestThreadStars(t)
-	for _, nativeID := range []string{"native-a", "native-b"} {
-		if err := store.setStarred("codex", nativeID, true); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := store.UnstarMany([]hostedstore.AttachmentKey{
-		{Provider: "codex", NativeThreadID: "native-a"},
-		{Provider: "codex", NativeThreadID: "native-b"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if store.IsStarred("codex", "native-a") || store.IsStarred("codex", "native-b") {
-		t.Fatal("bulk unstar left cache entries behind")
 	}
 }
