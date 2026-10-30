@@ -81,8 +81,8 @@ func TestObserveGitAgreesWithGit(t *testing.T) {
 // macOS protects being read: a .git link to a gitdir file naming it, a
 // worktree whose commondir file is a link into it, a gitdir path with ".."
 // after a link, and a repository found through the folder's physical rather
-// than spelled ancestry, and a HEAD link through a missing folder and ".."
-// (each seen in review). Boundary: ObserveGit.
+// than spelled ancestry, and a HEAD link or gitdir through a missing folder
+// and ".." (each seen in review). Boundary: ObserveGit.
 func TestObserveGitNeverReadsAProtectedFolder(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("macOS privacy folders exist only on darwin")
@@ -139,6 +139,17 @@ func TestObserveGitNeverReadsAProtectedFolder(t *testing.T) {
 	write(filepath.Join(home, "Documents", "HEAD"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
 	link(filepath.Join(home, "Documents", "HEAD"), filepath.Join(code, "d", ".git", "secret-head"))
 	link("missing/../secret-head", filepath.Join(code, "d", ".git", "HEAD"))
+
+	// A gitdir through a missing folder: deriving commondir from the unresolved
+	// "missing/../meta" stats meta/commondir, which leads inside. What is
+	// reported must not change with what exists in the protected folder.
+	write(filepath.Join(code, "e", ".git"), "gitdir: missing/../meta\n")
+	link(filepath.Join(home, "Documents", "meta"), filepath.Join(code, "e", "meta"))
+	without := ObserveGit(context.Background(), filepath.Join(code, "e"))
+	write(filepath.Join(home, "Documents", "meta", "commondir"), "x\n")
+	if with := ObserveGit(context.Background(), filepath.Join(code, "e")); with != without {
+		t.Errorf("e: the answer depends on a file in a protected folder: %+v, then %+v", without, with)
+	}
 
 	for _, cwd := range []string{"a", "b", "c", "d", filepath.Join("alias", "sub")} {
 		dir := filepath.Join(code, cwd)

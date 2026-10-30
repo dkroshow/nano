@@ -31,34 +31,41 @@ const maxLinkHops = 32
 // privacy prompt, or leads into one through a symlink. Any read there, even a
 // stat or a git status, asks the user whether "codex-nano-bin" may access it,
 // and the answer belongs to one build of the binary, so Nano reads nothing
-// there.
+// there. A path that does not exist is judged by its spelling.
 func Protected(path string) bool {
-	_, ok := Physical(path)
-	return !ok
+	_, _, protected := walk(path)
+	return protected
 }
 
-// Physical returns the path the kernel reaches for path and true, or false
-// when that walk enters a protected folder or cannot be followed safely. It
-// walks the way the kernel does, one component at a time, following each link
-// and applying ".." to where the walk really is, and checks every step before
-// looking at it. A missing tail is kept as written.
+// Physical returns the path the kernel reaches for path and true only when
+// every component exists and none is in or leads into a protected folder, so
+// a caller may look at it and at entries beneath it.
 func Physical(path string) (string, bool) {
+	physical, complete, protected := walk(path)
+	return physical, complete && !protected
+}
+
+// walk follows path the way the kernel does, one component at a time,
+// following each link and applying ".." to where the walk really is, and
+// checks every step before looking at it. It stops where a component is
+// missing, as the kernel does, and reports the walk incomplete.
+func walk(path string) (physical string, complete, protected bool) {
 	roots := protectedRoots()
 	if path == "" {
-		return "", true
+		return "", false, false
 	}
 	if !filepath.IsAbs(path) {
 		wd, err := os.Getwd()
 		if err != nil {
-			return "", false
+			return "", false, true
 		}
 		path = wd + "/" + path
 	}
 	if roots == nil {
-		return filepath.Clean(path), true
+		return filepath.Clean(path), true, false
 	}
 	if spelledProtected(filepath.Clean(path), roots) {
-		return "", false
+		return "", false, true
 	}
 	current, pending := "/", strings.Split(path, "/")
 	for hops := 0; len(pending) > 0; {
@@ -73,15 +80,12 @@ func Physical(path string) (string, bool) {
 		}
 		next := filepath.Join(current, name)
 		if spelledProtected(next, roots) {
-			return "", false
+			return "", false, true
 		}
 		info, err := os.Lstat(next)
 		if err != nil {
-			// The kernel stops here too. The rest is kept as written, not
-			// cleaned: cleaning "missing/../x" would name a file that exists,
-			// while opening the written path fails as the kernel would.
-			rest := next + "/" + strings.Join(pending, "/")
-			return rest, !spelledProtected(filepath.Clean(rest), roots)
+			// The kernel stops here too; what follows is only a spelling.
+			return "", false, spelledProtected(filepath.Join(append([]string{next}, pending...)...), roots)
 		}
 		if info.Mode()&os.ModeSymlink == 0 {
 			current = next
@@ -89,14 +93,14 @@ func Physical(path string) (string, bool) {
 		}
 		target, err := os.Readlink(next)
 		if hops++; err != nil || hops > maxLinkHops {
-			return "", false
+			return "", false, true
 		}
 		if filepath.IsAbs(target) {
 			current = "/"
 		}
 		pending = append(strings.Split(target, "/"), pending...)
 	}
-	return current, true
+	return current, true, false
 }
 
 // protectedRoots spells each folder both ways when the home path itself goes
