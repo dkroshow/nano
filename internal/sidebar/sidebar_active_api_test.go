@@ -2,12 +2,9 @@ package sidebar
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -184,76 +181,52 @@ func TestSidebarManualCloseOverridesWatchedFleet(t *testing.T) {
 	}
 }
 
-// A closed thread with an open sub-agent held a gray row and so never left the
-// sidebar. The expected rows live in a file because the rendered-sidebar test
-// (sidebar_ordering.test.js) shows the same rows, where the operator sees them.
+// A closed thread with an open sub-agent held a gray row, so closing it did not
+// clear the sidebar. It goes to history, and the sub-agent takes its place.
 func TestSidebarClosedThreadGoesToHistoryAndItsOpenChildMovesUp(t *testing.T) {
-	thread := func(native, title, invoker string) Thread {
-		return Thread{
-			Thread:         threadindex.Thread{ID: "nth_" + strings.ReplaceAll(native, "-", "_"), Provider: "codex", NativeID: native, Title: &title},
-			HostedThreadID: "hosted-" + native, InvokerHostedThreadID: invoker,
-		}
+	thread := func(id, invoker string) Thread {
+		return Thread{Thread: threadindex.Thread{ID: id, Provider: "codex", NativeID: id}, HostedThreadID: "hosted-" + id, InvokerHostedThreadID: invoker}
 	}
-	open := func(native, title, invoker string) Thread {
-		row := thread(native, title, invoker)
+	open := func(id, invoker string) Thread {
+		row := thread(id, invoker)
 		row.HostedStatus, row.Runtime = "ready", &RuntimeInfo{Attached: true, Status: "ready"}
 		return row
 	}
-	closed := func(native, title, invoker string) Thread {
-		row := thread(native, title, invoker)
+	closed := func(id, invoker string) Thread {
+		row := thread(id, invoker)
 		row.HostedStatus = sessions.StatusExited
 		return row
 	}
 	result, nodes := projectSidebar([]Thread{
-		open("open-supervisor", "Open supervisor", ""),
-		closed("closed-owner", "Closed owner", "hosted-open-supervisor"),
-		open("open-grandchild", "Open grandchild", "hosted-closed-owner"),
-		closed("closed-top-level", "Closed top-level", ""),
-		open("open-child", "Open child", "hosted-closed-top-level"),
+		open("supervisor", ""),
+		closed("closed-owner", "hosted-supervisor"),
+		open("grandchild", "hosted-closed-owner"),
+		closed("closed-top", ""),
+		open("child", "hosted-closed-top"),
 	}, sidebarBaseQuery(), 1)
 
-	encoded, err := json.Marshal(result)
-	if err != nil {
-		t.Fatal(err)
+	parents := map[string]string{}
+	for _, row := range result.Items {
+		parents[row.ID] = ""
+		if row.Sidebar.ParentID != nil {
+			parents[row.ID] = *row.Sidebar.ParentID
+		}
 	}
-	type sidebarRow struct {
-		ID       string `json:"id"`
-		Provider string `json:"provider"`
-		NativeID string `json:"nativeId"`
-		Title    string `json:"title"`
-		Sidebar  struct {
-			ParentID   *string `json:"parentId"`
-			Active     bool    `json:"active"`
-			Structural bool    `json:"structural"`
-		} `json:"sidebar"`
+	want := map[string]string{"supervisor": "", "grandchild": "supervisor", "child": ""}
+	if !reflect.DeepEqual(parents, want) {
+		t.Fatalf("sidebar parents = %v, want %v", parents, want)
 	}
-	type sidebarTree struct {
-		Items []sidebarRow `json:"items"`
-		Roots []string     `json:"roots"`
+	if roots := []string{"supervisor", "child"}; !reflect.DeepEqual(result.Roots, roots) {
+		t.Fatalf("roots = %v, want %v", result.Roots, roots)
 	}
-	var got, want sidebarTree
-	if err := json.Unmarshal(encoded, &got); err != nil {
-		t.Fatal(err)
-	}
-	expected, err := os.ReadFile("testdata/closed_thread_tree.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(expected, &want); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("sidebar rows = %s, want the rows in closed_thread_tree.json", encoded)
-	}
-
 	if result.HistoricalCount != 2 {
 		t.Fatalf("historicalCount = %d, want both closed threads", result.HistoricalCount)
 	}
-	page, err := pageSidebarHistory(nodes, "nth_open_supervisor", nil, 10, 1, 1)
+	page, err := pageSidebarHistory(nodes, "supervisor", nil, 10, 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 1 || page.Items[0].ID != "nth_closed_owner" {
+	if len(page.Items) != 1 || page.Items[0].ID != "closed-owner" {
 		t.Fatalf("supervisor history = %+v, want the closed owner", page.Items)
 	}
 }

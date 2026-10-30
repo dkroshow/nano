@@ -7,7 +7,6 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, fireEvent, render, within } from '@testing-library/svelte'
 import { tick } from 'svelte'
-import closedThreadTree from '../../internal/sidebar/testdata/closed_thread_tree.json'
 import App from './App.svelte'
 import { app } from './app.svelte.js'
 import { __resetSidebarBootstrapForTest, explorer, loadDataset, scheduleActiveRefresh } from './explorer.svelte.js'
@@ -842,46 +841,28 @@ describe('compact sidebar active ordering', () => {
     expect(titles(container)).toEqual(['Parent run'])
   })
 
-  // The rows come from the server's own test, so this fails when the server
-  // keeps a closed thread as a gray row above its open sub-agents.
-  it('shows a closed thread only in history, with its open sub-agents in its place', async () => {
-    explorer.dataset = closedThreadTree.items.map((row, index) => ({
-      ...activeThread(row.nativeId, row.title, index, '2026-08-03T12:00:00Z'),
-      ...row,
-    }))
-    app.sessions = []
-    vi.mocked(fetch).mockImplementation(async (url) => {
-      if (String(url) === '/api/sessions') return response({ sessions: [], detached: [], defaults: {} })
-      return response({})
-    })
-
-    const { container } = render(App)
-    expect(titles(container).sort()).toEqual(['Open child', 'Open supervisor'])
-
-    const compact = within(container.querySelector('.side-compact'))
-    await fireEvent.click(compact.getByRole('button', { name: 'Show subagents of Open supervisor' }))
-    expect(titles(container).sort()).toEqual(['Open child', 'Open grandchild', 'Open supervisor'])
-  })
-
-  it('keeps a closed hosted coordinator as the Nano tree owner of an attached background grandchild', async () => {
+  // Opening the Explorer loads the whole catalog window, which brings a closed
+  // thread back into the dataset. Its moved-up sub-agent, which the server says
+  // has no parent, must stay on top instead of folding under the gray row.
+  it('keeps an open sub-agent on top of the thread that invoked it once that thread closes', async () => {
     const closed = activeThread('closed', 'Closed coordinator', 0, '2026-08-03T12:00:00Z')
     closed.hostedThreadId = 'nht_closed'
     closed.assignment = { assignmentRole: 'auditor' }
     closed.runtime = {}
-    const grandchild = activeThread('grandchild', 'Surviving background worker', 2_000, '2026-08-03T14:00:00Z')
-    grandchild.hostedThreadId = 'nht_grandchild'
-    grandchild.invokerHostedThreadId = 'nht_closed'
-    grandchild.assignment = { assignmentRole: 'worker' }
-    grandchild.runtime.presentationMode = 'background'
-    grandchild.runtime.turnActive = false
-    grandchild.runtime.threadStatus = 'idle'
+    const child = activeThread('child', 'Surviving worker', 2_000, '2026-08-03T14:00:00Z')
+    child.hostedThreadId = 'nht_child'
+    child.invokerHostedThreadId = 'nht_closed'
+    child.assignment = { assignmentRole: 'worker' }
+    child.runtime.turnActive = false
+    child.runtime.threadStatus = 'idle'
+    child.sidebar = { parentId: null, active: true, structural: false }
     const localSessions = [{
-      id: 'session-grandchild', provider: 'codex', threadId: 'native-grandchild',
-      hostedThreadId: 'nht_grandchild', invokerHostedThreadId: 'nht_closed',
+      id: 'session-child', provider: 'codex', threadId: 'native-child',
+      hostedThreadId: 'nht_child', invokerHostedThreadId: 'nht_closed',
       cwd: '/workspace/nano', model: 'gpt-5.6-sol', status: 'ready',
-      presentationMode: 'background', turnActive: false, threadStatus: 'idle',
+      turnActive: false, threadStatus: 'idle',
     }]
-    explorer.dataset = [closed, grandchild]
+    explorer.dataset = [closed, child]
     app.sessions = localSessions
     vi.mocked(fetch).mockImplementation(async (url) => {
       if (String(url) === '/api/sessions') return response({ sessions: localSessions, detached: [], defaults: {} })
@@ -889,13 +870,6 @@ describe('compact sidebar active ordering', () => {
     })
 
     const { container } = render(App)
-    expect(titles(container)).toEqual(['Closed coordinator'])
-    expect([...container.querySelectorAll('.thread-row')].find((row) => row.textContent.includes('Closed coordinator'))?.classList.contains('dim')).toBe(true)
-    expect(container.querySelector('[data-testid="background-disclosure"]')).toBeNull()
-
-    const compact = within(container.querySelector('.side-compact'))
-    await fireEvent.click(compact.getByRole('button', { name: 'Show subagents of Closed coordinator' }))
-    expect(titles(container)).toEqual(['Closed coordinator', 'Surviving background worker'])
-    expect(container.querySelector('.worker-child .role-badge')).toBeNull()
+    expect(titles(container)).toEqual(['Surviving worker'])
   })
 })

@@ -106,9 +106,9 @@ export function sidebarCounts(rows) {
 export function filterSidebar(rows, filter) {
   if (filter === 'all') return rows
   const matches = rows.filter((row) => filter === 'working' ? row.working : row.cls === filter)
-  // Nano keeps its host boundary. The one structural exception is a historical
-  // hosted ancestor of a visible Nano row: after closing an intermediate
-  // parent, it keeps an unchecked grandchild's lineage and disclosure owner.
+  // Nano keeps its host boundary. The one structural exception is a hosted
+  // ancestor of a visible Nano row that Nano no longer holds, such as a starred
+  // closed thread: it keeps that row's lineage and disclosure owner.
   // A non-hosted external supervisor never crosses this boundary.
   if (filter === 'nano') return retainNanoTrees(rows, matches)
   const visibleKeys = new Set(matches.map((row) => row.key))

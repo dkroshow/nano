@@ -265,6 +265,10 @@ export function threadParentIdentity(row) {
 // retained spelling so that child stays attached to the one visible catalog
 // row for that provider conversation. Mutable relationships remain first.
 export function threadParentIdentityKeys(row) {
+  // The server decides a sidebar row's parent, and no parent is an answer: an
+  // open sub-agent of a closed thread has moved up, and must not fall back to
+  // that thread when a full catalog window brings it back into the dataset.
+  if (row?.sidebar?.parentId === null) return []
   const keys = []
   const push = (key) => { if (key && !keys.includes(key)) keys.push(key) }
   const relatedHostedThreadId = !row?.assignmentUnavailable
