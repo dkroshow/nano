@@ -1,6 +1,8 @@
 package setup
 
 import (
+	filemodel "github.com/dkroshow/nano/internal/files"
+
 	"context"
 	"encoding/json"
 	"log"
@@ -49,7 +51,7 @@ func NewSkillsListCache(fetch func(context.Context, string) (json.RawMessage, er
 
 // Current returns the cached answer and starts a bounded refresh when stale.
 func (c *SkillsListCache) Current(cwd string) json.RawMessage {
-	if c == nil || c.fetch == nil || cwd == "" {
+	if c == nil || c.fetch == nil || cwd == "" || filemodel.Protected(cwd) {
 		return append(json.RawMessage(nil), emptySkillsList...)
 	}
 	cwd = filepath.Clean(cwd)

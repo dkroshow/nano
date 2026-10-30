@@ -127,10 +127,11 @@ func CleanDir(path string) string {
 	if path == "" {
 		return ""
 	}
-	canonical := canonicalPath(ExpandHome(path))
-	if Protected(canonical) {
+	path = ExpandHome(path)
+	if Protected(path) {
 		return ""
 	}
+	canonical := CanonicalPath(path)
 	if info, err := os.Stat(canonical); err != nil || !info.IsDir() {
 		return ""
 	}
@@ -202,6 +203,9 @@ func suffixMatches(requested string, roots []string) []string {
 	var matches []string
 	seen := make(map[string]bool)
 	visited := 0
+	// The walk never follows a link, so the spelling of each directory is
+	// enough to keep it out of the folders macOS protects.
+	protected := protectedRoots()
 	for _, root := range roots {
 		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
@@ -211,7 +215,7 @@ func suffixMatches(requested string, roots []string) []string {
 				return nil
 			}
 			if entry.IsDir() {
-				if path != root && skipDirs[entry.Name()] {
+				if path != root && (skipDirs[entry.Name()] || spelledProtected(path, protected)) {
 					return filepath.SkipDir
 				}
 				return nil
@@ -400,17 +404,6 @@ func dedupe(values []string) []string {
 		}
 	}
 	return result
-}
-
-func canonicalPath(path string) string {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
-		return resolved
-	}
-	return absolute
 }
 
 // UnderRoot reports whether a canonical path lies at or below a canonical root.

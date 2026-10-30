@@ -84,4 +84,24 @@ func TestProtectedFolderSessionReadsNothingThere(t *testing.T) {
 			}
 		}
 	}
+
+	// A thread outside the folder whose instruction file is a link into it
+	// (seen in review: the read served the protected file's content).
+	safe := filepath.Join(home, "Code", "project")
+	if err := os.MkdirAll(safe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(safe, "AGENTS.md")
+	if err := os.Symlink(agents, link); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	newTestCodexSession(t, safe, []string{link}).view.HandleInstructionFileRead(rec, httptest.NewRequest(http.MethodGet, "/read?path="+link, nil))
+	if rec.Code == http.StatusOK {
+		t.Errorf("served %s through a link into a protected folder: %s", link, rec.Body.String())
+	}
+
+	if got := GrokProbeCwd(cwd); got == cwd {
+		t.Errorf("Grok's probe chose the protected folder %s", got)
+	}
 }

@@ -42,7 +42,7 @@ func TestResolveDirectFormsAndKeepsSearchInsideRepository(t *testing.T) {
 		{"~/home.md", home, "absolute"},
 	} {
 		got, by, err := Resolve(test.requested, cwd, "", nil)
-		if err != nil || got != canonicalPath(test.want) || by != test.by {
+		if err != nil || got != CanonicalPath(test.want) || by != test.by {
 			t.Fatalf("Resolve(%q) = %q, %q, %v", test.requested, got, by, err)
 		}
 	}
@@ -52,7 +52,7 @@ func TestResolveDirectFormsAndKeepsSearchInsideRepository(t *testing.T) {
 }
 
 func TestResolveUnversionedDirectoryIsItsOwnBoundary(t *testing.T) {
-	root := canonicalPath(t.TempDir())
+	root := CanonicalPath(t.TempDir())
 	for dir := root; ; dir = filepath.Dir(dir) {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			t.Skip("temp dir is inside a Git repository; the unversioned boundary cannot be isolated")
@@ -83,13 +83,13 @@ func TestInspectRejectsContentAndMarksProtectedFilesReadOnly(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("before\x00after"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	text = canonicalPath(text)
-	root = canonicalPath(root)
+	text = CanonicalPath(text)
+	root = CanonicalPath(root)
 	meta, content, err := Inspect(text, []string{root})
 	if err != nil || meta.Editable || string(content) != "hello\n" {
 		t.Fatalf("text = %+v, %q, %v", meta, content, err)
 	}
-	binary = canonicalPath(binary)
+	binary = CanonicalPath(binary)
 	if _, _, err := Inspect(binary, nil); err == nil || err.Code != "not_text" {
 		t.Fatalf("binary = %#v", err)
 	}

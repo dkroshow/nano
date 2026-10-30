@@ -15,6 +15,7 @@ import (
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	coresession "github.com/dkroshow/nano/internal/core/session"
+	filemodel "github.com/dkroshow/nano/internal/files"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/interact"
 	"github.com/dkroshow/nano/internal/lifecycle"
@@ -259,7 +260,7 @@ func GrokProcessEnv() []string {
 func GrokProbeCwd(configured string) string {
 	home, _ := os.UserHomeDir()
 	for _, candidate := range []string{strings.TrimSpace(configured), home} {
-		if candidate == "" {
+		if candidate == "" || filemodel.Protected(candidate) {
 			continue
 		}
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {

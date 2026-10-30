@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -109,4 +111,27 @@ func TestSkillsListCacheColdMissDoesNotWaitForProvider(t *testing.T) {
 		t.Fatal("background refresh did not start")
 	}
 	close(release)
+}
+
+// Catches: listing skills for a thread in a folder macOS protects, which made
+// the provider read there on Nano's behalf (seen in review: hosted spawn warms
+// this cache). Boundary: the cache every skills request goes through.
+func TestSkillsListCacheNeverAsksAboutAProtectedFolder(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS privacy folders exist only on darwin")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	var calls atomic.Int32
+	cache := NewSkillsListCache(func(context.Context, string) (json.RawMessage, error) {
+		calls.Add(1)
+		return json.RawMessage(`{"data":[]}`), nil
+	})
+	cache.Current(filepath.Join(home, "Documents", "repo"))
+	cache.mu.Lock()
+	entries := len(cache.entries)
+	cache.mu.Unlock()
+	if entries != 0 || calls.Load() != 0 {
+		t.Fatalf("started a skills request for a protected folder: entries=%d calls=%d", entries, calls.Load())
+	}
 }

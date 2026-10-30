@@ -53,4 +53,19 @@ func TestProtectedFolderResolutionReadsNothingThere(t *testing.T) {
 	if len(fake.methods) != 0 {
 		t.Errorf("asked the app server %v for a protected folder", fake.methods)
 	}
+
+	// A memory override can point into the folder from a safe cwd (seen in review).
+	memory := filepath.Join(home, "Documents", "memory", "MEMORY.md")
+	if err := os.MkdirAll(filepath.Dir(memory), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(memory, []byte("memory\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sources, _ := resolveHistoricalClaudeInstructions(filepath.Join(home, "Code"), inspection.ClaudeSettings{AutoMemoryDirectory: filepath.Dir(memory)})
+	for _, source := range sources {
+		if source.Path == memory {
+			t.Errorf("listed the memory override %s in a protected folder", memory)
+		}
+	}
 }

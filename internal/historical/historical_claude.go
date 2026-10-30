@@ -322,12 +322,15 @@ func resolveHistoricalClaudeInstructions(cwd string, settings inspection.ClaudeS
 		} else {
 			memoryPath = setup.ClaudeAutoMemoryPath(cwd, nil)
 		}
-		if info, err := os.Stat(memoryPath); err == nil && info.Mode().IsRegular() {
-			filtered = append(filtered, setup.ClaudeContextSource{
-				Path: memoryPath, Kind: "auto-memory", Scope: "repository", Load: "startup-truncated",
-				Evidence: setup.InstructionEvidenceDocumented, Detail: "MEMORY.md startup entrypoint; Claude loads the first 200 lines or 25KB.",
-				Exists: true,
-			})
+		// An override can point into a folder macOS protects even when cwd does not.
+		if !filemodel.Protected(memoryPath) {
+			if info, err := os.Stat(memoryPath); err == nil && info.Mode().IsRegular() {
+				filtered = append(filtered, setup.ClaudeContextSource{
+					Path: memoryPath, Kind: "auto-memory", Scope: "repository", Load: "startup-truncated",
+					Evidence: setup.InstructionEvidenceDocumented, Detail: "MEMORY.md startup entrypoint; Claude loads the first 200 lines or 25KB.",
+					Exists: true,
+				})
+			}
 		}
 	}
 
