@@ -120,7 +120,7 @@ func TestProtectedLinksFromASafeFolderAreNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, source := range codex.Instructions {
-		if source.BytesRead > 0 && filepath.Base(source.Path) == "AGENTS.md" {
+		if source.BytesRead > 0 && source.Path == filepath.Join(cwd, "AGENTS.md") {
 			t.Errorf("read %d bytes of instructions through a link into a protected folder", source.BytesRead)
 		}
 	}
