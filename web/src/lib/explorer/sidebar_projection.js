@@ -2,7 +2,7 @@ import { runtimeReady, turnState } from '../shared/lifecycle_state.js'
 
 import { activityDot, cwdTail, displayModel, rowLabel } from './explorer_format.js'
 import {
-  resolveThreadParent, threadIdentityKeys, threadWorkIsActive,
+  resolveThreadParent, threadHeldByNano, threadIdentityKeys, threadWorkIsActive,
 } from '../../explorer_local.js'
 
 const UNKNOWN_SUBTITLE = '…'
@@ -162,9 +162,8 @@ function retainNanoTrees(rows, matches) {
     : arrangeVisibleHierarchy(rows.filter((row) => visibleKeys.has(row.key)))
 }
 
-// Liveness ordering puts the surviving grandchild above a historical ancestor.
-// Once Nano retains that ancestor as structure, render the selected subtree
-// depth-first so worker disclosure can operate on adjacent parent/child rows.
+// Render a selected subtree depth-first so worker disclosure can operate on
+// adjacent parent/child rows.
 function arrangeVisibleHierarchy(rows) {
   const list = rows ?? []
   const byIdentity = new Map()
@@ -289,7 +288,8 @@ export function sectionSidebar(rows, reorder = true) {
   const descendantKeys = new Set()
   const ancestorKeys = new Set()
   for (const row of list) {
-    if (!row.starred) continue
+    // A star never promotes a thread Nano does not hold, or its parent.
+    if (!row.starred || row.cls === 'none') continue
 
     const descendants = [row]
     const visitedDescendants = new Set()
@@ -380,7 +380,7 @@ function detachedRow(item) {
     key: threadKey(item.provider, item.nativeId, item.hostedThreadId, `row:${item.id}`),
     kind: 'detached',
     runtime: item.runtime,
-    cls: 'nano',
+    cls: threadHeldByNano(item) ? 'nano' : 'none',
     provider: item.provider,
     nativeId: item.nativeId,
     hostedThreadId: item.hostedThreadId ?? null,

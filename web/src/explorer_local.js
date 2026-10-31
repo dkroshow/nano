@@ -42,11 +42,17 @@ export function threadWorkIsActive(item) {
 }
 
 // Agent disclosure answers whether a child is active in Nano, not whether it
-// owes work at this instant: an attached idle agent is current. The server
-// decides that for a sidebar row.
+// owes work at this instant: an attached idle agent is current, and a worker
+// Nano does not hold is history even while its transcript looks busy. The
+// server decides that for a sidebar row.
 export function threadAgentIsCurrent(item) {
   if (item?.sidebar) return Boolean(item.sidebar.active)
-  return Boolean(item.runtime?.attached || threadWorkIsActive(item) || item.subagentActivity?.active > 0)
+  return threadHeldByNano(item)
+}
+
+// A thread resting since a restart is held like an attached one.
+export function threadHeldByNano(item) {
+  return Boolean(item?.runtime?.attached || item?.runtime?.status === 'resting')
 }
 
 // Current hosted assignment is the only Nano-owned role authority. Provider

@@ -66,7 +66,7 @@ describe('projectSidebar liveness classification', () => {
   })
 
   it('detached catalog rows open their durable history without auto-resuming', () => {
-    const rows = projectSidebar([catalogRow({ runtime: { attached: false, detached: true } })], [])
+    const rows = projectSidebar([catalogRow({ runtime: { attached: false, detached: true, status: 'resting' } })], [])
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
       kind: 'detached',
@@ -76,6 +76,13 @@ describe('projectSidebar liveness classification', () => {
       click: { action: 'history', catalogId: 'nth_1', provider: 'codex', nativeId: 'nat-1' },
     })
     expect(rows[0].indicator.state).toBe('detached')
+  })
+
+  // A full catalog window brought detached history back into the Nano view.
+  it('leaves a detached thread out of the Nano view unless it is resting', () => {
+    const rows = projectSidebar([catalogRow({ runtime: { attached: false, detached: true } })], [])
+    expect(rows[0]).toMatchObject({ kind: 'detached', cls: 'none' })
+    expect(filterSidebar(rows, 'nano')).toEqual([])
   })
 
   it('a row live nowhere is a "none" row with no indicator', () => {
@@ -397,7 +404,7 @@ describe('sidebar chips', () => {
 
   it('counts every band, with pending sessions counting as nano', () => {
     const rows = projectSidebar(dataset, [summary({ id: 's_pending', threadId: '' })])
-    expect(sidebarCounts(rows)).toEqual({ all: 4, working: 0, nano: 3 })
+    expect(sidebarCounts(rows)).toEqual({ all: 4, working: 0, nano: 2 })
   })
 
   it('counts zero for a band with no rows', () => {
@@ -407,7 +414,7 @@ describe('sidebar chips', () => {
   it('filters to one liveness band, or passes everything through for "all"', () => {
     const rows = projectSidebar(dataset, [])
     expect(filterSidebar(rows, 'all')).toBe(rows)
-    expect(filterSidebar(rows, 'nano').map((r) => r.key)).toEqual(['codex:nat-att', 'codex:nat-det'])
+    expect(filterSidebar(rows, 'nano').map((r) => r.key)).toEqual(['codex:nat-att'])
   })
 
   it('filters active runtime turns and provider workers into one working band', () => {
@@ -554,6 +561,15 @@ describe('starred sectioning', () => {
       catalogRow({ id: 'nth_2', nativeId: 'nat-2', starred: false }),
     ], [])
     expect(rows.map((row) => row.starred)).toEqual([true, false])
+  })
+
+  // In a full catalog window a star on a history row pulled its live parent up.
+  it('ignores a star on a thread Nano does not hold', () => {
+    const rows = [
+      { key: 'parent', provider: 'codex', nativeId: 'parent', cls: 'nano', kind: 'attached', starred: false },
+      { key: 'history', provider: 'codex', nativeId: 'history', parentNativeId: 'parent', cls: 'none', kind: 'catalog', starred: true },
+    ]
+    expect(sectionSidebar(rows, false).starred).toEqual([])
   })
 
   it('puts every starred row above every unstarred row and hides an empty Starred section', () => {

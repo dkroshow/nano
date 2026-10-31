@@ -144,7 +144,7 @@ describe('compact sidebar active ordering', () => {
     const canonical = [
       activeThread('older', 'Older canonical', 1000, '2026-08-03T13:00:00Z'),
       activeThread('newer', 'Newer canonical', 2000, '2026-08-03T12:00:00Z'),
-    ].map((thread) => ({ ...thread, runtime: { attached: false, detached: true } }))
+    ].map((thread) => ({ ...thread, runtime: { attached: false, detached: true, status: 'resting' } }))
     explorer.dataset = canonical
     app.sessions = []
 

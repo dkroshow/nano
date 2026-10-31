@@ -19,6 +19,7 @@ const worker = {
   kind: 'subagent',
   preview: 'Inspect parser',
   fleet: { label: 'working' },
+  sidebar: { active: true },
   metadata: {},
   source: { status: 'present' },
 }

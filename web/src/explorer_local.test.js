@@ -353,9 +353,10 @@ describe('worker group disclosure', () => {
   const node = (nativeId, treeDepth, subagentActivity) => ({
     id: `nth_${nativeId}`, provider: 'claude', nativeId, treeDepth, subagentActivity,
   })
-  const parent = node('parent', 0, { total: 3, active: 1 })
-  const child = node('child', 1, { total: 1, active: 1 })
-  const grandchild = { ...node('grandchild', 2), fleet: { label: 'working' }, kind: 'subagent' }
+  const held = (row) => ({ ...row, runtime: { attached: true } })
+  const parent = held(node('parent', 0, { total: 3, active: 1 }))
+  const child = held(node('child', 1, { total: 1, active: 1 }))
+  const grandchild = held(node('grandchild', 2))
   const sibling = node('sibling', 1)
   // Counted by the window-wide roll-up, but not carried in these rows.
   const other = node('other', 0, { total: 2, active: 1 })
@@ -391,6 +392,14 @@ describe('worker group disclosure', () => {
     expect(ids(collapseWorkerGroups(rows, ['*', `!${threadIdentity(child)}`]))).toEqual([
       'parent', 'child', 'other',
     ])
+  })
+
+  // A busy transcript made an unheld worker look current once the Explorer had
+  // loaded the whole catalog window.
+  it('keeps a working thread Nano does not hold behind the history control', () => {
+    const unheld = { ...node('unheld', 1), fleet: { label: 'working' }, kind: 'subagent' }
+    const list = [parent, unheld]
+    expect(ids(collapseWorkerGroups(list, [threadIdentity(parent)]))).toEqual(['parent'])
   })
 
   it('marks only the rows that head a group present in the list', () => {
