@@ -1265,6 +1265,48 @@ func TestCodexPromptJoinsTheWorkingTurnBySteer(t *testing.T) {
 	}
 }
 
+// The journal, not the finished operation, answers a retry. An operation that
+// left its prompt queued does not know what became of it: after a Discard it
+// would still answer queued, and the browser would drop its saved copy of a
+// prompt Nano no longer holds.
+// Boundary: the HTTP send and Discard handlers through the real Codex sender
+// to an app-server.
+func TestRetryOfADiscardedRequeuedPromptIsRefused(t *testing.T) {
+	ctx := context.Background()
+	attempts, err := newTestSendAttemptStore(t, filepath.Join(t.TempDir(), "send-attempts.json"), "discard-retry-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := readySendTestSession(t, attempts, nil)
+	sess.identity.agentExecutions = &unlinkedPromptExecutions{}
+	fake := newFakeAppServer(t)
+	fake.SetSteerError("no active turn to steer")
+	sess.runtime.codex = fake.daemon()
+	if err := sess.runtime.ensureCoreSession(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sess.runtime.coreSession().Close)
+	sess.state.setTurnActive(true, "turn-running", 0, false)
+
+	const text = "Use the other file."
+	for _, attempt := range []string{"post", "retry while queued"} {
+		rec := postTurn(t, sess.Delivery(), ctx, "correction", text)
+		if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
+			t.Fatalf("%s: status = %d, body = %s", attempt, rec.Code, rec.Body.String())
+		}
+	}
+	discard := httptest.NewRecorder()
+	sess.delivery.HandleTurnDeliveryCancel(discard, httptest.NewRequest(http.MethodDelete, "/", nil), "correction")
+	if discard.Code != http.StatusOK {
+		t.Fatalf("discard: status = %d, body = %s", discard.Code, discard.Body.String())
+	}
+
+	rec := postTurn(t, sess.Delivery(), ctx, "correction", text)
+	if rec.Code != http.StatusFailedDependency || !strings.Contains(rec.Body.String(), `"reason":"canceled"`) {
+		t.Fatalf("retry after Discard: status = %d, body = %s; want 424 canceled", rec.Code, rec.Body.String())
+	}
+}
+
 // A never-sent ordinary prompt queued while a Codex thread could not take it
 // must join the turn as soon as the thread is working again, whether it
 // reconnects into that turn or an approval it waited on is answered. Nothing

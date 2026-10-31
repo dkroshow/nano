@@ -113,8 +113,14 @@ func (delivery *Delivery) HandleTurn(w http.ResponseWriter, r *http.Request) {
 		inFlight := delivery.sendOps[req.ClientActionID]
 		delivery.sendMu.Unlock()
 		if inFlight != nil {
-			writeTurnOperationResult(w, r, inFlight)
-			return
+			select {
+			case <-inFlight.done:
+				// A finished operation does not know what became of its prompt
+				// since, such as a Discard, so the journal answers below.
+			default:
+				writeTurnOperationResult(w, r, inFlight)
+				return
+			}
 		}
 		currentRunID := ""
 		if delivery.sendAttempts != nil {
