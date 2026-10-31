@@ -23,7 +23,7 @@ func newHostedController(s *server) *hostedmodel.Controller {
 	return &hostedmodel.Controller{
 		Executions: s.agentExecutions, Metadata: s.controlMetadata, MetadataError: s.controlMetadataErr, ExecutionError: s.executionControlErr,
 		Attachments: s.attachments, Queue: s.queuedTurns, Sessions: &s.Registry, SendAttempts: s.sendAttempts, ClaudeShimWS: s.defaults.ClaudeShimWS,
-		Boot: &s.bootAttachments, AttachmentsControl: s.attachmentCoordinator(), Stars: s.threadStars,
+		Boot: &s.bootAttachments, AttachmentsControl: s.attachmentCoordinator(),
 		Views: s.hostedViews, ResolveIdentity: s.hostedIdentity().ResolveIdentity,
 		PromptWithUnreadFooter: func(id, prompt string) (string, error) { return agentapi.PromptWithUnreadFooter(s.notices, id, prompt) }, UnreadFooterUnavailable: featuremail.ErrUnreadNoticeUnavailable,
 		FeatureFooter: func(action string) (string, bool) {

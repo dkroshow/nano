@@ -436,19 +436,14 @@ describe('sidebar chips', () => {
     expect(filterSidebar(rows, 'nano').map((row) => row.key)).toEqual(['claude:worker'])
   })
 
-  it('retains a hosted historical ancestor before its Nano grandchild without counting an external ancestor', () => {
+  // A gray row used to appear here: a closed hosted parent of a detached row
+  // once the Explorer had loaded the whole catalog window.
+  it('keeps a closed hosted parent of a Nano row out of the Nano view', () => {
     const rows = [
-      { key: 'codex:grandchild', provider: 'codex', nativeId: 'grandchild', hostedThreadId: 'nht_grandchild', invokerHostedThreadId: 'nht_closed', cls: 'nano' },
-      { key: 'codex:closed', provider: 'codex', nativeId: 'closed', hostedThreadId: 'nht_closed', parentNativeId: 'external', cls: 'none' },
-      { key: 'codex:external', provider: 'codex', nativeId: 'external', cls: 'none' },
+      { key: 'codex:child', provider: 'codex', nativeId: 'child', hostedThreadId: 'nht_child', invokerHostedThreadId: 'nht_closed', cls: 'nano' },
+      { key: 'codex:closed', provider: 'codex', nativeId: 'closed', hostedThreadId: 'nht_closed', cls: 'none' },
     ]
-
-    const nano = filterSidebar(rows, 'nano')
-    expect(nano.map((row) => [row.key, row.treeDepth])).toEqual([
-      ['codex:closed', 0],
-      ['codex:grandchild', 1],
-    ])
-    expect(sidebarCounts(rows).nano).toBe(1)
+    expect(filterSidebar(rows, 'nano').map((row) => row.key)).toEqual(['codex:child'])
   })
 
   it('keeps every descendant of a Nano parent available to its agent disclosure', () => {

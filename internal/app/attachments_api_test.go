@@ -90,12 +90,8 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 // detached, not resurrected as a ghost.
 func TestSessionDeleteForgetsAttachment(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	s.threadStars = openTestThreadStars(t)
 	store.Remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
 	s.RegisterSession(liveSession(t, "sess1", "t-1"))
-	if err := fixtureSetStarred(t, s.threadStars, "codex", "t-1", true); err != nil {
-		t.Fatal(err)
-	}
 
 	rec := httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/sessions/sess1", nil))
@@ -104,9 +100,6 @@ func TestSessionDeleteForgetsAttachment(t *testing.T) {
 	}
 	if got := store.DetachedExcept(nil); len(got) != 0 {
 		t.Fatalf("attachment survived explicit close: %+v", got)
-	}
-	if s.threadStars.IsStarred("codex", "t-1") {
-		t.Fatal("Close session left the star, so the closed thread stays a gray sidebar row")
 	}
 }
 

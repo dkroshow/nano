@@ -841,7 +841,7 @@
         "tags": ["Hosted threads"],
         "operationId": "bulkCloseHostedThreadTree",
         "summary": "Close the current mutable thread tree",
-        "description": "Closes the referenced visible root and every recursive descendant in Nano's current assignment-first sidebar tree. A mutable related-thread assignment wins over immutable invoker lineage, so a thread moved under another parent is not closed with its former parent. Resumed hosted aliases are collapsed to the current visible conversation owner. Child creation, relationship moves, and close operations serialize with tree resolution so a descendant cannot escape the snapshot. Durable hosted records and transcripts survive. Every member that closes loses its star, including a member that was already closed; a member that fails to close keeps its star. 207 exposes per-member partial failure.",
+        "description": "Closes the referenced visible root and every recursive descendant in Nano's current assignment-first sidebar tree. A mutable related-thread assignment wins over immutable invoker lineage, so a thread moved under another parent is not closed with its former parent. Resumed hosted aliases are collapsed to the current visible conversation owner. Child creation, relationship moves, and close operations serialize with tree resolution so a descendant cannot escape the snapshot. Durable hosted records and transcripts survive. 207 exposes per-member partial failure.",
         "responses": {
           "200": {"description": "Every member is exited or was already exited.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BulkCloseTreeResult"}}}},
           "207": {"description": "One or more members did not fully close; inspect each member result.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BulkCloseTreeResult"}}}},
@@ -957,7 +957,7 @@
         "tags": ["Hosted threads"],
         "operationId": "closeHostedThread",
         "summary": "Close a hosted thread, keeping its durable record",
-        "description": "Ends the attachment, settles non-terminal operations as interrupted (including on an already-detached thread), forgets the boot-reattach attachment record, drops queued prompts, and removes the thread's star. The durable hosted-thread record survives with status exited. Claude closure requires acknowledgement from the exact shim process; errors, missing identity and unconfirmed not-found replies preserve the attachment and queued prompts. No attach, replay or replacement process is started by close.",
+        "description": "Ends the attachment, settles non-terminal operations as interrupted (including on an already-detached thread), forgets the boot-reattach attachment record, and drops queued prompts. The durable hosted-thread record survives with status exited. Claude closure requires acknowledgement from the exact shim process; errors, missing identity and unconfirmed not-found replies preserve the attachment and queued prompts. No attach, replay or replacement process is started by close.",
         "responses": {
           "200": {
             "description": "The closed hosted-thread record.",
@@ -1585,19 +1585,19 @@
         "tags": ["Catalog"],
         "operationId": "readSidebarActiveThreads",
         "summary": "Read the current active sidebar graph",
-        "description": "Returns one complete, current active-thread dataset from Nano's process-local materialized sidebar: attached, detached, tmux-pane-live, working/needs_you, starred, required structural ancestors, and active related descendants. Fleet labels are idle, needs_you, or working. Rows Nano holds copy their session's lifecycle label (runtime.threadStatus); inferred history rows carry watched=true, and an unanswered prompt reads working only while its saved file moved in the last 30 minutes. Ordinary historical rows are excluded. The response includes historicalCount, per-parent historical descendant counts, canonical hierarchy, descendant activity rollups, normalized sort primitives, and the materialization revision. It never includes transcript items. Cache-Control is private, no-store. Subsequent row/removal/root deltas use the sidebar event on /api/v1/thread-index/events.",
+        "description": "Returns one complete, current active-thread dataset from Nano's process-local materialized sidebar: the threads Nano holds a live session for (attached, resting since a restart, and transient memory rows). Every other thread is history; a star does not keep a row here. A row whose parent is history sits under its nearest active ancestor. Fleet labels are idle, needs_you, or working. Rows Nano holds copy their session's lifecycle label (runtime.threadStatus); inferred history rows carry watched=true, and an unanswered prompt reads working only while its saved file moved in the last 30 minutes. Ordinary historical rows are excluded. The response includes historicalCount, per-parent historical descendant counts, canonical hierarchy, descendant activity rollups, normalized sort primitives, and the materialization revision. It never includes transcript items. Cache-Control is private, no-store. Subsequent row/removal/root deltas use the sidebar event on /api/v1/thread-index/events.",
         "parameters": [
           {
             "name": "updatedFrom",
             "in": "query",
             "required": false,
             "schema": {"type": "string", "format": "date-time"},
-            "description": "Inclusive last-activity bound for the eligible catalog window. Defaults to now minus 30 days. Attached, detached, pane-live, starred, and required-ancestor rows are rescued outside this window."
+            "description": "Inclusive last-activity bound for the eligible catalog window. Defaults to now minus 30 days. Threads with a runtime overlay and starred threads stay in the counted population outside this window."
           }
         ],
         "responses": {
           "200": {
-            "description": "The current active/structural sidebar rows.",
+            "description": "The current active sidebar rows.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3542,16 +3542,15 @@
     },
     "BulkCloseTreeResult": {
       "type": "object",
-      "required": ["rootHostedThreadId", "complete", "memberCount", "workingCount", "starredCount", "members"],
+      "required": ["rootHostedThreadId", "complete", "memberCount", "workingCount", "members"],
       "properties": {
         "rootHostedThreadId": {"type": "string"},
         "complete": {"type": "boolean"},
         "memberCount": {"type": "integer", "minimum": 1},
         "workingCount": {"type": "integer", "minimum": 0},
-        "starredCount": {"type": "integer", "minimum": 0},
         "members": {"type": "array", "items": {
           "type": "object",
-          "required": ["hostedThreadId", "provider", "previousStatus", "finalStatus", "working", "previouslyStarred", "starAction", "closeAction"],
+          "required": ["hostedThreadId", "provider", "previousStatus", "finalStatus", "working", "closeAction"],
           "properties": {
             "hostedThreadId": {"type": "string"},
             "provider": {"type": "string", "enum": ["codex", "claude", "grok"]},
@@ -3559,8 +3558,6 @@
             "previousStatus": {"type": "string"},
             "finalStatus": {"type": "string"},
             "working": {"type": "boolean"},
-            "previouslyStarred": {"type": "boolean"},
-            "starAction": {"type": "string", "enum": ["none", "unstarred"]},
             "closeAction": {"type": "string", "enum": ["closed", "already_exited", "failed"]},
             "error": {"type": "string"}
           },
@@ -3571,23 +3568,21 @@
     },
     "BulkCloseTreePreview": {
       "type": "object",
-      "required": ["rootHostedThreadId", "memberCount", "workingCount", "starredCount", "members"],
+      "required": ["rootHostedThreadId", "memberCount", "workingCount", "members"],
       "properties": {
         "rootHostedThreadId": {"type": "string"},
         "memberCount": {"type": "integer", "minimum": 1},
         "workingCount": {"type": "integer", "minimum": 0},
-        "starredCount": {"type": "integer", "minimum": 0},
         "members": {"type": "array", "items": {
           "type": "object",
-          "required": ["hostedThreadId", "provider", "status", "depth", "working", "starred"],
+          "required": ["hostedThreadId", "provider", "status", "depth", "working"],
           "properties": {
             "hostedThreadId": {"type": "string"},
             "provider": {"type": "string", "enum": ["codex", "claude", "grok"]},
             "nativeThreadId": {"type": "string"},
             "status": {"type": "string"},
             "depth": {"type": "integer", "minimum": 0},
-            "working": {"type": "boolean"},
-            "starred": {"type": "boolean"}
+            "working": {"type": "boolean"}
           },
           "additionalProperties": false
         }}
@@ -3596,7 +3591,7 @@
     },
     "SidebarBlock": {
       "type": "object",
-      "required": ["parentId", "rootId", "ancestorIds", "childrenIds", "depth", "active", "structural", "historicalDescendantCount", "descendantActivity", "sort"],
+      "required": ["parentId", "rootId", "ancestorIds", "childrenIds", "depth", "active", "historicalDescendantCount", "descendantActivity", "sort"],
       "properties": {
         "parentId": {"type": ["string", "null"]},
         "rootId": {"type": "string"},
@@ -3604,7 +3599,6 @@
         "childrenIds": {"type": "array", "items": {"type": "string"}},
         "depth": {"type": "integer", "minimum": 0},
         "active": {"type": "boolean"},
-        "structural": {"type": "boolean"},
         "historicalDescendantCount": {"type": "integer", "minimum": 0},
         "descendantActivity": {
           "type": "object",

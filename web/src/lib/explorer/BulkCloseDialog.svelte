@@ -10,7 +10,6 @@
 
   const request = $derived(bulkClose.request)
   const workingCount = $derived(request?.nodes.filter((node) => node.working).length ?? 0)
-  const starredCount = $derived(request?.nodes.filter((node) => node.starred).length ?? 0)
   const failures = $derived(request?.results.filter((result) => result.closeAction === 'failed') ?? [])
   let dialogEl = $state(null)
   let openRequest = null
@@ -57,7 +56,6 @@
             <span class="t-dot {node.dot?.state ?? ''}"></span>
             <span class="descendant-close-name">
               <span>{node.label}</span>
-              {#if node.starred}<span class="bulk-close-star">★ starred</span>{/if}
             </span>
             <span class="descendant-close-activity" class:working={node.working}>{node.activity}</span>
           </div>
@@ -66,9 +64,6 @@
 
       {#if workingCount > 0 && failures.length === 0}
         <p class="descendant-close-warning">{workingCount} thread{workingCount === 1 ? ' is' : 's are'} working and will be interrupted.</p>
-      {/if}
-      {#if starredCount > 0 && failures.length === 0}
-        <p class="descendant-close-warning">{starredCount} thread{starredCount === 1 ? ' is' : 's are'} starred. Closing removes the star{starredCount === 1 ? '' : 's'}.</p>
       {/if}
       {#if failures.length > 0}
         <div class="descendant-close-results" role="alert">

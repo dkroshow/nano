@@ -106,10 +106,7 @@ export function sidebarCounts(rows) {
 export function filterSidebar(rows, filter) {
   if (filter === 'all') return rows
   const matches = rows.filter((row) => filter === 'working' ? row.working : row.cls === filter)
-  // Nano keeps its host boundary. The one structural exception is a hosted
-  // ancestor of a visible Nano row that Nano no longer holds, such as a starred
-  // closed thread: it keeps that row's lineage and disclosure owner.
-  // A non-hosted external supervisor never crosses this boundary.
+  // Nano keeps its host boundary: a thread Nano does not hold never crosses it.
   if (filter === 'nano') return retainNanoTrees(rows, matches)
   const visibleKeys = new Set(matches.map((row) => row.key))
   const byIdentity = new Map()
@@ -139,20 +136,6 @@ function retainNanoTrees(rows, matches) {
   for (const row of rows) {
     for (const key of threadIdentityKeys(row)) byIdentity.set(key, row)
   }
-  for (const match of matches) {
-    let cursor = match
-    const visited = new Set()
-    let parent = resolveThreadParent(cursor, byIdentity)
-    while (parent && !visited.has(cursor.key)) {
-      visited.add(cursor.key)
-      if (parent.hostedThreadId && parent.cls === 'none' && !visibleKeys.has(parent.key)) {
-        visibleKeys.add(parent.key)
-      }
-      cursor = parent
-      parent = resolveThreadParent(cursor, byIdentity)
-    }
-  }
-
   // A visible Nano parent owns its whole descendant tree, including provider
   // subagents that are no longer attached. Keep those rows in the pipeline so
   // the parent's active/historical disclosures operate on the same population

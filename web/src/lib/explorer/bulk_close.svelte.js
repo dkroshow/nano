@@ -27,7 +27,6 @@ export function bulkClosePreviewRows(root, members, rows, now = Date.now()) {
       dot: row ? activityDot(row) : null,
       activity: member.working ? 'working' : member.status === 'exited' ? 'closed' : age ? `last active ${age}` : member.status || 'inactive',
       working: Boolean(member.working),
-      starred: Boolean(member.starred),
     }
   })
 }

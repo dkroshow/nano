@@ -44,7 +44,6 @@ type sidebarBlock struct {
 	ChildrenIDs               []string                  `json:"childrenIds"`
 	Depth                     int                       `json:"depth"`
 	Active                    bool                      `json:"active"`
-	Structural                bool                      `json:"structural"`
 	HistoricalDescendantCount int                       `json:"historicalDescendantCount"`
 	DescendantActivity        sidebarDescendantActivity `json:"descendantActivity"`
 	Sort                      sidebarSort               `json:"sort"`
@@ -68,8 +67,6 @@ type sidebarActiveResponse struct {
 
 type sidebarNode struct {
 	thread      Thread
-	independent bool
-	structural  bool
 	included    bool
 	parentID    string
 	lineage     string
@@ -682,7 +679,7 @@ func buildSidebarTree(index *sidebarIndex) {
 				continue
 			}
 			activity.Total++
-			if child.independent {
+			if child.included {
 				activity.Active++
 			}
 			if resolveThreadRoleCatalog(child.thread) == "worker" {
@@ -738,34 +735,15 @@ func findSidebarNode(nodes []*sidebarNode, ref string) *sidebarNode {
 	return nil
 }
 
-func sidebarIndependentlyActive(thread Thread) bool {
+// sidebarActiveInNano reports whether Nano holds a live session for the thread.
+// A thread resting since a restart is held like an attached one: it attaches
+// once a browser shows it. A detached attachment is a reversible resume handle,
+// not a live session, and a star never keeps a row here.
+func sidebarActiveInNano(thread Thread) bool {
 	if thread.Transient {
 		return true
 	}
-	// A detached attachment is a reversible resume handle, not active work.
-	// Stars may still pin it below, while Explorer/history remains the durable
-	// place to find an unstarred detached row.
-	if thread.Runtime != nil && thread.Runtime.Attached {
-		return true
-	}
-	// A thread resting since a restart is held like an attached one; it
-	// attaches once a browser shows it, so it keeps its place.
-	if thread.Runtime != nil && thread.Runtime.Status == "resting" {
-		return true
-	}
-	if thread.Starred {
-		return true
-	}
-	// Provider transcripts can still look working or needs-you after Nano has
-	// explicitly closed their hosted record. That durable close wins for the
-	// active sidebar. Stars remain a separate operator fact above this branch.
-	if thread.Fleet != nil && thread.HostedStatus != sessions.StatusExited {
-		switch thread.Fleet.Label {
-		case fleetWorking, fleetNeedsYou:
-			return true
-		}
-	}
-	return false
+	return thread.Runtime != nil && (thread.Runtime.Attached || thread.Runtime.Status == "resting")
 }
 
 func resolveThreadRoleCatalog(thread Thread) string {
@@ -803,7 +781,7 @@ func sidebarThreadFromNode(node *sidebarNode) sidebarThread {
 		Thread: thread,
 		Sidebar: sidebarBlock{
 			ParentID: parent, RootID: node.rootID, AncestorIDs: ancestors, ChildrenIDs: children,
-			Depth: node.depth, Active: node.independent && node.included, Structural: node.structural,
+			Depth: node.depth, Active: node.included,
 			HistoricalDescendantCount: node.historical, DescendantActivity: node.activity,
 			Sort: sidebarSortPrimitives(thread), Lineage: node.lineage,
 		},

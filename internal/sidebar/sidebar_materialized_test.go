@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -42,8 +43,8 @@ func startSidebarFixture(t *testing.T) (*Controller, *sidebarTestCatalog) {
 	return s, &sidebarTestCatalog{store: store, service: s.catalog, controller: s, logs: logs}
 }
 
-// seedLateThread commits a new working thread that only a full rebuild shows.
-func seedLateThread(t *testing.T, c *sidebarTestCatalog, native string) func(sidebarThread) bool {
+// seedLateThread commits a new thread that only a full rebuild reads.
+func seedLateThread(t *testing.T, c *sidebarTestCatalog, native string) func(Thread) bool {
 	t.Helper()
 	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
 	if _, err := c.store.EnsureRoot(context.Background(), root); err != nil {
@@ -51,14 +52,19 @@ func seedLateThread(t *testing.T, c *sidebarTestCatalog, native string) func(sid
 	}
 	seedSidebarThread(t, c.store, root, native, "", history.ThreadMain, time.Now().Add(-5*time.Minute),
 		[]historyCourt{{user: true, text: native}})
-	return func(row sidebarThread) bool { return row.NativeID == native }
+	return func(row Thread) bool { return row.NativeID == native }
 }
 
-func awaitSidebarRow(t *testing.T, s *Controller, match func(sidebarThread) bool, within time.Duration) {
+func materializedRow(s *Controller, match func(Thread) bool) bool {
+	rows, _ := s.rows()
+	return slices.ContainsFunc(rows, match)
+}
+
+func awaitSidebarRow(t *testing.T, s *Controller, match func(Thread) bool, within time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(within)
 	for {
-		if _, ok := activeSidebarRow(t, s, match); ok {
+		if materializedRow(s, match) {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -118,7 +124,7 @@ func TestSidebarCatalogBurstSharesOneTrailingRebuild(t *testing.T) {
 	}
 
 	time.Sleep(300 * time.Millisecond)
-	if _, ok := activeSidebarRow(t, s, isLate); ok || c.reads() != before {
+	if materializedRow(s, isLate) || c.reads() != before {
 		t.Fatalf("a burst inside the interval rebuilt at once (%d full reads)", c.reads()-before)
 	}
 	awaitSidebarRow(t, s, isLate, sidebarRebuildMinInterval+3*time.Second)

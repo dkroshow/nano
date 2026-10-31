@@ -25,10 +25,7 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 				record.ShimSessionID = ""
 			}
 			store.Remember(record)
-			s := &server{Registry: newSessionRegistry(), attachments: store, threadStars: openTestThreadStars(t)}
-			if err := fixtureSetStarred(t, s.threadStars, "claude", "native-1", true); err != nil {
-				t.Fatal(err)
-			}
+			s := &server{Registry: newSessionRegistry(), attachments: store}
 			query := url.Values{"provider": {"claude"}, "forget": {"unconfirmed"}, "expectedShimSessionId": {record.ShimSessionID}, "expectedAttachedAt": {record.AttachedAt}}
 			switch scenario {
 			case "replacement":
@@ -47,10 +44,6 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 			if scenario == "forget" || scenario == "missing_identity" {
 				if w.Code != 200 || retained || !strings.Contains(w.Body.String(), `"processState":"unknown"`) {
 					t.Fatalf("forget=%d %s retained=%v", w.Code, w.Body, retained)
-				}
-				// Claude may still be running, so nothing is known to be closed.
-				if !s.threadStars.IsStarred("claude", "native-1") {
-					t.Fatal("forgetting an unconfirmed attachment removed the star")
 				}
 			} else if w.Code < 400 || !retained {
 				t.Fatalf("unsafe forget=%d %s retained=%v", w.Code, w.Body, retained)
@@ -172,11 +165,6 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			}
 			s.attachments = newTestStore(t)
 			s.attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"})
-			for _, native := range []string{"native-1", "other-thread"} {
-				if err := fixtureSetStarred(t, s.threadStars, "claude", native, true); err != nil {
-					t.Fatal(err)
-				}
-			}
 			var reject atomic.Bool
 			reject.Store(true)
 			shim := newFakeShim(t, func(c *claudeshim.Conn) {
@@ -223,9 +211,6 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); !ok {
 				t.Fatal("failed stop removed queued prompt")
 			}
-			if !s.threadStars.IsStarred("claude", "native-1") {
-				t.Fatal("failed stop removed the star of a thread that is still open")
-			}
 			reject.Store(false)
 			w = request()
 			if w.Code != 200 {
@@ -237,37 +222,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); ok {
 				t.Fatal("successful retry left queued prompt")
 			}
-			if s.threadStars.IsStarred("claude", "native-1") {
-				t.Fatal("closing the thread left its star, so it stays a gray sidebar row")
-			}
-			if !s.threadStars.IsStarred("claude", "other-thread") {
-				t.Fatal("closing one thread removed another thread's star")
-			}
 		})
-	}
-}
-
-// A Claude detach shares the close path but the thread is not closed: it can
-// resume, so it keeps its place in the sidebar.
-func TestClaudeDetachKeepsTheStar(t *testing.T) {
-	s, store, _ := newBulkCloseTestServer(t)
-	hosted, _, err := fixtureBeginSession(store, "detach-test", "hash", "claude", presentationShared)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationShared); err != nil {
-		t.Fatal(err)
-	}
-	if err := fixtureSetStarred(t, s.threadStars, "claude", "native-1", true); err != nil {
-		t.Fatal(err)
-	}
-	w := httptest.NewRecorder()
-	applicationHandler(fixtureOwners(s)).ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/"+hosted.ID+"/detach", nil))
-	if w.Code != http.StatusOK {
-		t.Fatalf("detach = %d %s", w.Code, w.Body)
-	}
-	if !s.threadStars.IsStarred("claude", "native-1") {
-		t.Fatal("detach removed the star")
 	}
 }
 

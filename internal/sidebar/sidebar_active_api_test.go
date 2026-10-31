@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dkroshow/nano/internal/catalog"
 	featuremail "github.com/dkroshow/nano/internal/features/mail"
 	"github.com/dkroshow/nano/internal/history"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -78,14 +77,14 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 	s.mu.RLock()
 	var completed Thread
 	for _, row := range s.all {
-		if row.NativeID == "working-recent" {
+		if row.NativeID == "attached-recent" {
 			completed = row
 			break
 		}
 	}
 	version := s.version
 	s.mu.RUnlock()
-	completed.Fleet = &catalog.FleetState{ThreadID: completed.ID, Label: fleetIdle, Watched: true}
+	completed.Runtime = nil
 	s.applyCatalogRows([]Thread{completed}, version+1)
 	select {
 	case delta := <-events:
@@ -97,33 +96,26 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 	}
 }
 
-func TestSidebarActiveSelectsHostedStarredAndRequiredAncestors(t *testing.T) {
+// A star or a transcript that looks busy kept threads Nano does not hold in the
+// list as gray rows. A thread is active in Nano or it is history.
+func TestSidebarActiveShowsOnlyThreadsActiveInNano(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
-	s, ids := sidebarActiveFixture(t, now)
+	s, _ := sidebarActiveFixture(t, now)
 	body := getSidebarActive(t, s, now)
 	byNative := sidebarItemsByNative(t, body)
-	if _, ok := byNative["idle-recent"]; ok {
-		t.Fatalf("idle eligible row should be historical: %s", body)
-	}
-	if item := byNative["working-recent"]; !sidebarFlag(item, "active") || sidebarFlag(item, "structural") {
-		t.Fatalf("working row = %s", rawJSON(item))
-	}
-	// An unanswered prompt whose file went quiet days ago is not a turn in
-	// flight: it must not hold a place in the active sidebar as working.
-	if item, ok := byNative["abandoned-recent"]; ok {
-		t.Fatalf("abandoned prompt stayed in the active sidebar: %s", rawJSON(item))
-	}
 	if item := byNative["attached-recent"]; !sidebarFlag(item, "active") {
 		t.Fatalf("attached row = %s", rawJSON(item))
 	}
-	if _, ok := byNative["detached-old"]; ok {
-		t.Fatalf("unstarred detached row should be historical: %s", body)
+	for _, native := range []string{"idle-recent", "working-recent", "abandoned-recent", "detached-old", "starred-old", "pane-old", "parent-old", "working-child"} {
+		if item, ok := byNative[native]; ok {
+			t.Fatalf("thread Nano does not hold stayed in the sidebar: %s", rawJSON(item))
+		}
 	}
-	if item := byNative["starred-old"]; !sidebarFlag(item, "active") || !item["starred"].(bool) {
-		t.Fatalf("starred rescue missing: %s", rawJSON(item))
+	if s.threadStars == nil || !s.threadStars.IsStarred("codex", "starred-old") {
+		t.Fatal("the star itself must survive")
 	}
-	if _, ok := byNative["pane-old"]; ok {
-		t.Fatalf("external pane row should be historical: %s", body)
+	if int(body["historicalCount"].(float64)) < 1 {
+		t.Fatalf("historicalCount = %v", body["historicalCount"])
 	}
 	// Keep the retired field literal so a reference scan cannot be bypassed by
 	// constructing the old response key in pieces.
@@ -134,55 +126,11 @@ func TestSidebarActiveSelectsHostedStarredAndRequiredAncestors(t *testing.T) {
 			t.Fatalf("removed pane overlay field present: %s", rawJSON(item))
 		}
 	}
-	parent := byNative["parent-old"]
-	if !sidebarFlag(parent, "structural") || sidebarFlag(parent, "active") {
-		t.Fatalf("required ancestor should be structural: %s", rawJSON(parent))
-	}
-	child := byNative["working-child"]
-	if sidebarString(child["sidebar"].(map[string]any), "parentId") != ids["parent-old"] {
-		t.Fatalf("child parent = %s", rawJSON(child))
-	}
-	if int(body["historicalCount"].(float64)) < 1 {
-		t.Fatalf("historicalCount = %v", body["historicalCount"])
-	}
-	if got := sidebarNumber(parent["sidebar"].(map[string]any), "historicalDescendantCount"); got != 1 {
-		t.Fatalf("parent historical descendants = %v, want 1: %s", got, rawJSON(parent))
-	}
-
-}
-
-func TestSidebarManualCloseOverridesWatchedFleet(t *testing.T) {
-	watched := &catalog.FleetState{Label: fleetWorking, Watched: true}
-	closed := Thread{
-		HostedThreadID: "hosted-closed", HostedStatus: sessions.StatusExited,
-		Fleet: watched,
-	}
-	if sidebarIndependentlyActive(closed) {
-		t.Fatal("an exited hosted row stayed active because its transcript looked working")
-	}
-	closed.Starred = true
-	if !sidebarIndependentlyActive(closed) {
-		t.Fatal("an explicit star should retain the closed row")
-	}
-	closed.Starred = false
-	parent := Thread{Thread: threadindex.Thread{ID: "parent", Provider: "codex", NativeID: "parent-native"}, HostedThreadID: "hosted-parent", HostedStatus: sessions.StatusExited, Fleet: watched}
-	child := Thread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", HostedStatus: "ready", InvokerHostedThreadID: parent.HostedThreadID, Fleet: watched}
-	child.Runtime = &RuntimeInfo{Attached: true, Status: "ready", TurnActive: true}
-	s := &Controller{registry: newRegistry()}
-	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []Thread{parent, child}, SidebarRuntimeSnapshot{})
-	if nodes[0].included || !nodes[1].included {
-		t.Fatalf("closed parent should leave its active child in the sidebar: parent=%+v child=%+v", nodes[0], nodes[1])
-	}
-	child.HostedStatus = sessions.StatusExited
-	child.Runtime = nil
-	nodes, _ = s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []Thread{parent, child}, SidebarRuntimeSnapshot{})
-	if nodes[0].included || nodes[1].included {
-		t.Fatalf("fully closed unstarred tree stayed active: parent=%+v child=%+v", nodes[0], nodes[1])
-	}
 }
 
 // A closed thread with an open sub-agent held a gray row, so closing it did not
-// clear the sidebar. It goes to history, and the sub-agent takes its place.
+// clear the sidebar. It goes to history even when starred, and the sub-agent
+// takes its place.
 func TestSidebarClosedThreadGoesToHistoryAndItsOpenChildMovesUp(t *testing.T) {
 	thread := func(id, invoker string) Thread {
 		return Thread{Thread: threadindex.Thread{ID: id, Provider: "codex", NativeID: id}, HostedThreadID: "hosted-" + id, InvokerHostedThreadID: invoker}
@@ -194,7 +142,7 @@ func TestSidebarClosedThreadGoesToHistoryAndItsOpenChildMovesUp(t *testing.T) {
 	}
 	closed := func(id, invoker string) Thread {
 		row := thread(id, invoker)
-		row.HostedStatus = sessions.StatusExited
+		row.HostedStatus, row.Starred = sessions.StatusExited, true
 		return row
 	}
 	result, nodes := projectSidebar([]Thread{
@@ -231,29 +179,6 @@ func TestSidebarClosedThreadGoesToHistoryAndItsOpenChildMovesUp(t *testing.T) {
 	}
 }
 
-func TestSidebarDetachedTreeLeavesActiveWhileStarRemainsExplicit(t *testing.T) {
-	root := Thread{Thread: threadindex.Thread{ID: "root", Provider: "codex", NativeID: "root-native"}, HostedThreadID: "hosted-root", HostedStatus: sessions.StatusExited}
-	child := Thread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", HostedStatus: ownedthreads.AgentSessionDetached, InvokerHostedThreadID: root.HostedThreadID, Runtime: &RuntimeInfo{Detached: true}}
-	s := &Controller{registry: newRegistry()}
-	nodes, _ := s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []Thread{root, child}, SidebarRuntimeSnapshot{})
-	if nodes[0].included || nodes[1].included {
-		t.Fatalf("fully detached unstarred tree stayed active: root=%+v child=%+v", nodes[0], nodes[1])
-	}
-
-	root.Starred = true
-	nodes, _ = s.assembleSidebarGraph(context.Background(), history.SidebarGraph{}, []Thread{root, child}, SidebarRuntimeSnapshot{})
-	if !nodes[0].included || !nodes[0].independent || nodes[0].structural {
-		t.Fatalf("starred exited root was not explicitly pinned: root=%+v", nodes[0])
-	}
-	if nodes[1].included || nodes[0].activity.Active != 0 || nodes[0].historical != 1 {
-		t.Fatalf("detached child should remain history under the pinned root: root=%+v child=%+v", nodes[0], nodes[1])
-	}
-}
-
-// Failure caught: a restart left unstarred idle threads resting, and the
-// sidebar dropped them, so no browser showed them or asked for them and they
-// stayed resting. A resting thread keeps its place like an attached one; a
-// detached one is still history. Boundary: sidebar assembly.
 func TestSidebarKeepsRestingThreadsActive(t *testing.T) {
 	root := Thread{Thread: threadindex.Thread{ID: "root", Provider: "codex", NativeID: "root-native"}, HostedThreadID: "hosted-root", Runtime: &RuntimeInfo{Detached: true, Status: "resting"}}
 	child := Thread{Thread: threadindex.Thread{ID: "child", Provider: "codex", NativeID: "child-native"}, HostedThreadID: "hosted-child", InvokerHostedThreadID: root.HostedThreadID, Runtime: &RuntimeInfo{Detached: true, Status: "resting"}}

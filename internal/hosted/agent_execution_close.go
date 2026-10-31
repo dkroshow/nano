@@ -57,21 +57,6 @@ func (s *Controller) closeHostedThreadForRecordCore(record ownedthreads.SessionR
 	return s.Executions.UpdateSession(record.ID, "", "", hostedstore.StatusExited, "closed")
 }
 
-// unstarClosedThread removes the star of a thread the caller has just closed:
-// close means history, and a star would hold the thread in the sidebar. It
-// lives beside the close handlers, not in the shared close, because a Claude
-// detach also ends the attachment and keeps its star.
-func (s *Controller) unstarClosedThread(provider, nativeID string) error {
-	if !s.Stars.IsStarred(provider, nativeID) {
-		return nil
-	}
-	if err := s.Stars.Unstar(provider, nativeID); err != nil {
-		return fmt.Errorf("thread closed, but its star could not be removed: %w", err)
-	}
-	s.PublishRelationshipChange()
-	return nil
-}
-
 // dropQueuedTurns removes undelivered queued prompts for the thread: an
 // operation settled as interrupted must not redeliver its prompt on a later
 // reattachment.

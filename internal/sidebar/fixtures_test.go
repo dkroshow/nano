@@ -119,6 +119,9 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*Controller, ma
 	for _, sess := range []*sessions.Session{attached, parentLive, childLive} {
 		registry.RegisterSession(sess)
 	}
+	for _, native := range []string{"cycle-a", "cycle-b", "orphan-child"} {
+		registry.RegisterSession(memorySession(t, "sess-"+native, "codex", native, "ready", "/w/"+native, "gpt-5.6-sol", now))
+	}
 	s := New(Sources{Catalog: svc, Registry: &registry, Attachments: attachments, Stars: stars, Metadata: metadata, Executions: executions, RuntimeEvents: NewRuntimeHub(), Mail: newTestAgentMessageStore(t)})
 
 	if err := s.materializeSidebar(context.Background(), now); err != nil {

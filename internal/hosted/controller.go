@@ -7,7 +7,6 @@ import (
 	"github.com/dkroshow/nano/internal/core/prompts"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
-	"github.com/dkroshow/nano/internal/sidebar"
 )
 
 // Controller owns hosted admission and relationship mutation ordering.
@@ -23,7 +22,6 @@ type Controller struct {
 	ClaudeShimWS                  string
 	Boot                          *sessions.BootAttachments
 	AttachmentsControl            *AttachmentCoordinator
-	Stars                         *sidebar.Stars
 	Views                         func() *ViewService
 	ResolveIdentity               func(context.Context, string) (IdentityResolution, error)
 	PromptWithUnreadFooter        func(string, string) (string, error)

@@ -855,7 +855,7 @@ describe('compact sidebar active ordering', () => {
     child.assignment = { assignmentRole: 'worker' }
     child.runtime.turnActive = false
     child.runtime.threadStatus = 'idle'
-    child.sidebar = { parentId: null, active: true, structural: false }
+    child.sidebar = { parentId: null, active: true }
     const localSessions = [{
       id: 'session-child', provider: 'codex', threadId: 'native-child',
       hostedThreadId: 'nht_child', invokerHostedThreadId: 'nht_closed',

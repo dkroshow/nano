@@ -25,10 +25,6 @@ func (s *Controller) HandleLegacyClose(w http.ResponseWriter, _ *http.Request, s
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	if err := s.unstarClosedThread(sess.Provider(), sess.State().ThreadID()); err != nil {
-		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	log.Printf("closed %s session %s", sess.Provider(), sess.ID())
 	httpapi.WriteJSON(w, map[string]bool{"closed": true})
 }
@@ -67,9 +63,6 @@ func (s *Controller) HandleAttachmentScoped(w http.ResponseWriter, r *http.Reque
 				err = s.forgetUnconfirmedClaude(matches[0], r.URL.Query().Get("expectedShimSessionId"), r.URL.Query().Get("expectedAttachedAt"))
 			} else {
 				err = s.closeExplicitAttachment(matches[0])
-				if err == nil {
-					err = s.unstarClosedThread(matches[0].Provider, matches[0].NativeThreadID)
-				}
 			}
 			if err != nil {
 				httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)

@@ -141,11 +141,6 @@ func (s *Stars) setStarred(provider, nativeID string, starred bool) error {
 	return nil
 }
 
-// Unstar removes one operator pin.
-func (s *Stars) Unstar(provider, nativeID string) error {
-	return s.setStarred(provider, nativeID, false)
-}
-
 // ErrStarIdentityMissing reports an incomplete identity supplied to a pin mutation.
 var errStarIdentityMissing = errors.New("thread has no provider-native id to star")
 

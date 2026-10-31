@@ -14,16 +14,14 @@ import (
 )
 
 type bulkCloseMemberResult struct {
-	HostedThreadID    string `json:"hostedThreadId"`
-	Provider          string `json:"provider"`
-	NativeThreadID    string `json:"nativeThreadId,omitempty"`
-	PreviousStatus    string `json:"previousStatus"`
-	FinalStatus       string `json:"finalStatus"`
-	Working           bool   `json:"working"`
-	PreviouslyStarred bool   `json:"previouslyStarred"`
-	StarAction        string `json:"starAction"`
-	CloseAction       string `json:"closeAction"`
-	Error             string `json:"error,omitempty"`
+	HostedThreadID string `json:"hostedThreadId"`
+	Provider       string `json:"provider"`
+	NativeThreadID string `json:"nativeThreadId,omitempty"`
+	PreviousStatus string `json:"previousStatus"`
+	FinalStatus    string `json:"finalStatus"`
+	Working        bool   `json:"working"`
+	CloseAction    string `json:"closeAction"`
+	Error          string `json:"error,omitempty"`
 }
 
 type bulkCloseResponse struct {
@@ -31,7 +29,6 @@ type bulkCloseResponse struct {
 	Complete           bool                    `json:"complete"`
 	MemberCount        int                     `json:"memberCount"`
 	WorkingCount       int                     `json:"workingCount"`
-	StarredCount       int                     `json:"starredCount"`
 	Members            []bulkCloseMemberResult `json:"members"`
 }
 
@@ -42,14 +39,12 @@ type bulkClosePreviewMember struct {
 	Status         string `json:"status"`
 	Depth          int    `json:"depth"`
 	Working        bool   `json:"working"`
-	Starred        bool   `json:"starred"`
 }
 
 type bulkClosePreview struct {
 	RootHostedThreadID string                   `json:"rootHostedThreadId"`
 	MemberCount        int                      `json:"memberCount"`
 	WorkingCount       int                      `json:"workingCount"`
-	StarredCount       int                      `json:"starredCount"`
 	Members            []bulkClosePreviewMember `json:"members"`
 }
 
@@ -162,10 +157,6 @@ func (s *Controller) bulkCloseMemberWorking(record ownedthreads.SessionRecord) b
 
 // HandleBulkClosePreview serves the bounded hosted relationship-tree close preview.
 func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root ownedthreads.SessionRecord) {
-	if s.Stars == nil {
-		httpapi.WriteHTTPError(w, "thread stars unavailable; bulk close cannot preview stars", http.StatusServiceUnavailable)
-		return
-	}
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
 	tree, err := s.currentRelationshipTree(root.ID)
@@ -181,16 +172,12 @@ func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root ownedthr
 	for _, member := range tree {
 		record := member.record
 		working := s.bulkCloseMemberWorking(record)
-		starred := s.Stars.IsStarred(record.Provider, record.NativeThreadID)
 		if working {
 			preview.WorkingCount++
 		}
-		if starred {
-			preview.StarredCount++
-		}
 		preview.Members = append(preview.Members, bulkClosePreviewMember{
 			HostedThreadID: record.ID, Provider: record.Provider, NativeThreadID: record.NativeThreadID,
-			Status: record.Status, Depth: member.depth, Working: working, Starred: starred,
+			Status: record.Status, Depth: member.depth, Working: working,
 		})
 	}
 	httpapi.WriteJSON(w, preview)
@@ -198,11 +185,6 @@ func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root ownedthr
 
 // HandleBulkClose closes a selected hosted relationship tree under one lock.
 func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, root ownedthreads.SessionRecord) {
-	if s.Stars == nil {
-		httpapi.WriteHTTPError(w, "thread stars unavailable; bulk close cannot remove stars", http.StatusServiceUnavailable)
-		return
-	}
-
 	// Never call code that can re-enter this server while relationshipMu is held.
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
@@ -212,32 +194,21 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, roo
 		return
 	}
 
-	starred := make(map[string]bool, len(tree))
-	for _, treeMember := range tree {
-		member := treeMember.record
-		if s.Stars.IsStarred(member.Provider, member.NativeThreadID) {
-			starred[member.ID] = true
-		}
-	}
-
 	response := bulkCloseResponse{
 		RootHostedThreadID: tree[0].record.ID,
 		Complete:           true,
 		MemberCount:        len(tree),
-		StarredCount:       len(starred),
 		Members:            make([]bulkCloseMemberResult, 0, len(tree)),
 	}
 	for _, treeMember := range tree {
 		member := treeMember.record
 		result := bulkCloseMemberResult{
-			HostedThreadID:    member.ID,
-			Provider:          member.Provider,
-			NativeThreadID:    member.NativeThreadID,
-			PreviousStatus:    member.Status,
-			FinalStatus:       member.Status,
-			PreviouslyStarred: starred[member.ID],
-			StarAction:        "none",
-			CloseAction:       "closed",
+			HostedThreadID: member.ID,
+			Provider:       member.Provider,
+			NativeThreadID: member.NativeThreadID,
+			PreviousStatus: member.Status,
+			FinalStatus:    member.Status,
+			CloseAction:    "closed",
 		}
 		if member.Status == hostedstore.StatusExited {
 			result.CloseAction = "already_exited"
@@ -259,14 +230,6 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, roo
 			failures = append(failures, "read final status: "+readErr.Error())
 		} else if found {
 			result.FinalStatus = current.Status
-		}
-		// A member that stays open keeps its star.
-		if result.PreviouslyStarred && len(failures) == 0 && result.FinalStatus == hostedstore.StatusExited {
-			if err := s.Stars.Unstar(member.Provider, member.NativeThreadID); err != nil {
-				failures = append(failures, "remove star: "+err.Error())
-			} else {
-				result.StarAction = "unstarred"
-			}
 		}
 		if len(failures) > 0 || result.FinalStatus != hostedstore.StatusExited {
 			response.Complete = false

@@ -2373,7 +2373,6 @@ button.chip-action:hover { color: var(--text); border-color: var(--border2); }
 .descendant-close-row:last-child { border-bottom: 0; }
 .descendant-close-row.inactive { opacity: .55; }
 .descendant-close-name { display: flex; align-items: baseline; gap: 5px; min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
-.bulk-close-star { flex: none; color: var(--orange); font: 10.5px var(--mono); }
 .descendant-close-activity { flex: none; color: var(--text3); font: 10.5px var(--mono); }
 .descendant-close-activity.working { color: var(--orange); }
 .descendant-close-warning { margin: 10px 0 0; color: var(--orange); font-size: 12px; }

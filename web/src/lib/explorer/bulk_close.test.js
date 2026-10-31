@@ -5,7 +5,7 @@ describe('bulk close server preview', () => {
   it('keeps every canonical member even when its catalog row is not loaded', () => {
     const root = { id: 'a', provider: 'codex', nativeId: 'a', hostedThreadId: 'a', title: 'A' }
     const members = [
-      { hostedThreadId: 'a', provider: 'codex', nativeThreadId: 'a', depth: 0, status: 'exited', starred: true },
+      { hostedThreadId: 'a', provider: 'codex', nativeThreadId: 'a', depth: 0, status: 'exited' },
       { hostedThreadId: 'b', provider: 'claude', nativeThreadId: 'native-b', depth: 1, status: 'ready', working: true, },
     ]
     const rows = bulkClosePreviewRows(root, members, [root], Date.UTC(2026, 7, 23))
@@ -13,7 +13,6 @@ describe('bulk close server preview', () => {
       ['A', 0, 'closed'],
       ['claude · native-b', 1, 'working'],
     ])
-    expect(rows[0].starred).toBe(true)
   })
 
   it('reports the common error message without exposing its JSON', async () => {

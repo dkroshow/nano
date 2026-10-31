@@ -157,34 +157,6 @@ func TestBulkCloseKeepsResumedHostedAliasesInOneVisibleTree(t *testing.T) {
 	}
 }
 
-func TestBulkCloseRemovesStarsAcrossTheTree(t *testing.T) {
-	s, store, _ := newBulkCloseTestServer(t)
-	root := createBulkCloseMember(t, store, "root", threads.SessionRecord{})
-	child := createBulkCloseMember(t, store, "child", root)
-	if err := fixtureSetStarred(t, s.threadStars, root.Provider, root.NativeThreadID, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := fixtureSetStarred(t, s.threadStars, child.Provider, child.NativeThreadID, true); err != nil {
-		t.Fatal(err)
-	}
-
-	// A starred closed root is a gray row; Bulk close tree is the close it offers.
-	if err := store.UpdateSession(root.ID, "", "", sessionStatusExited, "closed"); err != nil {
-		t.Fatal(err)
-	}
-
-	status, closed := bulkCloseRequest(t, s, root.ID)
-	if status != http.StatusOK || !closed.Complete || closed.StarredCount != 2 {
-		t.Fatalf("bulk close response = %d %+v", status, closed)
-	}
-	if s.threadStars.IsStarred(root.Provider, root.NativeThreadID) || s.threadStars.IsStarred(child.Provider, child.NativeThreadID) {
-		t.Fatal("bulk close left a tree member pinned")
-	}
-	if closed.Members[0].CloseAction != "already_exited" || closed.Members[1].CloseAction != "closed" {
-		t.Fatalf("member results = %+v", closed.Members)
-	}
-}
-
 func TestBulkCloseReportsPartialMemberFailure(t *testing.T) {
 	s, store, _ := newBulkCloseTestServer(t)
 	root := createBulkCloseMember(t, store, "root", threads.SessionRecord{})

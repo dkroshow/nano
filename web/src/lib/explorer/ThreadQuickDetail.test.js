@@ -67,7 +67,6 @@ describe('quick-detail bulk close', () => {
       starred: true,
       sidebar: {
         active: true,
-        structural: false,
         descendantActivity: { total: 2, active: 0, workers: 1 },
       },
     }]

@@ -41,19 +41,11 @@ export function threadWorkIsActive(item) {
   return turnState(item) === 'working'
 }
 
-// Agent disclosure answers whether a child still belongs to the current Nano
-// workspace, not whether it owes work at this instant. An attached idle agent
-// is current. A provider-native worker that is not a Nano session also remains
-// current while it is working. Only neither-attached-nor-working rows are
-// historical.
+// Agent disclosure answers whether a child is active in Nano, not whether it
+// owes work at this instant: an attached idle agent is current. The server
+// decides that for a sidebar row.
 export function threadAgentIsCurrent(item) {
-  if (item?.sidebar) {
-    return Boolean(
-      item.sidebar.active
-      || item.sidebar.structural
-      || (item.sidebar.descendantActivity?.active > 0),
-    )
-  }
+  if (item?.sidebar) return Boolean(item.sidebar.active)
   return Boolean(item.runtime?.attached || threadWorkIsActive(item) || item.subagentActivity?.active > 0)
 }
 

@@ -59,10 +59,6 @@ func (s *Controller) HandleDelete(w http.ResponseWriter, _ *http.Request, record
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.unstarClosedThread(record.Provider, record.NativeThreadID); err != nil {
-		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	if err := s.Executions.RemoveSession(record.ID); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -89,10 +85,6 @@ func (s *Controller) HandleClose(w http.ResponseWriter, _ *http.Request, record 
 		return
 	}
 	if err := s.Executions.UpdateSession(record.ID, "", "", hostedstore.StatusExited, "closed"); err != nil {
-		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := s.unstarClosedThread(record.Provider, record.NativeThreadID); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

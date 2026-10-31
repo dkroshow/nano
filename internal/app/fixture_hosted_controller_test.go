@@ -16,23 +16,20 @@ import (
 )
 
 type bulkCloseMemberResult struct {
-	HostedThreadID    string `json:"hostedThreadId"`
-	Provider          string `json:"provider"`
-	NativeThreadID    string `json:"nativeThreadId,omitempty"`
-	PreviousStatus    string `json:"previousStatus"`
-	FinalStatus       string `json:"finalStatus"`
-	Working           bool   `json:"working"`
-	PreviouslyStarred bool   `json:"previouslyStarred"`
-	StarAction        string `json:"starAction"`
-	CloseAction       string `json:"closeAction"`
-	Error             string `json:"error,omitempty"`
+	HostedThreadID string `json:"hostedThreadId"`
+	Provider       string `json:"provider"`
+	NativeThreadID string `json:"nativeThreadId,omitempty"`
+	PreviousStatus string `json:"previousStatus"`
+	FinalStatus    string `json:"finalStatus"`
+	Working        bool   `json:"working"`
+	CloseAction    string `json:"closeAction"`
+	Error          string `json:"error,omitempty"`
 }
 type bulkCloseResponse struct {
 	RootHostedThreadID string                  `json:"rootHostedThreadId"`
 	Complete           bool                    `json:"complete"`
 	MemberCount        int                     `json:"memberCount"`
 	WorkingCount       int                     `json:"workingCount"`
-	StarredCount       int                     `json:"starredCount"`
 	Members            []bulkCloseMemberResult `json:"members"`
 }
 type bulkClosePreviewMember struct {
@@ -42,13 +39,11 @@ type bulkClosePreviewMember struct {
 	Status         string `json:"status"`
 	Depth          int    `json:"depth"`
 	Working        bool   `json:"working"`
-	Starred        bool   `json:"starred"`
 }
 type bulkClosePreview struct {
 	RootHostedThreadID string                   `json:"rootHostedThreadId"`
 	MemberCount        int                      `json:"memberCount"`
 	WorkingCount       int                      `json:"workingCount"`
-	StarredCount       int                      `json:"starredCount"`
 	Members            []bulkClosePreviewMember `json:"members"`
 }
 

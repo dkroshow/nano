@@ -32,7 +32,6 @@ const activeBody = {
         childrenIds: [],
         depth: 0,
         active: true,
-        structural: false,
         historicalDescendantCount: 2,
         descendantActivity: { total: 2, active: 0, workers: 0 },
         sort: { title: 'alpha', project: '/w/a', createdAt: 1, updatedAt: 100, liveness: 1 },
@@ -185,23 +184,6 @@ describe('server hierarchy integration', () => {
     const a = { id: 'nth_b', updatedAt: '2026-08-21T00:00:00Z', sidebar: { sort: { updatedAt: Date.parse('2026-08-21T00:00:00Z'), title: 'b', project: '', createdAt: 0, liveness: 3 } }, metadata: {} }
     const b = { id: 'nth_a', updatedAt: '2026-08-21T00:00:00Z', metadata: { cwd: { state: 'unknown' } } }
     expect(applyView([a, b], { sort: 'updated', dir: 'desc', projects: null, providers: null, models: null, efforts: null, createdRange: null, updatedRange: null }).map((row) => row.id)).toEqual(['nth_b', 'nth_a'])
-  })
-
-  it('keeps a structural middle ancestor current for disclosure', () => {
-    const parent = {
-      id: 'nth_parent', nativeId: 'parent', provider: 'codex',
-      sidebar: { active: false, structural: true, historicalDescendantCount: 0, descendantActivity: { total: 1, active: 1, workers: 1 } },
-    }
-    const child = {
-      id: 'nth_child', nativeId: 'child', provider: 'codex', treeDepth: 1,
-      sidebar: { active: false, structural: true, parentId: 'nth_parent', descendantActivity: { total: 1, active: 1, workers: 1 } },
-    }
-    const grandchild = {
-      id: 'nth_grand', nativeId: 'grand', provider: 'codex', treeDepth: 2,
-      sidebar: { active: true, parentId: 'nth_child', descendantActivity: { total: 0, active: 0, workers: 0 } },
-    }
-    const visible = collapseWorkerGroups([parent, child, grandchild], ['*'], [])
-    expect(visible.map((row) => row.id)).toEqual(['nth_parent', 'nth_child', 'nth_grand'])
   })
 
   it('makes an all-historical parent collapsible from the server count', () => {

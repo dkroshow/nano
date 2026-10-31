@@ -220,7 +220,7 @@
     },
     {
       "id": "hostedThreads.bulkCloseTree",
-      "summary": "Close a root and every descendant in Nano's current assignment-first sidebar tree. Removes the star of every member that closes and returns one result per member.",
+      "summary": "Close a root and every descendant in Nano's current assignment-first sidebar tree. Returns one result per member.",
       "method": "POST",
       "path": "/api/v1/hosted-threads/{threadRef}/family/close"
     },
@@ -400,7 +400,7 @@
     },
     {
       "id": "sidebar.threads",
-      "summary": "Read the current active sidebar graph: attached, working/needs_you, starred, required ancestors, and active related descendants, with historical counts and canonical hierarchy.",
+      "summary": "Read the current active sidebar graph: the threads Nano holds a live session for, with historical counts and canonical hierarchy.",
       "method": "GET",
       "path": "/api/v1/sidebar/threads"
     },
@@ -482,8 +482,8 @@
   "sidebarActive": {
     "path": "/api/v1/sidebar/threads",
     "historyPath": "/api/v1/sidebar/threads/{id}/history",
-    "contents": "One complete current active-thread dataset: attached (including transient memory rows), detached, tmux-pane-live, fleet working/needs_you, starred, required structural ancestors, and active related descendants. Fleet labels are idle, needs_you, or working; rows Nano holds copy their session's lifecycle label (runtime.threadStatus), and inferred history rows carry watched=true, with an unanswered prompt working only while its saved file moved in the last 30 minutes. historicalCount and per-parent historicalDescendantCount cover the eligible-and-rescued population. Rows include canonical parent/root/ancestry, descendant activity, and normalized sort primitives. Transcripts are never included.",
-    "eligibility": "Default window is now minus 30 days with subagents included, programmatic excluded, archived included. The endpoint accepts the same updatedFrom bound as the catalog. Attached, detached, pane-live, starred, and required-ancestor rows are rescued outside that window.",
+    "contents": "One complete current active-thread dataset: the threads Nano holds a live session for (attached, resting since a restart, and transient memory rows). Every other thread is history, and a star does not keep a row here. Fleet labels are idle, needs_you, or working; rows Nano holds copy their session's lifecycle label (runtime.threadStatus), and inferred history rows carry watched=true, with an unanswered prompt working only while its saved file moved in the last 30 minutes. historicalCount and per-parent historicalDescendantCount cover the eligible-and-rescued population. Rows include canonical parent/root/ancestry, descendant activity, and normalized sort primitives. Transcripts are never included.",
+    "eligibility": "Default window is now minus 30 days with subagents included, programmatic excluded, archived included. The endpoint accepts the same updatedFrom bound as the catalog. Threads with a runtime overlay and starred threads stay in the counted population outside that window.",
     "cache": "Cache-Control: private, no-store. Nano serves a process-local materialized state with no catalog, runtime, metadata, star, or mail joins on the request path.",
     "updates": "After the whole-state GET, row/removal/root deltas arrive as sidebar events on /api/v1/thread-index/events, each naming the generation (Nano process) and revision it produces. Apply an event whose generation matches and whose revision follows the list's; anything else, including a refresh marker at another generation or revision, means repair from a fresh GET. Revisions compare only within one generation: they count from 1 again after a restart. A row's source.lastIndexedAt is not part of a revision: a change to it alone resends no row, so a fresh GET may show a newer index time at the same revision.",
     "history": "GET /api/v1/sidebar/threads/{id}/history pages inactive descendants of one parent, 100 rows, updatedAt desc then id desc. 404 unknown parent, 400 invalid cursor."

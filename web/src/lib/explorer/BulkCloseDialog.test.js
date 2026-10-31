@@ -7,8 +7,8 @@ import { app } from '../../app.svelte.js'
 import { explorer } from '../../explorer.svelte.js'
 
 const nodes = [
-  { key: 'hosted:root', depth: 0, label: 'Closed parent', activity: 'last active 2h', working: false, starred: true, dot: null },
-  { key: 'hosted:worker', depth: 1, label: 'Active worker', activity: 'working', working: true, starred: false, dot: { state: 'working' } },
+  { key: 'hosted:root', depth: 0, label: 'Closed parent', activity: 'last active 2h', working: false, dot: null },
+  { key: 'hosted:worker', depth: 1, label: 'Active worker', activity: 'working', working: true, dot: { state: 'working' } },
 ]
 
 function openDialog() {
@@ -52,12 +52,11 @@ afterEach(() => {
 })
 
 describe('BulkCloseDialog', () => {
-  it('warns about working and starred members, then closes in one request', async () => {
+  it('warns about working members, then closes in one request', async () => {
     openDialog()
     const view = render(BulkCloseDialog)
     expect(view.getByRole('dialog', { name: 'Bulk close thread tree' }).textContent).toContain('closes 2 threads')
     expect(view.container.textContent).toContain('1 thread is working')
-    expect(view.container.textContent).toContain('1 thread is starred. Closing removes the star.')
     expect(view.container.querySelector('.descendant-close-row[style*="padding-left: 26px"]')).not.toBeNull()
 
     await fireEvent.click(view.getByRole('button', { name: 'Close tree' }))

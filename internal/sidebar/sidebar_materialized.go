@@ -538,38 +538,14 @@ func sidebarThreadInPopulation(thread Thread, query threadindex.ListQuery) bool 
 	return true
 }
 
-// assembleSidebarThreads picks the rows the sidebar shows. A row is included for
-// its own activity or as the ancestor of an active row, but a closed thread
-// never stays for its descendants: it goes to history and they move up.
+// assembleSidebarThreads picks the rows the sidebar shows: the threads active in
+// Nano. Every other thread is history, and a row whose parent is history sits
+// under its nearest remaining ancestor.
 func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 	index := indexSidebarThreads(threads)
 	breakSidebarCycles(index)
 	for _, node := range index.order {
-		node.independent = sidebarIndependentlyActive(node.thread)
-	}
-	for _, node := range index.order {
-		if !node.independent {
-			continue
-		}
-		cursor := node
-		seen := map[string]bool{}
-		for cursor != nil && !seen[cursor.thread.ID] {
-			seen[cursor.thread.ID] = true
-			if cursor.independent || cursor.thread.HostedStatus != sessions.StatusExited {
-				cursor.included = true
-				cursor.structural = !cursor.independent
-			}
-			if cursor.parentID == "" {
-				break
-			}
-			cursor = index.byID[cursor.parentID]
-		}
-	}
-	for _, node := range index.order {
-		if node.independent {
-			node.structural = false
-			node.included = true
-		}
+		node.included = sidebarActiveInNano(node.thread)
 	}
 	for _, node := range index.order {
 		if node.included {
@@ -580,7 +556,7 @@ func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 	return index.order
 }
 
-// nearestIncludedAncestor is where a row sits once closed threads have gone to
+// nearestIncludedAncestor is where a row sits once its inactive ancestors are
 // history: an open sub-agent takes the place of its closed parent.
 func nearestIncludedAncestor(node *sidebarNode, index *sidebarIndex) string {
 	parent := index.byID[node.parentID]
@@ -628,8 +604,6 @@ func pageSidebarHistory(nodes []*sidebarNode, parentRef string, cursor *history.
 	items := make([]sidebarThread, 0, end-start)
 	for _, node := range inactive[start:end] {
 		item := sidebarThreadFromNode(node)
-		item.Sidebar.Active = false
-		item.Sidebar.Structural = false
 		item.Sidebar.ChildrenIDs = append([]string{}, node.allChildren...)
 		items = append(items, item)
 	}
