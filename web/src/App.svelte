@@ -198,7 +198,7 @@
     if (explorer.datasetScope !== 'window') next.all = allRows.length + (explorer.historicalCount ?? 0)
     return next
   })())
-  const visibleRows = $derived(filterSidebar(allRows, filter))
+  const visibleRows = $derived(filterSidebar(allRows, filter, !viewIsNarrowed(explorer.view)))
   const backgroundView = $derived(suppressBackgroundRows(visibleRows, backgroundOpen))
   // All and Nano are ordinary browsing views, so parent counts collapse their
   // complete child trees. Working and Explorer facets keep every

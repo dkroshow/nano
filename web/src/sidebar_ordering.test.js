@@ -841,6 +841,32 @@ describe('compact sidebar active ordering', () => {
     expect(titles(container)).toEqual(['Parent run'])
   })
 
+  // A narrowed view opens every group, so history kept for the disclosure showed
+  // up as gray rows the moment a facet was set.
+  it('keeps unheld children out of a narrowed Nano view', async () => {
+    const parent = activeThread('parent', 'Live parent', 1_000, '2026-08-03T14:00:00Z')
+    parent.hostedThreadId = 'nht_parent'
+    parent.runtime.turnActive = false
+    parent.runtime.threadStatus = 'idle'
+    const unheld = activeThread('unheld', 'Unheld child', 0, '2026-08-03T12:00:00Z')
+    unheld.parentNativeId = parent.nativeId
+    unheld.runtime = undefined
+    explorer.dataset = [parent, unheld]
+    explorer.view = { ...DEFAULT_VIEW, providers: { values: ['codex'], unknown: false } }
+    const localSessions = [{
+      id: 'session-parent', provider: 'codex', threadId: 'native-parent', hostedThreadId: 'nht_parent',
+      cwd: '/workspace/nano', model: 'gpt-5.6-sol', status: 'ready', turnActive: false, threadStatus: 'idle',
+    }]
+    app.sessions = localSessions
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (String(url) === '/api/sessions') return response({ sessions: localSessions, detached: [], defaults: {} })
+      return response({})
+    })
+
+    const { container } = render(App)
+    expect(titles(container)).toEqual(['Live parent'])
+  })
+
   // Opening the Explorer loads the whole catalog window, which brings a closed
   // thread back into the dataset. Its moved-up sub-agent, which the server says
   // has no parent, must stay on top instead of folding under the gray row.

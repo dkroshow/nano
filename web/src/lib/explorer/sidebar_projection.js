@@ -103,11 +103,13 @@ export function sidebarCounts(rows) {
   return counts
 }
 
-export function filterSidebar(rows, filter) {
+// keepHistory is off for a narrowed view: its groups stay open, so the history
+// rows a parent's disclosure needs would show as rows of their own.
+export function filterSidebar(rows, filter, keepHistory = true) {
   if (filter === 'all') return rows
   const matches = rows.filter((row) => filter === 'working' ? row.working : row.cls === filter)
   // Nano keeps its host boundary: a thread Nano does not hold never crosses it.
-  if (filter === 'nano') return retainNanoTrees(rows, matches)
+  if (filter === 'nano') return keepHistory ? retainNanoTrees(rows, matches) : matches
   const visibleKeys = new Set(matches.map((row) => row.key))
   const byIdentity = new Map()
   for (const row of rows) {
