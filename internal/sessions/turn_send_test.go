@@ -1170,7 +1170,9 @@ func TestClaudePromptSentWhileATurnWorksIsDeliveredAtOnce(t *testing.T) {
 // naming the turn it saw so Codex refuses rather than join another, and
 // carrying its submission id so its saved row can be told from its turn's
 // other prompts. A definite "no active turn" answer means Codex never saw it:
-// the same prompt waits again, for the next turn. Any other refusal is final.
+// the same prompt waits again, for the next turn, and the browser is told so:
+// answered as refused, its text goes back to the composer and a resend delivers
+// it twice. Any other refusal is final.
 // A lost connection may follow delivery, so a prompt queued first and then
 // steered stays uncertain rather than failed. None starts a turn or resends.
 // Boundary: the HTTP send and queue-drain paths through the real Codex sender
@@ -1183,12 +1185,14 @@ func TestCodexPromptJoinsTheWorkingTurnBySteer(t *testing.T) {
 		queued   bool // queued before the turn worked, then drained into it
 		state    turns.DeliveryState
 		reason   string
+		code     int    // the HTTP answer to a prompt posted while the turn works
+		answer   string // that answer's status
 	}{
-		{name: "joins", state: turns.Accepted},
+		{name: "joins", state: turns.Accepted, code: http.StatusOK, answer: "accepted"},
 		{name: "transport lost after queue", dropped: true, queued: true, state: turns.Uncertain},
-		{name: "turn ended", steerErr: "no active turn to steer", state: turns.Queued, reason: turns.ReasonNextTurn},
+		{name: "turn ended", steerErr: "no active turn to steer", state: turns.Queued, reason: turns.ReasonNextTurn, code: http.StatusAccepted, answer: "queued"},
 		// Refused, but kept for the person: parked with its text, not resent.
-		{name: "other turn", steerErr: "expected active turn id `turn-running` but found `turn-other`", state: turns.Parked},
+		{name: "other turn", steerErr: "expected active turn id `turn-running` but found `turn-other`", state: turns.Parked, code: http.StatusAccepted, answer: "parked"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -1216,8 +1220,11 @@ func TestCodexPromptJoinsTheWorkingTurnBySteer(t *testing.T) {
 
 			if !test.queued {
 				rec := postTurn(t, sess.Delivery(), ctx, "correction", "Use the other file.")
-				if test.state == turns.Accepted && rec.Code != http.StatusOK {
-					t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+				var answer struct {
+					Status string `json:"status"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || rec.Code != test.code || answer.Status != test.answer {
+					t.Fatalf("status = %d, body = %s; want %d %q", rec.Code, rec.Body.String(), test.code, test.answer)
 				}
 			}
 			waitTurnSendDone(t, sess, "correction")

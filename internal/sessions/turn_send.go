@@ -188,6 +188,13 @@ func writeTurnOperationResult(w http.ResponseWriter, r *http.Request, op *turnSe
 			writeTurnSendResponse(w, turnSendResult{status: http.StatusAccepted, actionID: op.actionID, reason: "queued_delivery_failed"})
 			return
 		}
+		if op.status == sendAttemptQueued {
+			// The running turn ended first and Nano keeps the prompt for the next
+			// one. Answered as refused, its text would go back to the composer,
+			// and a resend would deliver it twice.
+			writeTurnSendResponse(w, turnSendResult{status: http.StatusAccepted, actionID: op.actionID, reason: "queued_for_next_turn"})
+			return
+		}
 		writeTurnDeliveryFailure(w, http.StatusFailedDependency, op.actionID, op.reason)
 	}
 }
@@ -648,7 +655,7 @@ func (attachmentState *State) runTransactionalTurnSend(op *turnSendOperation, cl
 
 	switch delivery.Record.Outbox.State {
 	case prompts.Queued:
-		op.status, op.reason = sendAttemptQueued, providerResult.FailureCode
+		op.status = sendAttemptQueued
 	case prompts.Accepted:
 		op.status = sendAttemptAccepted
 	case prompts.Parked:
