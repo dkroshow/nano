@@ -75,13 +75,13 @@ describe('projectSidebar liveness classification', () => {
       subtitle: 'gpt-5.6-sol',
       click: { action: 'history', catalogId: 'nth_1', provider: 'codex', nativeId: 'nat-1' },
     })
-    expect(rows[0].indicator.state).toBe('detached')
   })
 
   // A full catalog window brought detached history back into the Nano view.
   it('leaves a detached thread out of the Nano view unless it is resting', () => {
     const rows = projectSidebar([catalogRow({ runtime: { attached: false, detached: true } })], [])
     expect(rows[0]).toMatchObject({ kind: 'detached', cls: 'none' })
+    expect(rows[0].indicator.state).toBe('detached')
     expect(filterSidebar(rows, 'nano')).toEqual([])
   })
 

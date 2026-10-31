@@ -223,6 +223,7 @@ describe('visible worker lineage', () => {
       id: 'nth_historical_worker',
       nativeId: 'historical-worker',
       fleet: { label: 'idle' },
+      sidebar: { active: false },
     }
     const arranged = applyView([historicalWorker, worker, parent], view)
     const railRows = projectSidebar(arranged, [])
