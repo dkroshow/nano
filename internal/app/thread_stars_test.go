@@ -47,12 +47,11 @@ func TestAttachStarredOverlayMarksMatchingRows(t *testing.T) {
 func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
 	s, _ := sidebarActiveFixture(t, now)
-	body := getSidebarActive(t, s, now)
-	byNative := sidebarItemsByNative(t, body)
-	if item := byNative["starred-old"]; item == nil || item["starred"] != true {
-		t.Fatalf("current star missing from active sidebar: %v", item)
+	byNative := sidebarItemsByNative(t, getSidebarActive(t, s, now))
+	if item := byNative["attached-recent"]; item == nil || item["starred"] != false {
+		t.Fatalf("attached row before its star: %v", item)
 	}
-	if err := fixtureSetStarred(t, s.threadStars, "codex", "starred-old", false); err != nil {
+	if err := fixtureSetStarred(t, s.threadStars, "codex", "attached-recent", true); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -60,10 +59,9 @@ func TestSidebarActiveStampsCurrentStarsAtReadTime(t *testing.T) {
 	if err := fixtureOwners(s).sidebarOwner().StartSidebarMaterializer(ctx, now); err != nil {
 		t.Fatal(err)
 	}
-	body = getSidebarActive(t, s, now)
-	byNative = sidebarItemsByNative(t, body)
-	if _, ok := byNative["starred-old"]; ok {
-		t.Fatalf("unstarring should drop the rescued historical row: %v", byNative["starred-old"])
+	byNative = sidebarItemsByNative(t, getSidebarActive(t, s, now))
+	if item := byNative["attached-recent"]; item == nil || item["starred"] != true {
+		t.Fatalf("current star missing from the active sidebar: %v", item)
 	}
 }
 
