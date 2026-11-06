@@ -64,7 +64,9 @@ indexing wait reports `result_not_saved`; a later catalog commit can resolve it.
 - A reply nobody saved (Stop, a steer or a retry cut it) stays, also across a
   reload, until a prompt or reply that began after it is saved. Providers
   save in the order things happened, so that row would sit above the reply:
-  the reply leaves in the message that brings it, and Nano logs it. A loop
+  the reply leaves in the message that brings it, and Nano logs it. A Codex
+  reply first seen mid-stream, as after a reconnect, is never shown, but its
+  saved row counts too. A loop
   stop or restart drops it too. Codex saves no reply that Stop cut, so for
   Codex a reload of a browser pane also clears it once the reload's own read
   shows the file recorded that turn's end.

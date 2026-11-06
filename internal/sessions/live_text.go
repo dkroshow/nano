@@ -70,6 +70,9 @@ type liveTextEntry struct {
 	delivered bool
 	// finished records that the provider reported the reply complete.
 	finished bool
+	// hidden marks a Codex reply first seen mid-stream, as after a reconnect:
+	// no pane shows it, but its saved row still proves older replies gone.
+	hidden bool
 }
 
 type liveReplyUpdate struct {
@@ -390,7 +393,9 @@ func (l *LiveTextLoop) process(in liveTextInbox) {
 	if len(in.texts) > 0 {
 		texts := make([]string, 0, len(l.entries))
 		for _, entry := range l.entries {
-			texts = append(texts, entry.Text)
+			if !entry.hidden {
+				texts = append(texts, entry.Text)
+			}
 		}
 		for _, answer := range in.texts {
 			answer <- texts
@@ -405,16 +410,10 @@ func (l *LiveTextLoop) applyReply(update liveReplyUpdate) bool {
 		return false // a late chunk of a saved or superseded reply
 	}
 	entry, existing := l.byID[id]
-	if !existing && !update.started {
-		// Not shown, but still checked: the save window holds whatever the
-		// panes show.
-		if update.done {
-			l.awaitSave(update.key, update.turn)
-		}
-		return false
-	}
 	if !existing {
-		entry = &liveTextEntry{ID: id, Kind: "reply", key: update.key, turn: update.turn, order: l.next(), delivered: true}
+		// A reply seen without its start is held hidden: still checked by the
+		// save window, which holds whatever the panes show.
+		entry = &liveTextEntry{ID: id, Kind: "reply", key: update.key, turn: update.turn, order: l.next(), delivered: true, hidden: !update.started}
 		l.byID[id] = entry
 		l.entries = append(l.entries, entry)
 	}
@@ -424,7 +423,7 @@ func (l *LiveTextLoop) applyReply(update liveReplyUpdate) bool {
 		l.end(entry)
 		l.awaitSave(entry.key, entry.turn)
 	}
-	return !existing
+	return !existing && !entry.hidden
 }
 
 func (l *LiveTextLoop) endTurn(turn string) {
@@ -531,7 +530,9 @@ func (l *LiveTextLoop) drop(entry *liveTextEntry) {
 func (l *LiveTextLoop) visible() []liveTextEntry {
 	out := make([]liveTextEntry, 0, len(l.entries))
 	for _, entry := range l.entries {
-		out = append(out, *entry)
+		if !entry.hidden {
+			out = append(out, *entry)
+		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].queued != out[j].queued {

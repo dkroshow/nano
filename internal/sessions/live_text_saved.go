@@ -281,11 +281,12 @@ func (l *LiveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	for i := range panes {
 		paneResponses[i] = responses[page[i]]
 	}
-	saved, gone := l.proofs(matched, l.reloadEnds(panes, joining, paneResponses))
+	ended := l.reloadEnds(panes, joining, paneResponses)
+	saved, gone := l.proofs(matched, ended)
 	for _, entry := range append([]*liveTextEntry(nil), l.entries...) {
 		if gone[entry.ID] {
-			if !saved[entry.ID] {
-				log.Printf("live text reply %s of %s left the screen unsaved: the transcript moved past it", entry.key, l.hostedID())
+			if !saved[entry.ID] && !ended[entry.turn] {
+				log.Printf("live text reply %s of %s left unsaved: the transcript saved a newer row without it", entry.key, l.hostedID())
 			}
 			l.drop(entry)
 		}

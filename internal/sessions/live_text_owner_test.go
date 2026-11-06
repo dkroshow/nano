@@ -717,7 +717,8 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 // to the bottom of the pane for the rest of the turn. It must leave with that
 // row. The steer case is a real Codex turn's event order, scrubbed: a reply
 // streamed, the operator's steer arrived, and Codex saved the steer and never
-// the reply. The retry case has a second reply in place of the steer.
+// the reply. The retry case has a second reply in place of the steer; the
+// reconnect case has that reply first seen mid-stream, never shown live.
 func TestLiveTextCutReplyLeavesWithTheNewerSavedRow(t *testing.T) {
 	thread, turn := codexFixtureThread, "01a1b1bf-0000-7000-8000-00000000c001"
 	cut, next := "msg_00000000000000000000000000000c07", "msg_00000000000000000000000000000e47"
@@ -739,15 +740,18 @@ func TestLiveTextCutReplyLeavesWithTheNewerSavedRow(t *testing.T) {
 		line(`{"timestamp":"2026-11-06T16:47:17.534Z","type":"event_msg","payload":{"type":"item_completed","thread_id":%q,"turn_id":%q,"item":{"type":"AgentMessage","id":%q,"content":[{"type":"Text","text":"I recommend the API first."}],"phase":"commentary"}}}`, thread, turn, next),
 		line(`{"timestamp":"2026-11-06T16:47:17.536Z","type":"response_item","payload":{"type":"message","id":%q,"role":"assistant","content":[{"type":"output_text","text":"I recommend the API first."}],"phase":"commentary","internal_chat_message_metadata_passthrough":{"turn_id":%q}}}`, next, turn),
 	}
-	for _, steered := range []bool{true, false} {
-		t.Run(map[bool]string{true: "steer", false: "retry"}[steered], func(t *testing.T) {
+	for _, witness := range []string{"steer", "retry", "reconnect"} {
+		t.Run(witness, func(t *testing.T) {
 			h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 			h.view.neverSaved["reply:"+cut] = true
 			h.save(head)
 			h.feed(streamed(cut, "The first catalog pass found **3,346"))
 			h.expect("cut reply", func(LiveTextMessage) bool { return containsEntry(h.view.live, "reply:"+cut) })
 			newer, saved := savedNext, func() bool { return h.view.hasNative(next) }
-			if steered {
+			replacing := append(streamed(next, "I recommend the API first."),
+				line(`{"method":"item/completed","params":{"item":{"type":"agentMessage","id":%q,"text":"I recommend the API first.","phase":"commentary","memoryCitation":null,"delivery":null,"questions":null},"threadId":%q,"turnId":%q},"emittedAtMs":1793983637534}`, next, thread, turn))
+			switch witness {
+			case "steer":
 				entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "steer", Sequence: 2, PresentationText: steer, State: prompts.Delivering}
 				h.sess.view.PublishLiveOutbox(entry)
 				entry.State = prompts.Accepted
@@ -756,10 +760,17 @@ func TestLiveTextCutReplyLeavesWithTheNewerSavedRow(t *testing.T) {
 				h.view.expectSaved["prompt:steer"] = steer
 				h.expect("steer", func(LiveTextMessage) bool { return containsEntry(h.view.live, "prompt:steer") })
 				newer, saved = savedSteer, func() bool { return h.view.hasSaved(liveTextEntry{ID: "prompt:steer", Kind: "prompt"}) }
-			} else {
-				h.feed(append(streamed(next, "I recommend the API first."),
-					line(`{"method":"item/completed","params":{"item":{"type":"agentMessage","id":%q,"text":"I recommend the API first.","phase":"commentary","memoryCitation":null,"delivery":null,"questions":null},"threadId":%q,"turnId":%q},"emittedAtMs":1793983637534}`, next, thread, turn)))
+			case "retry":
+				h.feed(replacing)
 				h.expect("replacing reply", func(LiveTextMessage) bool { return containsEntry(h.view.live, "reply:"+next) })
+			case "reconnect":
+				// The replacing reply's start fell in a dropped connection, so it
+				// is never shown live; its saved row still counts.
+				h.feed(replacing[1:])
+				h.barrier()
+				if h.view.shown["reply:"+next] {
+					t.Fatal("a reply first seen mid-stream showed as live text")
+				}
 			}
 			h.save(newer)
 			h.expect("newer row saved", func(LiveTextMessage) bool {
