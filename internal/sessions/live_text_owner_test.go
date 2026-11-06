@@ -740,7 +740,7 @@ func TestLiveTextCutReplyLeavesWithTheNewerSavedRow(t *testing.T) {
 		line(`{"timestamp":"2026-11-06T16:47:17.534Z","type":"event_msg","payload":{"type":"item_completed","thread_id":%q,"turn_id":%q,"item":{"type":"AgentMessage","id":%q,"content":[{"type":"Text","text":"I recommend the API first."}],"phase":"commentary"}}}`, thread, turn, next),
 		line(`{"timestamp":"2026-11-06T16:47:17.536Z","type":"response_item","payload":{"type":"message","id":%q,"role":"assistant","content":[{"type":"output_text","text":"I recommend the API first."}],"phase":"commentary","internal_chat_message_metadata_passthrough":{"turn_id":%q}}}`, next, turn),
 	}
-	for _, witness := range []string{"steer", "retry", "reconnect"} {
+	for _, witness := range []string{"steer", "retry", "reconnect", "reconnect, saved first"} {
 		t.Run(witness, func(t *testing.T) {
 			h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
 			h.view.neverSaved["reply:"+cut] = true
@@ -771,8 +771,17 @@ func TestLiveTextCutReplyLeavesWithTheNewerSavedRow(t *testing.T) {
 				if h.view.shown["reply:"+next] {
 					t.Fatal("a reply first seen mid-stream showed as live text")
 				}
+			case "reconnect, saved first":
+				// The catalog indexed its row before the late frames arrived: the
+				// row already shows above the cut reply, and only the frames name
+				// it. Nothing else may prompt a read here.
+				h.save(newer)
+				h.expect("replacing row", func(LiveTextMessage) bool { return saved() })
+				h.feed(replacing[1:])
 			}
-			h.save(newer)
+			if witness != "reconnect, saved first" {
+				h.save(newer)
+			}
 			h.expect("newer row saved", func(LiveTextMessage) bool {
 				if !saved() {
 					return false

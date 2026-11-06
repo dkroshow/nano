@@ -64,12 +64,15 @@ indexing wait reports `result_not_saved`; a later catalog commit can resolve it.
 - A reply nobody saved (Stop, a steer or a retry cut it) stays, also across a
   reload, until a prompt or reply that began after it is saved. Providers
   save in the order things happened, so that row would sit above the reply:
-  the reply leaves in the message that brings it, and Nano logs it. A Codex
-  reply first seen mid-stream, as after a reconnect, is never shown, but its
-  saved row counts too. A loop
-  stop or restart drops it too. Codex saves no reply that Stop cut, so for
-  Codex a reload of a browser pane also clears it once the reload's own read
-  shows the file recorded that turn's end.
+  the reply leaves in the message that brings it, and Nano logs it. Nano must
+  have seen that newer prompt or reply live, by its exact identity: a Codex
+  reply first seen mid-stream, as after a reconnect, is never shown but
+  counts, whichever of its row and its frames arrives first. A reply that
+  starts and ends wholly inside a dropped connection is never seen, so the
+  cut reply waits for a later witness it does see. A loop stop or restart
+  drops it too. Codex saves no reply that Stop cut, so for Codex a reload of
+  a browser pane also clears it once the reload's own read shows the file
+  recorded that turn's end.
 - Grok may save a Stop-cut reply only when the next prompt arrives or the
   session ends. Its live text stays through reload until matched, without a
   saved-turn-end clear. A loop stop or restart loses it until it is saved;

@@ -412,7 +412,8 @@ func (l *LiveTextLoop) applyReply(update liveReplyUpdate) bool {
 	entry, existing := l.byID[id]
 	if !existing {
 		// A reply seen without its start is held hidden: still checked by the
-		// save window, which holds whatever the panes show.
+		// save window, which holds whatever the panes show. Like a shown one,
+		// it is read for at once: its row may be saved before its frames came.
 		entry = &liveTextEntry{ID: id, Kind: "reply", key: update.key, turn: update.turn, order: l.next(), delivered: true, hidden: !update.started}
 		l.byID[id] = entry
 		l.entries = append(l.entries, entry)
@@ -423,7 +424,7 @@ func (l *LiveTextLoop) applyReply(update liveReplyUpdate) bool {
 		l.end(entry)
 		l.awaitSave(entry.key, entry.turn)
 	}
-	return !existing && !entry.hidden
+	return !existing
 }
 
 func (l *LiveTextLoop) endTurn(turn string) {
