@@ -711,30 +711,67 @@ func TestLiveTextMatchesOnArrivalAndOnlyByExactIdentity(t *testing.T) {
 	}
 }
 
-// An already-saved reply that arrives again is dropped unseen and proves no
-// later turn: an ended reply of a newer turn that is not saved yet keeps its
-// live text, however late the replay arrives.
-func TestLiveTextReplayProvesNoLaterTurn(t *testing.T) {
-	h := newLiveTextHarness(t)
-	h.save(fixtureLines(t, "claude-tool-error.saved.jsonl"))
-	h.waitSaved("msg_6289003a54e45a93b0f31403ba5b1278:1")
-	wire := fixtureLines(t, "claude-turn.wire.jsonl")
-	h.projection.setClaudeProviderTurnID("claude:" + h.sess.HostedThreadID() + ":2")
-	h.feed(wire)
-	h.expect("ended reply", func(LiveTextMessage) bool { return h.view.reply() != nil && h.view.reply().State == "done" })
-	// The same frames, carrying the saved reply's identity: a replay.
-	var replay [][]byte
-	for _, line := range wire {
-		replay = append(replay, []byte(strings.ReplaceAll(string(line), "msg_fc823e6c7ddd5dd584d9bd9b60795fa8", "msg_6289003a54e45a93b0f31403ba5b1278")))
+// A reply that a steer or a retry cut is never saved: Codex saves the steer,
+// or the reply that replaced the cut one, and moves on. Both were shown below
+// the cut reply; once saved, that row sits above it, and the cut reply slid
+// to the bottom of the pane for the rest of the turn. It must leave with that
+// row. The steer case is a real Codex turn's event order, scrubbed: a reply
+// streamed, the operator's steer arrived, and Codex saved the steer and never
+// the reply. The retry case has a second reply in place of the steer.
+func TestLiveTextCutReplyLeavesWithTheNewerSavedRow(t *testing.T) {
+	thread, turn := codexFixtureThread, "01a1b1bf-0000-7000-8000-00000000c001"
+	cut, next := "msg_00000000000000000000000000000c07", "msg_00000000000000000000000000000e47"
+	steer := "Which path should we take first?"
+	line := func(format string, args ...any) []byte { return []byte(fmt.Sprintf(format, args...)) }
+	streamed := func(id, text string) [][]byte {
+		return [][]byte{
+			line(`{"method":"item/started","params":{"item":{"type":"agentMessage","id":%q,"text":"","phase":"commentary","memoryCitation":null,"delivery":null,"questions":null},"threadId":%q,"turnId":%q,"startedAtMs":1793983630360},"emittedAtMs":1793983630360}`, id, thread, turn),
+			line(`{"method":"item/agentMessage/delta","params":{"threadId":%q,"turnId":%q,"itemId":%q,"delta":%q},"emittedAtMs":1793983630380}`, thread, turn, id, text),
+		}
 	}
-	h.projection.setClaudeProviderTurnID("claude:" + h.sess.HostedThreadID() + ":3")
-	h.feed(replay)
-	h.barrier()
-	if h.view.shown["reply:msg_6289003a54e45a93b0f31403ba5b1278:1"] {
-		t.Fatal("the saved reply's replay was shown as live text")
+	head := [][]byte{fixtureLines(t, "codex-turns.saved.jsonl")[0],
+		line(`{"timestamp":"2026-11-06T16:44:11.039Z","type":"event_msg","payload":{"type":"task_started","turn_id":%q}}`, turn)}
+	savedSteer := [][]byte{
+		line(`{"timestamp":"2026-11-06T16:47:10.434Z","type":"response_item","payload":{"type":"message","id":"msg-steer","role":"user","content":[{"type":"input_text","text":%q}],"internal_chat_message_metadata_passthrough":{"turn_id":%q}}}`, steer, turn),
+		line(`{"timestamp":"2026-11-06T16:47:10.437Z","type":"event_msg","payload":{"type":"item_completed","thread_id":%q,"turn_id":%q,"item":{"type":"UserMessage","id":"item-steer","client_id":"client-steer","content":[{"type":"text","text":%q,"text_elements":[]}]}}}`, thread, turn, steer),
 	}
-	if h.view.reply() == nil || h.view.reply().ID != "reply:"+fixtureReply {
-		t.Fatalf("live = %+v, want the newer turn's unsaved reply kept", h.view.live)
+	savedNext := [][]byte{
+		line(`{"timestamp":"2026-11-06T16:47:17.534Z","type":"event_msg","payload":{"type":"item_completed","thread_id":%q,"turn_id":%q,"item":{"type":"AgentMessage","id":%q,"content":[{"type":"Text","text":"I recommend the API first."}],"phase":"commentary"}}}`, thread, turn, next),
+		line(`{"timestamp":"2026-11-06T16:47:17.536Z","type":"response_item","payload":{"type":"message","id":%q,"role":"assistant","content":[{"type":"output_text","text":"I recommend the API first."}],"phase":"commentary","internal_chat_message_metadata_passthrough":{"turn_id":%q}}}`, next, turn),
+	}
+	for _, steered := range []bool{true, false} {
+		t.Run(map[bool]string{true: "steer", false: "retry"}[steered], func(t *testing.T) {
+			h := newLiveTextHarnessFor(t, "codex", threadindex.TranscriptQuery{View: threadindex.DefaultThreadTranscriptView, Limit: 40})
+			h.view.neverSaved["reply:"+cut] = true
+			h.save(head)
+			h.feed(streamed(cut, "The first catalog pass found **3,346"))
+			h.expect("cut reply", func(LiveTextMessage) bool { return containsEntry(h.view.live, "reply:"+cut) })
+			newer, saved := savedNext, func() bool { return h.view.hasNative(next) }
+			if steered {
+				entry := prompts.OutboxEntry{HostedThreadID: h.sess.HostedThreadID(), ActionID: "steer", Sequence: 2, PresentationText: steer, State: prompts.Delivering}
+				h.sess.view.PublishLiveOutbox(entry)
+				entry.State = prompts.Accepted
+				entry.Binding = &prompts.Binding{EventID: "client-steer", Scope: model.Scope{Kind: model.ScopeTurn, Provider: "codex", NativeThreadID: &thread, NativeTurnID: &turn}}
+				h.sess.view.PublishLiveOutbox(entry)
+				h.view.expectSaved["prompt:steer"] = steer
+				h.expect("steer", func(LiveTextMessage) bool { return containsEntry(h.view.live, "prompt:steer") })
+				newer, saved = savedSteer, func() bool { return h.view.hasSaved(liveTextEntry{ID: "prompt:steer", Kind: "prompt"}) }
+			} else {
+				h.feed(append(streamed(next, "I recommend the API first."),
+					line(`{"method":"item/completed","params":{"item":{"type":"agentMessage","id":%q,"text":"I recommend the API first.","phase":"commentary","memoryCitation":null,"delivery":null,"questions":null},"threadId":%q,"turnId":%q},"emittedAtMs":1793983637534}`, next, thread, turn)))
+				h.expect("replacing reply", func(LiveTextMessage) bool { return containsEntry(h.view.live, "reply:"+next) })
+			}
+			h.save(newer)
+			h.expect("newer row saved", func(LiveTextMessage) bool {
+				if !saved() {
+					return false
+				}
+				if containsEntry(h.view.live, "reply:"+cut) {
+					t.Fatalf("the cut reply stayed below the newer saved row: live %+v", h.view.live)
+				}
+				return true
+			})
+		})
 	}
 }
 

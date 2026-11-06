@@ -20,23 +20,26 @@ import (
 )
 
 // proofs is what one read proves: saved names the entries whose saved rows
-// it holds; gone adds the ended replies the saved row of a prompt delivered
-// after them supersedes, since an unsaved reply's text stays until the next
-// prompt. Only a prompt proves a later turn: a reply may be a replay. For
-// Claude this is exact, because the file is written and indexed in order.
+// it holds; gone adds every reply that began before one of them and is not
+// saved itself. Such a reply has slid below a newer saved row, and the read
+// that saved that row looked for this reply's key and did not find it.
+// Providers save a conversation in the order it happened (a prompt sent
+// mid-reply is saved after the reply), so it will never be saved: a steer, a
+// retry or Stop cut it. A reply's order is its first live chunk, and the live
+// stream carries replies in the order they began; a prompt's is its delivery
+// claim, taken before the provider can answer it. The catalog indexes each
+// file in order, so one read holds every row saved before its newest.
 func (l *LiveTextLoop) proofs(matched map[string]string, ended map[string]bool) (saved, gone map[string]bool) {
 	saved, gone = make(map[string]bool), make(map[string]bool)
 	var latest int64
 	for _, entry := range l.entries {
 		if entry.key != "" && matched[entry.key] != "" || l.sess.identity.provider == "grok" && entry.Kind == "prompt" && entry.turn != "" && matched[entry.turn] != "" {
 			saved[entry.ID], gone[entry.ID] = true, true
-			if entry.Kind == "prompt" {
-				latest = max(latest, entry.order)
-			}
+			latest = max(latest, entry.order)
 		}
 	}
 	for _, entry := range l.entries {
-		if entry.Kind == "reply" && (entry.endOrder > 0 && entry.endOrder < latest || ended[entry.turn]) {
+		if entry.Kind == "reply" && (entry.order < latest || ended[entry.turn]) {
 			gone[entry.ID] = true
 		}
 	}
@@ -281,6 +284,9 @@ func (l *LiveTextLoop) tick(joining map[*liveTextPane]bool, warm bool) {
 	saved, gone := l.proofs(matched, l.reloadEnds(panes, joining, paneResponses))
 	for _, entry := range append([]*liveTextEntry(nil), l.entries...) {
 		if gone[entry.ID] {
+			if !saved[entry.ID] {
+				log.Printf("live text reply %s of %s left the screen unsaved: the transcript moved past it", entry.key, l.hostedID())
+			}
 			l.drop(entry)
 		}
 	}

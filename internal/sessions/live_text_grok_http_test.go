@@ -518,7 +518,8 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 				return len(v.view.live) == 2 && v.view.live[0].ID == first && v.view.live[0].State == "done" && v.view.live[1].ID == second && v.view.live[1].Text == "ply."
 			})
 			// The captured final-chunk row proves only the second constructed segment.
-			// No row exists for the first, so rule 6 keeps it until the next prompt.
+			// No row exists for the first, which began before it: the file moved
+			// past the first, so it leaves with the second's row.
 			saved := fixtureLines(t, "grok-turns.saved.jsonl")
 			var row map[string]any
 			json.Unmarshal(saved[2], &row)
@@ -529,13 +530,11 @@ func TestGrokFileLiveHTTPTools(t *testing.T) {
 			v.replies[first] = "no saved row for this constructed segment"
 			h.save([][]byte{saved[0], saved[1], final, saved[3]})
 			v.expect("second segment handed over", func(LiveTextMessage) bool {
-				return v.hasReply("ply.") && containsEntry(v.view.live, first) && !containsEntry(v.view.live, second)
+				return v.hasReply("ply.") && !containsEntry(v.view.live, second)
 			})
-			next := capturedGrokPrompt(h, 2, "88ce28f6-903f-56ee-b7ac-f9c8426e4262", "11111111-aaaa-4aaa-8aaa-000000000002")
-			h.sess.view.PublishLiveOutbox(next)
-			v.barrier(h)
-			h.save(saved[4:5])
-			v.expect("unsaved segment superseded", func(LiveTextMessage) bool { return len(v.view.live) == 0 })
+			if containsEntry(v.view.live, first) {
+				t.Fatalf("the unsaved first segment stayed below the saved second: live %+v", v.view.live)
+			}
 		})
 	}
 }

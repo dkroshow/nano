@@ -58,11 +58,10 @@ type liveTextEntry struct {
 	// key is the exact identity a saved row carries. Grok replies update it
 	// to each chunk's eventId while their public entry ID stays stable.
 	key string
-	// order is when a reply began or a prompt was delivered, and endOrder when
-	// a reply ended (its block finished or its turn ended), in the loop's
+	// order is when a reply began or a prompt was delivered, in the loop's
 	// event order.
-	order, endOrder int64
-	queued          bool
+	order  int64
+	queued bool
 	// rank and sequence order queued prompts as delivery claims them; rank is
 	// -1 until read.
 	rank      int
@@ -436,12 +435,9 @@ func (l *LiveTextLoop) endTurn(turn string) {
 	}
 }
 
-// end marks a reply ended once: its block finished or its turn ended.
+// end marks a reply ended: its block finished or its turn ended.
 func (l *LiveTextLoop) end(entry *liveTextEntry) {
 	entry.State = "done"
-	if entry.endOrder == 0 {
-		entry.endOrder = l.next()
-	}
 }
 
 // awaitSave notes a reply the provider reported finished and checks, a save

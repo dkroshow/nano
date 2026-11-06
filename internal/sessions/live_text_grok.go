@@ -76,7 +76,7 @@ func (l *LiveTextLoop) observeGrokBatch(batch model.Batch) {
 func (l *LiveTextLoop) endGrokSegment(finished bool) bool {
 	entry := l.byID[l.grok.segmentID]
 	l.grok.segmentID, l.grok.segmentOpen = "", false
-	if entry == nil || entry.endOrder != 0 {
+	if entry == nil || entry.State == "done" {
 		return false
 	}
 	l.end(entry)

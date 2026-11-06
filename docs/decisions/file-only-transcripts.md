@@ -61,10 +61,13 @@ indexing wait reports `result_not_saved`; a later catalog commit can resolve it.
   write. A prompt or finished reply stays as live text until its saved row
   arrives; the browser records `file.lag.prompt` (L1, send to saved prompt
   row) and `file.lag.reply` (L2, last reply text to its saved row).
-- An ended reply nobody saved stays, also across a reload, until the saved
-  row of the next prompt; a loop stop or restart drops it. Codex saves no
-  reply that Stop cut, so for Codex a reload of a browser pane also clears it
-  once the reload's own read shows the file recorded that turn's end.
+- A reply nobody saved (Stop, a steer or a retry cut it) stays, also across a
+  reload, until a prompt or reply that began after it is saved. Providers
+  save in the order things happened, so that row would sit above the reply:
+  the reply leaves in the message that brings it, and Nano logs it. A loop
+  stop or restart drops it too. Codex saves no reply that Stop cut, so for
+  Codex a reload of a browser pane also clears it once the reload's own read
+  shows the file recorded that turn's end.
 - Grok may save a Stop-cut reply only when the next prompt arrives or the
   session ends. Its live text stays through reload until matched, without a
   saved-turn-end clear. A loop stop or restart loses it until it is saved;
@@ -74,7 +77,7 @@ indexing wait reports `result_not_saved`; a later catalog commit can resolve it.
   show. One read at segment end, normally at turn end, settles them without
   a gap using the final chunk's key; later chunks do not read the catalog.
   If the final chunk never arrives, the unmatched prefix stays until a later
-  delivered prompt is saved, or the loop stops or restarts. This is an exception
+  prompt or reply is saved, or the loop stops or restarts. This is an exception
   to the ordinary atomic handoff, not permission to match by text, time or position.
 - Grok's block metadata and newest-chunk eventId behavior were measured on
   1.0.40 and are undocumented. After an upgrade, repeat the real served
