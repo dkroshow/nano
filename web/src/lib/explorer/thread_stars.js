@@ -1,5 +1,5 @@
 import { app } from '../../app.svelte.js'
-import { explorer } from '../../explorer.svelte.js'
+import { patchThreadRows } from '../../explorer.svelte.js'
 
 export function starRequestId(row) {
   return row?.click?.catalogId || row?.id || row?.nativeId || ''
@@ -38,15 +38,7 @@ export function patchThreadStarred({ id, nativeId, provider, starred } = {}) {
     (id && item.id === id) ||
     (nativeId && item.nativeId === nativeId && (!provider || item.provider === provider))
   )
-  const idx = explorer.dataset.findIndex(matchItem)
-  if (idx >= 0) {
-    const next = explorer.dataset.slice()
-    next[idx] = { ...next[idx], starred: wanted }
-    explorer.dataset = next
-  }
-  if (explorer.detail && matchItem(explorer.detail)) {
-    explorer.detail = { ...explorer.detail, starred: wanted }
-  }
+  patchThreadRows(matchItem, (item) => ({ ...item, starred: wanted }))
   app.sessions = (app.sessions ?? []).map((session) => {
     if (nativeId && session.threadId === nativeId && (!provider || session.provider === provider)) {
       return { ...session, starred: wanted }

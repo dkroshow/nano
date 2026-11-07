@@ -17,10 +17,16 @@ import { __resetPanesForTest } from './panes.svelte.js'
 import { workerDisclosure } from './lib/explorer/worker_disclosure.svelte.js'
 
 class MockEventSource {
-  addEventListener() {}
+  constructor() {
+    this.listeners = {}
+    MockEventSource.instances.push(this)
+  }
+  addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn) }
   removeEventListener() {}
   close() {}
+  emit(type, event = {}) { for (const fn of this.listeners[type] ?? []) fn(event) }
 }
+MockEventSource.instances = []
 
 function response(body) {
   return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => '' }
@@ -145,6 +151,53 @@ describe('compact sidebar starring', () => {
     expect(titles(container)).toEqual(['Newer run', 'Older run'])
     expect(container.querySelector('[data-testid="starred-section"]')).not.toBeNull()
     expect(app.activeId).toBeNull()
+  })
+
+  // A history row's only source is its parent's history scope. Patching just
+  // the rendered dataset left that scope unstarred, so the next sidebar event
+  // rebuilt the row and the star the operator had just set vanished.
+  it('keeps a star set on a historical subagent row through the next sidebar rebuild', async () => {
+    const parent = activeThread('parent', 'Parent run', { hostedThreadId: 'nht_parent', starred: true })
+    const closed = {
+      id: 'nth_closed', provider: 'codex', nativeId: 'native-closed', parentNativeId: parent.nativeId,
+      kind: 'subagent', title: 'Closed child', createdAt: '2026-08-03T10:00:00Z', updatedAt: '2026-08-03T11:00:00Z',
+      metadata: {}, source: { status: 'present' }, fleet: { label: 'idle' },
+    }
+    const reread = { ...parent, updatedAt: '2026-08-03T12:30:00Z' }
+    explorer.dataset = [parent, closed]
+    app.sessions = [{ id: 'session-parent', provider: 'codex', threadId: 'native-parent', hostedThreadId: 'nht_parent', status: 'ready', turnActive: false }]
+    workerDisclosure.expanded = ['hosted:nht_parent']
+    workerDisclosure.historicalExpanded = ['hosted:nht_parent']
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      const target = String(url)
+      if (target.endsWith('/starred') && init?.method === 'PUT') return response({ ...closed, starred: JSON.parse(init.body).starred })
+      if (target === '/api/v1/sidebar/threads') return response({ items: [reread], historicalCount: 1, catalogVersion: 1 })
+      if (target === '/api/sessions') return response({ sessions: app.sessions, detached: [], defaults: {} })
+      return response({})
+    })
+    const closedStar = () => [...container.querySelectorAll('[data-sidebar-row]')]
+      .find((row) => row.textContent.includes('Closed child'))
+      ?.querySelector('[data-testid="thread-star"]')
+
+    const { container } = render(App)
+    // The Nano view's dataset is built from the active list plus the open
+    // history scopes; switch to that shape once the page has booted.
+    explorer.datasetComplete = false
+    explorer.datasetScope = 'active'
+    explorer.activeItems = [parent]
+    explorer.historyScopes = { [parent.id]: { items: [closed], state: 'ready' } }
+    await tick()
+    expect(closedStar()?.getAttribute('aria-pressed')).toBe('false')
+    await fireEvent.click(closedStar())
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/threads/nth_closed/starred', expect.anything()))
+    await vi.waitFor(() => expect(closedStar()?.disabled).toBe(false))
+    expect(closedStar()?.getAttribute('aria-pressed')).toBe('true')
+
+    const stream = MockEventSource.instances.findLast((es) => es.listeners.sidebar)
+    stream.emit('sidebar', { data: '{}' })
+    await vi.waitFor(() => expect(explorer.activeItems[0]?.updatedAt).toBe(reread.updatedAt))
+    await tick()
+    expect(closedStar()?.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('moves a starred parent and its visible subagent subtree together', () => {

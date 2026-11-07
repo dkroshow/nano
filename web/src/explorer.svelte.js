@@ -696,16 +696,20 @@ function patchStoredRows(ids, patch) {
   patchStoredRowsWhere((row) => idSet.has(row.id), patch)
 }
 
-// A quick-detail placement write must update the stores that rebuild dataset,
-// not only dataset itself. Otherwise the next unrelated sidebar rebuild can
-// briefly restore the old invoker edge until a full refresh lands.
-export function patchSidebarPlacement(hostedThreadId, sidebarPlacement) {
-  if (!hostedThreadId) return
-  const matches = (row) => row?.hostedThreadId === hostedThreadId
-  const patch = (row) => ({ ...row, sidebarPlacement })
+// A browser-side write (a placement, a star) must update the stores that
+// rebuild dataset, not only dataset itself. Otherwise the next unrelated
+// sidebar rebuild restores the old value: briefly for an active row, until the
+// server's own row arrives, and until a reload for a history row, whose scope
+// nothing rereads.
+export function patchThreadRows(matches, patch) {
   patchStoredRowsWhere(matches, patch)
   explorer.dataset = explorer.dataset.map((row) => (matches(row) ? patch(row) : row))
-  if (matches(explorer.detail)) explorer.detail = patch(explorer.detail)
+  if (explorer.detail && matches(explorer.detail)) explorer.detail = patch(explorer.detail)
+}
+
+export function patchSidebarPlacement(hostedThreadId, sidebarPlacement) {
+  if (!hostedThreadId) return
+  patchThreadRows((row) => row?.hostedThreadId === hostedThreadId, (row) => ({ ...row, sidebarPlacement }))
 }
 
 function reconcileVersion(version) {
