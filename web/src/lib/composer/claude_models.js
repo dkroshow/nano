@@ -1,11 +1,9 @@
-// The Claude model catalog. A live session uses the control channel's
-// `initialize` response; New Window adds exact versioned choices Nano promises
-// to keep available for cost/capability comparisons.
-//
-// Claude Code advertises only moving aliases in initialize, so versioned ids
-// live here, and this list is the one place to add a model. Each id is checked
-// with a real call (AGENTS.md, "Adding a Claude model"): the CLI can lag a
-// release and warn `unrecognized_model` while the API still serves the id.
+// The Claude model catalog. Claude Code advertises only moving aliases in its
+// `initialize` response, so the exact versioned ids live here, and this list is
+// the one place to add a model: New Window and every live session's switcher
+// offer it. Check each id with a real call (AGENTS.md, "Adding a Claude
+// model"); the CLI can lag a release and warn `unrecognized_model` while the
+// API still serves the id.
 
 const PINNED_CLAUDE_MODELS = [
   { value: 'claude-fable-5-2', label: 'Fable 5.2 — claude-fable-5-2' },
@@ -28,10 +26,11 @@ export const CLAUDE_START_MODELS = [
 ]
 
 // claudeModelChoices projects the initialize response's `models` array into the
-// {value, label} pairs the pane's switcher renders. `resolvedModel` is folded
-// into the label because the catalog's aliases ("default", "opus[1m]") are not
-// self-explanatory — the operator needs to see which concrete model an alias
-// lands on.
+// {value, label} pairs the pane's switcher renders, then adds the pinned ids the
+// CLI did not advertise: `set_model` accepts an exact id the CLI's own list
+// lacks. `resolvedModel` is folded into the label because the catalog's aliases
+// ("default", "opus[1m]") are not self-explanatory — the operator needs to see
+// which concrete model an alias lands on.
 export function claudeModelChoices(controlInit) {
   const models = controlInit?.models
   if (!Array.isArray(models)) return []
@@ -42,7 +41,7 @@ export function claudeModelChoices(controlInit) {
     const choice = isOpus55(m) ? OPUS_5_5 : { value: m.value, label: claudeModelLabel(m) }
     if (!choices.some((existing) => existing.value === choice.value)) choices.push(choice)
   }
-  return choices
+  return [...choices, ...PINNED_CLAUDE_MODELS.filter((pinned) => !choices.some((choice) => choice.value === pinned.value))]
 }
 
 function isOpus55(model) {

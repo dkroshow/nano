@@ -22,6 +22,11 @@ describe('claude model catalog', () => {
     expect(claudeModelChoices(INIT)[2].label).toBe('claude-fable-5')
   })
 
+  it('adds a pinned id the CLI already advertised only once', () => {
+    const values = claudeModelChoices(INIT).map((choice) => choice.value)
+    expect(values.filter((value) => value === 'claude-fable-5')).toHaveLength(1)
+  })
+
   it('offers Opus 5.5 as one ordinary choice with no 1M duplicate', () => {
     const startOpus55 = CLAUDE_START_MODELS.filter((choice) => /opus-5-5|opus 5\.5/i.test(`${choice.value} ${choice.label}`))
     expect(startOpus55).toEqual([{ value: 'claude-opus-5-5', label: 'Opus 5.5' }])
@@ -32,13 +37,12 @@ describe('claude model catalog', () => {
         { value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet' },
       ],
     })
-    expect(live).toEqual([{ value: 'claude-opus-5-5', label: 'Opus 5.5' }, { value: 'sonnet', label: 'Sonnet — claude-sonnet-5' }])
+    expect(live.slice(0, 2)).toEqual([{ value: 'claude-opus-5-5', label: 'Opus 5.5' }, { value: 'sonnet', label: 'Sonnet — claude-sonnet-5' }])
     expect(live.some((choice) => /1m/i.test(choice.label) && /5\.5/.test(choice.label))).toBe(false)
   })
 
   it('drops provider entries with no value — an option nano cannot send is worse than none', () => {
     expect(claudeModelChoices(INIT).some((choice) => choice.label === 'nameless')).toBe(false)
-    expect(claudeModelChoices(INIT)).toHaveLength(3)
   })
 
   it('is empty before the control handshake lands, so the pane simply shows no switcher', () => {

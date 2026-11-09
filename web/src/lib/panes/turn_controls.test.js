@@ -329,10 +329,17 @@ describe('live turn controls', () => {
     // effort, so an effort select would be a control that cannot act.
     expect(selects.length).toBe(1)
     expect(selects[0].options[0].textContent).toContain('claude-fable-5')
-    expect([...selects[0].options].map((o) => o.value)).toEqual(['', 'default', 'haiku'])
+    const values = [...selects[0].options].map((o) => o.value)
+    expect(values.slice(0, 3)).toEqual(['', 'default', 'haiku'])
 
     await fireEvent.change(selects[0], { target: { value: 'haiku' } })
     await waitFor(() => expect(postedTurnOptions.at(-1)).toEqual({ model: 'haiku' }))
+
+    // An older CLI does not advertise a newly pinned exact id; the switcher
+    // still offers it, and set_model accepts it.
+    expect(values).toContain('claude-fable-5-2')
+    await fireEvent.change(selects[0], { target: { value: 'claude-fable-5-2' } })
+    await waitFor(() => expect(postedTurnOptions.at(-1)).toEqual({ model: 'claude-fable-5-2' }))
   })
 
   async function renderClaudePane() {

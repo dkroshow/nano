@@ -75,11 +75,12 @@ ids are listed by hand.
 
 1. Add `{ value: '<id>', label: '<Name> — <id>' }` to `PINNED_CLAUDE_MODELS`
    in `web/src/lib/composer/claude_models.js`, newest first. That list is the
-   one home: New Window offers it, and the server passes `--model` through.
+   one home: New Window and each live session's model switcher offer it, and
+   the server passes the id through as `--model` or `set_model`.
 2. Take the id from Anthropic's published model list, then prove it with one
    real call: `claude -p --model <id> --output-format json "reply ok"` must
-   answer, and its `modelUsage` must name the id. An `unrecognized_model`
-   warning only means the installed CLI is older than the model.
+   answer, and its `modelUsage` must name the id. The installed CLI may print
+   an `unrecognized_model` warning when it is older than the model.
 3. After the deploy, the model shows in New Window, and a thread started on it
    names the id in its saved transcript.
 
