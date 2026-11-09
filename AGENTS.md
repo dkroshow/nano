@@ -70,8 +70,8 @@ gofmt -l . && go vet ./... && go test -timeout 30m ./... && npm --prefix web tes
 
 ## Adding a Claude model
 
-Codex and Grok models come from their own runtimes; only Claude's versioned
-ids are listed by hand.
+Codex and Grok offer the models their runtimes advertise. Claude advertises
+only moving aliases, so its exact ids are listed by hand.
 
 1. Add `{ value: '<id>', label: '<Name> — <id>' }` to `PINNED_CLAUDE_MODELS`
    in `web/src/lib/composer/claude_models.js`, newest first. That list is the
