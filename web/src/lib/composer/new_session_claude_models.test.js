@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte'
 import NewSessionModal from './NewSessionModal.svelte'
 import { app } from '../../app.svelte.js'
 import { explorer } from '../../explorer.svelte.js'
+import { CLAUDE_START_MODELS } from './claude_models.js'
 import { __resetCodexModelsForTest } from './codex_models.js'
 import { __resetGrokModelsForTest } from './grok_models.js'
 
@@ -38,31 +39,17 @@ afterEach(() => {
 })
 
 describe('Claude models in New Window', () => {
-  it('preserves existing aliases and exposes exact Fable 5.1, Mythos 5.1, and Fable 5 identifiers', async () => {
+  // The catalog is the one list of Claude models, so this checks that New
+  // Window renders it and sends the exact id picked, not which models it holds.
+  it('offers the catalog with the moving aliases kept, and sends the exact id picked', async () => {
     const { getByLabelText } = render(NewSessionModal, { onClose: vi.fn() })
     await fireEvent.click(getByLabelText('Claude Code'))
 
     const model = getByLabelText('Model')
-    expect([...model.options].map((option) => option.value)).toEqual([
-      'opus',
-      'claude-opus-5-5',
-      'fable',
-      'claude-fable-5-1',
-      'claude-mythos-5-1',
-      'claude-fable-5',
-      'sonnet',
-      'haiku',
-    ])
-    expect([...model.options].map((option) => option.textContent)).toEqual([
-      'Opus',
-      'Opus 5.5',
-      'Fable (latest alias)',
-      'Fable 5.1 — claude-fable-5-1',
-      'Mythos 5.1 — claude-mythos-5-1',
-      'Fable 5 — claude-fable-5',
-      'Sonnet',
-      'Haiku',
-    ])
+    expect([...model.options].map((option) => ({ value: option.value, label: option.textContent }))).toEqual(CLAUDE_START_MODELS)
+    for (const alias of ['opus', 'fable', 'sonnet', 'haiku']) {
+      expect(CLAUDE_START_MODELS.some((choice) => choice.value === alias)).toBe(true)
+    }
 
     await fireEvent.change(model, { target: { value: 'claude-mythos-5-1' } })
     await waitFor(() => expect(previews.at(-1)?.model).toBe('claude-mythos-5-1'))

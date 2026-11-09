@@ -68,6 +68,21 @@ gofmt -l . && go vet ./... && go test -timeout 30m ./... && npm --prefix web tes
   `nano-launcher-bin`), unsigned by default; with `NANO_CODESIGN_IDENTITY`
   set it codesigns the result so a macOS privacy grant survives rebuilds.
 
+## Adding a Claude model
+
+Codex and Grok models come from their own runtimes; only Claude's versioned
+ids are listed by hand.
+
+1. Add `{ value: '<id>', label: '<Name> — <id>' }` to `PINNED_CLAUDE_MODELS`
+   in `web/src/lib/composer/claude_models.js`, newest first. That list is the
+   one home: New Window offers it, and the server passes `--model` through.
+2. Take the id from Anthropic's published model list, then prove it with one
+   real call: `claude -p --model <id> --output-format json "reply ok"` must
+   answer, and its `modelUsage` must name the id. An `unrecognized_model`
+   warning only means the installed CLI is older than the model.
+3. After the deploy, the model shows in New Window, and a thread started on it
+   names the id in its saved transcript.
+
 ## Never
 
 - Never commit secrets, tokens, real session files or personal paths.

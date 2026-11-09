@@ -2,11 +2,13 @@
 // `initialize` response; New Window adds exact versioned choices Nano promises
 // to keep available for cost/capability comparisons.
 //
-// Claude Code 2.1.257 advertises only moving aliases in initialize: Fable
-// resolves to Fable 5.1, while Fable 5 and approved-org Mythos 5.1 are absent.
-// The versioned ids below come from that installed CLI's own model constants.
+// Claude Code advertises only moving aliases in initialize, so versioned ids
+// live here, and this list is the one place to add a model. Each id is checked
+// with a real call (AGENTS.md, "Adding a Claude model"): the CLI can lag a
+// release and warn `unrecognized_model` while the API still serves the id.
 
 const PINNED_CLAUDE_MODELS = [
+  { value: 'claude-fable-5-2', label: 'Fable 5.2 — claude-fable-5-2' },
   { value: 'claude-fable-5-1', label: 'Fable 5.1 — claude-fable-5-1' },
   { value: 'claude-mythos-5-1', label: 'Mythos 5.1 — claude-mythos-5-1' },
   { value: 'claude-fable-5', label: 'Fable 5 — claude-fable-5' },

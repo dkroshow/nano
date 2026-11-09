@@ -22,19 +22,6 @@ describe('claude model catalog', () => {
     expect(claudeModelChoices(INIT)[2].label).toBe('claude-fable-5')
   })
 
-  it('keeps every existing start alias and adds exact versioned choices', () => {
-    expect(CLAUDE_START_MODELS.map((choice) => choice.value)).toEqual([
-      'opus',
-      'claude-opus-5-5',
-      'fable',
-      'claude-fable-5-1',
-      'claude-mythos-5-1',
-      'claude-fable-5',
-      'sonnet',
-      'haiku',
-    ])
-  })
-
   it('offers Opus 5.5 as one ordinary choice with no 1M duplicate', () => {
     const startOpus55 = CLAUDE_START_MODELS.filter((choice) => /opus-5-5|opus 5\.5/i.test(`${choice.value} ${choice.label}`))
     expect(startOpus55).toEqual([{ value: 'claude-opus-5-5', label: 'Opus 5.5' }])
