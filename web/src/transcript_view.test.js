@@ -86,6 +86,10 @@ describe('transcript presentation', () => {
     expect([transcriptItemKind(tool), transcriptItemCategory(tool)]).toEqual(['aux', 'toolCall'])
     expect([transcriptItemKind(error), transcriptItemCategory(error)]).toEqual(['error', 'error'])
 		expect([transcriptItemKind(question), transcriptItemCategory(question)]).toEqual(['agent', 'messages'])
+    // A Claude progress note renders as an agent message, so Enhanced shows
+    // it and the transcript audit finds the message row the API listed.
+    expect(transcriptItemKind({ type: 'reasoning', role: 'assistant', category: 'messages' })).toBe('agent')
+    expect(transcriptItemKind({ type: 'reasoning', role: 'assistant', category: 'reasoning' })).toBe('aux')
     expect(transcriptCategoryLabel('unclassified')).toBe('Unclassified Provider Events')
   })
 

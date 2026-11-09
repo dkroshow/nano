@@ -654,14 +654,22 @@ CREATE INDEX IF NOT EXISTS conversation_items_turn
 ON conversation_items(projection_id, turn_key);
 `
 
+// claudeNoteSQL is a Claude progress note: a saved thinking block with
+// readable text. Claude Code saves thinking text only when the model wrote it
+// for the operator (its "updates" thinking display); any other thinking block
+// keeps only its signature. A note is Claude's counterpart of Codex
+// commentary, so it is a message. Some older Claude models saved their full
+// reasoning; those rare rows count as notes too.
+const claudeNoteSQL = `(item_type = 'reasoning' AND source_payload_type = 'thinking' AND display_text <> '')`
+
 // transcriptMessageSQL is the one definition of a message row, the only rows
-// Enhanced shows: a user or agent message, or a question and its answer, in
-// the main thread, whatever its status. It names row types, like the live
-// message feed, so a saved row exists for every message the feed showed.
-// Equalities joined by OR, not an IN list: SQLite checks the predicate on
-// every item written, and the IN form's added write cost measured several
-// times higher.
-const transcriptMessageSQL = `(item_type = 'user_message' OR item_type = 'agent_message' OR item_type = 'interaction') AND sidechain = 0`
+// Enhanced shows: a user or agent message, a question and its answer, or a
+// Claude progress note, in the main thread, whatever its status. It names row
+// types, like the live message feed, so a saved row exists for every message
+// the feed showed. Equalities joined by OR, not an IN list: SQLite checks the
+// predicate on every item written, and the IN form's added write cost
+// measured several times higher.
+const transcriptMessageSQL = `(item_type = 'user_message' OR item_type = 'agent_message' OR item_type = 'interaction' OR ` + claudeNoteSQL + `) AND sidechain = 0`
 
 // Enhanced pages walk back from the newest row to find 40 messages. With only
 // conversation_items_page that walk classified every hidden reasoning and tool
@@ -671,6 +679,15 @@ const transcriptMessageSQL = `(item_type = 'user_message' OR item_type = 'agent_
 // a new migration.
 const schemaV27 = `
 CREATE INDEX IF NOT EXISTS conversation_items_messages_page
+ON conversation_items(projection_id, projected_seq DESC) WHERE ` + transcriptMessageSQL + `;
+`
+
+// schemaV29 rebuilds the message page index for the predicate that counts
+// Claude progress notes as messages; an index built under v27 keeps the old
+// predicate, and Enhanced pages would stop using it.
+const schemaV29 = `
+DROP INDEX IF EXISTS conversation_items_messages_page;
+CREATE INDEX conversation_items_messages_page
 ON conversation_items(projection_id, projected_seq DESC) WHERE ` + transcriptMessageSQL + `;
 `
 

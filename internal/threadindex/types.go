@@ -34,7 +34,7 @@ const (
 	// DevThreadTranscriptView exposes the complete saved transcript taxonomy.
 	DevThreadTranscriptView    = "dev"
 	legacyThreadTranscriptView = "readable"
-	threadTranscriptTaxonomy   = "transcript-categories-v2"
+	threadTranscriptTaxonomy   = "transcript-categories-v3"
 	clientClosedRequestStatus  = 499
 	// CatalogEventHeartbeat is the heartbeat interval used by the combined app event stream.
 	CatalogEventHeartbeat = 30 * time.Second

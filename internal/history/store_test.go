@@ -983,12 +983,16 @@ func transcriptItemRows(t *testing.T, store *Store, projectionID int64) []string
 }
 
 // TestMessagePageIndexMigratesAndServesEnhancedPages catches an Enhanced page
-// that walks every hidden row again: SQLite uses a partial index only for a
-// query that repeats its predicate. Boundary: opening a v26 store that holds
-// transcript rows, then reading an Enhanced page that starts mid-turn. The v27
-// migration adds the index, records itself once and changes no row, and each
-// of the page's four item reads (the page, the turn extension's count and
-// rows, and the older-rows check) reads through the index.
+// that walks every hidden row again, or that drops a Claude progress note.
+// SQLite uses a partial index only for a query that repeats its predicate,
+// and an index keeps the predicate it was built with. Boundary: opening a v28
+// store, whose index predicate has no notes, that holds a projected Fable 5.2
+// transcript (a scrubbed copy of a saved "updates" thinking display), then
+// reading an Enhanced page that starts mid-turn. The v29 migration rebuilds
+// the index, records itself once and changes no row; the page holds the note
+// but no signature-only thinking, and each of its four item reads (the page,
+// the turn extension's count and rows, and the older-rows check) reads
+// through the index.
 func TestMessagePageIndexMigratesAndServesEnhancedPages(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "history.sqlite")
@@ -996,7 +1000,7 @@ func TestMessagePageIndexMigratesAndServesEnhancedPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := SourceRoot{Provider: ProviderCodex, Kind: RootCodexSessions, Path: filepath.Join(t.TempDir(), "sessions")}
+	root := SourceRoot{Provider: ProviderClaude, Kind: RootClaudeProjects, Path: filepath.Join(t.TempDir(), "projects")}
 	metadata := testSource(root, "thread.jsonl", "message-page-index", ThreadMain, nil)
 	applied, err := store.ApplySource(ctx, metadata)
 	if err != nil {
@@ -1006,15 +1010,17 @@ func TestMessagePageIndexMigratesAndServesEnhancedPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// One turn: a prompt, hidden reasoning, the answer.
-	projection := searchEligibilityProjection("message-page-index", []TranscriptItem{
-		searchEligibilityItem("prompt", 1, ItemUserMessage, RoleUser, "question"),
-		searchEligibilityItem("thinking", 2, ItemReasoning, RoleAssistant, "hidden"),
-		searchEligibilityItem("answer", 3, ItemAgentMessage, RoleAssistant, "answer"),
-	}, nil)
+	// One turn: a prompt, empty thinking, a note, a tool call and its
+	// result, empty thinking, the answer.
+	projection, err := newTranscriptFixture(t, ProviderClaude).ProjectTranscript(ctx, TranscriptProjectionRequest{
+		Source: transcriptCandidate(t, ProviderClaude), Reader: bytes.NewReader(readTranscriptFixture(t, "claude-fable-5-2-updates.jsonl")),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := store.ApplyTranscript(ctx, TranscriptApplyRequest{
 		Mode: TranscriptRebuild, ThreadID: applied.ThreadID, SourceID: stored.ID, SourceGeneration: stored.Generation,
-		Provider: ProviderCodex, ParserVersion: "message-index-test", CompletionRuleVersion: "message-index-test",
+		Provider: ProviderClaude, ParserVersion: "message-index-test", CompletionRuleVersion: "message-index-test",
 		Result: projection, IndexedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -1023,7 +1029,10 @@ func TestMessagePageIndexMigratesAndServesEnhancedPages(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT id FROM conversation_projections WHERE projection_key = ?`, projection.ProjectionKey).Scan(&projectionID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`DROP INDEX conversation_items_messages_page; DELETE FROM schema_migrations WHERE version=27`); err != nil {
+	if _, err := store.db.Exec(`DROP INDEX conversation_items_messages_page;
+CREATE INDEX conversation_items_messages_page ON conversation_items(projection_id, projected_seq DESC)
+WHERE (item_type = 'user_message' OR item_type = 'agent_message' OR item_type = 'interaction') AND sidechain = 0;
+DELETE FROM schema_migrations WHERE version=29`); err != nil {
 		t.Fatal(err)
 	}
 	before := transcriptItemRows(t, store, projectionID)
@@ -1037,7 +1046,7 @@ func TestMessagePageIndexMigratesAndServesEnhancedPages(t *testing.T) {
 	}
 	t.Cleanup(func() { store.Close() })
 	var migration, index int
-	if err := store.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=27`).Scan(&migration); err != nil {
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=29`).Scan(&migration); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='conversation_items_messages_page'`).Scan(&index); err != nil {
@@ -1052,8 +1061,19 @@ func TestMessagePageIndexMigratesAndServesEnhancedPages(t *testing.T) {
 	recorder.reset()
 	// One row cuts the turn, so the page extends back to the prompt.
 	page, err := store.ReadTranscript(ctx, TranscriptReadRequest{ThreadID: applied.ThreadID, Limit: 1, MessagesOnly: true})
-	if err != nil || len(page.Items) != 2 || page.Items[0].ID != "prompt" || page.Items[1].ID != "answer" {
-		t.Fatalf("Enhanced page = %#v, %v", page, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, item := range page.Items {
+		got = append(got, fmt.Sprintf("%s/%s: %s", item.Type, item.Category, item.Text))
+	}
+	if want := []string{
+		"user_message/messages: Fit the three models",
+		"reasoning/messages: Fits for the first two models are running, with fold 1 of 3 about half done, so I expect both by about 3:15PM PT.",
+		"agent_message/messages: Both fits are done.",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Enhanced page = %#v, want %#v", got, want)
 	}
 	// The four item reads, told apart by their shape, not by the predicate.
 	const rangeWhere = "FROM conversation_items\nWHERE projection_id = ? AND projected_seq >= ? AND projected_seq < ?"

@@ -1672,6 +1672,7 @@ const transcriptCategorySQL = `CASE
   WHEN item_status IN ('failed', 'interrupted') THEN 'error'
   WHEN sidechain = 1 THEN 'subagent'
 	  WHEN item_type IN ('user_message', 'agent_message', 'interaction') THEN 'messages'
+  WHEN ` + claudeNoteSQL + ` THEN 'messages'
   WHEN item_type = 'reasoning' THEN 'reasoning'
   WHEN item_type IN ('tool_call', 'file_change', 'plan') THEN 'toolCall'
   WHEN item_type = 'tool_result' THEN 'toolResult'
@@ -1735,6 +1736,10 @@ func transcriptItemCategory(item TranscriptItem) TranscriptCategory {
 	case ItemUserMessage, ItemAgentMessage, ItemInteraction:
 		return CategoryMessages
 	case ItemReasoning:
+		// A Claude progress note, as claudeNoteSQL defines it.
+		if item.SourcePayloadType == "thinking" && item.Text != "" {
+			return CategoryMessages
+		}
 		return CategoryReasoning
 	case ItemToolCall, ItemFileChange, ItemPlan:
 		return CategoryToolCall

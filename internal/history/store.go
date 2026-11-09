@@ -213,9 +213,9 @@ func OpenMaintenance(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("inspect maintenance history schema: %w", err)
 	}
-	if schemaVersion != 28 {
+	if schemaVersion != 29 {
 		db.Close()
-		return nil, fmt.Errorf("history database schema is %d, want 28", schemaVersion)
+		return nil, fmt.Errorf("history database schema is %d, want 29", schemaVersion)
 	}
 	return &Store{db: db}, nil
 }
@@ -318,6 +318,9 @@ func (s *Store) initialize(ctx context.Context) error {
 	if err := migrateParserCompactionV28(ctx, tx); err != nil {
 		return err
 	}
+	if err := migrateMessagePageIndexV29(ctx, tx); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit history schema v1: %w", err)
 	}
@@ -338,6 +341,22 @@ func migrateParserCompactionV28(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("apply parser compaction v28: %w", err)
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES (28,?)`, formatTime(time.Now().UTC()))
+	return err
+}
+
+// migrateMessagePageIndexV29 runs once: its rebuild reads every item row.
+func migrateMessagePageIndexV29(ctx context.Context, tx *sql.Tx) error {
+	var applied int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version=29`).Scan(&applied); err != nil {
+		return err
+	}
+	if applied != 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, schemaV29); err != nil {
+		return fmt.Errorf("apply message page index v29: %w", err)
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES (29,?)`, formatTime(time.Now().UTC()))
 	return err
 }
 

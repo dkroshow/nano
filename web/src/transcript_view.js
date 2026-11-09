@@ -111,6 +111,9 @@ export function transcriptItemKind(item) {
 	if (item?.type === 'interaction') return item?.role === 'user' ? 'user' : 'agent'
   if (item?.type === 'user_message' || item?.role === 'user') return 'user'
   if (item?.type === 'agent_message') return 'agent'
+  // A Claude progress note is reasoning the server counts as a message; it
+  // reads as the agent's own words, like Codex commentary.
+  if (item?.type === 'reasoning' && transcriptItemCategory(item) === 'messages') return 'agent'
   if (transcriptItemCategory(item) === 'error') return 'error'
   return 'aux'
 }

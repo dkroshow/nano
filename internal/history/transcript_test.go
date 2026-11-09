@@ -690,15 +690,24 @@ func TestTranscriptSQLAndGoCategoryClassifiersAgree(t *testing.T) {
 		{Type: ItemCommand, Status: ItemStatusInterrupted, Role: RoleAssistant},
 		{Type: ItemToolResult, Status: ItemStatusFailed, Role: RoleTool, FilterTags: []string{"command"}},
 		{Type: ItemToolResult, Status: ItemStatusCompleted, Role: RoleTool, Sidechain: true, FilterTags: []string{"command"}},
+		// A Claude thinking block with text is a progress note, a message; a
+		// signature-only block, a Codex reasoning summary and a subagent's
+		// note are not.
+		{Type: ItemReasoning, Status: ItemStatusUnknown, Role: RoleAssistant, SourcePayloadType: "thinking", Text: "Fits are running."},
+		{Type: ItemReasoning, Status: ItemStatusUnknown, Role: RoleAssistant, SourcePayloadType: "thinking"},
+		{Type: ItemReasoning, Status: ItemStatusCompleted, Role: RoleAssistant, SourcePayloadType: "reasoning", Text: "**Planning the search**"},
+		{Type: ItemReasoning, Status: ItemStatusUnknown, Role: RoleAssistant, SourcePayloadType: "thinking", Text: "Fits are running.", Sidechain: true},
 	}
 	want := []TranscriptCategory{
 		CategoryMessages, CategoryMessages, CategoryReasoning, CategoryToolCall, CategoryToolResult,
 		CategorySubagent, CategorySystem, CategoryError, CategoryError, CategoryUnclassified,
 		CategoryToolCall, CategoryToolCall, CategoryToolResult, CategoryToolResult,
+		CategoryMessages, CategoryReasoning, CategoryReasoning, CategorySubagent,
 	}
 	query := `WITH conversation_items(
-  projection_id, turn_key, projected_seq, item_status, sidechain, item_type, filter_tags_json, role
-) AS (VALUES (1, 'turn', 1, ?, ?, ?, ?, ?))
+  projection_id, turn_key, projected_seq, item_status, sidechain, item_type, filter_tags_json, role,
+  source_payload_type, display_text
+) AS (VALUES (1, 'turn', 1, ?, ?, ?, ?, ?, ?, ?))
 SELECT ` + transcriptCategorySQL + ` FROM conversation_items`
 	for index, item := range cases {
 		tags, marshalErr := json.Marshal(item.FilterTags)
@@ -707,7 +716,7 @@ SELECT ` + transcriptCategorySQL + ` FROM conversation_items`
 		}
 		var sqlCategory TranscriptCategory
 		if err := store.db.QueryRowContext(context.Background(), query,
-			item.Status, item.Sidechain, item.Type, string(tags), item.Role).Scan(&sqlCategory); err != nil {
+			item.Status, item.Sidechain, item.Type, string(tags), item.Role, item.SourcePayloadType, item.Text).Scan(&sqlCategory); err != nil {
 			t.Fatal(err)
 		}
 		goCategory := transcriptItemCategory(item)
@@ -750,8 +759,9 @@ func TestResolvedToolFailureClassifiesAsHiddenToolResult(t *testing.T) {
 	} {
 		query := `WITH
 conversation_items(
-  projection_id, turn_key, projected_seq, item_status, sidechain, item_type, filter_tags_json, role
-) AS (VALUES (1, 'turn', 1, 'failed', 0, 'tool_result', ?, 'tool')),
+  projection_id, turn_key, projected_seq, item_status, sidechain, item_type, filter_tags_json, role,
+  source_payload_type, display_text
+) AS (VALUES (1, 'turn', 1, 'failed', 0, 'tool_result', ?, 'tool', 'tool_result', '')),
 conversation_turns(projection_id, turn_key, status, completion_seq, final_item_id) AS (
   VALUES (1, 'turn', ?, ?, ?)
 )
