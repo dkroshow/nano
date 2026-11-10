@@ -517,7 +517,7 @@ describe('thread pane view', () => {
     expect(textarea.style.height).toBe('60px')
   })
 
-  it('inserts a text paste from the paste event itself, and leaves a file paste to the browser', async () => {
+  it('inserts a text paste from the paste event itself, and leaves file and very long pastes to the browser', async () => {
     // The bug: a dictation tool pastes, then restores the clipboard at once.
     // The paste event still held the text, but the browser's own insertion
     // read the restored, empty clipboard, so nothing landed. jsdom has no
@@ -555,6 +555,16 @@ describe('thread pane view', () => {
       await fireEvent(textarea, filePaste)
 
       expect(filePaste.defaultPrevented).toBe(false)
+
+      // Chrome's insertText slows with the square of the line count, so a
+      // long log would freeze the tab; the browser's one-step paste stays.
+      const longText = Array.from({ length: 201 }, (_, i) => `log line ${i}`).join('\n')
+      const longPaste = createEvent.paste(textarea, {
+        clipboardData: { types: ['text/plain'], getData: (type) => (type === 'text/plain' ? longText : '') },
+      })
+      await fireEvent(textarea, longPaste)
+
+      expect(longPaste.defaultPrevented).toBe(false)
       expect(inserted).toEqual(['first line\nsecond line'])
     } finally {
       delete document.execCommand

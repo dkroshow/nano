@@ -1131,11 +1131,16 @@
   // insertion reads the clipboard a second time, and a dictation tool that
   // restores the clipboard right after pasting leaves that read empty, so the
   // text is lost. execCommand inserts through the editing path, so Cmd+Z
-  // undoes it and the input event updates the draft. When it does not insert,
-  // and for pastes with no text, the browser's default stands.
+  // undoes it and the input event updates the draft. Its cost in Chrome grows
+  // with the square of the line count (2,000 lines take seconds), so longer
+  // pastes, which are not dictation, keep the browser's default, as do pastes
+  // with no text and any paste execCommand does not insert.
+  const MAX_INSERTED_PASTE_LINES = 200
+
   function onPaste(e) {
-    const text = e.clipboardData?.getData('text/plain')
-    if (text && document.execCommand('insertText', false, text.replace(/\r\n?/g, '\n'))) e.preventDefault()
+    const text = e.clipboardData?.getData('text/plain').replace(/\r\n?/g, '\n')
+    if (text && text.split('\n').length <= MAX_INSERTED_PASTE_LINES
+      && document.execCommand('insertText', false, text)) e.preventDefault()
     scheduleResize()
   }
 
