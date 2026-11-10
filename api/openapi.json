@@ -3659,6 +3659,7 @@
         "parentId": {"type": ["string", "null"]},
         "rootId": {"type": "string"},
         "ancestorIds": {"type": "array", "items": {"type": "string"}},
+        "lineageThreads": {"type": "array", "description": "Durable ancestors, root first, under the sidebar parent rules and before closed ancestors give way to open ones. A sidebar bucket follows this chain.", "items": {"type": "object", "required": ["provider", "nativeId"], "properties": {"provider": {"type": "string"}, "nativeId": {"type": "string"}}}},
         "childrenIds": {"type": "array", "items": {"type": "string"}},
         "depth": {"type": "integer", "minimum": 0},
         "active": {"type": "boolean"},

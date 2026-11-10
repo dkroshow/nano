@@ -266,15 +266,14 @@ export function orderSidebarRows(rows) {
     .flatMap((group) => group.rows)
 }
 
-// Buckets come first, in the operator's order: a thread tree goes to the
-// bucket that holds its root, so subagents travel with their parent and a
-// subagent's own membership never splits it from that parent. A root that
-// was promoted because its parent closed keeps that parent's bucket, read
-// from its durable lineage, so it never leaves the bucket on its own; a
-// thread made standalone joins a bucket only by its own membership. Every
-// bucket keeps its section while empty, so its place never moves. Inside a
-// bucket, and in what is left, rows keep the ordinary order with starred
-// rows first.
+// Buckets come first, in the operator's order. A row goes to the bucket of
+// the highest thread in its lineage that is in one, so subagents travel with
+// their parent and stay there after the threads above them close. The server
+// names that lineage (sidebar.lineageThreads) under the sidebar's own parent
+// rules, before closed ancestors give way to open ones; a row without it
+// uses the rows on screen above it. Every bucket keeps its section while
+// empty, so its place never moves. Inside a bucket, and in what is left,
+// rows keep the ordinary order with starred rows first.
 export function sectionSidebar(rows, reorder = true, buckets = []) {
   const list = rows ?? []
   const arrange = reorder ? orderSidebarRows : arrangeVisibleHierarchy
@@ -289,14 +288,20 @@ export function sectionSidebar(rows, reorder = true, buckets = []) {
   const bucketRows = new Map((buckets ?? []).map((bucket) => [bucket.id, []]))
   const rest = []
   for (const row of list) {
-    let root = row
-    const visited = new Set([row.key])
-    for (let parent = resolveThreadParent(root, byIdentity); parent && !visited.has(parent.key); parent = resolveThreadParent(root, byIdentity)) {
-      visited.add(parent.key)
-      root = parent
+    let lineage = row.sidebar?.lineageThreads
+    if (!lineage) {
+      lineage = []
+      const visited = new Set([row.key])
+      for (let parent = resolveThreadParent(row, byIdentity); parent && !visited.has(parent.key); parent = resolveThreadParent(parent, byIdentity)) {
+        visited.add(parent.key)
+        lineage.unshift(parent)
+      }
     }
-    const bucketRowsOf = bucketRows.get(rootBucket(root, memberOf))
-    if (bucketRowsOf) bucketRowsOf.push(row)
+    const bucketId = [...lineage, row]
+      .map((thread) => thread.nativeId && memberOf.get(`${thread.provider}:${thread.nativeId}`))
+      .find(Boolean)
+    const target = bucketRows.get(bucketId)
+    if (target) target.push(row)
     else rest.push(row)
   }
   return {
@@ -306,19 +311,6 @@ export function sectionSidebar(rows, reorder = true, buckets = []) {
     }),
     ...sectionStarred(rest, arrange),
   }
-}
-
-function rootBucket(root, memberOf) {
-  const own = root.nativeId ? memberOf.get(`${root.provider}:${root.nativeId}`) : undefined
-  if (own) return own
-  if (root.parentNativeId) {
-    const parent = memberOf.get(`${root.provider}:${root.parentNativeId}`)
-    if (parent) return parent
-  }
-  if (root.invokerNativeThreadId && root.sidebarPlacement !== 'standalone') {
-    return memberOf.get(`${root.invokerProvider ?? root.provider}:${root.invokerNativeThreadId}`)
-  }
-  return undefined
 }
 
 // Starred rows bring the useful part of their family into the section: their

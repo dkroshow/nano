@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -176,6 +177,46 @@ func TestSidebarClosedThreadGoesToHistoryAndItsOpenChildMovesUp(t *testing.T) {
 	}
 	if len(page.Items) != 1 || page.Items[0].ID != "closed-owner" {
 		t.Fatalf("supervisor history = %+v, want the closed owner", page.Items)
+	}
+}
+
+// A bucket follows the lineage the server names. It must outlive closures
+// that promote an open row, and use the sidebar's parent rules: a current
+// assignment wins over the old invoker, and standalone has no parent.
+func TestSidebarLineageOutlivesClosedAncestorsAndFollowsParentRules(t *testing.T) {
+	row := func(id, invoker string, open bool) Thread {
+		thread := Thread{Thread: threadindex.Thread{ID: id, Provider: "codex", NativeID: "native-" + id}, HostedThreadID: "hosted-" + id, InvokerHostedThreadID: invoker}
+		if open {
+			thread.HostedStatus, thread.Runtime = "ready", &RuntimeInfo{Attached: true, Status: "ready"}
+		} else {
+			thread.HostedStatus, thread.Starred = sessions.StatusExited, true
+		}
+		return thread
+	}
+	standalone := row("standalone", "hosted-owner", true)
+	standalone.SidebarPlacement = ownedthreads.SidebarPlacementStandalone
+	reassigned := row("reassigned", "hosted-owner", true)
+	reassigned.Assignment = &hostedstore.AssignmentView{AssignmentRole: "worker", RelatedHostedThreadID: "hosted-supervisor"}
+	result, _ := projectSidebar([]Thread{
+		row("owner", "", false),
+		row("worker", "hosted-owner", false),
+		row("child", "hosted-worker", true),
+		standalone,
+		row("supervisor", "", false),
+		reassigned,
+	}, sidebarBaseQuery(), 1)
+
+	lineage := map[string]string{}
+	for _, item := range result.Items {
+		var chain []string
+		for _, thread := range item.Sidebar.LineageThreads {
+			chain = append(chain, thread.NativeID)
+		}
+		lineage[item.ID] = strings.Join(chain, ">")
+	}
+	want := map[string]string{"child": "native-owner>native-worker", "standalone": "", "reassigned": "native-supervisor"}
+	if !reflect.DeepEqual(lineage, want) {
+		t.Fatalf("lineage = %v, want %v", lineage, want)
 	}
 }
 

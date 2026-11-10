@@ -183,18 +183,43 @@ describe('compact sidebar buckets', () => {
     }))
   })
 
-  // Closing a parent promotes its open subagent to a root of its own. The
-  // subagent must stay in the parent's bucket: nobody moved it.
-  it('keeps a subagent in its bucket after its parent closes', async () => {
+  // Closing a parent promotes its open subagent to a root of its own; the
+  // server still names the closed threads above it as its lineage. Through
+  // two closures and a reload, the survivor stays in the owner's bucket, and
+  // a standalone thread the server gives no lineage stays out of it.
+  it('keeps a subagent in its bucket after the threads above it close, and leaves a standalone thread out', async () => {
+    // The server's sidebar block: parentId is the nearest open ancestor.
+    const block = (parent, ...ids) => ({ active: true, parentId: parent ? `nth_${parent}` : null, lineageThreads: ids.map(member) })
+    explorer.dataset = [
+      thread('owner', 'Audit owner', { sidebar: block(null) }),
+      thread('worker', 'Worker', { kind: 'subagent', parentNativeId: 'native-owner', sidebar: block('owner', 'owner') }),
+      thread('child', 'Grandchild', { kind: 'subagent', parentNativeId: 'native-worker', sidebar: block('worker', 'owner', 'worker') }),
+      thread('solo', 'Standalone run', { parentNativeId: 'native-owner', sidebarPlacement: 'standalone', sidebar: block(null) }),
+    ]
+    app.sessions = explorer.dataset.map((row) => ({
+      id: row.runtime.sessionId, provider: 'codex', threadId: row.nativeId, status: 'ready', turnActive: false,
+    }))
+    workerDisclosure.expanded = ['codex:native-owner', 'codex:native-worker']
     explorer.buckets = [{ id: 'bkt_audit', name: 'Machine audit', threads: [member('owner')] }]
-    const { container } = render(App)
-    expect(rail(container)).toEqual(['[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run', 'Loose run'])
-    explorer.dataset = explorer.dataset
-      .filter((row) => row.nativeId !== 'native-owner')
-      .map((row) => (row.nativeId === 'native-dash' ? { ...row, sidebar: { parentId: null } } : row))
-    app.sessions = app.sessions.filter((one) => one.threadId !== 'native-owner')
+    const first = render(App)
+    expect(rail(first.container)).toEqual(['[Machine audit]', 'Audit owner', 'Worker', 'Grandchild', 'Standalone run'])
+
+    const close = (id) => {
+      explorer.dataset = explorer.dataset
+        .filter((row) => row.nativeId !== `native-${id}`)
+        .map((row) => (row.sidebar.parentId === `nth_${id}` ? { ...row, sidebar: { ...row.sidebar, parentId: null } } : row))
+      app.sessions = app.sessions.filter((one) => one.threadId !== `native-${id}`)
+    }
+    close('owner')
     await tick()
-    expect(rail(container)).toEqual(['[Machine audit]', 'Dashboard child', 'Other run', 'Loose run'])
+    expect(rail(first.container)).toEqual(['[Machine audit]', 'Worker', 'Grandchild', 'Standalone run'])
+    close('worker')
+    await tick()
+    expect(rail(first.container)).toEqual(['[Machine audit]', 'Grandchild', 'Standalone run'])
+
+    cleanup()
+    const reloaded = render(App)
+    expect(rail(reloaded.container)).toEqual(['[Machine audit]', 'Grandchild', 'Standalone run'])
   })
 
   // A slow answer to this browser's change must not undo a newer change

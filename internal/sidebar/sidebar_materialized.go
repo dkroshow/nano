@@ -546,6 +546,7 @@ func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 	breakSidebarCycles(index)
 	for _, node := range index.order {
 		node.included = sidebarActiveInNano(node.thread)
+		node.lineageThreads = durableLineage(node, index)
 	}
 	for _, node := range index.order {
 		if node.included {
@@ -554,6 +555,22 @@ func assembleSidebarThreads(threads []Thread) []*sidebarNode {
 	}
 	buildSidebarTree(index)
 	return index.order
+}
+
+// durableLineage names a row's ancestors, root first, under the sidebar's
+// parent rules and before closed ancestors give way to open ones. A bucket
+// follows this chain, so an open subagent stays in its bucket after the
+// threads above it close.
+func durableLineage(node *sidebarNode, index *sidebarIndex) []BucketThread {
+	lineage := []BucketThread{}
+	seen := map[string]bool{node.thread.ID: true}
+	for parent := index.byID[node.parentID]; parent != nil && !seen[parent.thread.ID]; parent = index.byID[parent.parentID] {
+		seen[parent.thread.ID] = true
+		if parent.thread.NativeID != "" {
+			lineage = append([]BucketThread{{Provider: parent.thread.Provider, NativeID: parent.thread.NativeID}}, lineage...)
+		}
+	}
+	return lineage
 }
 
 // nearestIncludedAncestor is where a row sits once its inactive ancestors are

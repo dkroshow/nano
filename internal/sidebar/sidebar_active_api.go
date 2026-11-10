@@ -48,6 +48,7 @@ type sidebarBlock struct {
 	DescendantActivity        sidebarDescendantActivity `json:"descendantActivity"`
 	Sort                      sidebarSort               `json:"sort"`
 	Lineage                   string                    `json:"lineage,omitempty"`
+	LineageThreads            []BucketThread            `json:"lineageThreads"`
 }
 
 type sidebarThread struct {
@@ -77,6 +78,8 @@ type sidebarNode struct {
 	depth       int
 	activity    sidebarDescendantActivity
 	historical  int
+	// lineageThreads is the durable ancestor chain; see durableLineage.
+	lineageThreads []BucketThread
 }
 
 // SidebarRuntimeSnapshot carries one consistent runtime view for a catalog response.
@@ -783,7 +786,7 @@ func sidebarThreadFromNode(node *sidebarNode) sidebarThread {
 			ParentID: parent, RootID: node.rootID, AncestorIDs: ancestors, ChildrenIDs: children,
 			Depth: node.depth, Active: node.included,
 			HistoricalDescendantCount: node.historical, DescendantActivity: node.activity,
-			Sort: sidebarSortPrimitives(thread), Lineage: node.lineage,
+			Sort: sidebarSortPrimitives(thread), Lineage: node.lineage, LineageThreads: node.lineageThreads,
 		},
 	}
 }
