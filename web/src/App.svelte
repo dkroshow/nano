@@ -63,6 +63,7 @@
   import SidebarBucketHeader from './lib/explorer/SidebarBucketHeader.svelte'
   import { bucketDrag, drop, leaveTargets, overBucket, overRemove } from './lib/explorer/sidebar_bucket_drag.svelte.js'
   import { createBucket } from './lib/explorer/sidebar_buckets.js'
+  import { bucketCollapse } from './lib/explorer/bucket_collapse.svelte.js'
   import PanesContainer from './lib/panes/PanesContainer.svelte'
   import NewSessionModal from './lib/composer/NewSessionModal.svelte'
   import SettingsMenu from './lib/status/SettingsMenu.svelte'
@@ -215,7 +216,12 @@
       ? collapseWorkerGroups(rows, workerDisclosure.expanded, workerDisclosure.historicalExpanded)
       : rows
     return [
-      ...sectionedRows.buckets.map((bucket) => ({ kind: 'bucket', key: `bucket:${bucket.id}`, bucket, rows: collapse(bucket.rows) })),
+      // A collapsed bucket keeps its heading, count and state but no rows.
+      ...sectionedRows.buckets.map((bucket) => {
+        const rows = collapse(bucket.rows)
+        const collapsed = bucketCollapse.collapsed.includes(bucket.id)
+        return { kind: 'bucket', key: `bucket:${bucket.id}`, bucket, count: rows.length, activity: bucketActivity(bucket.rows), rows: collapsed ? [] : rows }
+      }),
       { kind: 'starred', key: 'starred', rows: collapse(sectionedRows.starred) },
       { kind: 'rest', key: 'rest', rows: collapse(sectionedRows.rest) },
     ]
@@ -265,6 +271,12 @@
       pendingCount,
     })
   })
+
+  // The liveliest state among a bucket's threads: working, then waiting on you.
+  function bucketActivity(rows) {
+    const states = new Set(rows.map((row) => row.indicator?.state))
+    return states.has('working') ? 'working' : states.has('waiting') ? 'waiting' : ''
+  }
 
   async function newBucket() {
     const name = window.prompt('New bucket name')
@@ -642,7 +654,7 @@
               ondragover={(event) => overBucket(event, section.bucket.id)}
               ondrop={(event) => void drop(event)}
             >
-              <SidebarBucketHeader bucket={section.bucket} count={section.rows.length} />
+              <SidebarBucketHeader bucket={section.bucket} count={section.count} activity={section.activity} />
               {#each section.rows as row (row.key)}
                 <CompactThreadRow {row} bucketId={section.bucket.id} />
               {/each}

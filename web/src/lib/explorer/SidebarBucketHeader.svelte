@@ -1,10 +1,13 @@
 <script>
   import { deleteBucket, renameBucket } from './sidebar_buckets.js'
   import { endDrag, startBucketDrag } from './sidebar_bucket_drag.svelte.js'
+  import { bucketCollapse, toggleBucketCollapsed } from './bucket_collapse.svelte.js'
 
   // One operator bucket's heading in the compact rail. Dragging the heading
-  // is the only thing that moves a bucket.
-  let { bucket, count = 0 } = $props()
+  // is the only thing that moves a bucket. The caret collapses the bucket;
+  // collapsed, the heading carries the liveliest state among its threads.
+  let { bucket, count = 0, activity = '' } = $props()
+  const collapsed = $derived(bucketCollapse.collapsed.includes(bucket.id))
   let busy = $state(false)
   let error = $state('')
 
@@ -45,8 +48,19 @@
   ondragend={endDrag}
 >
   <span class="sidebar-bucket-grip" aria-hidden="true">⠿</span>
-  <span class="sidebar-bucket-name">{bucket.name}</span>
+  <button
+    type="button"
+    class="sidebar-bucket-toggle"
+    aria-expanded={!collapsed}
+    aria-label="{collapsed ? 'Expand' : 'Collapse'} {bucket.name}"
+    title={collapsed ? 'Expand bucket' : 'Collapse bucket'}
+    onclick={() => toggleBucketCollapsed(bucket.id)}
+  >
+    <span class="sidebar-bucket-caret" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+    <span class="sidebar-bucket-name">{bucket.name}</span>
+  </button>
   <span class="sidebar-bucket-count">{count}</span>
+  {#if collapsed && activity}<span class="t-dot {activity}" data-testid="bucket-state" title={activity === 'working' ? 'A thread here is working' : 'A thread here needs you'}></span>{/if}
   <span class="sidebar-bucket-actions">
     <button type="button" aria-label="Rename {bucket.name}" title="Rename" disabled={busy} onclick={rename}>✎</button>
     <button type="button" aria-label="Delete {bucket.name}" title="Delete bucket" disabled={busy} onclick={remove}>×</button>
@@ -69,6 +83,23 @@
     cursor: grab;
   }
   .sidebar-bucket-grip { font-size: 14px; opacity: 0.6; }
+  .sidebar-bucket-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 26px;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+  }
+  .sidebar-bucket-toggle:hover { color: var(--text); }
+  .sidebar-bucket-caret { font-size: 14px; }
   .sidebar-bucket-name {
     overflow: hidden;
     text-overflow: ellipsis;

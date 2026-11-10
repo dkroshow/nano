@@ -92,6 +92,7 @@ function publish() {
 beforeEach(() => {
   localStorage.removeItem('nano:active-thread-view')
   localStorage.removeItem('nano:subagent-disclosure-view')
+  localStorage.removeItem('nano:sidebar-collapsed-buckets')
   vi.stubGlobal('EventSource', MockEventSource)
   serverBuckets = []
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
@@ -321,5 +322,38 @@ describe('compact sidebar buckets', () => {
     expect(fetch).toHaveBeenLastCalledWith('/api/v1/threads/nth_owner/bucket', expect.objectContaining({
       method: 'PUT', body: JSON.stringify({ bucketId: null }),
     }))
+  })
+
+  // Collapsing hides a bucket's threads but keeps its heading, count and
+  // place; the heading shows when a thread inside is working; the choice
+  // survives a reload; a thread can still be dropped into it.
+  it('collapses a bucket and keeps it in place', async () => {
+    explorer.dataset = explorer.dataset.map((row) => (row.nativeId === 'native-owner'
+      ? { ...row, runtime: { ...row.runtime, threadStatus: 'working', turnStartedAtMs: Date.now() } }
+      : row))
+    app.sessions = app.sessions.map((one) => (one.threadId === 'native-owner' ? { ...one, threadStatus: 'working', turnStartedAtMs: Date.now() } : one))
+    serverBuckets = [
+      { id: 'bkt_a', name: 'Machine audit', threads: [member('owner')] },
+      { id: 'bkt_b', name: 'Later', threads: [] },
+    ]
+    explorer.buckets = serverBuckets
+    const first = render(App)
+    expect(rail(first.container)).toEqual(['[Machine audit]', 'Audit owner', 'Dashboard child', '[Later]', 'Other run', 'Loose run'])
+    expect(first.container.querySelector('[data-testid="bucket-state"]')).toBeNull()
+
+    await fireEvent.click(first.container.querySelector('[aria-label="Collapse Machine audit"]'))
+    expect(rail(first.container)).toEqual(['[Machine audit]', '[Later]', 'Other run', 'Loose run'])
+    expect(bucketHeader(first.container, 'Machine audit').querySelector('.sidebar-bucket-count').textContent).toBe('2')
+    expect(first.container.querySelector('[data-testid="bucket-state"]')?.classList.contains('working')).toBe(true)
+
+    cleanup()
+    const reloaded = render(App)
+    expect(rail(reloaded.container)).toEqual(['[Machine audit]', '[Later]', 'Other run', 'Loose run'])
+    await dragOnto(rowOf(reloaded.container, 'Loose run'), bucketHeader(reloaded.container, 'Machine audit'))
+    await vi.waitFor(() => expect(rail(reloaded.container)).toEqual(['[Machine audit]', '[Later]', 'Other run']))
+    expect(bucketHeader(reloaded.container, 'Machine audit').querySelector('.sidebar-bucket-count').textContent).toBe('3')
+
+    await fireEvent.click(reloaded.container.querySelector('[aria-label="Expand Machine audit"]'))
+    expect(rail(reloaded.container)).toEqual(['[Machine audit]', 'Audit owner', 'Dashboard child', 'Loose run', '[Later]', 'Other run'])
   })
 })
