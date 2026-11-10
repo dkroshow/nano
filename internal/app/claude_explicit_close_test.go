@@ -65,6 +65,16 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 				} else if outcome != "disconnect" {
 					c.Reply(call, map[string]any{})
 				}
+				if outcome == "disconnect" {
+					return
+				}
+				// Returning closes the socket; on a loaded runner the client
+				// could see that close before the reply. Stay until it hangs up.
+				for {
+					if _, ok := c.Next(); !ok {
+						return
+					}
+				}
 			})
 			store := newTestStore(t)
 			attachment := hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", ShimSessionID: "exact-process"}
@@ -177,6 +187,13 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 				} else {
 					c.Reply(call, map[string]any{})
 				}
+				// Returning closes the socket; on a loaded runner the client
+				// could see that close before the reply. Stay until it hangs up.
+				for {
+					if _, ok := c.Next(); !ok {
+						return
+					}
+				}
 			})
 			s.defaults.ClaudeShimWS = shim.WSURL()
 			request := func() *httptest.ResponseRecorder {
@@ -236,6 +253,13 @@ func TestClaudeExplicitConcurrentClosesSendOneStop(t *testing.T) {
 		close(started)
 		<-finish
 		c.Reply(call, map[string]any{})
+		// Returning closes the socket; on a loaded runner the client
+		// could see that close before the reply. Stay until it hangs up.
+		for {
+			if _, ok := c.Next(); !ok {
+				return
+			}
+		}
 	})
 	s := &server{Registry: newSessionRegistry(), attachments: newTestStore(t)}
 	s.defaults.ClaudeShimWS = shim.WSURL()
