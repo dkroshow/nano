@@ -517,7 +517,14 @@ func TestParserBackfillCommitsOnlyAnUnchangedSource(t *testing.T) {
 	workerAppends := func(t *testing.T, f *parserBudgetFixture) {
 		appendTurns(t, f.path, 0, 1)
 		f.service.requestPathRefresh([]string{f.path})
-		waitForCatalogWithin(t, 30*time.Second, func() bool { return f.stored(t).Source.Size == fileSize(t, f.path) })
+		// The source row commits before the transcript rows, and the pass then
+		// re-reads the source row for the transcript step. Wait for the read
+		// offset that proves the pass finished with the file, or a later change
+		// to the row lands under that step and is mistaken for the batch's.
+		waitForCatalogWithin(t, 30*time.Second, func() bool {
+			checkpoint, exists, err := f.store.LoadTranscriptCheckpoint(f.ctx, f.threadID)
+			return err == nil && exists && checkpoint.ReadOffset == fileSize(t, f.path) && f.stored(t).Source.Size == fileSize(t, f.path)
+		})
 	}
 	for _, tc := range []struct {
 		name       string
