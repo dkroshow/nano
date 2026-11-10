@@ -61,6 +61,8 @@
   } from './lib/explorer/sidebar_validator.js'
   import CompactThreadRow from './lib/explorer/CompactThreadRow.svelte'
   import SidebarBucketHeader from './lib/explorer/SidebarBucketHeader.svelte'
+  import { bucketDrag, drop, leaveTargets, overBucket, overRemove } from './lib/explorer/sidebar_bucket_drag.svelte.js'
+  import { createBucket } from './lib/explorer/sidebar_buckets.js'
   import PanesContainer from './lib/panes/PanesContainer.svelte'
   import NewSessionModal from './lib/composer/NewSessionModal.svelte'
   import SettingsMenu from './lib/status/SettingsMenu.svelte'
@@ -263,6 +265,16 @@
       pendingCount,
     })
   })
+
+  async function newBucket() {
+    const name = window.prompt('New bucket name')
+    if (name === null || !name.trim()) return
+    try {
+      await createBucket(name)
+    } catch (error) {
+      bucketDrag.error = String(error?.message ?? error)
+    }
+  }
 
   function compactRowActive(row) {
     return (row.click?.sessionId && isActiveSession(row.click.sessionId)) ||
@@ -556,6 +568,7 @@
         <span class="sort-btn-glyph" aria-hidden="true">{allAgentsExpanded ? '▾' : '▸'}</span>
         Agents
       </button>
+      <button class="sort-btn" type="button" data-testid="new-bucket" title="Create a sidebar bucket" onclick={() => void newBucket()}>+ Bucket</button>
       <GlobalMail />
     </div>
 
@@ -602,7 +615,8 @@
         </button>
       {/if}
 
-      <div class="thread-list">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="thread-list" ondragover={leaveTargets}>
         <!-- The whole catalog: nano's attached sessions (memory rows included)
              and detached threads first, then the rest by recency — panes and
              history alike, the dot and the chips telling them apart. Operator
@@ -613,31 +627,52 @@
         {:else if explorer.sidebarBootState === 'error'}
           <div class="side-empty" role="alert">{explorer.listError || 'Active threads could not be loaded.'}</div>
         {:else if bucketSections.length || starredRows.length || restRows.length}
-          {#each bucketSections as section, index (section.key)}
-            <SidebarBucketHeader
-              bucket={section.bucket}
-              count={section.rows.length}
-              first={index === 0}
-              last={index === bucketSections.length - 1}
-            />
-            {#each section.rows as row (row.key)}
-              <CompactThreadRow {row} />
-            {/each}
+          <!-- A bucket group is one drop target: a thread dropped anywhere in
+               it joins that bucket; a bucket dropped on it lands before or
+               after it. -->
+          {#each bucketSections as section (section.key)}
+            <div
+              class="sidebar-bucket-group"
+              class:drop-into={bucketDrag.thread && bucketDrag.over?.bucketId === section.bucket.id}
+              class:drop-before={bucketDrag.bucket && bucketDrag.over?.bucketId === section.bucket.id && !bucketDrag.over.after}
+              class:drop-after={bucketDrag.bucket && bucketDrag.over?.bucketId === section.bucket.id && bucketDrag.over.after}
+              data-testid="bucket-group"
+              role="group"
+              aria-label={section.bucket.name}
+              ondragover={(event) => overBucket(event, section.bucket.id)}
+              ondrop={(event) => void drop(event)}
+            >
+              <SidebarBucketHeader bucket={section.bucket} count={section.rows.length} />
+              {#each section.rows as row (row.key)}
+                <CompactThreadRow {row} bucketId={section.bucket.id} />
+              {/each}
+            </div>
           {/each}
+          {#if bucketDrag.thread?.bucketId}
+            <div
+              class="sidebar-bucket-remove"
+              class:drop-into={bucketDrag.over?.remove}
+              data-testid="bucket-remove"
+              role="group"
+              ondragover={overRemove}
+              ondrop={(event) => void drop(event)}
+            >Drop here to remove from bucket</div>
+          {/if}
+          {#if bucketDrag.error}<div class="ifile-error" role="alert">{bucketDrag.error}</div>{/if}
           {#if bucketSections.length && (starredRows.length || restRows.length)}
             <div class="sidebar-section-divider" role="separator" data-testid="bucket-divider"></div>
           {/if}
           {#if starredRows.length}
             <div class="sidebar-section-label" data-testid="starred-section">Starred</div>
             {#each starredRows as row (row.key)}
-              <CompactThreadRow {row} />
+              <CompactThreadRow {row} bucketId={bucketSections.length ? '' : null} />
             {/each}
             {#if restRows.length}
               <div class="sidebar-section-divider" role="separator" data-testid="starred-divider"></div>
             {/if}
           {/if}
           {#each restRows as row (row.key)}
-            <CompactThreadRow {row} />
+            <CompactThreadRow {row} bucketId={bucketSections.length ? '' : null} />
           {/each}
         {:else}
           <div class="side-empty">

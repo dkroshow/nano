@@ -13,13 +13,18 @@
   import TreeBranch from './TreeBranch.svelte'
   import { workingIndicator } from './explorer_format.js'
   import { attachShownRestingThread } from './thread_resume.svelte.js'
+  import { endDrag, startThreadDrag } from './sidebar_bucket_drag.svelte.js'
 
   // One sidebar row over a projected model (lib/explorer/sidebar_projection.js): the
   // liveness indicator, title, working directory, model, activity clock, and
   // thread-actions menu. The click routes on the row's descriptor — attached sessions open live; every
   // indexed non-live row opens durable history. Close/dismiss lives in the
   // popup rather than displacing the activity clock in the rail.
-  let { row } = $props()
+  // bucketId is the bucket the row sits in ('' for none) once buckets exist,
+  // and null before; only then can a top-level row be dragged into one. A
+  // nested row follows its parent and is never dragged on its own.
+  let { row, bucketId = null } = $props()
+  const dragRef = $derived(bucketId !== null && (row.treeDepth ?? 0) === 0 ? starRequestId(row) : '')
 
   const click = $derived(row.click)
   const cwdDisplay = $derived(cwdTail(row.cwd) ?? '—')
@@ -107,6 +112,9 @@
   data-sidebar-active={onStage}
   data-sidebar-group={workerParent ?? ''}
   data-sidebar-depth={row.treeDepth ?? 0}
+  draggable={dragRef ? 'true' : undefined}
+  ondragstart={dragRef ? (event) => startThreadDrag(event, dragRef, bucketId) : undefined}
+  ondragend={dragRef ? endDrag : undefined}
 >
   {#if row.treeDepth > 0}
     <TreeBranch depth={row.treeDepth} path={row.treePath} last={row.treeLast} parent={workerParent} />

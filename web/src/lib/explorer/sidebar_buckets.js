@@ -29,13 +29,12 @@ export function deleteBucket(id) {
   return bucketRequest('DELETE', `/api/v1/sidebar/buckets/${encodeURIComponent(id)}`)
 }
 
-// moveBucket shifts one bucket a step up (-1) or down (+1).
-export function moveBucket(id, step) {
-  const ids = explorer.buckets.map((bucket) => bucket.id)
-  const from = ids.indexOf(id)
-  const to = from + step
-  if (from < 0 || to < 0 || to >= ids.length) return Promise.resolve()
-  ids.splice(to, 0, ...ids.splice(from, 1))
+// placeBucket moves one bucket to just before or after another.
+export function placeBucket(id, targetId, after = false) {
+  const ids = explorer.buckets.map((bucket) => bucket.id).filter((one) => one !== id)
+  const at = ids.indexOf(targetId)
+  if (id === targetId || at < 0 || ids.length + 1 !== explorer.buckets.length) return Promise.resolve()
+  ids.splice(after ? at + 1 : at, 0, id)
   return bucketRequest('PUT', '/api/v1/sidebar/buckets/order', { bucketIds: ids })
 }
 

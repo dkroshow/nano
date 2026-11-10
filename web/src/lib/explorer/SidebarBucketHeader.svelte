@@ -1,9 +1,10 @@
 <script>
-  import { deleteBucket, moveBucket, renameBucket } from './sidebar_buckets.js'
+  import { deleteBucket, renameBucket } from './sidebar_buckets.js'
+  import { endDrag, startBucketDrag } from './sidebar_bucket_drag.svelte.js'
 
-  // One operator bucket's heading in the compact rail. The bucket's place
-  // changes only through these arrows; nothing else reorders buckets.
-  let { bucket, first = false, last = false, count = 0 } = $props()
+  // One operator bucket's heading in the compact rail. Dragging the heading
+  // is the only thing that moves a bucket.
+  let { bucket, count = 0 } = $props()
   let busy = $state(false)
   let error = $state('')
 
@@ -32,12 +33,21 @@
   }
 </script>
 
-<div class="sidebar-bucket" data-testid="sidebar-bucket" data-bucket-id={bucket.id} title={error || null}>
+<div
+  class="sidebar-bucket"
+  data-testid="sidebar-bucket"
+  data-bucket-id={bucket.id}
+  title={error || 'Drag to move this bucket'}
+  role="heading"
+  aria-level="3"
+  draggable="true"
+  ondragstart={(event) => startBucketDrag(event, bucket.id)}
+  ondragend={endDrag}
+>
+  <span class="sidebar-bucket-grip" aria-hidden="true">⠿</span>
   <span class="sidebar-bucket-name">{bucket.name}</span>
   <span class="sidebar-bucket-count">{count}</span>
   <span class="sidebar-bucket-actions">
-    <button type="button" aria-label="Move {bucket.name} up" title="Move up" disabled={busy || first} onclick={() => void run(() => moveBucket(bucket.id, -1))}>↑</button>
-    <button type="button" aria-label="Move {bucket.name} down" title="Move down" disabled={busy || last} onclick={() => void run(() => moveBucket(bucket.id, 1))}>↓</button>
     <button type="button" aria-label="Rename {bucket.name}" title="Rename" disabled={busy} onclick={rename}>✎</button>
     <button type="button" aria-label="Delete {bucket.name}" title="Delete bucket" disabled={busy} onclick={remove}>×</button>
   </span>
@@ -49,13 +59,16 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 8px 2px;
+    min-height: 28px;
+    padding: 4px 6px 2px 4px;
     color: var(--text3);
     font-family: var(--mono);
-    font-size: 10.5px;
+    font-size: 11px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    cursor: grab;
   }
+  .sidebar-bucket-grip { font-size: 14px; opacity: 0.6; }
   .sidebar-bucket-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -72,17 +85,22 @@
   .sidebar-bucket:focus-within .sidebar-bucket-actions {
     opacity: 1;
   }
-  @media (hover: none) {
-    .sidebar-bucket-actions { opacity: 0.8; }
+  @media (hover: none), (pointer: coarse) {
+    .sidebar-bucket-actions { opacity: 1; }
   }
   .sidebar-bucket-actions button {
+    width: 26px;
+    height: 26px;
     border: 0;
+    border-radius: 4px;
     background: none;
     color: inherit;
     cursor: pointer;
-    padding: 0 3px;
-    font-size: 12px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
   }
+  .sidebar-bucket-actions button:hover { color: var(--text); background: var(--surface); }
   .sidebar-bucket-actions button:disabled {
     opacity: 0.35;
     cursor: default;
