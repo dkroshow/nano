@@ -21,10 +21,13 @@
   // indexed non-live row opens durable history. Close/dismiss lives in the
   // popup rather than displacing the activity clock in the rail.
   // bucketId is the bucket the row sits in ('' for none) once buckets exist,
-  // and null before; only then can a top-level row be dragged into one. A
-  // nested row follows its parent and is never dragged on its own.
+  // and null before; only then can a row be dragged into one. A subagent
+  // follows its parent's bucket, so it is never dragged on its own: neither
+  // when nested, nor when shown at the top because its parent closed (the
+  // server still names that parent in its lineage).
   let { row, bucketId = null } = $props()
-  const dragRef = $derived(bucketId !== null && (row.treeDepth ?? 0) === 0 ? starRequestId(row) : '')
+  const independent = $derived((row.treeDepth ?? 0) === 0 && !(row.sidebar?.lineageThreads?.length > 0))
+  const dragRef = $derived(bucketId !== null && independent ? starRequestId(row) : '')
 
   const click = $derived(row.click)
   const cwdDisplay = $derived(cwdTail(row.cwd) ?? '—')

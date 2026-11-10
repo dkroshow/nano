@@ -3,9 +3,9 @@
 // Operator buckets as the operator sees them in the compact rail: no bucket
 // leaves the rail as it was; buckets sit first in the order the operator set,
 // an empty one keeps its heading, a thread brings its subagents into its
-// bucket, a change from another device arrives on the event stream, the
-// arrows are the only thing that moves a bucket, and the thread details
-// picker puts a thread in a bucket.
+// bucket, a change from another device arrives on the event stream, dragging
+// a heading is the only thing that moves a bucket, a thread drags in and out
+// of a bucket, and the thread details picker puts a thread in a bucket.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/svelte'
 import { tick } from 'svelte'
@@ -59,16 +59,22 @@ function rail(container) {
 
 let serverBuckets
 
-// The browser's drag events, as jsdom can raise them. A drop lands before or
-// after a bucket by the pointer's height; jsdom boxes are zero-sized, so
-// clientY 0 is the top half and 1 the bottom.
+// The browser's drag events. jsdom has no DragEvent, so a pointer event
+// carries the drag's height and its dataTransfer. A drop lands before or
+// after a bucket by that height; jsdom boxes are zero-sized, so clientY 0 is
+// the top half and 1 the bottom.
 const dataTransfer = () => ({ setData() {}, effectAllowed: '', dropEffect: '' })
+function dragEvent(type, transfer, clientY = 0) {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientY })
+  Object.defineProperty(event, 'dataTransfer', { value: transfer })
+  return event
+}
 async function dragOnto(source, target, clientY = 0) {
   const transfer = dataTransfer()
-  await fireEvent.dragStart(source, { dataTransfer: transfer })
-  await fireEvent.dragOver(target, { dataTransfer: transfer, clientY })
-  await fireEvent.drop(target, { dataTransfer: transfer, clientY })
-  await fireEvent.dragEnd(source, { dataTransfer: transfer })
+  await fireEvent(source, dragEvent('dragstart', transfer))
+  await fireEvent(target, dragEvent('dragover', transfer, clientY))
+  await fireEvent(target, dragEvent('drop', transfer, clientY))
+  await fireEvent(source, dragEvent('dragend', transfer))
 }
 const bucketHeader = (container, name) => [...container.querySelectorAll('[data-testid="sidebar-bucket"]')]
   .find((node) => node.querySelector('.sidebar-bucket-name').textContent === name)
@@ -177,6 +183,12 @@ describe('compact sidebar buckets', () => {
       method: 'PUT', body: JSON.stringify({ bucketIds: ['bkt_b', 'bkt_a'] }),
     }))
     expect(rail(container)).toEqual(['[Second]', '[First]', 'Loose run', 'Audit owner', 'Dashboard child', 'Other run'])
+
+    await dragOnto(bucketHeader(container, 'Second'), bucketHeader(container, 'First').closest('[data-testid="bucket-group"]'), 1)
+    await vi.waitFor(() => expect(rail(container)[0]).toBe('[First]'))
+    expect(fetch).toHaveBeenLastCalledWith('/api/v1/sidebar/buckets/order', expect.objectContaining({
+      body: JSON.stringify({ bucketIds: ['bkt_a', 'bkt_b'] }),
+    }))
   })
 
   // A new bucket is made first and the thread assigned after. The operator
@@ -253,6 +265,10 @@ describe('compact sidebar buckets', () => {
     cleanup()
     const reloaded = render(App)
     expect(rail(reloaded.container)).toEqual(['[Machine audit]', 'Grandchild', 'Standalone run'])
+    // The survivor still follows the owner, so it offers no drag of its own;
+    // the standalone thread is its own and can be dragged.
+    expect(rowOf(reloaded.container, 'Grandchild').getAttribute('draggable')).toBeNull()
+    expect(rowOf(reloaded.container, 'Standalone run').getAttribute('draggable')).toBe('true')
   })
 
   // A slow answer to this browser's change must not undo a newer change
@@ -294,11 +310,11 @@ describe('compact sidebar buckets', () => {
     ]))
 
     const transfer = dataTransfer()
-    await fireEvent.dragStart(rowOf(container, 'Audit owner'), { dataTransfer: transfer })
+    await fireEvent(rowOf(container, 'Audit owner'), dragEvent('dragstart', transfer))
     const strip = container.querySelector('[data-testid="bucket-remove"]')
     expect(strip?.textContent).toBe('Drop here to remove from bucket')
-    await fireEvent.dragOver(strip, { dataTransfer: transfer })
-    await fireEvent.drop(strip, { dataTransfer: transfer })
+    await fireEvent(strip, dragEvent('dragover', transfer))
+    await fireEvent(strip, dragEvent('drop', transfer))
     await vi.waitFor(() => expect(rail(container)).toEqual([
       '[Machine audit]', '[Later]', 'Audit owner', 'Dashboard child', 'Other run', 'Loose run',
     ]))
