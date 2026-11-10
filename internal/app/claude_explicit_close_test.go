@@ -52,8 +52,10 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 	}
 }
 
+// The shim's not-found reply is its answer that the child is gone; a dropped
+// connection, a missing identity or an unreachable shim proves nothing.
 func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
-	for _, outcome := range []string{"success", "not_found", "disconnect", "missing_identity"} {
+	for _, outcome := range []string{"success", "not_found", "disconnect", "missing_identity", "unreachable"} {
 		t.Run(outcome, func(t *testing.T) {
 			shim := newFakeShim(t, func(c *claudeshim.Conn) {
 				call, ok := c.Next()
@@ -84,11 +86,16 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 			store.Remember(attachment)
 			s := &server{Registry: newSessionRegistry(), attachments: store}
 			s.defaults.ClaudeShimWS = shim.WSURL()
+			if outcome == "unreachable" {
+				dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+				s.defaults.ClaudeShimWS = "ws" + strings.TrimPrefix(dead.URL, "http")
+				dead.Close()
+			}
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodDelete, "/api/attachments/native-1?provider=claude", nil)
 			applicationHandler(fixtureOwners(s)).ServeHTTP(w, r)
 			_, retained := store.Get("claude", "native-1")
-			if outcome == "success" {
+			if outcome == "success" || outcome == "not_found" {
 				if w.Code != 200 || retained {
 					t.Fatalf("close = %d %s retained=%v", w.Code, w.Body, retained)
 				}
@@ -96,7 +103,7 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 				t.Fatalf("uncertain close = %d %s retained=%v", w.Code, w.Body, retained)
 			}
 			calls := shim.CallsOf(shimMethodClose)
-			if outcome != "missing_identity" {
+			if outcome != "missing_identity" && outcome != "unreachable" {
 				if len(calls) != 1 {
 					t.Fatalf("close calls=%v", calls)
 				}
@@ -144,102 +151,112 @@ func TestClaudeExplicitClosePreservesReplacement(t *testing.T) {
 	}
 }
 
+// A refused stop keeps everything for retry. The retry finishes the close
+// whether the shim acknowledges it or answers that the child is already gone.
 func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 	for _, endpoint := range []string{"close", "delete", "family", "attachment"} {
-		t.Run(endpoint, func(t *testing.T) {
-			s, store, _ := newBulkCloseTestServer(t)
-			hosted, _, err := fixtureBeginSession(store, "close-test", "hash", "claude", presentationShared)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationShared); err != nil {
-				t.Fatal(err)
-			}
-			op, _, err := fixtureBeginTurn(store, hosted.ID, "queued-action", "hash")
-			if err != nil {
-				t.Fatal(err)
-			}
-			before, _ := store.Session(hosted.ID)
-			s.queuedTurns = mustQueuedTurnStore(t)
-			fixtureTurns, openErr := prompts.OpenStore(context.Background(), s.queuedTurns.Database())
-			err = openErr
-			s.queuedTurns.BindTransactionStore(fixtureTurns)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, _, err := s.queuedTurns.TransactionStore().Submit(context.Background(), prompts.Submission{
-				ActionID: "still-queued", Provider: "claude", HostedThreadID: hosted.ID,
-				NativeThreadID: "native-1", ProviderText: "not sent", TextHash: "hash", RequestHash: "hash",
-			}); err != nil {
-				t.Fatal(err)
-			}
-			s.attachments = newTestStore(t)
-			s.attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"})
-			var reject atomic.Bool
-			reject.Store(true)
-			shim := newFakeShim(t, func(c *claudeshim.Conn) {
-				call, ok := c.Next()
-				if !ok {
-					return
+		for _, retryReply := range []string{"acknowledged", "not_found"} {
+			t.Run(endpoint+"/"+retryReply, func(t *testing.T) {
+				s, store, _ := newBulkCloseTestServer(t)
+				hosted, _, err := fixtureBeginSession(store, "close-test", "hash", "claude", presentationShared)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if reject.Load() {
-					c.ReplyError(call, -32099, "stop refused")
-				} else {
-					c.Reply(call, map[string]any{})
+				if err := store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationShared); err != nil {
+					t.Fatal(err)
 				}
-				// Returning closes the socket; on a loaded runner the client
-				// could see that close before the reply. Stay until it hangs up.
-				for {
-					if _, ok := c.Next(); !ok {
+				op, _, err := fixtureBeginTurn(store, hosted.ID, "queued-action", "hash")
+				if err != nil {
+					t.Fatal(err)
+				}
+				before, _ := store.Session(hosted.ID)
+				s.queuedTurns = mustQueuedTurnStore(t)
+				fixtureTurns, openErr := prompts.OpenStore(context.Background(), s.queuedTurns.Database())
+				err = openErr
+				s.queuedTurns.BindTransactionStore(fixtureTurns)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, _, err := s.queuedTurns.TransactionStore().Submit(context.Background(), prompts.Submission{
+					ActionID: "still-queued", Provider: "claude", HostedThreadID: hosted.ID,
+					NativeThreadID: "native-1", ProviderText: "not sent", TextHash: "hash", RequestHash: "hash",
+				}); err != nil {
+					t.Fatal(err)
+				}
+				s.attachments = newTestStore(t)
+				s.attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"})
+				var reject atomic.Bool
+				reject.Store(true)
+				shim := newFakeShim(t, func(c *claudeshim.Conn) {
+					call, ok := c.Next()
+					if !ok {
 						return
 					}
+					if reject.Load() {
+						c.ReplyError(call, -32099, "stop refused")
+					} else if retryReply == "not_found" {
+						c.ReplyError(call, shimCodeSessionNotFound, "session_not_found")
+					} else {
+						c.Reply(call, map[string]any{})
+					}
+					// Returning closes the socket; on a loaded runner the client
+					// could see that close before the reply. Stay until it hangs up.
+					for {
+						if _, ok := c.Next(); !ok {
+							return
+						}
+					}
+				})
+				s.defaults.ClaudeShimWS = shim.WSURL()
+				request := func() *httptest.ResponseRecorder {
+					w := httptest.NewRecorder()
+					method, path, body := http.MethodPost, "/api/v1/hosted-threads/"+hosted.ID+"/close", ""
+					switch endpoint {
+					case "delete":
+						method, path = http.MethodDelete, "/api/v1/hosted-threads/"+hosted.ID
+					case "family":
+						path = "/api/v1/hosted-threads/" + hosted.ID + "/family/close"
+					case "attachment":
+						method, path = http.MethodDelete, "/api/attachments/native-1?provider=claude"
+					}
+					applicationHandler(fixtureOwners(s)).ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+					return w
+				}
+				w := request()
+				if w.Code < 400 && w.Code != 207 {
+					t.Fatalf("failed stop reported success: %d %s", w.Code, w.Body)
+				}
+				after, ok := store.Session(hosted.ID)
+				if !ok || after.Status != before.Status {
+					t.Fatalf("failed stop settled session: %+v", after)
+				}
+				turn, _ := store.Turn(op.ID)
+				if turn.Status != op.Status {
+					t.Fatalf("failed stop settled operation: %+v", turn)
+				}
+				if _, ok := s.attachments.Get("claude", "native-1"); !ok {
+					t.Fatal("failed stop erased attachment")
+				}
+				if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); !ok {
+					t.Fatal("failed stop removed queued prompt")
+				}
+				reject.Store(false)
+				w = request()
+				if w.Code != 200 {
+					t.Fatalf("retry failed: %d %s", w.Code, w.Body)
+				}
+				if _, ok := s.attachments.Get("claude", "native-1"); ok {
+					t.Fatal("successful retry retained attachment")
+				}
+				if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); ok {
+					t.Fatal("successful retry left queued prompt")
+				}
+				// Delete removes the record; every other endpoint keeps it as exited.
+				if after, ok := store.Session(hosted.ID); endpoint != "delete" && (!ok || after.Status != sessionStatusExited) {
+					t.Fatalf("successful retry left session %+v", after)
 				}
 			})
-			s.defaults.ClaudeShimWS = shim.WSURL()
-			request := func() *httptest.ResponseRecorder {
-				w := httptest.NewRecorder()
-				method, path, body := http.MethodPost, "/api/v1/hosted-threads/"+hosted.ID+"/close", ""
-				switch endpoint {
-				case "delete":
-					method, path = http.MethodDelete, "/api/v1/hosted-threads/"+hosted.ID
-				case "family":
-					path = "/api/v1/hosted-threads/" + hosted.ID + "/family/close"
-				case "attachment":
-					method, path = http.MethodDelete, "/api/attachments/native-1?provider=claude"
-				}
-				applicationHandler(fixtureOwners(s)).ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
-				return w
-			}
-			w := request()
-			if w.Code < 400 && w.Code != 207 {
-				t.Fatalf("failed stop reported success: %d %s", w.Code, w.Body)
-			}
-			after, ok := store.Session(hosted.ID)
-			if !ok || after.Status != before.Status {
-				t.Fatalf("failed stop settled session: %+v", after)
-			}
-			turn, _ := store.Turn(op.ID)
-			if turn.Status != op.Status {
-				t.Fatalf("failed stop settled operation: %+v", turn)
-			}
-			if _, ok := s.attachments.Get("claude", "native-1"); !ok {
-				t.Fatal("failed stop erased attachment")
-			}
-			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); !ok {
-				t.Fatal("failed stop removed queued prompt")
-			}
-			reject.Store(false)
-			w = request()
-			if w.Code != 200 {
-				t.Fatalf("retry failed: %d %s", w.Code, w.Body)
-			}
-			if _, ok := s.attachments.Get("claude", "native-1"); ok {
-				t.Fatal("successful retry retained attachment")
-			}
-			if _, ok := s.queuedTurns.First("claude", "native-1", hosted.ID); ok {
-				t.Fatal("successful retry left queued prompt")
-			}
-		})
+		}
 	}
 }
 

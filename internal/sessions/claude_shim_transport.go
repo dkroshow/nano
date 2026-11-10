@@ -734,6 +734,10 @@ func (t *claudeShimTransport) close() error {
 }
 
 // CloseDetachedClaude uses a control socket, never an attachment or replay.
+// The shim's own not-found reply counts as stopped. The shim forgets a session
+// only by taking it to close, which always ends the child, or by restarting,
+// which takes its children with it. The resume ladder trusts the same reply
+// before it starts a replacement child.
 func CloseDetachedClaude(shimURL, shimID string) error {
 	if shimURL == "" || shimID == "" {
 		return errors.New("Claude stop unconfirmed: missing shim endpoint or exact process identity")
@@ -745,7 +749,12 @@ func CloseDetachedClaude(shimURL, shimID string) error {
 	defer client.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), claudeShimCloseTimeout)
 	defer cancel()
-	return client.Call(ctx, shimMethodClose, map[string]string{"shimSessionId": shimID}, nil, claudeShimCloseTimeout)
+	err = client.Call(ctx, shimMethodClose, map[string]string{"shimSessionId": shimID}, nil, claudeShimCloseTimeout)
+	var rpcErr *wireclaude.RPCError
+	if errors.As(err, &rpcErr) && rpcErr.Code == shimCodeSessionNotFound {
+		return nil
+	}
+	return err
 }
 
 // abandon drops a connection whose handshake failed without reporting a child
