@@ -346,6 +346,12 @@ describe('compact sidebar buckets', () => {
     expect(bucketHeader(first.container, 'Machine audit').querySelector('.sidebar-bucket-count').textContent).toBe('2')
     expect(first.container.querySelector('[data-testid="bucket-state"]')?.classList.contains('working')).toBe(true)
 
+    // A page reload starts the module afresh, so the choice must come back
+    // from browser storage, not from this page's memory.
+    vi.resetModules()
+    const fresh = await import('./lib/explorer/bucket_collapse.svelte.js')
+    expect(fresh.bucketCollapse.collapsed).toEqual(['bkt_a'])
+
     cleanup()
     const reloaded = render(App)
     expect(rail(reloaded.container)).toEqual(['[Machine audit]', '[Later]', 'Other run', 'Loose run'])
