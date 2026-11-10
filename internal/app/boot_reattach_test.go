@@ -387,9 +387,12 @@ func TestBootReattachPendingRenameDoesNotBecomeCreationName(t *testing.T) {
 		t.Fatal("boot left renamed thread detached")
 	}
 	waitForSessionStatus(t, s, sess.ID(), "ready")
-	if got, _ := catalog.ThreadNameFor(context.Background(), "claude", claudeResumeThreadID); got != "operator rename" {
-		t.Fatalf("boot bind name = %q, want pending operator rename", got)
-	}
+	// ThreadNameFor reads the derived name projection, which the catalog
+	// refreshes in the background after the bind writes the rename.
+	waitForClaude(t, "pending operator rename applied at bind", func() bool {
+		got, _ := catalog.ThreadNameFor(context.Background(), "claude", claudeResumeThreadID)
+		return got == "operator rename"
+	})
 	if got, ok := s.controlMetadata.CreationName(rec.HostedThreadID); !ok || got != "creation name" {
 		t.Fatalf("creation fact = %q, %v; pending rename must not rewrite it", got, ok)
 	}
