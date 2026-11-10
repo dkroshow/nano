@@ -268,9 +268,13 @@ export function orderSidebarRows(rows) {
 
 // Buckets come first, in the operator's order: a thread tree goes to the
 // bucket that holds its root, so subagents travel with their parent and a
-// subagent's own membership never splits it from that parent. Every bucket
-// keeps its section while empty, so its place never moves. Inside a bucket
-// rows keep the ordinary order; only what is left is sectioned by stars.
+// subagent's own membership never splits it from that parent. A root that
+// was promoted because its parent closed keeps that parent's bucket, read
+// from its durable lineage, so it never leaves the bucket on its own; a
+// thread made standalone joins a bucket only by its own membership. Every
+// bucket keeps its section while empty, so its place never moves. Inside a
+// bucket, and in what is left, rows keep the ordinary order with starred
+// rows first.
 export function sectionSidebar(rows, reorder = true, buckets = []) {
   const list = rows ?? []
   const arrange = reorder ? orderSidebarRows : arrangeVisibleHierarchy
@@ -291,14 +295,30 @@ export function sectionSidebar(rows, reorder = true, buckets = []) {
       visited.add(parent.key)
       root = parent
     }
-    const bucketRowsOf = root.nativeId ? bucketRows.get(memberOf.get(`${root.provider}:${root.nativeId}`)) : null
+    const bucketRowsOf = bucketRows.get(rootBucket(root, memberOf))
     if (bucketRowsOf) bucketRowsOf.push(row)
     else rest.push(row)
   }
   return {
-    buckets: (buckets ?? []).map((bucket) => ({ id: bucket.id, name: bucket.name, rows: arrange(bucketRows.get(bucket.id)) })),
+    buckets: (buckets ?? []).map((bucket) => {
+      const sectioned = sectionStarred(bucketRows.get(bucket.id), arrange)
+      return { id: bucket.id, name: bucket.name, rows: [...sectioned.starred, ...sectioned.rest] }
+    }),
     ...sectionStarred(rest, arrange),
   }
+}
+
+function rootBucket(root, memberOf) {
+  const own = root.nativeId ? memberOf.get(`${root.provider}:${root.nativeId}`) : undefined
+  if (own) return own
+  if (root.parentNativeId) {
+    const parent = memberOf.get(`${root.provider}:${root.parentNativeId}`)
+    if (parent) return parent
+  }
+  if (root.invokerNativeThreadId && root.sidebarPlacement !== 'standalone') {
+    return memberOf.get(`${root.invokerProvider ?? root.provider}:${root.invokerNativeThreadId}`)
+  }
+  return undefined
 }
 
 // Starred rows bring the useful part of their family into the section: their

@@ -59,6 +59,14 @@ function rail(container) {
 
 let serverBuckets
 
+// The real server answers a change and then sends the whole state on the
+// event stream; the stream is what the rail shows.
+function publish() {
+  const stream = MockEventSource.instances.findLast((es) => es.listeners.buckets)
+  queueMicrotask(() => stream?.emit('buckets', { data: JSON.stringify({ buckets: serverBuckets }) }))
+  return response({ buckets: serverBuckets })
+}
+
 beforeEach(() => {
   localStorage.removeItem('nano:active-thread-view')
   localStorage.removeItem('nano:subagent-disclosure-view')
@@ -69,7 +77,7 @@ beforeEach(() => {
     if (target === '/api/v1/sidebar/buckets/order' && init?.method === 'PUT') {
       const ids = JSON.parse(init.body).bucketIds
       serverBuckets = ids.map((id) => serverBuckets.find((bucket) => bucket.id === id))
-      return response({ buckets: serverBuckets })
+      return publish()
     }
     if (target.endsWith('/bucket') && init?.method === 'PUT') {
       const native = `native-${target.split('/').at(-2).replace('nth_', '')}`
@@ -81,7 +89,7 @@ beforeEach(() => {
           ...(bucket.id === bucketId ? [{ provider: 'codex', nativeId: native }] : []),
         ],
       }))
-      return response({ buckets: serverBuckets })
+      return publish()
     }
     if (target === '/api/sessions') return response({ sessions: app.sessions, detached: [], defaults: {} })
     return response({})
@@ -120,7 +128,8 @@ describe('compact sidebar buckets', () => {
     expect(container.querySelector('[data-testid="bucket-divider"]')).toBeNull()
   })
 
-  it('puts buckets first in the operator order, with subagents inside their parent bucket', () => {
+  it('puts buckets first in the operator order, with subagents inside their parent bucket and stars first', () => {
+    explorer.dataset = explorer.dataset.map((row) => (row.nativeId === 'native-other' ? { ...row, starred: true } : row))
     explorer.buckets = [
       { id: 'bkt_empty', name: 'Later', threads: [] },
       { id: 'bkt_audit', name: 'Machine audit', threads: [member('owner'), member('other')] },
@@ -128,7 +137,7 @@ describe('compact sidebar buckets', () => {
     const { container } = render(App)
     expect(rail(container)).toEqual([
       '[Later]',
-      '[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run',
+      '[Machine audit]', 'Other run', 'Audit owner', 'Dashboard child',
       'Loose run',
     ])
     expect(container.querySelector('[data-testid="bucket-divider"]')).not.toBeNull()
@@ -172,5 +181,42 @@ describe('compact sidebar buckets', () => {
     expect(fetch).toHaveBeenCalledWith('/api/v1/threads/nth_owner/bucket', expect.objectContaining({
       method: 'PUT', body: JSON.stringify({ bucketId: 'bkt_a' }),
     }))
+  })
+
+  // Closing a parent promotes its open subagent to a root of its own. The
+  // subagent must stay in the parent's bucket: nobody moved it.
+  it('keeps a subagent in its bucket after its parent closes', async () => {
+    explorer.buckets = [{ id: 'bkt_audit', name: 'Machine audit', threads: [member('owner')] }]
+    const { container } = render(App)
+    expect(rail(container)).toEqual(['[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run', 'Loose run'])
+    explorer.dataset = explorer.dataset
+      .filter((row) => row.nativeId !== 'native-owner')
+      .map((row) => (row.nativeId === 'native-dash' ? { ...row, sidebar: { parentId: null } } : row))
+    app.sessions = app.sessions.filter((one) => one.threadId !== 'native-owner')
+    await tick()
+    expect(rail(container)).toEqual(['[Machine audit]', 'Dashboard child', 'Other run', 'Loose run'])
+  })
+
+  // A slow answer to this browser's change must not undo a newer change
+  // another device made meanwhile.
+  it('keeps the newer state when an older change answers late', async () => {
+    serverBuckets = [{ id: 'bkt_a', name: 'First', threads: [] }, { id: 'bkt_b', name: 'Second', threads: [] }]
+    explorer.buckets = serverBuckets
+    let answer
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (String(url) === '/api/v1/sidebar/buckets/order') return new Promise((resolve) => { answer = resolve })
+      if (String(url) === '/api/sessions') return response({ sessions: app.sessions, detached: [], defaults: {} })
+      return response({})
+    })
+    const { container } = render(App)
+    await fireEvent.click(container.querySelector('[aria-label="Move Second up"]'))
+    const stream = MockEventSource.instances.findLast((es) => es.listeners.buckets)
+    stream.emit('buckets', { data: JSON.stringify({ buckets: [serverBuckets[1], serverBuckets[0]] }) })
+    stream.emit('buckets', { data: JSON.stringify({ buckets: [{ ...serverBuckets[0], name: 'Renamed elsewhere' }, serverBuckets[1]] }) })
+    await tick()
+    answer(response({ buckets: [serverBuckets[1], serverBuckets[0]] }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await tick()
+    expect(rail(container).filter((entry) => entry.startsWith('['))).toEqual(['[Renamed elsewhere]', '[Second]'])
   })
 })

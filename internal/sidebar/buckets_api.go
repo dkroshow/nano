@@ -68,15 +68,18 @@ func (s *Controller) HandleThreadBucket(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
+	// bucketId is required: an explicit null takes the thread out, and a
+	// body that forgot the field must not do the same silently.
 	var payload struct {
-		BucketID *string `json:"bucketId"`
+		BucketID json.RawMessage `json:"bucketId"`
 	}
+	var bucketID string
 	if !decodeBucketBody(w, r, &payload) {
 		return
 	}
-	bucketID := ""
-	if payload.BucketID != nil {
-		bucketID = *payload.BucketID
+	if len(payload.BucketID) == 0 || (string(payload.BucketID) != "null" && json.Unmarshal(payload.BucketID, &bucketID) != nil) {
+		httpapi.WriteError(w, http.StatusBadRequest, "invalid_bucket_request", `Request body must be {"bucketId": "<id>"} or {"bucketId": null}`)
+		return
 	}
 	s.writeBucketResult(w, http.StatusOK, func(store *Stars) (BucketState, error) {
 		return store.assignBucket(thread.Provider, thread.NativeID, bucketID)

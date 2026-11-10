@@ -89,6 +89,7 @@ func TestSidebarBucketsKeepOperatorOrderAndReachEveryBrowser(t *testing.T) {
 	}
 	call(http.MethodPatch, "/api/v1/sidebar/buckets/"+audit, `{"name":"Machine audit"}`, http.StatusOK)
 	call(http.MethodPut, "/api/v1/threads/"+threadID+"/bucket", `{"bucketId":"bkt_missing"}`, http.StatusNotFound)
+	call(http.MethodPut, "/api/v1/threads/"+threadID+"/bucket", `{}`, http.StatusBadRequest)
 	call(http.MethodPut, "/api/v1/threads/"+threadID+"/bucket", `{"bucketId":"`+release+`"}`, http.StatusOK)
 	state = call(http.MethodPut, "/api/v1/threads/"+threadID+"/bucket", `{"bucketId":"`+audit+`"}`, http.StatusOK)
 	if len(state.Buckets[0].Threads) != 0 || len(state.Buckets[1].Threads) != 1 || state.Buckets[1].Threads[0].NativeID != "native-1" {
@@ -109,6 +110,8 @@ func TestSidebarBucketsKeepOperatorOrderAndReachEveryBrowser(t *testing.T) {
 	if names(state) != "Release,Machine audit" || len(state.Buckets[1].Threads) != 1 {
 		t.Fatalf("after reopen: %+v", state.Buckets)
 	}
+	call(http.MethodPut, "/api/v1/threads/"+threadID+"/bucket", `{"bucketId":null}`, http.StatusOK)
+	call(http.MethodPut, "/api/v1/threads/"+threadID+"/bucket", `{"bucketId":"`+audit+`"}`, http.StatusOK)
 	state = call(http.MethodDelete, "/api/v1/sidebar/buckets/"+audit, "", http.StatusOK)
 	if names(state) != "Release" || len(state.Buckets[0].Threads) != 0 {
 		t.Fatalf("delete left %+v", state.Buckets)

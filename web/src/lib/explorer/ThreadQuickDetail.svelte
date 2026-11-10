@@ -118,8 +118,7 @@
           select.value = bucketId
           return
         }
-        const buckets = await createBucket(name)
-        next = buckets.at(-1)?.id ?? ''
+        next = await createBucket(name)
       }
       await setThreadBucket(editId, next)
     } catch (error) {
