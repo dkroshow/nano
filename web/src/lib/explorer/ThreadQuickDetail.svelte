@@ -15,6 +15,7 @@
   import { requestParentClose } from './descendant_close.svelte.js'
   import { requestBulkClose } from './bulk_close.svelte.js'
   import { readAPIError } from '../../api_error.js'
+  import { bucketOfThread, createBucket, setThreadBucket } from './sidebar_buckets.js'
   import { untrack } from 'svelte'
 
   const target = $derived(quickDetail.target)
@@ -62,6 +63,9 @@
   let subscriptionsSaving = $state(false)
   let subscriptionsError = $state(null)
   let invokerIdentity = $state(null)
+  let bucketSaving = $state(false)
+  let bucketError = $state(null)
+  const bucketId = $derived(bucketOfThread(explorer.buckets, provider, nativeId))
   // The live truth for the toggle label: session summary first (flips
   // immediately), then the catalog's runtime overlay.
   const presentationMode = $derived(session?.presentationMode ?? runtime?.presentationMode ?? 'shared')
@@ -99,6 +103,31 @@
     if (runtime?.status === 'resting') return 'Resting since restart · reconnects when needed'
     if (runtime?.detached) return 'Detached · durable history'
     return 'Historical · durable history'
+  }
+
+  // A thread joins at most one bucket; its subagents follow it there.
+  async function chooseBucket(event) {
+    const select = event.currentTarget
+    let next = select.value
+    bucketError = null
+    bucketSaving = true
+    try {
+      if (next === '__new') {
+        const name = window.prompt('New bucket name')
+        if (name === null || !name.trim()) {
+          select.value = bucketId
+          return
+        }
+        const buckets = await createBucket(name)
+        next = buckets.at(-1)?.id ?? ''
+      }
+      await setThreadBucket(editId, next)
+    } catch (error) {
+      bucketError = String(error?.message ?? error)
+      select.value = bucketId
+    } finally {
+      bucketSaving = false
+    }
   }
 
   function fmt(iso) {
@@ -459,6 +488,17 @@
         <dt>Status</dt><dd>{status()}</dd>
         <dt>Role</dt><dd>{assignmentUnavailable ? 'unavailable' : assignment?.assignmentRole ?? 'unassigned'}</dd>
         <dt>Sidebar placement</dt><dd>{placementLabel}</dd>
+        {#if editId && nativeId && !target?.nested}
+          <dt>Bucket</dt>
+          <dd>
+            <select aria-label="Bucket" value={bucketId} disabled={bucketSaving} onchange={(event) => void chooseBucket(event)}>
+              <option value="">No bucket</option>
+              {#each explorer.buckets as bucket (bucket.id)}<option value={bucket.id}>{bucket.name}</option>{/each}
+              <option value="__new">New bucket…</option>
+            </select>
+            {#if bucketError}<div class="ifile-error" role="alert">{bucketError}</div>{/if}
+          </dd>
+        {/if}
         {#if invokerLabel}<dt>Invoked by</dt><dd><button class="xresume-btn" onclick={openInvoker}>{invokerLabel}</button></dd>{/if}
         {#if provider === 'codex' && !session}
           <dt>cwd</dt><dd class="wrap">{currentValue('cwd')}</dd>

@@ -419,6 +419,10 @@ func (s *CatalogViews) HandleEvents(w http.ResponseWriter, r *http.Request) {
 		defer s.Audits.Unsubscribe(ch)
 		transcriptAuditEvents = ch
 	}
+	// Bucket changes ride the same stream as the whole bucket state, first on
+	// connect and then after each change, so a reconnect needs no replay.
+	bucketEvents, stopBuckets := s.Runtime.subscribeBuckets()
+	defer stopBuckets()
 	version, err := s.Catalog.CatalogVersion(r.Context())
 	if err != nil {
 		threadindex.WriteCatalogBackendError(w, err)
@@ -432,6 +436,9 @@ func (s *CatalogViews) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	writeCatalogChangeEvent(w, catalog.Change{Version: uint64(version), Refresh: true})
 	if marker, ok := s.Runtime.Marker(version); ok {
 		writeSidebarEvent(w, marker)
+	}
+	if bucketEvents != nil {
+		s.Runtime.writeBucketsEvent(w)
 	}
 	flusher.Flush()
 
@@ -475,6 +482,9 @@ func (s *CatalogViews) HandleEvents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			writeSidebarEvent(w, delta)
+			flusher.Flush()
+		case <-bucketEvents:
+			s.Runtime.writeBucketsEvent(w)
 			flusher.Flush()
 		case audit, ok := <-transcriptAuditEvents:
 			if !ok {

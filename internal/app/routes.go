@@ -197,6 +197,9 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodPut, "/api/v1/threads/{threadId}/starred", "threads.starred", func(w http.ResponseWriter, r *http.Request) {
 			s.sidebarOwner().HandleThreadStarred(w, r, r.PathValue("threadId"))
 		}},
+		{http.MethodPut, "/api/v1/threads/{threadId}/bucket", "threads.bucket", func(w http.ResponseWriter, r *http.Request) {
+			s.sidebarOwner().HandleThreadBucket(w, r, r.PathValue("threadId"))
+		}},
 		{http.MethodPut, "/api/v1/threads/{threadId}/name", "threads.name", index.HandleThreadNameSet},
 		{http.MethodDelete, "/api/v1/threads/{threadId}/name", "threads.name.clear", index.HandleThreadNameClear},
 		{http.MethodGet, "/api/v1/thread-index/status", "threadIndex.status", index.HandleCatalogIndexStatus},
@@ -205,6 +208,15 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/fleet/changes", "fleet.changes", s.sidebarOwner().HandleFleetChanges},
 		{http.MethodGet, "/api/v1/sidebar/threads", "sidebar.threads", s.sidebarOwner().HandleSidebarThreads},
 		{http.MethodGet, "/api/v1/sidebar/threads/{threadId}/history", "sidebar.threadHistory", s.sidebarOwner().HandleSidebarThreadHistory},
+		{http.MethodGet, "/api/v1/sidebar/buckets", "sidebar.buckets", s.sidebarOwner().HandleBuckets},
+		{http.MethodPost, "/api/v1/sidebar/buckets", "sidebar.buckets.create", s.sidebarOwner().HandleBucketCreate},
+		{http.MethodPut, "/api/v1/sidebar/buckets/order", "sidebar.buckets.order", s.sidebarOwner().HandleBucketOrder},
+		{http.MethodPatch, "/api/v1/sidebar/buckets/{bucketId}", "sidebar.buckets.rename", func(w http.ResponseWriter, r *http.Request) {
+			s.sidebarOwner().HandleBucketRename(w, r, r.PathValue("bucketId"))
+		}},
+		{http.MethodDelete, "/api/v1/sidebar/buckets/{bucketId}", "sidebar.buckets.delete", func(w http.ResponseWriter, r *http.Request) {
+			s.sidebarOwner().HandleBucketDelete(w, r, r.PathValue("bucketId"))
+		}},
 		{http.MethodGet, "/api/v1/pins/monitor", "pins.monitor", s.hostedPins().HandleMonitor},
 	}
 	routes = append(routes, apiDiscoveryRoutes()...)

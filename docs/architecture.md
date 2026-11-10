@@ -18,7 +18,7 @@ events, live projection and the loop that reconciles saved rows with streamed
 output. `internal/hosted` owns hosted identity, admission and control;
 `internal/hosted/store` supplies the shared durable adapters over canonical
 records. `internal/sidebar` owns the visible-thread projection, fleet changes,
-stars and browser warm streams. `internal/agentapi` adapts the existing feature
+stars, sidebar buckets and browser warm streams. `internal/agentapi` adapts the existing feature
 stores and schedulers to HTTP. App constructs these concrete owners, composes routes and listeners, and runs
 and shuts down the process. Hosted owns boot registration and restart evidence.
 
@@ -31,7 +31,7 @@ for the parsing module, the state layer and lifecycle.
 | `hosted` | Hosted identity/control APIs, admission ordering, boot registration, restart evidence and transcript pins. It reads concrete session state and the catalog; it owns no second durable record set. |
 | `hosted/store` | Shared metadata, execution and attachment adapters over the canonical thread/prompt/turn stores. Hosted and sessions use the same records. |
 | `sessions` | Live attachment state and its registry, provider wiring, lifecycle application, prompt delivery, wire ordering, live projection and saved/live reconciliation. It also owns pane queues, warm sizing and pending/resting boot attachment facts; it never imports `app` or `sidebar`. |
-| `sidebar` | Visible-thread materialization, fleet transitions, operator stars, runtime/list overlays and browser warm-stream membership. It consumes concrete catalog, session and feature owners; it does not own saved/live reconciliation. |
+| `sidebar` | Visible-thread materialization, fleet transitions, operator stars and buckets, runtime/list overlays and browser warm-stream membership. It consumes concrete catalog, session and feature owners; it does not own saved/live reconciliation. |
 | `agentapi` | HTTP and application adapters for mail, heartbeat, feedback and completion subscriptions. Their feature packages retain the stores and schedulers; the adapter imports no app or liveview implementation. |
 | `liveview` | Shared live-view values only; no loop, session state or orchestration. |
 | `providers`, `providers/{codex,claude,grok}` | The five turn operations and capability declaration of each provider adapter. Adapters take values and return normalized evidence; they never see the app. |
@@ -142,7 +142,7 @@ All durable state lives under `~/.nanod` unless `-data-dir` moves it:
 | `nano_threads.sqlite` | Hosted threads, their native-id claims, execution sessions, queued prompts and send attempts, completed turns. |
 | `thread-names.json` | Operator-assigned thread names; a flat file by decision. |
 | `mail.sqlite`, `heartbeat.sqlite` | The agent inbox; heartbeat schedules and wake budget. |
-| `thread-stars.sqlite`, `thread-pins.sqlite`, `feedback.sqlite` | Stars, transcript pins, operator feedback notes. |
+| `thread-stars.sqlite`, `thread-pins.sqlite`, `feedback.sqlite` | Stars and sidebar buckets, transcript pins, operator feedback notes. |
 | `usage-limits.sqlite` | Account-usage observations (absent with `-usage=false`). |
 | `remote-auth.sqlite` | The remote listener's password hash, browser sessions and login allow-list. |
 | `logs/server.log` | The persistent server log. |

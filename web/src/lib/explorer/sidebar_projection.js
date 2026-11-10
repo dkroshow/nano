@@ -266,13 +266,47 @@ export function orderSidebarRows(rows) {
     .flatMap((group) => group.rows)
 }
 
+// Buckets come first, in the operator's order: a thread tree goes to the
+// bucket that holds its root, so subagents travel with their parent and a
+// subagent's own membership never splits it from that parent. Every bucket
+// keeps its section while empty, so its place never moves. Inside a bucket
+// rows keep the ordinary order; only what is left is sectioned by stars.
+export function sectionSidebar(rows, reorder = true, buckets = []) {
+  const list = rows ?? []
+  const arrange = reorder ? orderSidebarRows : arrangeVisibleHierarchy
+  const memberOf = new Map()
+  for (const bucket of buckets ?? []) {
+    for (const thread of bucket.threads ?? []) memberOf.set(`${thread.provider}:${thread.nativeId}`, bucket.id)
+  }
+  const byIdentity = new Map()
+  for (const row of list) {
+    for (const key of threadIdentityKeys(row)) byIdentity.set(key, row)
+  }
+  const bucketRows = new Map((buckets ?? []).map((bucket) => [bucket.id, []]))
+  const rest = []
+  for (const row of list) {
+    let root = row
+    const visited = new Set([row.key])
+    for (let parent = resolveThreadParent(root, byIdentity); parent && !visited.has(parent.key); parent = resolveThreadParent(root, byIdentity)) {
+      visited.add(parent.key)
+      root = parent
+    }
+    const bucketRowsOf = root.nativeId ? bucketRows.get(memberOf.get(`${root.provider}:${root.nativeId}`)) : null
+    if (bucketRowsOf) bucketRowsOf.push(row)
+    else rest.push(row)
+  }
+  return {
+    buckets: (buckets ?? []).map((bucket) => ({ id: bucket.id, name: bucket.name, rows: arrange(bucketRows.get(bucket.id)) })),
+    ...sectionStarred(rest, arrange),
+  }
+}
+
 // Starred rows bring the useful part of their family into the section: their
 // ancestor path supplies lineage context, and their descendants travel with
 // them as one disclosure-owned subtree. Context rows keep their own unstarred
 // state, so only an explicit star renders filled. A Set makes overlapping
 // starred families appear once.
-export function sectionSidebar(rows, reorder = true) {
-  const list = rows ?? []
+function sectionStarred(list, arrange) {
   const byIdentity = new Map()
   const children = new Map()
   for (const row of list) {
@@ -316,7 +350,6 @@ export function sectionSidebar(rows, reorder = true) {
     }
   }
 
-  const arrange = reorder ? orderSidebarRows : arrangeVisibleHierarchy
   const starred = list
     .filter((row) => starredKeys.has(row.key))
     .map((row) => {

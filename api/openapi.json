@@ -1658,6 +1658,58 @@
         }
       }
     },
+    "/api/v1/sidebar/buckets": {
+      "get": {
+        "tags": ["Catalog"],
+        "operationId": "getSidebarBuckets",
+        "summary": "Read the operator's sidebar buckets",
+        "description": "Buckets in the operator's order, each with its member threads. The catalog event stream sends the same state as a buckets event on connect and after each change.",
+        "responses": {"200": {"description": "The whole bucket state after the change.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SidebarBucketState"}}}}, "503": {"description": "buckets_unavailable."}}
+      },
+      "post": {
+        "tags": ["Catalog"],
+        "operationId": "createSidebarBucket",
+        "summary": "Create a bucket after the existing ones",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 80}}, "additionalProperties": false}}}},
+        "responses": {"201": {"description": "The whole bucket state after the change.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SidebarBucketState"}}}}, "400": {"description": "invalid_bucket_request or invalid_bucket_name."}}
+      }
+    },
+    "/api/v1/sidebar/buckets/order": {
+      "put": {
+        "tags": ["Catalog"],
+        "operationId": "orderSidebarBuckets",
+        "summary": "Set the bucket order",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["bucketIds"], "properties": {"bucketIds": {"type": "array", "items": {"type": "string"}}}, "additionalProperties": false}}}},
+        "responses": {"200": {"description": "The whole bucket state after the change.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SidebarBucketState"}}}}, "409": {"description": "bucket_order_stale: the list must name every bucket exactly once."}}
+      }
+    },
+    "/api/v1/sidebar/buckets/{bucketId}": {
+      "parameters": [{"name": "bucketId", "in": "path", "required": true, "schema": {"type": "string"}}],
+      "patch": {
+        "tags": ["Catalog"],
+        "operationId": "renameSidebarBucket",
+        "summary": "Rename a bucket",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 80}}, "additionalProperties": false}}}},
+        "responses": {"200": {"description": "The whole bucket state after the change.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SidebarBucketState"}}}}, "400": {"description": "invalid_bucket_name."}, "404": {"description": "bucket_not_found."}}
+      },
+      "delete": {
+        "tags": ["Catalog"],
+        "operationId": "deleteSidebarBucket",
+        "summary": "Delete a bucket; its threads become ungrouped",
+        "responses": {"200": {"description": "The whole bucket state after the change.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SidebarBucketState"}}}}, "404": {"description": "bucket_not_found."}}
+      }
+    },
+    "/api/v1/threads/{threadId}/bucket": {
+      "parameters": [{"name": "threadId", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Catalog id (nth_*), native UUID, or hosted id (nht_*)."}],
+      "put": {
+        "tags": ["Catalog"],
+        "operationId": "setThreadBucket",
+        "summary": "Put a thread in a bucket, or take it out",
+        "description": "Membership is keyed by (provider, native_thread_id). A thread is in at most one bucket, and its subagents follow it in the sidebar.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["bucketId"], "properties": {"bucketId": {"type": ["string", "null"]}}, "additionalProperties": false}}}},
+        "responses": {"200": {"description": "The whole bucket state after the change.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SidebarBucketState"}}}}, "404": {"description": "thread_not_found or bucket_not_found."}, "409": {"description": "bucket_identity_missing: the thread has no provider-native id yet."}}
+      }
+    },
     "/api/v1/threads/{threadId}/starred": {
       "parameters": [
         {
@@ -2100,6 +2152,17 @@
       }
     },
     "schemas": {
+      "SidebarBucketState": {
+        "type": "object",
+        "required": ["buckets"],
+        "properties": {
+          "buckets": {"type": "array", "items": {"type": "object", "required": ["id", "name", "threads"], "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "threads": {"type": "array", "items": {"type": "object", "required": ["provider", "nativeId"], "properties": {"provider": {"type": "string"}, "nativeId": {"type": "string"}}}}
+          }}}
+        }
+      },
       "FeedbackNote": {"type":"object","required":["id","createdAt","note","thread","build","pane","browser","eventCount"],"properties":{
         "id":{"type":"string"},"createdAt":{"type":"string","format":"date-time"},"note":{"type":"string"},
         "thread":{"type":"object","properties":{"hostedThreadId":{"type":"string"},"nativeThreadId":{"type":"string"},"displayName":{"type":"string"},"provider":{"type":"string"}}},

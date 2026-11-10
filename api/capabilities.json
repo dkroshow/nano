@@ -411,6 +411,18 @@
       "path": "/api/v1/threads/{threadId}/starred"
     },
     {
+      "id": "sidebar.buckets",
+      "summary": "Read the operator's sidebar buckets in their set order, each with its member threads by provider and native id. The browser event stream sends the same state as a buckets event on connect and after every change.",
+      "method": "GET",
+      "path": "/api/v1/sidebar/buckets"
+    },
+    {
+      "id": "threads.bucket",
+      "summary": "Put a catalog thread in an operator bucket, or take it out with {\"bucketId\": null}. A thread is in at most one bucket; its subagents follow it. Bucket create, rename, delete and order are operator actions in the sidebar.",
+      "method": "PUT",
+      "path": "/api/v1/threads/{threadId}/bucket"
+    },
+    {
       "id": "hostedThreads.pins.append",
       "summary": "Append a thread-local pin anchored to the latest or an exact transcript message. No approval, status, or cleanup.",
       "method": "POST",

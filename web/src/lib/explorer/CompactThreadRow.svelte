@@ -69,6 +69,8 @@
       descendantActivity: row.subagentActivity ?? row.sidebar?.descendantActivity ?? null,
       closable: row.cls === 'nano',
       detached,
+      // A nested row follows its parent's bucket, so it offers no bucket of its own.
+      nested: (row.treeDepth ?? 0) > 0,
     })
   }
 

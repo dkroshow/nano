@@ -52,6 +52,7 @@ class ExplorerState {
   detailError = $state(null)
   refreshRequested = $state(false) // transient feedback for the manual refresh button
   link = $state({ epoch: 0, up: true }) // the catalog stream's freshness (lib/status/freshness.js railLink)
+  buckets = $state.raw([]) // operator sidebar buckets in their set order; the server's `buckets` event is the truth
 }
 
 export const explorer = new ExplorerState()
@@ -1066,6 +1067,17 @@ function onMailEvent(event) {
   if (payload) applyMailDelta(payload)
 }
 
+// Each `buckets` event carries the whole state, on connect and after every
+// change from any device, so the last one received is current.
+function onBucketsEvent(event) {
+  try {
+    const buckets = JSON.parse(event.data)?.buckets
+    if (Array.isArray(buckets)) explorer.buckets = buckets
+  } catch {
+    // a malformed event leaves the last good state
+  }
+}
+
 function onTranscriptAuditEvent(event) {
   try {
     dispatchTranscriptAuditRequest(JSON.parse(event.data))
@@ -1111,6 +1123,7 @@ function openStream() {
   source.addEventListener('runtime', onRuntimeEvent)
   source.addEventListener('fleet', onFleetEvent)
   source.addEventListener('mail', onMailEvent)
+  source.addEventListener('buckets', onBucketsEvent)
   source.addEventListener('transcript-audit', onTranscriptAuditEvent)
   source.addEventListener('error', onStreamError)
   for (const type of CONTACT_EVENTS) source.addEventListener(type, noteNanoContact)
@@ -1124,6 +1137,7 @@ function closeStream() {
   source.removeEventListener('runtime', onRuntimeEvent)
   source.removeEventListener('fleet', onFleetEvent)
   source.removeEventListener('mail', onMailEvent)
+  source.removeEventListener('buckets', onBucketsEvent)
   source.removeEventListener('transcript-audit', onTranscriptAuditEvent)
   source.removeEventListener('error', onStreamError)
   for (const type of CONTACT_EVENTS) source.removeEventListener(type, noteNanoContact)

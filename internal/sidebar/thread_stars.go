@@ -42,28 +42,8 @@ func (s *Controller) HandleThreadStarred(w http.ResponseWriter, r *http.Request,
 		httpapi.WriteError(w, http.StatusServiceUnavailable, "stars_unavailable", "Thread stars store unavailable")
 		return
 	}
-	if s.catalog == nil {
-		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
-		return
-	}
-	if rawID == "" || strings.Contains(rawID, "/") {
-		httpapi.WriteError(w, http.StatusNotFound, "thread_not_found", "Thread not found")
-		return
-	}
-	reference, err := url.PathUnescape(rawID)
-	if err != nil || strings.TrimSpace(reference) == "" {
-		httpapi.WriteError(w, http.StatusBadRequest, "invalid_thread_id", "Invalid thread id")
-		return
-	}
-	id, err := threadindex.ResolveReference(r.Context(), s.catalog, reference)
-	if err != nil {
-		threadindex.WriteThreadReferenceError(w, err)
-		return
-	}
-	saved, err := s.catalog.LoadThread(r.Context(), id)
-	thread := Thread{Thread: saved}
-	if err != nil {
-		threadindex.WriteCatalogBackendError(w, err)
+	thread, ok := s.resolveCatalogThread(w, r, rawID)
+	if !ok {
 		return
 	}
 	var payload struct {
@@ -90,4 +70,33 @@ func (s *Controller) HandleThreadStarred(w http.ResponseWriter, r *http.Request,
 	// the iPad's in-memory snapshot until a hard refresh.
 	s.PublishRuntimeDelta(true, sidebarCurrent)
 	threadindex.WriteCatalogJSON(w, http.StatusOK, thread)
+}
+
+// resolveCatalogThread loads the catalog row a thread route names, or writes
+// the error response and reports false.
+func (s *Controller) resolveCatalogThread(w http.ResponseWriter, r *http.Request, rawID string) (Thread, bool) {
+	if s.catalog == nil {
+		httpapi.WriteError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Thread catalog unavailable")
+		return Thread{}, false
+	}
+	if rawID == "" || strings.Contains(rawID, "/") {
+		httpapi.WriteError(w, http.StatusNotFound, "thread_not_found", "Thread not found")
+		return Thread{}, false
+	}
+	reference, err := url.PathUnescape(rawID)
+	if err != nil || strings.TrimSpace(reference) == "" {
+		httpapi.WriteError(w, http.StatusBadRequest, "invalid_thread_id", "Invalid thread id")
+		return Thread{}, false
+	}
+	id, err := threadindex.ResolveReference(r.Context(), s.catalog, reference)
+	if err != nil {
+		threadindex.WriteThreadReferenceError(w, err)
+		return Thread{}, false
+	}
+	saved, err := s.catalog.LoadThread(r.Context(), id)
+	if err != nil {
+		threadindex.WriteCatalogBackendError(w, err)
+		return Thread{}, false
+	}
+	return Thread{Thread: saved}, true
 }

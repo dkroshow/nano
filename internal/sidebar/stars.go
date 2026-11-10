@@ -17,12 +17,14 @@ import (
 
 const threadStarKeySep = "\x00"
 
-// Stars owns the operator-pinned thread identities and their durable database.
+// Stars owns the operator's sidebar curation and its durable database: the
+// starred thread identities, and the buckets in buckets.go.
 type Stars struct {
-	db     *sql.DB
-	mu     sync.Mutex
-	cache  map[string]bool
-	loaded bool
+	db           *sql.DB
+	mu           sync.Mutex
+	cache        map[string]bool
+	loaded       bool
+	bucketEvents bucketNudges
 }
 
 // OpenStars opens the operator-owned stars database.
@@ -45,6 +47,10 @@ func OpenStars(path string) (*Stars, error) {
 		)`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate thread stars database: %w", err)
+	}
+	if err = migrateBuckets(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate sidebar buckets: %w", err)
 	}
 	return &Stars{db: db, cache: map[string]bool{}}, nil
 }

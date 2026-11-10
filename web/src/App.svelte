@@ -60,6 +60,7 @@
     expectedExplorerSidebarRows,
   } from './lib/explorer/sidebar_validator.js'
   import CompactThreadRow from './lib/explorer/CompactThreadRow.svelte'
+  import SidebarBucketHeader from './lib/explorer/SidebarBucketHeader.svelte'
   import PanesContainer from './lib/panes/PanesContainer.svelte'
   import NewSessionModal from './lib/composer/NewSessionModal.svelte'
   import SettingsMenu from './lib/status/SettingsMenu.svelte'
@@ -206,26 +207,36 @@
   const collapsesAgentGroups = $derived(
     (filter === 'all' || filter === 'nano') && !viewIsNarrowed(explorer.view),
   )
-  const sectionedRows = $derived(sectionSidebar(backgroundView.rows, explorer.view.sort.startsWith('liveness-')))
-  const compactStarredRows = $derived(
-    collapsesAgentGroups
-      ? collapseWorkerGroups(sectionedRows.starred, workerDisclosure.expanded, workerDisclosure.historicalExpanded)
-      : sectionedRows.starred,
-  )
-  const compactRestRows = $derived(
-    collapsesAgentGroups
-      ? collapseWorkerGroups(sectionedRows.rest, workerDisclosure.expanded, workerDisclosure.historicalExpanded)
-      : sectionedRows.rest,
-  )
-  const compactRows = $derived([...compactStarredRows, ...compactRestRows])
+  const sectionedRows = $derived(sectionSidebar(backgroundView.rows, explorer.view.sort.startsWith('liveness-'), explorer.buckets))
+  const compactSections = $derived((() => {
+    const collapse = (rows) => collapsesAgentGroups
+      ? collapseWorkerGroups(rows, workerDisclosure.expanded, workerDisclosure.historicalExpanded)
+      : rows
+    return [
+      ...sectionedRows.buckets.map((bucket) => ({ kind: 'bucket', key: `bucket:${bucket.id}`, bucket, rows: collapse(bucket.rows) })),
+      { kind: 'starred', key: 'starred', rows: collapse(sectionedRows.starred) },
+      { kind: 'rest', key: 'rest', rows: collapse(sectionedRows.rest) },
+    ]
+  })())
+  const compactRows = $derived(compactSections.flatMap((section) => section.rows))
   const sidebarRows = $derived(compactRows.slice(0, renderCap))
   $effect(() => {
     void sidebarRows
     warmSetChanged()
   })
-  const visibleStarredCount = $derived(Math.min(compactStarredRows.length, sidebarRows.length))
-  const starredRows = $derived(sidebarRows.slice(0, visibleStarredCount))
-  const restRows = $derived(sidebarRows.slice(visibleStarredCount))
+  // The render cap applies to the rows in section order; bucket headings stay
+  // even when the cap leaves them empty, so their places never move.
+  const renderedSections = $derived((() => {
+    let left = sidebarRows.length
+    return compactSections.map((section) => {
+      const rows = section.rows.slice(0, left)
+      left -= rows.length
+      return { ...section, rows }
+    })
+  })())
+  const bucketSections = $derived(renderedSections.filter((section) => section.kind === 'bucket'))
+  const starredRows = $derived(renderedSections.find((section) => section.kind === 'starred').rows)
+  const restRows = $derived(renderedSections.find((section) => section.kind === 'rest').rows)
   const hasAgentGroups = $derived(workerGroupKeys(allRows).length > 0)
   const allAgentsExpanded = $derived(allWorkerGroupsExpanded(allRows, workerDisclosure.expanded))
   const globalAgentToggleEnabled = $derived(
@@ -594,13 +605,28 @@
       <div class="thread-list">
         <!-- The whole catalog: nano's attached sessions (memory rows included)
              and detached threads first, then the rest by recency — panes and
-             history alike, the dot and the chips telling them apart. Starred
-             rows occupy their own section above that order. -->
+             history alike, the dot and the chips telling them apart. Operator
+             buckets come first in the operator's order, then Starred rows,
+             each a section above that order. -->
         {#if explorer.sidebarBootState === 'loading'}
           <div class="side-empty" role="status">Loading threads…</div>
         {:else if explorer.sidebarBootState === 'error'}
           <div class="side-empty" role="alert">{explorer.listError || 'Active threads could not be loaded.'}</div>
-        {:else if starredRows.length || restRows.length}
+        {:else if bucketSections.length || starredRows.length || restRows.length}
+          {#each bucketSections as section, index (section.key)}
+            <SidebarBucketHeader
+              bucket={section.bucket}
+              count={section.rows.length}
+              first={index === 0}
+              last={index === bucketSections.length - 1}
+            />
+            {#each section.rows as row (row.key)}
+              <CompactThreadRow {row} />
+            {/each}
+          {/each}
+          {#if bucketSections.length && (starredRows.length || restRows.length)}
+            <div class="sidebar-section-divider" role="separator" data-testid="bucket-divider"></div>
+          {/if}
           {#if starredRows.length}
             <div class="sidebar-section-label" data-testid="starred-section">Starred</div>
             {#each starredRows as row (row.key)}
