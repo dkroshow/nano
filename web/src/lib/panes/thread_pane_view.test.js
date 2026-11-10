@@ -7,7 +7,7 @@
 // adoptSessionTabs cases in panes.test.js, which cover binding the session;
 // these cover what the operator then sees.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte'
+import { render, cleanup, createEvent, fireEvent, waitFor } from '@testing-library/svelte'
 import { tick } from 'svelte'
 import PanesContainer from './PanesContainer.svelte'
 import ThreadPaneView from './ThreadPaneView.svelte'
@@ -515,6 +515,50 @@ describe('thread pane view', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     expect(textarea.style.height).toBe('60px')
+  })
+
+  it('inserts a text paste from the paste event itself, and leaves a file paste to the browser', async () => {
+    // The bug: a dictation tool pastes, then restores the clipboard at once.
+    // The paste event still held the text, but the browser's own insertion
+    // read the restored, empty clipboard, so nothing landed. jsdom has no
+    // editing commands; this stand-in does what a browser's insertText does
+    // in a focused textarea: replace the selection, then fire input.
+    const inserted = []
+    document.execCommand = (command, _showUI, value) => {
+      const textarea = document.activeElement
+      if (command !== 'insertText' || textarea?.tagName !== 'TEXTAREA') return false
+      inserted.push(value)
+      textarea.setRangeText(value, textarea.selectionStart, textarea.selectionEnd, 'end')
+      textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }))
+      return true
+    }
+    try {
+      app.sessions = [liveSession()]
+      const { container } = render(ThreadPaneView, { tab: historicalTab({ sessionId: 'session-1' }) })
+      const textarea = container.querySelector('.composer textarea')
+      const send = container.querySelector('.composer button[aria-label="Send"]')
+      textarea.focus()
+      expect(send.disabled).toBe(true)
+
+      const textPaste = createEvent.paste(textarea, {
+        clipboardData: { types: ['text/plain'], getData: (type) => (type === 'text/plain' ? 'first line\r\nsecond line' : '') },
+      })
+      await fireEvent(textarea, textPaste)
+
+      expect(textPaste.defaultPrevented).toBe(true)
+      expect(textarea.value).toBe('first line\nsecond line')
+      expect(send.disabled).toBe(false)
+
+      const filePaste = createEvent.paste(textarea, {
+        clipboardData: { types: ['Files'], files: [new File(['x'], 'shot.png', { type: 'image/png' })], getData: () => '' },
+      })
+      await fireEvent(textarea, filePaste)
+
+      expect(filePaste.defaultPrevented).toBe(false)
+      expect(inserted).toEqual(['first line\nsecond line'])
+    } finally {
+      delete document.execCommand
+    }
   })
 
   it('opens a file linked by an agent message as a pane-native file tab', async () => {

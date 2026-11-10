@@ -1127,6 +1127,18 @@
     scheduleResize()
   }
 
+  // A text paste inserts the paste event's own text. The browser's default
+  // insertion reads the clipboard a second time, and a dictation tool that
+  // restores the clipboard right after pasting leaves that read empty, so the
+  // text is lost. execCommand inserts through the editing path, so Cmd+Z
+  // undoes it and the input event updates the draft. When it does not insert,
+  // and for pastes with no text, the browser's default stands.
+  function onPaste(e) {
+    const text = e.clipboardData?.getData('text/plain')
+    if (text && document.execCommand('insertText', false, text.replace(/\r\n?/g, '\n'))) e.preventDefault()
+    scheduleResize()
+  }
+
   // Drafts can arrive from per-thread storage without an input event. Keep
   // those drafts, paste operations, and viewport changes on the same sizing
   // path as ordinary typing. `visible` is tracked too: a background tab's
@@ -1869,7 +1881,7 @@
       onbeforeinput={onBeforeInput}
       onkeyup={onKeyup}
       oninput={onInput}
-      onpaste={scheduleResize}
+      onpaste={onPaste}
       class:send-blocked={sendBlocked}
     ></textarea>
     {#if liveTurnActive}
