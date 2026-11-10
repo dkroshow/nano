@@ -162,24 +162,40 @@ describe('compact sidebar buckets', () => {
     expect(rail(container)).toEqual(['[Second]', '[First]', 'Loose run', 'Audit owner', 'Dashboard child', 'Other run'])
   })
 
-  it('puts a thread in a bucket from its details', async () => {
-    serverBuckets = [{ id: 'bkt_a', name: 'Machine audit', threads: [] }]
-    explorer.buckets = serverBuckets
+  // A new bucket is made first and the thread assigned after. The operator
+  // may open another thread's details meanwhile; the thread they chose for
+  // must still be the one assigned.
+  it('creates a bucket from thread details and assigns that thread, even after the details move on', async () => {
+    let created
+    const baseFetch = vi.mocked(fetch).getMockImplementation()
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url) === '/api/v1/sidebar/buckets' && init?.method === 'POST') {
+        serverBuckets = [...serverBuckets, { id: 'bkt_new', name: JSON.parse(init.body).name, threads: [] }]
+        return new Promise((resolve) => { created = () => resolve(publish()) })
+      }
+      return baseFetch(url, init)
+    })
+    vi.spyOn(window, 'prompt').mockReturnValue('Machine audit')
     const { container } = render(App)
-    const row = [...container.querySelectorAll('[data-sidebar-row]')].find((node) => node.textContent.includes('Audit owner'))
-    await fireEvent.click(row.querySelector('.t-detail'))
+    const details = (title) => fireEvent.click([...container.querySelectorAll('[data-sidebar-row]')]
+      .find((node) => node.textContent.includes(title)).querySelector('.t-detail'))
+    await details('Audit owner')
     const picker = await vi.waitFor(() => {
       const select = document.querySelector('select[aria-label="Bucket"]')
       expect(select).not.toBeNull()
       return select
     })
-    picker.value = 'bkt_a'
+    picker.value = '__new'
     await fireEvent.change(picker)
+    await vi.waitFor(() => expect(created).toBeTypeOf('function'))
+    await fireEvent.click(document.querySelector('[aria-label="Close thread details"]'))
+    await details('Loose run')
+    created()
     await vi.waitFor(() => expect(rail(container)).toEqual([
       '[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run', 'Loose run',
     ]))
     expect(fetch).toHaveBeenCalledWith('/api/v1/threads/nth_owner/bucket', expect.objectContaining({
-      method: 'PUT', body: JSON.stringify({ bucketId: 'bkt_a' }),
+      method: 'PUT', body: JSON.stringify({ bucketId: 'bkt_new' }),
     }))
   })
 

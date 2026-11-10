@@ -107,6 +107,8 @@
 
   // A thread joins at most one bucket; its subagents follow it there.
   async function chooseBucket(event) {
+    // The popup may show another thread by the time a new bucket exists.
+    const id = editId
     const select = event.currentTarget
     let next = select.value
     bucketError = null
@@ -120,7 +122,7 @@
         }
         next = await createBucket(name)
       }
-      await setThreadBucket(editId, next)
+      await setThreadBucket(id, next)
     } catch (error) {
       bucketError = String(error?.message ?? error)
       select.value = bucketId
