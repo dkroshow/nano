@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
+	"sync"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/history"
@@ -75,7 +77,10 @@ func (s *AttachmentCoordinator) SavedOperationResult(ctx context.Context, rec th
 	}
 	var keys history.SavedUserKeys
 	sessions.AddSavedUserKey(&keys, binding, rec.Provider)
-	rows, err := s.Catalog.SavedPromptRows(ctx, rec.NativeThreadID, keys)
+	shared := rec.NativeThreadID + "\x00" + strings.Join(keys.NativeTurnIDs, "\x00") + "\x00\x00" + strings.Join(keys.NativeEventIDs, "\x00")
+	rows, err := s.savedResultRows.read(ctx, shared, func(ctx context.Context) ([]history.SavedUserRow, error) {
+		return s.Catalog.SavedPromptRows(ctx, rec.NativeThreadID, keys)
+	})
 	if err != nil {
 		return "", "", err
 	}
@@ -100,4 +105,64 @@ func (s *AttachmentCoordinator) SavedOperationResult(ctx context.Context, rec th
 		return "", "", history.ErrSavedTranscriptUnavailable
 	}
 	return text, itemID, nil
+}
+
+// sharedSavedRows lets operations that need the same saved rows share one
+// read. Every prompt steered into one Codex turn reads all of that turn's
+// user rows, so a read for each cost prompts × rows and stalled the server.
+// Reads of one key run one at a time, and a caller takes only the result of a
+// read that began after it asked: never rows older than the commit that woke
+// it. Nothing is kept once the last caller has its answer.
+type sharedSavedRows struct {
+	mu   sync.Mutex
+	keys map[string]*sharedSavedRead
+}
+
+type sharedSavedRead struct {
+	turn              chan struct{} // held by the one caller reading
+	callers           int
+	started, finished int // reads begun; the read rows and err came from
+	rows              []history.SavedUserRow
+	err               error
+}
+
+func (s *sharedSavedRows) read(ctx context.Context, key string, read func(context.Context) ([]history.SavedUserRow, error)) ([]history.SavedUserRow, error) {
+	s.mu.Lock()
+	shared := s.keys[key]
+	if shared == nil {
+		if s.keys == nil {
+			s.keys = make(map[string]*sharedSavedRead)
+		}
+		shared = &sharedSavedRead{turn: make(chan struct{}, 1)}
+		s.keys[key] = shared
+	}
+	shared.callers++
+	asked := shared.started
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if shared.callers--; shared.callers == 0 {
+			delete(s.keys, key)
+		}
+		s.mu.Unlock()
+	}()
+	select {
+	case shared.turn <- struct{}{}:
+		defer func() { <-shared.turn }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	s.mu.Lock()
+	if shared.finished > asked {
+		defer s.mu.Unlock()
+		return shared.rows, shared.err
+	}
+	shared.started++
+	mine := shared.started
+	s.mu.Unlock()
+	rows, err := read(ctx)
+	s.mu.Lock()
+	shared.rows, shared.err, shared.finished = rows, err, mine
+	s.mu.Unlock()
+	return rows, err
 }

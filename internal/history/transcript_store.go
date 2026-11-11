@@ -1428,7 +1428,10 @@ ORDER BY i.projected_seq`,
 
 // readMatchedTurnsTx finds, by native turn id, the one row of the match's
 // type in that turn. A turn id with more than one such row matches nothing.
+// Prompts steered into one turn each name it, so a turn's rows are loaded once
+// for all of its keys: loading them per key cost keys × rows.
 func readMatchedTurnsTx(ctx context.Context, tx *sql.Tx, projectionID int64, match TranscriptMatch, headSeq int64, found map[string]string) error {
+	loaded := map[string]turnEventRows{}
 	for _, key := range match.Keys {
 		turn, native := key, ""
 		switch match.Namespace {
@@ -1442,11 +1445,15 @@ func readMatchedTurnsTx(ctx context.Context, tx *sql.Tx, projectionID int64, mat
 			if match.Namespace == MatchTurnEvent {
 				carry, events = true, []string{key}
 			}
-			id, err := readTurnRowByEventsTx(ctx, tx, projectionID, turn, match.ItemType, headSeq, carry, events)
-			if err != nil {
-				return err
+			rows, ok := loaded[turn]
+			if !ok {
+				var err error
+				if rows, err = loadTurnEventRowsTx(ctx, tx, projectionID, turn, match.ItemType, headSeq); err != nil {
+					return err
+				}
+				loaded[turn] = rows
 			}
-			if id != "" {
+			if id := rows.pick(carry, events); id != "" {
 				found[key] = id
 			}
 			continue
@@ -1478,33 +1485,38 @@ func readMatchedTurnsTx(ctx context.Context, tx *sql.Tx, projectionID int64, mat
 	return nil
 }
 
-// readTurnRowByEventsTx picks one turn's row by the native event ids it is
-// proven to carry: the one row claimed by one of events when carry, otherwise
-// the one row no event claims. A claim needs a genuine user row and one of its
-// own observations scoped to this projection's provider and native thread,
-// this native turn, and the top level. Several prompts can share the turn, so
-// every row of that one turn is read before choosing; no limit comes first.
-func readTurnRowByEventsTx(ctx context.Context, tx *sql.Tx, projectionID int64, turn, itemType string, headSeq int64, carry bool, events []string) (string, error) {
+// turnEventRows is one turn's rows of one type, in the order read, each with
+// the native event ids it is proven to carry. A claim needs a genuine user row
+// and one of its own observations scoped to this projection's provider and
+// native thread, this native turn, and the top level.
+type turnEventRows struct {
+	ids    []string
+	events map[string][]string
+}
+
+// loadTurnEventRowsTx reads every row of one turn before any is chosen:
+// several prompts can share the turn, so no limit comes first.
+func loadTurnEventRowsTx(ctx context.Context, tx *sql.Tx, projectionID int64, turn, itemType string, headSeq int64) (turnEventRows, error) {
 	var provider, nativeThread string
 	if err := tx.QueryRowContext(ctx, `SELECT t.provider, t.native_thread_id FROM conversation_projections cp JOIN threads t ON t.id=cp.thread_id WHERE cp.id=?`,
 		projectionID).Scan(&provider, &nativeThread); err != nil {
-		return "", err
+		return turnEventRows{}, err
 	}
 	rows, err := tx.QueryContext(ctx, turnItemsQuery, projectionID, turn, itemType, headSeq, "", "")
 	if err != nil {
-		return "", err
+		return turnEventRows{}, err
 	}
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return "", err
+			return turnEventRows{}, err
 		}
 		ids = append(ids, id)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil || len(ids) == 0 {
-		return "", err
+		return turnEventRows{}, err
 	}
 	args := []any{projectionID}
 	for _, id := range ids {
@@ -1513,49 +1525,46 @@ func readTurnRowByEventsTx(ctx context.Context, tx *sql.Tx, projectionID int64, 
 	members := `(?` + strings.Repeat(",?", len(ids)-1) + `)`
 	observations, err := loadItemObservationMap(ctx, tx, projectionID, `WHERE m.projection_id=? AND m.item_id IN `+members, args...)
 	if err != nil {
-		return "", err
+		return turnEventRows{}, err
 	}
-	genuine := map[string]bool{}
+	loaded := turnEventRows{ids: ids, events: map[string][]string{}}
 	rows, err = tx.QueryContext(ctx, `SELECT item_id FROM conversation_items WHERE projection_id=? AND item_id IN `+members+` AND role='user' AND synthetic=0`, args...)
 	if err != nil {
-		return "", err
+		return turnEventRows{}, err
 	}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return "", err
-		}
-		genuine[id] = true
-	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return "", err
-	}
-	claimed := func(id string) bool {
-		if !genuine[id] {
-			return false
+			return turnEventRows{}, err
 		}
 		for _, observation := range observations[id] {
 			scope := observation.Scope
-			if observation.NativeEventID != "" && slices.Contains(events, observation.NativeEventID) &&
+			if observation.NativeEventID != "" &&
 				string(scope.Provider) == provider && scope.NativeThreadID != nil && *scope.NativeThreadID == nativeThread &&
 				scope.NativeTurnID != nil && *scope.NativeTurnID == turn && scope.ParentNativeID == nil && scope.NativeParentCallID == nil {
-				return true
+				loaded.events[id] = append(loaded.events[id], observation.NativeEventID)
 			}
 		}
-		return false
 	}
+	return loaded, errors.Join(rows.Err(), rows.Close())
+}
+
+// pick chooses the turn's row by the native event ids it carries: the one row
+// claimed by one of events when carry, otherwise the one row no event claims.
+func (r turnEventRows) pick(carry bool, events []string) string {
 	match := ""
-	for _, id := range ids {
-		if claimed(id) != carry {
+	for _, id := range r.ids {
+		claimed := slices.ContainsFunc(r.events[id], func(event string) bool { return slices.Contains(events, event) })
+		if claimed != carry {
 			continue
 		}
 		if match != "" {
-			return "", nil
+			return ""
 		}
 		match = id
 	}
-	return match, nil
+	return match
 }
 
 // CROSS JOIN keeps the turn first, and the unary + keeps the head bound off the

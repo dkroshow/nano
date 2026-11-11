@@ -56,7 +56,8 @@ type AttachmentSources struct {
 // AttachmentCoordinator owns boot registration and explicit attachment attempts.
 // It serializes resumes per provider and uses the same spawn path for every entry.
 type AttachmentCoordinator struct {
-	claudeOwedRuns sync.Map
+	claudeOwedRuns  sync.Map
+	savedResultRows sharedSavedRows
 	AttachmentSources
 	boot                                                                *bootReattach
 	resumeSpawnMu, resumeSpawnClaude, resumeSpawnCodex, resumeSpawnGrok sync.Mutex
