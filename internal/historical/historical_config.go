@@ -251,9 +251,9 @@ func (r *CodexResolver) resolveWorkspace(ctx context.Context, cwd string) (codex
 	if markers, ok := nonProjectRootMarkers(configResponse.Layers); ok {
 		projectRootMarkers = markers
 	}
+	instructionFallbacks := stringSliceConfig(configResponse.Config, "project_doc_fallback_filenames", nil)
 	instructions, instructionDiagnostics := resolveCodexInstructions(
-		r.codexHome, cwd, projectRootMarkers,
-		stringSliceConfig(configResponse.Config, "project_doc_fallback_filenames", nil),
+		r.codexHome, cwd, projectRootMarkers, instructionFallbacks,
 		intConfig(configResponse.Config, "project_doc_max_bytes", defaultProjectDocMaxBytes),
 	)
 	snapshot.Instructions = instructions
@@ -339,7 +339,7 @@ func (r *CodexResolver) resolveWorkspace(ctx context.Context, cwd string) (codex
 	}
 
 	snapshot.Git = observeGit(ctx, cwd)
-	snapshot.WatchPaths = codexWorkspaceWatchPaths(r.codexHome, cwd, configResponse.Layers, snapshot)
+	snapshot.WatchPaths = codexWorkspaceWatchPaths(r.codexHome, cwd, instructionFallbacks, configResponse.Layers, snapshot)
 	snapshot.Fingerprint = fingerprintPaths(snapshot.WatchPaths)
 	return snapshot, nil
 }
@@ -354,12 +354,21 @@ func (r *CodexResolver) workspaceSnapshotStale(snapshot codexWorkspaceSnapshot) 
 	return r.now().Sub(snapshot.ResolvedAt) >= r.ttl || fingerprintPaths(snapshot.WatchPaths) != snapshot.Fingerprint
 }
 
-func codexWorkspaceWatchPaths(codexHome, cwd string, layers []codexConfigLayer, snapshot codexWorkspaceSnapshot) []string {
+// The watch list names files, not the Codex home or the workspace directory:
+// a directory's time moves whenever any file is made in it, and Codex and an
+// active workspace make files all the time, so the snapshot never stayed
+// fresh. A missing path fingerprints as missing, so an instruction file or
+// project .codex that appears later still makes the snapshot stale.
+func codexWorkspaceWatchPaths(codexHome, cwd string, instructionFallbacks []string, layers []codexConfigLayer, snapshot codexWorkspaceSnapshot) []string {
 	paths := []string{
-		codexHome,
 		filepath.Join(codexHome, "config.toml"),
 		filepath.Join(codexHome, "skills"),
-		cwd,
+		filepath.Join(codexHome, "AGENTS.override.md"),
+		filepath.Join(codexHome, "AGENTS.md"),
+		filepath.Join(cwd, ".codex"),
+	}
+	for _, name := range uniqueNonempty(append([]string{"AGENTS.override.md", "AGENTS.md"}, instructionFallbacks...)) {
+		paths = append(paths, filepath.Join(cwd, name))
 	}
 	for _, layer := range layers {
 		if layer.Name.File != "" {

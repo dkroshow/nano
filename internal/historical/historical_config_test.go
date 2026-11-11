@@ -219,7 +219,10 @@ func TestHistoricalResolverLeavesProviderFilesUntouched(t *testing.T) {
 	}
 }
 
-func TestHistoricalResolverMarksPreparedSnapshotStaleWhenInputsChange(t *testing.T) {
+// An active workspace makes files all the time. When the bare workspace
+// directory was a watch path, its moving time left such a thread "stale" on
+// every detail read. Only an instruction file appearing should count.
+func TestHistoricalResolverMarksPreparedSnapshotStaleOnlyWhenInputsChange(t *testing.T) {
 	root := t.TempDir()
 	codexHome := filepath.Join(root, "codex-home")
 	cwd := filepath.Join(root, "repo")
@@ -227,10 +230,6 @@ func TestHistoricalResolverMarksPreparedSnapshotStaleWhenInputsChange(t *testing
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
-	}
-	instruction := filepath.Join(cwd, "AGENTS.md")
-	if err := os.WriteFile(instruction, []byte("first"), 0o600); err != nil {
-		t.Fatal(err)
 	}
 	store, err := history.Open(filepath.Join(root, "history.sqlite"))
 	if err != nil {
@@ -243,15 +242,23 @@ func TestHistoricalResolverMarksPreparedSnapshotStaleWhenInputsChange(t *testing
 	if got := resolver.Resolve(context.Background(), thread); got.State != "ready" {
 		t.Fatalf("initial resolution = %#v", got)
 	}
-	// The fingerprint includes resolved instruction paths, so this is stale
-	// immediately rather than waiting for the one-hour test TTL.
+
 	time.Sleep(2 * time.Millisecond)
-	if err := os.WriteFile(instruction, []byte("changed"), 0o600); err != nil {
+	for _, directory := range []string{cwd, codexHome} {
+		if err := os.WriteFile(filepath.Join(directory, "work-output.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if prepared := resolver.ResolvePrepared(context.Background(), thread); prepared.State != "ready" {
+		t.Fatalf("prepared state = %#v, want ready after an unrelated file appears", prepared)
+	}
+
+	if err := os.WriteFile(filepath.Join(cwd, "AGENTS.md"), []byte("new instructions"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	prepared := resolver.ResolvePrepared(context.Background(), thread)
 	if prepared.State != "stale" || !prepared.Stale {
-		t.Fatalf("prepared state = %#v, want stale after instruction change", prepared)
+		t.Fatalf("prepared state = %#v, want stale after an instruction file appears", prepared)
 	}
 }
 
