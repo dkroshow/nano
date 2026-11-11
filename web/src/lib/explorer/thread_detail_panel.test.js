@@ -10,6 +10,7 @@ import { render, cleanup, fireEvent } from '@testing-library/svelte'
 import ThreadDetailPanel from './thread_detail_panel.svelte'
 import { app } from '../../app.svelte.js'
 import { explorer } from '../../explorer.svelte.js'
+import { resetThreadDetailCacheForTest } from './thread_detail_cache.js'
 import { __resetDescendantCloseForTest, cancelDescendantClose, descendantClose } from './descendant_close.svelte.js'
 
 // A transient tab (no catalog id) is deliberately never fetched, so these
@@ -36,6 +37,8 @@ afterEach(() => {
   cancelDescendantClose()
   __resetDescendantCloseForTest()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
+  resetThreadDetailCacheForTest()
 })
 
 describe('thread detail panel layout', () => {
@@ -92,5 +95,35 @@ describe('thread detail panel layout', () => {
       parentSessionId: 'session-1',
     })
     expect(fetch.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+  })
+
+  // The live catalog replaces explorer.dataset and bumps catalogVersion several
+  // times a second for other threads. Each tick once refetched every open
+  // panel's detail, about 30 reads a second from two tabs. Only this thread's
+  // own row changing may revalidate it.
+  it('refetches only when its own thread changes, not on other threads\' catalog ticks', async () => {
+    vi.useFakeTimers()
+    const detailRead = vi.fn(async () => ({
+      ok: true, status: 200, json: async () => ({ id: 'thread-1', provider: 'codex', nativeId: 'native-1', metadata: {}, currentResolution: { state: 'current' } }),
+    }))
+    vi.stubGlobal('fetch', detailRead)
+    const own = { id: 'thread-1', provider: 'codex', nativeId: 'native-1', metadata: {} }
+    explorer.dataset = [own, { id: 'other', provider: 'codex', nativeId: 'other-native', metadata: {} }]
+    explorer.catalogVersion = 1
+    render(ThreadDetailPanel, { tab: transientTab({ catalogId: 'thread-1' }), standalone: true })
+    await vi.advanceTimersByTimeAsync(1000)
+    const opened = detailRead.mock.calls.length
+
+    for (let tick = 2; tick <= 11; tick += 1) {
+      explorer.dataset = [own, { id: 'other', provider: 'codex', nativeId: 'other-native', metadata: {}, updatedAt: String(tick) }]
+      explorer.catalogVersion = tick
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(detailRead).toHaveBeenCalledTimes(opened)
+
+    explorer.dataset = [{ ...own, updatedAt: 'now' }, explorer.dataset[1]]
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(detailRead).toHaveBeenCalledTimes(opened + 1)
   })
 })

@@ -252,8 +252,10 @@
   // makes this the same request Details opens with — no extra chatter, and the
   // two surfaces agree by construction.
   let detail = $state(null)
+  // A primitive, so another thread's dataset tick does not re-run the fetch.
+  const detailRowId = $derived(identity.rowId)
   $effect(() => {
-    const id = identity.rowId
+    const id = detailRowId
     if (!id) {
       detail = null
       return

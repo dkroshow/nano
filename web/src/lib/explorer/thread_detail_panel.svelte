@@ -36,7 +36,10 @@
       dataset: explorer.dataset,
     }),
   )
-  const detail = $derived(fetchedDetail ?? (identity.rowId ? cachedThreadDetail(identity.rowId) : null))
+  // identity is a new object on every dataset change, for any thread. The
+  // fetches below key on these two, which change only for this thread.
+  const rowId = $derived(identity.rowId)
+  const detail = $derived(fetchedDetail ?? (rowId ? cachedThreadDetail(rowId) : null))
   let loadState = $state('idle')
   let loadError = $state('')
 
@@ -135,7 +138,7 @@
   // never reset it — that is what made an open panel flash back through its
   // loading shape while the operator was reading it.
   $effect(() => {
-    const id = identity.rowId
+    const id = rowId
     const cached = id ? cachedThreadDetail(id) : null
     fetchedDetail = cached
     loadError = ''
@@ -172,14 +175,14 @@
     }
   })
 
-  // A catalog tick (a rename, a resume, a turn starting) revalidates in place:
-  // no spinner, no reset, and no swap unless the response actually differs.
-  // Debounced because a resume nudges the catalog in bursts, and each pass
-  // costs a full detail fetch plus a deep compare — undebounced, that work
-  // lands on the main thread often enough to be felt while typing.
+  // A change to this thread's own row (a rename, a resume, a turn starting)
+  // revalidates in place: no spinner, no reset, and no swap unless the response
+  // actually differs. Other threads' catalog ticks leave the row object as it
+  // was. Debounced because a resume nudges the row in bursts, and each pass
+  // costs a full detail fetch plus a deep compare.
   $effect(() => {
-    void explorer.catalogVersion
-    const id = identity.rowId
+    void item
+    const id = rowId
     if (!id) return
     let cancelled = false
     const timer = setTimeout(() => {
