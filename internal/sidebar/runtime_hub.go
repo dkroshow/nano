@@ -97,8 +97,9 @@ type RuntimeDelta struct {
 	// Seq is the delta's place in this process's runtime stream (the latest
 	// one merged in), so a browser can name where it left off on reconnect.
 	Seq uint64 `json:"seq,omitempty"`
-	// Rebuild tells the sidebar materializer the held set changed (Refresh
-	// does too); SidebarCurrent says a star update already applied it.
+	// Rebuild tells the sidebar materializer the held set changed: it
+	// re-reads the rows named, and only a Refresh re-reads the whole graph.
+	// SidebarCurrent says a star update already applied the change.
 	Rebuild        bool `json:"-"`
 	SidebarCurrent bool `json:"-"`
 }

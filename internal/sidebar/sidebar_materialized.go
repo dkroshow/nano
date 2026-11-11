@@ -640,8 +640,8 @@ func pageSidebarHistory(nodes []*sidebarNode, parentRef string, cursor *history.
 // rebuild reads the whole sidebar graph from SQLite (seconds of CPU on a large
 // catalog), and in a busy spell catalog bursts past the hub's id limit turned
 // into back-to-back rebuilds. Runtime refreshes stay immediate: they change
-// session identity, which the sidebar must show at once. Row repairs and
-// runtime deltas are not paced.
+// session identity, which the sidebar must show at once. Row repairs, runtime
+// patches and runtime deltas are not paced.
 const sidebarRebuildMinInterval = 5 * time.Second
 
 // sidebarRebuildPacer turns full-rebuild requests into at most one rebuild per
@@ -753,17 +753,92 @@ func (s *Controller) StartSidebarMaterializer(ctx context.Context, now time.Time
 					runtimeEvents = nil
 					continue
 				}
-				// A refresh Marker may carry no rows, so it is never applied as
+				// A refresh marker may carry no rows, so it is never applied as
 				// a snapshot; the rebuild reads the runtime state itself.
-				if delta.SidebarCurrent || !delta.Rebuild && !delta.Refresh {
+				switch {
+				case delta.SidebarCurrent || !delta.Rebuild && !delta.Refresh:
 					s.applyRuntimeDelta(delta)
-				} else {
+				case delta.Refresh || !s.patchSidebarRuntime(ctx, delta):
 					rebuild("runtime")
 				}
 			}
 		}
 	}()
 	return err
+}
+
+// patchSidebarRuntime applies a change to the threads Nano holds (a session
+// started, bound or closed; a thread attached or detached) by re-reading only
+// the rows the delta names and recomputing the memory rows. These changes come
+// with every session start and close, and a full graph read costs seconds of
+// CPU on a busy fleet. It reports false when only a full rebuild is correct: a read failed, or a row
+// now has an ancestor the sidebar has not loaded.
+func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta) bool {
+	source, err := s.sidebarGraphCatalog()
+	if err != nil {
+		return false
+	}
+	keys := make([]history.SidebarGraphKey, 0, len(delta.Rows))
+	for _, row := range delta.Rows {
+		keys = append(keys, history.SidebarGraphKey{Provider: history.Provider(row.Provider), NativeID: row.NativeID})
+	}
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+	s.mu.RLock()
+	if !s.ready {
+		s.mu.RUnlock()
+		return false
+	}
+	previous := s.all
+	query, version := s.defaultQuery, s.version
+	s.mu.RUnlock()
+	var graph history.SidebarGraph
+	if len(keys) > 0 {
+		if graph, err = source.ListSidebarGraph(ctx, history.SidebarGraphParams{Extra: keys, OnlyExtra: true}); err != nil {
+			log.Printf("sidebar runtime patch: %v", err)
+			return false
+		}
+	}
+	// Memory rows stand in for held threads the catalog lacks; they are
+	// recomputed whole, so a closed session's row goes and a new one comes.
+	all := make([]Thread, 0, len(previous))
+	for _, thread := range previous {
+		if !thread.Transient {
+			all = append(all, thread)
+		}
+	}
+	runtime := s.SidebarRuntimeSnapshot()
+	rows := s.graphRowsToThreads(graph.Rows, time.Now())
+	rows = append(rows, s.memorySidebarThreadRows(append(all, rows...), runtime.Summaries)...)
+	s.ComposeCatalogThreads(ctx, rows, runtime, true)
+	positions := make(map[string]int, len(all))
+	for i := range all {
+		positions[all[i].ID] = i
+	}
+	for _, row := range rows {
+		if index, ok := positions[row.ID]; ok {
+			all[index] = row
+			continue
+		}
+		positions[row.ID] = len(all)
+		all = append(all, row)
+	}
+	if missing := s.missingSidebarParents(all); len(missing) > 0 {
+		ancestors, err := source.ListSidebarGraph(ctx, history.SidebarGraphParams{Extra: missing, OnlyExtra: true})
+		if err != nil {
+			log.Printf("sidebar runtime patch: %v", err)
+			return false
+		}
+		for _, row := range ancestors.Rows {
+			if _, loaded := positions[row.Thread.ID]; !loaded {
+				return false
+			}
+		}
+	}
+	version = max(version, threadindex.CatalogVersion(graph.CatalogVersion))
+	active, nodes := projectSidebar(all, query, version)
+	s.replace(all, query, active, nodes, version)
+	return true
 }
 
 // repairSidebarCatalogRows re-reads only the named rows. It reports false when

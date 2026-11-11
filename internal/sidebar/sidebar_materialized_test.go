@@ -206,6 +206,33 @@ func TestSidebarNativeBindShowsAtOnce(t *testing.T) {
 	}
 }
 
+// Every session start, bind or close re-read the whole sidebar graph, about
+// 1,300 reads of 1-3s each in one day of a busy fleet. Attaching an old thread
+// the sidebar had not loaded must show its row without a full read.
+// Boundary: the materializer's handling of a held-set runtime delta.
+func TestSidebarAttachPatchesRowWithoutFullRebuild(t *testing.T) {
+	s, c := startSidebarFixture(t)
+	s.runtimeDeltaSnapshot()
+	events := s.Subscribe()
+	defer s.Unsubscribe(events)
+	before := c.reads()
+
+	s.RegisterSession(memorySession(t, "sess-pane", "codex", "pane-old", "ready", "/w/pane", "gpt-5.6-sol", time.Now()))
+	s.PublishRuntimeDelta(false, false)
+	select {
+	case <-events:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no sidebar update after the attach")
+	}
+	row, ok := activeSidebarRow(t, s, func(row sidebarThread) bool { return row.NativeID == "pane-old" })
+	if !ok || row.Runtime == nil || !row.Runtime.Attached {
+		t.Fatalf("attached thread missing or not attached: present=%v runtime=%+v", ok, row.Runtime)
+	}
+	if got := c.reads() - before; got != 0 {
+		t.Fatalf("an attach caused %d full sidebar rebuilds, want 0", got)
+	}
+}
+
 // A rebuild and a runtime delta stamped metadataRevision differently, so each
 // rebuild republished every held row and the next delta flipped them all back.
 // A rebuild that changes nothing publishes nothing, and keeps the delta's revision on the row.
