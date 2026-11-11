@@ -44,6 +44,10 @@ class ExplorerState {
   listState = $state('idle') // idle | loading | error
   listError = $state(null)
   catalogVersion = $state(null) // version the current dataset was fetched at
+  // The newest change that names threads, a catalog event or a local write;
+  // threadIds null means any thread. It reaches a view of a thread that has
+  // no dataset row to change.
+  threadChange = $state.raw(null)
   index = $state(null) // GET /thread-index/status payload
   indexError = $state(null) // { op: 'status' | 'refresh', message } — which operation failed
   selectedId = $state(null)
@@ -568,6 +572,7 @@ export async function clearThreadName(id) {
 // clear). The SSE refetch reconciles the rest of the dataset shortly after.
 function patchThreadName(id, record) {
   const patch = (row) => ({ ...row, name: record })
+  explorer.threadChange = { threadIds: [id] }
   patchStoredRows([id], patch)
   const idx = explorer.dataset.findIndex((item) => item.id === id)
   if (idx >= 0) {
@@ -916,8 +921,10 @@ function onCatalogEvent(event) {
   // The event already carries the exact repair instruction. Refresh the status
   // strip without turning its same version back into a full-window reload.
   fetchStatus(false)
-  // and follow the open transcripts of the threads it names
-  nudgeOpenTranscript(payload?.refresh || !payload?.threadIds?.length ? null : payload.threadIds)
+  // and follow the open transcripts and details of the threads it names
+  const named = payload?.refresh || !payload?.threadIds?.length ? null : payload.threadIds
+  explorer.threadChange = { threadIds: named }
+  nudgeOpenTranscript(named)
 }
 
 // The active sidebar follows the server's materialized state by `sidebar`

@@ -44,6 +44,13 @@
   let loadError = $state('')
 
   const item = $derived(identity.row)
+  // A thread outside the dataset (an old one opened from search) has no row
+  // to change, so the newest change that names it stands in for the row.
+  const namedChange = $derived(
+    !item && rowId && (explorer.threadChange?.threadIds?.includes(rowId) ?? Boolean(explorer.threadChange))
+      ? explorer.threadChange
+      : null,
+  )
   const liveSession = $derived(session ? untrack(() => getSessionStore(session.id)) : null)
   // The list receives name changes and runtime nudges before a detail fetch is
   // repeated. Prefer that fresh name while retaining the loaded source detail.
@@ -182,6 +189,7 @@
   // costs a full detail fetch plus a deep compare.
   $effect(() => {
     void item
+    void namedChange
     const id = rowId
     if (!id) return
     let cancelled = false

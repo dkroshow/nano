@@ -34,6 +34,7 @@ afterEach(() => {
   cleanup()
   app.sessions = []
   explorer.dataset = []
+  explorer.threadChange = null
   cancelDescendantClose()
   __resetDescendantCloseForTest()
   vi.unstubAllGlobals()
@@ -125,5 +126,36 @@ describe('thread detail panel layout', () => {
     explorer.dataset = [{ ...own, updatedAt: 'now' }, explorer.dataset[1]]
     await vi.advanceTimersByTimeAsync(1000)
     expect(detailRead).toHaveBeenCalledTimes(opened + 1)
+  })
+
+  // Caught in review: a thread outside the dataset (an old one opened from
+  // search) has no row to change, so a rename saved from its own Details
+  // kept showing the old title. The change that names it must refresh it,
+  // and a change that names another thread must not.
+  it('shows a rename of a thread that is not in the dataset', async () => {
+    vi.useFakeTimers()
+    let named = null
+    const calls = vi.fn(async (_url, options) => {
+      if (options?.method === 'PUT') {
+        named = { value: JSON.parse(options.body).name }
+        return { ok: true, status: 200, json: async () => ({ name: named }) }
+      }
+      return { ok: true, status: 200, json: async () => ({ id: 'old-thread', provider: 'codex', nativeId: 'old-native', title: 'Old title', name: named, metadata: {}, currentResolution: { state: 'ready' } }) }
+    })
+    vi.stubGlobal('fetch', calls)
+    explorer.dataset = [{ id: 'other', provider: 'codex', nativeId: 'other-native', metadata: {} }]
+    const view = render(ThreadDetailPanel, { tab: transientTab({ catalogId: 'old-thread', nativeId: 'old-native' }), standalone: true })
+    await vi.advanceTimersByTimeAsync(1000)
+    const opened = calls.mock.calls.length
+
+    explorer.threadChange = { threadIds: ['other'] }
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(calls).toHaveBeenCalledTimes(opened)
+
+    await fireEvent.click(view.getByRole('button', { name: 'Rename thread' }))
+    await fireEvent.input(view.getByRole('textbox', { name: 'Rename thread' }), { target: { value: 'New name' } })
+    await fireEvent.keyDown(view.getByRole('textbox', { name: 'Rename thread' }), { key: 'Enter' })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(view.getByRole('button', { name: 'Rename thread' }).textContent).toBe('New name')
   })
 })
