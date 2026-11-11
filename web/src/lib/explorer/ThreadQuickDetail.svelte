@@ -449,6 +449,18 @@
     })
   })
 
+  // The bucket picker belongs to the thread it was opened for. Another thread,
+  // or a closed popup, starts without it; a request already sent keeps the
+  // thread it captured.
+  $effect(() => {
+    void target
+    untrack(() => {
+      bucketPicking = false
+      newBucketName = ''
+      bucketError = null
+    })
+  })
+
   // The compact list carries only source health. Fetch the popup's one primary
   // source path from the canonical detail endpoint; never use it for a mem_*
   // transient row, which intentionally has no durable detail resource.
@@ -550,7 +562,7 @@
           {#if roleError}<div class="ifile-error">{roleError}</div>{/if}
         </section>
       {/if}
-      {#if bucketPicking}
+      {#if canBucket && bucketPicking}
         <section class="quick-detail-bucket-picker" aria-label="Add to bucket">
           <p>{bucketName ? `In ${bucketName}. Move it to:` : 'Add this thread to:'}</p>
           <div class="quick-detail-bucket-list">

@@ -239,6 +239,16 @@ describe('compact sidebar buckets', () => {
       '[Later]', 'Loose run', '[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run',
     ]))
     expect(await button('Change bucket')).toBeTruthy()
+
+    // A picker left open does not follow the popup to another thread, and a
+    // subagent, which follows its parent, is offered no bucket at all.
+    await fireEvent.click(await button('Change bucket'))
+    expect(document.querySelector('[aria-label="Add to bucket"]')).not.toBeNull()
+    await fireEvent.click(document.querySelector('[aria-label="Close thread details"]'))
+    await details('Dashboard child')
+    await button('Open in pane')
+    expect(document.querySelector('[aria-label="Add to bucket"]')).toBeNull()
+    expect([...document.querySelectorAll('.quick-detail button')].some((node) => /bucket/i.test(node.textContent))).toBe(false)
   })
 
   // Closing a parent promotes its open subagent to a root of its own; the
