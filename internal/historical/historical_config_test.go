@@ -221,44 +221,74 @@ func TestHistoricalResolverLeavesProviderFilesUntouched(t *testing.T) {
 
 // An active workspace makes files all the time. When the bare workspace
 // directory was a watch path, its moving time left such a thread "stale" on
-// every detail read. Only an instruction file appearing should count.
+// every detail read. Only an input changing should count: an instruction file
+// or a project root marker appearing. A marker that exists is itself a busy
+// directory, so only its presence counts.
 func TestHistoricalResolverMarksPreparedSnapshotStaleOnlyWhenInputsChange(t *testing.T) {
-	root := t.TempDir()
-	codexHome := filepath.Join(root, "codex-home")
-	cwd := filepath.Join(root, "repo")
-	for _, directory := range []string{codexHome, filepath.Join(cwd, ".git")} {
-		if err := os.MkdirAll(directory, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	for name, change := range map[string]func(t *testing.T, cwd string){
+		"an instruction file appears": func(t *testing.T, cwd string) {
+			if err := os.WriteFile(filepath.Join(cwd, "AGENTS.md"), []byte("new instructions"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		// Caught in review: a marker in the workspace makes it the project
+		// root, so a parent's instructions stop applying.
+		"a project root marker appears": func(t *testing.T, cwd string) {
+			if err := os.Mkdir(filepath.Join(cwd, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			codexHome := filepath.Join(root, "codex-home")
+			repo := filepath.Join(root, "repo")
+			cwd := filepath.Join(repo, "child")
+			for _, directory := range []string{codexHome, filepath.Join(repo, ".git"), cwd} {
+				if err := os.MkdirAll(directory, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			store, err := history.Open(filepath.Join(root, "history.sqlite"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			resolver := NewCodexResolver(&fakePassiveCodex{}, store, codexHome)
+			resolver.ttl = time.Hour
+			thread := testCodexCatalogThread(cwd, "recorded-model")
+			if got := resolver.Resolve(context.Background(), thread); got.State != "ready" {
+				t.Fatalf("initial resolution = %#v", got)
+			}
+
+			time.Sleep(2 * time.Millisecond)
+			for _, directory := range []string{cwd, codexHome} {
+				if err := os.WriteFile(filepath.Join(directory, "work-output.json"), []byte("{}"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if prepared := resolver.ResolvePrepared(context.Background(), thread); prepared.State != "ready" {
+				t.Fatalf("prepared state = %#v, want ready after an unrelated file appears", prepared)
+			}
+
+			change(t, cwd)
+			prepared := resolver.ResolvePrepared(context.Background(), thread)
+			if prepared.State != "stale" || !prepared.Stale {
+				t.Fatalf("prepared state = %#v, want stale", prepared)
+			}
+		})
 	}
-	store, err := history.Open(filepath.Join(root, "history.sqlite"))
-	if err != nil {
+	marker := filepath.Join(t.TempDir(), ".git")
+	if err := os.Mkdir(marker, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	resolver := NewCodexResolver(&fakePassiveCodex{}, store, codexHome)
-	resolver.ttl = time.Hour
-	thread := testCodexCatalogThread(cwd, "recorded-model")
-	if got := resolver.Resolve(context.Background(), thread); got.State != "ready" {
-		t.Fatalf("initial resolution = %#v", got)
-	}
-
+	before := fingerprintPaths(nil, marker)
 	time.Sleep(2 * time.Millisecond)
-	for _, directory := range []string{cwd, codexHome} {
-		if err := os.WriteFile(filepath.Join(directory, "work-output.json"), []byte("{}"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if prepared := resolver.ResolvePrepared(context.Background(), thread); prepared.State != "ready" {
-		t.Fatalf("prepared state = %#v, want ready after an unrelated file appears", prepared)
-	}
-
-	if err := os.WriteFile(filepath.Join(cwd, "AGENTS.md"), []byte("new instructions"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(marker, "index.lock"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	prepared := resolver.ResolvePrepared(context.Background(), thread)
-	if prepared.State != "stale" || !prepared.Stale {
-		t.Fatalf("prepared state = %#v, want stale after an instruction file appears", prepared)
+	if fingerprintPaths(nil, marker) != before {
+		t.Fatal("a file made inside an existing root marker changed the fingerprint")
 	}
 }
 

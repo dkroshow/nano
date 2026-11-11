@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -54,6 +55,7 @@ type codexWorkspaceSnapshot struct {
 	TargetCWD          string
 	Fingerprint        string
 	WatchPaths         []string
+	RootMarkerPaths    []string
 	Config             map[string]json.RawMessage
 	Instructions       []resolvedInstructionSource
 	Skills             []resolvedSkill
@@ -67,6 +69,7 @@ type codexWorkspaceSnapshot struct {
 type persistedWorkspaceSnapshot struct {
 	Fingerprint        string                      `json:"fingerprint"`
 	WatchPaths         []string                    `json:"watchPaths"`
+	RootMarkerPaths    []string                    `json:"rootMarkerPaths,omitempty"`
 	Config             map[string]json.RawMessage  `json:"config"`
 	Instructions       []resolvedInstructionSource `json:"instructions"`
 	Skills             []resolvedSkill             `json:"skills"`
@@ -340,7 +343,12 @@ func (r *CodexResolver) resolveWorkspace(ctx context.Context, cwd string) (codex
 
 	snapshot.Git = observeGit(ctx, cwd)
 	snapshot.WatchPaths = codexWorkspaceWatchPaths(r.codexHome, cwd, instructionFallbacks, configResponse.Layers, snapshot)
-	snapshot.Fingerprint = fingerprintPaths(snapshot.WatchPaths)
+	// A root marker appearing in the workspace moves the project root, and
+	// with it the instruction files that apply.
+	for _, marker := range projectRootMarkers {
+		snapshot.RootMarkerPaths = append(snapshot.RootMarkerPaths, filepath.Join(cwd, marker))
+	}
+	snapshot.Fingerprint = fingerprintPaths(snapshot.WatchPaths, snapshot.RootMarkerPaths...)
 	return snapshot, nil
 }
 
@@ -351,7 +359,7 @@ func (r *CodexResolver) workspaceSnapshotStale(snapshot codexWorkspaceSnapshot) 
 	if snapshot.Fingerprint == "" || len(snapshot.WatchPaths) == 0 {
 		return true // cached rows from before fingerprints are safely refreshed.
 	}
-	return r.now().Sub(snapshot.ResolvedAt) >= r.ttl || fingerprintPaths(snapshot.WatchPaths) != snapshot.Fingerprint
+	return r.now().Sub(snapshot.ResolvedAt) >= r.ttl || fingerprintPaths(snapshot.WatchPaths, snapshot.RootMarkerPaths...) != snapshot.Fingerprint
 }
 
 // The watch list names files, not the Codex home or the workspace directory:
@@ -386,10 +394,20 @@ func codexWorkspaceWatchPaths(codexHome, cwd string, instructionFallbacks []stri
 	return uniqueNonempty(paths)
 }
 
-func fingerprintPaths(paths []string) string {
+// fingerprintPaths hashes each path's kind, size and modification time, and
+// for each marker only whether it exists: a marker such as .git is a busy
+// directory, and only its presence decides the project root.
+func fingerprintPaths(paths []string, markers ...string) string {
 	ordered := append([]string(nil), paths...)
 	sort.Strings(ordered)
 	hash := sha256.New()
+	for _, marker := range slices.Sorted(slices.Values(markers)) {
+		if filemodel.Protected(marker) {
+			continue
+		}
+		_, err := os.Lstat(marker)
+		_, _ = hash.Write([]byte(fmt.Sprintf("%s\x00present:%t\x00", marker, err == nil)))
+	}
 	for _, path := range ordered {
 		_, _ = hash.Write([]byte(path))
 		_, _ = hash.Write([]byte{0})
@@ -804,7 +822,7 @@ func (r *CodexResolver) loadPersisted(ctx context.Context, cwd string) (codexWor
 	}
 	return codexWorkspaceSnapshot{
 		ResolvedAt: row.ResolvedAt, TargetCWD: row.TargetCWD,
-		Fingerprint: payload.Fingerprint, WatchPaths: payload.WatchPaths, Config: payload.Config,
+		Fingerprint: payload.Fingerprint, WatchPaths: payload.WatchPaths, RootMarkerPaths: payload.RootMarkerPaths, Config: payload.Config,
 		Instructions: payload.Instructions, Skills: payload.Skills, MCPServers: payload.MCPServers,
 		PermissionProfiles: payload.PermissionProfiles, Models: payload.Models,
 		Git: payload.Git, Diagnostics: payload.Diagnostics,
@@ -813,7 +831,7 @@ func (r *CodexResolver) loadPersisted(ctx context.Context, cwd string) (codexWor
 
 func (r *CodexResolver) savePersisted(ctx context.Context, snapshot codexWorkspaceSnapshot) error {
 	payload, err := json.Marshal(persistedWorkspaceSnapshot{
-		Fingerprint: snapshot.Fingerprint, WatchPaths: snapshot.WatchPaths,
+		Fingerprint: snapshot.Fingerprint, WatchPaths: snapshot.WatchPaths, RootMarkerPaths: snapshot.RootMarkerPaths,
 		Config: snapshot.Config, Instructions: snapshot.Instructions, Skills: snapshot.Skills,
 		MCPServers: snapshot.MCPServers, PermissionProfiles: snapshot.PermissionProfiles,
 		Models: snapshot.Models, Git: snapshot.Git, Diagnostics: snapshot.Diagnostics,
