@@ -233,6 +233,39 @@ func TestSidebarAttachPatchesRowWithoutFullRebuild(t *testing.T) {
 	}
 }
 
+// Caught in review: the patch appended a newly loaded saved row after every
+// held row, so a thread attached moments after it was saved showed last until
+// the next full rebuild put it first. Boundary: the materializer's patch for a
+// held-set runtime delta, compared with the full rebuild of the same state.
+func TestSidebarPatchPlacesANewRowWhereARebuildWould(t *testing.T) {
+	now := time.Now()
+	s, _, store := sidebarActiveFixtureWithStore(t, now)
+	s.runtimeDeltaSnapshot()
+	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	if _, err := store.EnsureRoot(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	seedSidebarThread(t, store, root, "new-attached", "", history.ThreadMain, now, []historyCourt{{final: true, text: "New."}})
+	s.RegisterSession(memorySession(t, "new-session", "codex", "new-attached", "ready", "/fixture", "gpt-test", now))
+	if !s.patchSidebarRuntime(context.Background(), s.runtimeDeltaSnapshot()) {
+		t.Fatal("the patch asked for a full rebuild")
+	}
+	natives := func(view sidebarActiveResponse) []string {
+		ids := make([]string, 0, len(view.Items))
+		for _, row := range view.Items {
+			ids = append(ids, row.NativeID)
+		}
+		return ids
+	}
+	patched := s.active
+	if err := s.materializeSidebar(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	if !sidebarResponsesEqual(patched, s.active) {
+		t.Fatalf("patched sidebar differs from a full rebuild:\npatched %v\nrebuilt %v", natives(patched), natives(s.active))
+	}
+}
+
 // A rebuild and a runtime delta stamped metadataRevision differently, so each
 // rebuild republished every held row and the next delta flipped them all back.
 // A rebuild that changes nothing publishes nothing, and keeps the delta's revision on the row.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -771,8 +772,8 @@ func (s *Controller) StartSidebarMaterializer(ctx context.Context, now time.Time
 // started, bound or closed; a thread attached or detached) by re-reading only
 // the rows the delta names and recomputing the memory rows. These changes come
 // with every session start and close, and a full graph read costs seconds of
-// CPU on a busy fleet. It reports false when only a full rebuild is correct: a read failed, or a row
-// now has an ancestor the sidebar has not loaded.
+// CPU on a busy fleet. It reports false when only a full rebuild is correct:
+// a read failed, or a row now has an ancestor the sidebar has not loaded.
 func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta) bool {
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
@@ -815,13 +816,25 @@ func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta
 	for i := range all {
 		positions[all[i].ID] = i
 	}
+	var added []Thread
 	for _, row := range rows {
 		if index, ok := positions[row.ID]; ok {
 			all[index] = row
-			continue
+		} else {
+			added = append(added, row)
 		}
-		positions[row.ID] = len(all)
-		all = append(all, row)
+	}
+	// A saved row the sidebar did not hold goes where the full rebuild's
+	// newest-first read puts it; the memory rows follow the saved rows.
+	for _, row := range added {
+		at := -1
+		if !row.Transient {
+			at = slices.IndexFunc(all, func(held Thread) bool { return sidebarUpdatedAfter(row, held) })
+		}
+		if at < 0 {
+			at = len(all)
+		}
+		all = slices.Insert(all, at, row)
 	}
 	if missing := s.missingSidebarParents(all); len(missing) > 0 {
 		ancestors, err := source.ListSidebarGraph(ctx, history.SidebarGraphParams{Extra: missing, OnlyExtra: true})
@@ -830,7 +843,7 @@ func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta
 			return false
 		}
 		for _, row := range ancestors.Rows {
-			if _, loaded := positions[row.Thread.ID]; !loaded {
+			if !slices.ContainsFunc(all, func(held Thread) bool { return held.ID == row.Thread.ID }) {
 				return false
 			}
 		}
