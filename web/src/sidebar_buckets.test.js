@@ -192,10 +192,13 @@ describe('compact sidebar buckets', () => {
     }))
   })
 
-  // A new bucket is made first and the thread assigned after. The operator
-  // may open another thread's details meanwhile; the thread they chose for
-  // must still be the one assigned.
-  it('creates a bucket from thread details and assigns that thread, even after the details move on', async () => {
+  // The details popup's "Add to bucket" button offers the existing buckets
+  // and a field to name a new one. A new bucket is made first and the thread
+  // assigned after; the operator may open another thread's details meanwhile,
+  // and the thread they chose for must still be the one assigned.
+  it('adds a thread to a new or existing bucket from its details, even after the details move on', async () => {
+    serverBuckets = [{ id: 'bkt_later', name: 'Later', threads: [] }]
+    explorer.buckets = serverBuckets
     let created
     const baseFetch = vi.mocked(fetch).getMockImplementation()
     vi.mocked(fetch).mockImplementation(async (url, init) => {
@@ -205,28 +208,37 @@ describe('compact sidebar buckets', () => {
       }
       return baseFetch(url, init)
     })
-    vi.spyOn(window, 'prompt').mockReturnValue('Machine audit')
     const { container } = render(App)
-    const details = (title) => fireEvent.click([...container.querySelectorAll('[data-sidebar-row]')]
-      .find((node) => node.textContent.includes(title)).querySelector('.t-detail'))
-    await details('Audit owner')
-    const picker = await vi.waitFor(() => {
-      const select = document.querySelector('select[aria-label="Bucket"]')
-      expect(select).not.toBeNull()
-      return select
+    const details = (title) => fireEvent.click(rowOf(container, title).querySelector('.t-detail'))
+    const button = (label) => vi.waitFor(() => {
+      const found = [...document.querySelectorAll('.quick-detail button')].find((node) => node.textContent.trim() === label)
+      expect(found).toBeTruthy()
+      return found
     })
-    picker.value = '__new'
-    await fireEvent.change(picker)
+
+    await details('Audit owner')
+    await fireEvent.click(await button('Add to bucket'))
+    const name = document.querySelector('input[aria-label="New bucket name"]')
+    await fireEvent.input(name, { target: { value: 'Machine audit' } })
+    await fireEvent.keyDown(name, { key: 'Enter' })
     await vi.waitFor(() => expect(created).toBeTypeOf('function'))
     await fireEvent.click(document.querySelector('[aria-label="Close thread details"]'))
     await details('Loose run')
     created()
     await vi.waitFor(() => expect(rail(container)).toEqual([
-      '[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run', 'Loose run',
+      '[Later]', '[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run', 'Loose run',
     ]))
     expect(fetch).toHaveBeenCalledWith('/api/v1/threads/nth_owner/bucket', expect.objectContaining({
       method: 'PUT', body: JSON.stringify({ bucketId: 'bkt_new' }),
     }))
+
+    // The details still show Loose run: put it in an existing bucket.
+    await fireEvent.click(await button('Add to bucket'))
+    await fireEvent.click(await button('Later'))
+    await vi.waitFor(() => expect(rail(container)).toEqual([
+      '[Later]', 'Loose run', '[Machine audit]', 'Audit owner', 'Dashboard child', 'Other run',
+    ]))
+    expect(await button('Change bucket')).toBeTruthy()
   })
 
   // Closing a parent promotes its open subagent to a root of its own; the

@@ -65,7 +65,11 @@
   let invokerIdentity = $state(null)
   let bucketSaving = $state(false)
   let bucketError = $state(null)
+  let bucketPicking = $state(false)
+  let newBucketName = $state('')
   const bucketId = $derived(bucketOfThread(explorer.buckets, provider, nativeId))
+  const bucketName = $derived(explorer.buckets.find((bucket) => bucket.id === bucketId)?.name ?? '')
+  const canBucket = $derived(Boolean(editId && nativeId && !target?.nested))
   // The live truth for the toggle label: session summary first (flips
   // immediately), then the catalog's runtime overlay.
   const presentationMode = $derived(session?.presentationMode ?? runtime?.presentationMode ?? 'shared')
@@ -105,29 +109,29 @@
     return 'Historical · durable history'
   }
 
-  // A thread joins at most one bucket; its subagents follow it there.
-  async function chooseBucket(event) {
-    // The popup may show another thread by the time a new bucket exists.
+  // A thread joins at most one bucket; its subagents follow it there. The
+  // popup may show another thread by the time a new bucket exists, so the
+  // thread is fixed when the operator chooses.
+  async function putInBucket(next, name = '') {
     const id = editId
-    const select = event.currentTarget
-    let next = select.value
     bucketError = null
     bucketSaving = true
     try {
-      if (next === '__new') {
-        const name = window.prompt('New bucket name')
-        if (name === null || !name.trim()) {
-          select.value = bucketId
-          return
-        }
-        next = await createBucket(name)
-      }
-      await setThreadBucket(id, next)
+      const chosen = name ? await createBucket(name) : next
+      await setThreadBucket(id, chosen)
+      bucketPicking = false
+      newBucketName = ''
     } catch (error) {
       bucketError = String(error?.message ?? error)
-      select.value = bucketId
     } finally {
       bucketSaving = false
+    }
+  }
+
+  function onNewBucketKey(event) {
+    if (event.key === 'Enter' && newBucketName.trim()) {
+      event.preventDefault()
+      void putInBucket('', newBucketName.trim())
     }
   }
 
@@ -489,17 +493,7 @@
         <dt>Status</dt><dd>{status()}</dd>
         <dt>Role</dt><dd>{assignmentUnavailable ? 'unavailable' : assignment?.assignmentRole ?? 'unassigned'}</dd>
         <dt>Sidebar placement</dt><dd>{placementLabel}</dd>
-        {#if editId && nativeId && !target?.nested}
-          <dt>Bucket</dt>
-          <dd>
-            <select aria-label="Bucket" value={bucketId} disabled={bucketSaving} onchange={(event) => void chooseBucket(event)}>
-              <option value="">No bucket</option>
-              {#each explorer.buckets as bucket (bucket.id)}<option value={bucket.id}>{bucket.name}</option>{/each}
-              <option value="__new">New bucket…</option>
-            </select>
-            {#if bucketError}<div class="ifile-error" role="alert">{bucketError}</div>{/if}
-          </dd>
-        {/if}
+        {#if canBucket}<dt>Bucket</dt><dd>{bucketName || 'none'}</dd>{/if}
         {#if invokerLabel}<dt>Invoked by</dt><dd><button class="xresume-btn" onclick={openInvoker}>{invokerLabel}</button></dd>{/if}
         {#if provider === 'codex' && !session}
           <dt>cwd</dt><dd class="wrap">{currentValue('cwd')}</dd>
@@ -556,6 +550,25 @@
           {#if roleError}<div class="ifile-error">{roleError}</div>{/if}
         </section>
       {/if}
+      {#if bucketPicking}
+        <section class="quick-detail-bucket-picker" aria-label="Add to bucket">
+          <p>{bucketName ? `In ${bucketName}. Move it to:` : 'Add this thread to:'}</p>
+          <div class="quick-detail-bucket-list">
+            {#each explorer.buckets as bucket (bucket.id)}
+              <button class="xresume-btn" aria-pressed={bucket.id === bucketId} disabled={bucketSaving || bucket.id === bucketId} onclick={() => void putInBucket(bucket.id)}>{bucket.name}</button>
+            {/each}
+          </div>
+          <div class="xname-row">
+            <input class="xname-input" aria-label="New bucket name" placeholder="New bucket name…" maxlength="80" value={newBucketName} disabled={bucketSaving} oninput={(event) => (newBucketName = event.currentTarget.value)} onkeydown={onNewBucketKey} />
+            <button class="xname-save-btn" disabled={bucketSaving || !newBucketName.trim()} onclick={() => void putInBucket('', newBucketName.trim())}>Create and add</button>
+          </div>
+          <div class="quick-detail-role-actions">
+            {#if bucketId}<button class="xresume-btn" disabled={bucketSaving} onclick={() => void putInBucket('')}>Remove from bucket</button>{/if}
+            <button class="xresume-btn" disabled={bucketSaving} onclick={() => (bucketPicking = false)}>Cancel</button>
+          </div>
+          {#if bucketError}<div class="ifile-error" role="alert">{bucketError}</div>{/if}
+        </section>
+      {/if}
       {#if hostedThreadId && invokerHostedThreadId}
         <section aria-label="Completion notifications">
           <p>Notify the invoker when this thread finishes a turn.</p>
@@ -571,6 +584,7 @@
         {#if hostedThreadId && !assignmentUnavailable && !roleEditing}<button class="xresume-btn" onclick={editRole}>Set role</button>{/if}
         {#if hostedThreadId && invokerHostedThreadId && !assignmentControlsPlacement}<button class="xresume-btn" disabled={placementSaving} onclick={() => void toggleSidebarPlacement()}>{placementSaving ? 'Saving…' : sidebarPlacement === 'standalone' ? 'Nest under invoker' : 'Make standalone'}</button>{/if}
         {#if hostedThreadId}<button class="xresume-btn" disabled={presentationSaving} onclick={() => void togglePresentation()}>{presentationSaving ? 'Saving…' : presentationMode === 'background' ? 'Bring to sidebar' : 'Move to background'}</button>{/if}
+        {#if canBucket && !bucketPicking}<button class="xresume-btn" onclick={() => { bucketPicking = true; bucketError = null }}>{bucketId ? 'Change bucket' : 'Add to bucket'}</button>{/if}
         <button class="xresume-btn" onclick={open}>Open in pane</button>
       </div>
       {#if closeError}<div class="ifile-error">{closeError}</div>{/if}

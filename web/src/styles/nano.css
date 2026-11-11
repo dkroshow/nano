@@ -2336,6 +2336,9 @@ button.chip-action:hover { color: var(--text); border-color: var(--border2); }
 .quick-detail-grid dt, .quick-detail-grid dd { min-width: 0; margin: 0; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .quick-detail-grid dt { color: var(--text3); font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
 .quick-detail-grid dd { color: var(--text); font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
+.quick-detail-bucket-picker { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.quick-detail-bucket-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.quick-detail-bucket-list .xresume-btn[aria-pressed="true"] { opacity: 0.6; }
 .quick-detail-actions {
   display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center;
   gap: 8px; margin-top: 14px;
