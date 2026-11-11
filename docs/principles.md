@@ -31,8 +31,10 @@ stranger.
   2. No dead code, and no test-only code, sits in production files.
   3. The change reuses existing paths. A second copy of a fact states which
      copy wins.
-  4. No always-on work is added (polling, per-frame encoding, whole-store
-     scans) without a measured budget.
+  4. The cost is known: how often the new code runs per event and per
+     thread, and that it reads or rebuilds no more than the change needs. No
+     always-on work is added (polling, per-frame encoding, whole-store scans)
+     without a measured budget.
   5. Tests check behavior where a user or agent sees it, and fixtures are
      small and synthetic or scrubbed. Each behavior has one primary test; the
      reviewer does not ask for the same case at a second boundary.
