@@ -488,7 +488,7 @@ func (m *Controller) patchSidebarRowsInPlace(rows []Thread, version int64) bool 
 	var delta *Delta
 	if len(changed) > 0 || version != active.CatalogVersion {
 		active.CatalogVersion = version
-		delta = &Delta{Rows: changed, Roots: slices.Clone(active.Roots), HistoricalCount: active.HistoricalCount, CatalogVersion: version}
+		delta = &Delta{Rows: changed, Roots: active.Roots, HistoricalCount: active.HistoricalCount, CatalogVersion: version}
 	}
 	published := m.installLocked(active, delta, false)
 	m.mu.Unlock()
@@ -819,7 +819,9 @@ func (s *Controller) StartSidebarMaterializer(ctx context.Context, now time.Time
 					catalogEvents = nil
 					continue
 				}
-				if change.Refresh || len(change.ThreadIDs) == 0 || !s.repairSidebarCatalogRows(ctx, change) {
+				// A refresh that names its threads is repaired too: the
+				// repair places new, gone and moved rows itself.
+				if len(change.ThreadIDs) == 0 || !s.repairSidebarCatalogRows(ctx, change) {
 					requestCatalogRebuild()
 				}
 			case delta, ok := <-runtimeEvents:
@@ -893,7 +895,9 @@ func (s *Controller) mergeSidebarRows(ctx context.Context, source *threadindex.S
 		}
 	}
 	memory := s.memorySidebarThreadRows(slices.Concat(all, saved), runtime.Summaries)
-	s.ComposeCatalogThreads(ctx, memory, runtime, true)
+	if len(memory) > 0 {
+		s.ComposeCatalogThreads(ctx, memory, runtime, true)
+	}
 	rows := slices.Concat(saved, memory)
 	positions := make(map[string]int, len(all))
 	for i := range all {
@@ -944,7 +948,7 @@ func (s *Controller) repairSidebarCatalogRows(ctx context.Context, change catalo
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
 		log.Printf("sidebar catalog repair: %v", err)
-		return true
+		return false
 	}
 	extra := make([]history.SidebarGraphKey, 0, len(change.ThreadIDs))
 	for _, id := range change.ThreadIDs {
@@ -953,7 +957,7 @@ func (s *Controller) repairSidebarCatalogRows(ctx context.Context, change catalo
 	graph, err := source.ListSidebarGraph(ctx, history.SidebarGraphParams{Extra: extra, OnlyExtra: true})
 	if err != nil {
 		log.Printf("sidebar catalog repair: %v", err)
-		return true
+		return false
 	}
 	runtime := s.SidebarRuntimeSnapshot()
 	rows := s.graphRowsToThreads(graph.Rows, time.Now())

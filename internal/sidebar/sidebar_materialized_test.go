@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +13,8 @@ import (
 
 	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
+	"github.com/dkroshow/nano/internal/sessions"
+	"github.com/dkroshow/nano/internal/setup"
 	"github.com/dkroshow/nano/internal/testsupport"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
@@ -495,4 +499,51 @@ func TestSidebarCatalogRepairMatchesAFullRebuild(t *testing.T) {
 	}
 	indexed := seedSidebarThread(t, store, root, "late-live", "", history.ThreadMain, now, []historyCourt{{user: true, text: "late"}})
 	matchesRebuild("newly indexed", catalog.Change{ThreadIDs: []string{indexed}, Refresh: true})
+}
+
+// Every new thread file is a structural catalog change, and each one made the
+// sidebar read its whole graph again: a full rebuild of 2-3 s every few
+// seconds while a busy fleet started threads. Through the real ingest and the
+// materializer loop, a new thread must reach the sidebar with no full rebuild.
+// Caught in review: the repair handled such a change, but the loop still sent
+// every refresh to a rebuild. Boundary: the materializer loop's handling of
+// the catalog's own feed.
+func TestSidebarNewThreadFileReachesTheSidebarWithoutAFullRebuild(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store, err := history.Open(filepath.Join(t.TempDir(), "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	rootDir := t.TempDir()
+	svc, err := threadindex.New(ctx, store, threadindex.Options{Roots: []history.SourceRoot{{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: rootDir}}, NamesPath: filepath.Join(t.TempDir(), "names.json"), DisableWatcher: true, NativeIDProvisional: sessions.NativeThreadIDProvisional, ClaudeProjectSlug: setup.ClaudeProjectSlug})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(svc.Close)
+	metadata, executions := newTestHostedControl(t)
+	registry := sessions.NewRegistry()
+	s := New(Sources{Catalog: svc, Registry: &registry, Metadata: metadata, Executions: executions, RuntimeEvents: NewRuntimeHub(), Mail: newTestAgentMessageStore(t)})
+	logs := &testsupport.LogBuffer{}
+	prior := log.Writer()
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(prior) })
+	// Started a minute ago, so the rebuild pacer would run a rebuild at once
+	// rather than defer it past the end of the test.
+	if err := s.StartSidebarMaterializer(ctx, time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"type":"session_meta","payload":{"id":"new-file","timestamp":"` + time.Now().UTC().Format(time.RFC3339) + `","cwd":"/work"}}
+{"type":"event_msg","payload":{"type":"user_message","message":"new thread"}}
+`
+	if err := os.WriteFile(filepath.Join(rootDir, "rollout-new-file.jsonl"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	svc.RequestRefresh()
+	awaitSidebarRow(t, s, func(row Thread) bool { return row.NativeID == "new-file" }, 5*time.Second)
+	time.Sleep(200 * time.Millisecond) // let the loop finish the events it holds
+	if got := strings.Count(logs.String(), "sidebar full rebuild ("); got != 0 {
+		t.Fatalf("a new thread file caused %d full sidebar rebuilds, want 0", got)
+	}
 }
