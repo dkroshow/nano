@@ -1,10 +1,5 @@
 package store
 
-// attachmentProviderDefault is the provider assumed for records written before
-// attachments were provider-aware: the store was codex-only by construction, so
-// a missing provider can only mean codex.
-const attachmentProviderDefault = "codex"
-
 // Attachment is one hosted thread's resume data and state (attachments.go).
 // Cwd, Model, and tier are filled by transports but never stored: posture is
 // canonical in hosted metadata.
@@ -46,7 +41,6 @@ type Attachment struct {
 	InvokerHostedThreadID string `json:"invokerHostedThreadId,omitempty"`
 	InvokerNativeThreadID string `json:"invokerNativeThreadId,omitempty"`
 	InvokerProvider       string `json:"invokerProvider,omitempty"`
-	LegacyAgentSessionID  string `json:"agentSessionId,omitempty"`
 	PresentationMode      string `json:"presentationMode,omitempty"`
 	Cwd                   string `json:"cwd,omitempty"`
 	Model                 string `json:"model,omitempty"`
@@ -86,19 +80,6 @@ type AttachmentKey struct {
 	Provider string `json:"-"`
 	// NativeThreadID is the provider-owned identity retained across restarts.
 	NativeThreadID string `json:"-"`
-}
-
-// normalized fills in the provider a legacy record lacks, so every stored
-// record is addressable and every rewrite of the file carries the field.
-func (r Attachment) normalized() Attachment {
-	if r.Provider == "" {
-		r.Provider = attachmentProviderDefault
-	}
-	if r.HostedThreadID == "" {
-		r.HostedThreadID = r.LegacyAgentSessionID
-	}
-	r.LegacyAgentSessionID = ""
-	return r
 }
 
 // Key returns the provider-scoped durable native identity.

@@ -117,7 +117,9 @@ func (s *Controller) closeAgentSession(sess *sessions.Session, actor string) err
 }
 
 // Who finished an attachment row when the caller does not name a hosted
-// thread: the browser's close controls, or an anonymous API caller.
+// thread: the browser's session close and dismiss controls record the
+// operator; any /api/v1 close without actorThreadRef, the browser's family
+// close included, records the anonymous API caller.
 const (
 	finishedByOperator = "operator"
 	finishedByAPI      = "api"

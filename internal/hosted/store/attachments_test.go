@@ -108,6 +108,15 @@ func TestAttachmentRekeyMovesTheThreadsOneRow(t *testing.T) {
 	if r := rowOf(t, db, "nht_c"); r != (rowState{Native: "native-c", State: AttachmentAttached}) {
 		t.Fatalf("stored row = %+v", r)
 	}
+
+	// The provisional write can lose a race and land after the real native
+	// id; it must not move the row back, and retiring the handle afterwards
+	// must not finish the live thread.
+	store.Remember(Attachment{Provider: "claude", HostedThreadID: "nht_c", NativeThreadID: "cs_handle", ShimSessionID: "cs_handle", AttachedAt: "2026-07-25T10:02:00Z"})
+	store.Forget("claude", "cs_handle")
+	if r := rowOf(t, db, "nht_c"); r != (rowState{Native: "native-c", State: AttachmentAttached}) {
+		t.Fatalf("after a late provisional write = %+v, want still attached under native-c", r)
+	}
 }
 
 // A Claude row carries the spawn posture (bin + exact args) so a later

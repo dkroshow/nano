@@ -543,9 +543,6 @@ func (attachmentState *State) adoptResolvedClaudeNative(handle, native string, a
 	rec.NativeThreadID = native
 	if attachmentState.rememberAttachment != nil {
 		attachmentState.rememberDurableAttachment(rec)
-		if attachmentState.forgetAttachment != nil {
-			attachmentState.forgetAttachment(attachmentState.identity.provider, handle)
-		}
 	}
 	return rec, nil
 }

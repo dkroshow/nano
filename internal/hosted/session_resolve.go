@@ -255,16 +255,14 @@ func (s *AttachmentCoordinator) resolveClaudeResume(req SpawnRequest) (SpawnRequ
 	req.ClaudeShimWS = s.Defaults.ClaudeShimWS
 	req.ClaudeShimSpools = s.Defaults.ClaudeShimSpools
 	if sessions.NativeThreadIDProvisional("claude", req.ThreadID) && req.HostedThreadID != "" {
-		// An interrupted re-key can leave the handle's record beside the one it
-		// wrote for the resolved native. The native's record is the current
-		// one, with the anchor of any later turn: resume it. Spawn
-		// retires the handle's record the re-key did not get to forget.
+		// A resume named by the provisional handle of a thread whose row has
+		// since moved to its resolved native id resumes that native.
 		native, err := s.ControlStore().ResolvedNative(context.Background(), req.HostedThreadID, "claude", req.ThreadID)
 		if err != nil {
 			return req, err
 		}
 		if current, ok := s.attachmentFor("claude", native); native != "" && ok && current.HostedThreadID == req.HostedThreadID {
-			req.retiredClaudeHandle, req.ThreadID = req.ThreadID, native
+			req.ThreadID = native
 		}
 	}
 	rec, _ := s.attachmentFor("claude", req.ThreadID)

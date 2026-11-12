@@ -1064,13 +1064,6 @@ func (s *MetadataStore) Destroy(hostedID string) error {
 	return err
 }
 
-// importLegacyAttachments imports attachment-only facts as historical
-// observations. They establish a baseline only where stronger current
-// provider/desired evidence does not already exist.
-func (s *MetadataStore) importLegacyAttachments(records []Attachment) error {
-	return s.importLegacyAttachmentsUntil(records, -1)
-}
-
 // ImportLegacyAttachments makes each active attachment row's hosted identity
 // and native claim canonical, as the one-way import from attachments.json
 // always did at startup.
@@ -1163,17 +1156,15 @@ func legacyAttachmentClaimTime(record Attachment) string {
 	return "1970-01-01T00:00:00Z"
 }
 
-// importLegacyAttachmentsUntil is the bounded/restartable attachment bridge.
-// limit counts imported facts, not input rows, so an interruption never marks
-// completion before every independently idempotent fact has committed.
-func (s *MetadataStore) importLegacyAttachmentsUntil(records []Attachment, limit int) error {
+// importLegacyAttachments makes each active row's hosted identity exist and
+// its native claim current, once per distinct set of rows.
+func (s *MetadataStore) importLegacyAttachments(records []Attachment) error {
 	if s == nil {
 		return fmt.Errorf("canonical metadata store unavailable")
 	}
 	keys := make([]string, 0, len(records))
-	processed := 0
 	for _, r := range records {
-		keys = append(keys, r.HostedThreadID+"\x00"+r.Provider+"\x00"+r.NativeThreadID+"\x00"+r.Cwd+"\x00"+r.Model+"\x00"+r.TurnServiceTier)
+		keys = append(keys, r.HostedThreadID+"\x00"+r.Provider+"\x00"+r.NativeThreadID)
 	}
 	sort.Strings(keys)
 	fingerprint := AgentHash([]byte(fmt.Sprintf("%q", keys)))
@@ -1186,34 +1177,12 @@ func (s *MetadataStore) importLegacyAttachmentsUntil(records []Attachment, limit
 		return s.integrityCheck()
 	}
 	for _, r := range records {
-		if r.HostedThreadID == "" || r.Provider == "" {
-			continue
-		}
 		if err := s.EnsureHostedThread(r.HostedThreadID, r.Provider, r.PresentationMode, r.InvokerHostedThreadID, r.InvokerNativeThreadID, r.InvokerProvider); err != nil {
 			return err
 		}
 	}
 	if err := s.reconcileLegacyAttachmentClaims(records); err != nil {
 		return err
-	}
-	for _, r := range records {
-		if r.HostedThreadID == "" || r.Provider == "" {
-			continue
-		}
-		for _, fact := range []FieldValue{{Field: "cwd", Value: r.Cwd}, {Field: PostureFieldModel, Value: r.Model}, {Field: PostureFieldServiceTier, Value: r.TurnServiceTier}} {
-			if fact.Value == "" {
-				continue
-			}
-			keyMaterial := r.HostedThreadID + "\x00" + r.Provider + "\x00" + r.NativeThreadID + "\x00" + fact.Field + "\x00" + fact.Value
-			entry := MetadataEvent{HostedThreadID: r.HostedThreadID, Field: fact.Field, Value: fact.Value, Disposition: metadataDispositionObserved, Source: metadataSourceMigration, Evidence: "legacy_attachment_baseline", NativeThreadID: r.NativeThreadID, Freshness: metadataFreshnessHistorical, SourceEventKey: "legacy-attachment:" + AgentHash([]byte(keyMaterial))}
-			if _, err := s.AppendEvent(entry); err != nil {
-				return err
-			}
-			processed++
-			if limit >= 0 && processed >= limit {
-				return fmt.Errorf("legacy attachment import interrupted")
-			}
-		}
 	}
 	return s.markMigrationComplete("legacy-attachments-v1", fingerprint)
 }

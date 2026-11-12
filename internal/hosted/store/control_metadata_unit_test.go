@@ -492,55 +492,6 @@ func TestControlMetadataRejectionWithoutEffectiveRetainsFailedRequest(t *testing
 	}
 }
 
-func TestLegacyAttachmentImportResumesWithoutOverwritingStrongerEvidence(t *testing.T) {
-	store := newTestControlMetadata(t)
-	Records := []Attachment{{HostedThreadID: "nht_attachment", Provider: "codex", Cwd: "/work", Model: "attachment-model", TurnServiceTier: "priority", InvokerHostedThreadID: "nht_parent", InvokerNativeThreadID: "parent-native", InvokerProvider: "claude"}, {HostedThreadID: "nht_empty_native", Provider: "claude", Model: "haiku", TurnServiceTier: "priority"}}
-	if err := store.importLegacyAttachmentsUntil(Records, 1); err == nil {
-		t.Fatal("bounded attachment import unexpectedly completed")
-	}
-	var markers int
-	_ = store.db.QueryRow(`SELECT count(*) FROM control_migrations WHERE name='legacy-attachments-v1'`).Scan(&markers)
-	if markers != 0 {
-		t.Fatalf("interrupted attachment import wrote completion marker %d", markers)
-	}
-	if err := store.importLegacyAttachments(Records); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.importLegacyAttachments(Records); err != nil {
-		t.Fatal(err)
-	}
-	view, err := store.View("nht_attachment")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if view.InvokerHostedThreadID != "nht_parent" || view.InvokerNativeThreadID != "parent-native" || view.InvokerProvider != "claude" {
-		t.Fatalf("attachment lineage = %+v", view)
-	}
-	if got := store.Posture("nht_attachment"); got.Model != "attachment-model" || got.ServiceTier != "priority" {
-		t.Fatalf("attachment baseline posture = %+v", got)
-	}
-	if empty, err := store.View("nht_empty_native"); err != nil || empty.NativeThreadID != "" || empty.Provider != "claude" {
-		t.Fatalf("empty native attachment identity = %+v err=%v", empty, err)
-	}
-	conflict := newTestControlMetadata(t)
-	if err := conflict.EnsureHostedThread("nht_attachment", "codex", presentationShared, "nht_parent", "parent-native", "claude"); err != nil {
-		t.Fatal(err)
-	}
-	g, err := conflict.BeginTransportBinding("nht_attachment")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conflict.AppendEvent(MetadataEvent{HostedThreadID: "nht_attachment", Field: postureFieldServiceTier, Value: "default", Disposition: metadataDispositionConfirmed, Source: postureSourceProvider, Freshness: metadataFreshnessLive, AttachmentGeneration: g}); err != nil {
-		t.Fatal(err)
-	}
-	if err := conflict.importLegacyAttachments(Records[:1]); err != nil {
-		t.Fatal(err)
-	}
-	if got := conflict.Posture("nht_attachment").ServiceTier; got != "default" {
-		t.Fatalf("historical attachment overwrote live provider tier %q", got)
-	}
-}
-
 func TestLegacyAttachmentImportTransfersActiveNativeOwnership(t *testing.T) {
 	store := newTestControlMetadata(t)
 	if err := store.EnsureHostedThread("nht_old_owner", "codex", presentationShared, "", "", ""); err != nil {

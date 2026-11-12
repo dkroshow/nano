@@ -122,15 +122,26 @@ func (s *AttachmentStore) Remember(r Attachment) {
 	if r.NativeThreadID == "" {
 		return
 	}
-	r = r.normalized()
 	// Posture is canonical in hosted metadata, never in this row.
 	r.Cwd, r.Model, r.TurnServiceTier = "", "", ""
-	if r.HostedThreadID == "" {
-		log.Printf("attachment %s/%s has no hosted thread; not stored", r.Provider, r.NativeThreadID)
+	if r.HostedThreadID == "" || r.Provider == "" {
+		log.Printf("attachment %q/%s has no hosted thread or provider; not stored", r.Provider, r.NativeThreadID)
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var active *Attachment
+	for _, rec := range s.byKey {
+		if rec.HostedThreadID == r.HostedThreadID {
+			active = &rec
+			break
+		}
+	}
+	// A provisional handle's write that loses a race to the real native id
+	// (adoptClaudeIdentity against captureInit) must not move the row back.
+	if active != nil && r.Provisional() && !active.Provisional() {
+		return
+	}
 	if previous, ok := s.byKey[r.Key()]; ok && previous.HostedThreadID == r.HostedThreadID {
 		if r.ContinuedFrom == "" {
 			r.ContinuedFrom = previous.ContinuedFrom
@@ -151,10 +162,12 @@ func (s *AttachmentStore) Remember(r Attachment) {
 		args = []byte("[]")
 	}
 	var reopened string
-	err = s.db.QueryRow(`SELECT finished_by FROM hosted_attachments WHERE hosted_thread_id=? AND state='finished'`, r.HostedThreadID).Scan(&reopened)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("persist attachment %s: %v", r.HostedThreadID, err)
-		return
+	if active == nil {
+		err = s.db.QueryRow(`SELECT finished_by FROM hosted_attachments WHERE hosted_thread_id=? AND state='finished'`, r.HostedThreadID).Scan(&reopened)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("persist attachment %s: %v", r.HostedThreadID, err)
+			return
+		}
 	}
 	if _, err := s.db.Exec(`INSERT INTO hosted_attachments(hosted_thread_id,provider,native_thread_id,state,bin,args_json,shim_session_id,pending_name,continued_from,turn_started_at_ms,turn_anchor_seq,attached_at)
 		VALUES(?,?,?,'attached',?,?,?,?,?,?,?,?)
@@ -168,10 +181,8 @@ func (s *AttachmentStore) Remember(r Attachment) {
 	if reopened != "" {
 		log.Printf("attachment %s reopened by an explicit resume (finished by %s)", r.HostedThreadID, reopened)
 	}
-	for key, rec := range s.byKey {
-		if rec.HostedThreadID == r.HostedThreadID && key != r.Key() {
-			delete(s.byKey, key)
-		}
+	if active != nil {
+		delete(s.byKey, active.Key())
 	}
 	s.byKey[r.Key()] = r
 }

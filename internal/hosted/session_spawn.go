@@ -99,9 +99,6 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 	// spawn error: there is no sibling session id in this process to send the
 	// client to.
 	if req.Mode == "resume" {
-		if req.retiredClaudeHandle != "" {
-			s.ForgetAttachment("claude", req.retiredClaudeHandle)
-		}
 		if existing := s.Registry.LiveSessionForResume(req.Provider, req.ThreadID, req.HostedThreadID); existing != nil {
 			return nil, &sessions.ThreadAttachedError{ExistingSessionID: existing.ID()}
 		}

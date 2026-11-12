@@ -24,10 +24,6 @@ type SpawnRequest struct {
 	SidebarPlacement      string                  `json:"sidebarPlacement,omitempty"` // invoker | standalone
 	Name                  string                  `json:"name"`                       // optional user-assigned thread name, written once the native id binds
 	PendingName           string                  `json:"-"`                          // boot-only operator rename staged before a real native id bound
-	// retiredClaudeHandle is the provisional handle whose record an
-	// interrupted re-key left beside the native's. Only an actual resume
-	// retires it; a preview resolves the same request and must not.
-	retiredClaudeHandle string `json:"-"`
 	// Prioritized registrations must appear immediately even during fleet boot.
 	immediateRuntimePublish bool `json:"-"`
 	// restart is this thread's entry in the boot's restart record, if any.
