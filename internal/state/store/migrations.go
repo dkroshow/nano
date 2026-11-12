@@ -37,7 +37,11 @@ func MigrateLegacySchema(db *sql.DB, migrations statedb.MigrationRunner) error {
 		if err := migrations(context.Background(), statedb.MigrationMemberRecovery, db, nil, version, ""); err != nil {
 			return err
 		}
-		return migrations(context.Background(), statedb.MigrationParkedDiscard, db, nil, version, "")
+		if err := migrations(context.Background(), statedb.MigrationParkedDiscard, db, nil, version, ""); err != nil {
+			return err
+		}
+		_, err := migrateAttachmentState(context.Background(), db, "", "")
+		return err
 	}
 	if version == prompts.LegacyTurnSchemaVersion {
 		if err := CheckMetadataIntegrity(db, migrations); err != nil {
@@ -264,9 +268,9 @@ func migrateMemberRecovery(ctx context.Context, db *sql.DB, backupPath string, m
 }
 
 // migrateParkedDiscard takes a schema-23 private candidate to schema 24, or
-// with an empty backup path only verifies a schema-24 store.
+// with an empty backup path only verifies a store at schema 24 or later.
 func migrateParkedDiscard(ctx context.Context, db *sql.DB, backupPath string, migrations statedb.MigrationRunner) error {
-	return migrations(ctx, statedb.MigrationParkedDiscard, db, nil, prompts.TurnSchemaVersion, backupPath)
+	return migrations(ctx, statedb.MigrationParkedDiscard, db, nil, prompts.ParkedDiscardTurnSchemaVersion, backupPath)
 }
 
 func CheckMetadataIntegrity(db *sql.DB, migrations statedb.MigrationRunner) error {

@@ -10,11 +10,9 @@ import (
 	"testing"
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
-	coreturns "github.com/dkroshow/nano/internal/core/turns"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	state "github.com/dkroshow/nano/internal/state/store"
-	"github.com/dkroshow/nano/internal/threads"
 )
 
 // Existing delivery fixtures name a queue/journal path. Both now resolve to
@@ -59,49 +57,19 @@ func TurnDatabase(t testing.TB, legacyPath string) (*sql.DB, string, error) {
 
 func transactionalTurnFixture() ([]byte, error) {
 	transactionalTurnFixtureOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "nano-schema21-")
+		dir, err := os.MkdirTemp("", "nano-schema-")
 		if err != nil {
 			transactionalTurnFixtureErr = err
 			return
 		}
 		defer os.RemoveAll(dir)
-		path := filepath.Join(dir, "source.sqlite")
-		db, err := statedb.Open(context.Background(), path)
-		if err != nil {
+		// The startup path itself builds the current schema from nothing.
+		path := filepath.Join(dir, "nano_threads.sqlite")
+		if _, err := state.PrepareStore(context.Background(), state.StorePaths{Destination: path, BackupRoot: filepath.Join(dir, "backups")}, statewiring.Migrations()); err != nil {
 			transactionalTurnFixtureErr = err
 			return
 		}
-		defer db.Close()
-		if err := state.MigrateLegacySchema(db, statewiring.Migrations()); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateTurnRecords(context.Background(), db, turns.LegacyTurnPaths{}, filepath.Join(dir, "v19-backup")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateTurnTransactions(context.Background(), db, filepath.Join(dir, "v20.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := coreturns.MigrateCompletedTurnUsage(context.Background(), db, filepath.Join(dir, "v21.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateMemberRecovery(context.Background(), db, filepath.Join(dir, "v22.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		if _, err := turns.MigrateParkedDiscard(context.Background(), db, filepath.Join(dir, "v23.sqlite")); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		backup := filepath.Join(dir, "schema24.sqlite")
-		if err := threads.Backup(context.Background(), db, backup); err != nil {
-			transactionalTurnFixtureErr = err
-			return
-		}
-		transactionalTurnFixtureData, transactionalTurnFixtureErr = os.ReadFile(backup)
+		transactionalTurnFixtureData, transactionalTurnFixtureErr = os.ReadFile(path)
 	})
 	return transactionalTurnFixtureData, transactionalTurnFixtureErr
 }

@@ -36,8 +36,8 @@ var parkedDiscardStatements = []string{
 
 // MigrateParkedDiscard extends a backed-up schema-23 candidate to schema 24.
 // Its caller migrates a private candidate, never the live file, and publishes
-// it only after this succeeds. At schema 24 it only verifies the receipt and
-// the guard.
+// it only after this succeeds. At schema 24 or later it only verifies the
+// receipt and the guard.
 func MigrateParkedDiscard(ctx context.Context, db *sql.DB, backupPath string) (ParkedDiscardMigrationReport, error) {
 	var report ParkedDiscardMigrationReport
 	if db == nil {
@@ -47,7 +47,7 @@ func MigrateParkedDiscard(ctx context.Context, db *sql.DB, backupPath string) (P
 	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return report, err
 	}
-	if version == TurnSchemaVersion {
+	if version >= ParkedDiscardTurnSchemaVersion && version <= TurnSchemaVersion {
 		var raw string
 		if err := db.QueryRowContext(ctx, `SELECT report_json FROM threads_store_migrations WHERE name=?`, parkedDiscardMigrationName).Scan(&raw); err != nil {
 			return report, fmt.Errorf("threads: missing parked discard migration receipt: %w", err)
@@ -105,7 +105,7 @@ func MigrateParkedDiscard(ctx context.Context, db *sql.DB, backupPath string) (P
 	if _, err := tx.ExecContext(ctx, `INSERT INTO threads_store_migrations(name,report_json,manifest_json) VALUES(?,?,?)`, parkedDiscardMigrationName, string(raw), `{}`); err != nil {
 		return report, err
 	}
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version=%d`, TurnSchemaVersion)); err != nil {
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version=%d`, ParkedDiscardTurnSchemaVersion)); err != nil {
 		return report, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -15,12 +15,15 @@ import (
 // version bump. UsageTurnSchemaVersion also keeps provider-reported usage on
 // each terminal feed row. MemberRecoveryTurnSchemaVersion also keeps each
 // Claude prompt's owed member completion and each provisional handle's proven
-// native (member_recovery_migration.go). TurnSchemaVersion, the current
-// schema, lets a parked prompt expire (parked_discard_migration.go).
+// native (member_recovery_migration.go). ParkedDiscardTurnSchemaVersion lets
+// a parked prompt expire (parked_discard_migration.go). TurnSchemaVersion, the
+// current schema, keeps each hosted thread's resume data and attachment state
+// in hosted_attachments (state/store attachment_state_migration.go).
 const TransactionalTurnSchemaVersion = 21
 const UsageTurnSchemaVersion = 22
 const MemberRecoveryTurnSchemaVersion = 23
-const TurnSchemaVersion = 24
+const ParkedDiscardTurnSchemaVersion = 24
+const TurnSchemaVersion = 25
 
 const turnTransactionMigrationName = "turn-transactions-v21"
 

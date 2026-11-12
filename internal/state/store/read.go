@@ -43,6 +43,16 @@ func openReadOnly(ctx context.Context, path string, allowLegacy bool, migrations
 			if _, err = turns.MigrateTurnTransactions(ctx, db, ""); err == nil {
 				if err = migrateCompletedTurnUsage(ctx, db, "", migrations); err == nil {
 					if err = migrateMemberRecovery(ctx, db, "", migrations); err == nil {
+						if err = migrateParkedDiscard(ctx, db, "", migrations); err == nil {
+							_, err = migrateAttachmentState(ctx, db, "", "")
+						}
+					}
+				}
+			}
+		case allowLegacy && version == turns.ParkedDiscardTurnSchemaVersion:
+			if _, err = turns.MigrateTurnTransactions(ctx, db, ""); err == nil {
+				if err = migrateCompletedTurnUsage(ctx, db, "", migrations); err == nil {
+					if err = migrateMemberRecovery(ctx, db, "", migrations); err == nil {
 						err = migrateParkedDiscard(ctx, db, "", migrations)
 					}
 				}

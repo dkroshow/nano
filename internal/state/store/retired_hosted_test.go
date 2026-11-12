@@ -45,6 +45,9 @@ func retirementFixture(t *testing.T) *sql.DB {
 	if _, err := turns.MigrateParkedDiscard(ctx, db, filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := migrateAttachmentState(ctx, db, filepath.Join(t.TempDir(), "schema24.sqlite"), ""); err != nil {
+		t.Fatal(err)
+	}
 	for _, id := range []string{"old", "owner", "child", "unrelated"} {
 		if _, err := db.Exec(`INSERT INTO hosted_threads(hosted_thread_id,provider,current_native_id,presentation_mode,revision,created_at,updated_at) VALUES(?,'codex',?,'shared',1,'before','before')`, id, id+"-native"); err != nil {
 			t.Fatal(err)

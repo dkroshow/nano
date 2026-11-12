@@ -2,6 +2,7 @@ package prompts
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,6 +65,10 @@ func TestParkedDiscardMigrationLetsOnlyAParkedPromptExpire(t *testing.T) {
 		if _, err := db.Exec(change); err == nil {
 			t.Fatalf("schema 24 allowed %s", change)
 		}
+	}
+	// Schema 25 (hosted_attachments) belongs to state/store; stand in for it.
+	if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version=%d`, TurnSchemaVersion)); err != nil {
+		t.Fatal(err)
 	}
 	store, err := OpenStore(ctx, db)
 	if err != nil {

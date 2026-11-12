@@ -12,7 +12,7 @@ import (
 const (
 	TransactionalTurnSchemaVersion = 21
 	UsageTurnSchemaVersion         = 22
-	TurnSchemaVersion              = 24
+	TurnSchemaVersion              = 25
 )
 
 type Store struct{ db *sql.DB }

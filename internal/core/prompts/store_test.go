@@ -45,6 +45,11 @@ func openCurrentStore(t *testing.T, ctx context.Context, db *sql.DB) (*Store, er
 	if _, err := MigrateParkedDiscard(ctx, db, filepath.Join(dir, "v23.sqlite")); err != nil {
 		t.Fatal(err)
 	}
+	// Schema 25 adds only hosted_attachments, a state/store stage this
+	// package must not import; its version stands in for it here.
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version=%d`, TurnSchemaVersion)); err != nil {
+		t.Fatal(err)
+	}
 	return OpenStore(ctx, db)
 }
 

@@ -16,9 +16,10 @@ import (
 
 // StorePaths keeps the canonical destination separate from retained legacy
 // sources. Writers must be stopped for the whole PrepareStore call.
+// Attachments names the retired attachments.json, read once by schema 25.
 type StorePaths struct {
-	Destination, Control, BackupRoot string
-	Turns                            turns.LegacyTurnPaths
+	Destination, Control, BackupRoot, Attachments string
+	Turns                                         turns.LegacyTurnPaths
 }
 
 // PrepareStore publishes nano_threads.sqlite only after a private copy has
@@ -44,7 +45,7 @@ func prepareStore(ctx context.Context, paths StorePaths, verifyLegacyCopy source
 	if err != nil {
 		return report, err
 	}
-	for _, source := range []string{paths.Control, paths.Turns.Queue, paths.Turns.Attempts, paths.Turns.Completed} {
+	for _, source := range []string{paths.Control, paths.Attachments, paths.Turns.Queue, paths.Turns.Attempts, paths.Turns.Completed} {
 		if source == "" {
 			continue
 		}
@@ -157,6 +158,9 @@ func prepareStore(ctx context.Context, paths StorePaths, verifyLegacyCopy source
 	if err := migrateParkedDiscard(ctx, db, filepath.Join(run, "parked-discard-v23.sqlite"), migrations); err != nil {
 		return report, err
 	}
+	if _, err := migrateAttachmentState(ctx, db, filepath.Join(run, "hosted-attachments-v24.sqlite"), paths.Attachments); err != nil {
+		return report, err
+	}
 	if err := validatePreparedStore(ctx, db, migrations); err != nil {
 		return report, err
 	}
@@ -200,11 +204,14 @@ func prepareExistingStore(ctx context.Context, destination string, paths StorePa
 		if err := migrateParkedDiscard(ctx, db, "", migrations); err != nil {
 			return report, err
 		}
+		if _, err := migrateAttachmentState(ctx, db, "", ""); err != nil {
+			return report, err
+		}
 		if err := validatePreparedStore(ctx, db, migrations); err != nil {
 			return report, err
 		}
 		return readTurnMigrationReport(ctx, db)
-	case turns.MemberRecoveryTurnSchemaVersion, turns.UsageTurnSchemaVersion, turns.TransactionalTurnSchemaVersion:
+	case turns.ParkedDiscardTurnSchemaVersion, turns.MemberRecoveryTurnSchemaVersion, turns.UsageTurnSchemaVersion, turns.TransactionalTurnSchemaVersion:
 		report, err = readTurnMigrationReport(ctx, db)
 		if err != nil {
 			return report, err
@@ -262,6 +269,9 @@ func prepareExistingStore(ctx context.Context, destination string, paths StorePa
 		return report, err
 	}
 	if err := migrateParkedDiscard(ctx, candidateDB, filepath.Join(run, "migration-input-v23.sqlite"), migrations); err != nil {
+		return report, err
+	}
+	if _, err := migrateAttachmentState(ctx, candidateDB, filepath.Join(run, "migration-input-v24.sqlite"), paths.Attachments); err != nil {
 		return report, err
 	}
 	if err := validatePreparedStore(ctx, candidateDB, migrations); err != nil {
