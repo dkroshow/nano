@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/dkroshow/nano/internal/testsupport"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -595,6 +596,60 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	}
 	if turn.Error == nil || turn.Error.Code != "session_closed" {
 		t.Fatalf("settled operation error = %+v, want session_closed evidence", turn.Error)
+	}
+}
+
+// A cleanup agent lists the threads Nano would bring back, closes one in its
+// own name, and the thread is finished for good: kept with who and when, gone
+// from the list, and not brought back by a restart.
+func TestCleanupCloseFinishesAThreadInTheCallersName(t *testing.T) {
+	store := newTestAgentExecutionStore(t, "run-1")
+	target, _, _ := fixtureBeginSession(store, "idle-child", "request-hash", "codex", presentationBackground)
+	cleanup, _, _ := fixtureBeginSession(store, "cleanup-agent", "request-hash", "codex", presentationBackground)
+	_ = store.BindSession(target.ID, "old-nano", "native-idle", "ready", presentationBackground)
+	attachments, db := testsupport.AttachmentStore(t)
+	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "native-idle", HostedThreadID: target.ID, AttachedAt: time.Now().Format(time.RFC3339Nano)})
+	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
+	handler := applicationHandler(fixtureOwners(s))
+	states := func() string {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/hosted-thread-states", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("states = %d %s", rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+	if listed := states(); !strings.Contains(listed, `"hostedThreadId":"`+target.ID+`"`) || !strings.Contains(listed, `"state":"attached"`) {
+		t.Fatalf("states before close = %s", listed)
+	}
+	refused := httptest.NewRecorder()
+	handler.ServeHTTP(refused, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/idle-child/close", strings.NewReader(`{"actorThreadRef":"nobody"}`)))
+	if refused.Code != http.StatusBadRequest || !strings.Contains(states(), target.ID) {
+		t.Fatalf("unknown actor = %d %s; want refused with the thread still active", refused.Code, refused.Body.String())
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/hosted-threads/idle-child/close", strings.NewReader(`{"actorThreadRef":"cleanup-agent"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("close = %d %s", rec.Code, rec.Body.String())
+	}
+	var state, finishedAt, finishedBy string
+	var rows int
+	if err := db.QueryRow(`SELECT state, finished_at, finished_by, (SELECT count(*) FROM hosted_attachments) FROM hosted_attachments WHERE hosted_thread_id=?`, target.ID).Scan(&state, &finishedAt, &finishedBy, &rows); err != nil {
+		t.Fatal(err)
+	}
+	if state != "finished" || finishedAt == "" || finishedBy != cleanup.ID || rows != 1 {
+		t.Fatalf("closed row: state=%q at=%q by=%q rows=%d; want kept, finished by %s", state, finishedAt, finishedBy, rows, cleanup.ID)
+	}
+	if listed := states(); strings.Contains(listed, target.ID) {
+		t.Fatalf("a finished thread is still listed: %s", listed)
+	}
+	restarted, err := hostedstore.NewAttachmentStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restarted.Records()) != 0 {
+		t.Fatalf("a restart brought back %+v", restarted.Records())
 	}
 }
 

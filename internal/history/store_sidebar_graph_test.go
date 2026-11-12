@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -123,6 +124,58 @@ func TestListSidebarGraphRescuesExtraIdentitiesOutsideTheWindow(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("starred rescue missing: %+v", graph.Rows)
+	}
+}
+
+// The full sidebar read finds every active hosted thread in the threads
+// database itself, with no id list in the query (an id per thread is what
+// once broke every rebuild), and leaves a finished one out.
+func TestListSidebarGraphJoinsActiveHostedThreadsWithoutAnIDList(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "history.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	root := SourceRoot{Provider: ProviderCodex, Kind: RootCodexSessions, Path: t.TempDir()}
+	if _, err := store.EnsureRoot(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-80 * 24 * time.Hour)
+	activeID := fleetCourtThread(t, store, root, "active.jsonl", "native-active", ThreadMain, &old, []fleetCourtItem{{itemType: ItemUserMessage, text: "resting"}})
+	finishedID := fleetCourtThread(t, store, root, "finished.jsonl", "native-finished", ThreadMain, &old, []fleetCourtItem{{itemType: ItemUserMessage, text: "closed"}})
+	// The columns this read relies on, as the threads store keeps them.
+	threadsDB := filepath.Join(dir, "nano_threads.sqlite")
+	threads, err := sql.Open("sqlite", threadsDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := threads.Exec(`CREATE TABLE hosted_attachments(hosted_thread_id TEXT PRIMARY KEY, provider TEXT NOT NULL, native_thread_id TEXT NOT NULL, state TEXT NOT NULL);
+		INSERT INTO hosted_attachments VALUES('nht_active','codex','native-active','resumable'),('nht_finished','codex','native-finished','finished')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := threads.Close(); err != nil {
+		t.Fatal(err)
+	}
+	updatedFrom := now.Add(-30 * 24 * time.Hour)
+	params := SidebarGraphParams{
+		List:           ListThreadsParams{IncludeSubagents: true, Archived: ArchivedInclude, UpdatedFrom: &updatedFrom},
+		ActiveHostedDB: threadsDB,
+	}
+	for attempt := range 2 { // the second read reuses the attached connection
+		graph, err := store.ListSidebarGraph(ctx, params)
+		if err != nil {
+			t.Fatalf("read %d: %v", attempt, err)
+		}
+		got := map[string]bool{}
+		for _, row := range graph.Rows {
+			got[row.Thread.ID] = true
+		}
+		if !got[activeID] || got[finishedID] {
+			t.Fatalf("read %d: active included=%v, finished included=%v; want the active row only", attempt, got[activeID], got[finishedID])
+		}
 	}
 }
 

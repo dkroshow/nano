@@ -947,6 +947,53 @@
         }
       }
     },
+    "/api/v1/hosted-thread-states": {
+      "get": {
+        "tags": ["Hosted threads"],
+        "operationId": "listHostedThreadStates",
+        "summary": "List the hosted threads Nano would bring back",
+        "description": "Every hosted thread whose attachment state is attached (a session is live) or resumable (Nano can resume it). Finished threads are not listed: only an explicit close, or a cleanup agent closing through POST /api/v1/hosted-threads/{threadRef}/close with actorThreadRef, finishes a thread, and nothing reopens it except an explicit resume.",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string", "enum": ["attached", "resumable"]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The active hosted threads.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items"],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["hostedThreadId", "provider", "nativeThreadId", "state", "attachedAt"],
+                        "properties": {
+                          "hostedThreadId": {"type": "string"},
+                          "provider": {"type": "string"},
+                          "nativeThreadId": {"type": "string"},
+                          "state": {"type": "string", "enum": ["attached", "resumable"]},
+                          "attachedAt": {"type": "string"}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "503": {"description": "The attachment store is unavailable."}
+        }
+      }
+    },
     "/api/v1/hosted-threads/{threadRef}/close": {
       "parameters": [
         {
@@ -957,7 +1004,23 @@
         "tags": ["Hosted threads"],
         "operationId": "closeHostedThread",
         "summary": "Close a hosted thread, keeping its durable record",
-        "description": "Ends the attachment, settles non-terminal operations as interrupted (including on an already-detached thread), forgets the boot-reattach attachment record, and drops queued prompts. The durable hosted-thread record survives with status exited. Claude closure requires the shim's answer for the exact shim session: an acknowledgement, or its not-found reply that the child is already gone. Other errors, a timeout, an unreachable shim and missing identity preserve the attachment and queued prompts. No attach, replay or replacement process is started by close.",
+        "description": "Ends the attachment, settles non-terminal operations as interrupted (including on an already-detached thread), marks its attachment state finished (kept with who and when; boot and the sidebar no longer bring it back), and drops queued prompts. The durable hosted-thread record survives with status exited. Claude closure requires the shim's answer for the exact shim session: an acknowledgement, or its not-found reply that the child is already gone. Other errors, a timeout, an unreachable shim and missing identity preserve the attachment and queued prompts. No attach, replay or replacement process is started by close.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "actorThreadRef": {
+                    "type": "string",
+                    "description": "Hosted thread reference of the caller, recorded as who finished the thread. Omitted, the closer is recorded as api."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "The closed hosted-thread record.",

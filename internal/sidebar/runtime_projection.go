@@ -35,7 +35,7 @@ func (s *Controller) runtimeFor(provider, nativeThreadID string) (RuntimeInfo, b
 
 // detachedRuntimeInfos projects detached threads' overlay rows. Presentation
 // comes from the canonical hosted record when one exists — the mode is mutable
-// now (setPresentation), and the attachment JSON copy may be stale between the
+// now (setPresentation), and the attachment row's copy may be stale between the
 // flip and the record's next transport rewrite. The attachment value remains
 // only as the fallback for legacy records that predate hosted identity. The
 // modes are read in one batch so snapshots do not read once per thread behind

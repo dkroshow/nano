@@ -321,9 +321,9 @@ func (attachmentState *State) rememberDurableAttachment(rec hostedstore.Attachme
 		attachmentState.stateMu.Unlock()
 	}
 	rec.HostedThreadID = attachmentState.identity.hostedThreadID
-	// Cwd/model/tier are canonical control.sqlite facts. The attachment JSON is
-	// retained solely as a read-only migration/transport bridge and must never
-	// regain posture authority from a live session.
+	// Cwd/model/tier are canonical control.sqlite facts. The attachment row is
+	// a transport bridge and must never regain posture authority from a live
+	// session.
 	rec.Cwd, rec.Model, rec.TurnServiceTier = "", "", ""
 	rec.InvokerHostedThreadID = attachmentState.identity.invokerHostedThreadID
 	rec.InvokerNativeThreadID = attachmentState.identity.invokerNativeThreadID

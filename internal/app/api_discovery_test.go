@@ -226,6 +226,7 @@ func TestOpenAPIDescribesEveryHostedThreadCapability(t *testing.T) {
 		"/api/v1/usage/threads":                                       {"get"},
 		"/api/v1/threads/{id}/usage":                                  {"get"},
 		"/api/v1/threads/{threadId}/transcript":                       {"get"},
+		"/api/v1/hosted-thread-states":                                {"get"},
 		"/api/v1/hosted-threads":                                      {"get", "post"},
 		"/api/v1/hosted-threads/{threadRef}":                          {"get", "delete"},
 		"/api/v1/hosted-threads/{threadRef}/availability":             {"get"},

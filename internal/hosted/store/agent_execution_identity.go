@@ -424,7 +424,7 @@ func (s *ExecutionStore) SetSidebarPlacement(id, placement string) (threads.Sess
 
 // PresentationModeFor reads the canonical mode from the execution cache, which
 // mirrors control.sqlite. Detached-runtime projection and boot reattach use it
-// instead of trusting attachmentRecord.PresentationMode — the attachment JSON
+// instead of trusting attachmentRecord.PresentationMode — the attachment row
 // is a transport bridge, never presentation authority.
 func (s *ExecutionStore) PresentationModeFor(id string) (string, bool) {
 	mode, ok := s.PresentationModes([]string{id})[id]

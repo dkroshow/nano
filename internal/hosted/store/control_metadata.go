@@ -450,7 +450,7 @@ func (s *MetadataStore) EnsureHostedThread(id, provider, presentationMode, invok
 
 // setPresentationMode commits the durable presentation fact. control.sqlite is
 // the single authority for a thread's mode; every other copy (execution cache,
-// live session, attachment JSON) is a projection synchronized after this
+// live session, attachment row) is a projection synchronized after this
 // commit. Same-value writes are revision-neutral so an idempotent PUT cannot
 // trigger needless client refetches, and the change is published only when a
 // row actually flipped. The caller owns runtime notification ordering.

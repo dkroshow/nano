@@ -198,6 +198,9 @@ func (s *Controller) loadSidebarPopulation(ctx context.Context, query threadinde
 		},
 		Extra: s.sidebarRescueKeys(),
 	}
+	if s.attachments != nil {
+		params.ActiveHostedDB = s.attachments.DatabasePath()
+	}
 	graph, err := source.ListSidebarGraph(ctx, params)
 	if err != nil {
 		return history.SidebarGraph{}, nil, err
@@ -254,14 +257,16 @@ func (s *Controller) sidebarRescueKeys() []history.SidebarGraphKey {
 		seen[id] = true
 		keys = append(keys, history.SidebarGraphKey{Provider: history.Provider(provider), NativeID: native})
 	}
-	// Attached first (live sessions, oldest first), then detached records.
+	// Active hosted threads come from the threads database in the same read
+	// (ActiveHostedDB). Only a live session with no attachment row, such as a
+	// direct Claude child, and a star still need naming here.
 	for _, sess := range s.volatileSessionSummaries() {
-		add(sess.Provider, sess.ThreadID)
-	}
-	if s.attachments != nil {
-		for _, rec := range s.attachments.DetachedExcept(nil) {
-			add(rec.Key().Provider, rec.Key().NativeThreadID)
+		if s.attachments != nil {
+			if _, stored := s.attachments.Get(sess.Provider, sess.ThreadID); stored {
+				continue
+			}
 		}
+		add(sess.Provider, sess.ThreadID)
 	}
 	if s.threadStars != nil {
 		for _, key := range s.threadStars.starredIdentities() {

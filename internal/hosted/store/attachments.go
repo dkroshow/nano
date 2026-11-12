@@ -34,10 +34,10 @@ const (
 	AttachmentAttached = "attached"
 	// AttachmentResumable marks a row with no live session that Nano can resume.
 	AttachmentResumable = "resumable"
-	// AttachmentFinished marks a row closed for good.
-	AttachmentFinished = "finished"
-	// FinishedByNano names Nano itself as the actor that finished a row.
-	FinishedByNano = "nano"
+	// attachmentFinished marks a row closed for good; such rows never load.
+	attachmentFinished = "finished"
+	// finishedByNano names Nano itself as the actor that finished a row.
+	finishedByNano = "nano"
 )
 
 // AttachmentStore keeps the active rows of hosted_attachments in memory, loaded
@@ -46,6 +46,7 @@ const (
 // wrote there. All exported operations are safe for concurrent use.
 type AttachmentStore struct {
 	db    *sql.DB
+	path  string
 	mu    sync.Mutex
 	byKey map[AttachmentKey]Attachment
 }
@@ -62,6 +63,9 @@ func NewAttachmentStore(db *sql.DB) (*AttachmentStore, error) {
 		return nil, errors.New("attachment store: threads database is required")
 	}
 	s := &AttachmentStore{db: db, byKey: map[AttachmentKey]Attachment{}}
+	if err := db.QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&s.path); err != nil {
+		return nil, fmt.Errorf("attachment store: locate threads database: %w", err)
+	}
 	rows, err := db.Query(`SELECT ` + attachmentColumns + ` FROM hosted_attachments a LEFT JOIN hosted_threads h ON h.hosted_thread_id=a.hosted_thread_id WHERE a.state <> 'finished'`)
 	if err != nil {
 		return nil, fmt.Errorf("attachment store: read active rows: %w", err)
@@ -96,6 +100,10 @@ func NewAttachmentStore(db *sql.DB) (*AttachmentStore, error) {
 	log.Printf("hosted attachments: %d active, %d were live when Nano stopped", len(s.byKey), wasLive)
 	return s, nil
 }
+
+// DatabasePath is the threads database file, so a catalog read can join the
+// active rows in place of a list of their ids.
+func (s *AttachmentStore) DatabasePath() string { return s.path }
 
 // Remember records a live durable session as its hosted thread's attached
 // row. One row per hosted thread: a re-key (a provisional Claude handle
@@ -293,7 +301,7 @@ func (s *AttachmentStore) Forget(provider, nativeThreadID string) {
 	if !ok {
 		return
 	}
-	if err := s.finishLocked(rec, FinishedByNano); err != nil {
+	if err := s.finishLocked(rec, finishedByNano); err != nil {
 		log.Printf("finish attachment %s/%s: %v", provider, nativeThreadID, err)
 	}
 }

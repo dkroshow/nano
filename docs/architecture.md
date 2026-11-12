@@ -139,7 +139,7 @@ All durable state lives under `~/.nanod` unless `-data-dir` moves it:
 | File | Holds |
 | --- | --- |
 | `history.sqlite` | The thread catalog: metadata projected from native session files, cursors, and the contentless full-text search index. |
-| `nano_threads.sqlite` | Hosted threads, their native-id claims, execution sessions, queued prompts and send attempts, completed turns. |
+| `nano_threads.sqlite` | Hosted threads, their native-id claims, execution sessions, resume data and attachment state ([decision](decisions/hosted-attachment-state.md)), queued prompts and send attempts, completed turns. |
 | `thread-names.json` | Operator-assigned thread names; a flat file by decision. |
 | `mail.sqlite`, `heartbeat.sqlite` | The agent inbox; heartbeat schedules and wake budget. |
 | `thread-stars.sqlite`, `thread-pins.sqlite`, `feedback.sqlite` | Stars and sidebar buckets, transcript pins, operator feedback notes. |

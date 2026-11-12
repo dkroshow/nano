@@ -80,7 +80,7 @@ func TestAttachmentStatesAcrossRestart(t *testing.T) {
 			t.Fatalf("%s came back %q; nothing is live at boot", rec.NativeThreadID, rec.State)
 		}
 	}
-	if r := rowOf(t, db, "nht_closed"); r.State != AttachmentFinished || r.FinishedBy != "nht_cleanup" {
+	if r := rowOf(t, db, "nht_closed"); r.State != attachmentFinished || r.FinishedBy != "nht_cleanup" {
 		t.Fatalf("closed row = %+v, want kept as finished by the cleanup caller", r)
 	}
 	if _, ok := reopened.Get("codex", "t-closed"); ok {
@@ -141,7 +141,7 @@ func TestAttachmentLivenessNeverReopensAFinishedThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.SetLive("codex", "t-a", true)
-	if r := rowOf(t, db, "nht_a"); r.State != AttachmentFinished {
+	if r := rowOf(t, db, "nht_a"); r.State != attachmentFinished {
 		t.Fatalf("a liveness report reopened a finished thread: %+v", r)
 	}
 	store.Remember(attach("nht_a", "t-a", "2026-07-26T10:00:00Z"))

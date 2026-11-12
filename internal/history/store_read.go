@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -852,6 +853,47 @@ type SidebarGraphParams struct {
 	List      ListThreadsParams
 	Extra     []SidebarGraphKey
 	OnlyExtra bool
+	// ActiveHostedDB, when set, names the threads database whose attached and
+	// resumable hosted threads the read also includes, in the same query.
+	ActiveHostedDB string
+}
+
+// activeHostedPredicate selects the catalog rows of active hosted_attachments
+// rows (hosted/schema attachment_state.go owns that table). Its partial index
+// serves the subquery, so the read costs one indexed scan of the active rows
+// rather than one bound parameter per thread.
+const activeHostedPredicate = `(provider, native_thread_id) IN (SELECT provider, native_thread_id FROM hosted_states.hosted_attachments WHERE state <> 'finished')`
+
+// sidebarGraphTx opens the read snapshot. A read that includes active hosted
+// threads first attaches the threads database read-only to its connection,
+// once per connection; SQLite allows ATTACH only outside a transaction.
+func (s *Store) sidebarGraphTx(ctx context.Context, threadsDB string) (*sql.Tx, func(), error) {
+	if threadsDB == "" {
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		return tx, func() {}, err
+	}
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	var attached int
+	if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM pragma_database_list WHERE name='hosted_states'`).Scan(&attached); err != nil {
+		conn.Close()
+		return nil, nil, err
+	}
+	if attached == 0 {
+		u := url.URL{Scheme: "file", Path: threadsDB, RawQuery: "mode=ro"}
+		if _, err := conn.ExecContext(ctx, `ATTACH DATABASE ? AS hosted_states`, u.String()); err != nil {
+			conn.Close()
+			return nil, nil, fmt.Errorf("attach threads database: %w", err)
+		}
+	}
+	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		conn.Close()
+		return nil, nil, err
+	}
+	return tx, func() { conn.Close() }, nil
 }
 
 // SidebarGraphRow is one compact graph node: identity and sidebar count
@@ -882,6 +924,13 @@ func (s *Store) ListSidebarGraph(ctx context.Context, params SidebarGraphParams)
 	}
 	where, args := baseThreadFilters(params.List)
 	extraWhere, extraArgs := sidebarGraphExtraPredicates(params.Extra)
+	if params.ActiveHostedDB != "" {
+		if extraWhere == "" {
+			extraWhere = activeHostedPredicate
+		} else {
+			extraWhere = "(" + extraWhere + " OR " + activeHostedPredicate + ")"
+		}
+	}
 	query := threadSelect
 	switch {
 	case params.OnlyExtra:
@@ -901,10 +950,11 @@ func (s *Store) ListSidebarGraph(ctx context.Context, params SidebarGraphParams)
 	}
 	query += " ORDER BY updated_at IS NULL ASC, updated_at DESC, id DESC"
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, release, err := s.sidebarGraphTx(ctx, params.ActiveHostedDB)
 	if err != nil {
 		return SidebarGraph{}, fmt.Errorf("begin sidebar graph snapshot: %w", err)
 	}
+	defer release()
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {

@@ -370,9 +370,15 @@
     },
     {
       "id": "hostedThreads.close",
-      "summary": "End the attachment and settle open operations as interrupted; the durable hosted-thread record survives with status exited.",
+      "summary": "End the attachment and settle open operations as interrupted; the durable hosted-thread record survives with status exited, and its attachment state becomes finished. Optional body {\"actorThreadRef\":\"nht_...\"} records who closed it; a cleanup agent must send it.",
       "method": "POST",
       "path": "/api/v1/hosted-threads/{threadRef}/close"
+    },
+    {
+      "id": "hostedThreadStates.list",
+      "summary": "List every hosted thread Nano would bring back after a restart, with its state: attached (a session is live) or resumable. Finished threads are never listed and never come back on their own. ?state=attached|resumable narrows the list. A cleanup agent picks from here and closes with actorThreadRef.",
+      "method": "GET",
+      "path": "/api/v1/hosted-thread-states"
     },
     {
       "id": "hostedThreads.detach",

@@ -44,8 +44,9 @@ posture from transcript data, attachment fields, or local defaults.
   control-plane writer and its existing ordering.
 - Legacy stores are migration inputs rather than runtime writers.
   Hosted sessions, turn operations, and metadata live only in `nano_threads.sqlite`.
-- `attachments.json` retains provider transport and reconnection data only.
-  Working directory, model, and Codex service tier are removed after import.
+- Provider transport and reconnection data moved from `attachments.json` into
+  `hosted_attachments` at schema 25 ([hosted-attachment-state.md](hosted-attachment-state.md)).
+  Working directory, model, and Codex service tier stay canonical metadata.
 - `thread-names.json` remains the name truth selected by the 2026-07-21
   decision. Canonical metadata joins its value and actual provenance at read
   time rather than copying it into the event log.

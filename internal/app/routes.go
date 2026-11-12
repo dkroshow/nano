@@ -220,6 +220,7 @@ func applicationRoutes(s *server) []applicationRoute {
 		{http.MethodGet, "/api/v1/pins/monitor", "pins.monitor", s.hostedPins().HandleMonitor},
 	}
 	routes = append(routes, apiDiscoveryRoutes()...)
+	routes = append(routes, applicationRoute{http.MethodGet, "/api/v1/hosted-thread-states", "hostedThreadStates.list", s.hostedController().HandleAttachmentStates})
 	routes = append(routes, hostedThreadRoutes(s, "/api/v1/hosted-threads")...)
 	routes = append(routes, applicationRoute{http.MethodGet, "/api/v1/warm-transcripts", "warmTranscripts.stream", s.sidebarOwner().HandleWarmTranscripts})
 	// The first agent-only spelling remains a compatibility alias for the same

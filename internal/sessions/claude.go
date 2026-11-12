@@ -215,7 +215,7 @@ type claudeQueuedWorkGate interface {
 //     exactly the interactive family. This corrects slice 3a finding §7, which
 //     read their absence as "AskUserQuestion does not exist in -p mode".
 //
-// Only new children get it. Stored postures in attachments.json carry their own
+// Only new children get it. Stored postures in attachment rows carry their own
 // argv, so the fleet heals as sessions are restarted rather than needing a
 // migration.
 var claudePermissionPromptFlag = []string{"--permission-prompt-tool", "stdio"}
