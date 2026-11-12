@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -43,6 +44,9 @@ func TestCreationNameMaintenanceHTTPPreviewsAndRequiresFingerprintForApply(t *te
 		t.Fatal(err)
 	}
 	if _, err := prompts.MigrateParkedDiscard(context.Background(), control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hostedschema.MigrateAttachmentState(context.Background(), control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema-24-attachments.sqlite"), ""); err != nil {
 		t.Fatal(err)
 	}
 	executions, err := newControlAgentExecutionStore(control, "repair-http")

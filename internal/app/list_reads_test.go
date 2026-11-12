@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"github.com/dkroshow/nano/internal/testsupport"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -84,11 +85,8 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stars.Close() })
-	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
+	attachments, _ := testsupport.AttachmentStore(t)
+	attachments.Remember(hostedstore.Attachment{Provider: "codex", HostedThreadID: "nht_detached-old", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
 	metadata, _ := newTestHostedControl(t)
 	f := &budgetFixture{now: now, hostedBy: map[string]string{}}
 	// Instrument the adapter's supplied database from construction, so sessions
@@ -175,8 +173,8 @@ func newBudgetFixture(t *testing.T, extra int, followChanges bool) *budgetFixtur
 	for i, native := range []string{"detached-hosted", "detached-unnamed"} {
 		sess := live(native, "/canon/"+native, "canon-model-z", true, created)
 		delete(sessions, sess.ID())
-		attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: native, HostedThreadID: sess.HostedThreadID(),
-			AttachedAt: now.Add(-time.Duration(i+1) * time.Minute).Format(time.RFC3339)})
+		attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "codex", NativeThreadID: native, HostedThreadID: sess.HostedThreadID(),
+			AttachedAt: now.Add(-time.Duration(i+1) * time.Minute).Format(time.RFC3339)}))
 	}
 
 	turn, _, err := fixtureBeginTurn(executions, f.hostedBy["failed-live"], "action-failed", "prompt-hash")

@@ -24,13 +24,13 @@ func TestClaudeForgetUnconfirmedIsExplicitAndGenerationScoped(t *testing.T) {
 			if scenario == "missing_identity" {
 				record.ShimSessionID = ""
 			}
-			store.Remember(record)
+			store.Remember(fixtureHosted(record))
 			s := &server{Registry: newSessionRegistry(), attachments: store}
 			query := url.Values{"provider": {"claude"}, "forget": {"unconfirmed"}, "expectedShimSessionId": {record.ShimSessionID}, "expectedAttachedAt": {record.AttachedAt}}
 			switch scenario {
 			case "replacement":
 				record.ShimSessionID = "new-process"
-				store.Remember(record)
+				store.Remember(fixtureHosted(record))
 			case "resumed":
 				s.RegisterSession(configuredFixtureSession(t, sessions.Config{ID: "live", Provider: "claude"}, "native-1", "ready", "", false))
 			case "bad_provider":
@@ -83,7 +83,7 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 			if outcome == "missing_identity" {
 				attachment.ShimSessionID = ""
 			}
-			store.Remember(attachment)
+			store.Remember(fixtureHosted(attachment))
 			s := &server{Registry: newSessionRegistry(), attachments: store}
 			s.defaults.ClaudeShimWS = shim.WSURL()
 			if outcome == "unreachable" {
@@ -125,7 +125,7 @@ func TestClaudeExplicitDetachedCloseRequiresAcknowledgement(t *testing.T) {
 func TestClaudeExplicitClosePreservesReplacement(t *testing.T) {
 	store := newTestStore(t)
 	old := hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", ShimSessionID: "old-process"}
-	store.Remember(old)
+	store.Remember(fixtureHosted(old))
 	shim := newFakeShim(t, func(c *claudeshim.Conn) {
 		call, ok := c.Next()
 		if !ok {
@@ -133,7 +133,7 @@ func TestClaudeExplicitClosePreservesReplacement(t *testing.T) {
 		}
 		replacement := old
 		replacement.ShimSessionID = "replacement"
-		store.Remember(replacement)
+		store.Remember(fixtureHosted(replacement))
 		c.Reply(call, map[string]any{})
 	})
 	s := &server{attachments: store}
@@ -184,7 +184,7 @@ func TestClaudeExplicitHostedFailurePreservesOperations(t *testing.T) {
 					t.Fatal(err)
 				}
 				s.attachments = newTestStore(t)
-				s.attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"})
+				s.attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID, ShimSessionID: "exact-process"}))
 				var reject atomic.Bool
 				reject.Store(true)
 				shim := newFakeShim(t, func(c *claudeshim.Conn) {
@@ -280,7 +280,7 @@ func TestClaudeExplicitConcurrentClosesSendOneStop(t *testing.T) {
 	})
 	s := &server{Registry: newSessionRegistry(), attachments: newTestStore(t)}
 	s.defaults.ClaudeShimWS = shim.WSURL()
-	s.attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "cs_provisional", ShimSessionID: "cs_provisional"})
+	s.attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "claude", NativeThreadID: "cs_provisional", ShimSessionID: "cs_provisional"}))
 	results := make(chan int, 2)
 	request := func() {
 		w := httptest.NewRecorder()
@@ -335,7 +335,7 @@ func TestClaudeExplicitLiveFailureKeepsRetryIdentity(t *testing.T) {
 	_ = store.BindSession(hosted.ID, sess.ID(), sess.State().ThreadID(), "ready", presentationShared)
 	op, _, _ := fixtureBeginTurn(store, hosted.ID, "pending", "hash")
 	attachments := newTestStore(t)
-	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.State().ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"})
+	attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "claude", NativeThreadID: sess.State().ThreadID(), HostedThreadID: hosted.ID, ShimSessionID: "shim-1"}))
 	s := testServerWithSessions(&server{Registry: newSessionRegistry(), attachments: attachments, agentExecutions: store}, map[string]*sessions.Session{sess.ID(): sess})
 	w := httptest.NewRecorder()
 	fixtureOwners(s).hostedController().HandleLegacyClose(w, httptest.NewRequest(http.MethodDelete, "/", nil), sess)

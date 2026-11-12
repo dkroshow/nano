@@ -5,8 +5,9 @@ package store
 // a missing provider can only mean codex.
 const attachmentProviderDefault = "codex"
 
-// Attachment is one durable transport attachment. Cwd, Model, and tier
-// remain only so old files can be imported; live writes always scrub them.
+// Attachment is one hosted thread's resume data and state (attachments.go).
+// Cwd, Model, and tier are filled by transports but never stored: posture is
+// canonical in hosted metadata.
 //
 // Bin and Args are claude-only: the resolved binary and the exact spawn args of
 // the original child, stored so a `--resume` fallback can restore the session's
@@ -62,6 +63,9 @@ type Attachment struct {
 	TurnStartedAtMs int64    `json:"turnStartedAtMs,omitempty"`
 	TurnAnchorSeq   int64    `json:"turnAnchorSeq,omitempty"`
 	TurnServiceTier string   `json:"turnServiceTier,omitempty"`
+	// State is the row's AttachmentAttached or AttachmentResumable; finished
+	// rows are never returned.
+	State string `json:"state,omitempty"`
 }
 
 // Provisional reports a record for a thread that was started but never

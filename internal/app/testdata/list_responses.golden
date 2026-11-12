@@ -8,7 +8,7 @@ session id="sess-budget-indexed-000" threadId="budget-indexed-000" status="ready
 session id="sess-budget-unindexed-001" threadId="budget-unindexed-001" status="ready" cwd="/canon/budget-unindexed-001" model="canon-model-x" metadata.revision=4
 session id="sess-budget-indexed-002" threadId="budget-indexed-002" status="ready" cwd="/canon/budget-indexed-002" model="canon-model-x" metadata.revision=4
 session id="sess-budget-unindexed-003" threadId="budget-unindexed-003" status="ready" cwd="/canon/budget-unindexed-003" model="canon-model-x" metadata.revision=4
-detached provider="codex" nativeThreadId="detached-old"
+detached provider="codex" nativeThreadId="detached-old" hostedThreadId="nht_detached-old" metadataUnavailable=true
 detached provider="codex" nativeThreadId="detached-hosted" hostedThreadId="nht_detached-hosted" metadata.revision=4
 detached provider="codex" nativeThreadId="detached-unnamed" hostedThreadId="nht_detached-unnamed" metadata.revision=4
 thread provider="codex" nativeId="budget-unindexed-003" idClass="mem" kind="thread" runtime.status="ready" runtime.detached=false metadata.cwd.value="/canon/budget-unindexed-003" metadata.model.value="canon-model-x" fleet.label="idle"

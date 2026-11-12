@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -47,6 +48,9 @@ func newRetirementServer(t *testing.T) retirementServerFixture {
 		t.Fatal(err)
 	}
 	if _, err := prompts.MigrateParkedDiscard(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hostedschema.MigrateAttachmentState(ctx, control.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema-24-attachments.sqlite"), ""); err != nil {
 		t.Fatal(err)
 	}
 	executions, err := newControlAgentExecutionStore(control, "test")
@@ -229,10 +233,10 @@ func TestRetiredHostedRefusesRuntimeAndAttachmentReferences(t *testing.T) {
 				s.RegisterSession(newFixtureSession(sessions.Config{HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}, ""))
 			case "attachment-owner":
 				s.attachments = newTestStore(t)
-				s.attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.old.ID})
+				s.attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.old.ID}))
 			case "attachment-invoker":
 				s.attachments = newTestStore(t)
-				s.attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID})
+				s.attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "codex", NativeThreadID: "retired-native", HostedThreadID: f.child.ID, InvokerHostedThreadID: f.old.ID}))
 			}
 			result := s.retireHostedRecords(context.Background(), state.RetirementRequest{OutboxDisposition: "repoint"})
 			if result.OK || result.Applied || !strings.Contains(result.Error, "reference") && !strings.Contains(result.Error, "edge") {

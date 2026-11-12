@@ -1173,8 +1173,8 @@ func TestLiveTextClaudeRestartJoinsSavedAndLiveMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachments.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
-		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"})
+	attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "claude", NativeThreadID: native, HostedThreadID: hosted,
+		Cwd: h.sess.CWD(), Model: "sonnet", Bin: "/fixture/claude", ShimSessionID: "shim-1"}))
 	seedBootAttachments(t, srv)
 	writeClaudeTestSpool(t, srv.defaults.ClaudeShimSpools, hosted, spool...)
 	h.service.SetTranscriptChanged(fixtureOwners(srv).attachmentCoordinator().ConfirmDurableThread)

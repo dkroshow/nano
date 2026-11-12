@@ -9,7 +9,6 @@ import (
 	"github.com/dkroshow/nano/internal/testsupport"
 	shimfixture "github.com/dkroshow/nano/internal/testsupport/claudeshim"
 	shim "github.com/dkroshow/nano/internal/wire/claude"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -36,10 +35,7 @@ func newResumeCoordinator(t *testing.T) (*AttachmentCoordinator, *hostedstore.At
 }
 func newTestStore(t *testing.T) *hostedstore.AttachmentStore {
 	t.Helper()
-	s, e := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if e != nil {
-		t.Fatal(e)
-	}
+	s, _ := testsupport.AttachmentStore(t)
 	return s
 }
 func ownerSessionCount(store *hostedstore.ExecutionStore) int {

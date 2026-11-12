@@ -139,10 +139,10 @@ func TestBootReattachInheritsCanonicalCwdWithoutJSONCwd(t *testing.T) {
 	if err := s.controlMetadata.InheritMissingDesiredPosture(current.ID, predecessor.ID); err != nil {
 		t.Fatal(err)
 	}
-	attachments.Remember(hostedstore.Attachment{
+	attachments.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: claudeResumeThreadID, HostedThreadID: current.ID,
 		Bin: "/stored/claude", Args: storedPosture, AttachedAt: "2026-08-25T13:02:50Z",
-	})
+	}))
 	ensureClaudeTestSpool(t, s, "claude", current.ID)
 	openTurnsForBoot(t, s)
 	fixtureOwners(s).attachmentCoordinator().ReattachOnBoot()

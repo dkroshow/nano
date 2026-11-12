@@ -17,6 +17,7 @@ import (
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sessions"
 	"github.com/dkroshow/nano/internal/sidebar"
+	"github.com/dkroshow/nano/internal/testsupport"
 	"github.com/dkroshow/nano/internal/threadindex"
 )
 
@@ -135,11 +136,8 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*server, map[st
 	if err := fixtureSetStarred(t, stars, "codex", "starred-old", true); err != nil {
 		t.Fatal(err)
 	}
-	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
+	attachments, _ := testsupport.AttachmentStore(t)
+	attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)}))
 	metadata, executions := newTestHostedControl(t)
 	parentHosted, err := fixtureEnsureSessionWithIdentity(executions, "nht_related_parent", "codex", presentationShared, "", "", "")
 	if err != nil {

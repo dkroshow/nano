@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dkroshow/nano/internal/testsupport"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -455,10 +455,10 @@ func TestSessionNameRenamesBeforeAndAfterNativeBind(t *testing.T) {
 func TestSessionNameStagesOnProvisionalIdentity(t *testing.T) {
 	catalog := newCatalogStoreFixture(t).source
 	store := newTestStore(t)
-	store.Remember(hostedstore.Attachment{
+	store.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "cs_shim", ShimSessionID: "cs_shim",
 		Cwd: "/w", AttachedAt: "2026-08-06T10:00:00Z",
-	})
+	}))
 	var s *server
 	fixture := newProviderRuntimeFixture(t, sessions.Config{ID: "session-1", Provider: "claude", CreatedAt: time.Now(), NameThread: func(provider, native, name string) {
 		func() {
@@ -732,11 +732,8 @@ func rescueServer(t *testing.T, corrupt ...bool) *server {
 			"native-sub":  {Thread: threadindex.Thread{ID: "nth_3", Provider: "codex", NativeID: "native-sub", Kind: "subagent", Interaction: "interactive", UpdatedAt: strPtr("2026-07-28T12:00:00Z")}},
 		},
 	}
-	store, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"})
+	store, _ := testsupport.AttachmentStore(t)
+	store.Remember(fixtureHosted(hostedstore.Attachment{Provider: "codex", NativeThreadID: "native-sub", AttachedAt: "2026-07-27T12:00:00Z"}))
 	base := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
 	source := fake.source(t)
 	if len(corrupt) > 0 {

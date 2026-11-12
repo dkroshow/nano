@@ -3,10 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -81,6 +80,9 @@ func migrateTestControl(t *testing.T, metadata *MetadataStore) {
 		t.Fatal(err)
 	}
 	if _, err := prompts.MigrateParkedDiscard(ctx, metadata.db, filepath.Join(t.TempDir(), "schema-24.sqlite")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hostedschema.MigrateAttachmentState(ctx, metadata.db, filepath.Join(t.TempDir(), "schema-24-attachments.sqlite"), ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -487,58 +489,6 @@ func TestControlMetadataRejectionWithoutEffectiveRetainsFailedRequest(t *testing
 	}
 	if desiredID != requested.ID || settlementID != rejected.ID || desiredValue != `"bad-model"` || disposition != metadataDispositionRejected || effective.Valid {
 		t.Fatalf("rejected request state desired=%d settlement=%d value=%s status=%s effective=%v", desiredID, settlementID, desiredValue, disposition, effective)
-	}
-}
-
-func TestLegacyAttachmentMigrationScrubsRetiredJSONOnlyAfterSuccess(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	original := []byte(`[{"provider":"codex","nativeThreadId":"native-scrub","hostedThreadId":"nht_scrub","cwd":"/legacy","model":"legacy-model","turnServiceTier":"priority","bin":"/codex","args":["--resume","native-scrub"],"attachedAt":"2026-08-10T00:00:00Z"}]`)
-	if err := os.WriteFile(path, original, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	attachments, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	failed := newTestControlMetadata(t)
-	if err := failed.EnsureHostedThread("nht_scrub", "claude", presentationShared, "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := ImportAndScrubLegacyAttachments(failed, attachments); err == nil {
-		t.Fatal("conflicting attachment migration succeeded")
-	}
-	if data, err := os.ReadFile(path); err != nil || string(data) != string(original) {
-		t.Fatalf("failed migration scrubbed source: %q, %v", data, err)
-	}
-
-	success := newTestControlMetadata(t)
-	if err := ImportAndScrubLegacyAttachments(success, attachments); err != nil {
-		t.Fatal(err)
-	}
-	if got := success.Posture("nht_scrub"); got.Model != "legacy-model" || got.ServiceTier != "priority" {
-		t.Fatalf("attachment import did not retain canonical baseline: %+v", got)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var raw []map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range []string{"cwd", "model", "turnServiceTier"} {
-		if _, ok := raw[0][field]; ok {
-			t.Fatalf("successful migration retained retired attachment field %s: %s", field, data)
-		}
-	}
-	attachments.Remember(Attachment{Provider: "codex", NativeThreadID: "native-scrub", HostedThreadID: "nht_scrub", Cwd: "/attempted-return", Model: "attempted-return", TurnServiceTier: "default", Bin: "/codex", Args: []string{"--resume", "native-scrub"}, AttachedAt: "2026-08-10T00:01:00Z"})
-	reopened, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, ok := reopened.Get("codex", "native-scrub")
-	if !ok || got.Cwd != "" || got.Model != "" || got.TurnServiceTier != "" || got.Bin != "/codex" || !reflect.DeepEqual(got.Args, []string{"--resume", "native-scrub"}) {
-		t.Fatalf("transport refresh restored retired metadata or lost transport: %+v", got)
 	}
 }
 

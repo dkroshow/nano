@@ -68,7 +68,7 @@ func seedBootAttachments(t *testing.T, s *server) {
 	for _, record := range fixtureAttachmentRecords(s.attachments) {
 		if record.HostedThreadID == "" {
 			record.HostedThreadID = "nht_boot_" + hostedstore.AgentHash([]byte(record.Provider + "\x00" + record.NativeThreadID))[:16]
-			s.attachments.Remember(record)
+			s.attachments.Remember(fixtureHosted(record))
 		}
 		ensureClaudeTestSpool(t, s, record.Provider, record.HostedThreadID)
 		if _, err := fixtureEnsureSessionWithIdentity(s.agentExecutions, record.HostedThreadID, record.Provider, presentationShared, record.InvokerHostedThreadID, record.InvokerNativeThreadID, record.InvokerProvider); err != nil {
@@ -138,7 +138,7 @@ func TestBootReattachResumesClaudeThroughLiveShim(t *testing.T) {
 	rec.InvokerHostedThreadID = "nht_parent"
 	rec.InvokerNativeThreadID = "native-parent"
 	rec.InvokerProvider = "codex"
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -188,7 +188,7 @@ func TestBootReattachKeepsRunningButIdleClaudeSessionIdle(t *testing.T) {
 	}))
 	s, store := bootReattachServer(t, shim.WSURL(), "")
 	rec := rememberedClaudeSession(t, "/stored/claude")
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -219,7 +219,7 @@ func TestBootReattachUsesRetainedClaudeHistorySeam(t *testing.T) {
 	s, store := bootReattachServer(t, shim.WSURL(), "")
 	record := rememberedClaudeSession(t, "/stored/claude")
 	record.TurnStartedAtMs, record.TurnAnchorSeq = 1789766804441, 2 // stale anchor
-	store.Remember(record)
+	store.Remember(fixtureHosted(record))
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	stored, _ := fixtureAttachmentFor(s, "claude", claudeResumeThreadID)
@@ -259,10 +259,10 @@ func TestBootReattachPreservesProvisionalClaudeNameUntilRealBind(t *testing.T) {
 	}))
 	s, store := bootReattachServer(t, shim.WSURL(), "")
 	migrateTestControl(t, s.controlMetadata)
-	store.Remember(hostedstore.Attachment{
+	store.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "cs_shim_pending", ShimSessionID: "cs_shim_pending",
 		Cwd: t.TempDir(), Bin: "/stored/claude", PendingName: "nano api fable",
-	})
+	}))
 
 	catalog := newAttachmentNameCatalog(t, s.controlMetadata)
 	s.catalog = catalog
@@ -312,7 +312,7 @@ func TestBootReattachReloadsCanonicalCreationNameWhenAttachmentDroppedIt(t *test
 	rec := rememberedClaudeSession(t, "/stored/claude")
 	rec.HostedThreadID = "nht_creation_name_boot"
 	rec.PendingName = ""
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	catalog := creationNameCatalogBeforeFact(t, s.controlMetadata.CreationThreadNames)
@@ -366,7 +366,7 @@ func TestBootReattachPendingRenameDoesNotBecomeCreationName(t *testing.T) {
 	rec.HostedThreadID = "nht_creation_then_rename"
 	rec.ShimSessionID = "shim-renamed"
 	rec.PendingName = "operator rename"
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	if err := fixtureRecordCreationName(s.controlMetadata, rec.HostedThreadID, "creation name"); err != nil {
@@ -403,7 +403,7 @@ func TestBootReattachResumesCodexThread(t *testing.T) {
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.WSURL())
 	rec := bootCodexRecord(t)
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -445,7 +445,7 @@ func TestBootReattachRegistersOpenWorkAndRestsTheRest(t *testing.T) {
 			rec.InvokerHostedThreadID, rec.InvokerNativeThreadID, rec.InvokerProvider = "nht_root-idle", "root-idle", "codex"
 		}
 		rec.AttachedAt = now.Add(-time.Duration(i) * time.Minute).Format(time.RFC3339)
-		store.Remember(rec)
+		store.Remember(fixtureHosted(rec))
 	}
 	seedBootAttachments(t, s)
 	ctx := context.Background()
@@ -538,7 +538,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldRegistration(t *testing.T) {
 	for i := range sessionCount {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID = fmt.Sprintf("snapshot-thread-%d", i)
-		store.Remember(rec)
+		store.Remember(fixtureHosted(rec))
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -604,7 +604,7 @@ func TestBootReattachSlowRuntimePublishDoesNotHoldHandshake(t *testing.T) {
 	for i := range sessionCount {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID = fmt.Sprintf("handshake-thread-%d", i)
-		store.Remember(rec)
+		store.Remember(fixtureHosted(rec))
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -706,10 +706,10 @@ func TestBootReattachRegistersAllShellsBeforeSlowClaudeHandshake(t *testing.T) {
 	s, store := bootReattachServer(t, shim.WSURL(), daemon.WSURL())
 	claude := rememberedClaudeSession(t, "/stored/claude")
 	claude.AttachedAt = "2026-07-28T10:00:00Z"
-	store.Remember(claude)
+	store.Remember(fixtureHosted(claude))
 	codex := bootCodexRecord(t)
 	codex.AttachedAt = "2026-07-28T11:00:00Z"
-	store.Remember(codex)
+	store.Remember(fixtureHosted(codex))
 
 	done := make(chan struct{})
 	go func() {
@@ -768,12 +768,12 @@ func TestBootReattachLimitsConcurrentGrokHandshakes(t *testing.T) {
 	s, store := bootReattachServer(t, "", "")
 	s.defaults.GrokBin = bin
 	for i := 0; i < sessionCount; i++ {
-		store.Remember(hostedstore.Attachment{
+		store.Remember(fixtureHosted(hostedstore.Attachment{
 			Provider:       "grok",
 			NativeThreadID: fmt.Sprintf("grok-boot-%d", i),
 			Cwd:            stateDir,
 			AttachedAt:     fmt.Sprintf("2026-09-11T02:%02d:00Z", i),
-		})
+		}))
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -865,11 +865,11 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 	s, store := bootReattachServer(t, shim.WSURL(), "")
 	for i := 0; i < sessionCount; i++ {
 		id := fmt.Sprintf("claude-boot-%d", i)
-		store.Remember(hostedstore.Attachment{
+		store.Remember(fixtureHosted(hostedstore.Attachment{
 			Provider: "claude", NativeThreadID: id, ShimSessionID: "shim-" + id,
 			Bin: "/stored/claude", Args: storedPosture,
 			AttachedAt: fmt.Sprintf("2026-09-11T03:%02d:00Z", i),
-		})
+		}))
 	}
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -966,7 +966,7 @@ func TestBootReattachKeepsZeroTurnCodexThreadUsable(t *testing.T) {
 	daemon.SetResumeTurns(json.RawMessage(`[{"id":"turn-zero-1","status":"inProgress","startedAt":1787600000,"items":[{"id":"user-zero-1","type":"userMessage","text":"tag this thread"}]}]`))
 	s, store := bootReattachServer(t, "", daemon.WSURL())
 	rec := bootCodexRecord(t)
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -1125,8 +1125,8 @@ func TestBootReattachFailureLeavesRecordDetachedAndContinues(t *testing.T) {
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "ws://127.0.0.1:1", daemon.WSURL()) // no shim listening
 	broken := rememberedClaudeSession(t, filepath.Join(t.TempDir(), "missing-claude"))
-	store.Remember(broken)
-	store.Remember(bootCodexRecord(t))
+	store.Remember(fixtureHosted(broken))
+	store.Remember(fixtureHosted(bootCodexRecord(t)))
 
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
@@ -1178,7 +1178,7 @@ func TestClaudeColdCatalogCallbackAfterReattachDoesNotConfirmOrScrubHistoricalSu
 	server.turns, server.sendAttempts = turnStore, attempts
 	server.queuedTurns.BindTransactionStore(turnStore)
 	attempts.BindTransactionStore(turnStore)
-	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(fixtureHosted(rememberedClaudeSession(t, "/stored/claude")))
 	seedBootAttachments(t, server)
 	openTurnsForBoot(t, server)
 	remembered, ok := store.Get("claude", claudeResumeThreadID)
@@ -1229,7 +1229,7 @@ func startingCodexServer(t *testing.T) (*server, *fakeAppServer, hostedstore.Att
 	t.Helper()
 	daemon := newFakeAppServer(t)
 	s, store := bootReattachServer(t, "", daemon.WSURL())
-	store.Remember(bootCodexRecord(t))
+	store.Remember(fixtureHosted(bootCodexRecord(t)))
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	fixtureOwners( // the boot loop's own thread, not left resting
@@ -1561,7 +1561,7 @@ func subscribedCodexServer(t *testing.T, resumeTurns string) (*server, *fakeAppS
 	}
 	rec := bootCodexRecord(t)
 	rec.HostedThreadID = child.ID
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 	seedBootAttachments(t, s)
 	fixtureOwners(s).attachmentCoordinator().PrepareBoot()
 	client := &feedSubscriptionClient{s: s}

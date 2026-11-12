@@ -103,7 +103,7 @@ func newRestartWindow(t *testing.T) *restartWindow {
 	t.Cleanup(func() { w.failReads.Store(false) })
 	s.catalog, s.catalogSources = w.catalog, w.attached
 	w.catalog.SetTranscriptChanged(fixtureOwners(s).attachmentCoordinator().ConfirmDurableThread)
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 	seedBootAttachments(t, s)
 	w.rec = fixtureAttachmentRecords(store)[0]
 	return w

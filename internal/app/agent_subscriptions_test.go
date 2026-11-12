@@ -250,8 +250,8 @@ func TestCompletionNoticeToStartingInvokerDoesNotBlockItsRegistration(t *testing
 	parentRec.NativeThreadID, parentRec.HostedThreadID = "codex-parent", parent.ID
 	childRec := bootCodexRecord(t)
 	childRec.HostedThreadID = child.ID
-	store.Remember(parentRec)
-	store.Remember(childRec)
+	store.Remember(fixtureHosted(parentRec))
+	store.Remember(fixtureHosted(childRec))
 	seedBootAttachments(t, s)
 	fixtureOwners(s).attachmentCoordinator().PrepareBoot()
 	client := &preparingSubscriptionClient{feedSubscriptionClient{s: s}}

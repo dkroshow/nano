@@ -21,7 +21,7 @@ func (s *Controller) HandleLegacyCreate(w http.ResponseWriter, r *http.Request) 
 func (s *Controller) HandleLegacyClose(w http.ResponseWriter, _ *http.Request, sess *sessions.Session) {
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
-	if err := s.closeExplicitSession(sess); err != nil {
+	if err := s.closeExplicitSession(sess, finishedByOperator); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -60,9 +60,9 @@ func (s *Controller) HandleAttachmentScoped(w http.ResponseWriter, r *http.Reque
 		if len(matches) == 1 {
 			var err error
 			if forget == "unconfirmed" {
-				err = s.forgetUnconfirmedClaude(matches[0], r.URL.Query().Get("expectedShimSessionId"), r.URL.Query().Get("expectedAttachedAt"))
+				err = s.forgetUnconfirmedClaude(matches[0], r.URL.Query().Get("expectedShimSessionId"), r.URL.Query().Get("expectedAttachedAt"), finishedByOperator)
 			} else {
-				err = s.closeExplicitAttachment(matches[0])
+				err = s.closeExplicitAttachment(matches[0], finishedByOperator)
 			}
 			if err != nil {
 				httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)

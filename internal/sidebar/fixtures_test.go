@@ -72,11 +72,8 @@ func sidebarActiveFixtureWithStore(t *testing.T, now time.Time) (*Controller, ma
 	if err := stars.setStarred("codex", "starred-old", true); err != nil {
 		t.Fatal(err)
 	}
-	attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	attachments.Remember(hostedstore.Attachment{Provider: "codex", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
+	attachments, _ := testsupport.AttachmentStore(t)
+	attachments.Remember(hostedstore.Attachment{Provider: "codex", HostedThreadID: "nht_detached_old", NativeThreadID: "detached-old", AttachedAt: now.Format(time.RFC3339)})
 	metadata, executions := newTestHostedControl(t)
 	parentHosted, err := fixtureEnsureSessionWithIdentity(executions, "nht_related_parent", "codex", ownedthreads.PresentationShared, "", "", "")
 	if err != nil {

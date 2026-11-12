@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/dkroshow/nano/internal/core/prompts"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
@@ -40,7 +41,7 @@ func MigrateLegacySchema(db *sql.DB, migrations statedb.MigrationRunner) error {
 		if err := migrations(context.Background(), statedb.MigrationParkedDiscard, db, nil, version, ""); err != nil {
 			return err
 		}
-		_, err := migrateAttachmentState(context.Background(), db, "", "")
+		_, err := hostedschema.MigrateAttachmentState(context.Background(), db, "", "")
 		return err
 	}
 	if version == prompts.LegacyTurnSchemaVersion {

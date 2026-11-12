@@ -11,6 +11,7 @@ import (
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	"github.com/dkroshow/nano/internal/edge/statewiring"
+	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	state "github.com/dkroshow/nano/internal/state/store"
 )
@@ -72,4 +73,20 @@ func transactionalTurnFixture() ([]byte, error) {
 		transactionalTurnFixtureData, transactionalTurnFixtureErr = os.ReadFile(path)
 	})
 	return transactionalTurnFixtureData, transactionalTurnFixtureErr
+}
+
+// AttachmentStore opens an attachment store over a fresh current-schema
+// threads database. Reopening the returned database with
+// hostedstore.NewAttachmentStore stands in for a Nano restart.
+func AttachmentStore(t testing.TB) (*hostedstore.AttachmentStore, *sql.DB) {
+	t.Helper()
+	db, _, err := TurnDatabase(t, filepath.Join(t.TempDir(), "attachments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := hostedstore.NewAttachmentStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store, db
 }

@@ -122,7 +122,7 @@ func TestTurnDatabaseFixtureRefusesExistingLegacySchema(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := testTurnDatabase(t, filepath.Join(dir, "queue.json")); err == nil || !strings.Contains(err.Error(), "schema 19 is not current schema 24") {
+	if _, _, err := testTurnDatabase(t, filepath.Join(dir, "queue.json")); err == nil || !strings.Contains(err.Error(), "schema 19 is not current schema 25") {
 		t.Fatalf("existing legacy fixture was not refused: %v", err)
 	}
 }

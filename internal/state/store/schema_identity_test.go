@@ -12,7 +12,7 @@ import (
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
-const statestoreFreshSchemaHash = "d71a491749a90ee899d772cee97d155e0d34e95980d29e4d6897701260659265"
+const statestoreFreshSchemaHash = "d2f31d678673dd28db954aca7071e4a4a7ed9ff900c2fe8dc2353a4c7c5d200d"
 
 func TestFreshStatestoreSchemaIsStable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nano_threads.sqlite")

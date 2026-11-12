@@ -169,7 +169,7 @@ func (s *Controller) HandleDetach(w http.ResponseWriter, _ *http.Request, record
 	// shim handle and hide stop failures. Use explicit close instead; the
 	// hosted record and native transcript still support a later resume.
 	if record.Provider == "claude" {
-		if err := s.closeHostedThreadForRecord(record); err != nil {
+		if err := s.closeHostedThreadForRecord(record, finishedByAPI); err != nil {
 			httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 			return
 		}

@@ -198,7 +198,7 @@ func TestResumeHydratesDurableName(t *testing.T) {
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
 	s.catalog = fixtureNamedCatalog(t, "claude", claudeResumeThreadID, "overnight refactor")
-	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(fixtureHosted(rememberedClaudeSession(t, "/stored/claude")))
 
 	sum := spawnedSummary(t, postClaudeResume(t, s, resumeBody(claudeResumeThreadID)))
 	if sum.Name != "overnight refactor" {
@@ -216,7 +216,7 @@ func TestClaudeResumeFallbackCarriesOperatorModelOverlay(t *testing.T) {
 	s, store := claudeResumeServer(t, shim.WSURL())
 	rec := rememberedClaudeSession(t, "/stored/claude")
 	rec.HostedThreadID = "nht_overlay"
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 	if _, err := fixtureEnsureSessionWithIdentity(s.agentExecutions, "nht_overlay", "claude", presentationShared, "", "", ""); err != nil {
 		t.Fatal(err)
 	}

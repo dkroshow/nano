@@ -76,7 +76,7 @@ func construct(cfg config.Config) *application {
 			}
 		}
 	}
-	// Durable attachments live beside the history DB. Ordinary load failures
+	// Hosted attachments live in the threads store. Ordinary load failures
 	// disable hosted control. A rollback-source conflict must instead stop boot
 	// before HTTP can expose a catalog built from stale canonical identity.
 	legacyCompletedPath := cfg.Paths.CompletedTurnsDB
@@ -92,18 +92,11 @@ func construct(cfg config.Config) *application {
 	var mail *featuremail.Store
 	var usageLimits *usage.Store
 	if catalogPath != "" {
-		attachPath := cfg.Paths.Attachments
-		store, err := hostedstore.NewAttachmentStore(attachPath)
-		if err != nil {
-			log.Printf("attachment store unavailable (%s): %v", attachPath, err)
-		} else {
-			attachments = store
-			log.Printf("attachment store using %s", attachPath)
-		}
 		stores, err := stateopen.OpenRuntimeStoresAt(context.Background(), state.StorePaths{
 			Destination: cfg.Paths.ThreadsDB,
 			Control:     cfg.Paths.LegacyControlDB,
 			BackupRoot:  cfg.Paths.ThreadsBackups,
+			Attachments: cfg.Paths.Attachments,
 			Turns: prompts.LegacyTurnPaths{
 				Queue:     cfg.Paths.LegacyQueuedTurns,
 				Attempts:  cfg.Paths.LegacySendAttempts,
@@ -116,7 +109,11 @@ func construct(cfg config.Config) *application {
 			controlMetadata, agentExecutions = stores.Control, stores.Executions
 			queuedTurns, sendAttempts, completedTurns, turnStore = stores.Queue, stores.Attempts, stores.Completed, stores.Turns
 			state.StartSizeWatch(stores.Control.CanonicalDatabase(), stores.Queue.Path())
-			if err := hostedstore.ImportAndScrubLegacyAttachments(controlMetadata, attachments); err != nil {
+			attachments, err = hostedstore.NewAttachmentStore(stores.Control.CanonicalDatabase())
+			if err == nil {
+				err = hostedstore.ImportLegacyAttachments(controlMetadata, attachments)
+			}
+			if err != nil {
 				log.Printf("canonical attachment migration unavailable: %v", err)
 				controlMetadataErr, executionControlErr = err.Error(), err.Error()
 			} else {

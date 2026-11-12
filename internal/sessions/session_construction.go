@@ -48,6 +48,7 @@ type Config struct {
 	ForgetAttachment      func(provider, nativeThreadID string)
 	UpdateTurnAnchor      func(provider, nativeThreadID string, startedAtMs, anchorSeq int64)
 	UpdateShimSession     func(provider, nativeThreadID, shimSessionID string)
+	SetAttachmentLive     func(provider, nativeThreadID string, live bool)
 	Turns                 *prompts.Store
 	AgentExecutions       Executions
 	Metadata              Metadata
@@ -79,6 +80,7 @@ func New(cfg Config) *Session {
 			forgetAttachment:     cfg.ForgetAttachment,
 			updateTurnAnchor:     cfg.UpdateTurnAnchor,
 			updateShimSession:    cfg.UpdateShimSession,
+			setAttachmentLive:    cfg.SetAttachmentLive,
 			pendingTurnCausation: []turnCausationEntry{},
 			lastSettingsEvidence: map[string]turnCausationEntry{}},
 		wire: Wire{

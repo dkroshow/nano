@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -158,7 +159,7 @@ func prepareStore(ctx context.Context, paths StorePaths, verifyLegacyCopy source
 	if err := migrateParkedDiscard(ctx, db, filepath.Join(run, "parked-discard-v23.sqlite"), migrations); err != nil {
 		return report, err
 	}
-	if _, err := migrateAttachmentState(ctx, db, filepath.Join(run, "hosted-attachments-v24.sqlite"), paths.Attachments); err != nil {
+	if _, err := hostedschema.MigrateAttachmentState(ctx, db, filepath.Join(run, "hosted-attachments-v24.sqlite"), paths.Attachments); err != nil {
 		return report, err
 	}
 	if err := validatePreparedStore(ctx, db, migrations); err != nil {
@@ -204,7 +205,7 @@ func prepareExistingStore(ctx context.Context, destination string, paths StorePa
 		if err := migrateParkedDiscard(ctx, db, "", migrations); err != nil {
 			return report, err
 		}
-		if _, err := migrateAttachmentState(ctx, db, "", ""); err != nil {
+		if _, err := hostedschema.MigrateAttachmentState(ctx, db, "", ""); err != nil {
 			return report, err
 		}
 		if err := validatePreparedStore(ctx, db, migrations); err != nil {
@@ -271,7 +272,7 @@ func prepareExistingStore(ctx context.Context, destination string, paths StorePa
 	if err := migrateParkedDiscard(ctx, candidateDB, filepath.Join(run, "migration-input-v23.sqlite"), migrations); err != nil {
 		return report, err
 	}
-	if _, err := migrateAttachmentState(ctx, candidateDB, filepath.Join(run, "migration-input-v24.sqlite"), paths.Attachments); err != nil {
+	if _, err := hostedschema.MigrateAttachmentState(ctx, candidateDB, filepath.Join(run, "migration-input-v24.sqlite"), paths.Attachments); err != nil {
 		return report, err
 	}
 	if err := validatePreparedStore(ctx, candidateDB, migrations); err != nil {

@@ -29,7 +29,7 @@ func TestRestartRecordTracksEveryThreadOfABoot(t *testing.T) {
 	for _, native := range []string{"starred", "plain", "forgotten"} {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		store.Remember(rec)
+		store.Remember(fixtureHosted(rec))
 	}
 	seedBootAttachments(t, s)
 	// The boot loop queues only threads with open work.

@@ -124,7 +124,7 @@ func parseConfigWith(args []string, userHomeDir func() (string, error), output i
 	flags.StringVar(&paths.LegacyQueuedTurns, "legacy-queued-turns", "", "legacy queued-turn JSON migration source")
 	flags.StringVar(&paths.LegacySendAttempts, "legacy-send-attempts", "", "legacy send-attempt JSON migration source")
 	flags.StringVar(&paths.ThreadsBackups, "threads-backup-dir", "", "hosted-thread migration backup directory")
-	flags.StringVar(&paths.Attachments, "attachments-store", "", "legacy hosted attachment JSON store")
+	flags.StringVar(&paths.Attachments, "attachments-store", "", "legacy attachments.json, imported once into the threads store")
 	flags.StringVar(&paths.HeartbeatDB, "heartbeat-db", "", "heartbeat SQLite path")
 	flags.StringVar(&paths.MailDB, "mail-db", "", "mail SQLite path")
 	flags.StringVar(&paths.CompletedTurnsDB, "completed-turns-db", "", "legacy completed-turn SQLite path")

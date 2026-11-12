@@ -1071,18 +1071,14 @@ func (s *MetadataStore) importLegacyAttachments(records []Attachment) error {
 	return s.importLegacyAttachmentsUntil(records, -1)
 }
 
-// ImportAndScrubLegacyAttachments completes the read-only attachment bridge
-// before removing retired posture fields from its JSON copy. The two stores
-// cannot share a transaction, so a failed canonical import deliberately
-// leaves attachments.json untouched for diagnosis and retry.
-func ImportAndScrubLegacyAttachments(control *MetadataStore, attachments *AttachmentStore) error {
+// ImportLegacyAttachments makes each active attachment row's hosted identity
+// and native claim canonical, as the one-way import from attachments.json
+// always did at startup.
+func ImportLegacyAttachments(control *MetadataStore, attachments *AttachmentStore) error {
 	if control == nil {
 		return fmt.Errorf("canonical metadata store unavailable")
 	}
-	if err := control.importLegacyAttachments(attachments.Records()); err != nil {
-		return err
-	}
-	return attachments.scrubRetiredMetadata()
+	return control.importLegacyAttachments(attachments.Records())
 }
 
 // reconcileLegacyAttachmentClaims makes the attachment store's current

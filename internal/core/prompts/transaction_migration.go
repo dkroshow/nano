@@ -18,7 +18,7 @@ import (
 // native (member_recovery_migration.go). ParkedDiscardTurnSchemaVersion lets
 // a parked prompt expire (parked_discard_migration.go). TurnSchemaVersion, the
 // current schema, keeps each hosted thread's resume data and attachment state
-// in hosted_attachments (state/store attachment_state_migration.go).
+// in hosted_attachments (hosted/schema attachment_state.go).
 const TransactionalTurnSchemaVersion = 21
 const UsageTurnSchemaVersion = 22
 const MemberRecoveryTurnSchemaVersion = 23

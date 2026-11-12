@@ -1,368 +1,166 @@
 package store
 
 import (
-	"bytes"
-	"encoding/json"
-	"os"
+	"context"
+	"database/sql"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/dkroshow/nano/internal/edge/statewiring"
+	statedb "github.com/dkroshow/nano/internal/state/db"
+	statestore "github.com/dkroshow/nano/internal/state/store"
 )
 
-func newTestStore(t *testing.T) *AttachmentStore {
+// newTestStore opens an attachment store over a fresh current-schema threads
+// database. Reopening the database stands in for a Nano restart.
+func newTestStore(t *testing.T) (*AttachmentStore, *sql.DB) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	store, err := NewAttachmentStore(path)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nano_threads.sqlite")
+	if _, err := statestore.PrepareStore(context.Background(), statestore.StorePaths{Destination: path, BackupRoot: filepath.Join(dir, "backups")}, statewiring.Migrations()); err != nil {
+		t.Fatal(err)
+	}
+	db, err := statedb.Open(context.Background(), path)
 	if err != nil {
-		t.Fatalf("newAttachmentStore: %v", err)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return restart(t, db), db
+}
+
+func restart(t *testing.T, db *sql.DB) *AttachmentStore {
+	t.Helper()
+	store, err := NewAttachmentStore(db)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return store
 }
 
-func attach(id, cwd, at string) Attachment {
-	return Attachment{Provider: "codex", NativeThreadID: id, Cwd: cwd, Model: "gpt-5", AttachedAt: at}
+func attach(hosted, native, at string) Attachment {
+	return Attachment{Provider: "codex", HostedThreadID: hosted, NativeThreadID: native, AttachedAt: at}
 }
 
-// liveCodex builds the composite live set detachedExcept expects from codex
-// native ids — the common shape in these tests.
-func liveCodex(ids ...string) map[AttachmentKey]bool {
-	live := map[AttachmentKey]bool{}
-	for _, id := range ids {
-		live[AttachmentKey{Provider: "codex", NativeThreadID: id}] = true
+type rowState struct{ Native, State, FinishedBy string }
+
+func rowOf(t *testing.T, db *sql.DB, hosted string) rowState {
+	t.Helper()
+	var r rowState
+	if err := db.QueryRow(`SELECT native_thread_id,state,finished_by FROM hosted_attachments WHERE hosted_thread_id=?`, hosted).Scan(&r.Native, &r.State, &r.FinishedBy); err != nil {
+		t.Fatalf("row %s: %v", hosted, err)
 	}
-	return live
+	return r
 }
 
-// The whole durability feature in one test: a remembered record that is NOT
-// forgotten survives (a restart-killed session), while an explicitly forgotten
-// one does not (a user-closed session). detachedExcept hides live threads.
-func TestAttachmentRememberForgetDetached(t *testing.T) {
-	store := newTestStore(t)
-	store.Remember(attach("t-keep", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(attach("t-closed", "/b", "2026-07-25T11:00:00Z"))
-	store.Remember(attach("t-live", "/c", "2026-07-25T12:00:00Z"))
-
-	// Explicit close forgets one; the other two remain.
-	store.Forget("codex", "t-closed")
-
-	// t-live is currently attached, so it is not "detached".
-	got := store.DetachedExcept(liveCodex("t-live"))
-	if len(got) != 1 || got[0].NativeThreadID != "t-keep" {
-		t.Fatalf("detachedExcept = %+v, want only t-keep", got)
-	}
-
-	// With nothing live, both survivors are detached, newest first.
-	all := store.DetachedExcept(nil)
-	if len(all) != 2 || all[0].NativeThreadID != "t-live" || all[1].NativeThreadID != "t-keep" {
-		t.Fatalf("detachedExcept(nil) = %+v, want [t-live, t-keep]", all)
-	}
-}
-
-// records must outlive the process: a fresh store over the same file sees what
-// a prior store remembered. This is the "survive a restart" guarantee.
-func TestAttachmentPersistsAcrossReload(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	first, err := NewAttachmentStore(path)
-	if err != nil {
+// The durability rule across a restart: a thread that was live comes back as
+// resumable (nothing is live at boot), a thread a caller closed stays
+// finished and out of every active read, and its row is kept with who closed
+// it. Nothing changes a state because time passed.
+func TestAttachmentStatesAcrossRestart(t *testing.T) {
+	store, db := newTestStore(t)
+	store.Remember(attach("nht_keep", "t-keep", "2026-07-25T10:00:00Z"))
+	store.Remember(attach("nht_closed", "t-closed", "2026-07-25T11:00:00Z"))
+	store.Remember(attach("nht_live", "t-live", "2026-07-25T12:00:00Z"))
+	closed, _ := store.Get("codex", "t-closed")
+	if err := store.Finish(closed, "nht_cleanup"); err != nil {
 		t.Fatal(err)
 	}
-	first.Remember(attach("t-1", "/x", "2026-07-25T10:00:00Z"))
-	first.Forget("codex", "t-1")
-	first.Remember(attach("t-2", "/y", "2026-07-25T11:00:00Z"))
-
-	second, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := second.DetachedExcept(nil)
-	if len(got) != 1 || got[0].NativeThreadID != "t-2" || got[0].Cwd != "" || got[0].Model != "" {
-		t.Fatalf("reloaded store = %+v, want only transport fields for t-2", got)
-	}
-}
-
-func TestAttachmentMigratesAgentSessionIDToHostedThreadID(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	legacy := []byte(`[{"provider":"codex","nativeThreadId":"native-1","agentSessionId":"legacy-caller","cwd":"/tmp","attachedAt":"2026-08-04T00:00:00Z"}]`)
-	if err := os.WriteFile(path, legacy, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	record, ok := store.Get("codex", "native-1")
-	if !ok || record.HostedThreadID != "legacy-caller" || record.LegacyAgentSessionID != "" {
-		t.Fatalf("migrated attachment = %#v, present=%v", record, ok)
-	}
-	store.Remember(record)
-	rewritten, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(rewritten, []byte(`"hostedThreadId": "legacy-caller"`)) || bytes.Contains(rewritten, []byte("agentSessionId")) {
-		t.Fatalf("rewritten attachment did not converge: %s", rewritten)
-	}
-}
-
-// PendingName is session-staged state like ContinuedFrom: the transport that
-// rebuilds the record on a later re-attach cannot know it, so an empty incoming
-// value must carry the stored one forward rather than erase it. A non-empty
-// incoming value (a pre-init rename) still replaces it.
-func TestAttachmentCarriesPendingNameForward(t *testing.T) {
-	store := newTestStore(t)
-	provisional := Attachment{
-		Provider: "claude", NativeThreadID: "cs_shim", ShimSessionID: "cs_shim",
-		Cwd: "/w", PendingName: "nano api fable", AttachedAt: "2026-08-06T10:00:00Z",
-	}
-	store.Remember(provisional)
-
-	provisional.PendingName = ""
-	store.Remember(provisional)
-	if got, ok := store.Get("claude", "cs_shim"); !ok || got.PendingName != "nano api fable" {
-		t.Fatalf("pendingName after empty re-remember = %q, %v; want carried forward", got.PendingName, ok)
+	if got := store.DetachedExcept(map[AttachmentKey]bool{{Provider: "codex", NativeThreadID: "t-live"}: true}); len(got) != 1 || got[0].NativeThreadID != "t-keep" {
+		t.Fatalf("detached = %+v, want only t-keep", got)
 	}
 
-	provisional.PendingName = "renamed"
-	store.Remember(provisional)
-	if got, _ := store.Get("claude", "cs_shim"); got.PendingName != "renamed" {
-		t.Fatalf("pendingName after rename re-remember = %q, want renamed", got.PendingName)
+	reopened := restart(t, db)
+	got := reopened.DetachedExcept(nil)
+	if len(got) != 2 || got[0].NativeThreadID != "t-live" || got[1].NativeThreadID != "t-keep" {
+		t.Fatalf("after restart = %+v, want [t-live, t-keep] newest first", got)
 	}
-}
-
-// remember is idempotent by native id: re-attaching the same thread updates the
-// record in place rather than duplicating it.
-func TestAttachmentRememberIdempotent(t *testing.T) {
-	store := newTestStore(t)
-	store.Remember(attach("t-1", "/old", "2026-07-25T10:00:00Z"))
-	store.Remember(attach("t-1", "/new", "2026-07-25T12:00:00Z"))
-	got := store.DetachedExcept(nil)
-	if len(got) != 1 || got[0].Cwd != "" || got[0].Model != "" || got[0].TurnServiceTier != "" {
-		t.Fatalf("got %+v, want single transport-only record", got)
-	}
-}
-
-func TestAttachmentRememberScrubsRetiredMetadataWithoutLosingTransport(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	legacy := `[{"provider":"claude","nativeThreadId":"native-1","hostedThreadId":"nht_legacy","cwd":"/old","model":"opus","turnServiceTier":"priority","bin":"/claude","args":["-p","--resume","native-1"],"shimSessionId":"shim-1","attachedAt":"2026-08-01T00:00:00Z"}]`
-	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store.Remember(Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: "nht_legacy", Bin: "/claude", Args: []string{"-p", "--resume", "native-1"}, ShimSessionID: "shim-1", AttachedAt: "2026-08-02T00:00:00Z"})
-	reopened, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, ok := reopened.Get("claude", "native-1")
-	if !ok || got.Cwd != "" || got.Model != "" || got.TurnServiceTier != "" {
-		t.Fatalf("retired metadata survived transport refresh: %+v", got)
-	}
-	if got.Bin != "/claude" || !reflect.DeepEqual(got.Args, []string{"-p", "--resume", "native-1"}) || got.ShimSessionID != "shim-1" {
-		t.Fatalf("transport fields lost during scrub: %+v", got)
-	}
-}
-
-// A blank native id is never recorded — a session that never reached a thread
-// id must not leave an unusable ghost.
-func TestAttachmentIgnoresBlankID(t *testing.T) {
-	store := newTestStore(t)
-	store.Remember(attach("", "/x", "2026-07-25T10:00:00Z"))
-	if got := store.DetachedExcept(nil); len(got) != 0 {
-		t.Fatalf("blank id recorded: %+v", got)
-	}
-}
-
-// forget of an unknown id is a no-op and must not create or corrupt the file.
-func TestAttachmentForgetUnknownNoop(t *testing.T) {
-	store := newTestStore(t)
-	store.Forget("codex", "never-seen")
-	if _, err := os.Stat(store.path); !os.IsNotExist(err) {
-		t.Fatalf("forget of unknown id touched disk: stat err = %v", err)
-	}
-}
-
-// A garbage file disables the store loudly rather than silently swallowing it,
-// so a corrupt attachments file can't masquerade as "no attachments".
-func TestAttachmentLoadRejectsGarbage(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewAttachmentStore(path); err == nil {
-		t.Fatal("expected error loading garbage attachments file")
-	}
-}
-
-// The on-disk shape is a flat JSON array of records — the contract the boot
-// loader and any external inspector rely on.
-func TestAttachmentOnDiskShape(t *testing.T) {
-	store := newTestStore(t)
-	store.Remember(attach("t-1", "/x", "2026-07-25T10:00:00Z"))
-	data, err := os.ReadFile(store.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var Records []Attachment
-	if err := json.Unmarshal(data, &Records); err != nil {
-		t.Fatalf("on-disk file is not a record array: %v", err)
-	}
-	if len(Records) != 1 || Records[0].NativeThreadID != "t-1" {
-		t.Fatalf("on-disk records = %+v", Records)
-	}
-}
-
-// A file written before attachments were provider-aware still loads: its
-// records are codex by construction, and the next rewrite carries the provider
-// field explicitly, so the legacy shape converts on first touch rather than
-// lingering as an ambiguous record.
-func TestAttachmentLegacyFileLoadsAsCodex(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	legacy := `[{"nativeThreadId":"t-old","cwd":"/a","model":"gpt-5","attachedAt":"2026-07-25T10:00:00Z"}]`
-	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	store, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := store.DetachedExcept(nil)
-	if len(got) != 1 || got[0].Provider != "codex" {
-		t.Fatalf("legacy record = %+v, want provider codex", got)
-	}
-	// The legacy record is addressable as codex, so a live codex session hides
-	// it — the whole point of normalizing on read.
-	if live := store.DetachedExcept(liveCodex("t-old")); len(live) != 0 {
-		t.Fatalf("legacy record not keyed as codex: %+v", live)
-	}
-
-	// Any write rewrites the whole file; the legacy record gains the field.
-	store.Remember(attach("t-new", "/b", "2026-07-25T11:00:00Z"))
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var raw []map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatal(err)
-	}
-	if len(raw) != 2 {
-		t.Fatalf("on-disk records = %+v", raw)
-	}
-	for _, rec := range raw {
-		if rec["provider"] != "codex" {
-			t.Fatalf("record missing written provider: %+v", rec)
+	for _, rec := range got {
+		if rec.State != AttachmentResumable {
+			t.Fatalf("%s came back %q; nothing is live at boot", rec.NativeThreadID, rec.State)
 		}
 	}
+	if r := rowOf(t, db, "nht_closed"); r.State != AttachmentFinished || r.FinishedBy != "nht_cleanup" {
+		t.Fatalf("closed row = %+v, want kept as finished by the cleanup caller", r)
+	}
+	if _, ok := reopened.Get("codex", "t-closed"); ok {
+		t.Fatal("a finished thread came back as active after a restart")
+	}
 }
 
-// A claude record carries the spawn posture (bin + exact args) so a later
-// `--resume` fallback can restore it; those fields must survive a reload
-// verbatim, and codex records must not grow empty ones on disk.
-func TestAttachmentClaudeRecordRoundTrips(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "attachments.json")
-	first, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
+// One row per hosted thread. A Claude thread's provisional shim handle
+// resolving to its real native id moves the row; the handle's staged title
+// does not follow it (a later rename must win at boot), and forgetting the
+// retired handle afterwards changes nothing.
+func TestAttachmentRekeyMovesTheThreadsOneRow(t *testing.T) {
+	store, db := newTestStore(t)
+	store.Remember(Attachment{Provider: "claude", HostedThreadID: "nht_c", NativeThreadID: "cs_handle", ShimSessionID: "cs_handle", PendingName: "Staged", AttachedAt: "2026-07-25T10:00:00Z"})
+	store.Remember(Attachment{Provider: "claude", HostedThreadID: "nht_c", NativeThreadID: "native-c", ShimSessionID: "cs_handle", AttachedAt: "2026-07-25T10:01:00Z"})
+	store.Forget("claude", "cs_handle")
+
+	if _, ok := store.Get("claude", "cs_handle"); ok {
+		t.Fatal("the retired handle still names an active row")
 	}
+	rec, ok := store.Get("claude", "native-c")
+	if !ok || rec.PendingName != "" {
+		t.Fatalf("re-keyed row = %+v, %v; want it under native-c without the staged title", rec, ok)
+	}
+	if r := rowOf(t, db, "nht_c"); r != (rowState{Native: "native-c", State: AttachmentAttached}) {
+		t.Fatalf("stored row = %+v", r)
+	}
+}
+
+// A Claude row carries the spawn posture (bin + exact args) so a later
+// `--resume` fallback can restore it after a restart.
+func TestAttachmentResumeDataSurvivesRestart(t *testing.T) {
+	store, db := newTestStore(t)
 	args := []string{"-p", "--permission-mode", "bypassPermissions", "--model", "opus"}
-	first.Remember(Attachment{
-		Provider:       "claude",
-		NativeThreadID: "c-1",
-		Cwd:            "/w",
-		Model:          "opus",
-		AttachedAt:     "2026-07-25T10:00:00Z",
-		Bin:            "/usr/local/bin/claude",
-		Args:           args,
-	})
-	first.Remember(attach("t-1", "/x", "2026-07-25T09:00:00Z"))
-
-	second, err := NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := second.DetachedExcept(nil)
-	if len(got) != 2 {
-		t.Fatalf("reloaded = %+v, want 2 records", got)
-	}
-	claude := got[0] // newest first
-	if claude.Provider != "claude" || claude.Bin != "/usr/local/bin/claude" {
-		t.Fatalf("claude record = %+v", claude)
-	}
-	if !reflect.DeepEqual(claude.Args, args) {
-		t.Fatalf("args = %v, want %v", claude.Args, args)
-	}
-
-	// bin/args are claude-only: a codex record must not carry the keys at all.
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var raw []map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatal(err)
-	}
-	// Sorted by provider then id: claude first.
-	if raw[0]["provider"] != "claude" || raw[1]["provider"] != "codex" {
-		t.Fatalf("on-disk order = %+v, want claude then codex", raw)
-	}
-	if _, ok := raw[1]["bin"]; ok {
-		t.Fatalf("codex record carries bin: %+v", raw[1])
-	}
-	if _, ok := raw[1]["args"]; ok {
-		t.Fatalf("codex record carries args: %+v", raw[1])
+	store.Remember(Attachment{Provider: "claude", HostedThreadID: "nht_c", NativeThreadID: "c-1", AttachedAt: "2026-07-25T10:00:00Z", Bin: "/usr/local/bin/claude", Args: args, ShimSessionID: "cs_1"})
+	got, ok := restart(t, db).Get("claude", "c-1")
+	if !ok || got.Bin != "/usr/local/bin/claude" || got.ShimSessionID != "cs_1" || !reflect.DeepEqual(got.Args, args) {
+		t.Fatalf("reloaded = %+v, %v", got, ok)
 	}
 }
 
-// records are identified by (provider, native id), not by the id alone: the
-// same id under two providers is two independent records, each forgotten and
-// hidden-when-live on its own.
-func TestAttachmentProviderScopedIdentity(t *testing.T) {
-	store := newTestStore(t)
-	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(Attachment{
-		Provider:       "claude",
-		NativeThreadID: "shared",
-		Cwd:            "/b",
-		AttachedAt:     "2026-07-25T11:00:00Z",
-	})
-	if got := store.DetachedExcept(nil); len(got) != 2 {
-		t.Fatalf("detached = %+v, want one record per provider", got)
+// A session that ends without a close leaves its thread resumable and one
+// that comes back makes it attached again; neither reopens a finished thread.
+// Only an explicit resume (a new durable handshake) does that.
+func TestAttachmentLivenessNeverReopensAFinishedThread(t *testing.T) {
+	store, db := newTestStore(t)
+	store.Remember(attach("nht_a", "t-a", "2026-07-25T10:00:00Z"))
+	store.SetLive("codex", "t-a", false)
+	if r := rowOf(t, db, "nht_a"); r.State != AttachmentResumable {
+		t.Fatalf("after the session ended = %+v, want resumable", r)
 	}
-
-	// A live claude session hides only the claude record.
-	got := store.DetachedExcept(map[AttachmentKey]bool{
-		{Provider: "claude", NativeThreadID: "shared"}: true,
-	})
-	if len(got) != 1 || got[0].Provider != "codex" {
-		t.Fatalf("detached = %+v, want only the codex record", got)
+	store.SetLive("codex", "t-a", true)
+	if r := rowOf(t, db, "nht_a"); r.State != AttachmentAttached {
+		t.Fatalf("after the session came back = %+v, want attached", r)
 	}
-
-	// Closing the codex session leaves the claude record standing.
-	store.Forget("codex", "shared")
-	got = store.DetachedExcept(nil)
-	if len(got) != 1 || got[0].Provider != "claude" {
-		t.Fatalf("after codex forget = %+v, want only the claude record", got)
+	rec, _ := store.Get("codex", "t-a")
+	if err := store.Finish(rec, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	store.SetLive("codex", "t-a", true)
+	if r := rowOf(t, db, "nht_a"); r.State != AttachmentFinished {
+		t.Fatalf("a liveness report reopened a finished thread: %+v", r)
+	}
+	store.Remember(attach("nht_a", "t-a", "2026-07-26T10:00:00Z"))
+	if r := rowOf(t, db, "nht_a"); r != (rowState{Native: "t-a", State: AttachmentAttached}) {
+		t.Fatalf("explicit resume = %+v, want attached again", r)
 	}
 }
 
-// forgetEveryProvider is the dismiss path's hammer: the route knows only the
-// native id, so it clears the id wherever it is remembered.
-func TestAttachmentForgetEveryProvider(t *testing.T) {
-	store := newTestStore(t)
-	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(Attachment{
-		Provider:       "claude",
-		NativeThreadID: "shared",
-		AttachedAt:     "2026-07-25T11:00:00Z",
-	})
-	store.Remember(attach("other", "/c", "2026-07-25T12:00:00Z"))
-
-	store.forgetEveryProvider("shared")
-	got := store.DetachedExcept(nil)
-	if len(got) != 1 || got[0].NativeThreadID != "other" {
-		t.Fatalf("detached = %+v, want only other", got)
+// Finish ends only the process generation the closer saw: a row re-attached
+// meanwhile is preserved.
+func TestAttachmentFinishRefusesAChangedGeneration(t *testing.T) {
+	store, db := newTestStore(t)
+	store.Remember(attach("nht_a", "t-a", "2026-07-25T10:00:00Z"))
+	seen, _ := store.Get("codex", "t-a")
+	store.Remember(attach("nht_a", "t-a", "2026-07-25T11:00:00Z"))
+	if err := store.Finish(seen, "operator"); err == nil {
+		t.Fatal("finished a generation the closer never saw")
+	}
+	if r := rowOf(t, db, "nht_a"); r.State != AttachmentAttached {
+		t.Fatalf("replacement = %+v, want kept attached", r)
 	}
 }

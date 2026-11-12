@@ -188,6 +188,7 @@ func (s *AttachmentCoordinator) spawn(req SpawnRequest) (*sessions.Session, erro
 		ForgetAttachment:   s.ForgetAttachment,
 		UpdateTurnAnchor:   s.setAttachmentTurnAnchor,
 		UpdateShimSession:  s.setAttachmentShimSession,
+		SetAttachmentLive:  s.setAttachmentLive,
 		Turns:              s.Turns,
 		AgentExecutions:    s.Executions,
 		Metadata:           s.Metadata,

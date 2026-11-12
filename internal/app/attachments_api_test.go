@@ -2,9 +2,9 @@ package app
 
 import (
 	"encoding/json"
+	"github.com/dkroshow/nano/internal/testsupport"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,10 +14,7 @@ import (
 
 func serverWithAttachments(t *testing.T) (*server, *hostedstore.AttachmentStore) {
 	t.Helper()
-	store, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, _ := testsupport.AttachmentStore(t)
 	return &server{
 		attachments: store,
 		Registry:    newSessionRegistry(),
@@ -36,8 +33,8 @@ func liveSession(t *testing.T, id, threadID string) *sessions.Session {
 // sessions map.
 func TestSessionsGETSurfacesDetached(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.Remember(attach("t-live", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(attach("t-detached", "/b", "2026-07-25T11:00:00Z"))
+	store.Remember(fixtureHosted(attach("t-live", "/a", "2026-07-25T10:00:00Z")))
+	store.Remember(fixtureHosted(attach("t-detached", "/b", "2026-07-25T11:00:00Z")))
 	s.RegisterSession(liveSession(t, "sess1", "t-live"))
 
 	rec := httptest.NewRecorder()
@@ -62,7 +59,7 @@ func TestSessionsGETSurfacesDetached(t *testing.T) {
 // not hide the durable attachment's retry row after a failed resume.
 func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.Remember(attach("t-retry", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(fixtureHosted(attach("t-retry", "/a", "2026-07-25T10:00:00Z")))
 	exited := liveSession(t, "sess-exited", "t-retry")
 	exited.Teardown().Close()
 	s.RegisterSession(exited)
@@ -90,7 +87,7 @@ func TestSessionsGETExitedSessionDoesNotHideDetached(t *testing.T) {
 // detached, not resurrected as a ghost.
 func TestSessionDeleteForgetsAttachment(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.Remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(fixtureHosted(attach("t-1", "/a", "2026-07-25T10:00:00Z")))
 	s.RegisterSession(liveSession(t, "sess1", "t-1"))
 
 	rec := httptest.NewRecorder()
@@ -107,13 +104,13 @@ func TestSessionDeleteForgetsAttachment(t *testing.T) {
 // hiding each other's detached row: the live map is keyed by provider too.
 func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(hostedstore.Attachment{
+	store.Remember(fixtureHosted(attach("shared", "/a", "2026-07-25T10:00:00Z")))
+	store.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		Cwd:            "/b",
 		AttachedAt:     "2026-07-25T11:00:00Z",
-	})
+	}))
 	s.RegisterSession(liveSession(t, "sess1", "shared")) // codex
 
 	rec := httptest.NewRecorder()
@@ -134,12 +131,12 @@ func TestSessionsGETDetachedIsProviderScoped(t *testing.T) {
 // same-id record under another provider is somebody else's session.
 func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
-	store.Remember(hostedstore.Attachment{
+	store.Remember(fixtureHosted(attach("shared", "/a", "2026-07-25T10:00:00Z")))
+	store.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",
-	})
+	}))
 	s.RegisterSession(liveSession(t, "sess1", "shared")) // codex
 
 	rec := httptest.NewRecorder()
@@ -156,13 +153,13 @@ func TestSessionDeleteForgetsOwnProviderOnly(t *testing.T) {
 // A bare DELETE cannot widen a close to multiple providers.
 func TestAttachmentDismissProviderParam(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(fixtureHosted(attach("shared", "/a", "2026-07-25T10:00:00Z")))
 	claudeRec := hostedstore.Attachment{
 		Provider:       "claude",
 		NativeThreadID: "shared",
 		AttachedAt:     "2026-07-25T11:00:00Z",
 	}
-	store.Remember(claudeRec)
+	store.Remember(fixtureHosted(claudeRec))
 
 	rec := httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared?provider=codex", nil))
@@ -175,7 +172,7 @@ func TestAttachmentDismissProviderParam(t *testing.T) {
 	}
 
 	// Restore the codex record; ambiguous dismissal must preserve both.
-	store.Remember(attach("shared", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(fixtureHosted(attach("shared", "/a", "2026-07-25T10:00:00Z")))
 	rec = httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/shared", nil))
 	if rec.Code != http.StatusConflict {
@@ -190,7 +187,7 @@ func TestAttachmentDismissProviderParam(t *testing.T) {
 // and is idempotent for an unknown id.
 func TestAttachmentDismissEndpoint(t *testing.T) {
 	s, store := serverWithAttachments(t)
-	store.Remember(attach("t-1", "/a", "2026-07-25T10:00:00Z"))
+	store.Remember(fixtureHosted(attach("t-1", "/a", "2026-07-25T10:00:00Z")))
 
 	rec := httptest.NewRecorder()
 	applicationHandler(fixtureOwners(s)).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/attachments/t-1", nil))

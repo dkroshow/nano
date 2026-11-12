@@ -278,6 +278,14 @@ func (attachmentState *State) updateHostedThread(status, message string) {
 		return
 	}
 	attachmentState.claimNativeID()
+	if attachmentState.setAttachmentLive != nil {
+		switch status {
+		case "ready":
+			attachmentState.setAttachmentLive(attachmentState.identity.provider, attachmentState.ThreadID(), true)
+		case StatusExited, "detached", "reconnect_failed":
+			attachmentState.setAttachmentLive(attachmentState.identity.provider, attachmentState.ThreadID(), false)
+		}
+	}
 	if attachmentState.identity.agentExecutions == nil {
 		return
 	}
@@ -449,6 +457,10 @@ type State struct {
 	// names the predecessor's native id but a restart must re-attach to the new
 	// child rather than spawn another. Nil when the store is unavailable.
 	updateShimSession func(provider, nativeThreadID, shimSessionID string)
+	// setAttachmentLive moves this session's attachment row between attached
+	// and resumable as its connection comes up or ends without a close. Nil
+	// when the store is unavailable.
+	setAttachmentLive func(provider, nativeThreadID string, live bool)
 	// pendingName is an operator rename made after creation but before the real
 	// native id bound. It is not the immutable creation name. applyPendingName
 	// gives it precedence over the creation fallback, while the names store keeps

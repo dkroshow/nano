@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/dkroshow/nano/internal/testsupport"
 	"testing"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
@@ -9,20 +10,15 @@ import (
 )
 
 // The claude anchor's whole point is surviving a nano restart, which means
-// surviving a JSON round-trip through attachments.json. A record written by an
-// older nano has neither field and must degrade to "no anchor" — never to a
-// zero that reads as 1970.
+// surviving a reload of the attachment row. A row written before a turn ever
+// opened has neither field and must degrade to "no anchor" — never to a zero
+// that reads as 1970.
 func TestAttachmentRecordRoundTripsTurnAnchor(t *testing.T) {
-	dir := t.TempDir()
-	path := dir + "/attachments.json"
-	store, err := hostedstore.NewAttachmentStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store.Remember(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", Cwd: dir})
+	store, db := testsupport.AttachmentStore(t)
+	store.Remember(fixtureHosted(hostedstore.Attachment{Provider: "claude", NativeThreadID: "native-1", HostedThreadID: "nht_anchor"}))
 	store.SetTurnAnchor("claude", "native-1", 1785510514000, 42)
 
-	reloaded, err := hostedstore.NewAttachmentStore(path)
+	reloaded, err := hostedstore.NewAttachmentStore(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,8 +30,8 @@ func TestAttachmentRecordRoundTripsTurnAnchor(t *testing.T) {
 		t.Fatalf("anchor round-trip = (%d, %d), want (1785510514000, 42)", rec.TurnStartedAtMs, rec.TurnAnchorSeq)
 	}
 
-	store.SetTurnAnchor("claude", "native-1", 0, 0)
-	cleared, err := hostedstore.NewAttachmentStore(path)
+	reloaded.SetTurnAnchor("claude", "native-1", 0, 0)
+	cleared, err := hostedstore.NewAttachmentStore(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,10 +44,7 @@ func TestAttachmentRecordRoundTripsTurnAnchor(t *testing.T) {
 // durable transport gets a record. Writing one for a thread with no record
 // would offer a recovery that cannot happen.
 func TestSetTurnAnchorNeverCreatesARecord(t *testing.T) {
-	store, err := hostedstore.NewAttachmentStore(t.TempDir() + "/attachments.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, _ := testsupport.AttachmentStore(t)
 	store.SetTurnAnchor("claude", "ghost", 1785510514000, 7)
 	if _, ok := store.Get("claude", "ghost"); ok {
 		t.Fatal("setTurnAnchor invented an attachment record")

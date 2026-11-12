@@ -29,7 +29,7 @@ func TestBootReattachHoldsOnlyHiddenThreadsInTheBackground(t *testing.T) {
 	for _, native := range []string{"visible", "hidden", "opened"} {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		store.Remember(rec)
+		store.Remember(fixtureHosted(rec))
 		records[native] = rec
 	}
 	seedBootAttachments(t, s)
@@ -123,10 +123,10 @@ func TestBootReattachStuckProviderDoesNotHoldAnother(t *testing.T) {
 	s, store := newBootCoordinator(t, shim.WSURL(), daemon.WSURL())
 	codex := bootCodexRecord(t)
 	codex.AttachedAt = "2026-07-28T10:00:00Z"
-	store.Remember(codex)
+	store.Remember(fixtureHosted(codex))
 	claude := rememberedClaudeSession(t, "/stored/claude")
 	claude.AttachedAt = "2026-07-28T10:09:00Z" // stored order: the Codex thread first
-	store.Remember(claude)
+	store.Remember(fixtureHosted(claude))
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	var logs testsupport.LogBuffer
@@ -186,9 +186,9 @@ func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.
 	for _, native := range []string{"codex-visible", "codex-hidden"} {
 		rec := bootCodexRecord(t)
 		rec.NativeThreadID, rec.HostedThreadID = native, "nht_"+native
-		store.Remember(rec)
+		store.Remember(fixtureHosted(rec))
 	}
-	store.Remember(rememberedClaudeSession(t, "/stored/claude"))
+	store.Remember(fixtureHosted(rememberedClaudeSession(t, "/stored/claude")))
 	seedBootAttachments(t, s)
 	openTurnsForBoot(t, s)
 	s.PrepareBoot()

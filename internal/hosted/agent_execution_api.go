@@ -44,14 +44,18 @@ func (s *Controller) HandleRead(w http.ResponseWriter, _ *http.Request, record o
 }
 
 // HandleDelete removes a closed hosted thread and its durable execution records.
-func (s *Controller) HandleDelete(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
+func (s *Controller) HandleDelete(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
+	actor, ok := s.closeActor(w, r)
+	if !ok {
+		return
+	}
 	// Never call code that can re-enter this server while relationshipMu is held.
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
 	// Destroy, matching the contract the docs have always published: close if
 	// live, then erase the durable record and its operations. Callers that mean
 	// "end the attachment, keep the record" use POST {threadRef}/close.
-	if err := s.closeHostedThreadForRecord(record); err != nil {
+	if err := s.closeHostedThreadForRecord(record, actor); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -71,12 +75,18 @@ func (s *Controller) HandleDelete(w http.ResponseWriter, _ *http.Request, record
 	httpapi.WriteJSON(w, map[string]any{"id": record.ID, "deleted": true})
 }
 
-// HandleClose closes the provider attachment and settles hosted operations.
-func (s *Controller) HandleClose(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
+// HandleClose closes the provider attachment, settles hosted operations and
+// finishes the thread's attachment row: the explicit close, and the cleanup
+// agent's path, both name their caller with actorThreadRef.
+func (s *Controller) HandleClose(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
+	actor, ok := s.closeActor(w, r)
+	if !ok {
+		return
+	}
 	// Never call code that can re-enter this server while relationshipMu is held.
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
-	if err := s.closeHostedThreadForRecord(record); err != nil {
+	if err := s.closeHostedThreadForRecord(record, actor); err != nil {
 		httpapi.WriteHTTPError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

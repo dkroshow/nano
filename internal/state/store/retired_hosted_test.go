@@ -15,6 +15,7 @@ import (
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
 	coreturns "github.com/dkroshow/nano/internal/core/turns"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 	"github.com/dkroshow/nano/internal/threads"
 )
@@ -45,7 +46,7 @@ func retirementFixture(t *testing.T) *sql.DB {
 	if _, err := turns.MigrateParkedDiscard(ctx, db, filepath.Join(t.TempDir(), "schema23.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migrateAttachmentState(ctx, db, filepath.Join(t.TempDir(), "schema24.sqlite"), ""); err != nil {
+	if _, err := hostedschema.MigrateAttachmentState(ctx, db, filepath.Join(t.TempDir(), "schema24.sqlite"), ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"old", "owner", "child", "unrelated"} {

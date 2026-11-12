@@ -184,7 +184,11 @@ func (s *Controller) HandleBulkClosePreview(w http.ResponseWriter, root ownedthr
 }
 
 // HandleBulkClose closes a selected hosted relationship tree under one lock.
-func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, root ownedthreads.SessionRecord) {
+func (s *Controller) HandleBulkClose(w http.ResponseWriter, r *http.Request, root ownedthreads.SessionRecord) {
+	actor, ok := s.closeActor(w, r)
+	if !ok {
+		return
+	}
 	// Never call code that can re-enter this server while relationshipMu is held.
 	s.relationshipMu.Lock()
 	defer s.relationshipMu.Unlock()
@@ -219,7 +223,7 @@ func (s *Controller) HandleBulkClose(w http.ResponseWriter, _ *http.Request, roo
 		}
 
 		var failures []string
-		if err := s.closeHostedThreadForRecord(member); err != nil {
+		if err := s.closeHostedThreadForRecord(member, actor); err != nil {
 			failures = append(failures, err.Error())
 		} else if err := s.dropQueuedTurns(member); err != nil {
 			failures = append(failures, "drop queued prompts: "+err.Error())

@@ -55,7 +55,7 @@ func TestPrepareStoreImportsAttachmentsOnceAndFinishesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	// "rekeyed" left its provisional shim-handle record beside the record for
-	// its resolved native id; "unknown" names no hosted thread in the store.
+	// its resolved native id; "unknown" has no execution record.
 	legacy := []byte(`[
   {"provider":"claude","nativeThreadId":"live-native","hostedThreadId":"live","attachedAt":"2026-11-01T00:00:00Z","bin":"claude","args":["-p","--resume"],"shimSessionId":"shim-live","turnStartedAtMs":7,"turnAnchorSeq":3},
   {"provider":"claude","nativeThreadId":"rested-native","hostedThreadId":"rested","attachedAt":"2026-11-02T00:00:00Z"},
@@ -102,6 +102,7 @@ func TestPrepareStoreImportsAttachmentsOnceAndFinishesNothing(t *testing.T) {
 		"rested":  {Native: "rested-native", State: "resumable", Args: "[]"},
 		"closed":  {Native: "closed-native", State: "resumable", Args: "[]"},
 		"rekeyed": {Native: "rekeyed-native", State: "resumable", Args: "[]", Shim: "shim-rekeyed"},
+		"unknown": {Native: "unknown-native", State: "resumable", Args: "[]"},
 	}
 	if got := read(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("imported rows = %+v\nwant %+v", got, want)

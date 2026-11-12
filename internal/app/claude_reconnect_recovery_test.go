@@ -32,7 +32,7 @@ func reconnectServer(t *testing.T, shimURL string, stale bool) (*server, string)
 	if stale {
 		record.TurnStartedAtMs, record.TurnAnchorSeq = 1789766804441, 1
 	}
-	store.Remember(record)
+	store.Remember(fixtureHosted(record))
 	seedHostedAttachmentFixture(t, s, "claude", claudeResumeThreadID)
 	stored, _ := fixtureAttachmentFor(s, "claude", claudeResumeThreadID)
 	return s, stored.HostedThreadID
@@ -421,7 +421,7 @@ func TestClaudeResumeIngestionTimeoutNeverStartsReplacement(t *testing.T) {
 		c.Line(1, "recv", claudeInitLine)
 	}))
 	s, store := claudeResumeServer(t, shim.WSURL())
-	store.Remember(rememberedClaudeSession(t, "/fake/claude"))
+	store.Remember(fixtureHosted(rememberedClaudeSession(t, "/fake/claude")))
 	response := postClaudeResume(t, s, resumeBody(claudeResumeThreadID))
 	if response.Code == http.StatusOK || !strings.Contains(response.Body.String(), "claude replay did not settle") {
 		t.Fatalf("resume = %d %s, want an unsettled replay refusal", response.Code, response.Body.String())

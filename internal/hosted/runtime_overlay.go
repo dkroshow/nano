@@ -87,9 +87,10 @@ func (s *AttachmentCoordinator) RememberAttachment(rec hostedstore.Attachment) {
 	s.Attachments.Remember(rec)
 }
 
-// ForgetAttachment drops a durable attachment record; nil-safe like
-// RememberAttachment. Handed to sessions so a `--resume` successor can retire
-// the record it supersedes (claude.go) without reaching for the store itself.
+// ForgetAttachment finishes the row of a Claude handle that can never resume;
+// nil-safe like RememberAttachment. Handed to sessions so a `--resume`
+// successor can retire the record it supersedes (claude.go) without reaching
+// for the store itself.
 func (s *AttachmentCoordinator) ForgetAttachment(provider, nativeThreadID string) {
 	if s.Attachments == nil {
 		return
@@ -125,6 +126,16 @@ func (s *AttachmentCoordinator) setAttachmentShimSession(provider, nativeThreadI
 		return
 	}
 	s.Attachments.SetShimSession(provider, nativeThreadID, shimSessionID)
+}
+
+// setAttachmentLive records whether a session's durable attachment is live;
+// nil-safe like the rest. Handed to sessions so a connection that ends
+// without a close leaves its thread resumable.
+func (s *AttachmentCoordinator) setAttachmentLive(provider, nativeThreadID string, live bool) {
+	if s.Attachments == nil {
+		return
+	}
+	s.Attachments.SetLive(provider, nativeThreadID, live)
 }
 
 // attachmentFor looks up a durable attachment; nil store (feature off) simply

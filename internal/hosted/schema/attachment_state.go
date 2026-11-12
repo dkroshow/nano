@@ -1,4 +1,4 @@
-package statestore
+package schema
 
 import (
 	"context"
@@ -16,15 +16,17 @@ import (
 
 const attachmentStateMigrationName = "hosted-attachments-v25"
 
-// AttachmentStateSchema is the schema-25 table that keeps every hosted thread
+// attachmentStateSchema is the schema-25 table that keeps every hosted thread
 // Nano can resume, one row per thread, with its explicit state. Invoker and
-// presentation stay in hosted_threads. A finished row is kept: only an
-// explicit close or a cleanup agent finishes a thread, and nothing reopens it
-// except an explicit resume. The partial unique index both keeps one active
-// owner per native id and serves the one query that reads every active row.
-var AttachmentStateSchema = []string{
+// presentation stay in hosted_threads. No row is ever deleted, so it carries
+// no foreign key: a finished row outlives even an explicit delete of its
+// hosted thread. Only an explicit close or a cleanup agent finishes a thread,
+// and nothing reopens it except an explicit resume. The partial unique index
+// both keeps one active owner per native id and serves the one query that
+// reads every active row.
+var attachmentStateSchema = []string{
 	`CREATE TABLE hosted_attachments (
-		hosted_thread_id TEXT PRIMARY KEY REFERENCES hosted_threads(hosted_thread_id) ON DELETE CASCADE,
+		hosted_thread_id TEXT PRIMARY KEY,
 		provider TEXT NOT NULL, native_thread_id TEXT NOT NULL,
 		state TEXT NOT NULL CHECK(state IN ('attached','resumable','finished')),
 		bin TEXT NOT NULL DEFAULT '', args_json TEXT NOT NULL DEFAULT '[]', shim_session_id TEXT NOT NULL DEFAULT '',
@@ -43,9 +45,8 @@ type AttachmentStateMigrationReport struct {
 	Records      int    `json:"records"`
 	Attached     int    `json:"attached"`
 	Resumable    int    `json:"resumable"`
-	// Skipped counts records the table cannot hold: no hosted identity, a
-	// hosted identity with no hosted_threads row, or a second record for one
-	// thread. The source file is retained, so none is lost.
+	// Skipped counts records the table cannot hold: no hosted identity, or a
+	// second record for one thread. The source file is retained.
 	Skipped int `json:"skipped"`
 }
 
@@ -68,12 +69,12 @@ type legacyAttachment struct {
 	TurnAnchorSeq   int64    `json:"turnAnchorSeq"`
 }
 
-// migrateAttachmentState takes a backed-up schema-24 private candidate to
+// MigrateAttachmentState takes a backed-up schema-24 private candidate to
 // schema 25, importing attachments.json once. A record whose thread was live
 // when Nano stopped (its execution status still ready) becomes attached; every
 // other record becomes resumable. With an empty backup path it only verifies a
 // schema-25 store. The legacy file is never written.
-func migrateAttachmentState(ctx context.Context, db *sql.DB, backupPath, legacyPath string) (AttachmentStateMigrationReport, error) {
+func MigrateAttachmentState(ctx context.Context, db *sql.DB, backupPath, legacyPath string) (AttachmentStateMigrationReport, error) {
 	var report AttachmentStateMigrationReport
 	var version int
 	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
@@ -115,19 +116,15 @@ func migrateAttachmentState(ctx context.Context, db *sql.DB, backupPath, legacyP
 		return report, err
 	}
 	defer tx.Rollback()
-	for _, statement := range AttachmentStateSchema {
+	for _, statement := range attachmentStateSchema {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return report, fmt.Errorf("threads: create hosted_attachments: %w", err)
 		}
 	}
 	for _, record := range preferredAttachments(records) {
-		var known int
 		var status string
-		err := tx.QueryRowContext(ctx, `SELECT 1, COALESCE((SELECT status FROM hosted_execution_sessions WHERE hosted_thread_id=h.hosted_thread_id),'') FROM hosted_threads h WHERE h.hosted_thread_id=?`, record.HostedThreadID).Scan(&known, &status)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
+		err := tx.QueryRowContext(ctx, `SELECT status FROM hosted_execution_sessions WHERE hosted_thread_id=?`, record.HostedThreadID).Scan(&status)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return report, err
 		}
 		state := "resumable"

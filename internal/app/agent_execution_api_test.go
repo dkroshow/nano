@@ -527,11 +527,11 @@ func TestAgentSessionDeleteDestroysDurableRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	attachments := newTestStore(t)
-	attachments.Remember(hostedstore.Attachment{
+	attachments.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-delete-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
-	})
+	}))
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments, controlMetadata: control}
 	s.defaults.ClaudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
@@ -569,11 +569,11 @@ func TestAgentSessionCloseSettlesDetachedOperations(t *testing.T) {
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	op, _, _ := fixtureBeginTurn(store, hosted.ID, "action-1", "prompt-hash")
 	attachments := newTestStore(t)
-	attachments.Remember(hostedstore.Attachment{
+	attachments.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-close-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
-	})
+	}))
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
 	s.defaults.ClaudeShimWS = shim.WSURL()
 	rec := httptest.NewRecorder()
@@ -644,11 +644,11 @@ func TestAgentSessionDetach(t *testing.T) {
 	hosted, _, _ := fixtureBeginSession(store, "caller-session", "request-hash", "claude", presentationBackground)
 	_ = store.BindSession(hosted.ID, "old-nano", "native-1", "ready", presentationBackground)
 	attachments := newTestStore(t)
-	attachments.Remember(hostedstore.Attachment{
+	attachments.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-1", HostedThreadID: hosted.ID,
 		ShimSessionID:    "shim-detach-test",
 		PresentationMode: presentationBackground, AttachedAt: time.Now().Format(time.RFC3339Nano),
-	})
+	}))
 	s := &server{Registry: newSessionRegistry(), agentExecutions: store, attachments: attachments}
 	s.defaults.ClaudeShimWS = shim.WSURL()
 

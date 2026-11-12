@@ -33,10 +33,7 @@ const claudeResumeThreadID = "native-1"
 
 func newBootCoordinator(t *testing.T, shimURL, codexURL string) (*bootTestCoordinator, *hostedstore.AttachmentStore) {
 	t.Helper()
-	store, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, _ := testsupport.AttachmentStore(t)
 	metadata := newTestControlMetadata(t)
 	executions, err := newControlAgentExecutionStore(metadata, "test-run")
 	if err != nil {
@@ -70,6 +67,15 @@ func newBootCoordinator(t *testing.T, shimURL, codexURL string) (*bootTestCoordi
 	return coordinator, store
 }
 
+// fixtureHosted gives a test record the hosted identity every stored
+// attachment has, derived from its native id.
+func fixtureHosted(rec hostedstore.Attachment) hostedstore.Attachment {
+	if rec.HostedThreadID == "" {
+		rec.HostedThreadID = "nht_boot_" + hostedstore.AgentHash([]byte(rec.Provider + "\x00" + rec.NativeThreadID))[:16]
+	}
+	return rec
+}
+
 func bootCodexRecord(t *testing.T) hostedstore.Attachment {
 	t.Helper()
 	return hostedstore.Attachment{Provider: "codex", NativeThreadID: "codex-thread-1", Cwd: t.TempDir(), Model: "gpt-test", AttachedAt: "2026-07-28T10:00:00Z"}
@@ -81,10 +87,6 @@ func rememberedClaudeSession(t *testing.T, bin string) hostedstore.Attachment {
 func seedBootAttachments(t *testing.T, s *bootTestCoordinator) {
 	t.Helper()
 	for _, rec := range s.Attachments.DetachedExcept(nil) {
-		if rec.HostedThreadID == "" {
-			rec.HostedThreadID = "nht_boot_" + hostedstore.AgentHash([]byte(rec.Provider + "\x00" + rec.NativeThreadID))[:16]
-			s.Attachments.Remember(rec)
-		}
 		if rec.Provider == "claude" {
 			if err := os.WriteFile(filepath.Join(s.Defaults.ClaudeShimSpools, rec.HostedThreadID+".jsonl"), nil, 0600); err != nil {
 				t.Fatal(err)
@@ -134,7 +136,7 @@ func startingCodexCoordinator(t *testing.T) (*bootTestCoordinator, *codexfixture
 	daemon := codexfixture.NewServer(t)
 	s, store := newBootCoordinator(t, "", daemon.WSURL())
 	rec := bootCodexRecord(t)
-	store.Remember(rec)
+	store.Remember(fixtureHosted(rec))
 	seedBootAttachments(t, s)
 	rec = s.Attachments.DetachedExcept(nil)[0]
 	s.PrepareBoot()

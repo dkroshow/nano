@@ -1,10 +1,15 @@
 package hosted
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
+	"github.com/dkroshow/nano/internal/httpapi"
 	"github.com/dkroshow/nano/internal/sessions"
 	ownedthreads "github.com/dkroshow/nano/internal/threads"
 )
@@ -21,25 +26,26 @@ func (s *Controller) ResolveHostedRecord(ref string) (ownedthreads.SessionRecord
 }
 
 // closeHostedThreadForRecord ends a hosted thread's attachment whether or not
-// a live session exists. Callers hold relationshipMu. The detached branch
-// settles non-terminal operations explicitly — previously they dangled
-// forever, because only a live session's close path ran settlement.
-func (s *Controller) closeHostedThreadForRecord(record ownedthreads.SessionRecord) error {
-	return s.CloseLifecycle(record.ID, func() error { return s.closeHostedThreadForRecordCore(record) })
+// a live session exists, finishing its attachment row in actor's name.
+// Callers hold relationshipMu. The detached branch settles non-terminal
+// operations explicitly — previously they dangled forever, because only a
+// live session's close path ran settlement.
+func (s *Controller) closeHostedThreadForRecord(record ownedthreads.SessionRecord, actor string) error {
+	return s.CloseLifecycle(record.ID, func() error { return s.closeHostedThreadForRecordCore(record, actor) })
 }
 
 // closeHostedThreadForRecordCore closes only the provider attachment while
 // callers hold any feature-specific lifecycle locks.
-func (s *Controller) closeHostedThreadForRecordCore(record ownedthreads.SessionRecord) error {
+func (s *Controller) closeHostedThreadForRecordCore(record ownedthreads.SessionRecord, actor string) error {
 	if sess := s.sessionForHosted(record.ID); sess != nil {
-		return s.closeAgentSession(sess)
+		return s.closeAgentSession(sess, actor)
 	}
 	if s.Attachments != nil && record.NativeThreadID != "" {
 		if attachment, ok := s.Attachments.Get(record.Provider, record.NativeThreadID); ok {
 			if attachment.HostedThreadID != "" && attachment.HostedThreadID != record.ID {
 				return errors.New("attachment belongs to another hosted thread; close refused")
 			}
-			if err := s.closeDetachedAttachment(attachment); err != nil {
+			if err := s.closeDetachedAttachment(attachment, actor); err != nil {
 				return err
 			}
 		}
@@ -78,7 +84,7 @@ func (s *Controller) dropQueuedTurns(record ownedthreads.SessionRecord) error {
 	}
 }
 
-func (s *Controller) closeAgentSession(sess *sessions.Session) error {
+func (s *Controller) closeAgentSession(sess *sessions.Session, actor string) error {
 	if sess == nil {
 		return nil
 	}
@@ -102,10 +108,40 @@ func (s *Controller) closeAgentSession(sess *sessions.Session) error {
 		return fmt.Errorf("Claude stop unconfirmed; attachment retained for retry: %w", err)
 	}
 	if remembered {
-		if err := s.Attachments.ForgetClosed(attachment); err != nil {
+		if err := s.Attachments.Finish(attachment, actor); err != nil {
 			return err
 		}
 	}
 	sess.State().ConfirmClaudeClose()
 	return nil
+}
+
+// Who finished an attachment row when the caller does not name a hosted
+// thread: the browser's close controls, or an anonymous API caller.
+const (
+	finishedByOperator = "operator"
+	finishedByAPI      = "api"
+)
+
+// closeActor reads the optional {"actorThreadRef": ...} body of a close. A
+// named actor must resolve to a hosted thread and is recorded by its hosted
+// id; an empty body records the anonymous API caller.
+func (s *Controller) closeActor(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var body struct {
+		ActorThreadRef string `json:"actorThreadRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		httpapi.WriteHTTPError(w, `body must be empty or {"actorThreadRef":"..."}`, http.StatusBadRequest)
+		return "", false
+	}
+	ref := strings.TrimSpace(body.ActorThreadRef)
+	if ref == "" {
+		return finishedByAPI, true
+	}
+	actor, ok := s.ResolveHostedRecord(ref)
+	if !ok {
+		httpapi.WriteHTTPError(w, "actorThreadRef does not resolve to a hosted thread", http.StatusBadRequest)
+		return "", false
+	}
+	return actor.ID, true
 }

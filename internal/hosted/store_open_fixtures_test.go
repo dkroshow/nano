@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -131,6 +132,9 @@ func migrateTestControl(t *testing.T, metadata *hostedstore.MetadataStore) {
 		t.Fatal(err)
 	}
 	if _, err := prompts.MigrateParkedDiscard(ctx, metadata.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema-24.sqlite")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hostedschema.MigrateAttachmentState(ctx, metadata.CanonicalDatabase(), filepath.Join(t.TempDir(), "schema-24-attachments.sqlite"), ""); err != nil {
 		t.Fatal(err)
 	}
 }

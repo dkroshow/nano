@@ -7,6 +7,7 @@ import (
 	"os"
 
 	turns "github.com/dkroshow/nano/internal/core/prompts"
+	hostedschema "github.com/dkroshow/nano/internal/hosted/schema"
 	statedb "github.com/dkroshow/nano/internal/state/db"
 )
 
@@ -44,7 +45,7 @@ func openReadOnly(ctx context.Context, path string, allowLegacy bool, migrations
 				if err = migrateCompletedTurnUsage(ctx, db, "", migrations); err == nil {
 					if err = migrateMemberRecovery(ctx, db, "", migrations); err == nil {
 						if err = migrateParkedDiscard(ctx, db, "", migrations); err == nil {
-							_, err = migrateAttachmentState(ctx, db, "", "")
+							_, err = hostedschema.MigrateAttachmentState(ctx, db, "", "")
 						}
 					}
 				}

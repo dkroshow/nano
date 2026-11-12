@@ -10,7 +10,6 @@ import (
 	"github.com/dkroshow/nano/internal/threads"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -110,10 +109,10 @@ func TestResumeResolversKeepStoredHostedIdentity(t *testing.T) {
 	for provider, hosted := range map[string]string{
 		"claude": "nht_claude", "codex": "nht_codex", "grok": "nht_grok",
 	} {
-		store.Remember(hostedstore.Attachment{
+		store.Remember(fixtureHosted(hostedstore.Attachment{
 			Provider: provider, NativeThreadID: "native-" + provider,
 			HostedThreadID: hosted, Cwd: cwd, AttachedAt: "2026-08-06T10:00:00Z",
-		})
+		}))
 		if _, err := fixtureEnsureSessionWithIdentity(executions, hosted, provider, threads.PresentationShared, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
@@ -224,14 +223,11 @@ func TestHostedResumeSeedsOnlyCanonicalMetadata(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	Attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	Attachments.Remember(hostedstore.Attachment{
+	Attachments, _ := testsupport.AttachmentStore(t)
+	Attachments.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-resume", HostedThreadID: "nht_resume_canonical",
 		Cwd: legacyCwd, Model: "legacy-model", Bin: "/claude", Args: []string{"-p", "--model", "legacy-model", "--permission-mode", "bypassPermissions"},
-	})
+	}))
 	s := newTestAttachmentOwner(AttachmentSources{Defaults: config.SessionDefaults{CWD: legacyCwd, ClaudeBin: "/claude"}, Attachments: Attachments, Metadata: metadata})
 	resolved, err := s.resolveSpawn(SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: "claude", Mode: "resume", ThreadID: "native-resume"}})
 	if err != nil {
@@ -272,14 +268,11 @@ func TestHostedResumeUsesDesiredIntentWhileMetadataAPIUsesHistoricalDisplay(t *t
 			t.Fatal(err)
 		}
 	}
-	Attachments, err := hostedstore.NewAttachmentStore(filepath.Join(t.TempDir(), "attachments.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	Attachments.Remember(hostedstore.Attachment{
+	Attachments, _ := testsupport.AttachmentStore(t)
+	Attachments.Remember(fixtureHosted(hostedstore.Attachment{
 		Provider: "claude", NativeThreadID: "native-historical", HostedThreadID: hostedID,
 		Bin: "/claude", Args: []string{"-p", "--model", "stale-model", "--effort", "low", "--permission-mode", "bypassPermissions"},
-	})
+	}))
 	s := newTestAttachmentOwner(AttachmentSources{Defaults: config.SessionDefaults{CWD: t.TempDir(), ClaudeBin: "/default/claude"}, Attachments: Attachments, Metadata: metadata, Executions: executions, Registry: newOwnerRegistry()})
 
 	// The public API is presentation state and must expose the observed fold.
@@ -434,7 +427,7 @@ func TestResumeRefusesMissingCanonicalOwner(t *testing.T) {
 					t.Fatal(err)
 				}
 				Attachments := newTestStore(t)
-				Attachments.Remember(hostedstore.Attachment{Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID})
+				Attachments.Remember(fixtureHosted(hostedstore.Attachment{Provider: provider, NativeThreadID: revivedNativeID, HostedThreadID: old.ID}))
 				app := newTestAttachmentOwner(AttachmentSources{Metadata: control, Executions: store, Attachments: Attachments})
 				req := SpawnRequest{ProviderRequest: sessions.ProviderRequest{Provider: provider, Mode: "resume", ThreadID: revivedNativeID}}
 				if named {
