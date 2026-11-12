@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -368,6 +369,21 @@ func TestSidebarHostedRecordsPicksTheNewerRecordAcrossTrimmedFractions(t *testin
 	records, found := fixtureOwners(s).sidebarOwner().SidebarHostedRecords([]sidebar.Thread{{Thread: threadindex.Thread{Provider: "codex", NativeID: "native-1"}}})
 	if !found[0] || records[0].ID != "nht_newer" {
 		t.Fatalf("sidebar record = %q (found %v), want the newer nht_newer", records[0].ID, found[0])
+	}
+	// An active claim beats recency. Claims are read only for the requested
+	// identities, in batches of 400, so this one sits past the first batch.
+	stamp := at.Format(time.RFC3339Nano)
+	if _, err := store.Control().CanonicalDatabase().Exec(`INSERT INTO hosted_thread_native_ids(hosted_thread_id,provider,native_thread_id,provisional,first_seen_at,last_seen_at) VALUES('nht_older','codex','native-1',0,?,?)`, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	threads := make([]sidebar.Thread, 0, 451)
+	for i := range 450 {
+		threads = append(threads, sidebar.Thread{Thread: threadindex.Thread{Provider: "codex", NativeID: fmt.Sprintf("unclaimed-%03d", i)}})
+	}
+	threads = append(threads, sidebar.Thread{Thread: threadindex.Thread{Provider: "codex", NativeID: "native-1"}})
+	records, found = fixtureOwners(s).sidebarOwner().SidebarHostedRecords(threads)
+	if last := len(threads) - 1; !found[last] || records[last].ID != "nht_older" {
+		t.Fatalf("claimed record = %q (found %v), want the claim's nht_older", records[last].ID, found[last])
 	}
 }
 

@@ -1,6 +1,8 @@
 package store
 
 import (
+	"strings"
+
 	threadvalues "github.com/dkroshow/nano/internal/threads"
 )
 
@@ -21,6 +23,7 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]thr
 	defer store.mu.Unlock()
 
 	requested := map[AttachmentKey]bool{}
+	var keys []AttachmentKey // requested, in request order
 	for i, thread := range refs {
 		if thread.HostedThreadID != "" {
 			if record, ok := store.sessions[thread.HostedThreadID]; ok {
@@ -28,15 +31,26 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]thr
 			}
 			continue
 		}
-		if thread.Provider != "" && thread.NativeThreadID != "" {
-			requested[AttachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeThreadID}] = true
+		if key := (AttachmentKey{Provider: thread.Provider, NativeThreadID: thread.NativeThreadID}); key.Provider != "" && key.NativeThreadID != "" && !requested[key] {
+			requested[key] = true
+			keys = append(keys, key)
 		}
 	}
 
+	// Only the requested claims, in bounded batches: reading every claim
+	// cost each one-row catalog repair about 10 ms on a fleet of 1,100.
 	claims := map[AttachmentKey]string{}
-	if store.control != nil && len(requested) > 0 {
+	for start := 0; store.control != nil && start < len(keys); start += 400 {
+		batch := keys[start:min(start+400, len(keys))]
+		pairs := make([]string, len(batch))
+		args := make([]any, 0, 2*len(batch))
+		for i, key := range batch {
+			pairs[i] = "(?, ?)"
+			args = append(args, key.Provider, key.NativeThreadID)
+		}
 		rows, err := store.control.db.Query(`SELECT provider,native_thread_id,hosted_thread_id
-			FROM hosted_thread_native_ids WHERE retired_at IS NULL`)
+			FROM hosted_thread_native_ids WHERE retired_at IS NULL
+			AND (provider, native_thread_id) IN (VALUES `+strings.Join(pairs, ", ")+`)`, args...)
 		if err != nil {
 			return records, found
 		}
@@ -46,10 +60,7 @@ func (store *ExecutionStore) RecordsForReferences(refs []RecordReference) ([]thr
 				rows.Close()
 				return records, found
 			}
-			key := AttachmentKey{Provider: provider, NativeThreadID: nativeID}
-			if requested[key] {
-				claims[key] = hostedID
-			}
+			claims[AttachmentKey{Provider: provider, NativeThreadID: nativeID}] = hostedID
 		}
 		if err := rows.Err(); err != nil {
 			rows.Close()
