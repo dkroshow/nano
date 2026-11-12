@@ -132,6 +132,13 @@ func TestSidebarCatalogBurstSharesOneTrailingRebuild(t *testing.T) {
 		t.Fatalf("a burst inside the interval rebuilt at once (%d full reads)", c.reads()-before)
 	}
 	awaitSidebarRow(t, s, isLate, sidebarRebuildMinInterval+3*time.Second)
+	// The loop logs a rebuild after it returns, and the row shows before the
+	// log line. Counting at once read 0 in CI though the rebuild had run.
+	deadline := time.Now().Add(2 * time.Second)
+	for c.reads()-before < 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond) // a second rebuild would log by now
 	if got := c.reads() - before; got != 1 {
 		t.Fatalf("burst caused %d full rebuilds, want 1", got)
 	}
