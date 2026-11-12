@@ -331,11 +331,14 @@ func TestRuntimeEventsOnStream(t *testing.T) {
 		}
 		var change struct {
 			ThreadIDs []string `json:"threadIds"`
+			Refresh   bool     `json:"refresh"`
 		}
 		if err := json.Unmarshal([]byte(data), &change); err != nil {
 			t.Fatal(err)
 		}
-		if slices.Contains(change.ThreadIDs, changedID) {
+		// The new file's structural refresh names the row too; the ordinary
+		// update that follows it is the repair this waits for.
+		if !change.Refresh && slices.Contains(change.ThreadIDs, changedID) {
 			break
 		}
 	}

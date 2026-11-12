@@ -403,3 +403,96 @@ func TestSidebarIndexTimeAloneResendsNoRow(t *testing.T) {
 		t.Fatalf("a full read would return index time %q", m.active.Items[0].Source.LastIndexedAt)
 	}
 }
+
+// Every catalog event re-projected the whole sidebar: about 40 ms of CPU an
+// event with 3,300 held rows, a tenth of Nano's CPU in a quiet hour and more
+// with a busy fleet. A change to one thread must cost the same however many
+// rows the sidebar holds. Boundary: the materializer's catalog row repair.
+func TestSidebarCatalogRepairCostDoesNotGrowWithTheSidebar(t *testing.T) {
+	now := time.Now()
+	s, ids, store := sidebarActiveFixtureWithStore(t, now)
+	ctx := context.Background()
+	change := catalog.Change{ThreadIDs: []string{ids["attached-recent"]}}
+	cost := func() float64 {
+		return testing.AllocsPerRun(20, func() {
+			if !s.repairSidebarCatalogRows(ctx, change) {
+				t.Fatal("the repair asked for a full rebuild")
+			}
+		})
+	}
+	small := cost()
+	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	if _, err := store.EnsureRoot(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 300 {
+		seedSidebarThread(t, store, root, fmt.Sprintf("bulk-%03d", i), "", history.ThreadMain, now.Add(-time.Hour), []historyCourt{{final: true, text: "Done."}})
+	}
+	if err := s.materializeSidebar(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	if large := cost(); large > small*1.05+10 {
+		t.Fatalf("one row's repair took %.0f allocations with 300 more rows held, %.0f without", large, small)
+	}
+}
+
+// The catalog patch must leave what a full rebuild of the same state would
+// build: a row changed in place, and a newly indexed thread taking the place
+// of the memory row that stood in for its live session (a structural change
+// now repairs instead of rebuilding). Boundary: the materializer's catalog row
+// repair, compared with the full rebuild.
+func TestSidebarCatalogRepairMatchesAFullRebuild(t *testing.T) {
+	now := time.Now()
+	s, ids, store := sidebarActiveFixtureWithStore(t, now)
+	ctx := context.Background()
+	matchesRebuild := func(step string, change catalog.Change) {
+		t.Helper()
+		if !s.repairSidebarCatalogRows(ctx, change) {
+			t.Fatalf("%s: the repair asked for a full rebuild", step)
+		}
+		patched := s.active
+		patched.Items = slices.Clone(patched.Items)
+		if err := s.materializeSidebar(ctx, now); err != nil {
+			t.Fatal(err)
+		}
+		if !sidebarResponsesEqual(patched, s.active) {
+			t.Fatalf("%s: patched sidebar differs from a full rebuild:\npatched %s\nrebuilt %s", step, rawJSON(patched), rawJSON(s.active))
+		}
+	}
+
+	committed, stop := s.catalog.SubscribeCatalog()
+	if err := s.catalog.AssignThreadName("codex", "attached-recent", "renamed in place"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-committed:
+	case <-time.After(time.Second):
+		t.Fatal("the catalog did not publish the name change")
+	}
+	stop()
+	events := s.Subscribe()
+	matchesRebuild("rename", catalog.Change{ThreadIDs: []string{ids["attached-recent"]}})
+	select {
+	case delta := <-events:
+		if len(delta.Rows) != 1 || delta.Rows[0].Name == nil || delta.Rows[0].Name.Value != "renamed in place" {
+			t.Fatalf("rename delta = %+v", delta)
+		}
+	default:
+		t.Fatal("the in-place patch published no delta")
+	}
+	s.Unsubscribe(events)
+
+	s.RegisterSession(memorySession(t, "sess-late", "codex", "late-live", "ready", "/w/late", "gpt-test", now))
+	if !s.patchSidebarRuntime(ctx, s.runtimeDeltaSnapshot()) {
+		t.Fatal("the runtime patch asked for a full rebuild")
+	}
+	if _, ok := activeSidebarRow(t, s, func(row sidebarThread) bool { return row.ID == "mem_sess-late" }); !ok {
+		t.Fatal("the live session has no memory row")
+	}
+	root := history.SourceRoot{Provider: history.ProviderCodex, Kind: history.RootCodexSessions, Path: t.TempDir()}
+	if _, err := store.EnsureRoot(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	indexed := seedSidebarThread(t, store, root, "late-live", "", history.ThreadMain, now, []historyCourt{{user: true, text: "late"}})
+	matchesRebuild("newly indexed", catalog.Change{ThreadIDs: []string{indexed}, Refresh: true})
+}

@@ -19,9 +19,14 @@ Catalog events now distinguish two cases:
 - A structural change sets `refresh: true`. New, removed, archived, reparented,
   or otherwise uncertain rows use this path. Every reconnect also starts with
   a complete repair, which preserves the missed-event recovery guarantee.
+  A structural change still names the threads it changed when it can. The
+  browser ignores them and reloads its window; the materialized sidebar
+  places those new, gone or moved rows itself instead of reading its whole
+  graph again, which every new thread file used to cost.
 
-The one-slot hub unions pending thread IDs when it conflates events. If the
-bounded set overflows, it escalates to a complete repair. This keeps the stream
+The one-slot hub unions pending thread IDs when it conflates events, and a
+refresh that names threads keeps them. A refresh that names none, or a
+bounded set that overflows, escalates to a complete repair. This keeps the stream
 as a change signal rather than a second catalog. HTTP remains the row and
 window data authority.
 

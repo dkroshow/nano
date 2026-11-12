@@ -33,6 +33,19 @@ func TestHubConflatesWithoutBlocking(t *testing.T) {
 	if change := <-slow; change.Version != 4 || !change.Refresh {
 		t.Fatalf("refresh = %#v", change)
 	}
+	// A structural change names its threads. Conflation dropped them, and the
+	// sidebar read its whole graph for every new thread file instead of
+	// repairing the rows named.
+	hub.Notify(Change{Version: 5, ThreadIDs: []string{"new"}, Refresh: true})
+	hub.Notify(Change{Version: 6, ThreadIDs: []string{"d"}})
+	if change := <-slow; change.Version != 6 || !change.Refresh || len(change.ThreadIDs) != 2 {
+		t.Fatalf("structural refresh = %#v", change)
+	}
+	hub.Notify(Change{Version: 7, ThreadIDs: []string{"new"}, Refresh: true})
+	hub.Notify(Change{Version: 8, Refresh: true})
+	if change := <-slow; change.Version != 8 || !change.Refresh || len(change.ThreadIDs) != 0 {
+		t.Fatalf("a refresh that names nothing must cover everything: %#v", change)
+	}
 }
 
 func TestHubCloseDisconnectsSubscribers(t *testing.T) {

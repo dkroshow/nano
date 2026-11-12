@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dkroshow/nano/internal/catalog"
 	"github.com/dkroshow/nano/internal/history"
 )
 
@@ -625,11 +626,11 @@ func (s *Service) refreshRoot(ctx context.Context, root history.PersistedRoot, m
 		return stats, fmt.Errorf("reconcile history root: %w", err)
 	}
 	if reconciled.Changed {
-		if reconciled.Structural {
-			s.publishCatalogVersion(reconciled.CatalogVersion)
-		} else {
-			s.publishCatalogThreads(reconciled.CatalogVersion, reconciled.ChangedThreadIDs)
-		}
+		// A structural change still names its threads: every new thread file
+		// was one, and the bare refresh it sent made the sidebar read its whole
+		// graph again (a full rebuild every few seconds under a busy fleet).
+		s.publishCatalogChange(catalog.Change{Version: reconciled.CatalogVersion,
+			ThreadIDs: reconciled.ChangedThreadIDs, Refresh: reconciled.Structural})
 	}
 	pass.reconciled(time.Now())
 	repairs, repairErrors := s.repairTranscripts(ctx, root.ID, mode, transcriptRepairs, indexedAt, pass)

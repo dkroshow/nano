@@ -4,8 +4,12 @@ import "sync"
 
 const maxChangeThreadIDs = 32
 
-// Change tells a surface whether named rows can be repaired or the complete
-// materialized window must be replaced.
+// Change names the threads a catalog commit changed. Refresh tells a surface
+// that lists a window of threads to read that window again: the commit added,
+// removed or re-parented threads, or changed more than a change can name. A
+// Refresh that names threads names every thread it changed, so a surface that
+// can place new and moved rows itself (the materialized sidebar) repairs them;
+// one that names none may have changed anything.
 type Change struct {
 	Version   uint64
 	ThreadIDs []string
@@ -62,8 +66,8 @@ func (h *Hub) Notify(change Change) {
 
 func MergeChanges(left, right Change) Change {
 	merged := Change{Version: max(left.Version, right.Version), Refresh: left.Refresh || right.Refresh}
-	if merged.Refresh {
-		return merged
+	if left.Refresh && len(left.ThreadIDs) == 0 || right.Refresh && len(right.ThreadIDs) == 0 {
+		return Change{Version: merged.Version, Refresh: true}
 	}
 	seen := make(map[string]struct{}, len(left.ThreadIDs)+len(right.ThreadIDs))
 	for _, ids := range [][]string{left.ThreadIDs, right.ThreadIDs} {

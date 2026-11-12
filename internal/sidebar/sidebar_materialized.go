@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,6 +172,8 @@ func (m *Controller) activeSnapshot(query threadindex.ListQuery, useDefault bool
 	}
 	if useDefault || sameSidebarQuery(query, m.defaultQuery) {
 		result := m.active
+		// A catalog patch rewrites served items in place.
+		result.Items = slices.Clone(result.Items)
 		m.mu.RUnlock()
 		return result, nil
 	}
@@ -262,33 +265,50 @@ func (s *Controller) ComposeCatalogThreads(ctx context.Context, threads []Thread
 	s.AttachMailOverlay(threads)
 }
 
+// replace installs a whole new projection. Callers hold updateMu.
 func (m *Controller) replace(all []Thread, query threadindex.ListQuery, active sidebarActiveResponse, nodes []*sidebarNode, version int64) {
+	m.mu.RLock()
+	previous, wasReady := m.active, m.ready
+	m.mu.RUnlock()
+	var delta *Delta
+	if wasReady {
+		delta = diffSidebar(previous, active)
+	}
 	m.mu.Lock()
-	wasReady := m.ready
-	previous := m.active
 	m.all = all
 	m.defaultQuery = query
 	m.nodes = nodes
 	m.version = version
 	m.ready = true
+	published := m.installLocked(active, delta, !wasReady)
+	m.mu.Unlock()
+	if published != nil {
+		m.events.notify(*published)
+	}
+}
+
+// installLocked serves active. A list that changed (delta is not nil, or this
+// is the first build) takes the next revision; the delta that leads to it is
+// returned for publishing once the lock is released. The first build
+// publishes nothing.
+func (m *Controller) installLocked(active sidebarActiveResponse, delta *Delta, first bool) *Delta {
 	select {
 	case m.rowsChanged <- struct{}{}:
 	default:
 	}
-	if wasReady && sidebarResponsesEqual(previous, active) {
+	if !first && delta == nil {
 		active.Generation, active.Revision = m.generation, m.revision
 		m.active = active
-		m.mu.Unlock()
-		return
+		return nil
 	}
 	m.revision++
 	active.Generation, active.Revision = m.generation, m.revision
 	m.active = active
-	delta := diffSidebar(previous, active)
-	m.mu.Unlock()
-	if wasReady && delta != nil {
-		m.events.notify(*delta)
+	if first {
+		return nil
 	}
+	delta.Generation, delta.Revision = m.generation, m.revision
+	return delta
 }
 
 // ApplyMailDelta applies committed inbox counts to the materialized rows.
@@ -395,34 +415,87 @@ func (m *Controller) applyStar(provider, nativeID string, starred bool) bool {
 	return true
 }
 
-func (m *Controller) applyCatalogRows(rows []Thread, version int64) {
-	if m == nil || len(rows) == 0 {
-		return
+// sidebarShape is what places a row in the tree: who it is, which row is its
+// parent, whether the default view selects it, whether Nano holds it, and the
+// role its ancestors count. A change that keeps it changes only the row's own
+// item; nothing else in the projection reads the rest of the row.
+type sidebarShape struct {
+	identity, parents string
+	selected, active  bool
+	role              string
+}
+
+func sidebarShapeOf(thread Thread, query threadindex.ListQuery) sidebarShape {
+	return sidebarShape{
+		identity: strings.Join(sidebarIdentityKeys(thread), "\n"), parents: strings.Join(sidebarParentKeys(thread), "\n"),
+		selected: sidebarThreadInPopulation(thread, query), active: sidebarActiveInNano(thread), role: resolveThreadRoleCatalog(thread),
 	}
-	m.updateMu.Lock()
-	defer m.updateMu.Unlock()
-	m.mu.RLock()
+}
+
+// patchSidebarRowsInPlace puts catalog rows over the held rows they replace
+// when none of them moves in the tree, and rebuilds only their own items. A
+// busy fleet sends many catalog events a second, nearly all a working thread's
+// new transcript lines, and re-projecting every row for each was about a
+// seventh of Nano's CPU. It reports false, changing nothing, when a row is new
+// or its shape changed. Callers hold updateMu, as every writer does; readers
+// copy what they keep, so held rows and served items change in place.
+func (m *Controller) patchSidebarRowsInPlace(rows []Thread, version int64) bool {
+	m.mu.Lock()
 	if !m.ready {
-		m.mu.RUnlock()
-		return
+		m.mu.Unlock()
+		return false
 	}
-	all := append([]Thread(nil), m.all...)
-	query := m.defaultQuery
-	m.mu.RUnlock()
-	positions := make(map[string]int, len(all))
-	for i := range all {
-		positions[all[i].ID] = i
+	// Where each row sits in the held rows, the default view's nodes (-1: not
+	// selected) and the served items (-1: history).
+	type place struct{ row, node, item int }
+	places := make([]place, len(rows))
+	for i, row := range rows {
+		p := place{row: slices.IndexFunc(m.all, func(held Thread) bool { return held.ID == row.ID }), node: -1, item: -1}
+		if p.row < 0 || sidebarShapeOf(m.all[p.row], m.defaultQuery) != sidebarShapeOf(row, m.defaultQuery) {
+			m.mu.Unlock()
+			return false
+		}
+		p.node = slices.IndexFunc(m.nodes, func(node *sidebarNode) bool { return node.thread.ID == row.ID })
+		if p.node >= 0 && m.nodes[p.node].included {
+			p.item = slices.IndexFunc(m.active.Items, func(item sidebarThread) bool { return item.ID == row.ID })
+		}
+		places[i] = p
 	}
-	for _, row := range rows {
-		if index, ok := positions[row.ID]; ok {
-			all[index] = row
+	version = max(version, m.version)
+	// Nodes are handed to readers without a copy, so a changed node is a new one.
+	nodes := slices.Clone(m.nodes)
+	var changed []sidebarThread
+	for i, row := range rows {
+		p := places[i]
+		m.all[p.row] = row
+		if p.node < 0 {
 			continue
 		}
-		positions[row.ID] = len(all)
-		all = append(all, row)
+		node := *nodes[p.node]
+		node.thread = row
+		nodes[p.node] = &node
+		if p.item < 0 {
+			continue
+		}
+		item := sidebarThreadFromNode(&node)
+		if !reflect.DeepEqual(sidebarComparable(m.active.Items[p.item]), sidebarComparable(item)) {
+			changed = append(changed, item)
+		}
+		m.active.Items[p.item] = item
 	}
-	active, nodes := projectSidebar(all, query, version)
-	m.replace(all, query, active, nodes, version)
+	m.nodes, m.version = nodes, version
+	active := m.active
+	var delta *Delta
+	if len(changed) > 0 || version != active.CatalogVersion {
+		active.CatalogVersion = version
+		delta = &Delta{Rows: changed, Roots: slices.Clone(active.Roots), HistoricalCount: active.HistoricalCount, CatalogVersion: version}
+	}
+	published := m.installLocked(active, delta, false)
+	m.mu.Unlock()
+	if published != nil {
+		m.events.notify(*published)
+	}
+	return true
 }
 
 func diffSidebar(previous, next sidebarActiveResponse) *Delta {
@@ -772,8 +845,7 @@ func (s *Controller) StartSidebarMaterializer(ctx context.Context, now time.Time
 // started, bound or closed; a thread attached or detached) by re-reading only
 // the rows the delta names and recomputing the memory rows. These changes come
 // with every session start and close, and a full graph read costs seconds of
-// CPU on a busy fleet. It reports false when only a full rebuild is correct:
-// a read failed, or a row now has an ancestor the sidebar has not loaded.
+// CPU on a busy fleet. It reports false when only a full rebuild is correct.
 func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta) bool {
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
@@ -785,14 +857,6 @@ func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta
 	}
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
-	s.mu.RLock()
-	if !s.ready {
-		s.mu.RUnlock()
-		return false
-	}
-	previous := s.all
-	query, version := s.defaultQuery, s.version
-	s.mu.RUnlock()
 	var graph history.SidebarGraph
 	if len(keys) > 0 {
 		if graph, err = source.ListSidebarGraph(ctx, history.SidebarGraphParams{Extra: keys, OnlyExtra: true}); err != nil {
@@ -800,18 +864,37 @@ func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta
 			return false
 		}
 	}
-	// Memory rows stand in for held threads the catalog lacks; they are
-	// recomputed whole, so a closed session's row goes and a new one comes.
+	runtime := s.SidebarRuntimeSnapshot()
+	rows := s.graphRowsToThreads(graph.Rows, time.Now())
+	s.ComposeCatalogThreads(ctx, rows, runtime, true)
+	return s.mergeSidebarRows(ctx, source, rows, nil, runtime, threadindex.CatalogVersion(graph.CatalogVersion))
+}
+
+// mergeSidebarRows puts composed saved rows into the held rows, drops the
+// rows named gone, recomputes the memory rows, which stand in for held
+// threads the catalog lacks (so a closed session's row goes and a newly
+// indexed thread's goes), and projects the result. It reports false when only
+// a full rebuild is correct: a read failed, or a row now has an ancestor the
+// sidebar has not loaded. Callers hold updateMu.
+func (s *Controller) mergeSidebarRows(ctx context.Context, source *threadindex.Service, saved []Thread, gone []string, runtime SidebarRuntimeSnapshot, version int64) bool {
+	s.mu.RLock()
+	if !s.ready {
+		s.mu.RUnlock()
+		return false
+	}
+	previous := s.all
+	query := s.defaultQuery
+	version = max(version, s.version)
+	s.mu.RUnlock()
 	all := make([]Thread, 0, len(previous))
 	for _, thread := range previous {
-		if !thread.Transient {
+		if !thread.Transient && !slices.Contains(gone, thread.ID) {
 			all = append(all, thread)
 		}
 	}
-	runtime := s.SidebarRuntimeSnapshot()
-	rows := s.graphRowsToThreads(graph.Rows, time.Now())
-	rows = append(rows, s.memorySidebarThreadRows(append(all, rows...), runtime.Summaries)...)
-	s.ComposeCatalogThreads(ctx, rows, runtime, true)
+	memory := s.memorySidebarThreadRows(slices.Concat(all, saved), runtime.Summaries)
+	s.ComposeCatalogThreads(ctx, memory, runtime, true)
+	rows := slices.Concat(saved, memory)
 	positions := make(map[string]int, len(all))
 	for i := range all {
 		positions[all[i].ID] = i
@@ -839,7 +922,7 @@ func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta
 	if missing := s.missingSidebarParents(all); len(missing) > 0 {
 		ancestors, err := source.ListSidebarGraph(ctx, history.SidebarGraphParams{Extra: missing, OnlyExtra: true})
 		if err != nil {
-			log.Printf("sidebar runtime patch: %v", err)
+			log.Printf("sidebar row patch: %v", err)
 			return false
 		}
 		for _, row := range ancestors.Rows {
@@ -848,14 +931,15 @@ func (s *Controller) patchSidebarRuntime(ctx context.Context, delta RuntimeDelta
 			}
 		}
 	}
-	version = max(version, threadindex.CatalogVersion(graph.CatalogVersion))
 	active, nodes := projectSidebar(all, query, version)
 	s.replace(all, query, active, nodes, version)
 	return true
 }
 
-// repairSidebarCatalogRows re-reads only the named rows. It reports false when
-// a row is gone, which only a full rebuild can reflect.
+// repairSidebarCatalogRows re-reads only the rows a catalog change names.
+// Rows that keep their place are patched where they stand; new, gone and
+// moved rows are merged and the held rows projected again. It reports false
+// when only a full rebuild is correct.
 func (s *Controller) repairSidebarCatalogRows(ctx context.Context, change catalog.Change) bool {
 	source, err := s.sidebarGraphCatalog()
 	if err != nil {
@@ -871,17 +955,30 @@ func (s *Controller) repairSidebarCatalogRows(ctx context.Context, change catalo
 		log.Printf("sidebar catalog repair: %v", err)
 		return true
 	}
-	if len(graph.Rows) == 0 {
-		return false
-	}
+	runtime := s.SidebarRuntimeSnapshot()
 	rows := s.graphRowsToThreads(graph.Rows, time.Now())
-	s.ComposeCatalogThreads(ctx, rows, s.SidebarRuntimeSnapshot(), true)
-	version := threadindex.CatalogVersion(change.Version)
-	if graphVersion := threadindex.CatalogVersion(graph.CatalogVersion); graphVersion > version {
-		version = graphVersion
+	s.ComposeCatalogThreads(ctx, rows, runtime, true)
+	version := max(threadindex.CatalogVersion(change.Version), threadindex.CatalogVersion(graph.CatalogVersion))
+	// A named thread the read did not return is gone from the catalog.
+	var gone []string
+	for _, id := range change.ThreadIDs {
+		if !slices.ContainsFunc(rows, func(row Thread) bool { return row.ID == id }) {
+			gone = append(gone, id)
+		}
 	}
-	s.applyCatalogRows(rows, version)
-	return true
+	return s.applyCatalogRows(ctx, source, rows, gone, runtime, version)
+}
+
+// applyCatalogRows applies composed catalog rows and the named rows gone,
+// patching in place when it can. It reports false when only a full rebuild is
+// correct.
+func (s *Controller) applyCatalogRows(ctx context.Context, source *threadindex.Service, rows []Thread, gone []string, runtime SidebarRuntimeSnapshot, version int64) bool {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+	if len(gone) == 0 && s.patchSidebarRowsInPlace(rows, version) {
+		return true
+	}
+	return s.mergeSidebarRows(ctx, source, rows, gone, runtime, version)
 }
 
 func (m *Controller) advanceWindow(now time.Time) {

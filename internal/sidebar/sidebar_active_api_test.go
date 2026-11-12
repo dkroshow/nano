@@ -22,6 +22,7 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
 	s, _ := sidebarActiveFixture(t, now)
 	// Losing the source after materialization must not change cached reads.
+	source := s.catalog
 	s.catalog = nil
 	getSidebarActive(t, s, now)
 	getSidebarActive(t, s, now)
@@ -86,7 +87,7 @@ func TestSidebarMaterializedGETDoesNotReadSources(t *testing.T) {
 	version := s.version
 	s.mu.RUnlock()
 	completed.Runtime = nil
-	s.applyCatalogRows([]Thread{completed}, version+1)
+	s.applyCatalogRows(context.Background(), source, []Thread{completed}, nil, s.SidebarRuntimeSnapshot(), version+1)
 	select {
 	case delta := <-events:
 		if len(delta.RemovedIDs) != 1 || delta.RemovedIDs[0] != completed.ID {
