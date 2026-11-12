@@ -956,31 +956,33 @@ func (s *Store) ListSidebarGraph(ctx context.Context, params SidebarGraphParams)
 }
 
 func sidebarGraphExtraPredicates(extra []SidebarGraphKey) (string, []any) {
-	var parts []string
-	var args []any
-	var ids []string
+	var pairs, ids []string
+	var pairArgs, idArgs []any
 	for _, key := range extra {
 		if id := strings.TrimSpace(key.ID); id != "" {
-			ids = append(ids, id)
+			ids = append(ids, "?")
+			idArgs = append(idArgs, id)
 			continue
 		}
 		if key.Provider != "" && strings.TrimSpace(key.NativeID) != "" {
-			parts = append(parts, "(provider = ? AND native_thread_id = ?)")
-			args = append(args, string(key.Provider), strings.TrimSpace(key.NativeID))
+			pairs = append(pairs, "(?, ?)")
+			pairArgs = append(pairArgs, string(key.Provider), strings.TrimSpace(key.NativeID))
 		}
 	}
+	// One row-value list, not an OR per identity: SQLite caps an expression
+	// tree at depth 1000, and with about a thousand held threads the full
+	// sidebar read failed on every attempt.
+	var parts []string
+	if len(pairs) > 0 {
+		parts = append(parts, "(provider, native_thread_id) IN (VALUES "+strings.Join(pairs, ", ")+")")
+	}
 	if len(ids) > 0 {
-		placeholders := make([]string, len(ids))
-		for i, id := range ids {
-			placeholders[i] = "?"
-			args = append(args, id)
-		}
-		parts = append(parts, "id IN ("+strings.Join(placeholders, ", ")+")")
+		parts = append(parts, "id IN ("+strings.Join(ids, ", ")+")")
 	}
 	if len(parts) == 0 {
 		return "", nil
 	}
-	return "(" + strings.Join(parts, " OR ") + ")", args
+	return "(" + strings.Join(parts, " OR ") + ")", append(pairArgs, idArgs...)
 }
 
 // LoadThreadsByIDs loads full catalog thread rows for the included sidebar

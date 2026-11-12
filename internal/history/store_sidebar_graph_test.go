@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -91,6 +92,14 @@ func TestListSidebarGraphRescuesExtraIdentitiesOutsideTheWindow(t *testing.T) {
 		{itemType: ItemUserMessage, text: "pin me"},
 	})
 	updatedFrom := now.Add(-30 * 24 * time.Hour)
+	// Every held thread is a rescue key. Joined as one OR per key, about a
+	// thousand of them passed SQLite's expression depth limit of 1000 and the
+	// full sidebar read failed with "Expression tree is too large".
+	var extra []SidebarGraphKey
+	for i := range 1200 {
+		extra = append(extra, SidebarGraphKey{Provider: ProviderCodex, NativeID: fmt.Sprintf("held-%04d", i)})
+	}
+	extra = append(extra, SidebarGraphKey{Provider: ProviderClaude, NativeID: "native-starred"})
 	graph, err := store.ListSidebarGraph(ctx, SidebarGraphParams{
 		List: ListThreadsParams{
 			IncludeSubagents:    true,
@@ -98,7 +107,7 @@ func TestListSidebarGraphRescuesExtraIdentitiesOutsideTheWindow(t *testing.T) {
 			Archived:            ArchivedInclude,
 			UpdatedFrom:         &updatedFrom,
 		},
-		Extra: []SidebarGraphKey{{Provider: ProviderClaude, NativeID: "native-starred"}},
+		Extra: extra,
 	})
 	if err != nil {
 		t.Fatalf("ListSidebarGraph: %v", err)
