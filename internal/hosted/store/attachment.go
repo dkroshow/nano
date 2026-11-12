@@ -64,8 +64,9 @@ type Attachment struct {
 	TurnAnchorSeq   int64    `json:"turnAnchorSeq,omitempty"`
 	TurnServiceTier string   `json:"turnServiceTier,omitempty"`
 	// State is the row's AttachmentAttached or AttachmentResumable; finished
-	// rows are never returned.
-	State string `json:"state,omitempty"`
+	// rows are never returned. It is a store fact, not part of the record a
+	// caller saves and later compares, so it is never serialized.
+	State string `json:"-"`
 }
 
 // Provisional reports a record for a thread that was started but never
