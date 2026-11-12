@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,15 +44,21 @@ func TestThreadCatalogServiceIndexesPagesAndRepairsMissingSources(t *testing.T) 
 	}
 	defer service.Close()
 	service.RequestRefresh() // the explicit discovery a new store needs
-	service.SetTranscriptChanged(func(context.Context, TranscriptChange) {})
+	// The root reads ready when the reconcile commits; each transcript is
+	// applied and its change notice queued after that, so the idle status
+	// below is read only once both notices have been delivered.
+	var delivered atomic.Int32
+	service.SetTranscriptChanged(func(context.Context, TranscriptChange) { delivered.Add(1) })
 
+	var status IndexStatus
 	waitForCatalog(t, func() bool {
-		status, err := service.IndexStatus(context.Background())
+		var err error
+		status, err = service.IndexStatus(context.Background())
 		return err == nil && status.State == "ready" && len(status.Roots) == 1 && status.Roots[0].SourceCount == 2 &&
-			status.TranscriptChangeBacklog == 0 && status.TranscriptChangeInFlight == 0
+			delivered.Load() == 2 && status.TranscriptChangeBacklog == 0 && status.TranscriptChangeInFlight == 0
 	})
-	if status, err := service.IndexStatus(context.Background()); err != nil || status.TranscriptChangeWorkers != transcriptChangeWorkerCount || status.TranscriptChangeBacklog != 0 || status.TranscriptChangeInFlight != 0 {
-		t.Fatalf("idle transcript change status = %#v, err=%v", status, err)
+	if status.TranscriptChangeWorkers != transcriptChangeWorkerCount {
+		t.Fatalf("idle transcript change status = %#v", status)
 	}
 
 	firstPage, err := service.ListThreads(context.Background(), ListQuery{Archived: "include", Limit: 1})
