@@ -171,7 +171,7 @@ it('asks once for a resting thread its sidebar row shows', async () => {
   const resting = { ...catalogRow(), hostedThreadId: 'nht-resting', runtime: { detached: true, status: 'resting' } }
   const [row] = projectSidebar([resting], [])
   const rail = render(CompactThreadRow, { props: { row } })
-  const prioritized = () => fetch.mock.calls.filter(([url]) => String(url) === '/api/v1/hosted-threads/nht-resting/prioritize')
+  const prioritized = () => fetch.mock.calls.filter(([url]) => String(url) === '/api/v1/hosted-threads/nht-resting/prioritize?for=row')
   await waitFor(() => expect(prioritized()).toHaveLength(1))
   await rail.rerender({ row: { ...row } })
   expect(prioritized()).toHaveLength(1)

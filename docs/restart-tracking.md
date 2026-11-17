@@ -49,10 +49,14 @@ Browsers also group and filter rows locally, so this approximates one screen.
 
 The boot loop queues the sidebar-visible threads, then hidden threads with
 work not yet settled: a hosted operation, a queued prompt, or a provider turn
-that started and has no outcome. Every other stored thread is left `resting`
-and comes back when something needs it: a sidebar row or pane that shows it
-(the browser's `prioritize`, which covers what the estimate misses, such as an
-expanded subagent), or an agent's turn, operation or read that needs it live.
+that started and has no outcome. A Claude thread whose shim child did not
+survive (a reboot, a shim restart) would need a new process, so boot queues it
+only for unsettled work, never for being visible; boot asks the shim once which
+children still run. Every other stored thread is left `resting` and comes back
+when something needs it: a pane that shows it (the browser's `prioritize`), a
+sidebar row that shows it (the same request with `?for=row`, which covers what
+the estimate misses, such as an expanded subagent, but starts no new process),
+or an agent's turn, operation or read that needs it live.
 A resting thread counts as settled; one picked for an
 attach before the line is written is pending again until it is live or
 failed. While threads rest, the line waits until no attach has settled for a

@@ -9,8 +9,9 @@
 // something needs it (a pane or sidebar row shows it, a prompt or request for
 // it), so a restart does not spend minutes on hundreds of threads nobody looks
 // at. A Claude thread whose shim child did not survive (a reboot, a shim
-// restart) is not respawned for being visible: only open work starts a new
-// process at boot; otherwise its next prompt or an opened pane does.
+// restart) is not respawned for being visible or for a sidebar row showing
+// it: only open work starts a new process at boot; otherwise its next prompt
+// or an opened pane does.
 package hosted
 
 import (
@@ -36,6 +37,9 @@ import (
 type bootReattach struct {
 	order    []hostedstore.Attachment
 	controls map[string]*sessions.BootControl
+	// needsProcess names the resting threads whose own process did not
+	// survive: a sidebar row showing one does not start it, a need does.
+	needsProcess map[string]bool
 
 	mu sync.Mutex
 
@@ -109,14 +113,20 @@ func (s *AttachmentCoordinator) ReattachOnBoot() {
 	ordered := bootOrder(boot.order, ranks)
 	s.Restart.rank(ranks, ordered)
 	liveChildren := s.liveChildren(boot.order)
+	needsProcess := map[string]bool{}
 	order, resting := bootQueue(ordered, func(rec hostedstore.Attachment) bool {
-		// A visible thread whose own process is gone would need a new one;
-		// it waits for its next prompt or an opened pane instead.
-		if ranks[rec.Key()].Visible && (!sessions.ProviderLifecycleCapabilities(rec.Provider).ChildPerThread || liveChildren[rec.ShimSessionID]) {
+		gone := sessions.ProviderLifecycleCapabilities(rec.Provider).ChildPerThread && !liveChildren[rec.ShimSessionID]
+		if ranks[rec.Key()].Visible && !gone || s.bootWorkOpen(rec) {
 			return true
 		}
-		return s.bootWorkOpen(rec)
+		// A thread whose own process is gone would need a new one; it waits
+		// for its next prompt or an opened pane instead.
+		needsProcess[rec.HostedThreadID] = gone
+		return false
 	})
+	boot.mu.Lock()
+	boot.needsProcess = needsProcess
+	boot.mu.Unlock()
 	s.Boot.Rest(resting)
 	s.Restart.rest(resting)
 	log.Printf("boot re-attach: %d threads queued, %d resting until needed", len(order), len(resting))
@@ -294,18 +304,32 @@ func (s *AttachmentCoordinator) reattachWaitingHosted(hostedThreadID string) {
 
 // HandlePrioritize registers a thread that still waits after a
 // restart now, ahead of the boot queue or out of rest, because the operator
-// sees it (an open pane, a sidebar row). A thread not waiting is left as it
-// is. The registration runs behind the answer, so a provider stuck in its
-// handshake holds no request.
-func (s *AttachmentCoordinator) HandlePrioritize(w http.ResponseWriter, _ *http.Request, record ownedthreads.SessionRecord) {
+// sees it (an open pane, a sidebar row). A sidebar row (?for=row) does not
+// start a resting thread whose own process is gone: a whole sidebar of them
+// would respawn at once. A thread not waiting is left as it is. The
+// registration runs behind the answer, so a provider stuck in its handshake
+// holds no request.
+func (s *AttachmentCoordinator) HandlePrioritize(w http.ResponseWriter, r *http.Request, record ownedthreads.SessionRecord) {
 	_, state := s.Boot.WaitingHosted(record.ID)
-	starting := state != ""
+	starting := state != "" && !(r.URL.Query().Get("for") == "row" && s.bootNeedsProcess(record.ID))
 	if starting {
 		go s.reattachWaitingHosted(record.ID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]bool{"starting": starting})
+}
+
+// bootNeedsProcess reports a thread boot left resting because its own process
+// did not survive the restart.
+func (s *AttachmentCoordinator) bootNeedsProcess(hostedThreadID string) bool {
+	boot := s.boot
+	if boot == nil {
+		return false
+	}
+	boot.mu.Lock()
+	defer boot.mu.Unlock()
+	return boot.needsProcess[hostedThreadID]
 }
 
 // reattachStored registers one boot record unless another caller already

@@ -771,7 +771,7 @@ func LiveClaudeChildren(shimURL string) (map[string]bool, error) {
 		return nil, err
 	}
 	defer client.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), claudeShimCloseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), claudeShimDialTimeout)
 	defer cancel()
 	var listed struct {
 		Sessions []struct {
@@ -779,7 +779,7 @@ func LiveClaudeChildren(shimURL string) (map[string]bool, error) {
 			State         string `json:"state"`
 		} `json:"sessions"`
 	}
-	if err := client.Call(ctx, wireclaude.MethodList, struct{}{}, &listed, claudeShimCloseTimeout); err != nil {
+	if err := client.Call(ctx, wireclaude.MethodList, struct{}{}, &listed, claudeShimDialTimeout); err != nil {
 		return nil, err
 	}
 	live := make(map[string]bool, len(listed.Sessions))

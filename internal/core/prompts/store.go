@@ -283,10 +283,15 @@ func (j Journal) ListThreadAttempts(ctx context.Context, provider model.Provider
 
 // InFlight reports whether the thread has a prompt still on its way or in a
 // provider turn not known to have ended: queued, delivering, uncertain, or
-// accepted with no terminal turn status.
+// accepted with no terminal turn status. A Claude turn that ends in an error
+// never confirms its prompt, so an accepted prompt whose hosted turn
+// operation has ended counts as ended too; otherwise every such thread was
+// respawned at each restart (2026-11-15: 1,366 threads whose turns had failed
+// hours before).
 func (s *Store) InFlight(ctx context.Context, hostedThreadID string) (bool, error) {
 	var found int
-	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM queued_turns WHERE hosted_thread_id=? AND (state IN (?,?,?) OR (state=? AND COALESCE(provider_terminal_status,'')='')) LIMIT 1`,
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM queued_turns q WHERE q.hosted_thread_id=? AND (q.state IN (?,?,?) OR (q.state=? AND COALESCE(q.provider_terminal_status,'')=''
+			AND NOT EXISTS (SELECT 1 FROM hosted_turn_operations o WHERE o.hosted_thread_id=q.hosted_thread_id AND o.transport_action_id=q.client_action_id AND o.status IN ('completed','failed','interrupted')))) LIMIT 1`,
 		hostedThreadID, Queued, Delivering, Uncertain, Accepted).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil

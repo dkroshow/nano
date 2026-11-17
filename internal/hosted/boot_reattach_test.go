@@ -2,6 +2,7 @@ package hosted
 
 import (
 	"encoding/json"
+	"fmt"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/testsupport"
@@ -10,6 +11,8 @@ import (
 	"github.com/dkroshow/nano/internal/threadindex"
 	shim "github.com/dkroshow/nano/internal/wire/claude"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -304,4 +307,26 @@ func TestBootReattachRespawnsNoIdleClaudeThread(t *testing.T) {
 	if _, state := s.Boot.WaitingHosted("nht_claude-idle"); state != "resting" {
 		t.Fatalf("idle thread state = %q; want resting until its next prompt or an opened pane", state)
 	}
+
+	// A sidebar row that shows the idle thread does not start it; its opened
+	// pane does.
+	idle, _ := s.Executions.Session("nht_claude-idle")
+	for _, ask := range []struct {
+		target   string
+		starting bool
+	}{{"/prioritize?for=row", false}, {"/prioritize", true}} {
+		rec := httptest.NewRecorder()
+		s.HandlePrioritize(rec, httptest.NewRequest(http.MethodPost, ask.target, nil), idle)
+		if want := fmt.Sprintf(`{"starting":%v}`, ask.starting); strings.TrimSpace(rec.Body.String()) != want {
+			t.Fatalf("%s answered %s; want %s", ask.target, rec.Body.String(), want)
+		}
+	}
+	shimfixture.WaitFor(t, "the opened pane's attach of the idle thread", func() bool {
+		for _, call := range fake.CallsOf(shim.MethodAttach) {
+			if strings.Contains(string(call.Params), "shim-exited") {
+				return true
+			}
+		}
+		return false
+	})
 }

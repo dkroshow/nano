@@ -31,14 +31,16 @@ function recordedValue(item, field) {
 // whether Nano accepted the request. The tab goes live through the session
 // list like any attach; a resting thread has no boot queue to fall back on,
 // so callers ask again after a failure.
-export function prioritizeStartingThread(hostedThreadId) {
-  return fetch(`/api/v1/hosted-threads/${encodeURIComponent(hostedThreadId)}/prioritize`, { method: 'POST' })
+export function prioritizeStartingThread(hostedThreadId, query = '') {
+  return fetch(`/api/v1/hosted-threads/${encodeURIComponent(hostedThreadId)}/prioritize${query}`, { method: 'POST' })
     .then((response) => response.ok, () => false)
 }
 
 // After a restart Nano leaves every thread without open work "resting", and a
 // sidebar row that shows one asks for it once while it rests: rows re-render
-// often. A request that fails re-arms, so the next render asks again.
+// often. A request that fails re-arms, so the next render asks again. The row
+// says it is a row: Nano then leaves a thread whose own process is gone for
+// its pane or its next prompt to start.
 const restingAsked = new Set()
 export function attachShownRestingThread(hostedThreadId, resting) {
   if (!resting) {
@@ -47,7 +49,7 @@ export function attachShownRestingThread(hostedThreadId, resting) {
   }
   if (restingAsked.has(hostedThreadId)) return
   restingAsked.add(hostedThreadId)
-  void prioritizeStartingThread(hostedThreadId).then((ok) => {
+  void prioritizeStartingThread(hostedThreadId, '?for=row').then((ok) => {
     if (!ok) restingAsked.delete(hostedThreadId)
   })
 }

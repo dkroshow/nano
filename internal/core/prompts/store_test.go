@@ -25,7 +25,7 @@ func openCurrentStore(t *testing.T, ctx context.Context, db *sql.DB) (*Store, er
 	// In production the control tables share this database; the current schema
 	// also records each provisional handle's resolution there.
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS hosted_thread_native_ids(hosted_thread_id TEXT NOT NULL, provider TEXT NOT NULL, native_thread_id TEXT NOT NULL, PRIMARY KEY(hosted_thread_id, provider, native_thread_id));
-		CREATE TABLE IF NOT EXISTS hosted_turn_operations(operation_id TEXT PRIMARY KEY, hosted_thread_id TEXT NOT NULL, transport_action_id TEXT NOT NULL)`); err != nil {
+		CREATE TABLE IF NOT EXISTS hosted_turn_operations(operation_id TEXT PRIMARY KEY, hosted_thread_id TEXT NOT NULL, transport_action_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running')`); err != nil {
 		t.Fatal(err)
 	}
 	// The usage stage that takes a store from 21 to 22 belongs to core/turns,
@@ -678,6 +678,39 @@ func TestStoreRecordsDefiniteProviderRefusal(t *testing.T) {
 				t.Fatalf("refusal record=%+v persisted=%+v attempt=%+v err=%v", record, persisted, attempt, err)
 			}
 		})
+	}
+}
+
+// A Claude turn that ends in an error never confirms its prompt, which stays
+// accepted. Counted as in flight, every such thread was respawned at a
+// restart (2026-11-15: 1,366 of them, turns failed hours before). Once its
+// hosted turn operation has ended, the prompt is no longer in flight; while
+// the operation runs, it is.
+func TestAcceptedPromptLeavesFlightWhenItsTurnOperationEnds(t *testing.T) {
+	ctx := context.Background()
+	store, db, _ := transactionalStore(t)
+	if _, _, err := store.Submit(ctx, admission("host", "accepted", HumanOrigin)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := store.Claim(ctx, ClaimRequest{HostedThreadID: "host", Token: "claim", AttachmentEpoch: 9, Ready: true}); err != nil || !ok {
+		t.Fatalf("claim=%v err=%v", ok, err)
+	}
+	if _, err := store.Accepted(ctx, Acceptance{ActionID: "accepted", ClaimToken: "claim", AttachmentEpoch: 9, Binding: binding("host", "turn-a")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO hosted_turn_operations(operation_id,hosted_thread_id,transport_action_id,status) VALUES('op','host','accepted','running')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		status   string
+		inFlight bool
+	}{{"running", true}, {"failed", false}} {
+		if _, err := db.Exec(`UPDATE hosted_turn_operations SET status=? WHERE operation_id='op'`, step.status); err != nil {
+			t.Fatal(err)
+		}
+		if inFlight, err := store.InFlight(ctx, "host"); err != nil || inFlight != step.inFlight {
+			t.Fatalf("operation %s: in flight = %v, %v; want %v", step.status, inFlight, err, step.inFlight)
+		}
 	}
 }
 
