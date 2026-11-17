@@ -1,6 +1,7 @@
 package hosted
 
 import (
+	"encoding/json"
 	hostedstore "github.com/dkroshow/nano/internal/hosted/store"
 	"github.com/dkroshow/nano/internal/sidebar"
 	"github.com/dkroshow/nano/internal/testsupport"
@@ -229,5 +230,78 @@ func TestBootReattachHoldsHiddenThreadsUntilEveryVisibleOneRegisters(t *testing.
 	case <-done:
 	case <-time.After(30 * time.Second):
 		t.Fatal("boot did not finish")
+	}
+}
+
+// After a reboot every Claude child is gone, and respawning each visible
+// thread at once ran the host out of memory (2026-11-15: 927 new processes in
+// ten minutes). Boot asks the shim once which children still run: a visible
+// thread whose child runs re-attaches, one whose child is gone and has nothing
+// to do waits for a need, and one with an open turn still comes back by itself.
+func TestBootReattachRespawnsNoIdleClaudeThread(t *testing.T) {
+	fake := shimfixture.NewServer(t, func(c *shimfixture.Conn) {
+		for {
+			call, ok := c.Next()
+			if !ok {
+				return
+			}
+			switch call.Method {
+			case shim.MethodList:
+				c.Reply(call, map[string]any{"sessions": []map[string]any{{"shimSessionId": "shim-alive", "state": "running"}, {"shimSessionId": "shim-exited", "state": "exited"}}})
+			case shim.MethodAttach:
+				var params struct {
+					ShimSessionID string `json:"shimSessionId"`
+				}
+				_ = json.Unmarshal(call.Params, &params)
+				if params.ShimSessionID != "shim-alive" {
+					c.ReplyError(call, shim.CodeSessionNotFound, "session_not_found")
+					continue
+				}
+				c.Reply(call, map[string]any{"shimSessionId": "shim-alive", "nativeSessionId": "claude-alive", "state": "running", "lastSeq": 0})
+				c.Notify(shim.MethodReplayDone, map[string]any{"shimSessionId": "shim-alive", "lastSeq": 0})
+			default:
+				c.Reply(call, nil)
+			}
+		}
+	})
+	s, store := newBootCoordinator(t, fake.WSURL(), "")
+	records := map[string]hostedstore.Attachment{}
+	for native, shimID := range map[string]string{"claude-alive": "shim-alive", "claude-idle": "shim-exited", "claude-working": "shim-gone"} {
+		rec := rememberedClaudeSession(t, "/stored/claude")
+		rec.NativeThreadID, rec.HostedThreadID, rec.ShimSessionID = native, "nht_"+native, shimID
+		store.Remember(rec)
+		records[native] = rec
+	}
+	seedBootAttachments(t, s)
+	if _, _, err := fixtureBeginTurn(s.Executions, "nht_claude-working", "nano:test:open-turn", "hash"); err != nil {
+		t.Fatal(err)
+	}
+	s.PrepareBoot()
+	now := time.Now().UTC()
+	updated := now.Format(time.RFC3339Nano)
+	var threads []sidebar.Thread
+	for native := range records {
+		threads = append(threads, sidebar.Thread{Thread: threadindex.Thread{ID: "nth_" + native, Provider: "claude", NativeID: native, UpdatedAt: &updated}, Starred: true})
+	}
+	materializeBootSidebar(t, s, threads, now)
+	s.ReattachOnBoot()
+
+	// Registration returns before the provider handshakes, which run behind it.
+	attached := map[string]bool{}
+	shimfixture.WaitFor(t, "the running child's and the working thread's attaches", func() bool {
+		for _, call := range fake.CallsOf(shim.MethodAttach) {
+			var params struct {
+				ShimSessionID string `json:"shimSessionId"`
+			}
+			_ = json.Unmarshal(call.Params, &params)
+			attached[params.ShimSessionID] = true
+		}
+		return attached["shim-alive"] && attached["shim-gone"]
+	})
+	if attached["shim-exited"] {
+		t.Fatalf("boot attached %v; want the running child and the thread with open work, not the idle one", attached)
+	}
+	if _, state := s.Boot.WaitingHosted("nht_claude-idle"); state != "resting" {
+		t.Fatalf("idle thread state = %q; want resting until its next prompt or an opened pane", state)
 	}
 }

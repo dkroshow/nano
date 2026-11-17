@@ -757,6 +757,40 @@ func CloseDetachedClaude(shimURL, shimID string) error {
 	return err
 }
 
+// LiveClaudeChildren asks the shim, in one call, which of its children are
+// still running, by shim session id. Boot re-attach uses it so a restart
+// starts no new Claude process for a thread that has nothing to do: after a
+// reboot every child is gone, and respawning each visible thread at once ran
+// the host out of memory.
+func LiveClaudeChildren(shimURL string) (map[string]bool, error) {
+	if shimURL == "" {
+		return nil, errors.New("claude shim disabled")
+	}
+	client, err := wireclaude.Dial(shimURL, claudeShimDialTimeout, func(string, json.RawMessage) {}, func(error) {})
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), claudeShimCloseTimeout)
+	defer cancel()
+	var listed struct {
+		Sessions []struct {
+			ShimSessionID string `json:"shimSessionId"`
+			State         string `json:"state"`
+		} `json:"sessions"`
+	}
+	if err := client.Call(ctx, wireclaude.MethodList, struct{}{}, &listed, claudeShimCloseTimeout); err != nil {
+		return nil, err
+	}
+	live := make(map[string]bool, len(listed.Sessions))
+	for _, child := range listed.Sessions {
+		if child.State != "exited" {
+			live[child.ShimSessionID] = true
+		}
+	}
+	return live, nil
+}
+
 // abandon drops a connection whose handshake failed without reporting a child
 // exit — there is no child, and the caller is about to fall back.
 func (t *claudeShimTransport) abandon() {

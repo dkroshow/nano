@@ -8,7 +8,9 @@
 // nothing — not a click per thread. The rest rest: each comes back the moment
 // something needs it (a pane or sidebar row shows it, a prompt or request for
 // it), so a restart does not spend minutes on hundreds of threads nobody looks
-// at.
+// at. A Claude thread whose shim child did not survive (a reboot, a shim
+// restart) is not respawned for being visible: only open work starts a new
+// process at boot; otherwise its next prompt or an opened pane does.
 package hosted
 
 import (
@@ -106,8 +108,14 @@ func (s *AttachmentCoordinator) ReattachOnBoot() {
 	}
 	ordered := bootOrder(boot.order, ranks)
 	s.Restart.rank(ranks, ordered)
+	liveChildren := s.liveChildren(boot.order)
 	order, resting := bootQueue(ordered, func(rec hostedstore.Attachment) bool {
-		return ranks[rec.Key()].Visible || s.bootWorkOpen(rec)
+		// A visible thread whose own process is gone would need a new one;
+		// it waits for its next prompt or an opened pane instead.
+		if ranks[rec.Key()].Visible && (!sessions.ProviderLifecycleCapabilities(rec.Provider).ChildPerThread || liveChildren[rec.ShimSessionID]) {
+			return true
+		}
+		return s.bootWorkOpen(rec)
 	})
 	s.Boot.Rest(resting)
 	s.Restart.rest(resting)
@@ -222,6 +230,25 @@ func bootQueue(ordered []hostedstore.Attachment, needed func(hostedstore.Attachm
 		}
 	}
 	return queue, resting
+}
+
+// liveChildren is the shim's set of running children, asked once per boot and
+// only when a stored thread keeps a process of its own. An unanswered shim
+// counts as none running: those threads then wait for a need, not respawn.
+func (s *AttachmentCoordinator) liveChildren(records []hostedstore.Attachment) map[string]bool {
+	for _, rec := range records {
+		if !sessions.ProviderLifecycleCapabilities(rec.Provider).ChildPerThread {
+			continue
+		}
+		live, err := sessions.LiveClaudeChildren(s.Defaults.ClaudeShimWS)
+		if err != nil {
+			log.Printf("boot re-attach: Claude shim did not list its children (%v); threads without open work wait for a need", err)
+			return nil
+		}
+		log.Printf("boot re-attach: Claude shim holds %d running children", len(live))
+		return live
+	}
+	return nil
 }
 
 // bootWorkOpen reports a stored thread with work not yet settled, from each

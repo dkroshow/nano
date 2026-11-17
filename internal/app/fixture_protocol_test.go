@@ -10,6 +10,7 @@ const supervisedDaemonLabel = config.DefaultCodexSupervisorLabel
 const (
 	shimMethodStart         = shim.MethodStart
 	shimMethodAttach        = shim.MethodAttach
+	shimMethodList          = shim.MethodList
 	shimMethodInput         = shim.MethodInput
 	shimMethodClose         = shim.MethodClose
 	shimMethodLine          = shim.MethodLine

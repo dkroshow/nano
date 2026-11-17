@@ -15,6 +15,10 @@ type Capabilities struct {
 	// ResumeWithoutTranscript supports a provider-resident, never-prompted
 	// thread whose durable transcript has not been created yet.
 	ResumeWithoutTranscript bool
+	// ChildPerThread marks a provider whose runtime keeps one process per
+	// thread, which a reboot or a runtime restart ends. Re-attaching such a
+	// thread then starts a new process, so boot does it only for open work.
+	ChildPerThread bool
 }
 
 // Adapter exposes current qualified connection/work evidence. Current reads an

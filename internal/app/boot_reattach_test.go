@@ -836,6 +836,10 @@ func TestBootReattachLimitsConcurrentClaudeHandshakes(t *testing.T) {
 		if !ok {
 			return
 		}
+		if call.Method == shimMethodList {
+			c.Reply(call, map[string]any{"sessions": []any{}}) // boot's one listing, not a handshake
+			return
+		}
 		var params struct {
 			NativeSessionID string `json:"nativeSessionId"`
 		}

@@ -101,7 +101,7 @@ type claudeLifecycleAdapter struct {
 
 // Capabilities reports the provider guarantees used to qualify lifecycle evidence.
 func (claudeLifecycleAdapter) Capabilities() lifecycle.Capabilities {
-	return lifecycle.Capabilities{ReadyWithoutInit: true, ResumeWorkSnapshot: true, BootHandshakeLimit: claudeBootHandshakeLimit}
+	return lifecycle.Capabilities{ReadyWithoutInit: true, ResumeWorkSnapshot: true, BootHandshakeLimit: claudeBootHandshakeLimit, ChildPerThread: true}
 }
 
 // Current returns qualified current lifecycle evidence, when the provider supplies it.

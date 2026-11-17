@@ -6,6 +6,7 @@ const (
 	MethodAttach     = "session/attach"
 	MethodInput      = "session/input"
 	MethodClose      = "session/close"
+	MethodList       = "session/list"
 	MethodLine       = "session/line"
 	MethodExited     = "session/exited"
 	MethodReplayDone = "session/replayDone"
