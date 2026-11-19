@@ -74,6 +74,7 @@
   import GlobalMail from './lib/mail/GlobalMail.svelte'
   import ThreadExplorer from './lib/explorer/ThreadExplorer.svelte'
   import ExplorerStatus from './lib/explorer/ExplorerStatus.svelte'
+  import AttachedThreads from './lib/explorer/AttachedThreads.svelte'
   import ExplorerFilters from './lib/explorer/ExplorerFilters.svelte'
   import ThreadQuickDetail from './lib/explorer/ThreadQuickDetail.svelte'
   import DescendantCloseDialog from './lib/explorer/DescendantCloseDialog.svelte'
@@ -508,6 +509,7 @@
          present in both the compact rail and the expanded table. -->
     <div class="side-brand">
       <span class="side-brand-name">nano</span>
+      <AttachedThreads />
       {#if app.explorerOpen}<ExplorerStatus />{/if}
       <button
         class="density-toggle"
